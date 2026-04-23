@@ -92,6 +92,37 @@ SPDX-FileCopyrightText = "2026 Chromaticity"
 SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
 
 # -----------------------------------------------------------------------------
+# JSON configuration artifacts. JSON cannot carry inline SPDX headers so
+# REUSE coverage is specified here rather than relying on the root `**`
+# aggregate fall-through. Matches the root proprietary posture.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "package.json",
+  "package-lock.json",
+  "tsconfig.json",
+  "tsconfig.node.json",
+  "src-tauri/tauri.conf.json",
+  "src-tauri/capabilities/**/*.json",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
+
+# -----------------------------------------------------------------------------
+# Placeholder / sentinel files that cannot carry a header but must still
+# satisfy reuse lint. Kept proprietary per the root default.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "dist/.gitkeep",
+  "src-tauri/icons/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
+
+# -----------------------------------------------------------------------------
 # Third-party code (when present) lives under third_party/<origin>/ and
 # overrides here with an explicit license per ATTRIBUTION.md. This block is
 # reserved; it becomes active when the first vendored library lands.
