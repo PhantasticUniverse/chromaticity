@@ -46,6 +46,13 @@ unsafe_code = "forbid"
 all = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
+# Redundant under the workspace-level unsafe_code = "forbid" above,
+# but retained as a tripwire: if any subtree ever opts out of forbid
+# per §12.6 (subtree-tightening-only, policy-scoped ADR required),
+# missing_safety_doc keeps every unsafe block carrying a // SAFETY:
+# doc comment that states the invariant being upheld. See
+# docs/43 §12.1 for the forbid-as-floor posture.
+missing_safety_doc = "deny"
 
 # Release profile: small binary. Platform signing pipelines strip
 # further (ADR-014).
