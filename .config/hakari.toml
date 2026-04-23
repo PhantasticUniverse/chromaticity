@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# cargo-hakari configuration for the Chromaticity workspace.
+#
+# Drives `cargo hakari generate` to produce the unified feature list
+# consumed by workspace-hack/. See docs/43-development-standards.md
+# §10.5 (dependency policy) and §12.1 (Rust standards), and
+# docs/adr/ADR-018-non-scene-ui-toolkit.md for the runtime stack that
+# this dependency policy is ultimately protecting.
+#
+# cargo-hakari 0.9.36 reads only `.config/hakari.toml` or
+# `.guppy/hakari.toml`; the older `[workspace.metadata.hakari]`
+# embedded form is not consulted and must not be re-introduced.
+
+hakari-package = "workspace-hack"
+
+# Must match the Cargo.toml [workspace] resolver. Chromaticity pins
+# resolver "3" (edition 2024 default). Bumping either requires bumping
+# both in the same PR.
+resolver = "3"
+
+# Format version of the generated block between the BEGIN / END HAKARI
+# SECTION markers in workspace-hack/Cargo.toml. 4 is the current latest
+# supported by cargo-hakari 0.9.36 and is forward-compatible with
+# future 0.9.x releases.
+dep-format-version = "4"
+
+# Platforms enumerated here match the cargo-deny `graph.targets` list
+# in /deny.toml; transitive advisories on platform-gated dependencies
+# are silently excluded from the supply-chain gate if the two lists
+# drift. A `policy`-scoped PR that bumps one must bump the other.
+platforms = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
