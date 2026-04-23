@@ -32,7 +32,7 @@ Contents/
 # -----------------------------------------------------------------------------
 target/
 # Vite build output. The directory must exist so tauri's compile-time
-# frontendDist check in src-tauri/tauri.conf.json is satisfied on a
+# frontendDist check in app/shell/tauri.conf.json is satisfied on a
 # fresh clone before `npm run build` has run; we keep a .gitkeep
 # sentinel and ignore every generated artifact inside.
 dist/*

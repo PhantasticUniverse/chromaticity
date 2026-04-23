@@ -167,7 +167,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 | R-28 | Data-ingestion architectural debt | A scene ships that depends on `syn_Data_*` / `DATA_SOURCES` without the forward-compat reservations honored, forcing a breaking change when ADR-017 lands |
 | R-29 | Accessibility regression (`EV-ACCESSIBILITY-AA`) | Any new axe-core violation on non-scene UI, or WCAG 2.2 AA manual-audit failure not fixed before release candidate |
 | R-30 | Color management regression (`EV-COLOR-MANAGEMENT-SRGB`) | Any non-scene UI pixel rendered outside sRGB on a color-managed display in release candidate; ColorSync/ICC round-trip failure on documented profiles |
-| R-31 | `ts-rs` type-binding drift between Rust core and TypeScript UI | CI fails the `pnpm --filter ui check` step on stale bindings; any UI build against a bindings file whose hash differs from a fresh `build.rs` export |
+| R-31 | `ts-rs` type-binding drift between Rust core and TypeScript UI | CI fails the `npm run check` step on stale bindings; any UI build against a bindings file whose hash differs from a fresh `build.rs` export |
 | R-32 | CodeMirror 6 plugin-ecosystem fragmentation | Any pinned CM6 plugin goes >12 months without upstream activity AND ships a known regression in the authoring flow |
 | R-33 | wgpu / WebView2 composition spike fails | Phase 1 spike per `47-ui-port-plan.md` §6 cannot achieve transparent-region compositing on Windows WebView2, or DPI scaling at >=1.75x regresses pixel-rounding below `target.min` |
 | R-34 | Svelte 5 runes idiom drift | Two or more PRs in the same review sequence diverge on state placement (`$state` vs store) for equivalent cross-component concerns; or `eslint-plugin-chromaticity-ui-tokens` lint fails on hard-coded tokens after a one-release grace sequence |
@@ -416,9 +416,9 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 ### R-31 `ts-rs` Type-Binding Drift Between Rust Core and TypeScript UI
 - Probability: Medium (realistic without CI enforcement; low with enforcement)
 - Impact: High (subtly broken IPC contracts compile but mis-route values at runtime, surfacing as hard-to-diagnose UI bugs)
-- Trigger: `pnpm --filter ui check` passes while `src-tauri` types have drifted from the committed bindings; or CI produces fresh `ts-rs` export output that differs from the repo under `ui/src/lib/ipc/bindings/`.
+- Trigger: `npm run check` passes while `app/shell/` types have drifted from the committed bindings; or CI produces fresh `ts-rs` export output that differs from the repo under `src/lib/ipc/bindings/`.
 - Mitigation:
- - `build.rs` in `src-tauri/` runs `ts_rs::export_to(...)` on every Rust build,
+ - `build.rs` in `app/shell/` runs `ts_rs::export_to(...)` on every Rust build,
  - CI gate fails if a fresh `ts-rs` export produces a diff vs the committed bindings,
  - `47-ui-port-plan.md` §7 locks the shared-type inventory and `EV-COMPAT-PROFILE-DIFF` consumes the drift check,
  - all cross-boundary types live in a single crate (`chroma-ui-bridge`) to concentrate review attention.

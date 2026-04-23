@@ -24,84 +24,108 @@ Related: gap audit `44-ux-bundle-gap-audit.md`, token mapping `45-design-token-m
 
 ## 2. Repository layout (post-port)
 
-The Phase 1 repository skeleton assumes a Tauri 2 workspace:
+The Phase 1 repository skeleton aligns with the CODEOWNERS subtree layout in
+`43-development-standards.md` §8 (`engine/`, `app/`, `integrations/`, `release-eng/`, with
+`workspace-hack/` at root per cargo-hakari convention). The Svelte web root lives at `src/`
+at the repository root per Vite convention; splitting it into its own `app/ui/` crate is a
+later concern reserved for when the frontend grows beyond a single shell component.
 
 ```
 /
-├── Cargo.toml                       # workspace manifest
-├── src-tauri/                       # Tauri Rust app shell
-│   ├── Cargo.toml
-│   ├── tauri.conf.json
-│   ├── build.rs                     # ts-rs export step
-│   └── src/
-│       ├── main.rs                  # Tauri entry
-│       ├── commands/                # invoke handlers (IPC)
-│       ├── state/                   # app-level state owned by Rust core
-│       ├── types/                   # shared types (derive ts-rs::TS)
-│       └── bridge/                  # core<->UI marshalling
-├── crates/
-│   ├── chroma-runtime/              # runtime scheduler, render graph, sandbox
-│   ├── chroma-scene/                # scene schema, .chroma package, import
-│   ├── chroma-audio/                # audio pipeline
-│   ├── chroma-io/                   # OSC, MIDI, Syphon, Spout
-│   ├── chroma-entitlement/          # ADR-009 capability bitmask
-│   └── chroma-ui-bridge/            # ts-rs-decorated IPC types (shared with src-tauri/types)
-├── ui/                              # Svelte 5 + TS UI tree
-│   ├── package.json                 # pinned per 22-compatibility-versioning-policy.md
-│   ├── svelte.config.js
-│   ├── vite.config.ts               # Tauri-aware dev server
-│   ├── tsconfig.json
-│   ├── src/
-│   │   ├── app.html
-│   │   ├── main.ts                  # mount <App />
-│   │   ├── App.svelte
-│   │   ├── lib/
-│   │   │   ├── tokens/              # ADR-018 token exports (CSS custom props + TS constants)
-│   │   │   │   ├── tokens.css       # :root + [data-theme] blocks
-│   │   │   │   ├── tokens.ts        # const tokens = { surface: {...}, ... } for conditional styling
-│   │   │   │   └── themes/          # pulse.css, atelier.css, console.css
-│   │   │   ├── primitives/          # Fader, Knob, Toggle, ControlGroup, Meter, VuStereo, Preview, SceneRow, MediaCard, FxTile, CrossFader, CuePad, Spectrum, BpmRing, BeatDots, Timecode, Pill, Tab, Button, Icon, RailIcon
-│   │   │   ├── hud/                 # Topbar, Rail, StatusBar, FavSlots, HotkeyOverlay
-│   │   │   ├── editor/              # CodeMirror 6 wrapper + Chromaticity extensions
-│   │   │   ├── ipc/                 # invoke wrappers, event listeners
-│   │   │   ├── stores/              # global Svelte 5 stores (session, theme, density, accent, adapter-health)
-│   │   │   └── a11y/                # focus-trap, live-region, landmark helpers
-│   │   ├── views/                   # one Svelte file per view
-│   │   │   ├── perform/
-│   │   │   │   ├── +view.svelte
-│   │   │   │   ├── SceneControls.svelte
-│   │   │   │   ├── MetaControls.svelte
-│   │   │   │   ├── MediaStrip.svelte
-│   │   │   │   ├── ScenePanel.svelte
-│   │   │   │   └── AudioReactivity.svelte
-│   │   │   ├── library/
-│   │   │   ├── scene/
-│   │   │   ├── audio/
-│   │   │   ├── playlist/
-│   │   │   │   ├── +view.svelte
-│   │   │   │   └── CueTransitionCurve.svelte
-│   │   │   ├── media/
-│   │   │   ├── midi/
-│   │   │   │   ├── +view.svelte
-│   │   │   │   ├── MidiLearnWaveform.svelte
-│   │   │   │   └── MidiHistoryStrip.svelte
-│   │   │   ├── osc/
-│   │   │   ├── import/
-│   │   │   ├── patch/
-│   │   │   ├── settings/
-│   │   │   │   ├── +view.svelte
-│   │   │   │   ├── Hotkeys.svelte     # read-only render of 42-operator-hotkey-map.md
-│   │   │   │   ├── OscPanel.svelte    # EV-UX-OSC-SETTINGS-CONTRACT full panel
-│   │   │   │   └── MidiPanel.svelte   # EV-UX-MIDI-SETTINGS-CONTRACT full panel
-│   │   │   └── welcome/
-│   │   ├── error-states/            # commissioned in 49-ux-bundle-supplement-scope.md
-│   │   └── entitlement/             # commissioned in 50-ux-bundle-entitlement-surface-scope.md
-│   └── static/
-│       ├── fonts/                   # bundled per 51-ux-bundle-legal-check.md
-│       │   ├── Inter/
-│       │   ├── JetBrainsMono/
-│       │   └── Fraunces/            # Atelier only
-│       └── icons/
+├── Cargo.toml                       # workspace manifest (edition 2024, MSRV 1.85.0)
+├── Cargo.lock
+├── rust-toolchain.toml
+├── deny.toml
+├── package.json                     # pinned per 22-compatibility-versioning-policy.md
+├── package-lock.json
+├── tsconfig.json
+├── tsconfig.node.json
+├── svelte.config.js
+├── vite.config.ts                   # Tauri-aware dev server
+├── eslint.config.js
+├── index.html                       # Vite entry; mounts /src/main.ts
+├── workspace-hack/                  # cargo-hakari placeholder (at root by convention)
+├── app/
+│   ├── shell/                       # Tauri 2 binary (chromaticity-app crate)
+│   │   ├── Cargo.toml
+│   │   ├── tauri.conf.json
+│   │   ├── build.rs                 # ts-rs export step
+│   │   ├── capabilities/
+│   │   │   └── default.json
+│   │   ├── icons/
+│   │   │   └── icon.png
+│   │   └── src/
+│   │       ├── main.rs              # Tauri entry
+│   │       ├── lib.rs               # run() — Tauri Builder bootstrap
+│   │       ├── commands/            # invoke handlers (IPC)
+│   │       ├── state/               # app-level state owned by the Rust core
+│   │       └── bridge/              # core<->UI marshalling (consumes app/ui-bridge/)
+│   ├── ui-bridge/                   # ts-rs-decorated IPC types (chroma-ui-bridge crate)
+│   ├── authoring/                   # reserved: authoring environment crate
+│   ├── library/                     # reserved: scene library + import crate
+│   └── ui/                          # reserved: Svelte UI crate (when src/ splits out)
+├── engine/
+│   ├── runtime/                     # runtime scheduler, render graph, sandbox (chroma-runtime)
+│   ├── scene/                       # scene schema, .chroma package, import (chroma-scene)
+│   ├── audio/                       # audio pipeline (chroma-audio)
+│   └── entitlement/                 # ADR-009 capability bitmask (chroma-entitlement)
+├── integrations/
+│   └── io/                          # OSC, MIDI, Syphon, Spout (chroma-io)
+├── release-eng/                     # reserved: signing / notarization / updater helpers
+├── src/                             # Svelte 5 + TS UI tree (at web root per Vite)
+│   ├── app.d.ts                     # svelte + vite/client ambient types
+│   ├── main.ts                      # mount <App />
+│   ├── App.svelte
+│   ├── lib/
+│   │   ├── tokens/                  # ADR-018 token exports (CSS custom props + TS constants)
+│   │   │   ├── tokens.css           # :root + [data-theme] blocks
+│   │   │   ├── tokens.ts            # const tokens = { surface: {...}, ... } for conditional styling
+│   │   │   └── themes/              # pulse.css, atelier.css, console.css
+│   │   ├── primitives/              # Fader, Knob, Toggle, ControlGroup, Meter, VuStereo, Preview, SceneRow, MediaCard, FxTile, CrossFader, CuePad, Spectrum, BpmRing, BeatDots, Timecode, Pill, Tab, Button, Icon, RailIcon
+│   │   ├── hud/                     # Topbar, Rail, StatusBar, FavSlots, HotkeyOverlay
+│   │   ├── editor/                  # CodeMirror 6 wrapper + Chromaticity extensions
+│   │   ├── ipc/                     # invoke wrappers, event listeners; bindings/*.ts generated by ts-rs
+│   │   ├── stores/                  # global Svelte 5 stores (session, theme, density, accent, adapter-health)
+│   │   └── a11y/                    # focus-trap, live-region, landmark helpers
+│   ├── views/                       # one Svelte file per view
+│   │   ├── perform/
+│   │   │   ├── +view.svelte
+│   │   │   ├── SceneControls.svelte
+│   │   │   ├── MetaControls.svelte
+│   │   │   ├── MediaStrip.svelte
+│   │   │   ├── ScenePanel.svelte
+│   │   │   └── AudioReactivity.svelte
+│   │   ├── library/
+│   │   ├── scene/
+│   │   ├── audio/
+│   │   ├── playlist/
+│   │   │   ├── +view.svelte
+│   │   │   └── CueTransitionCurve.svelte
+│   │   ├── media/
+│   │   ├── midi/
+│   │   │   ├── +view.svelte
+│   │   │   ├── MidiLearnWaveform.svelte
+│   │   │   └── MidiHistoryStrip.svelte
+│   │   ├── osc/
+│   │   ├── import/
+│   │   ├── patch/
+│   │   ├── settings/
+│   │   │   ├── +view.svelte
+│   │   │   ├── Hotkeys.svelte     # read-only render of 42-operator-hotkey-map.md
+│   │   │   ├── OscPanel.svelte    # EV-UX-OSC-SETTINGS-CONTRACT full panel
+│   │   │   └── MidiPanel.svelte   # EV-UX-MIDI-SETTINGS-CONTRACT full panel
+│   │   └── welcome/
+│   ├── error-states/                # commissioned in 49-ux-bundle-supplement-scope.md
+│   └── entitlement/                 # commissioned in 50-ux-bundle-entitlement-surface-scope.md
+├── public/                          # Vite static-assets dir (served at root URL)
+│   ├── fonts/                       # bundled per 51-ux-bundle-legal-check.md
+│   │   ├── Inter/
+│   │   ├── JetBrainsMono/
+│   │   └── Fraunces/                # Atelier only
+│   └── icons/
+├── dist/                            # Vite build output; .gitkeep is load-bearing for Tauri's compile-time frontendDist check
+├── scripts/                         # policy / CI shell helpers
+├── .github/workflows/               # rust, frontend, sbom, evidence-tag-lint
 └── docs/                            # Diátaxis-mapped per 43-development-standards.md §11
 ```
 
@@ -148,17 +172,17 @@ The Svelte UI owns only **view-local ephemeral state**:
 `lib/ipc/` wraps `@tauri-apps/api`:
 
 ```
-// ui/src/lib/ipc/index.ts
+// src/lib/ipc/index.ts
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { SceneLaunchArgs, AdapterHealth, ControlValue } from '../../../../crates/chroma-ui-bridge/bindings'  // ts-rs output
+import type { SceneLaunchArgs, AdapterHealth, ControlValue } from '$lib/ipc/bindings'  // ts-rs output (generated into src/lib/ipc/bindings/ by app/shell/build.rs)
 
 export const launchScene = (args: SceneLaunchArgs) => invoke<void>('launch_scene', { args })
 export const setControlValue = (v: ControlValue) => invoke<void>('set_control_value', { v })
 export const onAdapterHealth = (cb: (h: AdapterHealth) => void) => listen<AdapterHealth>('adapter-health::changed', (e) => cb(e.payload))
 ```
 
-All cross-boundary types live in `crates/chroma-ui-bridge/` with `#[derive(ts_rs::TS)]` attributes; the `build.rs` step in `src-tauri/` runs `ts-rs::export()` to produce `ui/src/lib/ipc/bindings/*.ts`. Contract drift is prevented because the UI cannot compile with stale bindings.
+All cross-boundary types live in `app/ui-bridge/` with `#[derive(ts_rs::TS)]` attributes; the `build.rs` step in `app/shell/` runs `ts-rs::export()` to produce `src/lib/ipc/bindings/*.ts`. Contract drift is prevented because the UI cannot compile with stale bindings.
 
 ### 3.4. No `localStorage` for cross-boundary state
 
@@ -284,7 +308,7 @@ Standard CM6 set, pinned per `22-compatibility-versioning-policy.md`:
 
 ### 5.4. Latency budget (NFR-10)
 
-CodeMirror 6 keystroke-to-paint baseline on GPU-A hardware must meet the p95 budget in `37-authoring-environment-spec.md` §3.3a. Measurement harness lives in `crates/chroma-runtime/tests/ui_latency.rs` plus a Playwright side-run against the system web view.
+CodeMirror 6 keystroke-to-paint baseline on GPU-A hardware must meet the p95 budget in `37-authoring-environment-spec.md` §3.3a. Measurement harness lives in `engine/runtime/tests/ui_latency.rs` plus a Playwright side-run against the system web view.
 
 Initial target: p95 keystroke-to-paint **< 16ms** on GPU-A (one frame budget at 60Hz). If hover-doc or completion latency miss the NFR-10 budget, drop down-stream symbol lookups to a Rust-side precomputed trie rather than a linear scan over the catalog JSON.
 
@@ -302,7 +326,7 @@ The spike validates:
 4. Resize correctness at DPI scales 1.0x / 1.25x / 1.5x / 1.75x / 2.0x / 2.5x / 3.0x per ADR-018 constraint 7.
 5. Preview tiles in non-Perform / non-Scene views (Library, Playlist cue inspector): either a lightweight second wgpu surface or a CPU-decoded preview frame blitted into the web view. Recommend CPU-decoded preview for off-stage views to avoid GPU contention; measure against NFR-10 budgets.
 
-Spike output: `crates/chroma-runtime/spikes/wgpu-composition/` with a README, measurement CSVs, and a go / no-go verdict. Gate: `EV-RENDER-CONFORMANCE` downstream.
+Spike output: `engine/runtime/spikes/wgpu-composition/` with a README, measurement CSVs, and a go / no-go verdict. Gate: `EV-RENDER-CONFORMANCE` downstream.
 
 ### 6.2. Preview-tile fallback
 
@@ -320,30 +344,35 @@ Every cross-boundary type is defined once in Rust and exported to TypeScript via
 
 ### 7.1. Canonical type inventory
 
-These types generate under `ui/src/lib/ipc/bindings/`:
+These types generate under `src/lib/ipc/bindings/`:
 
-| Type | Crate | Consumers |
+Types are defined in their owning domain crate and re-exported (or type-aliased) through
+`app/ui-bridge/` so `#[derive(ts_rs::TS)]` attaches in one place and the shell's
+`build.rs` aggregates a single export.
+
+| Type | Owning crate (path) | Consumers |
 |---|---|---|
-| `ControlValue`, `ControlBank`, `ControlKind`, `ControlLock` | `chroma-scene` | Fader / Knob / Toggle / Swatch primitives |
-| `SceneId`, `ScenePackageRef`, `SceneCategory` | `chroma-scene` | Library, Perform, Playlist |
-| `PresetRef`, `SnapSlotRef`, `PlaylistRef`, `PlaylistPosition` | `chroma-scene` | Snap bar, Playlist view |
-| `TransitionShapeId`, `CueRow`, `BeatSnapDivisor` | `chroma-scene` | CueTransitionCurve, Playlist |
-| `AudioBand`, `AudioUniform`, `AudioThreshold` | `chroma-audio` | Audio view, Spectrum, Patch pins |
-| `OscRoute`, `OscSettings`, `OscRateLimit`, `OscNetworkExposure` | `chroma-io` | OscPanel, OSC view |
-| `MidiMapping`, `MidiMode`, `MidiDeviceId`, `MidiAllowlist`, `MidiBpmSource` | `chroma-io` | MidiPanel, MIDI view |
-| `AdapterHealth`, `AdapterKind`, `AdapterState` | `chroma-io` | Topbar pills, degraded banner |
-| `OutputRouting`, `OutputKind`, `OutputPlatform` | `chroma-io` | Output routing HUD (H-10 fix) |
-| `EntitlementBitmask`, `CapabilityId`, `WatermarkState` | `chroma-entitlement` | Entitlement surface |
-| `PerfSample`, `PerfPercentile`, `GpuTier` | `chroma-runtime` | Performance HUD (H-02 fix) |
-| `CrashResumeState`, `SupportBundleRef` | `chroma-runtime` | Crash-resume banner, support-bundle entry |
-| `SymbolCatalogEntry`, `SymbolKind`, `SymbolRange` | `chroma-scene` | Editor hover-doc, Inputs Inspector |
-| `ChromaShowRef`, `ChromaPackageRef`, `ChromaPackKind` | `chroma-scene` | Open / Save / Export |
+| `ControlValue`, `ControlBank`, `ControlKind`, `ControlLock` | `engine/scene` | Fader / Knob / Toggle / Swatch primitives |
+| `SceneId`, `ScenePackageRef`, `SceneCategory` | `engine/scene` | Library, Perform, Playlist |
+| `PresetRef`, `SnapSlotRef`, `PlaylistRef`, `PlaylistPosition` | `engine/scene` | Snap bar, Playlist view |
+| `TransitionShapeId`, `CueRow`, `BeatSnapDivisor` | `engine/scene` | CueTransitionCurve, Playlist |
+| `AudioBand`, `AudioUniform`, `AudioThreshold` | `engine/audio` | Audio view, Spectrum, Patch pins |
+| `OscRoute`, `OscSettings`, `OscRateLimit`, `OscNetworkExposure` | `integrations/io` | OscPanel, OSC view |
+| `MidiMapping`, `MidiMode`, `MidiDeviceId`, `MidiAllowlist`, `MidiBpmSource` | `integrations/io` | MidiPanel, MIDI view |
+| `AdapterHealth`, `AdapterKind`, `AdapterState` | `integrations/io` | Topbar pills, degraded banner |
+| `OutputRouting`, `OutputKind`, `OutputPlatform` | `integrations/io` | Output routing HUD (H-10 fix) |
+| `EntitlementBitmask`, `CapabilityId`, `WatermarkState` | `engine/entitlement` | Entitlement surface |
+| `PerfSample`, `PerfPercentile`, `GpuTier` | `engine/runtime` | Performance HUD (H-02 fix) |
+| `CrashResumeState`, `SupportBundleRef` | `engine/runtime` | Crash-resume banner, support-bundle entry |
+| `SymbolCatalogEntry`, `SymbolKind`, `SymbolRange` | `engine/scene` | Editor hover-doc, Inputs Inspector |
+| `ChromaShowRef`, `ChromaPackageRef`, `ChromaPackKind` | `engine/scene` | Open / Save / Export |
 
 ### 7.2. Build pipeline
 
-1. `cargo build --release` in `src-tauri/` triggers `build.rs`.
-2. `build.rs` calls `ts_rs::export_to("ui/src/lib/ipc/bindings/index.ts", ...)`.
-3. Vite picks up the changed bindings on the next `ui` rebuild.
+1. `cargo build --release` in `app/shell/` triggers `build.rs`.
+2. `build.rs` calls `ts_rs::export_to("src/lib/ipc/bindings/index.ts", ...)`, aggregating the
+   types re-exported from `app/ui-bridge/`.
+3. Vite picks up the changed bindings on the next rebuild.
 4. CI fails if the committed bindings are out of date vs a fresh export (`EV-COMPAT-PROFILE-DIFF` consumes this).
 
 ### 7.3. Enum serialisation
@@ -371,16 +400,16 @@ Initial pinned versions (for Phase 1 kickoff; bumps run full regression suite pe
 
 | Dependency | Pinned version | License | Why | Source of truth |
 |---|---|---|---|---|
-| Tauri | 2.0.x (latest stable at kickoff) | MIT / Apache-2.0 | ADR-018 toolkit decision | `src-tauri/Cargo.toml` |
-| Svelte | 5.x (runes mode) | MIT | ADR-018 toolkit decision | `ui/package.json` |
-| TypeScript | 5.x | Apache-2.0 | ADR-018 | `ui/package.json` |
-| Vite | latest major | MIT | Dev server | `ui/package.json` |
-| CodeMirror | 6.x | MIT | ADR-018 editor choice | `ui/package.json` |
-| `ts-rs` | latest stable | MIT / Apache-2.0 | Shared-type boundary | `crates/chroma-ui-bridge/Cargo.toml` |
+| Tauri | 2.0.x (latest stable at kickoff) | MIT / Apache-2.0 | ADR-018 toolkit decision | `app/shell/Cargo.toml` |
+| Svelte | 5.x (runes mode) | MIT | ADR-018 toolkit decision | `package.json` |
+| TypeScript | 5.x | Apache-2.0 | ADR-018 | `package.json` |
+| Vite | latest major | MIT | Dev server | `package.json` |
+| CodeMirror | 6.x | MIT | ADR-018 editor choice | `package.json` |
+| `ts-rs` | latest stable | MIT / Apache-2.0 | Shared-type boundary | `app/ui-bridge/Cargo.toml` |
 | `serde` / `serde_json` | latest 1.x | MIT / Apache-2.0 | Serialisation | workspace |
 | `wgpu` + `naga` | locked per `adr/ADR-011-rendering-backend.md` | MIT / Apache-2.0 | Rendering backend | workspace |
 
-Exact version strings land at Phase 1 kickoff in the repo's `Cargo.lock` + `pnpm-lock.yaml` (or `package-lock.json`; package manager choice is a Phase 1 task, not plan-level).
+Exact version strings land at Phase 1 kickoff in the repo's `Cargo.lock` + `package-lock.json`.
 
 All UI dependency licenses fed into `EV-LICENSE-AUDIT` per `51-ux-bundle-legal-check.md`.
 
@@ -388,31 +417,31 @@ All UI dependency licenses fed into `EV-LICENSE-AUDIT` per `51-ux-bundle-legal-c
 
 ADR-018's token surface exports **two parallel** representations so Svelte components can choose:
 
-- `ui/src/lib/tokens/tokens.css` - CSS custom properties under `:root` with `[data-theme="..."]` overrides. This is the default path: components use `var(--surface-base)` etc.
-- `ui/src/lib/tokens/tokens.ts` - TypeScript constants mirroring the same names. Use where conditional styling or canvas rendering needs the raw value (e.g. `chromaSymbolHoverDoc` renders into a CM6 widget that can't use CSS vars cleanly).
+- `src/lib/tokens/tokens.css` - CSS custom properties under `:root` with `[data-theme="..."]` overrides. This is the default path: components use `var(--surface-base)` etc.
+- `src/lib/tokens/tokens.ts` - TypeScript constants mirroring the same names. Use where conditional styling or canvas rendering needs the raw value (e.g. `chromaSymbolHoverDoc` renders into a CM6 widget that can't use CSS vars cleanly).
 
-`eslint-plugin-chromaticity-ui-tokens` (Phase-0 bootstrap lint per ADR-018 §Enforcement) enforces: no hard-coded colours / spacing / radii / motion in `.svelte` files; all must go through tokens. Plugin lives in `crates/eslint-plugin-chromaticity-ui-tokens` (or published separately).
+`eslint-plugin-chromaticity-ui-tokens` (Phase-0 bootstrap lint per ADR-018 §Enforcement) enforces: no hard-coded colours / spacing / radii / motion in `.svelte` files; all must go through tokens. The plugin is a separately-scoped deliverable — its in-repo location (likely under `release-eng/` tooling) or out-of-repo publication choice is deferred to the work package that lands the first token-lint gate.
 
 ## 10. Build + run workflow
 
 ### 10.1. Dev loop
 
-- `pnpm --filter ui dev` starts Vite on `http://localhost:1420`.
-- `cargo tauri dev` starts Tauri shell, which auto-targets the Vite dev server.
+- `npm run dev` starts Vite on `http://localhost:1420`.
+- `npm run tauri dev` starts the Tauri shell, which auto-targets the Vite dev server.
 - Hot reload works for Svelte + TypeScript; Rust changes trigger a Tauri rebuild.
-- `cargo tauri dev` auto-triggers `build.rs` -> `ts-rs` export when Rust types change.
+- `npm run tauri dev` auto-triggers `build.rs` -> `ts-rs` export when Rust types change.
 
 ### 10.2. Production build
 
-- `pnpm --filter ui build` produces `ui/dist/`.
-- `cargo tauri build` bundles into platform installers (`.dmg` + `.app` on macOS, `.msi` + `.exe` on Windows).
+- `npm run build` produces `dist/`.
+- `npm run tauri build` bundles into platform installers (`.dmg` + `.app` on macOS, `.msi` + `.exe` on Windows).
 - Signing / notarization per `adr/ADR-014-signing-notarization-auto-update.md`.
 
 ### 10.3. CI
 
-- `pnpm --filter ui check` (svelte-check + tsc --noEmit + eslint-plugin-chromaticity-ui-tokens).
-- `cargo test` (Rust + ts-rs export drift check).
-- `pnpm --filter ui test` (Vitest for UI logic; Playwright for axe-core fixtures per `46-ux-bundle-a11y-color-audit.md` §7).
+- `npm run check` (svelte-check) + `npm run tsc` (tsc --noEmit, both tsconfigs) + `npm run lint` (eslint; token lint added when `eslint-plugin-chromaticity-ui-tokens` lands).
+- `cargo test --workspace --all-targets` (Rust + ts-rs export drift check).
+- Vitest for UI logic + Playwright for axe-core fixtures per `46-ux-bundle-a11y-color-audit.md` §7 land when the first frontend test is scaffolded.
 - `cargo tauri build` dry-run on both platforms.
 
 ## 11. Implementation sequence
@@ -421,7 +450,7 @@ Port work lands inside Phase 1 implementation, not before bundle v0.2-beta. Exec
 
 | Sequence step | Dependency posture | Exit criteria |
 |---|---|---|
-| S1. Tauri 2 + Svelte 5 scaffold + token surface | Start here | `ui/` builds; `src-tauri/` launches; token CSS custom properties compile; Pulse theme renders an empty shell. |
+| S1. Tauri 2 + Svelte 5 scaffold + token surface | Start here | `src/` builds under Vite; `app/shell/` launches; token CSS custom properties compile; Pulse theme renders an empty shell. |
 | S2. Primitives port | After S1 | All `lib/primitives/*.svelte` ported with ARIA + keyboard complete per §4.1. Axe-core fixture (single view + primitives) passes. |
 | S3. Shell + Topbar + Rail + StatusBar + HotkeyOverlay | After S2 | `lib/hud/*.svelte` complete with adapter-health taxonomy wired to Rust stub events. |
 | S4. Perform / Library / Playlist views | After S3 | Three views functional against stub Rust core; Snap bar with 16 slots; transition shape catalog wired. |
@@ -438,7 +467,7 @@ S1-S10 covers the UI portion of Phase 1 only. Runtime (wgpu pipeline, audio anal
 
 | # | Risk | Mitigation | Tracked |
 |---|---|---|---|
-| PR-01 | `ts-rs` drift between Rust and TypeScript ships subtly broken bindings | CI gate on export-is-fresh; `pnpm --filter ui check` fails on stale bindings | `EV-COMPAT-PROFILE-DIFF` |
+| PR-01 | `ts-rs` drift between Rust and TypeScript ships subtly broken bindings | CI gate on export-is-fresh; `npm run check` + `cargo test` fail on stale bindings | `EV-COMPAT-PROFILE-DIFF` |
 | PR-02 | CodeMirror 6 plugin ecosystem is less mature than CM5; plugin health risk | Pin exact versions; vendor any off-the-shelf plugin with license-clear code into the repo if upstream goes dormant | `EV-LICENSE-AUDIT`, `22-compatibility-versioning-policy.md` |
 | PR-03 | Scene-surface composition spike fails (e.g. WebView2 can't honour a transparent region correctly on Windows) | Fallback plan: web-rendered canvas via `<canvas>` + WebGL / WebGPU for non-fullscreen preview; native wgpu only in fullscreen. ADR-018 §Consequences already lists "careful fullscreen-transition path" as a spike. | `EV-RENDER-CONFORMANCE`, `R-??` (add to `13-risk-register.md` if spike fails) |
 | PR-04 | Svelte 5 runes model is new; idiom drift across team | Svelte 5 runes coding-standard subsection added to `43-development-standards.md` §13 (new); single code-owner for review until idioms settle | `43-development-standards.md` §13 |
