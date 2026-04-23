@@ -25,7 +25,10 @@
 
 [graph]
 # Target all commonly-shipped host triples so transitive advisories on
-# platform-gated deps are not silently excluded from the check.
+# platform-gated deps are not silently excluded from the check. This
+# list MUST stay in sync with the `platforms` list in
+# /.config/hakari.toml; a `policy`-scoped PR that bumps one must bump
+# the other (see docs/43-development-standards.md §10.5).
 targets = [
     "x86_64-unknown-linux-gnu",
     "aarch64-apple-darwin",

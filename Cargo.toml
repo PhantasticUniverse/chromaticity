@@ -55,16 +55,7 @@ opt-level = 0
 debug = true
 incremental = true
 
-# cargo-hakari metadata. Drives `cargo hakari generate` to produce
-# the unified feature list consumed by workspace-hack. The four
-# platforms here match the cargo-deny graph.targets in /deny.toml;
-# bumping one requires bumping both in the same PR.
-[workspace.metadata.hakari]
-hakari-package = "workspace-hack"
-resolver = "3"
-platforms = [
-    "x86_64-unknown-linux-gnu",
-    "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
-    "x86_64-pc-windows-msvc",
-]
+# cargo-hakari configuration lives at /.config/hakari.toml. The older
+# `[workspace.metadata.hakari]` embedded form is not read by
+# cargo-hakari 0.9.36 and must not be re-introduced here — having
+# both locations invites silent drift.
