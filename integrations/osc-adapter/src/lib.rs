@@ -3,15 +3,20 @@
 
 //! Chromaticity OSC integration adapter.
 //!
-//! Phase-1 scaffold; no public surface yet. The first-slice
-//! implementation (adapter skeleton honouring ADR-013 bind-scope and
-//! rate-limit defaults) arrives in a follow-up PR.
+//! First-slice implementation: trait skeleton plus the ADR-013
+//! networking-defaults constants the runtime conformance gate
+//! `EV-NET-HARDENING` (`docs/26-evidence-artifact-registry.md`
+//! line 77) asserts against. Wire-level OSC parsing lands in a
+//! follow-up slice alongside the first OSC-codec dependency.
 //!
 //! Governing ADRs:
 //!
 //! - ADR-005 — integration adapter boundary
 //!   (`docs/adr/ADR-005-integration-adapter-boundary.md`).
 //! - ADR-013 — networking defaults and security
-//!   (`docs/adr/ADR-013-networking-defaults-and-security.md`). Fixes
-//!   the bind-scope default and the rate-limit defaults the
-//!   first-slice implementation must honour.
+//!   (`docs/adr/ADR-013-networking-defaults-and-security.md`).
+//!   Fixes the bind-scope default, per-route rate-limit default,
+//!   and packet-hardening caps this crate must honour.
+
+pub mod adapter;
+pub mod defaults;
