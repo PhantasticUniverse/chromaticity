@@ -207,6 +207,15 @@ tree.
   uses `dorny/paths-filter` (or any action that hits the pulls REST API) in an in-job
   filter. The three per-workflow `*-summary` aggregators in `rust.yml` /
   `frontend.yml` / `sbom.yml` depend on this scope.
+- **`gh pr update-branch` breaks DCO and `trailer-check`.** The command asks GitHub to
+  update the PR branch from its base, which creates a SERVER-side merge commit signed
+  only by GitHub (`GitHub <noreply@github.com>`, no `Signed-off-by`, no
+  `Profile-Impact`). That commit fails the `dco` and `trailer-check` required contexts
+  on the next CI run and blocks merge. When a laggard PR goes out of date under
+  `strict: true` branch protection, use `git rebase origin/main` in a local worktree
+  followed by `git push --force-with-lease=<branch>:<old-sha>`; never the GitHub web
+  button, never `gh pr update-branch`. Applies equally to the "Update branch" button
+  in the PR UI.
 
 ## Agent parallelism playbook
 
