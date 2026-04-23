@@ -318,6 +318,7 @@ mod drift_pins {
         PassSpec {
             node: NodeRef(node.to_string()),
             uniform_bindings: bindings,
+            extensions: serde_json::Map::new(),
         }
     }
 
