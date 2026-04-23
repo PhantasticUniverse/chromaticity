@@ -33,6 +33,8 @@ on:
 
 permissions:
   contents: read
+  # dorny/paths-filter@v3 uses the REST API to list PR files.
+  pull-requests: read
 
 concurrency:
   group: frontend-${{ github.workflow }}-${{ github.ref }}

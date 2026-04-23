@@ -43,6 +43,11 @@ on:
 
 permissions:
   contents: read
+  # dorny/paths-filter@v3 uses the REST API to list PR files on
+  # pull_request events. Push / tag events use local git and do not
+  # need this permission, but it is granted workflow-wide for
+  # simplicity.
+  pull-requests: read
 
 concurrency:
   group: sbom-${{ github.workflow }}-${{ github.ref }}
