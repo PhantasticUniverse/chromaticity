@@ -102,8 +102,8 @@ path = [
   "package-lock.json",
   "tsconfig.json",
   "tsconfig.node.json",
-  "src-tauri/tauri.conf.json",
-  "src-tauri/capabilities/**/*.json",
+  "app/shell/tauri.conf.json",
+  "app/shell/capabilities/**/*.json",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Chromaticity"
@@ -116,7 +116,7 @@ SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
 [[annotations]]
 path = [
   "dist/.gitkeep",
-  "src-tauri/icons/**",
+  "app/shell/icons/**",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Chromaticity"

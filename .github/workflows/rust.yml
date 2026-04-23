@@ -31,8 +31,11 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - 'deny.toml'
-      - 'crates/**'
-      - 'src-tauri/**'
+      - 'workspace-hack/**'
+      - 'app/**'
+      - 'engine/**'
+      - 'integrations/**'
+      - 'release-eng/**'
       - '.github/workflows/rust.yml'
   push:
     branches: [main]

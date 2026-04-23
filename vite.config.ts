@@ -18,7 +18,7 @@ export default defineConfig(() => {
       host: host ?? false,
       ...(host ? { hmr: { protocol: 'ws' as const, host, port: 1421 } } : {}),
       watch: {
-        ignored: ['**/src-tauri/**'],
+        ignored: ['**/app/shell/**'],
       },
     },
   };

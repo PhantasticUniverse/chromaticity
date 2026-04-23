@@ -7,15 +7,18 @@
 # member crates via `foo.workspace = true` in their own Cargo.toml.
 # See docs/43-development-standards.md §12.1 and docs/adr/ADR-018.
 #
-# Member crates are added by subsequent Phase-1 scaffold PRs:
-#   - PR #2 (build(ui))         adds "src-tauri".
-#   - Later PRs add engine/runtime, engine/scene, engine/audio, etc.
+# Member crates populate under engine/ and app/ subtrees matching
+# CODEOWNERS (docs/43-development-standards.md §8). Phase-1 entry
+# lands the Tauri shell at app/shell/; engine/runtime, engine/scene,
+# engine/audio, integrations/, app/authoring/, app/library/, and
+# app/ui/ arrive in subsequent PRs. workspace-hack sits at repo root
+# per the cargo-hakari convention (it is not a product crate).
 
 [workspace]
 resolver = "3"
 members = [
-    "crates/workspace-hack",
-    "src-tauri",
+    "workspace-hack",
+    "app/shell",
 ]
 
 [workspace.package]
@@ -53,9 +56,9 @@ debug = true
 incremental = true
 
 # cargo-hakari metadata. Drives `cargo hakari generate` to produce
-# the unified feature list consumed by crates/workspace-hack. The
-# four platforms here match the cargo-deny graph.targets in
-# /deny.toml; bumping one requires bumping both in the same PR.
+# the unified feature list consumed by workspace-hack. The four
+# platforms here match the cargo-deny graph.targets in /deny.toml;
+# bumping one requires bumping both in the same PR.
 [workspace.metadata.hakari]
 hakari-package = "workspace-hack"
 resolver = "3"

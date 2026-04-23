@@ -54,8 +54,8 @@ node_modules/
 Cargo.lock.bak
 
 # Tauri
-src-tauri/target/
-src-tauri/gen/schemas/
+app/shell/target/
+app/shell/gen/schemas/
 
 # -----------------------------------------------------------------------------
 # Test / coverage / evidence scratch
