@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity engine runtime crate.
+#
+# Phase-1 scaffold. Holds the canonical state core, the command bus,
+# and (as a module, per the Phase-1 scaffold brief) the render-graph
+# implementation until incremental-compile or license-boundary concerns
+# justify extracting the graph to its own crate. No public surface
+# until the first-slice implementation PR.
+#
+# Governing ADRs:
+#   ADR-001 — runtime model (docs/adr/ADR-001-runtime-model.md)
+#   ADR-004 — canonical state model (docs/adr/ADR-004-state-model.md)
+#   ADR-006 — thread and process model (docs/adr/ADR-006-thread-and-process-model.md)
+#
+# See also docs/43-development-standards.md §12.1. All workspace lints
+# (including unsafe_code = forbid, clippy::unwrap_used = deny,
+# clippy::expect_used = deny) are inherited; no local relaxation.
+
+[package]
+name = "chromaticity-runtime"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity engine runtime (state core, command bus, render graph)."
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
