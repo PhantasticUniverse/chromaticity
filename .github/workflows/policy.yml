@@ -186,7 +186,38 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+      # gitleaks-action@v2 computes a <before>^..<head> range that
+      # fails to resolve when <before> is the initial commit of the
+      # history (no parent exists). We invoke the CLI directly and
+      # scan the full commit history, which is both simpler and
+      # resilient to first-push / force-push / rebase edge cases.
+      # No untrusted event payload is consumed in any run: block;
+      # GITLEAKS_VERSION is a literal pinned string.
+      - name: Install gitleaks
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: '8.24.3'
+        run: |
+          set -eu
+          curl -fsSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          mkdir -p /tmp/gitleaks
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp/gitleaks
+
+      - name: Run gitleaks (full history)
+        run: |
+          set -eu
+          /tmp/gitleaks/gitleaks detect \
+            --redact \
+            --report-format=sarif \
+            --report-path=gitleaks.sarif \
+            --log-level=info \
+            --no-banner \
+            --log-opts=--no-merges
+
+      - name: Upload SARIF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-results.sarif
+          path: gitleaks.sarif
+          if-no-files-found: ignore
