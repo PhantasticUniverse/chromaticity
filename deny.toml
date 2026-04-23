@@ -6,12 +6,14 @@
 # matrix job in .github/workflows/rust.yml invoking
 # `cargo deny check <name>`.
 #
-#   advisories — fails on any advisory against a used crate. cargo-deny
-#                v2 does not expose a severity tier, so the §10.4 intent
-#                of "HIGH or CRITICAL" is rendered as deny-all; any
-#                exception is an entry in `advisories.ignore` with a
-#                reference to the EV-SECURITY-DECLARATION row that
-#                waived it.
+#   advisories — security-significant findings are denied (`vulnerability`
+#                and `yanked`), while `unmaintained` is warning-only.
+#                Rationale: upstream Tauri GTK3 transitive crates are
+#                currently flagged as unmaintained across Linux desktop
+#                ecosystems; that is a supply-chain health signal, not a
+#                direct exploit indicator. Keep warning visibility until
+#                upstream migration lands; do not suppress via `ignore`
+#                unless we need an explicit per-ID waiver trail.
 #   licenses   — SPDX allowlist sourced from
 #                docs/29-cleanroom-legal-policy-baseline.md. Additions
 #                require a coordinated `policy`-scoped PR editing both
@@ -36,6 +38,8 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+vulnerability = "deny"
+unmaintained = "warn"
 ignore = []
 
 [licenses]

@@ -145,7 +145,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-hakari
-        run: cargo install cargo-hakari --locked
+        # 0.9.37 requires rustc >=1.86; workspace MSRV is pinned to 1.85.0.
+        run: cargo install cargo-hakari --version 0.9.36 --locked
 
       - name: Verify workspace-hack is regenerated
         run: |
