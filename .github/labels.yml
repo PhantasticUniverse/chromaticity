@@ -115,7 +115,6 @@
 - name: 'succession-pending'
   color: '78716c'
   description: No eligible reviewer currently online; waits for return-of-availability.
-
 # -----------------------------------------------------------------------------
 # Evidence / risk (dynamic — instantiated per ID as needed, not pre-created)
 # -----------------------------------------------------------------------------

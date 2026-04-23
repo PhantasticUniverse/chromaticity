@@ -21,8 +21,3 @@ overrides:
       - '*.markdown'
     options:
       proseWrap: preserve
-  - files:
-      - '*.yml'
-      - '*.yaml'
-    options:
-      singleQuote: false

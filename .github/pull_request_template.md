@@ -44,8 +44,8 @@ ADR-
 
 - [ ] No docs impact.
 - [ ] Embedded-docs coverage changes (see docs/adr/ADR-010-embedded-docs-generation.md).
-- [ ] Planning-corpus update (docs/NN-*.md).
-- [ ] ADR addition / amendment (docs/adr/ADR-NNN-*.md).
+- [ ] Planning-corpus update (docs/NN-\*.md).
+- [ ] ADR addition / amendment (docs/adr/ADR-NNN-\*.md).
 - [ ] `CHANGELOG.md` entry required (per Sec.6).
 
 Affected pages (if any): `/reference/…`, `/manual/…`, `/guides/…`, `/faq/…`, `/resources/…`

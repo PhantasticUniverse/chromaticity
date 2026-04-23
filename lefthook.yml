@@ -50,7 +50,7 @@ pre-commit:
         fi
 
     trailing-whitespace:
-      glob: "*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json}"
+      glob: '*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json}'
       run: |
         bad=$(grep -nE " +$" {staged_files} 2>/dev/null || true)
         if [ -n "$bad" ]; then
@@ -60,7 +60,7 @@ pre-commit:
         fi
 
     final-newline:
-      glob: "*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json,sh}"
+      glob: '*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json,sh}'
       run: |
         for f in {staged_files}; do
           [ -s "$f" ] || continue
@@ -71,7 +71,7 @@ pre-commit:
         done
 
     prettier:
-      glob: "*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}"
+      glob: '*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}'
       run: |
         if command -v npx >/dev/null 2>&1 && npx --no-install prettier --version >/dev/null 2>&1; then
           npx --no-install prettier --check {staged_files}
@@ -80,16 +80,18 @@ pre-commit:
         fi
 
     eslint:
-      glob: "*.{ts,tsx,js,jsx,mjs,cjs,svelte}"
+      glob: '*.{ts,tsx,js,jsx,mjs,cjs,svelte}'
       run: |
-        if command -v npx >/dev/null 2>&1 && npx --no-install eslint --version >/dev/null 2>&1; then
+        if [ -f eslint.config.js ] \
+           && command -v npx >/dev/null 2>&1 \
+           && npx --no-install eslint --version >/dev/null 2>&1; then
           npx --no-install eslint --max-warnings 0 {staged_files}
         else
-          echo "eslint not installed; skipping (CI will enforce)."
+          echo "eslint not configured (eslint.config.js absent); skipping (CI will enforce)."
         fi
 
     rustfmt:
-      glob: "*.rs"
+      glob: '*.rs'
       run: |
         if command -v rustfmt >/dev/null 2>&1; then
           rustfmt --check {staged_files}
@@ -98,7 +100,7 @@ pre-commit:
         fi
 
     adr-lint:
-      glob: "docs/adr/**/*.md"
+      glob: 'docs/adr/**/*.md'
       run: scripts/adr-lint.sh {staged_files}
 
 # ---------------------------------------------------------------------------

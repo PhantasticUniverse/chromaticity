@@ -51,18 +51,18 @@ Normative form (§4.1 of `docs/43-development-standards.md`):
 
 Accepted types (others rejected by `commitlint`):
 
-| Type       | Meaning                                                         | SemVer |
-|------------|-----------------------------------------------------------------|--------|
-| `feat`     | New end-user-visible capability                                 | minor  |
-| `fix`      | Bug fix                                                         | patch  |
-| `perf`     | Performance change with measured impact on `EV-PERF-BUDGETS`    | patch  |
-| `refactor` | Internal restructure, no behavior change                        | none   |
-| `docs`     | Documentation-only change                                       | none   |
-| `test`     | Test-only change                                                | none   |
-| `build`    | Build scripts, toolchain, workspace plumbing                    | none   |
-| `ci`       | CI pipeline, runner config, gate automation                     | none   |
-| `chore`    | Housekeeping with no product effect                             | none   |
-| `revert`   | Revert a prior commit (must reference commit SHA)               | inverse|
+| Type       | Meaning                                                      | SemVer  |
+| ---------- | ------------------------------------------------------------ | ------- |
+| `feat`     | New end-user-visible capability                              | minor   |
+| `fix`      | Bug fix                                                      | patch   |
+| `perf`     | Performance change with measured impact on `EV-PERF-BUDGETS` | patch   |
+| `refactor` | Internal restructure, no behavior change                     | none    |
+| `docs`     | Documentation-only change                                    | none    |
+| `test`     | Test-only change                                             | none    |
+| `build`    | Build scripts, toolchain, workspace plumbing                 | none    |
+| `ci`       | CI pipeline, runner config, gate automation                  | none    |
+| `chore`    | Housekeeping with no product effect                          | none    |
+| `revert`   | Revert a prior commit (must reference commit SHA)            | inverse |
 
 Major bumps are driven exclusively by `!` or `BREAKING CHANGE:` footer.
 
