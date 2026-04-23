@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Frontend CI (TypeScript + Svelte 5) per docs/43-development-
+# standards.md §12.2, §12.5, and ADR-018. One job runs prettier,
+# eslint, tsc, and svelte-check in order; each step is blocking.
+#
+# No run: step consumes untrusted github.event.* input.
+
+name: frontend
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'tsconfig.node.json'
+      - 'eslint.config.js'
+      - 'svelte.config.js'
+      - 'vite.config.ts'
+      - 'src/**'
+      - 'index.html'
+      - '.prettierrc.yaml'
+      - '.prettierignore'
+      - '.github/workflows/frontend.yml'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Prettier format check
+        run: npm run format:check
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: TypeScript type-check (app + build configs)
+        run: npm run tsc
+
+      - name: Svelte-check
+        run: npm run check

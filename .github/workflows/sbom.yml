@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# SBOM emission stubs per docs/43-development-standards.md §10.4 and
+# §11.2. Two parallel jobs:
+#
+#   cargo-cyclonedx - CycloneDX 1.5 SBOM for the Rust workspace.
+#   syft            - SPDX 2.3 SBOM for the assembled app bundle
+#                     (Node + Rust transitive closure).
+#
+# At Phase-1 entry the jobs run on push to main and on-demand. They
+# will be gated on app/vX.Y.Z release tags once the ADR-014 signing
+# pipeline lands (EV-RELEASE-ATTESTATION in
+# docs/26-evidence-artifact-registry.md).
+#
+# No run: step consumes untrusted github.event.* input.
+
+name: sbom
+
+on:
+  push:
+    branches: [main]
+    tags: ['app/v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sbom-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cargo-cyclonedx:
+    name: cargo-cyclonedx
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tauri linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libxdo-dev
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+
+      - name: Seed frontend dist sentinel
+        run: mkdir -p dist && touch dist/.gitkeep
+
+      - name: Emit Rust workspace SBOM
+        run: cargo cyclonedx --format json --spec-version 1.5
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-sbom
+          path: '**/*.cdx.json'
+          if-no-files-found: error
+
+  syft:
+    name: syft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: chromaticity.spdx.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-sbom
+          path: chromaticity.spdx.json
+          if-no-files-found: error

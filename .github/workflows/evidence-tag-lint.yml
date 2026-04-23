@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# EV-EVIDENCE-TAG-COVERAGE gate per docs/26-evidence-artifact-
+# registry.md and docs/43-development-standards.md §15.
+#
+# Required-check slot from Phase 1 onward (branch protection);
+# strict enforcement body (mapping every test in an evidence-
+# producing subtree to an EV-ID in the registry) is implemented by
+# the evidence-tag-lint work package in
+# docs/12-work-breakdown-estimates.md once the first test arrives.
+# At Phase-1 entry the job executes scripts/evidence-tag-lint.sh
+# which passes trivially while the body is pending.
+#
+# No run: step consumes untrusted github.event.* input.
+
+name: evidence-tag-lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evidence-tag-lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  coverage:
+    name: EV-EVIDENCE-TAG-COVERAGE
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run evidence-tag-lint
+        run: bash scripts/evidence-tag-lint.sh
