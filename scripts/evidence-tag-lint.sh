@@ -40,6 +40,25 @@
 # when it ships, the escape hatch form `#[evidence(none = "…")]`
 # will be recognized here.
 #
+# Deferred scope (not an oversight):
+#
+#   - **Dynamic subtree discovery.** The coverage scope is hardcoded
+#     below. The canonical source is `docs/12-work-breakdown-
+#     estimates.md` WP-N "Outputs" sections, which enumerate per-
+#     work-package evidence-producing subtrees. Driving the list
+#     from docs/12 is tracked as a follow-up; until then, adding a
+#     new evidence-producing WP requires a paired edit here. An
+#     in-body guard comment near the hardcoded paths flags the
+#     drift risk.
+#   - **TypeScript / JavaScript coverage.** §15.2 line 573 defines a
+#     framework-specific tag for TS/JS:
+#     `test.concurrent("...", { evidence: ["EV-<ID>"] }, async () => ...)`.
+#     This script scans Rust sources only. Phase-1 scope is
+#     engine-side; there are no frontend evidence-producing work
+#     packages today. TS/JS coverage lands when the first such WP
+#     appears (tracked as a follow-up); adding it here before then
+#     would be validating an empty set.
+#
 # No run: step consumes untrusted github.event.* input.
 
 set -eu
@@ -145,6 +164,14 @@ fi
 
 # --- Coverage (per §15.4 line 582) ---
 
+# DRIFT GUARD: The `$repo/engine` and `$repo/integrations` paths
+# below are the hardcoded coverage scope. The canonical source for
+# "evidence-producing subtree" is docs/12-work-breakdown-estimates.md
+# WP-N Outputs. If a new WP adds an evidence-producing subtree
+# outside these two trees (or retires one of them), this find's
+# root list MUST be updated in the same PR that touches docs/12.
+# Drift here silently gaps coverage. Driving this list from
+# docs/12 at runtime is a tracked follow-up.
 uncovered=""
 while IFS= read -r file; do
     [ -z "$file" ] && continue
