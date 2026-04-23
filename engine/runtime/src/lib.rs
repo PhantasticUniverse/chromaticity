@@ -3,24 +3,40 @@
 
 //! Chromaticity engine runtime.
 //!
-//! Phase-1 first slice. Exposes the canonical state core
-//! ([`state`]) and the command-bus trait skeleton ([`command_bus`]);
-//! concrete command variants, queue-backed bus implementations, and
-//! the event-sourced stores from ADR-004 land in subsequent slices.
-//! The render-graph implementation will start as a module in this
-//! crate and be extracted only when incremental-compile savings or
-//! license-boundary concerns justify.
+//! Phase-1 slice-2. Exposes the canonical state core
+//! ([`state`]) with its ADR-004 §Decision placeholder sub-stores and
+//! the command-bus surface ([`command_bus`]): typed [`Command`] and
+//! [`Event`] envelopes, the [`CommandChannel`] pluggable transport
+//! trait, a crossbeam-channel-backed [`CrossbeamChannel`]
+//! implementation, and the [`InMemoryBus`] `CommandBus` that composes
+//! a channel with a monotonic [`EventSeq`] counter. The event-sourced
+//! reconciliation layer (validator + store mutation) and a persistence
+//! or cross-process channel implementation land in slice-3. The
+//! render-graph implementation remains reserved as a future module in
+//! this crate, to be extracted only when incremental-compile savings
+//! or license-boundary concerns justify.
 //!
-//! Internal types remain crate-private (`pub(crate)`) so downstream
-//! crates cannot bypass the command bus; only the module surface is
-//! `pub` to let sibling crates in later PRs depend on this one.
+//! Internal state fields and sub-stores remain crate-private
+//! (`pub(crate)`) so downstream crates cannot bypass the command bus;
+//! only the public command / event / trait surface is exported for
+//! sibling crates to consume in later slices.
 //!
 //! Governing ADRs:
 //!
 //! - ADR-001 — runtime model (`docs/adr/ADR-001-runtime-model.md`).
-//! - ADR-004 — canonical state model (`docs/adr/ADR-004-state-model.md`).
+//! - ADR-004 — canonical state model
+//!   (`docs/adr/ADR-004-state-model.md`).
 //! - ADR-006 — thread and process model
 //!   (`docs/adr/ADR-006-thread-and-process-model.md`).
+
+// Convenience re-exports of the slice-2 public surface. Sibling
+// engine crates depend on `chromaticity_runtime::Command` and
+// `chromaticity_runtime::Event` shapes from slice-3 onward.
+pub use command_bus::{
+    Command, CommandBus, CommandBusError, CommandChannel, ControlId, ControlValue,
+    CrossbeamChannel, Event, EventPayload, EventSeq, InMemoryBus, MappingId, MappingSource,
+    PresetId,
+};
 
 pub mod command_bus;
 pub mod state;
