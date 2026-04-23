@@ -31,7 +31,7 @@
 #
 # Exit code 0 if all fixtures match their expectation; 1 otherwise.
 
-set -u
+set -uo pipefail
 
 fixtures_dir="tests/fixtures/trailer-check"
 script="scripts/trailer-check.sh"

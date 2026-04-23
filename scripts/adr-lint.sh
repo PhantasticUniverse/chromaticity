@@ -26,7 +26,7 @@
 #   sets this variable; the backfill of legacy ADRs is tracked as a
 #   Phase-0 work-package item.
 
-set -u
+set -uo pipefail
 
 fail=0
 warn=0
