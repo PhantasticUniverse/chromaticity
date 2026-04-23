@@ -6,6 +6,9 @@
 # default Prettier config. Only formatter-visible options that are
 # orthogonal to the default style are listed here.
 
+plugins:
+  - prettier-plugin-svelte
+
 printWidth: 100
 singleQuote: true
 trailingComma: all

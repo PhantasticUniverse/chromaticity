@@ -15,6 +15,7 @@
 resolver = "3"
 members = [
     "crates/workspace-hack",
+    "src-tauri",
 ]
 
 [workspace.package]

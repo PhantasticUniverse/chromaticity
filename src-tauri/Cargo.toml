@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity desktop application shell (Tauri 2 per ADR-018).
+
+[package]
+name = "chromaticity-app"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity desktop application shell."
+
+[lib]
+# Tauri 2 splits the app into a library (shared across desktop +
+# potential mobile targets) with a thin binary entry in src/main.rs.
+name = "chromaticity_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "chromaticity-app"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
