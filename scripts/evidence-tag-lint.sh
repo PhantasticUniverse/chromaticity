@@ -11,10 +11,14 @@
 #
 # Scope as of this script version (strict graduation):
 #
-#   - **Tier-marker parsing (§15.5 line 590):** every module-level
-#     `//! Evidence: EV-<ID>` doc comment MUST carry a `(T0)`,
-#     `(T1)`, or `(T2)` tier token. A tier-less tag fails the lint.
-#     Also emits a tier-distribution summary for ops visibility.
+#   - **Tier-marker parsing (§15.5 line 590):** every `//! Evidence:
+#     EV-<ID>` doc comment — column-0 file-level or indented
+#     test-module-level — MUST carry a `(T0)`, `(T1)`, or `(T2)` tier
+#     token. A tier-less tag fails the lint. Emits a tier-distribution
+#     summary for ops visibility. Applying the tier requirement to
+#     column-0 tags closes an edit-pattern gap: demoting an indented
+#     claim to file-level to escape tier validation would otherwise
+#     silently drop coverage.
 #   - **Coverage (§15.4 line 582):** every Rust test file under an
 #     evidence-producing subtree (`engine/**`, `integrations/**`)
 #     that declares a `#[test]` / `#[tokio::test]` function MUST
@@ -22,15 +26,16 @@
 #     files fail the lint. Per-test granularity (vs per-file) lands
 #     with the `#[evidence(...)]` attribute macro; the current
 #     per-file check is the Phase-1 transitional form.
-#   - **ID validity (§15.4 line 583):** every EV-ID cited in a
-#     module-level `//! Evidence:` tag MUST exist in docs/26. Typos
-#     and forgotten registry updates fail the lint.
+#   - **ID validity (§15.4 line 583):** every EV-ID cited in any
+#     `//! Evidence:` tag MUST exist in docs/26. Typos and forgotten
+#     registry updates fail the lint.
 #
-# "Module-level" is identified heuristically by the doc-comment's
-# leading indentation: `//!` at column 0 is file-level narrative
-# describing the crate's evidence landscape and is validated for
-# ID-presence only; an indented `//!` sits inside a `mod { }` block
-# and is the enclosing test module's declaration (tier required).
+# Note on `//! Evidence:` at column 0: file-level narrative that
+# discusses evidence without making a claim should omit the
+# `Evidence:` prefix (e.g., rephrase as "Produces evidence for
+# `EV-<ID>` via ...") so it doesn't trigger the tier requirement.
+# If a file-level line is a real claim (not just narrative), tier
+# it the same as a module-level declaration.
 #
 # Evidence-producing subtrees are the first-party engine and
 # integration crates: `engine/**` and `integrations/**`. App-shell
@@ -81,17 +86,20 @@ valid_ids="$(
     | LC_ALL=C sort -u
 )"
 
-# --- Tier-marker parsing (strict, per §15.5 line 590) ---
+# --- Collect every `//! Evidence:` line (column-0 or indented) ---
 
-# Collect every indented `//! Evidence:` line across Rust sources,
-# skipping build / tooling dirs. Output format: <path>:<line-no>:<line>.
-module_evidence_lines="$(
+# Both file-level and test-module-level Evidence tags are validated
+# for tier-token presence and EV-ID validity. Output format:
+# <path>:<line-no>:<line>.
+evidence_lines="$(
     find "$repo" \
         -type d \( -name target -o -name node_modules -o -name dist -o -name .git \) -prune \
         -o -type f -name '*.rs' -print 2>/dev/null \
-    | xargs grep -nHE '^[[:space:]]+//! Evidence:' 2>/dev/null \
+    | xargs grep -nHE '^[[:space:]]*//! Evidence:' 2>/dev/null \
     || true
 )"
+
+# --- Tier-marker parsing (strict, per §15.5 line 590) ---
 
 # Position-anchored tier check. A line satisfies the convention iff
 # the `(T<n>)` token sits immediately after the EV-ID (optionally
@@ -101,27 +109,28 @@ module_evidence_lines="$(
 # the canonical form fall through into `untiered` and fail the lint.
 tiered_re='//! Evidence:[[:space:]]+`?EV-[A-Z][A-Z0-9_-]+`?[[:space:]]+\(T[012]\)'
 untiered="$(
-    printf '%s\n' "$module_evidence_lines" \
+    printf '%s\n' "$evidence_lines" \
     | grep -v '^$' \
     | grep -v -E "$tiered_re" \
     || true
 )"
 
 if [ -n "$untiered" ]; then
-    printf '[evidence-tag-lint] FAIL: tier token missing from module-level evidence tag(s):\n'
+    printf '[evidence-tag-lint] FAIL: tier token missing from evidence tag(s):\n'
     printf '%s\n' "$untiered" | while IFS= read -r line; do
         printf '  %s\n' "$line"
     done
     printf '[evidence-tag-lint]        Required form per docs/43 §15.2 / §15.5:\n'
     printf '[evidence-tag-lint]          //! Evidence: EV-<ID> (T<n>) — <one-line rationale>\n'
-    printf '[evidence-tag-lint]        where T<n> is one of T0, T1, T2.\n'
+    printf '[evidence-tag-lint]        where T<n> is one of T0, T1, T2. Applies to both\n'
+    printf '[evidence-tag-lint]        file-level (column-0) and module-level (indented) tags.\n'
     fail=1
 fi
 
-if [ -n "$module_evidence_lines" ]; then
-    count="$(printf '%s\n' "$module_evidence_lines" | grep -v '^$' | wc -l | tr -d ' ')"
-    printf '[evidence-tag-lint] Tier distribution across %s module-level evidence tag(s):\n' "$count"
-    printf '%s\n' "$module_evidence_lines" \
+if [ -n "$evidence_lines" ]; then
+    count="$(printf '%s\n' "$evidence_lines" | grep -v '^$' | wc -l | tr -d ' ')"
+    printf '[evidence-tag-lint] Tier distribution across %s evidence tag(s):\n' "$count"
+    printf '%s\n' "$evidence_lines" \
         | sed -nE 's|^[^:]+:[0-9]+:[[:space:]]*//! Evidence:[[:space:]]+`?([A-Z][A-Z0-9_-]+)`?[[:space:]]+\((T[012])\).*|\1 \2|p' \
         | LC_ALL=C sort | uniq -c \
         | while read -r tally id tier; do
@@ -130,17 +139,6 @@ if [ -n "$module_evidence_lines" ]; then
 fi
 
 # --- ID validity (per §15.4 line 583) ---
-
-# Collect every `//! Evidence:` line across Rust sources, including
-# file-level (column 0) narrative — both shapes cite EV-IDs that
-# must exist in docs/26.
-all_evidence_lines="$(
-    find "$repo" \
-        -type d \( -name target -o -name node_modules -o -name dist -o -name .git \) -prune \
-        -o -type f -name '*.rs' -print 2>/dev/null \
-    | xargs grep -nHE '^[[:space:]]*//! Evidence:' 2>/dev/null \
-    || true
-)"
 
 unknown_refs=""
 while IFS= read -r line; do
@@ -157,7 +155,7 @@ while IFS= read -r line; do
 $refs
 EOF
 done <<EOF
-$all_evidence_lines
+$evidence_lines
 EOF
 
 if [ -n "$unknown_refs" ]; then

@@ -3,7 +3,8 @@
 
 //! Canonical runtime state core.
 //!
-//! Evidence: EV-DETERMINISM — determinism-replay baseline.
+//! Produces evidence for `EV-DETERMINISM` via the determinism-replay
+//! baseline pin in the `tests` module below.
 //!
 //! Per ADR-004 (canonical state model) the runtime maintains a single
 //! canonical `State` value that is the only source of truth for

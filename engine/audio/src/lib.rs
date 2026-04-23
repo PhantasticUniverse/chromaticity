@@ -24,9 +24,10 @@
 //! a merge blocker. See that module's `# Standing constraint —
 //! cpal FFI-seam panic discipline` section.
 //!
-//! Evidence: EV-AUDIO-TRACE — Phase-2-exit conformance row. Slice-2
-//! advances the T1 drift-pin coverage alongside the ingest state
-//! machine; see `drift_pins` below.
+//! Produces evidence for `EV-AUDIO-TRACE` (Phase-2-exit conformance
+//! row). Slice-2 advances the T1 drift-pin coverage alongside the
+//! ingest state machine; see `drift_pins` below for the tiered
+//! claim.
 //!
 //! Governing documents:
 //!
