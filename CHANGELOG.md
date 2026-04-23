@@ -18,6 +18,6 @@ edits above `## [Unreleased]` are bot-driven.
 
 ## [Unreleased]
 
-Phase-1 scaffold in progress. See Conventional Commits on `main`
-for detail until the first `app/v0.N.M` preview release cuts a
+Phase-1 implementation slices are in progress. See Conventional Commits
+on `main` for detail until the first `app/v0.N.M` preview release cuts a
 numbered section here.
