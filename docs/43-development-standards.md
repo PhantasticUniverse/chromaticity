@@ -368,6 +368,10 @@ Headers are enforced by `reuse lint` on every PR; a file missing a valid SPDX he
   - `licenses` — fail on anything outside the allowlist.
   - `sources` — fail on crates not sourced from `crates.io` or an allowlisted mirror.
   - `bans` — fail on explicitly banned crates (list maintained per ADR-013 networking policy).
+- Any entry in `deny.toml` under `advisories.ignore` requires an inline rationale comment and is
+  reviewed on a fixed cadence: at least once per quarter, and immediately after every dependency
+  train that bumps Tauri, WRY, or workspace Rust minors. Review outcomes are recorded in the
+  corresponding policy PR body and linked to `EV-SECURITY-DECLARATION`.
 - `cargo audit` runs nightly as a belt-and-suspenders check; failures open an issue with the `security` label.
 
 ### 10.5 Dependency update policy

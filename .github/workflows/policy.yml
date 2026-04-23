@@ -120,9 +120,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate trailers on PR head commit
-        run: bash scripts/trailer-check.sh HEAD
-
+      # On pull_request events actions/checkout resolves HEAD to
+      # `refs/pull/<N>/merge` — a synthetic merge commit GitHub
+      # generates whose message carries no DCO / Profile-Impact
+      # trailers. Validating HEAD directly would always fail. Walk
+      # the author-visible range instead so every commit the PR
+      # adds is checked, and the merge commit is never inspected.
       - name: Validate trailers on every commit in PR range
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

@@ -72,7 +72,7 @@ chromaticity/
 ├── dist/                 # Vite build output — .gitkeep is load-bearing
 ├── docs/                 # normative planning corpus + ADRs
 ├── scripts/              # policy / CI shell helpers
-├── .github/workflows/    # rust, frontend, sbom, evidence-tag-lint
+├── .github/workflows/    # rust, frontend, sbom, evidence-tag-lint, policy
 ├── Cargo.toml            # workspace root (edition 2024, MSRV 1.85.0)
 └── package.json          # @chromaticity/app
 ```
@@ -183,7 +183,7 @@ body / footer ≤ 100 chars per line. Scope is mandatory on every commit.
 - **Risk register**: `docs/13-risk-register.md`.
 - **Clean-room / legal baseline**: `docs/29-cleanroom-legal-policy-baseline.md`.
 - **Scope-vocabulary source of truth**: `commitlint.config.cjs`.
-- **CI tree**: `.github/workflows/` (rust, frontend, sbom, evidence-tag-lint).
+- **CI tree**: `.github/workflows/` (rust, frontend, sbom, evidence-tag-lint, policy).
 
 ## When this file is wrong
 
