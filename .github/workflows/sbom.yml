@@ -1,23 +1,41 @@
 # SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 # SPDX-FileCopyrightText: 2026 Chromaticity
 #
-# SBOM emission stubs per docs/43-development-standards.md §10.4 and
-# §11.2. Two parallel jobs:
+# SBOM emission stubs per docs/43-development-standards.md §10.4, §11.2,
+# and §7.3.
 #
+# Jobs:
+#   detect-changes - dorny/paths-filter@v3 emitting an `sbom` boolean
+#                    that gates the real jobs on pull_request events.
+#                    Push and tag events bypass the filter and always
+#                    set the output to `true` so release-time SBOM
+#                    emission is never path-gated.
 #   cargo-cyclonedx - CycloneDX 1.5 SBOM for the Rust workspace.
 #   syft            - SPDX 2.3 SBOM for the assembled app bundle
 #                     (Node + Rust transitive closure).
+#   sbom-summary    - required-status aggregator. `needs:` every other
+#                     job and succeeds when each dependent job is
+#                     either `success` or `skipped` (skipped is the
+#                     expected state on PRs that do not touch
+#                     supply-chain files). Fails on any `failure` or
+#                     `cancelled`.
 #
-# At Phase-1 entry the jobs run on push to main and on-demand. They
-# will be gated on app/vX.Y.Z release tags once the ADR-014 signing
-# pipeline lands (EV-RELEASE-ATTESTATION in
+# On pull_request, the two SBOM emission jobs are gated so docs-only or
+# pure-rust-source PRs skip the heavyweight tooling. On push to main
+# and on `app/vX.Y.Z` tags they always run. The ADR-014 signing
+# pipeline will gate release-time SBOM emission on tag push once it
+# lands (EV-RELEASE-ATTESTATION in
 # docs/26-evidence-artifact-registry.md).
 #
-# No run: step consumes untrusted github.event.* input.
+# No run: step consumes untrusted github.event.* input. The only
+# interpolations reaching a run: block are github.event_name, dorny
+# filter outputs (github-controlled terminal values), and
+# needs.*.result — all bound via step-level env: blocks before use.
 
 name: sbom
 
 on:
+  pull_request:
   push:
     branches: [main]
     tags: ['app/v*']
@@ -25,14 +43,62 @@ on:
 
 permissions:
   contents: read
+  # dorny/paths-filter@v3 uses the REST API to list PR files on
+  # pull_request events. Push / tag events use local git and do not
+  # need this permission, but it is granted workflow-wide for
+  # simplicity.
+  pull-requests: read
 
 concurrency:
   group: sbom-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  detect-changes:
+    name: detect-changes
+    runs-on: ubuntu-latest
+    outputs:
+      sbom: ${{ steps.combine.outputs.sbom }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            sbom:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'rust-toolchain.toml'
+              - 'deny.toml'
+              - 'workspace-hack/**'
+              - 'app/**'
+              - 'engine/**'
+              - 'integrations/**'
+              - 'release-eng/**'
+              - '.github/workflows/sbom.yml'
+
+      - name: Combine filter output with non-PR bypass
+        id: combine
+        env:
+          EVENT: ${{ github.event_name }}
+          FILTER_SBOM: ${{ steps.filter.outputs.sbom }}
+        shell: bash
+        run: |
+          set -u
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "sbom=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "sbom=${FILTER_SBOM:-false}" >> "$GITHUB_OUTPUT"
+          fi
+
   cargo-cyclonedx:
     name: cargo-cyclonedx
+    needs: detect-changes
+    if: needs.detect-changes.outputs.sbom == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +135,8 @@ jobs:
 
   syft:
     name: syft
+    needs: detect-changes
+    if: needs.detect-changes.outputs.sbom == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,3 +151,28 @@ jobs:
           name: app-sbom
           path: chromaticity.spdx.json
           if-no-files-found: error
+
+  sbom-summary:
+    name: sbom-summary
+    needs: [detect-changes, cargo-cyclonedx, syft]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate dependent job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        shell: bash
+        run: |
+          set -u
+          echo "Dependent job results: $RESULTS"
+          fail=0
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *)
+                echo "::error::non-passing dependent result: $r"
+                fail=1
+                ;;
+            esac
+          done
+          exit "$fail"

@@ -2,46 +2,49 @@
 # SPDX-FileCopyrightText: 2026 Chromaticity
 #
 # Rust build + lint + test + supply-chain CI for the Phase-1 scaffold
-# per docs/43-development-standards.md §10.4, §12.1, and ADR-018.
+# per docs/43-development-standards.md §10.4, §12.1, §7.3, and ADR-018.
 #
 # Jobs:
-#   fmt    - cargo fmt --all -- --check
-#   clippy - cargo clippy --workspace --all-targets -- -D warnings
-#            (ubuntu + macos + windows)
-#   test   - cargo test --workspace (Linux only at Phase 1; multi-OS
-#            lands when the first GPU-boundary integration test
-#            arrives)
-#   deny   - cargo deny check {advisories, licenses, bans, sources}
-#            matrix (the four subsystems enumerated in §10.4)
-#   hakari - cargo hakari generate --diff + manage-deps --dry-run
-#            drift check
+#   detect-changes - dorny/paths-filter@v3 emitting a `rust` boolean
+#                    that gates the real jobs. Declared at `on:` trigger
+#                    level (no pull_request.paths filter) so the final
+#                    summary job always reports — required for branch
+#                    protection when no rust-affecting files change.
+#   fmt            - cargo fmt --all -- --check
+#   clippy         - cargo clippy --workspace --all-targets -- -D warnings
+#                    (ubuntu + macos + windows)
+#   test           - cargo test --workspace (Linux only at Phase 1;
+#                    multi-OS lands when the first GPU-boundary
+#                    integration test arrives)
+#   deny           - cargo deny check {advisories, licenses, bans,
+#                    sources} matrix (the four subsystems enumerated in
+#                    §10.4)
+#   hakari         - cargo hakari generate --diff + manage-deps
+#                    --dry-run drift check
+#   rust-summary   - required-status aggregator. `needs:` every other
+#                    job and succeeds when each dependent job is either
+#                    `success` or `skipped` (skipped is the expected
+#                    state on docs-only PRs). Fails on any `failure` or
+#                    `cancelled`. This is the context listed as
+#                    required in branch protection.
 #
-# No run: step consumes untrusted github.event.* input; matrix.*
-# and runner.os are the only interpolations and come from repo
-# config, not PR-author-controlled payloads. Per the Phase-0
-# policy.yml precedent, any future event-payload reference must
-# be bound via step-level env: first.
+# No run: step consumes untrusted github.event.* input. The only
+# interpolations reaching a run: block are matrix.* (repo config),
+# runner.os, and needs.*.result (github-controlled terminal values).
+# Per the Phase-0 policy.yml precedent, any future event-payload
+# reference must be bound via step-level env: first.
 
 name: rust
 
 on:
   pull_request:
-    paths:
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'deny.toml'
-      - 'workspace-hack/**'
-      - 'app/**'
-      - 'engine/**'
-      - 'integrations/**'
-      - 'release-eng/**'
-      - '.github/workflows/rust.yml'
   push:
     branches: [main]
 
 permissions:
   contents: read
+  # dorny/paths-filter@v3 uses the REST API to list PR files.
+  pull-requests: read
 
 concurrency:
   group: rust-${{ github.workflow }}-${{ github.ref }}
@@ -51,8 +54,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  detect-changes:
+    name: detect-changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'deny.toml'
+              - 'workspace-hack/**'
+              - 'app/**'
+              - 'engine/**'
+              - 'integrations/**'
+              - 'release-eng/**'
+              - '.github/workflows/rust.yml'
+
   fmt:
     name: fmt
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +91,8 @@ jobs:
 
   clippy:
     name: clippy (${{ matrix.os }})
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +126,8 @@ jobs:
 
   test:
     name: test
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,6 +155,8 @@ jobs:
 
   deny:
     name: deny (${{ matrix.check }})
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -135,6 +170,8 @@ jobs:
 
   hakari:
     name: hakari drift
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -168,3 +205,28 @@ jobs:
       - name: Skip until hakari config is introduced
         if: steps.hakari-config.outputs.present != 'true'
         run: echo "No .config/hakari.toml or .guppy/hakari.toml present; skipping drift check."
+
+  rust-summary:
+    name: rust-summary
+    needs: [detect-changes, fmt, clippy, test, deny, hakari]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate dependent job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        shell: bash
+        run: |
+          set -u
+          echo "Dependent job results: $RESULTS"
+          fail=0
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *)
+                echo "::error::non-passing dependent result: $r"
+                fail=1
+                ;;
+            esac
+          done
+          exit "$fail"
