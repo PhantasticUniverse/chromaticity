@@ -16,6 +16,7 @@
     "tauri": "tauri",
     "commitlint": "commitlint --edit",
     "commitlint:last": "commitlint --from=HEAD~1 --to=HEAD --verbose",
+    "commitlint:last-2": "commitlint --from=HEAD~2 --to=HEAD --verbose",
     "commitlint:ci": "commitlint --from=${COMMITLINT_FROM:-origin/main} --to=${COMMITLINT_TO:-HEAD} --verbose",
     "format:check": "prettier --check \"**/*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}\"",
     "format:fix": "prettier --write \"**/*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}\""
