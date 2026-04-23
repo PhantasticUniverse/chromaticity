@@ -129,3 +129,106 @@ mod drift_pins {
         }
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod warning_class_taxonomy {
+    //! Evidence: EV-SCHEMA-LINT (T1) — warning-class taxonomy pin against
+    //! docs/05-scene-system.md §5 lines 79-83.
+    //!
+    //! T1 per docs/43-development-standards.md §15.5 — pins external-spec
+    //! constants (the four kebab-case classes). Compile-time drift is
+    //! caught by the exhaustive match in `class_name`; test-time drift is
+    //! caught by the `EXPECTED_CLASSES` table.
+    //!
+    //! Row 24 stays `Planned`: T1 does not advance an EV-* row past
+    //! `pending:artifact`. The slice-3 lint harness emission path
+    //! (see lint.rs module doc) will upgrade this row to T2.
+
+    use super::Warning;
+
+    /// Sorted ascending for stable assertion.
+    const EXPECTED_CLASSES: &[&str] = &[
+        "coercion-applied",
+        "deprecated-script-api",
+        "legacy-key",
+        "unknown-control-type",
+    ];
+
+    /// Maps a `Warning` variant to its kebab-case class name. Exhaustive
+    /// match with NO `_` arm — adding a variant to `Warning` without
+    /// extending this function fails at rustc level.
+    fn class_name(w: &Warning) -> &'static str {
+        match w {
+            Warning::LegacyKey { .. } => "legacy-key",
+            Warning::UnknownControlType { .. } => "unknown-control-type",
+            Warning::DeprecatedScriptApi { .. } => "deprecated-script-api",
+            Warning::CoercionApplied { .. } => "coercion-applied",
+        }
+    }
+
+    fn sample_variants() -> [Warning; 4] {
+        [
+            Warning::LegacyKey {
+                canonical: "IMAGE_PATH".to_string(),
+                legacy: "IMAGE".to_string(),
+            },
+            Warning::UnknownControlType {
+                control_name: "brightness".to_string(),
+            },
+            Warning::DeprecatedScriptApi {
+                api: "inputs.brightness".to_string(),
+            },
+            Warning::CoercionApplied {
+                control_name: "brightness".to_string(),
+                from: "missing-type".to_string(),
+                to: "slider".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn every_warning_variant_has_a_kebab_class_name() {
+        for w in sample_variants() {
+            let name = class_name(&w);
+            assert!(!name.is_empty(), "variant produced empty class name");
+            assert!(
+                name.chars().all(|c| c == '-' || c.is_ascii_lowercase()),
+                "class name is not kebab-lower-ascii: {name}",
+            );
+        }
+    }
+
+    #[test]
+    fn every_docs05_class_has_a_warning_variant() {
+        // Catches docs/05-only additions — if docs/05 gains a 5th class
+        // without a matching Warning variant, the collected set won't
+        // cover EXPECTED_CLASSES.
+        let produced: std::collections::BTreeSet<&'static str> =
+            sample_variants().iter().map(class_name).collect();
+        for expected in EXPECTED_CLASSES {
+            assert!(
+                produced.contains(expected),
+                "docs/05 §5 lists `{expected}` but no Warning variant emits it",
+            );
+        }
+    }
+
+    #[test]
+    fn every_warning_variant_class_is_in_docs05() {
+        // Catches Rust-only additions — if Warning gains a 5th variant
+        // whose class name isn't in docs/05, rust-class-not-in-docs fires.
+        for w in sample_variants() {
+            let name = class_name(&w);
+            assert!(
+                EXPECTED_CLASSES.contains(&name),
+                "Warning variant emits class `{name}` not listed in docs/05 §5",
+            );
+        }
+    }
+
+    #[test]
+    fn taxonomy_count_is_exactly_four() {
+        assert_eq!(EXPECTED_CLASSES.len(), 4);
+    }
+}
