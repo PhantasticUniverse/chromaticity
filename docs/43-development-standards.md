@@ -569,7 +569,7 @@ ADR authoring is non-delegable from the Accountable Owner per `23-...md`. ADR PR
 Every test that contributes to an evidence row is tagged with the evidence ID in language-native metadata:
 
 - **Rust**: `#[evidence("EV-DETERMINISM", "EV-RENDER-CONFORMANCE")]` — a trivial Chromaticity-authored attribute macro that emits a metadata entry consumed by the test harness.
-  - **Phase-1 transitional pattern.** The attribute macro above is the end-state. Until the `chromaticity-evidence` proc-macro crate lands, test modules declare their evidence rows with a module-level prose doc comment: `//! Evidence: EV-DETERMINISM — one-line explanation of the baseline.`. The four Phase-1 first-slice crates (runtime, scene, audio, OSC) all use this form. Rewriting to the attribute macro is a mechanical pass once the macro exists; the prose tag is the machine-readable anchor `evidence-tag-lint` will key off.
+  - **Phase-1 transitional pattern.** The attribute macro above is the end-state. Until the `chromaticity-evidence` proc-macro crate lands, test modules declare their evidence rows with a module-level prose doc comment: `//! Evidence: EV-DETERMINISM (T1) — one-line explanation of the baseline.`. The parenthesised `(T<n>)` token is the test-maturity tier declaration defined in Sec.15.5; tier is mandatory. The four Phase-1 first-slice crates (runtime, scene, audio, OSC) adopted this prose form ahead of the macro; the tier token is required from the first slice-2 PR onward. Rewriting to the attribute macro is a mechanical pass once the macro exists (`#[evidence(EV_DETERMINISM, tier = T1)]`); the prose tag is the machine-readable anchor `evidence-tag-lint` will key off in the interim.
 - **TypeScript/JavaScript**: test-framework-specific tag, e.g., `test.concurrent("...", { evidence: ["EV-SCRIPT-CONTRACT"] }, async () => { ... })`.
 - **GLSL conformance**: fixture metadata sidecar carries `evidence:` list.
 
@@ -581,6 +581,27 @@ CI emits `evidence-runs/<commit-sha>.json` listing every `(EV-ID, test-name, sta
 
 - `evidence-tag-lint` (required from Phase 1): every test in a subtree whose work package declares evidence outputs (per `12-work-breakdown-estimates.md`) must carry at least one `#[evidence(...)]` tag, or be explicitly marked `#[evidence(none = "rationale")]`.
 - Tags referencing evidence IDs not present in `26-...md` fail the lint (catches typos and forgotten registry updates).
+- Tier claims (Sec.15.5) are review-enforced until `scripts/evidence-tag-lint.sh` graduates from advisory to strict with a parser extension that reads the `(T<n>)` token from the module-level prose tag.
+
+### 15.5 Test maturity tiers
+
+Every evidence-tagged test carries a maturity tier in the same declaration as its evidence ID. Tier governs whether the test counts toward `EV-EVIDENCE-TAG-COVERAGE` and whether it can advance its associated `EV-*` row past `pending:artifact`.
+
+Tier syntax (Phase-1 prose form, per Sec.15.2): `//! Evidence: EV-<ID> (T<n>) — <one-line rationale>.`. Macro form (end-state): `#[evidence(EV_<ID>, tier = T<n>)]`. Tier is mandatory; a test carrying an evidence tag without a tier fails `evidence-tag-lint` once the parser extension lands, and fails review in the interim.
+
+**T0 baseline-placeholder.** Asserts that the evidence row has a home in the crate without claiming substantive behaviour. Trivial construction, `Default` round-trip, or a `#[derive]`-generated equality check. Example: `assert_eq!(Type::default(), Type::default())`.
+
+A T0 claim is **rejected at review** if the subject module exposes any public function whose body contains branching, mutation of non-derived state, or trait-dispatch against a non-trivial implementation. T0 is only permitted when the module's public surface is a data-shape declaration (struct / enum / trait signature) with no non-`#[derive]`-generated behaviour. The review check exists to keep T0 from becoming the escape hatch that authors reach for when a T1 claim is the correct tier.
+
+T0 tests do NOT count toward `EV-EVIDENCE-TAG-COVERAGE` and do NOT advance the associated `EV-*` row's status past `pending:artifact`. A crate may carry T0 claims during its first-slice PR; every subsequent slice is expected to upgrade existing T0 claims to T1 or T2 as real behaviour lands.
+
+**T1 drift-detector.** Pins an external-spec constant, a `#[derive]`-generated invariant the type itself did not author, or a small state-machine transition under a minimal implementation. Fails the moment the pinned value or invariant drifts. Examples: `assert_eq!(DEFAULT_INBOUND_BIND, IpAddr::V4(Ipv4Addr::LOCALHOST))` (pins `docs/adr/ADR-013-networking-defaults-and-security.md` §1); `assert_eq!(AudioFrame::default().sample_rate_hz(), 48_000)` (pins `docs/06-audio-engine.md` Sec.Timing Model baseline); Ready → Closed transition on a trivial test double of `IngestBoundary`.
+
+T1 tests count toward `EV-EVIDENCE-TAG-COVERAGE`. They do NOT, by themselves, advance the associated `EV-*` row past `pending:artifact` to `Pass`; Phase-1 exit requires T2.
+
+**T2 conformance.** Exercises the evidence-producing behaviour against a fixture corpus or golden artifact. Example: `EV-AUDIO-TRACE` over the full audio fixture corpus; `EV-SCENE-IMPORT` over the baseline scene set; `EV-DETERMINISM` replay across the Phase-1 determinism corpus. T2 is the tier that transitions an `EV-*` row from `pending:artifact` to `Pass` and the tier that `docs/11-roadmap-phases.md` §Phase 1 exit criteria predicate on for `EV-SCENE-IMPORT`, `EV-DETERMINISM`, `EV-OBSERVABILITY`, and `EV-EVIDENCE-TAG-COVERAGE`.
+
+A single `EV-*` row may have tests at multiple tiers simultaneously (a T1 baseline pin living alongside a T2 conformance suite is normal). The highest tier present determines the row's maximum attainable status.
 
 ## 16. Issue and PR Label Taxonomy
 
