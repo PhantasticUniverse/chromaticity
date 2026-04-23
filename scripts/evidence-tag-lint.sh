@@ -61,7 +61,7 @@
 #
 # No run: step consumes untrusted github.event.* input.
 
-set -eu
+set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"

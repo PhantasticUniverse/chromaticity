@@ -53,7 +53,7 @@
 #
 # Exit code 0 = pass; non-zero = fail with a printed diagnosis.
 
-set -u
+set -uo pipefail
 
 mode_stdin=0
 ref=""
