@@ -35,6 +35,7 @@
 /app/library/                    @xjbutler @fletcher-hammond
 /app/shell/                      @xjbutler @fletcher-hammond
 /app/ui/                         @xjbutler @fletcher-hammond
+/app/ui-bridge/                  @xjbutler @fletcher-hammond
 
 # -----------------------------------------------------------------------------
 # Release engineering, CI, release automation

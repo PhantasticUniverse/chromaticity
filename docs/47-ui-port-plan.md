@@ -375,6 +375,27 @@ Types are defined in their owning domain crate and re-exported (or type-aliased)
 3. Vite picks up the changed bindings on the next rebuild.
 4. CI fails if the committed bindings are out of date vs a fresh export (`EV-COMPAT-PROFILE-DIFF` consumes this).
 
+#### Bridge crate location
+
+The bridge crate lives at `app/ui-bridge/` as a sibling to the reserved `app/ui/` subtree
+and to `app/shell/`. Alternatives considered:
+
+- **`engine/ui-bridge/`** was rejected because `ts-rs` is a TypeScript-generation concern,
+  and engine crates are pure runtime / domain logic. If the desktop shell were swapped for
+  a CLI or headless runner, the engine should not need to change — a layering indicator
+  that the bridge does not belong on the engine side.
+- **`app/shell/bindings/`** (a module of the shell) was rejected because engine crates may
+  eventually need to depend on the bridge (to attach `#[derive(TS)]` through re-export),
+  and `engine/* → app/shell/*` would be an illegal dependency direction. Co-locating the
+  bindings inside the shell crate would close off the re-export pattern.
+- **`app/ui-bridge/`** (chosen) is app-layer infrastructure whose purpose is to serve the
+  UI's type contract. Dependency direction is clean: `engine/* → app/ui-bridge →
+  app/shell → (UI TS output)`. The crate is a peer of the future `app/ui/` Svelte crate
+  and of `app/shell/`, which matches the CODEOWNERS convention for app subtrees.
+
+CODEOWNERS carries a dedicated `/app/ui-bridge/` row under "App subtrees"; see
+`43-development-standards.md` §8.1.
+
 ### 7.3. Enum serialisation
 
 All enums serialise tag-only (serde `#[serde(rename_all = "kebab-case")]` on enum variant) to match OSC route strings and docs glossary terminology. Example:
