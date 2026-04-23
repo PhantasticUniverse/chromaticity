@@ -36,3 +36,9 @@ workspace = true
 
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# rosc 0.10 is the OSC 1.0 codec backing the Phase-1 slice-2 UDP
+# packet-receive loop. License MIT OR Apache-2.0 (allow-listed in
+# deny.toml). Slice-2 uses the decoder only; the encoder path
+# (outbound OSC) remains slice-3+ scope.
+rosc = "0.10"
