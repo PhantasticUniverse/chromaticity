@@ -8,6 +8,20 @@ explicitly stated so. Do not delete section headings.
 
 The PR title becomes the squash-merge commit subject and MUST be a
 Conventional Commit: <type>[!](<scope>): <subject>
+
+The PR **body** (this document, once filled in) becomes the squash-merge
+commit **body**. The repo's squash template is set to "Default to PR
+title and description", so every main-side commit carries this body
+verbatim. Consequences:
+  1. The Trailers section at the bottom MUST be preserved and completed
+     — `scripts/trailer-check.sh` validates the main-side commit and
+     will fail CI if `Signed-off-by` or `Profile-Impact` is missing.
+  2. Do NOT add content below the Trailers section. `git interpret-
+     trailers` only recognizes a trailer block that is the LAST
+     paragraph; any prose after the trailers terminates the trailer
+     zone and re-breaks trailer-check.
+  3. Markdown inside this body renders fine on GitHub but becomes
+     plaintext in the main-side commit. Keep it readable either way.
 -->
 
 ## Summary
@@ -69,9 +83,8 @@ materially changes. -->
 - [ ] `adr-lint` passes if `docs/adr/` was touched.
 - [ ] I have read `CONTRIBUTING.md` and confirm this PR complies with it.
 
----
-
-<!-- Reviewer guidance:
+<!-- Reviewer guidance (delete this comment block before requesting review if it
+distracts; the body below is all that ends up on `main`):
 - Non-architecture PR: one reviewer (per CODEOWNERS) is sufficient; auto-merge allowed.
 - Architecture-impacting (`architecture` label): AO sign-off + Independent
   Architecture Reviewer sign-off with `[INDEPENDENT-ARCH-REVIEW]` in the
@@ -79,3 +92,20 @@ materially changes. -->
 - Do not approve a PR that fails required checks.
 - Do not bypass clean-room, legal, or brand-review gates.
 -->
+
+---
+
+## Trailers
+
+<!--
+These lines become git trailers on the main-side squash-merge commit.
+Do not add any content below the last trailer. `scripts/trailer-check.sh`
+enforces that every commit on main carries `Signed-off-by` and
+`Profile-Impact`; ADR-impacting and evidence-impacting PRs additionally
+carry `ADR` and `Evidence` trailers per CONTRIBUTING.md.
+
+Replace the placeholder values. Leave the key name and colon intact.
+-->
+
+Signed-off-by: Your Name <you@example.com>
+Profile-Impact: none
