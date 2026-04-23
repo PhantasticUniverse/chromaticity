@@ -31,8 +31,8 @@
 //!   path, and the first external reader that opens schema field
 //!   visibility.
 //!
-//! Evidence: `EV-SCENE-IMPORT` (T0 placeholder retained in
-//! `validator::ctor_placeholder`; T1 drift pins in
+//! Produces evidence for `EV-SCENE-IMPORT` (T0 placeholder retained
+//! in `validator::ctor_placeholder`; T1 drift pins in
 //! `validator::drift_pins`) and `EV-SCHEMA-LINT` (T0 variant
 //! constructibility in `lint::drift_pins` — first claim against the
 //! row anywhere in the tree).

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Evidence: EV-NET-HARDENING — bind-scope and packet-hardening
-//! default-value baseline.
+//! Bind-scope and packet-hardening default-value baseline. Produces
+//! evidence for `EV-NET-HARDENING` via the drift pins in the nested
+//! `tests` module.
 //!
 //! ADR-013 (networking defaults and security) fixes the values in
 //! this module. Any change here is a conformance break and must be
