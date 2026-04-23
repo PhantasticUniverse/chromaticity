@@ -47,8 +47,18 @@ pub fn validate(_scene: &Scene) -> Result<(), ValidationError> {
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
-    //! Evidence: EV-SCENE-IMPORT — baseline placeholder for the
+    //! Evidence: EV-SCENE-IMPORT (T0) — baseline placeholder for the
     //! scene import + canonical-model harness.
+    //!
+    //! T0 per docs/43 §15.5: the subject modules (`crate::schema`,
+    //! `crate::validator`) expose only data-shape declarations and a
+    //! stub that always returns `Ok(())`; no non-derive-generated
+    //! behaviour is under test. The two tests — default-scene
+    //! validate round-trip and error-variant constructibility smoke
+    //! test — reserve the EV row against future slices that land
+    //! the canonical-model normalizer and symbol-catalog
+    //! cross-check (T1 drift pins, then T2 over the baseline scene
+    //! corpus).
 
     use crate::schema::Scene;
 

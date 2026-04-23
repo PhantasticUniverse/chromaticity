@@ -39,14 +39,17 @@ pub struct State {
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
-    //! Evidence: EV-DETERMINISM — determinism-replay baseline.
+    //! Evidence: EV-DETERMINISM (T0) — determinism-replay baseline.
     //!
     //! Phase-1 baseline test claiming the EV-DETERMINISM evidence row
     //! (`docs/26-evidence-artifact-registry.md` line 37). The full
     //! determinism-replay suite arrives with the event-sourced command
     //! validator in a later slice; this test merely asserts the
     //! canonical state core constructs at its deterministic defaults
-    //! without panicking.
+    //! without panicking. T0 per docs/43 §15.5: the subject module's
+    //! public surface is a `#[derive(Default)]` data-shape declaration
+    //! with no non-derive-generated behaviour. Upgrade path is T2
+    //! once the determinism-replay corpus lands.
     use super::State;
 
     #[test]

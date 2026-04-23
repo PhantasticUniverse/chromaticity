@@ -63,6 +63,18 @@ pub const DEFAULT_ADAPTER_RATE_LIMIT_FLOOR_MSGS_PER_SEC: u32 = 100;
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
+    //! Evidence: EV-NET-HARDENING (T1) — ADR-013 §1 / §3 / §5
+    //! default-value pins.
+    //!
+    //! T1 per docs/43 §15.5: each test pins an external-spec
+    //! constant against the governing ADR. Any drift in the bind
+    //! scope, packet cap, bundle depth, or rate-limit defaults
+    //! fails the corresponding test at the exact ADR-section
+    //! boundary, so review can route the change to the
+    //! `EV-NET-HARDENING` gate before merge. T1 counts toward
+    //! `EV-EVIDENCE-TAG-COVERAGE`; Phase-4a exit requires T2 over
+    //! the full net-hardening fixture corpus.
+
     use super::*;
 
     /// Evidence: EV-NET-HARDENING — ADR-013 §1 bind defaults hold.
