@@ -312,6 +312,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "chromaticity-audio"
+version = "0.0.0"
+dependencies = [
+ "workspace-hack",
+]
+
+[[package]]
+name = "chromaticity-osc-adapter"
+version = "0.0.0"
+dependencies = [
+ "workspace-hack",
+]
+
+[[package]]
+name = "chromaticity-runtime"
+version = "0.0.0"
+dependencies = [
+ "workspace-hack",
+]
+
+[[package]]
+name = "chromaticity-scene"
+version = "0.0.0"
+dependencies = [
+ "workspace-hack",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
