@@ -2,28 +2,32 @@
 # SPDX-FileCopyrightText: 2026 Chromaticity
 #
 # Frontend CI (TypeScript + Svelte 5) per docs/43-development-
-# standards.md §12.2, §12.5, and ADR-018. One job runs prettier,
-# eslint, tsc, and svelte-check in order; each step is blocking.
+# standards.md §12.2, §12.5, §7.3, and ADR-018. One check job runs
+# prettier, eslint, tsc, and svelte-check in order; each step is
+# blocking.
 #
-# No run: step consumes untrusted github.event.* input.
+# Jobs:
+#   detect-changes   - dorny/paths-filter@v3 emitting a `frontend`
+#                      boolean that gates the real job. Declared at the
+#                      `on:` trigger level (no pull_request.paths
+#                      filter) so the frontend-summary job always
+#                      reports — required for branch protection when
+#                      no frontend-affecting files change.
+#   check            - prettier, eslint, tsc, svelte-check.
+#   frontend-summary - required-status aggregator. `needs:` every other
+#                      job and succeeds when each dependent job is
+#                      either `success` or `skipped` (skipped is the
+#                      expected state on rust-only or docs-only PRs).
+#                      Fails on any `failure` or `cancelled`.
+#
+# No run: step consumes untrusted github.event.* input. The only
+# interpolations reaching a run: block are needs.*.result values,
+# which are github-controlled terminal states.
 
 name: frontend
 
 on:
   pull_request:
-    paths:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - 'tsconfig.node.json'
-      - 'eslint.config.js'
-      - 'svelte.config.js'
-      - 'vite.config.ts'
-      - 'src/**'
-      - 'index.html'
-      - '.prettierrc.yaml'
-      - '.prettierignore'
-      - '.github/workflows/frontend.yml'
   push:
     branches: [main]
 
@@ -35,8 +39,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  detect-changes:
+    name: detect-changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+              - 'tsconfig.node.json'
+              - 'eslint.config.js'
+              - 'svelte.config.js'
+              - 'vite.config.ts'
+              - 'src/**'
+              - 'index.html'
+              - '.prettierrc.yaml'
+              - '.prettierignore'
+              - '.github/workflows/frontend.yml'
+
   check:
     name: check
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,3 +92,28 @@ jobs:
 
       - name: Svelte-check
         run: npm run check
+
+  frontend-summary:
+    name: frontend-summary
+    needs: [detect-changes, check]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate dependent job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        shell: bash
+        run: |
+          set -u
+          echo "Dependent job results: $RESULTS"
+          fail=0
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *)
+                echo "::error::non-passing dependent result: $r"
+                fail=1
+                ;;
+            esac
+          done
+          exit "$fail"
