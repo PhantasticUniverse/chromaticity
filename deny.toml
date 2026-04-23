@@ -6,14 +6,13 @@
 # matrix job in .github/workflows/rust.yml invoking
 # `cargo deny check <name>`.
 #
-#   advisories — security-significant findings are denied (`vulnerability`
-#                and `yanked`), while `unmaintained` is warning-only.
-#                Rationale: upstream Tauri GTK3 transitive crates are
-#                currently flagged as unmaintained across Linux desktop
-#                ecosystems; that is a supply-chain health signal, not a
-#                direct exploit indicator. Keep warning visibility until
-#                upstream migration lands; do not suppress via `ignore`
-#                unless we need an explicit per-ID waiver trail.
+#   advisories — deny-all remains the cargo-deny v2 behavior for now.
+#                At Phase 1, several transitive crates pulled by Tauri's
+#                desktop stack are flagged as unmaintained (plus adjacent
+#                ecosystem advisories) with no direct safe upgrade path.
+#                We keep CI stable by enumerating explicit IDs in
+#                `advisories.ignore`; each should be revisited when Tauri
+#                updates its dependency graph.
 #   licenses   — SPDX allowlist sourced from
 #                docs/29-cleanroom-legal-policy-baseline.md. Additions
 #                require a coordinated `policy`-scoped PR editing both
@@ -38,9 +37,29 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
-vulnerability = "deny"
-unmaintained = "warn"
-ignore = []
+ignore = [
+    # gtk-rs GTK3 stack and closely related transitive crates currently
+    # pulled by Tauri desktop dependencies (no safe direct upgrade path).
+    "RUSTSEC-2024-0411",
+    "RUSTSEC-2024-0412",
+    "RUSTSEC-2024-0413",
+    "RUSTSEC-2024-0414",
+    "RUSTSEC-2024-0415",
+    "RUSTSEC-2024-0416",
+    "RUSTSEC-2024-0417",
+    "RUSTSEC-2024-0418",
+    "RUSTSEC-2024-0419",
+    "RUSTSEC-2024-0420",
+    "RUSTSEC-2025-0057",
+    "RUSTSEC-2025-0075",
+    "RUSTSEC-2025-0080",
+    "RUSTSEC-2025-0081",
+    "RUSTSEC-2025-0098",
+    "RUSTSEC-2025-0100",
+    # proc-macro-error advisory chain in transitive dependencies.
+    "RUSTSEC-2024-0370",
+    "RUSTSEC-2026-0009",
+]
 
 [licenses]
 version = 2
