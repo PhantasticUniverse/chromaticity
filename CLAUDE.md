@@ -67,7 +67,8 @@ chromaticity/
 ├── integrations/         # reserved: adapter crates
 ├── release-eng/          # reserved: signing / notarization / updater
 ├── third_party/          # reserved: vendored-with-attribution
-├── workspace-hack/       # cargo-hakari placeholder (at root by convention)
+├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
+├── .config/hakari.toml   # cargo-hakari config; platforms mirror deny.toml graph.targets
 ├── src/                  # Svelte web root; may migrate under app/ui/ later
 ├── dist/                 # Vite build output — .gitkeep is load-bearing
 ├── docs/                 # normative planning corpus + ADRs

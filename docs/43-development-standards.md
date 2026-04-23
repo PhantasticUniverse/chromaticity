@@ -391,6 +391,8 @@ Headers are enforced by `reuse lint` on every PR; a file missing a valid SPDX he
 - Minor/major updates → Dependabot PR → human review + `cargo hakari` regeneration + regression suite before merge.
 - Dependency additions require a PR body entry: rationale, license, transitive count, and `EV-LICENSE-AUDIT` impact statement.
 
+**`cargo hakari` configuration.** The unified-feature policy for the workspace-hack crate is pinned at `/.config/hakari.toml`. cargo-hakari 0.9.36 reads only that path (or `/.guppy/hakari.toml`); the older `[workspace.metadata.hakari]` embedded form is not consulted and MUST NOT be reintroduced. The `platforms` list in `.config/hakari.toml` MUST match the `graph.targets` list in `/deny.toml` — drift silently excludes platform-gated transitive advisories from the supply-chain gate, and a `policy`-scoped PR that bumps one must bump the other. Ownership follows the CODEOWNERS catch-all (AO). The generated block between `### BEGIN HAKARI SECTION` and `### END HAKARI SECTION` in `/workspace-hack/Cargo.toml` is managed by `cargo hakari generate` and MUST NOT be hand-edited; drift is enforced on every PR by the `hakari drift` job in `rust.yml` (which runs `cargo hakari generate --diff` followed by `cargo hakari manage-deps --dry-run`).
+
 ## 11. Release Engineering
 
 ### 11.1 Release automation
