@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity OSC adapter crate.
+#
+# Phase-1 scaffold; first integration adapter under `integrations/`.
+# The OSC adapter gates `EV-NET-HARDENING` (networking conformance)
+# and has the most-specified ADR coverage of any Phase-1 adapter
+# candidate, making it the chosen seed for the adapter subtree. No
+# public surface until the first-slice implementation PR.
+#
+# Governing ADRs:
+#   ADR-005 — integration adapter boundary
+#             (docs/adr/ADR-005-integration-adapter-boundary.md)
+#   ADR-013 — networking defaults and security
+#             (docs/adr/ADR-013-networking-defaults-and-security.md)
+#
+# ADR-013 fixes the bind-scope default (localhost-only) and the
+# rate-limit defaults the first-slice implementation must honor.
+#
+# See also docs/43-development-standards.md §12.1. All workspace lints
+# (including unsafe_code = forbid, clippy::unwrap_used = deny,
+# clippy::expect_used = deny) are inherited; no local relaxation.
+
+[package]
+name = "chromaticity-osc-adapter"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity OSC integration adapter (ADR-013 defaults)."
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
