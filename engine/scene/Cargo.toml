@@ -33,4 +33,5 @@ description = "Chromaticity scene schema, canonical normalizer, and validator."
 workspace = true
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }

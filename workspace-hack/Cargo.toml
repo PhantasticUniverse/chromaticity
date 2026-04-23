@@ -28,6 +28,7 @@ workspace = true
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.11" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = { version = "1" }
 schemars = { version = "0.8", features = ["preserve_order", "url", "uuid1"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
@@ -42,12 +43,14 @@ uuid = { version = "1", features = ["serde", "v4"] }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.11" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = { version = "1" }
 schemars = { version = "0.8", features = ["preserve_order", "url", "uuid1"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value", "unbounded_depth"] }
 stable_deref_trait = { version = "1" }
+syn = { version = "2", features = ["extra-traits", "fold", "full", "visit"] }
 tauri-build = { version = "2" }
 tauri-macros = { version = "2", default-features = false, features = ["compression", "custom-protocol"] }
 tauri-utils = { version = "2", default-features = false, features = ["build", "compression", "resources"] }
