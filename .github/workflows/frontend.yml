@@ -30,6 +30,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  merge_group:
 
 permissions:
   contents: read
@@ -45,12 +46,13 @@ jobs:
     name: detect-changes
     runs-on: ubuntu-latest
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
+      frontend: ${{ steps.combine.outputs.frontend }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: dorny/paths-filter@v3
         id: filter
+        if: github.event_name == 'pull_request'
         with:
           filters: |
             frontend:
@@ -66,6 +68,23 @@ jobs:
               - '.prettierrc.yaml'
               - '.prettierignore'
               - '.github/workflows/frontend.yml'
+
+      # Non-pull_request events (push to main, merge_group queue) bypass
+      # the filter and always run frontend jobs. Merge-queue events in
+      # particular validate the queued-merge commit end-to-end.
+      - name: Combine filter output with non-PR bypass
+        id: combine
+        env:
+          EVENT: ${{ github.event_name }}
+          FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
+        shell: bash
+        run: |
+          set -u
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=${FILTER_FRONTEND:-false}" >> "$GITHUB_OUTPUT"
+          fi
 
   check:
     name: check
