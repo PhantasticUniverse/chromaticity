@@ -1,0 +1,16 @@
+feat(runtime): adversarial body-prose Profile-Impact fixture
+
+This synthetic fixture exercises the prose-collision defense that the
+trailer-check rewrite introduces. The body deliberately contains a
+trailer-shaped `Profile-Impact:` line in the middle of a paragraph,
+with a value not in the allowed enum so the old grep-and-head-n1
+parser would reject it as "not in allowed set".
+
+Profile-Impact: totally-invalid-prose-value
+
+The real trailer block sits at the end of the message with a valid
+value. A correct parser must pick the trailer-block value, not the
+body-prose mention.
+
+Profile-Impact: none
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>

@@ -1,0 +1,64 @@
+feat(scene): add scene schema and validator stub first slice (#11)
+
+Phase-1 work bundle PR-C, first implementation slice for the
+`chromaticity-scene` crate. Reserves the canonical-model module
+topology (`schema` + `validator`) with std-only, internal-only
+Rust types so the `EV-SCENE-IMPORT` baseline test has something
+to hang off while the full schema and symbol-catalog parser land
+in follow-up slices.
+
+Why this shape: the scene-import pipeline needs a `Scene` /
+`SceneHeader` / `PassSpec` skeleton and a `validate()` entry
+point before the canonical-model normalizer can begin populating
+them. Field names here are `pub(crate)` or private on purpose —
+this slice does NOT lock the `.chroma` JSON surface, which is
+why the commit carries `Profile-Impact: none`. Serde derives and
+the full field set wait on the schema-freeze work.
+
+The validator stub documents `docs/36-reactive-symbol-catalog.md`
+as the authoritative symbol source the real validator will read;
+it does not parse the catalog yet. `ValidationError` ships with a
+single `UnknownSymbol(String)` variant so the failure path is
+constructible from tests and so later variants (range errors,
+pass-wiring errors, ADR-008 transition-hook errors) land against
+a known surface.
+
+Files touched:
+- engine/scene/src/lib.rs     (wire `pub mod schema; pub mod
+                               validator;`; refresh module
+                               docstring with EV-SCENE-IMPORT
+                               pointer)
+- engine/scene/src/schema.rs  (new; `Scene`, `SceneHeader`,
+                               `PassSpec`, all crate-private
+                               fields)
+- engine/scene/src/validator.rs (new; `validate` no-op,
+                                 `ValidationError::UnknownSymbol`,
+                                 two `#[test]`s tagged for
+                                 `EV-SCENE-IMPORT`)
+
+Governing docs:
+- docs/adr/ADR-007-scene-warm-switch-policy.md
+- docs/adr/ADR-008-transition-and-traveler-semantics.md
+- docs/36-reactive-symbol-catalog.md (named, not edited)
+- docs/26-evidence-artifact-registry.md line 23 (`EV-SCENE-IMPORT`)
+- docs/43-development-standards.md §12.1
+
+Verification (from worktree root, all green):
+- cargo fmt --all -- --check
+- cargo check --workspace --all-targets
+- cargo clippy --workspace --all-targets -- -D warnings
+- cargo test  --workspace --all-targets --no-fail-fast
+  (2 new tests pass in chromaticity-scene)
+- cargo hakari generate --diff        (zero-line diff)
+- cargo hakari manage-deps --dry-run  (no operations to perform)
+- bash scripts/trailer-check.sh HEAD  (run post-commit)
+
+No workspace-hack, Cargo.lock, CODEOWNERS, commitlint, deny,
+REUSE, workflows, or evidence-registry edits — this PR is
+strictly scoped to the `engine/scene/` subtree per the agent
+parallelism playbook in CLAUDE.md.
+
+
+Profile-Impact: none
+
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>

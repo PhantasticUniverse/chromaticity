@@ -1,0 +1,11 @@
+feat(runtime): negative fixture — missing Profile-Impact trailer
+
+This synthetic fixture exercises the negative-path diagnostic. The
+trailer block is deliberately incomplete: it carries a valid
+Signed-off-by but no Profile-Impact entry at all.
+
+The script must fail this fixture with a diagnostic explicitly
+citing the missing Profile-Impact trailer so the commit author can
+fix it without guessing.
+
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>
