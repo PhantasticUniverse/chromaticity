@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Per docs/43-development-standards.md Sec.12.6:
+#   - Normalize to LF across platforms.
+#   - Mark Chromaticity package extensions as binary (no diff/merge on packages).
+#   - Mark generated artifacts as linguist-generated so GitHub stats/PR diffs behave.
+
+* text=auto eol=lf
+
+# Text sources (explicit for safety)
+*.rs         text eol=lf
+*.toml       text eol=lf
+*.ts         text eol=lf
+*.tsx        text eol=lf
+*.js         text eol=lf
+*.cjs        text eol=lf
+*.mjs        text eol=lf
+*.jsx        text eol=lf
+*.svelte     text eol=lf
+*.css        text eol=lf
+*.scss       text eol=lf
+*.html       text eol=lf
+*.json       text eol=lf
+*.jsonc      text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.md         text eol=lf
+*.glsl       text eol=lf
+*.frag       text eol=lf
+*.vert       text eol=lf
+*.wgsl       text eol=lf
+*.sh         text eol=lf
+Makefile     text eol=lf
+
+# Shell scripts executable on unix-like hosts
+*.sh         text eol=lf
+
+# Chromaticity package formats (docs/22-compatibility-versioning-policy.md)
+*.chroma       binary
+*.chromaPack   binary
+*.chromaShow   binary
+*.synScene     binary
+
+# Common binary / asset formats
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.webp       binary
+*.svg        text eol=lf
+*.ico        binary
+*.pdf        binary
+*.woff       binary
+*.woff2      binary
+*.ttf        binary
+*.otf        binary
+*.mp3        binary
+*.wav        binary
+*.flac       binary
+*.mp4        binary
+*.mov        binary
+*.zip        binary
+*.tar        binary
+*.gz         binary
+
+# Generated artifacts — excluded from language stats and collapsed in diffs
+generated/**                 linguist-generated=true
+**/CHANGELOG.md              linguist-generated=true
+docs/reference/generated/**  linguist-generated=true -diff
+*.sbom.json                  linguist-generated=true -diff
+*.sbom.xml                   linguist-generated=true -diff

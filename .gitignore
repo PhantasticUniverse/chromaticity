@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+
+# -----------------------------------------------------------------------------
+# OS / editor noise
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# Agents / AI tooling (local only)
+# -----------------------------------------------------------------------------
+.cursor/
+.cursorignore
+.claude/
+.codex/
+.aider*
+
+# -----------------------------------------------------------------------------
+# Archive-only planning corpus and clean-room reference material.
+# Kept on disk for AO/Deputy review; never committed to production history.
+# See docs/43-development-standards.md and docs/29-cleanroom-legal-policy-baseline.md.
+# -----------------------------------------------------------------------------
+chromaticity-planning/
+Contents/
+
+# -----------------------------------------------------------------------------
+# Build outputs
+# -----------------------------------------------------------------------------
+target/
+dist/
+build/
+out/
+node_modules/
+.pnpm-store/
+.yarn/
+.parcel-cache/
+.turbo/
+.next/
+.svelte-kit/
+.vite/
+.cache/
+
+# Rust
+**/*.rs.bk
+Cargo.lock.bak
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# -----------------------------------------------------------------------------
+# Test / coverage / evidence scratch
+# -----------------------------------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+evidence-runs/local/
+generated/local/
+
+# -----------------------------------------------------------------------------
+# Environment / secrets (never commit — see SECURITY.md)
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.keystore
+secrets/
+
+# -----------------------------------------------------------------------------
+# IDE scratch
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+*.iml
+
+# -----------------------------------------------------------------------------
+# Logs
+# -----------------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
