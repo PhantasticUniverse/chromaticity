@@ -430,7 +430,7 @@ Applies to: all engine code, Tauri backend, release-eng crates.
 - **Linter**: `cargo clippy --workspace --all-targets -- -D warnings`. `clippy::pedantic` is advisory (warn-only) to avoid drive-by noise.
 - **No `unwrap()`/`expect()` in non-test code.** Enforced via `clippy::unwrap_used` and `clippy::expect_used` set to `deny` in the non-test lint profile.
 - **Error model**: `thiserror` for library error types, `anyhow` only at binary edges and one level below. No string-typed errors crossing crate boundaries.
-- **`unsafe`**: allowed where justified; each `unsafe` block carries a doc comment beginning `// SAFETY:` that states the invariant being upheld. `clippy::missing_safety_doc` is deny.
+- **`unsafe`**: workspace-wide `#![forbid(unsafe_code)]` via `[workspace.lints.rust] unsafe_code = "forbid"` at `Cargo.toml`. Any future `unsafe` requirement requires an ADR amending this baseline, and an explicit, subtree-tightening-only override via the member crate's `[lints]` section per §12.6 (the workspace `forbid` is the floor; subtree overrides may only tighten further, never loosen). `clippy::missing_safety_doc = deny` is retained as a tripwire even under `forbid`, so any subtree that opts out of `forbid` must still carry `// SAFETY:` docs on every `unsafe` block stating the invariant upheld.
 - **Workspace hygiene**: `cargo hakari` manages the workspace-hack crate. `cargo machete` runs nightly to flag unused dependencies.
 - **Determinism**: no `HashMap`/`HashSet` with default hasher in any code path that contributes to `EV-DETERMINISM`. Use `BTreeMap`/`BTreeSet` or `ahash::AHashMap` with a pinned seed.
 
@@ -475,6 +475,7 @@ Applies to: non-scene UI per ADR-018.
 - **`.gitattributes`**: LF normalization across platforms; mark `*.synScene`, `*.chroma`, `*.chromaPack`, `*.chromaShow` as `binary`-ish where appropriate so Git does not attempt diff algorithms on packaged assets; mark generated docs output and SBOM files `linguist-generated=true`.
 - **Git hooks**: `lefthook` runs the fast subset (`rustfmt --check`, `prettier --check`, `commitlint`, `reuse lint` on changed files, `eslint` on changed files) pre-commit and pre-push. Hook config is checked in.
 - **Pre-commit on generated files**: generated files (SBOMs, `docs-index.json`, changelog sections) are emitted under `/generated/` and excluded from lint/format hooks but included in SPDX/REUSE coverage.
+- **Workspace lint overrides are subtree-tightening-only**. Member crates inherit `[workspace.lints.*]` via `[lints] workspace = true` in their own `Cargo.toml`. A member may add to or tighten a workspace lint in its own `[lints.*]` section, but may never loosen below the workspace floor. The `unsafe_code = "forbid"` workspace default is the floor for unsafe posture per §12.1; loosening requires a policy-scoped ADR amending this section and the workspace `Cargo.toml` in the same PR. The same rule applies to `clippy::unwrap_used`, `clippy::expect_used`, and `clippy::missing_safety_doc` — subtrees may deny additional clippy lints, but may not lift these.
 
 ## 13. Documentation Standard
 
