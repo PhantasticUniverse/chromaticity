@@ -51,7 +51,7 @@ permissions:
 
 concurrency:
   group: sbom-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   detect-changes:
@@ -74,6 +74,7 @@ jobs:
               - 'package-lock.json'
               - 'rust-toolchain.toml'
               - 'deny.toml'
+              - '.cargo/**'
               - 'workspace-hack/**'
               - 'app/**'
               - 'engine/**'
@@ -103,15 +104,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tauri linux deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libxdo-dev
+      - name: Install tauri linux deps (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libxdo-dev
+          version: 1.0
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup show
@@ -119,7 +116,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
 
       - name: Seed frontend dist sentinel
         run: mkdir -p dist && touch dist/.gitkeep
