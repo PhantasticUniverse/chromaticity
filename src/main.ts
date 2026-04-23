@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
 import { mount } from 'svelte';
+
 import App from './App.svelte';
 
 const target = document.getElementById('app');

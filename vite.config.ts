@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { defineConfig } from 'vite';
 
 // Tauri-aware dev host per https://tauri.app/develop/.
 // Empty string / undefined means Vite binds to localhost only.
