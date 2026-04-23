@@ -87,6 +87,18 @@ least Source-provenance signing and platform Developer ID enrolled.
 | CI runner selection | `docs/43-development-standards.md` §2 (out of scope of that doc) | Release-eng Phase-0 infra item |
 | Artifact registry / release host | `docs/43-development-standards.md` §11.1 | Release-eng Phase-0 infra item |
 
+## Application-shell placeholders
+
+Tauri configuration artifacts introduced by the Phase-1 scaffold PR
+`build(ui)`. Each item is deferred rather than undecided; the
+activation dependency names the work package that will land the
+resolved value.
+
+| Placeholder | Appears in | Activation dependency |
+|---|---|---|
+| `app.chromaticity.desktop` bundle identifier | `src-tauri/tauri.conf.json` | Trademark clearance in live-visuals, audio, and color-science classes per `docs/29-cleanroom-legal-policy-baseline.md`. Changing the bundle identifier after first signed release is a breaking change for auto-update (ADR-014 Sparkle appcast) and macOS notarization; this row MUST be resolved before the first `app/v0.N.M` preview build. |
+| `app.security.csp: null` | `src-tauri/tauri.conf.json` | Tauri 2 scaffold ships `csp: null` to unblock initial Svelte bundle load. The concrete CSP (script-src, style-src, connect-src consistent with ADR-013 networking defaults + ADR-016 Sentry opt-in) lands with a dedicated `build(ui)` PR owned by the security-review work package. Until then, the `csp: null` posture is documented here as a known-deferred item. |
+
 ## Resolution workflow
 
 1. A Phase-0 work package claims a row.
