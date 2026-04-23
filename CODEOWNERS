@@ -14,39 +14,59 @@
 #     Reviewer sign-off per Sec.8.2.
 #   - Subtrees marked NON-DELEGABLE have only the AO as approver; the
 #     Deputy cannot self-merge even under T1 succession.
+#
+# -----------------------------------------------------------------------------
+# TODO(deputy-handle): The Deputy reviewer GitHub handle is intentionally
+# omitted from every entry below until a real account is confirmed. The
+# policy docs (docs/43-development-standards.md Sec.8.1 and
+# docs/23-decision-ownership-matrix.md) still describe the Deputy role;
+# this file holds only the AO handle until the Deputy joins.
+#
+# When the Deputy handle is known, a follow-up `policy`-scoped PR will:
+#   1. Add the Deputy to every non-NON-DELEGABLE line below (catch-all,
+#      engine/, integrations/, app/, release-eng/, .github/workflows/,
+#      docs/).
+#   2. Bump `required_approving_review_count` from 0 to 1 in branch
+#      protection so the Sec.8.3 conflict-of-interest rule becomes
+#      mechanically enforceable.
+#
+# Do NOT add a placeholder handle here — CODEOWNERS with a non-existent
+# GitHub account silently disables code-owner review for matched paths.
+# Tracked by PhantasticUniverse/chromaticity Issue #3.
+# -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
-# Catch-all — default to AO + Deputy
+# Catch-all — default to AO (Deputy added later per TODO above)
 # -----------------------------------------------------------------------------
-*                                @xjbutler @fletcher-hammond
+*                                @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
 # Engine subtrees (reserved; populated by Phase 1 scaffold)
 # -----------------------------------------------------------------------------
-/engine/runtime/                 @xjbutler @fletcher-hammond
-/engine/scene/                   @xjbutler @fletcher-hammond
-/engine/audio/                   @xjbutler @fletcher-hammond
-/integrations/                   @xjbutler @fletcher-hammond
+/engine/runtime/                 @PhantasticUniverse
+/engine/scene/                   @PhantasticUniverse
+/engine/audio/                   @PhantasticUniverse
+/integrations/                   @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
 # App subtrees (reserved; populated by Phase 1 scaffold)
 # -----------------------------------------------------------------------------
-/app/authoring/                  @xjbutler @fletcher-hammond
-/app/library/                    @xjbutler @fletcher-hammond
-/app/shell/                      @xjbutler @fletcher-hammond
-/app/ui/                         @xjbutler @fletcher-hammond
-/app/ui-bridge/                  @xjbutler @fletcher-hammond
+/app/authoring/                  @PhantasticUniverse
+/app/library/                    @PhantasticUniverse
+/app/shell/                      @PhantasticUniverse
+/app/ui/                         @PhantasticUniverse
+/app/ui-bridge/                  @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
 # Release engineering, CI, release automation
 # -----------------------------------------------------------------------------
-/release-eng/                    @xjbutler @fletcher-hammond
-/.github/workflows/              @xjbutler @fletcher-hammond
+/release-eng/                    @PhantasticUniverse
+/.github/workflows/              @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
 # Documentation subtree
 # -----------------------------------------------------------------------------
-/docs/                           @xjbutler @fletcher-hammond
+/docs/                           @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
 # NON-DELEGABLE: AO only.
@@ -54,16 +74,16 @@
 # The legal-baseline carve-out (Sec.8.1) remains AO-only through T2 and
 # transitions only at T3.
 # -----------------------------------------------------------------------------
-/docs/adr/                       @xjbutler
-/docs/29-cleanroom-legal-policy-baseline.md     @xjbutler
-/docs/31-supportability-privacy-ops-policy.md   @xjbutler
-/docs/43-development-standards.md               @xjbutler
+/docs/adr/                       @PhantasticUniverse
+/docs/29-cleanroom-legal-policy-baseline.md     @PhantasticUniverse
+/docs/31-supportability-privacy-ops-policy.md   @PhantasticUniverse
+/docs/43-development-standards.md               @PhantasticUniverse
 
-/LICENSE                         @xjbutler
-/LICENSES/                       @xjbutler
-/REUSE.toml                      @xjbutler
-/SECURITY.md                     @xjbutler
-/CODEOWNERS                      @xjbutler
+/LICENSE                         @PhantasticUniverse
+/LICENSES/                       @PhantasticUniverse
+/REUSE.toml                      @PhantasticUniverse
+/SECURITY.md                     @PhantasticUniverse
+/CODEOWNERS                      @PhantasticUniverse
 
 # Brand/trademark surface
-/docs/51-ux-bundle-legal-check.md     @xjbutler
+/docs/51-ux-bundle-legal-check.md     @PhantasticUniverse
