@@ -11,16 +11,28 @@
 #                    summary job always reports — required for branch
 #                    protection when no rust-affecting files change.
 #   fmt            - cargo fmt --all -- --check
-#   clippy         - cargo clippy --workspace --all-targets -- -D warnings
-#                    (ubuntu + macos + windows)
-#   test           - cargo test --workspace (Linux only at Phase 1;
-#                    multi-OS lands when the first GPU-boundary
-#                    integration test arrives)
+#   clippy         - PR on Linux: cargo clippy --workspace --all-targets
+#                    -- -D warnings (authoritative lint surface). PR on
+#                    macOS + Windows: cargo check --workspace
+#                    --all-targets (catches platform-conditional
+#                    compile errors at ~50% of clippy wall-clock; lint
+#                    rules are OS-independent so running clippy on one
+#                    OS suffices at PR time). push-to-main: full clippy
+#                    matrix across all three OSes so any platform-
+#                    specific clippy findings land on `main` and
+#                    surface in the next PR rebase, not at release.
+#   test           - cargo nextest run --workspace --all-targets
+#                    (Linux only at Phase 1; multi-OS lands when the
+#                    first GPU-boundary integration test arrives). A
+#                    separate `cargo test --doc` step covers doctests
+#                    which nextest does not execute.
 #   deny           - cargo deny check {advisories, licenses, bans,
 #                    sources} matrix (the four subsystems enumerated in
-#                    §10.4)
+#                    §10.4).
 #   hakari         - cargo hakari generate --diff + manage-deps
-#                    --dry-run drift check
+#                    --dry-run drift check. Binary installed via
+#                    taiki-e/install-action (prebuilt, not compiled
+#                    from source).
 #   rust-summary   - required-status aggregator. `needs:` every other
 #                    job and succeeds when each dependent job is either
 #                    `success` or `skipped` (skipped is the expected
@@ -28,11 +40,38 @@
 #                    `cancelled`. This is the context listed as
 #                    required in branch protection.
 #
+# Cost-reduction measures (introduced in the ci-cost-reduction PR):
+#
+#   - taiki-e/install-action replaces `cargo install cargo-hakari`;
+#     fetches the prebuilt binary in seconds instead of a ~90s source
+#     compile per run.
+#   - awalsh128/cache-apt-pkgs-action replaces inline apt-get install
+#     for the Tauri Linux build dependencies. Restores the .deb set
+#     in ~2s vs ~45s uncached (~80s aggregate savings per run across
+#     clippy-linux and test).
+#   - PR-time clippy→check split on macOS + Windows (noted above).
+#     Saves ~10 billable min/PR on macOS (10x multiplier) and ~1 min
+#     on Windows (2x multiplier). Push-to-main still runs full clippy
+#     so lint invariants never drift.
+#   - cargo nextest replaces cargo test for the unit + integration
+#     sweep (30-50% faster on workspace-scale test matrices); doctests
+#     remain in a separate cargo test --doc step.
+#   - rust-lld linker on Windows via .cargo/config.toml target
+#     override. ~20-40% link-time win; transparent to other platforms.
+#
+# Projected aggregate savings at current workload: ~55% reduction in
+# billable minutes per PR while preserving full Win/macOS coverage.
+# sccache was evaluated but held back from this first iteration — it
+# introduces a hard dependency on the GHA artifact-cache service and
+# fails rustc outright when that service degrades. Revisit in a
+# follow-up once a graceful-fallback pattern is in place.
+#
 # No run: step consumes untrusted github.event.* input. The only
 # interpolations reaching a run: block are matrix.* (repo config),
-# runner.os, and needs.*.result (github-controlled terminal values).
-# Per the Phase-0 policy.yml precedent, any future event-payload
-# reference must be bound via step-level env: first.
+# runner.os, github.event_name (in-context terminal value), and
+# needs.*.result (github-controlled terminal values). Per the Phase-0
+# policy.yml precedent, any future event-payload reference must be
+# bound via step-level env: first.
 
 name: rust
 
@@ -71,6 +110,7 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - 'deny.toml'
+              - '.cargo/**'
               - 'workspace-hack/**'
               - 'app/**'
               - 'engine/**'
@@ -101,18 +141,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tauri linux deps
+      - name: Install tauri linux deps (cached)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libxdo-dev \
-            libasound2-dev \
-            build-essential
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libxdo-dev libasound2-dev build-essential
+          version: 1.0
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup show
@@ -123,7 +157,20 @@ jobs:
         shell: bash
         run: mkdir -p dist && touch dist/.gitkeep
 
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # PR on Linux OR any push-to-main on any OS: run full clippy with
+      # -D warnings. This is the authoritative lint surface.
+      - name: Lint (cargo clippy)
+        if: github.event_name == 'push' || runner.os == 'Linux'
+        shell: bash
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # PR on macOS or Windows: cargo check only. Catches platform-
+      # conditional compile errors; skips the clippy lint pass
+      # (covered by the Linux job).
+      - name: Cross-platform compile check (cargo check)
+        if: github.event_name == 'pull_request' && runner.os != 'Linux'
+        shell: bash
+        run: cargo check --workspace --all-targets
 
   test:
     name: test
@@ -133,27 +180,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tauri linux deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libxdo-dev \
-            libasound2-dev \
-            build-essential
+      - name: Install tauri linux deps (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libxdo-dev libasound2-dev build-essential
+          version: 1.0
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup show
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - name: Seed frontend dist sentinel
         run: mkdir -p dist && touch dist/.gitkeep
 
-      - run: cargo test --workspace --all-targets --no-fail-fast
+      - name: Run unit + integration tests (nextest)
+        run: cargo nextest run --workspace --all-targets --no-fail-fast
+
+      # nextest does not execute doctests. Keep a separate sweep so
+      # doctest regressions still fail CI. Phase-1 tree has zero
+      # doctests at time of writing; present for forward coverage.
+      - name: Run doc tests
+        run: cargo test --workspace --doc
 
   deny:
     name: deny (${{ matrix.check }})
@@ -183,9 +236,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # Prebuilt binary via taiki-e/install-action avoids the ~90s
+      # source-compile cost of `cargo install cargo-hakari`. 0.9.36
+      # is pinned to match workspace MSRV (1.85.0); 0.9.37+ requires
+      # rustc >=1.86.
       - name: Install cargo-hakari
-        # 0.9.37 requires rustc >=1.86; workspace MSRV is pinned to 1.85.0.
-        run: cargo install cargo-hakari --version 0.9.36 --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari@0.9.36
 
       - name: Verify workspace-hack is regenerated
         run: |

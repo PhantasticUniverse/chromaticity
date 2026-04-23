@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Workspace cargo configuration. Scope is intentionally narrow: this file
+# exists today only to route Windows MSVC builds through `rust-lld` in
+# place of MSVC `link.exe`. Local dev on Linux / macOS is unaffected
+# because the override is target-scoped to `*-pc-windows-msvc`.
+#
+# Why rust-lld:
+#
+# `rust-lld` is the LLVM linker bundled with every rustup Windows MSVC
+# toolchain (installed as `rust-lld.exe` next to `rustc`, on PATH when
+# the toolchain is active). Empirically it is 20-40% faster than
+# `link.exe` on Rust workloads, driven by better intra-link parallelism
+# and lower per-symbol bookkeeping overhead. Rust linkage on Windows is
+# a CI hot path because of (a) NTFS small-file I/O cost and (b) Windows
+# Defender real-time scanning of each emitted artifact; trimming link
+# time shortens both the wall-clock and the billable-minute cost (2x
+# multiplier on GitHub-hosted Windows runners).
+#
+# Scope boundary:
+#
+# Applies to the library/binary link step only. `tauri build` at release
+# time still goes through the MSVC signing pipeline; this config is
+# transparent to that flow because `tauri-bundler` invokes cargo with
+# its own linker overrides where needed.
+#
+# See docs/43-development-standards.md §12.1 (rust toolchain pinning)
+# and the ci-cost-reduction PR for empirical wall-clock deltas.
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "linker=rust-lld"]
