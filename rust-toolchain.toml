@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Toolchain pin for reproducible local + CI builds. The pinned channel
+# matches the [workspace.package] rust-version MSRV in /Cargo.toml;
+# bumping either requires bumping both in the same PR. See
+# docs/43-development-standards.md §12.1.
+
+[toolchain]
+channel = "1.85.0"
+components = ["rustfmt", "clippy"]
+profile = "default"
