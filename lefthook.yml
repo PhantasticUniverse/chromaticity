@@ -94,7 +94,7 @@ pre-commit:
       glob: '*.rs'
       run: |
         if command -v rustfmt >/dev/null 2>&1; then
-          rustfmt --check {staged_files}
+          rustfmt --style-edition=2024 --check {staged_files}
         else
           echo "rustfmt not installed; skipping (CI will enforce)."
         fi
