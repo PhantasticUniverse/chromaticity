@@ -173,6 +173,40 @@ body / footer ≤ 100 chars per line. Scope is mandatory on every commit.
 - Don't hand-edit `CHANGELOG.md` — `release-please` populates per-release sections on
   merges to `main`.
 
+## GitHub operations — known gotchas
+
+Surfaced landing the first protected-branch PR in this repo; none are obvious from the
+tree.
+
+- **Bare hash-number references in commit bodies break commitlint.** Patterns like
+  `PR #2` or `fixes #17` are treated by `conventional-commits-parser` as GitHub
+  references, and the parser then mis-identifies the footer boundary and fails
+  `footer-leading-blank`. Write "the present PR", "PR number 2", or "this PR" in body
+  prose instead. Subject lines are unaffected.
+- **`gh pr edit --title` may silently no-op** due to a GraphQL Projects-classic
+  deprecation error — the command returns zero plus a warning but the title does not
+  change. Use
+  `gh api -X PATCH repos/OWNER/REPO/pulls/<N> -f title='<new title>'` instead.
+- **`pull_request` workflows do not retrigger on title / body edits by default** — the
+  trigger types are `[opened, synchronize, reopened]`. To re-run CI after a title edit
+  (e.g., to clear a commitlint title failure), close + reopen the PR:
+  `gh pr close <N>; gh pr reopen <N>`. `gh run rerun` does not work here — it replays
+  the cached event payload with the old title.
+- **On `pull_request` events, `HEAD` in a checked-out workflow is the synthetic merge
+  commit** at `refs/pull/<N>/merge`, which carries GitHub's auto-generated message with
+  no DCO / Profile-Impact trailers. Any CI step that runs against `HEAD` misses the PR's
+  actual commits. Walk `$BASE_SHA..$HEAD_SHA` via `git rev-list` instead. The
+  `trailer-check` job was fixed after this surfaced on the first PR.
+- **`dorny/paths-filter@v3` needs `pull-requests: read` on the workflow token.** On
+  `pull_request` events the action calls
+  `GET /repos/{owner}/{repo}/pulls/{number}/files` to enumerate changed paths; with
+  only the default `contents: read`, it fails with "Resource not accessible by
+  integration" and silently degrades to "no matches" on fork PRs. Grant
+  `pull-requests: read` workflow-wide alongside `contents: read` whenever a workflow
+  uses `dorny/paths-filter` (or any action that hits the pulls REST API) in an in-job
+  filter. The three per-workflow `*-summary` aggregators in `rust.yml` /
+  `frontend.yml` / `sbom.yml` depend on this scope.
+
 ## Where authoritative answers live
 
 - **Dev standards**: `docs/43-development-standards.md`.
