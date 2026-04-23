@@ -93,10 +93,17 @@ module_evidence_lines="$(
     || true
 )"
 
+# Position-anchored tier check. A line satisfies the convention iff
+# the `(T<n>)` token sits immediately after the EV-ID (optionally
+# backtick-wrapped), separated by whitespace, per §15.5 line 590's
+# canonical form. Loose occurrences of `(T0)` buried in narrative
+# prose or trailing commentary do not count. Lines that don't match
+# the canonical form fall through into `untiered` and fail the lint.
+tiered_re='//! Evidence:[[:space:]]+`?EV-[A-Z][A-Z0-9_-]+`?[[:space:]]+\(T[012]\)'
 untiered="$(
     printf '%s\n' "$module_evidence_lines" \
     | grep -v '^$' \
-    | grep -v -E '\(T[012]\)' \
+    | grep -v -E "$tiered_re" \
     || true
 )"
 
