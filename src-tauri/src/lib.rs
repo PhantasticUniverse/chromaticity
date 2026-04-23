@@ -7,8 +7,10 @@
 // in subsequent PRs per ADR-018.
 
 /// Launch the Tauri application event loop.
-pub fn run() {
-    tauri::Builder::default()
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+///
+/// Returns an error if the Tauri runtime fails to start (bad context,
+/// capability mismatch, window creation failure, etc.); the binary
+/// entry in `src/main.rs` logs the error and exits non-zero.
+pub fn run() -> Result<(), tauri::Error> {
+    tauri::Builder::default().run(tauri::generate_context!())
 }
