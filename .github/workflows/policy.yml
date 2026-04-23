@@ -138,6 +138,16 @@ jobs:
           done < <(git rev-list "$BASE_SHA..$HEAD_SHA")
           exit "$fail"
 
+      # Regression harness for scripts/trailer-check.sh. Fixtures live
+      # under tests/fixtures/trailer-check/; the driver is the sibling
+      # scripts/test-trailer-check.sh. Runs on every PR so the
+      # prose-collision defenses and the negative-path diagnostic are
+      # verified against each toolchain and runner version the workflow
+      # lands on. No untrusted input consumed; command is a static
+      # literal.
+      - name: Run trailer-check regression harness
+        run: bash scripts/test-trailer-check.sh
+
   reuse-lint:
     name: reuse-lint
     runs-on: ubuntu-latest

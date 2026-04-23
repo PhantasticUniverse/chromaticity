@@ -1,0 +1,87 @@
+feat(audio): audio-frame dataflow and ingest boundary first slice (#13)
+
+First-slice implementation of engine/audio beyond the empty scaffold
+landed by PR number 9. Names the two first-surface types the Phase-2
+uniform-generation pipeline will consume and exercises them with
+tests tagged for EV-AUDIO-TRACE, so later slices (real device
+ingest, FFT analyser, snapshot publisher) inherit a regression net
+rather than a clean sheet.
+
+Why name these two types first:
+
+- AudioFrame is the dataflow unit across the ingest boundary. Pinning
+  sample_rate_hz (u32), channels (u16), and the owned Vec<f32>
+  interleaved sample buffer now lets every follow-up slice (cpal
+  device ingest, WAV fixture playback, resampler to the 48 kHz
+  canonical rate in docs/06-audio-engine.md §7.1) compile against a
+  stable signature.
+- IngestBoundary names the audio-thread hand-off that
+  docs/28-implementation-contract-pack.md CP-02a and
+  docs/06-audio-engine.md §7.11 call the "audio snapshot handoff".
+  First-slice intent is to name the boundary and the degraded-mode
+  vocabulary (Ready / WouldBlock / Closed) without implementing the
+  triple-buffered ring; the first real implementations (fixture
+  playback for EV-AUDIO-TRACE, cpal-backed device ingest) arrive in
+  later slices against this trait.
+
+Files:
+
+- engine/audio/src/frame.rs (new): AudioFrame struct plus the
+  DEFAULT_SAMPLE_RATE_HZ = 48_000 constant matching docs/06 §7.1.
+  Buffer is owned (Vec<f32>) rather than borrowed; the zero-copy
+  story belongs to the analyser's ring-buffer design, not to this
+  struct. Default() yields a silent zero-length mono frame at the
+  canonical rate, usable as a silence / staleness sentinel until the
+  real ingest lands.
+- engine/audio/src/ingest.rs (new): IngestStatus enum (Ready,
+  WouldBlock, Closed) and the IngestBoundary trait with a single
+  non-blocking try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus
+  method. Object-safe so the analyser can store a
+  Box<dyn IngestBoundary> selected at runtime from a config surface.
+  First-slice defers the concrete implementations and the versioned
+  snapshot ring-buffer.
+- engine/audio/src/lib.rs (modified): pub mod frame; pub mod ingest;
+  plus a #[cfg(test)] module carrying the EV-AUDIO-TRACE module-level
+  doc comment per docs/26-evidence-artifact-registry.md line 28. Three
+  tests exercise the default frame (matches DEFAULT_SAMPLE_RATE_HZ),
+  the constructor round-trip, and a SilentSource IngestBoundary
+  impl reporting Ready then Closed. The test module opts out of
+  unwrap_used / expect_used per docs/43-development-standards.md §12.1
+  via the module-level #[cfg_attr(test, allow(...))] pattern; no
+  actual unwrap / expect in the test code yet, but the opt-out is the
+  documented pattern and keeps later test additions frictionless.
+
+Determinism notes per docs/43 §12.1:
+
+- No HashMap / HashSet usage; nothing here contributes to
+  EV-DETERMINISM yet, but the pattern matches the 12.1 guidance.
+- No unsafe; unsafe_code = "forbid" at the workspace root applies
+  unchanged.
+- No non-test unwrap() / expect().
+- No new dependencies; the crate stays on its workspace-hack-only
+  dependency declared in PR number 9.
+
+Scope: touches only files under engine/audio/. No workspace-manifest,
+CODEOWNERS, REUSE.toml, deny.toml, commitlint, CI workflow, or
+evidence-registry edits — those are serial-only choke points per
+CLAUDE.md "Agent parallelism playbook".
+
+Profile-impact rationale: AudioFrame and IngestBoundary are
+engine-internal Rust types, not scene-author-visible at the .chroma
+boundary. No change to compat-syn-v1 or native-chroma-v1 surfaces;
+the "none" classification on the trailer below is the correct one.
+
+Verification (local, pre-push):
+
+- cargo fmt --all -- --check  -> exit 0, clean.
+- cargo check --workspace --all-targets  -> exit 0, clean.
+- cargo clippy --workspace --all-targets -- -D warnings  -> exit 0.
+- cargo test --workspace --all-targets --no-fail-fast  -> 3 new tests
+  passed under chromaticity-audio; all other crates unchanged.
+- cargo hakari generate --diff  -> exit 0, zero-line diff.
+- cargo hakari manage-deps --dry-run  -> "no operations to perform".
+
+
+Profile-Impact: none
+
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>

@@ -1,0 +1,19 @@
+feat(runtime): adversarial conjoint prose-collision fixture
+
+This synthetic fixture exercises both prose-collision classes
+simultaneously: mid-body `Profile-Impact:` and mid-body
+`Signed-off-by:` lines, each looking trailer-shaped but sitting
+above a prose paragraph that terminates the trailer zone.
+
+Signed-off-by: Prose Imposter <prose@example.com>
+
+Profile-Impact: totally-invalid-prose-value
+
+More prose content between the fake trailers and the real trailer
+block. This paragraph exists specifically to ensure the parser
+cannot extend the trailer zone all the way up into the body-prose
+mentions — any line that is neither blank nor trailer-shaped must
+act as a hard boundary walking upward from the end of the message.
+
+Profile-Impact: none
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>

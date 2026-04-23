@@ -1,0 +1,80 @@
+feat(integration): seed osc adapter with adr-013 defaults (#12)
+
+Phase-1 PR-E first slice. Seeds `integrations/osc-adapter/` with the
+adapter-boundary trait skeleton and the ADR-013 networking-default
+constants that the Phase-4a `EV-NET-HARDENING` conformance gate
+asserts against. No wire-level OSC parsing yet — that lands with the
+first OSC-codec dependency in a later slice.
+
+Why:
+
+- ADR-013 §1 §3 §5 fix values the runtime must honour out of the box
+  (loopback bind defaults, per-route 100 msg/s rate ceiling, 64 KiB
+  packet cap, bundle depth 4). Pinning them as `pub const` in a
+  dedicated module makes them a single-grep conformance contract and
+  the cheapest surface for `EV-NET-HARDENING` to assert against.
+- ADR-005 names a `ProtocolAdapter` boundary the IntegrationHub
+  translates across; the trait skeleton here is the OSC specialisation
+  of that boundary with bind / unbind / poll only. The hub-facing
+  event type is deferred until `engine/runtime` lands the canonical
+  command / event enum, which keeps ADR-005's "no protocol logic in
+  core state" invariant cheap to hold.
+- Landing the first real conformance assertion (bind-scope default is
+  loopback) as a `#[test]` now — before any wire code — means the
+  Phase-4a gate inherits a live regression fence from day one rather
+  than bolting one on after a codec integration.
+
+Files:
+
+- `integrations/osc-adapter/src/defaults.rs` — new. Six `pub const`s
+  tracing to ADR-013 sections verbatim:
+  - `DEFAULT_INBOUND_BIND` = `127.0.0.1` (§1 OSC inbound row).
+  - `DEFAULT_OUTBOUND_TARGET` = `127.0.0.1` (§1 OSC outbound row).
+  - `DEFAULT_MAX_PACKET_BYTES` = 65 536 (§5 bullet 1, 64 KiB).
+  - `DEFAULT_MAX_BUNDLE_DEPTH` = 4 (§5 bullet 2).
+  - `DEFAULT_RATE_LIMIT_MSGS_PER_SEC` = 100 (§3 bullet 2, per-route).
+  - `DEFAULT_ADAPTER_RATE_LIMIT_FLOOR_MSGS_PER_SEC` = 100 (§3 bullet 1
+    operator-configurable floor; the 1000 msg/s non-configurable cap is
+    deliberately not exposed as a default since it is a ceiling, not a
+    starting value). Four unit tests assert every value holds, each
+    carrying an `Evidence: EV-NET-HARDENING` reference in its doc
+    comment. Module-level `//!` tags the whole module with the same
+    evidence anchor for registry scanning.
+- `integrations/osc-adapter/src/adapter.rs` — new. `OscAdapter` trait
+  with associated `Error`, `bind`, `unbind`, `poll`. Doc comments
+  name ADR-005 (boundary) and ADR-013 (defaults / opt-in contract)
+  and spell out that implementations must honour the constants in
+  `crate::defaults` unless an operator override is installed per
+  ADR-013 §6.
+- `integrations/osc-adapter/src/lib.rs` — upgraded the scaffold
+  doc comment and wired `pub mod adapter; pub mod defaults;`. The
+  defaults module is `pub` because its constants are the conformance
+  contract; the trait module is `pub` so downstream crates can
+  implement it. No non-module `pub` re-exports.
+
+Verification (from worktree root, MSRV 1.85.0):
+
+- `cargo fmt --all -- --check` — clean.
+- `cargo check --workspace --all-targets` — exit 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` — exit 0.
+  Workspace `unsafe_code = forbid` and clippy `unwrap_used = deny`,
+  `expect_used = deny` apply unchanged; test module opts out via
+  `#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]`
+  per docs/43 §12.1 convention.
+- `cargo test --workspace --all-targets --no-fail-fast` — all 4
+  `defaults::tests::*` pass; sibling crates still report 0 tests.
+- `cargo hakari generate --diff` — exit 0, zero-line diff.
+- `cargo hakari manage-deps --dry-run` — `no operations to perform`.
+- `bash scripts/trailer-check.sh HEAD` — passes.
+
+No root `Cargo.toml`, `workspace-hack`, `.config/hakari.toml`, or
+CI / policy files touched. `Profile-Impact: none` — the first slice
+introduces no operator-facing OSC route schema and therefore does not
+yet lock a `compat-syn-v1` surface. The slice that adds route
+definitions will escalate to `compat-syn-v1-minor` and flag it in
+that PR body.
+
+
+Profile-Impact: none
+
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>

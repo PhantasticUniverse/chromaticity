@@ -1,0 +1,43 @@
+feat(runtime): state core and command-bus trait first slice (#10)
+
+Introduce the first-slice implementation of engine/runtime/: a
+default-constructible canonical state core (per ADR-004) and a
+command-bus trait skeleton (per ADR-001 and ADR-006). Internal
+types stay crate-private so downstream crates cannot bypass the
+bus; only the module surface is pub so sibling crates in later
+PRs can depend on this one.
+
+The slice is intentionally minimal — std-only, no serde or tokio,
+no concrete queue-backed bus implementation, no typed command
+variants yet. Those land alongside the event-sourced stores in
+later slices. The State.frame field and the Command envelope
+carry allow(dead_code) / non_exhaustive annotations scoped to
+this slice to keep clippy -D warnings clean without widening any
+workspace lint.
+
+The new state::tests::state_default_is_deterministic test claims
+the EV-DETERMINISM evidence row (docs/26-evidence-artifact-registry.md
+line 37) with a baseline determinism invariant: State::default()
+constructs at its deterministic zero with no panic. The full
+determinism-replay suite arrives with the command validator.
+
+Files:
+- engine/runtime/src/lib.rs — expose command_bus + state modules.
+- engine/runtime/src/state.rs — canonical state core skeleton plus
+  EV-DETERMINISM baseline test.
+- engine/runtime/src/command_bus.rs — CommandBus trait, Command
+  envelope, CommandBusError enum shape.
+
+Verification (from worktree root):
+- cargo fmt --all -- --check         -> pass
+- cargo check --workspace --all-targets -> pass, zero warnings
+- cargo clippy --workspace --all-targets -- -D warnings -> pass
+- cargo test --workspace --all-targets --no-fail-fast -> 1 passed
+- cargo hakari generate --diff       -> zero-line diff
+- cargo hakari manage-deps --dry-run -> no operations to perform
+- bash scripts/trailer-check.sh HEAD -> validated post-commit
+
+
+Profile-Impact: none
+
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>

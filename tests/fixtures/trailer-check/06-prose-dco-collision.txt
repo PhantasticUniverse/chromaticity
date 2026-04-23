@@ -1,0 +1,15 @@
+feat(runtime): adversarial body-prose Signed-off-by fixture
+
+This synthetic fixture exercises the DCO-trailer side of the prose
+collision class. The body contains a trailer-shaped `Signed-off-by:`
+line in the middle of a paragraph that points to a fictitious
+contributor, sitting above the real trailer block.
+
+Signed-off-by: Imposter Prose <imposter@example.com>
+
+Any regression that causes the script to pick up the prose signer
+instead of the trailer-block signer would be a DCO integrity
+violation. A correct parser must select the trailer-block entry.
+
+Profile-Impact: none
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>
