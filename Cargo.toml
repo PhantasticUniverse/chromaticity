@@ -19,6 +19,10 @@ resolver = "3"
 members = [
     "workspace-hack",
     "app/shell",
+    "engine/runtime",
+    "engine/scene",
+    "engine/audio",
+    "integrations/osc-adapter",
 ]
 
 [workspace.package]
