@@ -1,0 +1,29 @@
+ci(policy): harden policy shell helpers (#36)
+
+## Summary
+
+Bundles two approved follow-ups from the evidence-tag-lint strict-graduation arc (#33 / #34 / #35) into a single `ci(policy):` hardening PR. Both are script-scoped, non-breaking, and independent of the in-flight audit's docs/ planning-corpus surface.
+
+**Commit 1 — position-anchor the tier regex**. Tightens the tier-presence filter so `(T<n>)` must sit immediately after the EV-ID.
+
+**Commit 2 — tree-wide pipefail sweep**. Adds `set -o pipefail` across the four policy shell scripts.
+
+## Profile impact
+
+- [x] `none`
+
+## Verification
+
+- `bash scripts/evidence-tag-lint.sh` exits 0 on current tree.
+- `bash scripts/trailer-check.sh HEAD` reports OK.
+
+---
+
+## Trailers
+
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+Profile-Impact: none
+
+---------
+
+Signed-off-by: Xavier Butler <xjbutler@gmail.com>

@@ -132,7 +132,6 @@ jobs:
   trailer-check:
     name: trailer-check
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -151,6 +150,7 @@ jobs:
       # because `merge_group.base_sha..merge_group.head_sha` resolves
       # to the same author-visible commits.
       - name: Validate trailers on every commit in PR range
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
@@ -162,13 +162,26 @@ jobs:
           done < <(git rev-list "$BASE_SHA..$HEAD_SHA")
           exit "$fail"
 
+      # Defense-in-depth on main-side commits. The squash-merge
+      # commit body = PR body verbatim under the repo's squash
+      # template, but multi-commit PRs pick up an auto-injected
+      # cumulative Signed-off-by separated from the PR-body trailers
+      # by a `---------` divider. A parser regression that lets
+      # a bad shape slip would otherwise accumulate silently on
+      # main; this step catches at merge time rather than on the
+      # next PR that hits trailer-check. f6de2f5 motivated this
+      # gap-close.
+      - name: Validate HEAD on push to main
+        if: github.event_name == 'push'
+        run: bash scripts/trailer-check.sh HEAD
+
       # Regression harness for scripts/trailer-check.sh. Fixtures live
       # under tests/fixtures/trailer-check/; the driver is the sibling
-      # scripts/test-trailer-check.sh. Runs on every PR so the
-      # prose-collision defenses and the negative-path diagnostic are
-      # verified against each toolchain and runner version the workflow
-      # lands on. No untrusted input consumed; command is a static
-      # literal.
+      # scripts/test-trailer-check.sh. Runs on every event so the
+      # prose-collision defenses, the divider-handling walker, and
+      # the negative-path diagnostic are verified against each
+      # toolchain and runner version the workflow lands on. No
+      # untrusted input consumed; command is a static literal.
       - name: Run trailer-check regression harness
         run: bash scripts/test-trailer-check.sh
 

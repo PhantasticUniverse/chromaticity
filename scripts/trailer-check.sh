@@ -31,12 +31,24 @@
 # every existing merge commit on main.
 #
 # This script pre-processes the message in awk first: walking from
-# the last line upward, it collects contiguous trailer-shaped and
-# blank lines into a trailer zone, stopping at the first prose line
-# (any non-blank line that is not trailer-shaped). The collected
-# trailer-shaped lines are then emitted as a single coalesced
-# paragraph and handed to `git interpret-trailers --parse` for
-# canonical key/value extraction.
+# the last line upward, it collects contiguous trailer-shaped lines
+# into a trailer zone, skipping blank lines and markdown horizontal-
+# rule dividers (`^-{3,}$`, `^={3,}$`), and stopping at the first
+# prose line (any non-blank, non-divider line that is not trailer-
+# shaped). The collected trailer-shaped lines are emitted as a single
+# coalesced paragraph and handed to `git interpret-trailers --parse`
+# for canonical key/value extraction.
+#
+# Divider handling is load-bearing for multi-commit squash-merge
+# commits under the repo's "default to PR title and description"
+# squash template. GitHub appends a cumulative Signed-off-by trailer
+# to the merge commit body on multi-commit PRs, separated from the
+# PR-body's own trailer block by a 9-dash `---------` divider. The
+# walker must treat that divider as blank-equivalent so both trailer
+# blocks coalesce into a single parseable zone; otherwise the walker
+# breaks at the divider and Profile-Impact (living in the upper
+# block) is silently dropped. f6de2f5 was the first main commit to
+# hit this shape and is the regression fixture's motivating case.
 #
 # The prose-collision defense remains intact: any prose line above
 # the trailer zone is a hard boundary, so body text containing
@@ -100,6 +112,15 @@ zone="$(printf '%s\n' "$msg" | awk '
     for (i = NR; i >= 1; i--) {
       line = lines[i]
       if (line ~ /^[[:space:]]*$/) continue
+      # Markdown horizontal-rule dividers (---, ===, and longer runs)
+      # are skipped the same as blanks. GitHub inserts a 9-dash
+      # divider between the PR-body trailers and its auto-injected
+      # cumulative Signed-off-by on multi-commit squash merges;
+      # without this skip, the walker breaks at the divider and the
+      # upper trailer block (Profile-Impact, author Signed-off-by)
+      # is dropped.
+      if (line ~ /^-{3,}[[:space:]]*$/) continue
+      if (line ~ /^={3,}[[:space:]]*$/) continue
       if (line ~ /^[A-Za-z][A-Za-z0-9_-]*:( |$)/) {
         result[++rc] = line
         continue
