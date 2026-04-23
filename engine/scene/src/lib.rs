@@ -3,20 +3,39 @@
 
 //! Chromaticity engine scene.
 //!
-//! First-slice implementation: reserves the canonical-model module
-//! topology (`schema` + `validator`) with std-only, internal-only
-//! types. No public API surface is exported yet — both modules are
-//! `pub mod` to make their items reachable from intra-crate tests
-//! and future sibling modules, but every item inside stays
-//! `pub(crate)` or private until the schema freeze begins.
+//! Slice-2 ships the scene-schema canonical-model types (typed
+//! [`schema::ControlDecl`], [`schema::NodeRef`], grown
+//! [`schema::PassSpec`] carrying [`schema::UniformBinding`] lists)
+//! and the real [`validator::validate`] that replaces the slice-1
+//! always-`Ok(())` stub. The validator cross-checks every uniform
+//! binding against a representative subset of
+//! `docs/36-reactive-symbol-catalog.md`, applies the
+//! `docs/28-implementation-contract-pack.md` §CP-01 missing-TYPE
+//! coercion fallback in [`validator::ValidationMode::Compat`], and
+//! enforces node-ID uniqueness across scene passes. The
+//! compatibility warning taxonomy from `docs/05-scene-system.md` §5
+//! lives in [`lint::Warning`].
 //!
-//! The validator stub reads no files yet; the real validator will
-//! cross-check symbol references against
-//! `docs/36-reactive-symbol-catalog.md` (the authoritative source
-//! of truth for reactive symbol names).
+//! Slice progression:
 //!
-//! Evidence: EV-SCENE-IMPORT (baseline placeholder test in
-//! `validator::tests`).
+//! - **Slice 1** — canonical-model module topology reserved;
+//!   always-`Ok(())` validator stub; schema fields `pub(crate)` and
+//!   no serde derives.
+//! - **Slice 2 (this PR)** — real validator, CP-01 coercion, typed
+//!   control declarations, serde derives (derive-only). Schema
+//!   fields remain `pub(crate)`; the `.chroma` wire format is NOT
+//!   frozen.
+//! - **Slice 3 (next)** — `.chroma` wire-format deserializer, full
+//!   symbol-catalog loader over `docs/36`, scene-lint harness
+//!   emitting the [`lint::Warning`] taxonomy outside the validate
+//!   path, and the first external reader that opens schema field
+//!   visibility.
+//!
+//! Evidence: `EV-SCENE-IMPORT` (T0 placeholder retained in
+//! `validator::ctor_placeholder`; T1 drift pins in
+//! `validator::drift_pins`) and `EV-SCHEMA-LINT` (T0 variant
+//! constructibility in `lint::drift_pins` — first claim against the
+//! row anywhere in the tree).
 //!
 //! Governing ADRs:
 //!
@@ -27,5 +46,6 @@
 //!
 //! Symbol source of truth: `docs/36-reactive-symbol-catalog.md`.
 
+pub mod lint;
 pub mod schema;
 pub mod validator;

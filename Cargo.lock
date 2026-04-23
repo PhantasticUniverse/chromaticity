@@ -337,6 +337,7 @@ dependencies = [
 name = "chromaticity-scene"
 version = "0.0.0"
 dependencies = [
+ "serde",
  "workspace-hack",
 ]
 
@@ -4814,6 +4815,7 @@ dependencies = [
  "percent-encoding",
  "phf_shared 0.11.3",
  "proc-macro2",
+ "quote",
  "schemars 0.8.22",
  "semver",
  "serde",
@@ -4821,6 +4823,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "stable_deref_trait",
+ "syn 2.0.117",
  "tauri",
  "tauri-build",
  "tauri-macros",
