@@ -569,6 +569,7 @@ ADR authoring is non-delegable from the Accountable Owner per `23-...md`. ADR PR
 Every test that contributes to an evidence row is tagged with the evidence ID in language-native metadata:
 
 - **Rust**: `#[evidence("EV-DETERMINISM", "EV-RENDER-CONFORMANCE")]` — a trivial Chromaticity-authored attribute macro that emits a metadata entry consumed by the test harness.
+  - **Phase-1 transitional pattern.** The attribute macro above is the end-state. Until the `chromaticity-evidence` proc-macro crate lands, test modules declare their evidence rows with a module-level prose doc comment: `//! Evidence: EV-DETERMINISM — one-line explanation of the baseline.`. The four Phase-1 first-slice crates (runtime, scene, audio, OSC) all use this form. Rewriting to the attribute macro is a mechanical pass once the macro exists; the prose tag is the machine-readable anchor `evidence-tag-lint` will key off.
 - **TypeScript/JavaScript**: test-framework-specific tag, e.g., `test.concurrent("...", { evidence: ["EV-SCRIPT-CONTRACT"] }, async () => { ... })`.
 - **GLSL conformance**: fixture metadata sidecar carries `evidence:` list.
 
