@@ -25,12 +25,27 @@
 #   ADR_LINT_REQUIRE_EV_TRACE=1 to promote them to errors. Phase-1 CI
 #   sets this variable; the backfill of legacy ADRs is tracked as a
 #   Phase-0 work-package item.
+#
+# Architecture-review gate (opt-in, GITHUB_EVENT_PATH-driven):
+#   When ADR_LINT_REQUIRE_ARCH_REVIEW=1 AND the script runs in a CI
+#   PR context (PR_NUMBER + GITHUB_REPOSITORY set), the gate checks
+#   whether the PR carries the `architecture` label per
+#   docs/43-development-standards.md Sec.8.2 (label taxonomy). If
+#   the label is present, at least one submitted review on the PR
+#   MUST carry `[INDEPENDENT-ARCH-REVIEW]` verbatim in its body per
+#   Sec.7.4 to satisfy the independent-reviewer requirement. The
+#   gate silently no-ops for PRs without the `architecture` label
+#   and when the env var is unset, so local invocations and
+#   non-PR events don't touch the network. `gh` CLI is required
+#   when the gate fires; CI installs it by default on
+#   `ubuntu-latest`.
 
 set -uo pipefail
 
 fail=0
 warn=0
 require_ev_trace="${ADR_LINT_REQUIRE_EV_TRACE:-0}"
+require_arch_review="${ADR_LINT_REQUIRE_ARCH_REVIEW:-0}"
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
@@ -148,8 +163,49 @@ for f in "$@"; do
   fi
 done
 
+# --- Architecture-review gate (opt-in) ---
+#
+# Runs AFTER the per-file ADR checks so a missing arch-review on an
+# architecture-labeled PR fails alongside any ADR-file issues, not
+# instead of them. Triple-gated to stay a no-op locally:
+#
+#   1. ADR_LINT_REQUIRE_ARCH_REVIEW != 1          -> skip
+#   2. PR_NUMBER or GITHUB_REPOSITORY unset        -> skip (not in CI PR context)
+#   3. PR doesn't carry the `architecture` label   -> skip
+#
+# When the gate fires, it queries the PR's reviews via `gh api` and
+# fails if no submitted review body contains `[INDEPENDENT-ARCH-REVIEW]`.
+# APPROVED reviews are preferred but the substring match applies to
+# any review state — the tag signals the reviewer claims the
+# independence contract, and downstream branch-protection handles
+# whether the review is sufficient to merge.
+
+if [ "$require_arch_review" = "1" ]; then
+  pr_num="${PR_NUMBER:-}"
+  repo_slug="${GITHUB_REPOSITORY:-}"
+
+  if [ -z "$pr_num" ] || [ -z "$repo_slug" ]; then
+    printf '[adr-lint] ARCH_REVIEW gate requested but PR_NUMBER or GITHUB_REPOSITORY is unset; skipping.\n' >&2
+  elif ! command -v gh >/dev/null 2>&1; then
+    printf '[adr-lint] ARCH_REVIEW gate requires the gh CLI; not installed on this runner.\n' >&2
+    fail=1
+  else
+    labels="$(gh api "/repos/$repo_slug/pulls/$pr_num" --jq '[.labels[].name] | join(",")' 2>/dev/null || printf '')"
+    if printf '%s' ",$labels," | grep -qE ',architecture,'; then
+      printf '[adr-lint] architecture label present on PR %s; checking for [INDEPENDENT-ARCH-REVIEW] tag\n' "$pr_num"
+      tag_count="$(gh api "/repos/$repo_slug/pulls/$pr_num/reviews" --jq '[.[] | select(.body // "" | contains("[INDEPENDENT-ARCH-REVIEW]"))] | length' 2>/dev/null || printf '0')"
+      if [ -z "$tag_count" ] || [ "$tag_count" = "0" ]; then
+        printf '[adr-lint] FAIL: architecture-labeled PR %s has no review carrying [INDEPENDENT-ARCH-REVIEW] per docs/43 Sec.7.4\n' "$pr_num" >&2
+        fail=1
+      else
+        printf '[adr-lint] architecture-review tag present on %s review(s)\n' "$tag_count"
+      fi
+    fi
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
-  printf '[adr-lint] one or more ADR files failed lint.\n' >&2
+  printf '[adr-lint] one or more ADR lint checks failed.\n' >&2
   exit 1
 fi
 
