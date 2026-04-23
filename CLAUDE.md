@@ -208,6 +208,46 @@ tree.
   filter. The three per-workflow `*-summary` aggregators in `rust.yml` /
   `frontend.yml` / `sbom.yml` depend on this scope.
 
+## Agent parallelism playbook
+
+Use sub-agents in parallel when work bundles are branch-independent; keep serial
+execution when they share choke points. Cheap rule set, derived from the PR #4 → #5 → #6
+re-harden sequence post-mortem:
+
+**Parallel-safe** (spawn one sub-agent per bundle, each on its own branch off latest
+`main`):
+
+- Per-subtree implementation work under a single CODEOWNERS entry (`engine/<x>/`,
+  `app/<x>/`, `integrations/<x>/`). Each subtree's PR has a self-contained diff.
+- Independent ADR drafts in `docs/adr/` (one ADR per agent; the AO-only approval
+  constraint still applies at merge time).
+- Independent evidence-tag-producing test suites, once the crate they live in exists.
+- Context gathering, CI watchers, read-only searches. Always parallelize these.
+
+**Serial only** (single-owner, rebase-then-push; no sub-agent fan-out):
+
+- Any edit to `Cargo.toml [workspace] members`, `commitlint.config.cjs`, `deny.toml`,
+  `CODEOWNERS`, `REUSE.toml`, `.github/workflows/**`,
+  `docs/26-evidence-artifact-registry.md`, or `docs/00-phase-0-placeholder-inventory.md`.
+  These files are global choke points; concurrent edits produce either text-conflict
+  merges or semantic conflicts the linter won't catch.
+- Any PR whose merge-state is a prerequisite for another PR's CI to be meaningful —
+  e.g. the PR #4 → #5 → #6 re-harden sequence (each PR needed the previous branch-
+  protection transition), or the PR-A workspace-members scaffold before parallel
+  PR-B..E per-crate implementations.
+- Anything touching branch-protection required contexts, squash vs merge-commit policy,
+  or GitHub repo settings (fork policy, default branch, signed-commit enforcement).
+
+**Spawning rule:** if a bundle touches _any_ file on the serial list, do that work
+first in the main context, land it, then fan out sub-agents for the parallel follow-
+ups. Never let a sub-agent own both a serial-list touch and a parallel-safe subtree in
+the same PR — split the bundle.
+
+**Branch hygiene after sub-agent fan-out:** each sub-agent rebases onto latest `main`
+before push, not onto a sibling sub-agent's branch. Sibling branches are only visible
+via origin after their respective merges; local stacking produces dependency chains
+that the squash-merge workflow silently breaks.
+
 ## Where authoritative answers live
 
 - **Dev standards**: `docs/43-development-standards.md`.
