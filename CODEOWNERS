@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Code ownership map.
+# Mirrors docs/43-development-standards.md Sec.8.1. Keep in sync with that
+# doc; amendments here require a `policy`-scoped PR.
+#
+# Review semantics:
+#   - Primary reviewer is the default approver.
+#   - For PRs authored by the primary reviewer, the deputy reviewer
+#     performs the review (conflict-of-interest rule, Sec.8.3). If both
+#     are unavailable, the PR waits with the `succession-pending` label.
+#   - Architecture-impacting PRs require AO + Independent Architecture
+#     Reviewer sign-off per Sec.8.2.
+#   - Subtrees marked NON-DELEGABLE have only the AO as approver; the
+#     Deputy cannot self-merge even under T1 succession.
+
+# -----------------------------------------------------------------------------
+# Catch-all — default to AO + Deputy
+# -----------------------------------------------------------------------------
+*                                @xjbutler @fletcher-hammond
+
+# -----------------------------------------------------------------------------
+# Engine subtrees (reserved; populated by Phase 1 scaffold)
+# -----------------------------------------------------------------------------
+/engine/runtime/                 @xjbutler @fletcher-hammond
+/engine/scene/                   @xjbutler @fletcher-hammond
+/engine/audio/                   @xjbutler @fletcher-hammond
+/integrations/                   @xjbutler @fletcher-hammond
+
+# -----------------------------------------------------------------------------
+# App subtrees (reserved; populated by Phase 1 scaffold)
+# -----------------------------------------------------------------------------
+/app/authoring/                  @xjbutler @fletcher-hammond
+/app/library/                    @xjbutler @fletcher-hammond
+/app/ui/                         @xjbutler @fletcher-hammond
+
+# -----------------------------------------------------------------------------
+# Release engineering, CI, release automation
+# -----------------------------------------------------------------------------
+/release-eng/                    @xjbutler @fletcher-hammond
+/.github/workflows/              @xjbutler @fletcher-hammond
+
+# -----------------------------------------------------------------------------
+# Documentation subtree
+# -----------------------------------------------------------------------------
+/docs/                           @xjbutler @fletcher-hammond
+
+# -----------------------------------------------------------------------------
+# NON-DELEGABLE: AO only.
+# ADRs and planning-legal baselines are AO-only even at T1 succession.
+# The legal-baseline carve-out (Sec.8.1) remains AO-only through T2 and
+# transitions only at T3.
+# -----------------------------------------------------------------------------
+/docs/adr/                       @xjbutler
+/docs/29-cleanroom-legal-policy-baseline.md     @xjbutler
+/docs/31-supportability-privacy-ops-policy.md   @xjbutler
+/docs/43-development-standards.md               @xjbutler
+
+/LICENSE                         @xjbutler
+/LICENSES/                       @xjbutler
+/REUSE.toml                      @xjbutler
+/SECURITY.md                     @xjbutler
+/CODEOWNERS                      @xjbutler
+
+# Brand/trademark surface
+/docs/51-ux-bundle-legal-check.md     @xjbutler

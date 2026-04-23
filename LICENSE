@@ -1,0 +1,60 @@
+Chromaticity -- Proprietary Source License
+SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+SPDX-FileCopyrightText: 2026 Chromaticity
+
+All Rights Reserved.
+
+Chromaticity source code, binary releases, and proprietary asset material in
+this repository (collectively, the "Work") are the exclusive property of
+Chromaticity ("the Owner"). The Work is made available solely to individuals
+granted access in writing by the Owner, for the sole purpose of authoring,
+reviewing, building, testing, or operating Chromaticity itself on behalf of
+the Owner.
+
+Subject to a separate written authorization from the Owner, no license,
+express or implied, is granted by this file or by access to this repository.
+In particular, and without limiting the foregoing, you MUST NOT:
+
+  1. Copy, redistribute, sublicense, sell, rent, lease, or otherwise make
+     available the Work or any substantial portion of the Work to any third
+     party.
+
+  2. Modify the Work, create derivative works of the Work, or merge the Work
+     into another product, except for contributions submitted back to the
+     Owner under the Developer Certificate of Origin 1.1 and the
+     contribution policy set out in CONTRIBUTING.md.
+
+  3. Remove, obscure, or alter any proprietary notice, SPDX header,
+     provenance triple (author / reviewed_by / date), or license notice
+     appearing in the Work.
+
+  4. Use the Work to train, fine-tune, distill, evaluate, benchmark, or
+     otherwise improve any machine-learning model, except where such use is
+     expressly and separately authorized by the Owner in writing.
+
+  5. Use the Chromaticity name, logo, brand marks, product marks
+     (including but not limited to Chromaticity, .chroma, .chromaPack,
+     .chromaShow, and any trade dress derivative of the Work) to endorse,
+     promote, or identify any derivative or third-party product.
+
+Documentation authored by the Owner under docs/ is licensed under
+Creative Commons Attribution 4.0 International (CC-BY-4.0) except where an
+individual file's SPDX header states otherwise. See
+LICENSES/CC-BY-4.0.txt for the full CC-BY-4.0 text.
+
+Third-party material, when present, is governed by the license of its
+originating project. The license text for each such license appears under
+LICENSES/<SPDX-ID>.txt; attribution, origin URL, pinned commit SHA, and
+clean-room review outcome are recorded under
+third_party/<origin>/ATTRIBUTION.md per docs/43-development-standards.md
+Sec.10.3.
+
+THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+OWNER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE WORK OR THE USE OR OTHER DEALINGS IN THE WORK.
+
+For licensing inquiries, contact: legal@chromaticity.app
+For security reports, see: SECURITY.md

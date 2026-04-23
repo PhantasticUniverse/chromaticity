@@ -1,0 +1,99 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# REUSE 3.2 configuration.
+# Governs per-glob default license + copyright so files that cannot carry
+# inline SPDX headers (binaries, assets, generated artifacts) are still
+# covered by `reuse lint`. See docs/43-development-standards.md Sec.10.2.
+
+version = 1
+
+# -----------------------------------------------------------------------------
+# Default: every file not matched by a more specific annotation below is
+# proprietary Chromaticity source. Individual source files still carry
+# inline SPDX headers; these defaults are the safety net.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
+
+# -----------------------------------------------------------------------------
+# Documentation: CC-BY-4.0 per LICENSE. Individual docs pages may override via
+# front-matter + inline SPDX header (e.g. third-party vendored docs).
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = "docs/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# -----------------------------------------------------------------------------
+# ADRs are normative decision records; keep them CC-BY-4.0 alongside docs.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = "docs/adr/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# -----------------------------------------------------------------------------
+# Root repo-policy and governance files are proprietary (authoritative).
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "LICENSE",
+  "README.md",
+  "CONTRIBUTING.md",
+  "CODE_OF_CONDUCT.md",
+  "SECURITY.md",
+  "CODEOWNERS",
+  ".editorconfig",
+  ".gitattributes",
+  ".gitignore",
+  ".github/**",
+  "REUSE.toml",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
+
+# -----------------------------------------------------------------------------
+# License texts in LICENSES/ are third-party canonical license text
+# (or our own proprietary text). `reuse lint` expects no annotation on these;
+# we add an explicit entry matching the license identifier to silence the tool
+# on non-SPDX-ID filenames and keep coverage explicit.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = "LICENSES/CC-BY-4.0.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "Creative Commons"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "LICENSES/LicenseRef-Chromaticity-Proprietary.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
+
+# -----------------------------------------------------------------------------
+# Generated artifacts (SBOMs, changelog sections, docs reference generation).
+# Still require coverage; inherit from default root posture.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "generated/**",
+  "**/*.sbom.json",
+  "**/*.sbom.xml",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
+
+# -----------------------------------------------------------------------------
+# Third-party code (when present) lives under third_party/<origin>/ and
+# overrides here with an explicit license per ATTRIBUTION.md. This block is
+# reserved; it becomes active when the first vendored library lands.
+# See docs/43-development-standards.md Sec.10.3.
+# -----------------------------------------------------------------------------
