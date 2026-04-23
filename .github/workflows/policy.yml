@@ -27,6 +27,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  merge_group:
   workflow_dispatch:
 
 concurrency:
@@ -61,13 +62,20 @@ jobs:
             '@commitlint/types@^19'
 
       - name: Lint commits in PR range
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # pull_request context on PR events; merge_group context on
+          # queue events. The null-coalescing operator selects whichever
+          # side is populated.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 
+      # PR-title lint only runs on pull_request events; merge_group has
+      # no `title` field. The commit-range lint above already covers the
+      # queued commit's subject because the queue's head commit carries
+      # the PR title as its subject.
       - name: Lint PR title via file
         if: github.event_name == 'pull_request'
         env:
@@ -85,7 +93,7 @@ jobs:
   dco:
     name: dco
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -94,8 +102,8 @@ jobs:
 
       - name: Verify Signed-off-by on every commit in PR range
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           set -eu
           missing=0
@@ -113,7 +121,7 @@ jobs:
   trailer-check:
     name: trailer-check
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -126,10 +134,15 @@ jobs:
       # trailers. Validating HEAD directly would always fail. Walk
       # the author-visible range instead so every commit the PR
       # adds is checked, and the merge commit is never inspected.
+      # On merge_group events, actions/checkout resolves to the
+      # queue-side commit which carries the PR body's trailers (per
+      # the repo's squash template). Walking the range still works
+      # because `merge_group.base_sha..merge_group.head_sha` resolves
+      # to the same author-visible commits.
       - name: Validate trailers on every commit in PR range
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           set -eu
           fail=0
@@ -171,7 +184,7 @@ jobs:
         id: filter
         env:
           BEFORE_SHA: ${{ github.event.before }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           set -eu

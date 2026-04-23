@@ -79,6 +79,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  merge_group:
 
 permissions:
   contents: read
@@ -97,12 +98,13 @@ jobs:
     name: detect-changes
     runs-on: ubuntu-latest
     outputs:
-      rust: ${{ steps.filter.outputs.rust }}
+      rust: ${{ steps.combine.outputs.rust }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: dorny/paths-filter@v3
         id: filter
+        if: github.event_name == 'pull_request'
         with:
           filters: |
             rust:
@@ -117,6 +119,25 @@ jobs:
               - 'integrations/**'
               - 'release-eng/**'
               - '.github/workflows/rust.yml'
+
+      # Non-pull_request events (push to main, merge_group queue) bypass the
+      # filter and always run rust jobs. Merge-queue events in particular
+      # validate the queued-merge commit and must run every required check
+      # end-to-end; path-filtering on the queued commit would defeat the
+      # point of the queue.
+      - name: Combine filter output with non-PR bypass
+        id: combine
+        env:
+          EVENT: ${{ github.event_name }}
+          FILTER_RUST: ${{ steps.filter.outputs.rust }}
+        shell: bash
+        run: |
+          set -u
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=${FILTER_RUST:-false}" >> "$GITHUB_OUTPUT"
+          fi
 
   fmt:
     name: fmt
@@ -157,16 +178,20 @@ jobs:
         shell: bash
         run: mkdir -p dist && touch dist/.gitkeep
 
-      # PR on Linux OR any push-to-main on any OS: run full clippy with
-      # -D warnings. This is the authoritative lint surface.
+      # PR on Linux, any push-to-main, or any merge_group (queue) event
+      # on any OS: run full clippy with -D warnings. This is the
+      # authoritative lint surface. Merge-queue events validate the
+      # post-merge commit, so they run the full matrix even though PRs
+      # short-cut to cargo check on Win/macOS.
       - name: Lint (cargo clippy)
-        if: github.event_name == 'push' || runner.os == 'Linux'
+        if: github.event_name != 'pull_request' || runner.os == 'Linux'
         shell: bash
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       # PR on macOS or Windows: cargo check only. Catches platform-
       # conditional compile errors; skips the clippy lint pass
-      # (covered by the Linux job).
+      # (covered by the Linux job; merge-queue event runs full clippy
+      # on every OS before the merge commits).
       - name: Cross-platform compile check (cargo check)
         if: github.event_name == 'pull_request' && runner.os != 'Linux'
         shell: bash
