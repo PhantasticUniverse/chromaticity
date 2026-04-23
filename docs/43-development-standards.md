@@ -290,9 +290,10 @@ The repo ships a `CODEOWNERS` file mapping subtrees to the named humans who hold
 | `/app/ui/` | AI UX Workcell | Xavier Butler | Fletcher Hammond |
 | `/docs/` | AI Docs Workcell | Xavier Butler | Fletcher Hammond |
 | `/release-eng/` | Accountable Owner | Xavier Butler | Fletcher Hammond |
-| `/chromaticity-planning/` | Accountable Owner | Xavier Butler | (non-delegable; AO only) |
-| `/adr/` | Accountable Owner | Xavier Butler | (non-delegable; AO only) |
+| `/docs/adr/` | Accountable Owner | Xavier Butler | (non-delegable; AO only) |
 | `/LICENSES/`, `/REUSE.toml`, `/SECURITY.md` | Accountable Owner | Xavier Butler | (non-delegable; AO only) |
+
+The table omits the AO-local partitions (`chromaticity-planning/` and `Contents/`) by construction: both are `.gitignore`d per Sec.18.1, and a `CODEOWNERS` rule matching a path that no tracked file occupies silently disables itself for that path. The AO-only review boundary on those partitions is maintained by the AO-local-on-workstation posture, not by code-owner routing.
 
 Planning docs, ADRs, and legal-surface files are AO-only: the Deputy cannot self-merge changes to them even under T1. T2 transfers most of this authority to the Acting AO per `23-...md`, with the following **legal-baseline carve-out** that remains non-delegable at T2 and may transition only at T3:
 
@@ -632,9 +633,9 @@ Labels are namespaced and machine-readable. Label vocabulary is fixed; adding a 
 
 ## 18. Repository Naming, Visibility, and Mirror Posture
 
-### 18.1 Name
+### 18.1 Name and corpus partitioning
 
-The code repository is named `chromaticity` (all lowercase). The existing planning corpus continues to live under `chromaticity-planning/` as a subtree of that repo (no history split; preserves the full Phase 0 paper trail).
+The code repository is named `chromaticity` (all lowercase). The working tree contains two **AO-local partitions** that are present on the Accountable Owner's and technical lead's workstations but excluded from version control via `.gitignore`: (i) `chromaticity-planning/` preserves the Phase-0 planning corpus paper trail and is the authorship-chain archive for ratification artifacts; (ii) `Contents/` carries reference-app materials consulted for feature-coverage and quality-parity verification under the clean-room SOP in `29-cleanroom-legal-policy-baseline.md`. Neither partition is accessible to the dev-team clean-room working surface; both are tracked in `29-cleanroom-legal-policy-baseline.md` Sec.Corpus Partitioning with origin tags and access boundaries. Content promoted from either partition into the shipped corpus (`docs/`, `engine/`, `integrations/`, etc.) follows the clean-room reconstruction protocol in `29-cleanroom-legal-policy-baseline.md` and is authored Chromaticity-originated, never copied verbatim.
 
 ### 18.2 Visibility
 
