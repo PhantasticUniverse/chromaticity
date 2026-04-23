@@ -481,3 +481,235 @@ mod drift_pins {
         }
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod compat_fixture_coverage {
+    //! Evidence: EV-COMPAT-FIXTURE-COVERAGE (T1) — CP-01
+    //! coercion-fallback branch coverage per `docs/26` line 25.
+    //!
+    //! T1 per `docs/43-development-standards.md` §15.5: at least one
+    //! fixture per branch of the CR-01 missing-TYPE fallback rule
+    //! (slider, toggle, color, xy, strict-reject) per
+    //! `docs/28-implementation-contract-pack.md` §CP-01, exercised
+    //! against the slice-2 real validator under both
+    //! [`ValidationMode::Compat`] and [`ValidationMode::Strict`].
+    //! Covers:
+    //!
+    //! - Step 1 (slider): canonical `(min, max, Float(default))`
+    //!   with `default ∈ [min, max]` — Compat coerces, Strict
+    //!   rejects.
+    //! - Step 2 (toggle): every DEFAULT spelling the validator
+    //!   accepts — `Bool(true)`, `Bool(false)`, `Float(0.0)`,
+    //!   `Float(1.0)` — when neither `min` nor `max` is set.
+    //! - Step 3 (color): `Vec3` and `Vec4` default shapes.
+    //! - Step 4 (xy): `Vec2` default shape.
+    //! - Step 5 (strict-reject): fallback exhaustion. Identical
+    //!   `Err(ValidationError::MissingControlType)` return in BOTH
+    //!   Compat and Strict modes — CP-01 step 5 applies in compat
+    //!   mode too when no fallback matched (see
+    //!   [`super::validate`] step-3-per-control and
+    //!   [`super::coerce_missing_type`]). The "passes silently on
+    //!   strict-reject-in-compat" shorthand refers to the absence
+    //!   of an additional `Warning::CoercionApplied` layered on
+    //!   top of the shared strict-reject error, NOT an
+    //!   `Ok(vec![])` silent-pass path — there is no such path at
+    //!   slice-2.
+    //!
+    //! Cumulative-release-gate scope. `docs/26` row 25
+    //! (`EV-COMPAT-FIXTURE-COVERAGE`) declares
+    //! `Gate Usage = "Phase 1 + release cumulative gate"`. The
+    //! row's T2 conformance — "at least one fixture per branch
+    //! using shipped reference scenes that trigger KM-01 or
+    //! clean-room reconstructions" per `docs/26` line 25 and
+    //! `docs/34 §Evidence Bindings` — requires the `.chroma`
+    //! deserializer and the external-reader threshold that
+    //! [`crate::schema`] module docs lines 14-26 defer to slice-3.
+    //! This T1 module pins the CR-01 fallback behaviour under the
+    //! slice-2 real validator; the slice-3+ T2 corpus at
+    //! `engine/scene/tests/validator/main.rs` loads every shipped
+    //! reference scene and re-validates the same invariants
+    //! against author-written content, advancing row 25 past
+    //! `pending:artifact` at that point. Per §15.5 T1 tests do
+    //! not by themselves advance an `EV-*` row past
+    //! `pending:artifact` to `Pass`; row 25 remains `Planned` /
+    //! `pending:artifact` until T2 lands.
+
+    use crate::lint::Warning;
+    use crate::schema::{ControlDecl, ControlValue, Scene};
+
+    use super::{ValidationError, ValidationMode, validate};
+
+    /// Construct a minimal scene carrying a single [`ControlDecl`]
+    /// with `kind = None` — the input shape that triggers the
+    /// CP-01 missing-TYPE coercion fallback.
+    fn scene_with_missing_type_control(
+        name: &str,
+        default: ControlValue,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Scene {
+        let mut scene = Scene::default();
+        scene.controls.push(ControlDecl {
+            name: name.to_string(),
+            kind: None,
+            default,
+            min,
+            max,
+        });
+        scene
+    }
+
+    /// Assert Compat validates and emits exactly one
+    /// `Warning::CoercionApplied { control_name, from: "missing-type",
+    /// to: <tag> }` for the named control.
+    fn assert_compat_coerces(scene: &Scene, control_name: &str, to_tag: &str) {
+        let warnings =
+            validate(scene, ValidationMode::Compat).expect("compat mode must coerce, not reject");
+        assert_eq!(
+            warnings.len(),
+            1,
+            "expected exactly one CoercionApplied warning for {control_name}",
+        );
+        match &warnings[0] {
+            Warning::CoercionApplied {
+                control_name: cn,
+                from,
+                to,
+            } => {
+                assert_eq!(cn, control_name);
+                assert_eq!(from, "missing-type");
+                assert_eq!(
+                    to, to_tag,
+                    "CP-01 coercion target mismatch for {control_name}",
+                );
+            }
+            other => panic!(
+                "expected Warning::CoercionApplied {{ to: {to_tag:?} }} for {control_name}, got {other:?}",
+            ),
+        }
+    }
+
+    /// Assert Strict rejects with
+    /// `Err(ValidationError::MissingControlType(control_name))`.
+    fn assert_strict_rejects_missing_type(scene: &Scene, control_name: &str) {
+        match validate(scene, ValidationMode::Strict) {
+            Err(ValidationError::MissingControlType(name)) => {
+                assert_eq!(name, control_name);
+            }
+            other => {
+                panic!("expected MissingControlType({control_name:?}) under strict, got {other:?}",)
+            }
+        }
+    }
+
+    // ---- Step 1: slider ----
+
+    #[test]
+    fn cp01_step1_slider_coerces_in_compat_rejects_in_strict() {
+        // Canonical slider: (min, max, Float(default)) with
+        // default ∈ [min, max]. Distinct from the existing
+        // drift_pins slider-first-priority test (which exercises
+        // the step-1-beats-step-2 ordering with default ∈ {0, 1});
+        // here the default is 0.5 so no step-2 ambiguity exists.
+        let scene =
+            scene_with_missing_type_control("gain", ControlValue::Float(0.5), Some(0.0), Some(1.0));
+        assert_compat_coerces(&scene, "gain", "slider");
+        assert_strict_rejects_missing_type(&scene, "gain");
+    }
+
+    // ---- Step 2: toggle (Bool default) ----
+
+    #[test]
+    fn cp01_step2_toggle_bool_default_coerces_in_compat_rejects_in_strict() {
+        for (suffix, value) in [("true", true), ("false", false)] {
+            let name = format!("flag_{suffix}");
+            let scene =
+                scene_with_missing_type_control(&name, ControlValue::Bool(value), None, None);
+            assert_compat_coerces(&scene, &name, "toggle");
+            assert_strict_rejects_missing_type(&scene, &name);
+        }
+    }
+
+    // ---- Step 2: toggle (numeric 0 / 1 default) ----
+
+    #[test]
+    fn cp01_step2_toggle_numeric_default_coerces_in_compat_rejects_in_strict() {
+        for (suffix, value) in [("zero", 0.0_f64), ("one", 1.0_f64)] {
+            let name = format!("gate_{suffix}");
+            let scene =
+                scene_with_missing_type_control(&name, ControlValue::Float(value), None, None);
+            assert_compat_coerces(&scene, &name, "toggle");
+            assert_strict_rejects_missing_type(&scene, &name);
+        }
+    }
+
+    // ---- Step 3: color (Vec3 / Vec4 default) ----
+
+    #[test]
+    fn cp01_step3_color_default_coerces_in_compat_rejects_in_strict() {
+        let cases = [
+            ("rgb", ControlValue::Vec3([0.1, 0.2, 0.3])),
+            ("rgba", ControlValue::Vec4([0.1, 0.2, 0.3, 1.0])),
+        ];
+        for (suffix, default) in cases {
+            let name = format!("tint_{suffix}");
+            let scene = scene_with_missing_type_control(&name, default, None, None);
+            assert_compat_coerces(&scene, &name, "color");
+            assert_strict_rejects_missing_type(&scene, &name);
+        }
+    }
+
+    // ---- Step 4: xy (Vec2 default) ----
+
+    #[test]
+    fn cp01_step4_xy_default_coerces_in_compat_rejects_in_strict() {
+        let scene =
+            scene_with_missing_type_control("cursor", ControlValue::Vec2([0.25, 0.75]), None, None);
+        assert_compat_coerces(&scene, "cursor", "xy");
+        assert_strict_rejects_missing_type(&scene, "cursor");
+    }
+
+    // ---- Step 5: strict-reject (fallback exhaustion) ----
+
+    #[test]
+    fn cp01_step5_strict_reject_returns_missing_type_in_both_modes() {
+        // Construct a ControlDecl that fails every fallback step:
+        //   - Step 1 slider: numeric DEFAULT 5.0 falls outside
+        //     [MIN=0.0, MAX=1.0], so the range-check guard fails.
+        //   - Step 2 toggle: rejected because MIN/MAX are present
+        //     (the step-2 guard requires both `is_none`).
+        //   - Step 3 color: DEFAULT is Float, not Vec3/Vec4.
+        //   - Step 4 xy: DEFAULT is Float, not Vec2.
+        //   - Step 5: `coerce_missing_type` returns None; the
+        //     validator's compat-mode arm maps `None` to
+        //     `Err(ValidationError::MissingControlType)` —
+        //     IDENTICAL to strict mode's unconditional reject at
+        //     the validate step-3-per-control Strict branch.
+        let scene = scene_with_missing_type_control(
+            "out_of_range",
+            ControlValue::Float(5.0),
+            Some(0.0),
+            Some(1.0),
+        );
+
+        // Compat mode hits step 5 via coerce_missing_type -> None
+        // and returns MissingControlType — there is NO silent-pass
+        // Ok(vec![]) path at slice-2.
+        match validate(&scene, ValidationMode::Compat) {
+            Err(ValidationError::MissingControlType(name)) => {
+                assert_eq!(name, "out_of_range");
+            }
+            other => panic!(
+                "expected MissingControlType(\"out_of_range\") under compat \
+                 (CP-01 step 5 applies in compat mode too when no fallback \
+                 matches), got {other:?}",
+            ),
+        }
+
+        // Strict mode hits the unconditional reject before
+        // coerce_missing_type is even called. Same error variant
+        // and name as the compat step-5 path.
+        assert_strict_rejects_missing_type(&scene, "out_of_range");
+    }
+}
