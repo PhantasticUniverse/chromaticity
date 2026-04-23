@@ -26,15 +26,23 @@ docs/
 
 ## Reading Order for New Contributors
 
-1. `01-charter.md` — product mission, scope, success metrics.
-2. `03-product-requirements.md` — FRs and NFRs.
-3. `11-roadmap-phases.md` — phased delivery plan.
-4. `23-decision-ownership-matrix.md` — who decides what.
-5. `43-development-standards.md` — commit / branch / release / lint / CI
+1. `00-phase-0-placeholder-inventory.md` — every placeholder identifier
+   (domain, emails, certs, keys, hosted services) currently in the
+   repo; resolved before first preview build.
+2. `01-charter.md` — product mission, scope, success metrics.
+3. `03-product-requirements.md` — FRs and NFRs.
+4. `11-roadmap-phases.md` — phased delivery plan.
+5. `23-decision-ownership-matrix.md` — who decides what.
+6. `43-development-standards.md` — commit / branch / release / lint / CI
    standards. Binding on every commit.
-6. `adr/` — every architecture decision, in order.
+7. `adr/` — every architecture decision, in order.
 
 ## Normative Document Map
+
+### Phase-0 Live Inventory
+- `00-phase-0-placeholder-inventory.md` — placeholder addresses,
+  handles, certificates, keypairs, and hosted services awaiting
+  activation. Retired once every row is struck.
 
 ### Charter, Requirements, and Roadmap
 - `01-charter.md` — product mission, scope, and success metrics.

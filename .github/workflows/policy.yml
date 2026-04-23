@@ -1,0 +1,192 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Phase-0 policy checks.
+#
+# Enforces docs/43-development-standards.md on every PR and on pushes to
+# `main`. No untrusted event payload is ever consumed in a `run:` body
+# directly; every reference to `github.event.*`, `github.sha`,
+# `github.ref`, or secrets is first bound to a step-level `env:` entry
+# and consumed as a shell variable.
+#
+# Jobs:
+#   - commit-convention-lint : EV-COMMIT-CONVENTION-LINT
+#   - dco                    : Sec.9.2 DCO on every commit in the range
+#   - trailer-check          : Sec.4.5 mandatory trailers
+#   - reuse-lint             : EV-LICENSE-HEADERS
+#   - adr-lint               : EV-ADR-LINT (only when docs/adr/ changed)
+#   - secret-scan            : Sec.18.3 belt-and-suspenders
+#
+# Heavier checks (rust clippy, tsc, cargo-deny, SBOM) are added by the
+# Phase-1 scaffold commit stream.
+
+name: policy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: policy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  commit-convention-lint:
+    name: commit-convention-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install commitlint
+        run: |
+          npm install --no-save \
+            '@commitlint/cli@^19' \
+            '@commitlint/config-conventional@^19' \
+            '@commitlint/types@^19'
+
+      - name: Lint commits in PR range
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+
+      - name: Lint PR title via file
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$PR_TITLE" > .pr-title.txt
+          npx commitlint --verbose < .pr-title.txt
+          rm -f .pr-title.txt
+
+      - name: Lint head commit on push
+        if: github.event_name == 'push'
+        run: |
+          npx commitlint --from=HEAD~1 --to=HEAD --verbose
+
+  dco:
+    name: dco
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Signed-off-by on every commit in PR range
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          missing=0
+          while IFS= read -r sha; do
+            if ! git log -1 --format='%B' "$sha" | grep -qE '^Signed-off-by: .+ <.+@.+>$'; then
+              printf '::error::commit %s missing Signed-off-by trailer (DCO 1.1)\n' "$sha"
+              missing=1
+            fi
+          done < <(git rev-list "$BASE_SHA..$HEAD_SHA")
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All commits carry a DCO Signed-off-by trailer."
+
+  trailer-check:
+    name: trailer-check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate trailers on PR head commit
+        run: bash scripts/trailer-check.sh HEAD
+
+      - name: Validate trailers on every commit in PR range
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          fail=0
+          while IFS= read -r sha; do
+            bash scripts/trailer-check.sh "$sha" || fail=1
+          done < <(git rev-list "$BASE_SHA..$HEAD_SHA")
+          exit "$fail"
+
+  reuse-lint:
+    name: reuse-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run reuse lint
+        uses: fsfe/reuse-action@v5
+
+  adr-lint:
+    name: adr-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes under docs/adr/
+        id: filter
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          compare_base="${BEFORE_SHA:-$BASE_SHA}"
+          if [ -z "${compare_base:-}" ] || [ "$compare_base" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            if git diff --name-only "$compare_base" "$HEAD_SHA" | grep -qE '^docs/adr/'; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Run adr-lint
+        if: steps.filter.outputs.changed == 'true'
+        run: bash scripts/adr-lint.sh
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

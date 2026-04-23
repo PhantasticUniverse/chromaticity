@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Sync the label taxonomy declared in .github/labels.yml to the GitHub
+# repository. No untrusted event payload is consumed in a `run:` body;
+# the label-sync action reads the checked-in config file directly.
+
+name: sync-labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.yml
+      - .github/workflows/labels.yml
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: sync-labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync labels
+        uses: EndBug/label-sync@v2
+        with:
+          config-file: .github/labels.yml
+          # Sec.16 fixes the label vocabulary, but the dynamic
+          # `evidence:EV-<ID>` and `risk:R-<NN>` label families are
+          # instantiated on demand and must not be destroyed by a
+          # catalog sync; keep `delete-other-labels: false`.
+          delete-other-labels: false

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/chromaticity-app/chromaticity/security/advisories/new
+    about: >-
+      Do NOT file security issues in the public tracker. Use a private
+      advisory or encrypted email per SECURITY.md.
+  - name: Legal / licensing inquiry
+    url: mailto:legal@chromaticity.app
+    about: Trademark, licensing, or clean-room-policy questions.
+  - name: Documentation question
+    url: https://github.com/chromaticity-app/chromaticity/blob/main/docs/README.md
+    about: Read the document map before filing a docs-improvement issue.

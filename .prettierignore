@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+
+# Archive-only planning corpus (also .gitignored) — hands-off.
+chromaticity-planning/
+Contents/
+
+# Canonical third-party license texts: preserve upstream formatting.
+LICENSES/
+
+# Normative planning docs promoted from the archive are grandfathered:
+# do not rewrap existing prose. Future docs are expected to be
+# Prettier-clean.
+docs/
+
+# Generated artifacts.
+generated/
+**/*.sbom.json
+**/*.sbom.xml
+CHANGELOG.md
+
+# Build outputs.
+target/
+dist/
+build/
+node_modules/
+
+# Lock files (managed by their package manager).
+package-lock.json
+pnpm-lock.yaml
+yarn.lock

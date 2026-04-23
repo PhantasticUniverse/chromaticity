@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Prettier configuration.
+# Intentionally minimal: docs/43-development-standards.md Sec.12.2 mandates
+# default Prettier config. Only formatter-visible options that are
+# orthogonal to the default style are listed here.
+
+printWidth: 100
+singleQuote: true
+trailingComma: all
+arrowParens: always
+endOfLine: lf
+
+overrides:
+  - files:
+      - '*.md'
+      - '*.markdown'
+    options:
+      proseWrap: preserve
+  - files:
+      - '*.yml'
+      - '*.yaml'
+    options:
+      singleQuote: false

@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+
+name: Bug report
+description: Report a defect in Chromaticity source or a shipped release artifact.
+title: 'fix(<scope>): '
+labels:
+  - 'type:bug'
+  - 'severity:S3'
+  - 'phase:0'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Before you continue:
+
+        - Security issues MUST be reported privately per `SECURITY.md`.
+          Do not file them here.
+        - Check the [evidence artifact registry](https://github.com/chromaticity-app/chromaticity/blob/main/docs/26-evidence-artifact-registry.md)
+          to see whether this is covered by an existing `EV-*` row.
+
+  - type: input
+    id: version
+    attributes:
+      label: Chromaticity version
+      description: App version (Settings -> About) or commit SHA for source builds.
+      placeholder: 'app/v0.1.0 or <sha>'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows 11
+        - Windows 10
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Compatibility profile
+      description: Which profile was the affected scene authored under?
+      options:
+        - native-chroma-v1
+        - compat-syn-v1
+        - N/A (not scene-related)
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened? Include screenshots or recordings if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened? Link the relevant FR/NFR/ADR if you know it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal sequence of operator actions that triggers the bug.
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Support bundle / logs
+      description: >-
+        If possible, attach the support bundle produced by
+        Settings -> Diagnostics -> Export support bundle. Do not paste
+        secrets; the bundle is redaction-scoped per
+        `EV-CRASH-PAYLOAD-REDACTION`.
+      render: shell
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I have read `SECURITY.md` and this is NOT a security issue.
+          required: true
+        - label: I have searched the existing issues for a duplicate.
+          required: true

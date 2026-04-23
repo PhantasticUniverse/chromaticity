@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Lefthook pre-commit / commit-msg / pre-push hook configuration.
+# See https://lefthook.dev/.
+#
+# Install:
+#   brew install lefthook            # or: go install github.com/evilmartians/lefthook@latest
+#   lefthook install
+#
+# This runs the fast subset of the CI policy checks locally so the merge
+# commit does not round-trip through CI just to find a missing SPDX
+# header. CI remains authoritative; hook failures can be bypassed only
+# in emergencies with `--no-verify`, which should be rare and tracked.
+
+min_version: 1.5.0
+
+assert_lefthook_installed: true
+
+# ---------------------------------------------------------------------------
+# commit-msg: validate the message being written for the current commit
+# against the Conventional Commits configuration. On feature branches this
+# is advisory (per Sec.4.6); the merge-commit validation happens in CI.
+# We still run it locally because catching a typo at commit-time beats
+# forcing an amend after the fact.
+# ---------------------------------------------------------------------------
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --no-install commitlint --edit {1}
+      skip:
+        - merge
+        - rebase
+
+# ---------------------------------------------------------------------------
+# pre-commit: fast, file-scoped checks. Keep under ~2 seconds on the
+# median change set; heavier checks (tsc, clippy, glslangValidator) run
+# on pre-push and in CI.
+# ---------------------------------------------------------------------------
+pre-commit:
+  parallel: true
+  commands:
+    reuse-lint:
+      # Only run if `reuse` is installed locally; CI is authoritative.
+      run: |
+        if command -v reuse >/dev/null 2>&1; then
+          reuse lint --quiet
+        else
+          echo "reuse not installed locally; skipping (CI will enforce)."
+        fi
+
+    trailing-whitespace:
+      glob: "*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json}"
+      run: |
+        bad=$(grep -nE " +$" {staged_files} 2>/dev/null || true)
+        if [ -n "$bad" ]; then
+          echo "Trailing whitespace found:"
+          echo "$bad"
+          exit 1
+        fi
+
+    final-newline:
+      glob: "*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json,sh}"
+      run: |
+        for f in {staged_files}; do
+          [ -s "$f" ] || continue
+          if [ "$(tail -c1 "$f" | wc -l)" -eq 0 ]; then
+            echo "Missing final newline: $f"
+            exit 1
+          fi
+        done
+
+    prettier:
+      glob: "*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}"
+      run: |
+        if command -v npx >/dev/null 2>&1 && npx --no-install prettier --version >/dev/null 2>&1; then
+          npx --no-install prettier --check {staged_files}
+        else
+          echo "prettier not installed; skipping (CI will enforce)."
+        fi
+
+    eslint:
+      glob: "*.{ts,tsx,js,jsx,mjs,cjs,svelte}"
+      run: |
+        if command -v npx >/dev/null 2>&1 && npx --no-install eslint --version >/dev/null 2>&1; then
+          npx --no-install eslint --max-warnings 0 {staged_files}
+        else
+          echo "eslint not installed; skipping (CI will enforce)."
+        fi
+
+    rustfmt:
+      glob: "*.rs"
+      run: |
+        if command -v rustfmt >/dev/null 2>&1; then
+          rustfmt --check {staged_files}
+        else
+          echo "rustfmt not installed; skipping (CI will enforce)."
+        fi
+
+    adr-lint:
+      glob: "docs/adr/**/*.md"
+      run: scripts/adr-lint.sh {staged_files}
+
+# ---------------------------------------------------------------------------
+# pre-push: run the slower checks before the PR is pushed so CI failures
+# are caught one step earlier. Still not a substitute for CI.
+# ---------------------------------------------------------------------------
+pre-push:
+  parallel: false
+  commands:
+    trailer-check:
+      # Validate the most recent commit on the branch-under-push carries
+      # the mandatory Profile-Impact trailer per Sec.4.5.
+      run: scripts/trailer-check.sh HEAD
+
+    rust-check:
+      run: |
+        if [ -f Cargo.toml ] && command -v cargo >/dev/null 2>&1; then
+          cargo check --workspace --all-targets
+        fi
+
+    ts-check:
+      run: |
+        if [ -f package.json ] && command -v npx >/dev/null 2>&1; then
+          npx --no-install tsc --noEmit || true
+        fi

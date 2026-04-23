@@ -1,0 +1,124 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity label taxonomy per docs/43-development-standards.md Sec.16.
+# Synced to GitHub via the labels workflow (see .github/workflows/labels.yml).
+# Adding a label requires a `policy`-scoped PR editing Sec.16.
+
+# -----------------------------------------------------------------------------
+# Phase
+# -----------------------------------------------------------------------------
+- name: 'phase:0'
+  color: '6b7280'
+  description: Phase 0 — governance / policy bootstrap.
+- name: 'phase:1'
+  color: '64748b'
+  description: Phase 1 — scaffold and subsystem skeletons.
+- name: 'phase:2'
+  color: '475569'
+  description: Phase 2 — core runtime and scene pipeline.
+- name: 'phase:3'
+  color: '334155'
+  description: Phase 3 — authoring environment and scene library.
+- name: 'phase:4'
+  color: '1e293b'
+  description: Phase 4 — integration surface and compatibility closure.
+- name: 'phase:5'
+  color: '0f172a'
+  description: Phase 5 — release engineering, signing, MVP freeze.
+
+# -----------------------------------------------------------------------------
+# Workcell
+# -----------------------------------------------------------------------------
+- name: 'workcell:runtime'
+  color: '3b82f6'
+  description: AI Runtime Workcell.
+- name: 'workcell:scene'
+  color: '2563eb'
+  description: AI Scene Workcell.
+- name: 'workcell:audio'
+  color: '1d4ed8'
+  description: AI Audio Workcell.
+- name: 'workcell:integration'
+  color: '0ea5e9'
+  description: AI Integration Workcell.
+- name: 'workcell:qa'
+  color: '06b6d4'
+  description: AI QA/Ops Workcell.
+- name: 'workcell:ux'
+  color: '8b5cf6'
+  description: AI UX Workcell.
+- name: 'workcell:docs'
+  color: 'a855f7'
+  description: AI Docs Workcell.
+
+# -----------------------------------------------------------------------------
+# Compatibility profile
+# -----------------------------------------------------------------------------
+- name: 'profile:compat-syn-v1'
+  color: 'c084fc'
+  description: Affects the compat-syn-v1 compatibility profile.
+- name: 'profile:native-chroma-v1'
+  color: 'e879f9'
+  description: Affects the native-chroma-v1 compatibility profile.
+
+# -----------------------------------------------------------------------------
+# Severity
+# -----------------------------------------------------------------------------
+- name: 'severity:S1'
+  color: 'b91c1c'
+  description: Ships-blocker. Data loss, crash on launch, security incident.
+- name: 'severity:S2'
+  color: 'dc2626'
+  description: Major user-visible impact. Degrades an MVP-required surface.
+- name: 'severity:S3'
+  color: 'f97316'
+  description: Minor user-visible impact or developer annoyance.
+
+# -----------------------------------------------------------------------------
+# Type
+# -----------------------------------------------------------------------------
+- name: 'type:bug'
+  color: 'ef4444'
+  description: Confirmed bug.
+- name: 'type:feat'
+  color: '10b981'
+  description: New feature or capability.
+- name: 'type:perf'
+  color: 'f59e0b'
+  description: Performance change with measured EV-PERF-BUDGETS impact.
+- name: 'type:compat'
+  color: 'a78bfa'
+  description: Compatibility profile impact (see Sec.4.4).
+- name: 'type:docs'
+  color: '22c55e'
+  description: Documentation-only.
+- name: 'type:security'
+  color: '7f1d1d'
+  description: Security fix or hardening.
+- name: 'type:chore'
+  color: '6b7280'
+  description: Housekeeping; no product effect.
+
+# -----------------------------------------------------------------------------
+# Gate / process
+# -----------------------------------------------------------------------------
+- name: 'architecture'
+  color: '0891b2'
+  description: Architecture-impacting. Requires ADR + Independent Architecture Reviewer.
+- name: 'oversized'
+  color: 'eab308'
+  description: PR exceeds 400-line target; AO acknowledgement required.
+- name: 'legal:review-required'
+  color: '991b1b'
+  description: Touches licensing, brand, or clean-room surface.
+- name: 'succession-pending'
+  color: '78716c'
+  description: No eligible reviewer currently online; waits for return-of-availability.
+
+# -----------------------------------------------------------------------------
+# Evidence / risk (dynamic — instantiated per ID as needed, not pre-created)
+# -----------------------------------------------------------------------------
+# The `evidence:EV-<ID>` and `risk:R-<NN>` label families are instantiated
+# on demand when the first PR/issue needs them. They are not listed
+# exhaustively here; Sec.16 governs their format.

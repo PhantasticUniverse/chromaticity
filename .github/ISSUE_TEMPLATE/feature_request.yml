@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+
+name: Feature request
+description: Propose a new capability or an enhancement. For architecture-impacting proposals, an ADR draft is the better channel.
+title: 'feat(<scope>): '
+labels:
+  - 'type:feat'
+  - 'phase:0'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you continue:
+
+        - Architecture-impacting changes require an ADR (see
+          `docs/adr/TEMPLATE.md`). Consider opening the ADR directly.
+        - Requirements changes must propagate to the roadmap and risk
+          register; explain the knock-on impact if you can.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What operator or developer problem does this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you build? Include UX notes if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you consider? Why is the proposal preferable?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Affected scope
+      options:
+        - runtime
+        - scene
+        - audio
+        - integration
+        - authoring
+        - library
+        - ui
+        - docs
+        - ux
+        - entitlement
+        - observability
+        - release-eng
+        - policy
+        - repo
+    validations:
+      required: true
+
+  - type: input
+    id: evidence
+    attributes:
+      label: Evidence impact (if known)
+      description: 'Comma-separated list of EV-* rows whose status would change.'
+      placeholder: 'EV-DETERMINISM, EV-RENDER-CONFORMANCE'
+
+  - type: input
+    id: adr
+    attributes:
+      label: Related ADR (if any)
+      placeholder: 'ADR-NNN or N/A'
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I have read `CONTRIBUTING.md` and understand the contribution policy.
+          required: true
+        - label: I have searched existing issues and ADRs for a duplicate.
+          required: true
