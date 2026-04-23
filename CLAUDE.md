@@ -240,6 +240,16 @@ re-harden sequence post-mortem:
   `docs/26-evidence-artifact-registry.md`, or `docs/00-phase-0-placeholder-inventory.md`.
   These files are global choke points; concurrent edits produce either text-conflict
   merges or semantic conflicts the linter won't catch.
+- Any dep-graph change that forces `cargo hakari generate` to rewrite
+  `workspace-hack/Cargo.toml` or `cargo` to re-resolve `Cargo.lock` — i.e., any PR
+  adding, removing, or feature-flipping an external `[dependencies]` entry.
+  Parallel dep-adding PRs each regenerate `workspace-hack` against their own dep set
+  only; the resulting merges are text-conflict-free but ship the wrong unified
+  feature set, which the next `cargo hakari generate --diff` run catches as drift
+  only after main is already broken. The stub pattern PR number 9 established
+  (every new crate declares `workspace-hack = { version = "0.0.0", path = ... }` in
+  its own Cargo.toml at creation) covers the zero-dep case; any PR that introduces
+  a new external crate dependency must be serialized ahead of parallel fan-out.
 - Any PR whose merge-state is a prerequisite for another PR's CI to be meaningful —
   e.g. the PR #4 → #5 → #6 re-harden sequence (each PR needed the previous branch-
   protection transition), or the PR-A workspace-members scaffold before parallel
