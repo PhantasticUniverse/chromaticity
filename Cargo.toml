@@ -22,6 +22,7 @@ members = [
     "engine/runtime",
     "engine/scene",
     "engine/audio",
+    "engine/observability",
     "integrations/osc-adapter",
 ]
 

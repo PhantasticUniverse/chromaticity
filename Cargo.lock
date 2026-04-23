@@ -319,6 +319,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "chromaticity-observability"
+version = "0.0.0"
+dependencies = [
+ "workspace-hack",
+]
+
+[[package]]
 name = "chromaticity-osc-adapter"
 version = "0.0.0"
 dependencies = [

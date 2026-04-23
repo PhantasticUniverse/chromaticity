@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity engine observability crate.
+#
+# Phase-1 slice-2 scaffold. Holds the Rust type surface mirroring the
+# Phase-1 metric catalog in docs/31-supportability-privacy-ops-policy.md
+# §Scheme and Metric Catalog (landed in PR number 19), plus the
+# EmitMetric trait and an in-process InMemoryEmitter stub.
+#
+# Divergence between this crate's Rust types and docs/31 §Scheme and
+# Metric Catalog is a schema-drift failure. If the catalog itself
+# needs amendment, raise a docs(policy) PR against docs/31 first
+# (NON-DELEGABLE surface, AO-authored) and then update the Rust
+# types to match the amended baseline.
+#
+# Governing documents:
+#   docs/31-supportability-privacy-ops-policy.md — metric catalog
+#                                                   baseline (authoritative).
+#   docs/adr/ADR-016-observability-and-telemetry-posture.md
+#                                                 — posture constraints.
+#
+# ADR-016 posture constraints this crate's stub emitter honours:
+#   - No network I/O by default (none at Phase 1).
+#   - No payload logging (no scene source, no script source, no audio
+#     buffers, no operator-entered text).
+#   - Local in-process emission only; the Prometheus text-format
+#     endpoint is a Phase 4d item and lands outside this crate.
+#
+# See also docs/43-development-standards.md §12.1. All workspace lints
+# (including unsafe_code = forbid, clippy::unwrap_used = deny,
+# clippy::expect_used = deny) are inherited; no local relaxation.
+
+[package]
+name = "chromaticity-observability"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity observability trait surface and Phase-1 metric types."
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
