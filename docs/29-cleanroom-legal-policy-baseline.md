@@ -34,6 +34,13 @@ Release audit gate confirms shipped-scope compliance results and legal approvals
 ## Corpus Partitioning (Internal Test vs Customer Sample)
 Chromaticity maintains two disjoint scene/fixture corpora with different clean-room postures and different shipping rules. This distinction is normative and resolves the apparent conflict between "regression fixtures must test reference behavior" and "reference-adjacent artifacts must not ship."
 
+Two additional **AO-local partitions** sit outside the shipped corpus entirely and outside version control. They are present only on the Accountable Owner's and technical lead's workstations per `43-development-standards.md` Sec.18.1, and their contents cannot flow into shipped artifacts except through the clean-room reconstruction protocol in this document's Clean-Room SOP Minimum. They are enumerated here so the clean-room defense is auditable in one place.
+
+| Partition | Path | Access | Origin tagging | Promotion path |
+|---|---|---|---|---|
+| Planning archive | `chromaticity-planning/` (`.gitignore`d) | AO + technical lead | Per-file SPDX headers; paper-trail continuity | Curated promotion to `docs/` via `docs(policy):` PR with clean-room review sign-off. |
+| Reference-app materials | `Contents/` (`.gitignore`d) | AO + technical lead | Upstream provenance in `BUNDLE-PROVENANCE.md` equivalents | No direct promotion. Feature/quality confirmation only; all shipped behavior is Chromaticity-authored and normative-doc-driven per Clean-Room SOP Minimum above. |
+
 ### Internal Regression Corpus (CI-only, never shipped)
 - Location: repository under `test/corpus/` (outside `release/`), `.gitignore`d from bundle-build targets.
 - Populated from the fixture categories in `34-golden-corpus-definition.md` including the reference-adjacent categories (meta-pipeline fixtures, helper fixtures, transition-shape fixtures, pass-sizing sentinels, KM-01..KM-07 malformed fixtures).

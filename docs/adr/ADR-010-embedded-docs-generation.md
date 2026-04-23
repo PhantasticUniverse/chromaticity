@@ -4,12 +4,12 @@
 Accepted
 
 ## Context
-The reference app ships its entire documentation site inside the bundle under `Contents/Resources/views/embedded_docs/`. Authors rely on in-app lookup of uniform names, helper signatures, and JSON keys while writing scenes. Chromaticity must match this offline-first authoring experience while obeying clean-room constraints: no reference documentation text may be copied (see `29-cleanroom-legal-policy-baseline.md`).
+The reference app ships its entire documentation site inside the bundle under `Contents/Resources/views/embedded_docs/` (AO-local reference-app partition per `43-development-standards.md` Sec.18.1; consulted, not copied, per `29-cleanroom-legal-policy-baseline.md`). Authors rely on in-app lookup of uniform names, helper signatures, and JSON keys while writing scenes. Chromaticity must match this offline-first authoring experience while obeying clean-room constraints: no reference documentation text may be copied (see `29-cleanroom-legal-policy-baseline.md`).
 
 ## Decision
 
 ### Source of truth
-- **Single source**: `36-reactive-symbol-catalog.md` plus structured YAML sidecars under `chromaticity-planning/docs-source/` for prose sections (FAQ, tutorials, best practices, etc.).
+- **Single source**: `36-reactive-symbol-catalog.md` plus structured YAML sidecars under `docs/docs-source/` for prose sections (FAQ, tutorials, best practices, etc.). The `docs/docs-source/` directory is reserved under the shipped corpus; it lands as a committed placeholder when the first prose sidecar is authored (AO-local drafting in `chromaticity-planning/` is promoted via the clean-room protocol in `29-cleanroom-legal-policy-baseline.md` Sec.Corpus Partitioning).
 - Prose is Chromaticity-originated; code samples are Chromaticity-originated; every paragraph carries a provenance tag (`author`, `reviewed_by`, `date`).
 - Reference documentation is consulted for behavior and feature coverage only; no verbatim text, no paraphrased-to-synonym text. A cleanroom review signoff is required per doc page before it ships (`EV-DOCS-CLEANROOM`).
 

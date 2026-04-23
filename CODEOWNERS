@@ -69,6 +69,19 @@
 /docs/                           @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
+# AO-local partitions (intentionally NOT mapped here).
+#
+# `chromaticity-planning/` and `Contents/` are AO-local partitions per
+# docs/43-development-standards.md Sec.18.1 and
+# docs/29-cleanroom-legal-policy-baseline.md Sec.Corpus Partitioning. Both
+# are `.gitignore`d and present only on the AO's and technical lead's
+# workstations. A CODEOWNERS rule that matches a path with no tracked
+# files silently disables itself, so the AO-only review boundary on those
+# partitions is maintained by the AO-local-on-workstation posture rather
+# than by code-owner routing. Do not reintroduce entries for either path.
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # NON-DELEGABLE: AO only.
 # ADRs and planning-legal baselines are AO-only even at T1 succession.
 # The legal-baseline carve-out (Sec.8.1) remains AO-only through T2 and
