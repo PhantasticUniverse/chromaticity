@@ -309,7 +309,10 @@ impl CommandBus for InMemoryBus {
 mod drift_pins {
     //! Evidence: EV-DETERMINISM (T1) — per-producer FIFO preservation
     //! through commit, pure-function determinism for single-producer
-    //! dispatch, and strictly-monotonic `EventSeq` assignment.
+    //! dispatch, strictly-monotonic `EventSeq` assignment,
+    //! closed-channel failure-mode propagation, empty-bus quiescence,
+    //! and the slice-2 one-to-one `Command` / `EventPayload` variant
+    //! mirror.
     //!
     //! T1 per docs/43 §15.5: each test pins a state-machine invariant
     //! the [`InMemoryBus`] must honour for slice-3's event-sourced
@@ -325,8 +328,8 @@ mod drift_pins {
     //! reconciliation layer in slice-3.
 
     use super::{
-        Command, CommandBus, ControlId, ControlValue, EventPayload, InMemoryBus, MappingId,
-        MappingSource, PresetId,
+        Command, CommandBus, CommandBusError, CommandChannel, ControlId, ControlValue,
+        EventPayload, InMemoryBus, MappingId, MappingSource, PresetId,
     };
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -464,5 +467,70 @@ mod drift_pins {
         for (index, event) in events.iter().enumerate() {
             assert_eq!(event.seq.0, index as u64);
         }
+    }
+
+    /// Pre-built `CommandChannel` that reports `Closed` on every
+    /// `send` and never has a command available. Used to pin the
+    /// closed-channel dispatch contract without racing a real
+    /// crossbeam channel drop.
+    struct ClosedChannel;
+
+    impl CommandChannel for ClosedChannel {
+        fn send(&self, _command: Command) -> Result<(), CommandBusError> {
+            Err(CommandBusError::Closed)
+        }
+
+        fn try_recv(&self) -> Option<Command> {
+            None
+        }
+    }
+
+    #[test]
+    fn dispatch_on_closed_channel_returns_closed_error() {
+        let bus = InMemoryBus::with_channel(Box::new(ClosedChannel));
+        let result = bus.dispatch(Command::PresetRecall { id: PresetId(0) });
+        assert_eq!(result, Err(CommandBusError::Closed));
+    }
+
+    #[test]
+    fn commit_on_empty_bus_yields_no_events() {
+        let bus = InMemoryBus::in_memory();
+        assert!(bus.commit_one().is_none());
+        assert!(bus.commit_all().is_empty());
+    }
+
+    #[test]
+    fn event_payload_mirrors_command_variants_one_to_one() {
+        let bus = InMemoryBus::in_memory();
+        bus.dispatch(Command::ControlSet {
+            id: ControlId(7),
+            value: ControlValue(0.5),
+        })
+        .unwrap();
+        bus.dispatch(Command::PresetRecall { id: PresetId(3) })
+            .unwrap();
+        bus.dispatch(Command::PlaylistAdvance { step: -2 }).unwrap();
+        bus.dispatch(Command::MappingBind {
+            id: MappingId(1),
+            source: MappingSource::Midi,
+        })
+        .unwrap();
+
+        let payloads: Vec<EventPayload> = bus.commit_all().into_iter().map(|e| e.payload).collect();
+        assert_eq!(
+            payloads,
+            vec![
+                EventPayload::ControlChanged {
+                    id: ControlId(7),
+                    new_value: ControlValue(0.5),
+                },
+                EventPayload::PresetRecalled { id: PresetId(3) },
+                EventPayload::PlaylistAdvanced { step: -2 },
+                EventPayload::MappingBound {
+                    id: MappingId(1),
+                    source: MappingSource::Midi,
+                },
+            ]
+        );
     }
 }
