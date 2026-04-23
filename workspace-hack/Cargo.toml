@@ -25,6 +25,8 @@ workspace = true
 
 ### BEGIN HAKARI SECTION
 [dependencies]
+byteorder = { version = "1" }
+memchr = { version = "2" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.11" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
@@ -40,6 +42,8 @@ tauri-utils = { version = "2", default-features = false, features = ["build", "c
 uuid = { version = "1", features = ["serde", "v4"] }
 
 [build-dependencies]
+byteorder = { version = "1" }
+memchr = { version = "2" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.11" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
