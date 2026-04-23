@@ -3,46 +3,65 @@
 
 //! Chromaticity engine audio.
 //!
-//! First-slice surface: the [`frame::AudioFrame`] dataflow type and
-//! the [`ingest::IngestBoundary`] trait that names the audio-thread
-//! hand-off. The Phase-2 analysis pipeline (FFT, band aggregation,
-//! uniform publication) and the real device capture (cpal, WAV
-//! fixture playback) arrive in later slices.
+//! Phase-1 slice-2 surface:
 //!
-//! Evidence: EV-AUDIO-TRACE — baseline placeholder for audio fixture
-//! trace comparisons.
+//! - [`frame::AudioFrame`] and the `DEFAULT_SAMPLE_RATE_HZ` baseline.
+//! - [`ingest::IngestBoundary`] trait plus the slice-2 degraded-mode
+//!   state machine ([`ingest::IngestMode`] / [`ingest::IngestState`])
+//!   that implements the `docs/06-audio-engine.md` §7.11 "two
+//!   consecutive non-Ready outcomes" rule.
+//! - [`silent::SilentSource`] — the Phase-1 production-path silent
+//!   ingest that graduated from its slice-1 test-double incarnation.
+//!   Slice-2 wires it as the fallback source the analyser uses until
+//!   the real device-capture ingest lands in slice-3.
+//!
+//! Slice-2 dep-slot: `cpal 0.15` is authorised in `Cargo.toml` as
+//! a dep-slot only — no cpal type is imported and no cpal function
+//! is invoked from any file in this crate. The slice-3 author who
+//! lands the first real `cpal::Stream` callback MUST honour the
+//! FFI-seam `catch_unwind` discipline pinned as a standing
+//! constraint at the top of [`ingest`]; reviewers treat omission as
+//! a merge blocker. See that module's `# Standing constraint —
+//! cpal FFI-seam panic discipline` section.
+//!
+//! Evidence: EV-AUDIO-TRACE — Phase-2-exit conformance row. Slice-2
+//! advances the T1 drift-pin coverage alongside the ingest state
+//! machine; see `drift_pins` below.
 //!
 //! Governing documents:
 //!
 //! - `docs/06-audio-engine.md` — audio engine contract, especially
-//!   §7.1 (ingest and framing) and §7.11 (snapshot handoff).
+//!   §7.1 (ingest and framing) and §7.11 (snapshot handoff and
+//!   degraded modes).
 //! - `docs/28-implementation-contract-pack.md` CP-02a — audio
 //!   snapshot handoff contract.
-//! - `docs/adr/ADR-011-rendering-backend.md` — audio/ingest
+//! - `docs/adr/ADR-011-rendering-backend.md` — audio / ingest
 //!   integration points.
 
 pub mod frame;
 pub mod ingest;
+pub mod silent;
 
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod drift_pins {
-    //! Evidence: EV-AUDIO-TRACE (T1) — drift pins on the
-    //! default-frame baseline and the ingest Ready → Closed
-    //! transition.
+    //! Evidence: EV-AUDIO-TRACE (T1) — drift pins on the default-frame
+    //! baseline, the `SilentSource` production-path hop budget, the
+    //! `IngestBoundary` Ready → Closed transition, and the
+    //! `IngestState` §7.11 Normal ↔ Degraded rule.
     //!
-    //! T1 per docs/43 §15.5: tests pin the
-    //! `docs/06-audio-engine.md` §7.1 default-frame baseline
-    //! (sample rate, channel count, empty sample buffer on a silent
-    //! sentinel) and the §7.11 non-blocking pull state machine
-    //! (Ready on a frame, Closed on source exhaustion). Either pin
-    //! fires the moment the canonical baseline or the ingest-boundary
-    //! state machine drifts from the governing doc. T1 counts toward
-    //! `EV-EVIDENCE-TAG-COVERAGE`; Phase-1 exit requires T2 over
-    //! the audio fixture corpus.
+    //! T1 per docs/43 §15.5: every test pins either an external-spec
+    //! constant (`docs/06-audio-engine.md` §7.1 default-frame baseline)
+    //! or a documented state-machine invariant (§7.11 two-consecutive
+    //! non-Ready → Degraded, first Ready → Normal) under the
+    //! slice-2 minimal implementation. Any pin fires the moment the
+    //! canonical baseline or the documented state transition drifts.
+    //! T1 counts toward `EV-EVIDENCE-TAG-COVERAGE`; Phase-1 exit
+    //! requires T2 over the full audio fixture corpus.
 
     use super::frame::{AudioFrame, DEFAULT_SAMPLE_RATE_HZ};
-    use super::ingest::{IngestBoundary, IngestStatus};
+    use super::ingest::{IngestBoundary, IngestMode, IngestState, IngestStatus};
+    use super::silent::SilentSource;
 
     #[test]
     fn default_frame_matches_docs_06_baseline() {
@@ -53,27 +72,9 @@ mod drift_pins {
         assert!(frame.samples().is_empty());
     }
 
-    /// Silent fixture-style ingest source. Serves as the minimal
-    /// `IngestBoundary` implementation EV-AUDIO-TRACE will later use
-    /// to drive deterministic fixture traces.
-    struct SilentSource {
-        remaining_hops: u32,
-    }
-
-    impl IngestBoundary for SilentSource {
-        fn try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus {
-            if self.remaining_hops == 0 {
-                return IngestStatus::Closed;
-            }
-            self.remaining_hops -= 1;
-            *out = AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, vec![0.0; 128]);
-            IngestStatus::Ready
-        }
-    }
-
     #[test]
     fn ingest_boundary_reports_ready_then_closed() {
-        let mut source = SilentSource { remaining_hops: 1 };
+        let mut source = SilentSource::new(1);
         let mut frame = AudioFrame::default();
 
         assert_eq!(source.try_pull(&mut frame), IngestStatus::Ready);
@@ -81,6 +82,58 @@ mod drift_pins {
         assert_eq!(frame.samples().len(), 128);
 
         assert_eq!(source.try_pull(&mut frame), IngestStatus::Closed);
+    }
+
+    #[test]
+    fn silent_source_honors_hop_count() {
+        let mut source = SilentSource::new(3);
+        let mut frame = AudioFrame::default();
+
+        for _ in 0..3 {
+            assert_eq!(source.try_pull(&mut frame), IngestStatus::Ready);
+        }
+        assert_eq!(source.try_pull(&mut frame), IngestStatus::Closed);
+        assert_eq!(source.try_pull(&mut frame), IngestStatus::Closed);
+    }
+
+    #[test]
+    fn ingest_state_enters_degraded_after_two_consecutive_nonready() {
+        let mut state = IngestState::default();
+        assert_eq!(state.mode(), IngestMode::Normal);
+
+        // First non-Ready does not yet flip the mode.
+        assert_eq!(
+            state.next_state(IngestStatus::WouldBlock),
+            IngestMode::Normal
+        );
+        // Second consecutive non-Ready crosses the §7.11 threshold.
+        assert_eq!(
+            state.next_state(IngestStatus::WouldBlock),
+            IngestMode::Degraded
+        );
+    }
+
+    #[test]
+    fn ingest_state_returns_to_normal_on_first_ready() {
+        let mut state = IngestState::default();
+        state.next_state(IngestStatus::WouldBlock);
+        state.next_state(IngestStatus::WouldBlock);
+        assert_eq!(state.mode(), IngestMode::Degraded);
+
+        // A single Ready clears the consecutive-underrun counter and
+        // restores the mode.
+        assert_eq!(state.next_state(IngestStatus::Ready), IngestMode::Normal);
+    }
+
+    #[test]
+    fn ingest_state_treats_closed_as_degrading_input() {
+        let mut state = IngestState::default();
+
+        // `Closed` is a non-Ready outcome under §7.11; it counts
+        // toward the consecutive-underrun threshold the same way
+        // `WouldBlock` does.
+        assert_eq!(state.next_state(IngestStatus::Closed), IngestMode::Normal);
+        assert_eq!(state.next_state(IngestStatus::Closed), IngestMode::Degraded);
     }
 }
 

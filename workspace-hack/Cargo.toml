@@ -61,21 +61,54 @@ tauri-utils = { version = "2", default-features = false, features = ["build", "c
 uuid = { version = "1", features = ["serde", "v4"] }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
+bitflags = { version = "2", default-features = false, features = ["serde"] }
 smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
 
 [target.x86_64-unknown-linux-gnu.build-dependencies]
 smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
 
 [target.aarch64-apple-darwin.dependencies]
+bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+core-foundation-sys = { version = "0.8" }
+libc = { version = "0.2" }
+minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
+nom = { version = "7", default-features = false, features = ["std"] }
+regex = { version = "1" }
+regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
+regex-syntax = { version = "0.8" }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
+bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+libc = { version = "0.2" }
+minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
+nom = { version = "7", default-features = false, features = ["std"] }
+regex = { version = "1" }
+regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
+regex-syntax = { version = "0.8" }
+syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-apple-darwin.dependencies]
+bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+core-foundation-sys = { version = "0.8" }
+libc = { version = "0.2" }
+minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
+nom = { version = "7", default-features = false, features = ["std"] }
+regex = { version = "1" }
+regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
+regex-syntax = { version = "0.8" }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-apple-darwin.build-dependencies]
+bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+libc = { version = "0.2" }
+minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
+nom = { version = "7", default-features = false, features = ["std"] }
+regex = { version = "1" }
+regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
+regex-syntax = { version = "0.8" }
+syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-pc-windows-msvc.dependencies]
