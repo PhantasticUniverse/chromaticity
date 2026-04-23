@@ -32,3 +32,18 @@ workspace = true
 
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# cpal 0.15 is the Phase-2 device-capture path, authorised as a
+# dep-slot under the slice-2 brief. No cpal types are imported or
+# invoked in slice-2 Rust code; the slot exists so slice-3 can land
+# the first real device-callback integration without a separate
+# dep-authorisation cycle. Default features (license: Apache-2.0 per
+# crate metadata; transitive platform shims — coreaudio-rs/sys on
+# macOS, alsa-sys on Linux, wasapi on Windows — are license-audited
+# via cargo deny check licenses in the preflight).
+#
+# The catch_unwind FFI-seam discipline that every slice-3 cpal
+# callback MUST honour is pinned as a standing-constraint doc
+# comment at engine/audio/src/ingest.rs top-of-module (the natural
+# integration site for the real callback when it lands).
+cpal = "0.15"
