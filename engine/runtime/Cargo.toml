@@ -32,3 +32,10 @@ workspace = true
 
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# crossbeam-channel 0.5 backs the Phase-1 in-memory CommandChannel
+# implementation. Wrapped behind the crate-local `CommandChannel`
+# trait so slice-3 persistence work can substitute a disk-backed or
+# reconciliation-layer implementation without touching producer call
+# sites. License: MIT OR Apache-2.0 (allow-listed by deny.toml).
+crossbeam-channel = "0.5"
