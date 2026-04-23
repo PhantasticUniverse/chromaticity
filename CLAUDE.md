@@ -14,8 +14,9 @@ context that a code-reader cannot derive from the tree. Read it on turn one; kee
 Chromaticity is a deterministic, audio-reactive live-visuals runtime and authoring
 environment (macOS + Windows desktop). Toolkit: Tauri 2 + Svelte 5 + TypeScript on the UI
 side; Rust 2024 edition on the engine side. `docs/adr/ADR-018-non-scene-ui-toolkit.md` is
-the normative toolkit decision. Phase 1 entered April 2026; engine crates (runtime, scene,
-audio, integrations) arrive in subsequent PRs.
+the normative toolkit decision. Phase 1 entered April 2026; engine and integration crates
+(runtime, scene, audio, observability, osc-adapter) are scaffolded and receiving
+substantive implementation in successive slices.
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
@@ -63,8 +64,8 @@ per-crate `target/` to clean.
 chromaticity/
 ├── app/
 │   └── shell/            # Tauri 2 binary (chromaticity-app crate)
-├── engine/               # reserved: runtime/, scene/, audio/
-├── integrations/         # reserved: adapter crates
+├── engine/               # runtime/, scene/, audio/, observability/
+├── integrations/         # osc-adapter/ (more adapter crates to follow)
 ├── release-eng/          # reserved: signing / notarization / updater
 ├── third_party/          # reserved: vendored-with-attribution
 ├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
@@ -207,6 +208,18 @@ tree.
   uses `dorny/paths-filter` (or any action that hits the pulls REST API) in an in-job
   filter. The three per-workflow `*-summary` aggregators in `rust.yml` /
   `frontend.yml` / `sbom.yml` depend on this scope.
+- **Squash-merging a multi-commit PR inserts a `---------` divider** in the merge
+  commit body between each original commit's body. The divider terminates the
+  trailer zone and fails `scripts/trailer-check.sh` on the resulting main-side
+  commit. Short-term prescription: keep lane PRs single-commit — squash locally
+  via `git rebase -i` + fixup or `git reset --soft HEAD~N && git commit` before
+  push, so the PR presents as one commit and `gh pr merge --squash` produces a
+  clean trailer zone on main. Alternative: the repo's squash-merge template can
+  be changed (Settings → General → Squash merging → "Default to pull request
+  title and description") so the merge commit body uses the PR description
+  instead of concatenated commit messages, removing the divider entirely at the
+  cost of authors maintaining trailers in the PR body. Not adopted at time of
+  writing.
 - **`gh pr update-branch` breaks DCO and `trailer-check`.** The command asks GitHub to
   update the PR branch from its base, which creates a SERVER-side merge commit signed
   only by GitHub (`GitHub <noreply@github.com>`, no `Signed-off-by`, no
@@ -228,6 +241,18 @@ re-harden sequence post-mortem:
 
 - Per-subtree implementation work under a single CODEOWNERS entry (`engine/<x>/`,
   `app/<x>/`, `integrations/<x>/`). Each subtree's PR has a self-contained diff.
+- Per-subtree dep-adding work — introducing new external crates in parallel subtree
+  PRs is viable under strict-true branch protection. Each lane commits its own
+  `cargo hakari generate` output as part of its single squash-clean commit. When a
+  sibling merges first, remaining lanes rebase onto advanced `main`; if the rebase
+  conflicts on `workspace-hack/Cargo.toml` or `Cargo.lock`, resolve with either
+  `git checkout --ours` or `--theirs` (both converge — `cargo` re-resolves the
+  lockfile against the combined manifests on the next `cargo metadata` call) and
+  re-run `cargo hakari generate`. Hakari emits the unified superset;
+  `cargo hakari manage-deps --dry-run` reporting "no operations to perform" is the
+  settlement signal. Slice-2 validated this with three parallel dep-adders
+  (serde, cpal, rosc) plus one dep-free lane. The older rule ("dep-adds must be
+  serialized") proved too strict.
 - Independent ADR drafts in `docs/adr/` (one ADR per agent; the AO-only approval
   constraint still applies at merge time).
 - Independent evidence-tag-producing test suites, once the crate they live in exists.
@@ -240,16 +265,6 @@ re-harden sequence post-mortem:
   `docs/26-evidence-artifact-registry.md`, or `docs/00-phase-0-placeholder-inventory.md`.
   These files are global choke points; concurrent edits produce either text-conflict
   merges or semantic conflicts the linter won't catch.
-- Any dep-graph change that forces `cargo hakari generate` to rewrite
-  `workspace-hack/Cargo.toml` or `cargo` to re-resolve `Cargo.lock` — i.e., any PR
-  adding, removing, or feature-flipping an external `[dependencies]` entry.
-  Parallel dep-adding PRs each regenerate `workspace-hack` against their own dep set
-  only; the resulting merges are text-conflict-free but ship the wrong unified
-  feature set, which the next `cargo hakari generate --diff` run catches as drift
-  only after main is already broken. The stub pattern PR number 9 established
-  (every new crate declares `workspace-hack = { version = "0.0.0", path = ... }` in
-  its own Cargo.toml at creation) covers the zero-dep case; any PR that introduces
-  a new external crate dependency must be serialized ahead of parallel fan-out.
 - Any PR whose merge-state is a prerequisite for another PR's CI to be meaningful —
   e.g. the PR #4 → #5 → #6 re-harden sequence (each PR needed the previous branch-
   protection transition), or the PR-A workspace-members scaffold before parallel
