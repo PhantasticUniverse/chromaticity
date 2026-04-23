@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity engine scene crate.
+#
+# Phase-1 scaffold. Holds the scene schema types, the canonical-model
+# normalizer, and the validator that consumes
+# docs/36-reactive-symbol-catalog.md as its authoritative symbol source.
+# No public surface until the first-slice implementation PR.
+#
+# Governing ADRs:
+#   ADR-007 — scene warm-switch policy
+#             (docs/adr/ADR-007-scene-warm-switch-policy.md)
+#   ADR-008 — transition and traveler semantics
+#             (docs/adr/ADR-008-transition-and-traveler-semantics.md)
+#
+# Symbol source of truth: docs/36-reactive-symbol-catalog.md.
+#
+# See also docs/43-development-standards.md §12.1. All workspace lints
+# (including unsafe_code = forbid, clippy::unwrap_used = deny,
+# clippy::expect_used = deny) are inherited; no local relaxation.
+
+[package]
+name = "chromaticity-scene"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity scene schema, canonical normalizer, and validator."
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
