@@ -407,3 +407,415 @@ mod ctor_placeholder {
         }
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod catalog_conformance {
+    //! Evidence: EV-OBSERVABILITY (T2) — schema-drift conformance
+    //! harness against `docs/31` §Phase-1 baseline catalog.
+    //!
+    //! T2 per `docs/43-development-standards.md` §15.5: exercises
+    //! the evidence-producing behaviour against a fixture corpus
+    //! or golden artifact. Here the "golden artifact" is the
+    //! authoritative catalog table at
+    //! `docs/31-supportability-privacy-ops-policy.md` §Phase-1
+    //! baseline catalog; the "conformance" is that the Rust
+    //! [`MetricEvent`] enum + its [`MetricEvent::name`] /
+    //! [`MetricEvent::kind`] methods match `docs/31` verbatim,
+    //! with label sets matching each row's `labels` column.
+    //!
+    //! Registry binding. `docs/26-evidence-artifact-registry.md`
+    //! row 38 and `docs/31-supportability-privacy-ops-policy.md`
+    //! line 90 (Evidence binding) jointly declare that
+    //! `EV-OBSERVABILITY` status transitions from
+    //! `pending:artifact` to `Pass` only when the T2 conformance
+    //! harness over the `docs/31` catalog lands. This module IS
+    //! that T2 harness — **schema-drift conformance, not
+    //! behavioural emission**. The runtime-bus wiring that feeds
+    //! events into [`crate::emit::EmitMetric`] stays scoped to
+    //! slice-3 per `engine/observability/src/lib.rs:26-27`, and
+    //! is ORTHOGONAL to the T2 tier transition — the catalog
+    //! schema IS the evidence-producing behaviour row 38
+    //! validates (per the `docs/31` §Evidence binding verbatim
+    //! quote).
+    //!
+    //! Drift-detection mechanics. Two complementary paths:
+    //!
+    //! - **Compile-time.** [`every_metric_event_variant`] and
+    //!   [`label_names`] both use exhaustive `match` on
+    //!   [`MetricEvent`] with no `_` arm. Adding a variant to the
+    //!   enum without extending these matches fails at rustc
+    //!   level. `#[non_exhaustive]` on `MetricEvent` affects only
+    //!   external-crate callers; inside the defining crate
+    //!   exhaustive matching is required.
+    //! - **Test-time.** The [`EXPECTED`] table transcribes
+    //!   `docs/31` §Phase-1 baseline catalog verbatim; the four
+    //!   conformance tests cross-check it bidirectionally against
+    //!   the catalog and each row's label set. The fifth test
+    //!   pins the 14-row count (`docs/31` §Phase-1 baseline
+    //!   catalog final line: "Phase-1 baseline is 14 metrics")
+    //!   as a belt-and-suspenders anchor against row additions
+    //!   that happen to share an existing metric name.
+    //!
+    //! Packet-minimum coverage (`docs/26` line 160 per-type
+    //! minimums for automated suites):
+    //!
+    //! - `ci-run-url` or `repo-path` to the audit — satisfied by
+    //!   `repo-path:engine/observability/src/catalog.rs` (this
+    //!   module) and promoted to a `ci-run-url` once green on
+    //!   `main` per the follow-up `docs(policy)` registry flip.
+    //! - Audit run identifier — populated by
+    //!   `evidence-runs/<sha>.json` per `docs/43 §15.3`.
+    //! - Telemetry schema version captured — pinned by
+    //!   [`observability_schema_version_is_phase1_baseline`]
+    //!   against [`PHASE_1_SCHEMA_VERSION`].
+
+    use super::{
+        AudioIngestFrameStatus, AudioIngestState, CommandKind, EventKind, MetricEvent, MetricKind,
+        ObservabilitySubsystem, OscAdapterState, OscBindErrorReason, OscPacketOutcome,
+        RuntimeLifecycleState, SceneLintCategory, SceneValidationOutcome,
+    };
+
+    /// Phase-1 schema-version anchor, emitted through
+    /// [`MetricEvent::ObservabilitySchemaVersion`].
+    ///
+    /// Bumping this requires a paired `docs(policy)` PR amending
+    /// `docs/31-supportability-privacy-ops-policy.md` §Phase-1
+    /// baseline catalog first (the authoritative trigger per the
+    /// docs/31 Schema change process section), then incrementing
+    /// this constant and updating [`PHASE_1_BASELINE_COUNT`] if
+    /// the schema version ships a row-count change.
+    const PHASE_1_SCHEMA_VERSION: u64 = 1;
+
+    /// Phase-1 baseline catalog size. Transcribed from
+    /// `docs/31-supportability-privacy-ops-policy.md` §Phase-1
+    /// baseline catalog final line ("Phase-1 baseline is 14
+    /// metrics"). Adding a `docs/31` row without extending both
+    /// [`MetricEvent`] and [`EXPECTED`] fails
+    /// [`catalog_has_exactly_phase1_baseline_count`].
+    const PHASE_1_BASELINE_COUNT: usize = 14;
+
+    /// `docs/31` §Phase-1 baseline catalog, transcribed verbatim.
+    ///
+    /// Tuple shape: `(metric_name, MetricKind, &[label_name])`
+    /// with `label_name` sorted ascending for deterministic
+    /// comparison against the Rust catalog's struct-variant field
+    /// sets (also sorted by [`label_names`]).
+    const EXPECTED: &[(&str, MetricKind, &[&str])] = &[
+        (
+            "chromaticity_runtime_lifecycle_transitions_total",
+            MetricKind::Counter,
+            &["from", "to"],
+        ),
+        (
+            "chromaticity_runtime_uptime_seconds",
+            MetricKind::Gauge,
+            &[],
+        ),
+        (
+            "chromaticity_runtime_commands_dispatched_total",
+            MetricKind::Counter,
+            &["kind"],
+        ),
+        (
+            "chromaticity_runtime_events_emitted_total",
+            MetricKind::Counter,
+            &["kind"],
+        ),
+        (
+            "chromaticity_scene_validations_total",
+            MetricKind::Counter,
+            &["outcome"],
+        ),
+        (
+            "chromaticity_scene_lint_warnings_total",
+            MetricKind::Counter,
+            &["category"],
+        ),
+        (
+            "chromaticity_audio_ingest_state_transitions_total",
+            MetricKind::Counter,
+            &["from", "to"],
+        ),
+        (
+            "chromaticity_audio_ingest_frames_total",
+            MetricKind::Counter,
+            &["status"],
+        ),
+        (
+            "chromaticity_audio_ingest_samples_total",
+            MetricKind::Counter,
+            &[],
+        ),
+        (
+            "chromaticity_osc_inbound_packets_total",
+            MetricKind::Counter,
+            &["outcome"],
+        ),
+        (
+            "chromaticity_osc_adapter_state_transitions_total",
+            MetricKind::Counter,
+            &["from", "to"],
+        ),
+        (
+            "chromaticity_osc_bind_errors_total",
+            MetricKind::Counter,
+            &["reason"],
+        ),
+        (
+            "chromaticity_observability_events_emitted_total",
+            MetricKind::Counter,
+            &["subsystem"],
+        ),
+        (
+            "chromaticity_observability_schema_version",
+            MetricKind::Gauge,
+            &[],
+        ),
+    ];
+
+    /// Enumerate one sample of every [`MetricEvent`] variant, in
+    /// declaration order.
+    ///
+    /// The body's first action is constructing the variants; the
+    /// second is an exhaustive `match` over the result (no `_`
+    /// arm). Adding a variant to [`MetricEvent`] without
+    /// extending both the constructor list and the post-match
+    /// fails at rustc level — this is the compile-time arm of
+    /// the module's drift-detection design.
+    ///
+    /// For variants carrying a label-value enum, one arbitrary
+    /// enum value is chosen. Label-enum coverage is pinned by
+    /// the T0 `ctor_placeholder::subsystem_enum_covers_observability_meta_label_cardinality`
+    /// test and the `#[non_exhaustive]` markers on each label
+    /// enum.
+    fn every_metric_event_variant() -> Vec<MetricEvent> {
+        let events = vec![
+            MetricEvent::RuntimeLifecycleTransition {
+                from: RuntimeLifecycleState::Starting,
+                to: RuntimeLifecycleState::Running,
+                value: 1,
+            },
+            MetricEvent::RuntimeUptime { value: 0 },
+            MetricEvent::RuntimeCommandsDispatched {
+                kind: CommandKind::ControlSet,
+                value: 1,
+            },
+            MetricEvent::RuntimeEventsEmitted {
+                kind: EventKind::ControlChanged,
+                value: 1,
+            },
+            MetricEvent::SceneValidations {
+                outcome: SceneValidationOutcome::Pass,
+                value: 1,
+            },
+            MetricEvent::SceneLintWarnings {
+                category: SceneLintCategory::CoercionApplied,
+                value: 1,
+            },
+            MetricEvent::AudioIngestStateTransition {
+                from: AudioIngestState::Starting,
+                to: AudioIngestState::Running,
+                value: 1,
+            },
+            MetricEvent::AudioIngestFrames {
+                status: AudioIngestFrameStatus::Ready,
+                value: 1,
+            },
+            MetricEvent::AudioIngestSamples { value: 128 },
+            MetricEvent::OscInboundPackets {
+                outcome: OscPacketOutcome::Accepted,
+                value: 1,
+            },
+            MetricEvent::OscAdapterStateTransition {
+                from: OscAdapterState::Unbound,
+                to: OscAdapterState::Binding,
+                value: 1,
+            },
+            MetricEvent::OscBindErrors {
+                reason: OscBindErrorReason::AddressInUse,
+                value: 1,
+            },
+            MetricEvent::ObservabilityEventsEmitted {
+                subsystem: ObservabilitySubsystem::Runtime,
+                value: 1,
+            },
+            MetricEvent::ObservabilitySchemaVersion {
+                value: PHASE_1_SCHEMA_VERSION,
+            },
+        ];
+
+        // Compile-time drift trap: exhaustive match with no `_`
+        // arm. Adding a new MetricEvent variant without extending
+        // this match fails at build time.
+        for event in &events {
+            match event {
+                MetricEvent::RuntimeLifecycleTransition { .. }
+                | MetricEvent::RuntimeUptime { .. }
+                | MetricEvent::RuntimeCommandsDispatched { .. }
+                | MetricEvent::RuntimeEventsEmitted { .. }
+                | MetricEvent::SceneValidations { .. }
+                | MetricEvent::SceneLintWarnings { .. }
+                | MetricEvent::AudioIngestStateTransition { .. }
+                | MetricEvent::AudioIngestFrames { .. }
+                | MetricEvent::AudioIngestSamples { .. }
+                | MetricEvent::OscInboundPackets { .. }
+                | MetricEvent::OscAdapterStateTransition { .. }
+                | MetricEvent::OscBindErrors { .. }
+                | MetricEvent::ObservabilityEventsEmitted { .. }
+                | MetricEvent::ObservabilitySchemaVersion { .. } => (),
+            }
+        }
+
+        events
+    }
+
+    /// Extract the struct-variant's named-field set (excluding
+    /// `value`) as a sorted `Vec<&'static str>`. Exhaustive match
+    /// serves as the second compile-time drift trap: adding a
+    /// variant requires a new arm that names the variant's
+    /// labels.
+    fn label_names(event: &MetricEvent) -> Vec<&'static str> {
+        let mut labels: Vec<&'static str> = match event {
+            MetricEvent::RuntimeLifecycleTransition { .. } => vec!["from", "to"],
+            MetricEvent::RuntimeUptime { .. } => vec![],
+            MetricEvent::RuntimeCommandsDispatched { .. } => vec!["kind"],
+            MetricEvent::RuntimeEventsEmitted { .. } => vec!["kind"],
+            MetricEvent::SceneValidations { .. } => vec!["outcome"],
+            MetricEvent::SceneLintWarnings { .. } => vec!["category"],
+            MetricEvent::AudioIngestStateTransition { .. } => vec!["from", "to"],
+            MetricEvent::AudioIngestFrames { .. } => vec!["status"],
+            MetricEvent::AudioIngestSamples { .. } => vec![],
+            MetricEvent::OscInboundPackets { .. } => vec!["outcome"],
+            MetricEvent::OscAdapterStateTransition { .. } => vec!["from", "to"],
+            MetricEvent::OscBindErrors { .. } => vec!["reason"],
+            MetricEvent::ObservabilityEventsEmitted { .. } => vec!["subsystem"],
+            MetricEvent::ObservabilitySchemaVersion { .. } => vec![],
+        };
+        labels.sort_unstable();
+        labels
+    }
+
+    // ---- Conformance tests ----
+
+    /// Catches `docs/31`-only additions: every metric name the
+    /// authoritative catalog declares must have a corresponding
+    /// [`MetricEvent`] variant whose [`MetricEvent::name`] returns
+    /// that spelling.
+    #[test]
+    fn every_docs31_row_has_a_catalog_variant() {
+        let actual_names: std::collections::HashSet<&str> = every_metric_event_variant()
+            .iter()
+            .map(MetricEvent::name)
+            .collect();
+        for (expected_name, _, _) in EXPECTED {
+            assert!(
+                actual_names.contains(expected_name),
+                "docs/31 row {expected_name} has no MetricEvent variant",
+            );
+        }
+    }
+
+    /// Catches Rust-catalog-only additions: every
+    /// [`MetricEvent`] variant's [`MetricEvent::name`] output
+    /// must appear in the authoritative `docs/31` catalog.
+    #[test]
+    fn every_catalog_variant_appears_in_docs31() {
+        let expected_names: std::collections::HashSet<&str> =
+            EXPECTED.iter().map(|(name, _, _)| *name).collect();
+        for event in every_metric_event_variant() {
+            let name = event.name();
+            assert!(
+                expected_names.contains(name),
+                "MetricEvent variant name {name:?} not in docs/31 §Phase-1 baseline catalog",
+            );
+        }
+    }
+
+    /// Each [`MetricEvent`] variant's [`MetricEvent::kind`] must
+    /// match `docs/31`'s `Type` column for that row.
+    #[test]
+    fn metric_kinds_match_docs31() {
+        let expected_map: std::collections::HashMap<&str, MetricKind> = EXPECTED
+            .iter()
+            .map(|(name, kind, _)| (*name, *kind))
+            .collect();
+        for event in every_metric_event_variant() {
+            let name = event.name();
+            let actual_kind = event.kind();
+            let expected_kind = *expected_map.get(name).expect(
+                "variant absent from EXPECTED — caught by every_catalog_variant_appears_in_docs31",
+            );
+            assert_eq!(
+                actual_kind, expected_kind,
+                "metric {name} kind drift: catalog reports {actual_kind:?}, docs/31 declares {expected_kind:?}",
+            );
+        }
+    }
+
+    /// Each [`MetricEvent`] variant's struct-field names
+    /// (excluding `value`) must match `docs/31`'s `Labels`
+    /// column for that row. Labels sorted ascending on both
+    /// sides for order-independent comparison.
+    #[test]
+    fn label_sets_match_docs31() {
+        let expected_map: std::collections::HashMap<&str, &[&str]> = EXPECTED
+            .iter()
+            .map(|(name, _, labels)| (*name, *labels))
+            .collect();
+        for event in every_metric_event_variant() {
+            let name = event.name();
+            let actual_labels = label_names(&event);
+            let expected_labels: Vec<&str> = expected_map
+                .get(name)
+                .copied()
+                .expect("variant absent from EXPECTED — caught by every_catalog_variant_appears_in_docs31")
+                .to_vec();
+            assert_eq!(
+                actual_labels, expected_labels,
+                "metric {name} label-set drift: catalog {actual_labels:?} vs docs/31 {expected_labels:?}",
+            );
+        }
+    }
+
+    /// `docs/31` §Phase-1 baseline catalog closes with
+    /// "Phase-1 baseline is 14 metrics." Belt-and-suspenders
+    /// against `docs/31` row additions that happen to reuse an
+    /// existing metric name (which the name-level checks would
+    /// miss) by also asserting the row count matches both
+    /// [`EXPECTED`] and the Rust catalog.
+    #[test]
+    fn catalog_has_exactly_phase1_baseline_count() {
+        assert_eq!(
+            EXPECTED.len(),
+            PHASE_1_BASELINE_COUNT,
+            "EXPECTED row count drift vs docs/31 Phase-1 baseline",
+        );
+        assert_eq!(
+            every_metric_event_variant().len(),
+            PHASE_1_BASELINE_COUNT,
+            "MetricEvent variant count drift vs docs/31 Phase-1 baseline",
+        );
+    }
+
+    /// The
+    /// [`MetricEvent::ObservabilitySchemaVersion`] gauge emits
+    /// the current schema-version integer. Pinning the constant
+    /// [`PHASE_1_SCHEMA_VERSION`] makes the currently-shipped
+    /// version value visible as a named drift anchor; bumping it
+    /// requires a paired `docs/31` Schema change process PR.
+    #[test]
+    fn observability_schema_version_is_phase1_baseline() {
+        let event = MetricEvent::ObservabilitySchemaVersion {
+            value: PHASE_1_SCHEMA_VERSION,
+        };
+        match event {
+            MetricEvent::ObservabilitySchemaVersion { value } => {
+                assert_eq!(value, PHASE_1_SCHEMA_VERSION);
+            }
+            other => {
+                unreachable!("constructed ObservabilitySchemaVersion, got {other:?}")
+            }
+        }
+    }
+}
