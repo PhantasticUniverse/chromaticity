@@ -181,30 +181,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Detect hakari config
-        id: hakari-config
-        shell: bash
-        run: |
-          if [ -f ".config/hakari.toml" ] || [ -f ".guppy/hakari.toml" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install cargo-hakari
-        if: steps.hakari-config.outputs.present == 'true'
         # 0.9.37 requires rustc >=1.86; workspace MSRV is pinned to 1.85.0.
         run: cargo install cargo-hakari --version 0.9.36 --locked
 
       - name: Verify workspace-hack is regenerated
-        if: steps.hakari-config.outputs.present == 'true'
         run: |
           cargo hakari generate --diff
           cargo hakari manage-deps --dry-run
-
-      - name: Skip until hakari config is introduced
-        if: steps.hakari-config.outputs.present != 'true'
-        run: echo "No .config/hakari.toml or .guppy/hakari.toml present; skipping drift check."
 
   rust-summary:
     name: rust-summary
