@@ -208,31 +208,38 @@ tree.
   uses `dorny/paths-filter` (or any action that hits the pulls REST API) in an in-job
   filter. The three per-workflow `*-summary` aggregators in `rust.yml` /
   `frontend.yml` / `sbom.yml` depend on this scope.
-- **Merge queue is active on `main`.** A ruleset with a `merge_queue` rule targets
-  `refs/heads/main`; required status checks (the `-summary` aggregators plus the
-  policy and evidence-tag-coverage contexts) run once on the queue's combined
-  commit rather than per-PR at merge time. Consequences:
-  - Don't use `gh pr merge --squash` directly; use `gh pr merge --squash --auto`
-    (enqueues) or the "Merge when ready" button. Direct merge bypasses the
-    queue and is disallowed by branch protection for non-admins.
-  - Required workflows (`rust.yml`, `sbom.yml`, `frontend.yml`, `policy.yml`,
-    `evidence-tag-lint.yml`) MUST trigger on `merge_group` as well as
-    `pull_request` and `push: main`, otherwise the queue waits forever for
-    checks that never run. Pattern for range-walking jobs (`dco`,
-    `trailer-check`, `commit-convention-lint`): read base/head from the
-    null-coalescing expression
+- **Merge queue is NOT active (plan-gated).** The five required-check workflows
+  (`rust.yml`, `sbom.yml`, `frontend.yml`, `policy.yml`, `evidence-tag-lint.yml`)
+  already trigger on `merge_group` and plumb `merge_group.base_sha` /
+  `merge_group.head_sha` through the range-walking jobs, so they're
+  forward-compatible. The ruleset that would actually enable the queue
+  (`merge_queue` rule type on `refs/heads/main`) is rejected by the API
+  because merge queue on private repositories requires GitHub Team or
+  Enterprise Cloud; the current plan (Pro) does not include it. Consequences
+  for today:
+  - Merges on `main` still go through the normal squash-merge path under
+    branch protection's `strict: true` + `required_linear_history: true`.
+    Slice-style parallel lanes still pay the O(N²) rebase cascade.
+  - Workflow surface is prepared: if the plan is ever upgraded to Team or
+    higher, creating the ruleset via
+    `POST /repos/.../rulesets` (with a `merge_queue` rule targeting
+    `refs/heads/main`, `merge_method=SQUASH`, `grouping_strategy=ALLGREEN`)
+    is the only remaining step; no workflow changes needed at that point.
+  - The parallel-dep-adder recipe below remains the manual-rebase path that
+    the queue would otherwise absorb.
+    Compat patterns already in place for eventual queue activation:
+  - Range-walking jobs (`dco`, `trailer-check`, `commit-convention-lint`'s
+    PR-range step) read base/head from the null-coalescing expression
     `${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}`
-    so the same job works for both event types. Pattern for `dorny/paths-filter`
-    jobs: gate the filter on `github.event_name == 'pull_request'` and combine
-    with a "non-PR bypass" step that forces `output=true` on push or
-    merge_group events.
-  - The queue absorbs the O(N²) rebase cascade that slice-2 hit: PRs no
-    longer need to rebase-onto-advanced-main between sibling merges. The
-    queue does its own rebase against the queue's running head, runs CI on
-    the result, and proceeds serially. Manual rebase only becomes necessary
-    if the queue itself rejects a PR due to a conflict it can't auto-resolve
-    (e.g. real text-level overlap); then the parallel-dep-adder recipe in
-    the agent-parallelism section still applies.
+    so the same job body works for both event types.
+  - `dorny/paths-filter` jobs gate the filter on
+    `github.event_name == 'pull_request'` and combine with a "non-PR bypass"
+    step that forces `output=true` on push or merge_group events.
+  - `commit-convention-lint`'s `Lint head commit subject` step handles
+    `push` and `merge_group` events by linting subject only, not body or
+    footer — PR-body-composed squash commits contain markdown that
+    regularly violates body/footer length rules written for hand-authored
+    commit messages.
 - **Squash-merge commits compose from the PR title + PR body, NOT from concatenated
   commit messages.** The repo setting (Settings → General → Squash merging) is
   "Default to pull request title and description". Consequences for PR authors:
@@ -276,22 +283,18 @@ re-harden sequence post-mortem:
   `app/<x>/`, `integrations/<x>/`). Each subtree's PR has a self-contained diff.
 - Per-subtree dep-adding work — introducing new external crates in parallel subtree
   PRs is viable under strict-true branch protection. Each lane commits its own
-  `cargo hakari generate` output as part of its squash-clean PR. With the merge
-  queue active, most conflicts are absorbed by the queue's serialized rebase
-  pass: just enqueue each lane with `gh pr merge --squash --auto` and let the
-  queue do the work. The queue rebases each PR onto its current head, runs CI on
-  the combined commit, and merges on green. If the queue rejects a PR because
-  the rebase hits a real conflict on `workspace-hack/Cargo.toml` or `Cargo.lock`
-  (the queue can auto-merge the textual diff but can't regenerate hakari
-  output), fall back to the manual recipe: local `git rebase origin/main`,
-  resolve with either `git checkout --ours` or `--theirs` (both converge —
-  `cargo` re-resolves the lockfile against the combined manifests on the next
-  `cargo metadata` call), re-run `cargo hakari generate`, force-push, and
-  re-enqueue. `cargo hakari manage-deps --dry-run` reporting "no operations to
-  perform" is the settlement signal. Slice-2 validated the underlying hakari-
-  convergence property with three parallel dep-adders (serde, cpal, rosc) plus
-  one dep-free lane. The older rule ("dep-adds must be serialized") proved too
-  strict even before the queue.
+  `cargo hakari generate` output as part of its squash-clean PR. When a sibling
+  merges first, remaining lanes rebase onto advanced `main`; if the rebase
+  conflicts on `workspace-hack/Cargo.toml` or `Cargo.lock`, resolve with either
+  `git checkout --ours` or `--theirs` (both converge — `cargo` re-resolves the
+  lockfile against the combined manifests on the next `cargo metadata` call)
+  and re-run `cargo hakari generate`. Hakari emits the unified superset;
+  `cargo hakari manage-deps --dry-run` reporting "no operations to perform" is
+  the settlement signal. Slice-2 validated this with three parallel dep-adders
+  (serde, cpal, rosc) plus one dep-free lane. The older rule ("dep-adds must
+  be serialized") proved too strict. Merge queue, if ever enabled at the plan
+  level, would absorb this rebase pass automatically; see the GitHub-
+  operations section for the queue-activation follow-up.
 - Independent ADR drafts in `docs/adr/` (one ADR per agent; the AO-only approval
   constraint still applies at merge time).
 - Independent evidence-tag-producing test suites, once the crate they live in exists.

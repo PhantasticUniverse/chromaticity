@@ -61,14 +61,17 @@ jobs:
             '@commitlint/config-conventional@^19' \
             '@commitlint/types@^19'
 
+      # Full-body commitlint on branch commits during PR review —
+      # author-written commit messages must conform to
+      # body-max-line-length, footer-leading-blank, etc. On merge_group
+      # events the range resolves to the queue's synthetic squash
+      # commit whose body is the PR body (markdown), so full-body
+      # linting is handled instead by the subject-only step below.
       - name: Lint commits in PR range
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        if: github.event_name == 'pull_request'
         env:
-          # pull_request context on PR events; merge_group context on
-          # queue events. The null-coalescing operator selects whichever
-          # side is populated.
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 
@@ -85,10 +88,18 @@ jobs:
           npx commitlint --verbose < .pr-title.txt
           rm -f .pr-title.txt
 
-      - name: Lint head commit on push
-        if: github.event_name == 'push'
+      # Subject-only lint on push to main and on merge_group (queue) events.
+      # The squash-merge commit body is composed from the PR body, which
+      # is markdown and regularly violates body-max-line-length,
+      # footer-max-line-length, and footer-leading-blank — rules that
+      # make sense for hand-authored feature-branch commits but not for
+      # PR-body-composed squash commits. The subject line still carries
+      # the commitlint-enforced Conventional Commit shape, so type /
+      # scope / case / length are still validated.
+      - name: Lint head commit subject on push or merge_group
+        if: github.event_name == 'push' || github.event_name == 'merge_group'
         run: |
-          npx commitlint --from=HEAD~1 --to=HEAD --verbose
+          git log -1 --format='%s' | npx commitlint --verbose
 
   dco:
     name: dco
