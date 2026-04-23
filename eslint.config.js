@@ -20,6 +20,7 @@ import tseslint from 'typescript-eslint';
 export default [
   {
     ignores: [
+      // Dependency / build output.
       'node_modules/**',
       'dist/**',
       'target/**',
@@ -30,6 +31,14 @@ export default [
       'generated/**',
       '.svelte-kit/**',
       '.vite/**',
+      // Clean-room / archive boundaries — never lint these.
+      // See docs/29-cleanroom-legal-policy-baseline.md §Clean-room SOP.
+      'Contents/**',
+      'chromaticity-planning/**',
+      // Canonical third-party license texts; preserve upstream.
+      'LICENSES/**',
+      // Grandfathered planning prose (promoted normative docs).
+      'docs/**',
     ],
   },
 

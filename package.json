@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "lint": "eslint src/ eslint.config.js vite.config.ts svelte.config.js commitlint.config.cjs",
+    "lint": "eslint .",
     "lint:fix": "npm run lint -- --fix",
     "tsc": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "tauri": "tauri",
