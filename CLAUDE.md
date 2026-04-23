@@ -49,7 +49,7 @@ cargo hakari generate --diff                            # needs cargo-hakari
 Policy / evidence:
 
 ```
-bash scripts/evidence-tag-lint.sh    # Phase-1 stub; passes trivially
+bash scripts/evidence-tag-lint.sh    # strict on tier tokens (T0/T1/T2) in module-level //! Evidence: tags; coverage stub still advisory
 bash scripts/adr-lint.sh             # 17 Phase-0 grace warnings expected
 bash scripts/trailer-check.sh HEAD   # DCO + Profile-Impact trailers
 npm run commitlint:last              # Conventional Commits check
