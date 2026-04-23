@@ -218,16 +218,27 @@ Any deprecation declared under the Deprecation Policy of `22-...md` MUST be publ
 
 ### 7.3 Required checks
 
-Every PR to `main` must pass:
+Every PR to `main` must pass the status contexts in two groups:
 
-- `commitlint` on PR title.
-- `dco` on every feature-branch commit.
-- Language-specific formatters and linters declared in Sec.12.
-- `reuse lint` (SPDX/REUSE compliance, Sec.10).
-- `cargo deny` (license + advisory, Sec.10).
-- `evidence-tag-lint` (Sec.15) — advisory on Phase 0; required from Phase 1.
-- Unit test suite for affected subtrees.
-- `adr-lint` (Sec.14) when `adr/` is touched.
+**Always-running policy and evidence contexts** (produced by `policy.yml` and `evidence-tag-lint.yml`; report on every PR regardless of path):
+
+- `commit-convention-lint` — `commitlint` on PR title and on every feature-branch commit in the PR range.
+- `dco` — `Signed-off-by` on every feature-branch commit (Sec.9.2).
+- `trailer-check` — mandatory trailers (Sec.4.5) on every feature-branch commit.
+- `reuse-lint` — SPDX/REUSE compliance (Sec.10).
+- `adr-lint` — ADR hygiene (Sec.14) when `docs/adr/` is touched; no-op otherwise.
+- `secret-scan` — belt-and-suspenders gitleaks pass (Sec.18.3).
+- `EV-EVIDENCE-TAG-COVERAGE` — evidence-tag-lint (Sec.15); advisory on Phase 0, required from Phase 1.
+
+**Per-workflow summary contexts** (produced by `rust.yml`, `frontend.yml`, `sbom.yml`; report on every PR as a deterministic aggregate):
+
+- `rust-summary` — aggregates `fmt`, `clippy` (ubuntu/macos/windows), `test`, `deny` (advisories/licenses/bans/sources), and `hakari drift` for the Rust workspace.
+- `frontend-summary` — aggregates the TypeScript/Svelte `check` pipeline (prettier, eslint, tsc, svelte-check) per Sec.12.2 and Sec.12.5.
+- `sbom-summary` — aggregates `cargo-cyclonedx` and `syft` SBOM emission (Sec.10.4, Sec.11.2).
+
+Each `*-summary` context runs with `if: always()` and `needs:` every real job in its workflow. It passes when each dependent job is either `success` or `skipped`, and fails on any `failure` or `cancelled`. Gating is handled by a per-workflow `detect-changes` job (`dorny/paths-filter@v3`) so that on docs-only PRs the real jobs skip and the summary still reports `success`. The summary names — not the individual job names — are listed in branch protection so path-filtered work does not leave required contexts permanently pending.
+
+`cargo deny` (license + advisory, Sec.10) and the per-language formatters/linters declared in Sec.12 are reached through `rust-summary` and `frontend-summary`; they are not separately listed as required contexts to avoid duplicate gating.
 
 Phase-0 exceptions: tests and evidence-tag-lint are advisory until the first `EV-DETERMINISM` baseline run passes. The exception is logged in a Phase-0-only waiver row.
 
