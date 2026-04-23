@@ -33,6 +33,7 @@
 # -----------------------------------------------------------------------------
 /app/authoring/                  @xjbutler @fletcher-hammond
 /app/library/                    @xjbutler @fletcher-hammond
+/app/shell/                      @xjbutler @fletcher-hammond
 /app/ui/                         @xjbutler @fletcher-hammond
 
 # -----------------------------------------------------------------------------
