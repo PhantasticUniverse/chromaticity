@@ -208,18 +208,26 @@ tree.
   uses `dorny/paths-filter` (or any action that hits the pulls REST API) in an in-job
   filter. The three per-workflow `*-summary` aggregators in `rust.yml` /
   `frontend.yml` / `sbom.yml` depend on this scope.
-- **Squash-merging a multi-commit PR inserts a `---------` divider** in the merge
-  commit body between each original commit's body. The divider terminates the
-  trailer zone and fails `scripts/trailer-check.sh` on the resulting main-side
-  commit. Short-term prescription: keep lane PRs single-commit — squash locally
-  via `git rebase -i` + fixup or `git reset --soft HEAD~N && git commit` before
-  push, so the PR presents as one commit and `gh pr merge --squash` produces a
-  clean trailer zone on main. Alternative: the repo's squash-merge template can
-  be changed (Settings → General → Squash merging → "Default to pull request
-  title and description") so the merge commit body uses the PR description
-  instead of concatenated commit messages, removing the divider entirely at the
-  cost of authors maintaining trailers in the PR body. Not adopted at time of
-  writing.
+- **Squash-merge commits compose from the PR title + PR body, NOT from concatenated
+  commit messages.** The repo setting (Settings → General → Squash merging) is
+  "Default to pull request title and description". Consequences for PR authors:
+  - The PR body becomes the main-side commit body verbatim.
+    `scripts/trailer-check.sh` validates `Signed-off-by` and `Profile-Impact`
+    on the main-side commit, so both trailers MUST live at the end of the PR
+    body (the `.github/pull_request_template.md` stub seeds them).
+  - `git interpret-trailers` only recognises a trailer block as the LAST
+    paragraph. Do not add prose after the Trailers section of a PR body; any
+    post-trailer content terminates the trailer zone and re-breaks
+    `trailer-check`.
+  - Branch commits are no longer constrained to single-commit-per-PR — the
+    old `---------` divider failure mode only arose when the squash template
+    concatenated commit messages, which is no longer the case. Branches can
+    carry however many commits are useful for review; only the merge commit's
+    shape matters for trailer-check.
+  - The branch-level commits themselves still need `Signed-off-by` (the `dco`
+    required-context validates every commit in the PR range, not just the
+    merge commit). Lefthook's pre-push `trailer-check` validates the branch
+    HEAD commit message.
 - **`gh pr update-branch` breaks DCO and `trailer-check`.** The command asks GitHub to
   update the PR branch from its base, which creates a SERVER-side merge commit signed
   only by GitHub (`GitHub <noreply@github.com>`, no `Signed-off-by`, no
