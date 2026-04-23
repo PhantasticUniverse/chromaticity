@@ -53,14 +53,21 @@ Until resolution:
 
 | Placeholder | Appears in | Activation dependency |
 |---|---|---|
-| `@xjbutler` (GitHub handle) | `CODEOWNERS`, `.github/CODEOWNERS` | GitHub org + handle confirmation |
-| `@fletcher-hammond` (GitHub handle) | `CODEOWNERS`, `.github/CODEOWNERS` | Deputy onboarding + handle confirmation |
+| ~~`@xjbutler` (GitHub handle)~~ | ~~`CODEOWNERS`, `.github/CODEOWNERS`~~ | ~~RESOLVED: 2026-04-23, commit `3cc163e` — replaced with real AO handle `@PhantasticUniverse`.~~ |
+| `@fletcher-hammond` (Deputy GitHub handle) | `CODEOWNERS` TODO header only (lines 18-36); omitted from every ownership entry until the real handle is confirmed | Deputy onboarding + handle confirmation. Follow-up `policy`-scoped PR will add the handle to every non-NON-DELEGABLE CODEOWNERS line and bump `required_approving_review_count` from 0 to 1. |
 
-Both handles are reserved in the governance documents even though
-Fletcher Hammond's Deputy onboarding is still in progress per
-`docs/23-decision-ownership-matrix.md`. If a handle changes during
-onboarding, a single `policy`-scoped PR updates `CODEOWNERS`,
-`.github/CODEOWNERS`, and this inventory in one commit.
+The AO handle `@xjbutler` was an aspirational identity used in planning
+documents; the real GitHub account is `@PhantasticUniverse` (email
+`xjbutler@gmail.com`). The substitution landed with the first
+branch-protection re-harden (PR #4, commit `3cc163e`).
+
+The Deputy handle remains deferred pending onboarding per
+`docs/23-decision-ownership-matrix.md`. CODEOWNERS carries AO-only
+entries with a TODO header documenting the follow-up PR that will add
+the Deputy handle and bump `required_approving_review_count` from 0 to
+1. A placeholder Deputy handle is intentionally NOT used: CODEOWNERS
+with a non-existent GitHub account silently disables code-owner review
+for matched paths.
 
 ## Signing key / certificate placeholders
 
