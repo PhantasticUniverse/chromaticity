@@ -6,33 +6,39 @@
 # docs/43-development-standards.md §15 and the evidence row in
 # docs/26-evidence-artifact-registry.md.
 #
-# Validates that every test in an evidence-producing subtree carries
-# an `#[evidence(...)]` tag referencing an EV-ID present in the
-# evidence registry. Runs as a required CI check (see
-# .github/workflows/evidence-tag-lint.yml) so the branch-protection
-# slot exists from Phase 1 onward.
+# Runs as a required CI check (see
+# .github/workflows/evidence-tag-lint.yml) from Phase 1 onward.
 #
-# Scope as of this script version:
+# Scope as of this script version (strict graduation):
 #
-#   - **Tier-marker parsing (strict, per §15.5 line 590):** every
-#     module-level `//! Evidence: EV-<ID>` doc comment MUST carry a
-#     `(T0)`, `(T1)`, or `(T2)` tier token. A tier-less tag fails
-#     the lint. Also emits a tier-distribution summary (count by
-#     EV-ID × tier) for ops visibility.
-#   - **Coverage (advisory stub):** the "every test in an evidence-
-#     producing subtree carries an evidence tag referencing a live
-#     EV-ID" check per §15.4 lines 582–583 lands with a subsequent
-#     script version (evidence-tag-lint graduation work package per
-#     docs/12 WP-N Outputs). Until then, the coverage body counts
-#     test sources and emits an advisory marker pointing at the
-#     graduation work.
+#   - **Tier-marker parsing (§15.5 line 590):** every module-level
+#     `//! Evidence: EV-<ID>` doc comment MUST carry a `(T0)`,
+#     `(T1)`, or `(T2)` tier token. A tier-less tag fails the lint.
+#     Also emits a tier-distribution summary for ops visibility.
+#   - **Coverage (§15.4 line 582):** every Rust test file under an
+#     evidence-producing subtree (`engine/**`, `integrations/**`)
+#     that declares a `#[test]` / `#[tokio::test]` function MUST
+#     contain at least one `//! Evidence:` declaration. Absent-tag
+#     files fail the lint. Per-test granularity (vs per-file) lands
+#     with the `#[evidence(...)]` attribute macro; the current
+#     per-file check is the Phase-1 transitional form.
+#   - **ID validity (§15.4 line 583):** every EV-ID cited in a
+#     module-level `//! Evidence:` tag MUST exist in docs/26. Typos
+#     and forgotten registry updates fail the lint.
 #
 # "Module-level" is identified heuristically by the doc-comment's
 # leading indentation: `//!` at column 0 is file-level narrative
-# describing the crate's evidence landscape and is NOT validated
-# (no tier expected); an indented `//!` sits inside a `mod { }`
-# block and is treated as the enclosing test module's evidence
-# declaration (tier required).
+# describing the crate's evidence landscape and is validated for
+# ID-presence only; an indented `//!` sits inside a `mod { }` block
+# and is the enclosing test module's declaration (tier required).
+#
+# Evidence-producing subtrees are the first-party engine and
+# integration crates: `engine/**` and `integrations/**`. App-shell
+# and workspace-hack are infrastructure and are not subject to the
+# coverage check. The per-test attribute macro form
+# (`#[evidence(...)]`) is reserved in §15.2 but not yet implemented;
+# when it ships, the escape hatch form `#[evidence(none = "…")]`
+# will be recognized here.
 #
 # No run: step consumes untrusted github.event.* input.
 
@@ -42,8 +48,21 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 
 fail=0
+registry="$repo/docs/26-evidence-artifact-registry.md"
 
-# --- Tier-marker parsing (strict) ---
+# --- Valid-EV-ID set (built from docs/26) ---
+
+if [ ! -f "$registry" ]; then
+    printf '[evidence-tag-lint] FAIL: registry missing at %s\n' "$registry"
+    exit 1
+fi
+
+valid_ids="$(
+    grep -oE 'EV-[A-Z][A-Z0-9_-]+' "$registry" \
+    | LC_ALL=C sort -u
+)"
+
+# --- Tier-marker parsing (strict, per §15.5 line 590) ---
 
 # Collect every indented `//! Evidence:` line across Rust sources,
 # skipping build / tooling dirs. Output format: <path>:<line-no>:<line>.
@@ -55,8 +74,6 @@ module_evidence_lines="$(
     || true
 )"
 
-# Tier-presence validation. An indented `//! Evidence:` line without a
-# `(T0)` / `(T1)` / `(T2)` token fails per §15.5 line 590.
 untiered="$(
     printf '%s\n' "$module_evidence_lines" \
     | grep -v '^$' \
@@ -75,8 +92,6 @@ if [ -n "$untiered" ]; then
     fail=1
 fi
 
-# Tier-distribution metadata. Emits a (count, EV-ID, tier) rollup so
-# ops can see at a glance which rows are claimed at which tiers.
 if [ -n "$module_evidence_lines" ]; then
     count="$(printf '%s\n' "$module_evidence_lines" | grep -v '^$' | wc -l | tr -d ' ')"
     printf '[evidence-tag-lint] Tier distribution across %s module-level evidence tag(s):\n' "$count"
@@ -88,35 +103,70 @@ if [ -n "$module_evidence_lines" ]; then
         done
 fi
 
-# --- Coverage (advisory stub — graduation work per docs/12 WP-N) ---
+# --- ID validity (per §15.4 line 583) ---
 
-rust_tests="$(
+# Collect every `//! Evidence:` line across Rust sources, including
+# file-level (column 0) narrative — both shapes cite EV-IDs that
+# must exist in docs/26.
+all_evidence_lines="$(
     find "$repo" \
         -type d \( -name target -o -name node_modules -o -name dist -o -name .git \) -prune \
         -o -type f -name '*.rs' -print 2>/dev/null \
-    | xargs grep -lE '^[[:space:]]*#\[(tokio::)?test\]' 2>/dev/null \
-    | wc -l \
-    | tr -d ' '
+    | xargs grep -nHE '^[[:space:]]*//! Evidence:' 2>/dev/null \
+    || true
 )"
 
-ts_tests="$(
-    find "$repo" \
-        -type d \( -name target -o -name node_modules -o -name dist -o -name .git \) -prune \
-        -o -type f \( -name '*.test.ts' -o -name '*.spec.ts' \) -print 2>/dev/null \
-    | wc -l \
-    | tr -d ' '
-)"
+unknown_refs=""
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    # Extract every EV-<ID> reference on this line. A single `//!`
+    # tag line may cite multiple IDs (e.g. a two-row aliased claim).
+    refs="$(printf '%s\n' "$line" | grep -oE 'EV-[A-Z][A-Z0-9_-]+' || true)"
+    while IFS= read -r ref; do
+        [ -z "$ref" ] && continue
+        if ! printf '%s\n' "$valid_ids" | grep -qxF "$ref"; then
+            unknown_refs="$(printf '%s\n  %s  (cites %s)\n' "$unknown_refs" "$line" "$ref")"
+        fi
+    done <<EOF
+$refs
+EOF
+done <<EOF
+$all_evidence_lines
+EOF
 
-total=$(( rust_tests + ts_tests ))
+if [ -n "$unknown_refs" ]; then
+    printf '[evidence-tag-lint] FAIL: evidence tag(s) cite unknown EV-ID(s):\n'
+    printf '%s\n' "$unknown_refs" | grep -v '^$'
+    printf '[evidence-tag-lint]        Every cited EV-ID must appear in\n'
+    printf '[evidence-tag-lint]        docs/26-evidence-artifact-registry.md. Fix the typo\n'
+    printf '[evidence-tag-lint]        or add the row to the registry via a docs(policy) PR.\n'
+    fail=1
+fi
 
-if [ "$total" -eq 0 ]; then
-    printf '[evidence-tag-lint] Coverage stub: no test sources yet (rust=%s, ts=%s).\n' \
-        "$rust_tests" "$ts_tests"
-else
-    printf '[evidence-tag-lint] Coverage stub: %s test file(s) present (rust=%s, ts=%s);\n' \
-        "$total" "$rust_tests" "$ts_tests"
-    printf '[evidence-tag-lint]                strict #[evidence(...)] coverage check pending\n'
-    printf '[evidence-tag-lint]                per docs/43 §15.4 + docs/26 EV-EVIDENCE-TAG-COVERAGE.\n'
+# --- Coverage (per §15.4 line 582) ---
+
+uncovered=""
+while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    if grep -qE '^[[:space:]]*#\[(tokio::)?test\]' "$file" 2>/dev/null; then
+        if ! grep -qE '^[[:space:]]*//! Evidence:' "$file" 2>/dev/null; then
+            uncovered="$(printf '%s\n  %s\n' "$uncovered" "$file")"
+        fi
+    fi
+done <<EOF
+$(find "$repo/engine" "$repo/integrations" \
+    -type d \( -name target -o -name node_modules -o -name dist -o -name .git \) -prune \
+    -o -type f -name '*.rs' -print 2>/dev/null)
+EOF
+
+if [ -n "$uncovered" ]; then
+    printf '[evidence-tag-lint] FAIL: test file(s) without any //! Evidence: tag:\n'
+    printf '%s\n' "$uncovered" | grep -v '^$'
+    printf '[evidence-tag-lint]        Every Rust source under engine/** or integrations/**\n'
+    printf '[evidence-tag-lint]        that declares a #[test] / #[tokio::test] function\n'
+    printf '[evidence-tag-lint]        must carry at least one //! Evidence: declaration\n'
+    printf '[evidence-tag-lint]        (module-level inside the test module, or file-level).\n'
+    fail=1
 fi
 
 if [ "$fail" -ne 0 ]; then
