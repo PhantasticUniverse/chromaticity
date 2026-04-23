@@ -21,21 +21,31 @@
 //! - **Slice 1** — canonical-model module topology reserved;
 //!   always-`Ok(())` validator stub; schema fields `pub(crate)` and
 //!   no serde derives.
-//! - **Slice 2 (this PR)** — real validator, CP-01 coercion, typed
-//!   control declarations, serde derives (derive-only). Schema
-//!   fields remain `pub(crate)`; the `.chroma` wire format is NOT
-//!   frozen.
-//! - **Slice 3 (next)** — `.chroma` wire-format deserializer, full
-//!   symbol-catalog loader over `docs/36`, scene-lint harness
-//!   emitting the [`lint::Warning`] taxonomy outside the validate
-//!   path, and the first external reader that opens schema field
-//!   visibility.
+//! - **Slice 2** — real validator, CP-01 coercion, typed control
+//!   declarations, serde derives (derive-only). Schema fields
+//!   remained `pub(crate)`; no wire-format freeze.
+//! - **Slice 3a (this PR)** — `scene.json` wire-format freeze against
+//!   `docs/02-synesthesia-contracts.md` §Observed root keys + §Observed
+//!   control keys + §2 Multipass, schema field visibility widened from
+//!   `pub(crate)` to `pub`, and a minimal `serde_json`-backed loader
+//!   ([`loader::parse_scene_json`] / [`loader::load_scene_json`]). Per
+//!   `docs/22-compatibility-versioning-policy.md` §Version Axes
+//!   scene-schema row, further non-additive wire changes now require a
+//!   `compat!` profile bump.
+//! - **Slice 4 (next)** — structured parsing of `HARD_TRANSITIONS` /
+//!   `SMOOTH_TRANSITIONS` per `docs/02` §15, `.chromaPack` zip transport,
+//!   `script.js` / `main.glsl` / `images/` pairing, the full
+//!   `docs/36-reactive-symbol-catalog.md` loader, and the scene-lint
+//!   harness emitting the [`lint::Warning`] taxonomy outside the
+//!   validate path.
 //!
 //! Produces evidence for `EV-SCENE-IMPORT` (T0 placeholder retained
 //! in `validator::ctor_placeholder`; T1 drift pins in
-//! `validator::drift_pins`) and `EV-SCHEMA-LINT` (T0 variant
-//! constructibility in `lint::drift_pins` — first claim against the
-//! row anywhere in the tree).
+//! `validator::drift_pins` and `loader::loader_drift_pins`, the
+//! latter added in slice-3a ahead of the C-α2 T2 on-disk corpus
+//! harness that advances `docs/26` row 23 past `pending:artifact`)
+//! and `EV-SCHEMA-LINT` (T0 variant constructibility in
+//! `lint::drift_pins`).
 //!
 //! Governing ADRs:
 //!
@@ -47,5 +57,6 @@
 //! Symbol source of truth: `docs/36-reactive-symbol-catalog.md`.
 
 pub mod lint;
+pub mod loader;
 pub mod schema;
 pub mod validator;
