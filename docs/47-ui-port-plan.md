@@ -22,6 +22,8 @@ The target stack per ADR-018:
 
 Related: gap audit `44-ux-bundle-gap-audit.md`, token mapping `45-design-token-mapping.md`, a11y audit `46-ux-bundle-a11y-color-audit.md`, open-question ledger `48-ux-bundle-open-questions-routing.md`.
 
+MVP entitlement enforcement is **watermark-only** per `adr/ADR-009-activation-and-entitlements.md` Sec.Capability namespace: only `render.watermark.off` is evaluated at runtime in MVP, and the watermark is drawn on the scene canvas by the Rust rendering backend (not by the non-scene UI). Capability-gated affordances that are **not** watermark-enforced must remain **visible and functional** in the MVP UI — they are not locked, muted, or hidden. See `50-ux-bundle-entitlement-surface-scope.md` §2.2 for the dormant-at-MVP capability posture; post-MVP SKUs activate additional capability-lock styling as a data/config rollout, not a UI rewrite.
+
 ## 2. Repository layout (post-port)
 
 The Phase 1 repository skeleton aligns with the CODEOWNERS subtree layout in
@@ -244,7 +246,7 @@ Each row maps a JSX-mock file / component to its Svelte 5 destination. Interacti
 | `views/media.jsx` | `views/media/+view.svelte` | Asset browser, collections |
 | `views/midi.jsx` | `views/midi/+view.svelte` | MidiLearnWaveform / MidiHistoryStrip. Full device-allowlist, MIDI-CONF-16..20 rows, BPM-sync (§"MIDI view scope expansion" below). Semantic `<table>` for mapping rows (A-01). |
 | `views/osc.jsx` | `views/osc/+view.svelte` | Full OSC Operator Settings Panel per `08-io-integrations.md` §OSC Operator Settings Panel Contract (O-01 through O-17). Semantic `<table>`. |
-| `views/import.jsx` | `views/import/+view.svelte` | Shadertoy accepted; ISF rejected with diagnostic copy per L-05 |
+| `views/import.jsx` | `views/import/+view.svelte` | Native scene-package inputs are `.chroma` (directory) and `.chromaPack` (archive) per `38-scene-library-and-import-spec.md` §Package formats. Shadertoy accepted via on-import conversion to `.chroma` per the same spec; conversion diagnostics surface in the import view. ISF rejected with diagnostic copy per L-05. |
 | `views/patch.jsx` | `views/patch/+view.svelte` | Keyboard nav between nodes / pins per A-09 |
 | `views/settings.jsx` | `views/settings/+view.svelte` | Hosts Hotkeys / OSC / MIDI subpanels |
 | `views/onboard.jsx` | `views/welcome/+view.svelte` | First-run / changelog |
@@ -367,6 +369,12 @@ Types are defined in their owning domain crate and re-exported (or type-aliased)
 | `SymbolCatalogEntry`, `SymbolKind`, `SymbolRange` | `engine/scene` | Editor hover-doc, Inputs Inspector |
 | `ChromaShowRef`, `ChromaPackageRef`, `ChromaPackKind` | `engine/scene` | Open / Save / Export |
 
+`ChromaPackKind` distinguishes the two native scene-package forms per `38-scene-library-and-import-spec.md` §Package formats: `.chroma` (directory) and `.chromaPack` (archive). Both surface through the same Open / Save / Export flow.
+
+`OscRoute` enumerates the canonical OSC route surface per `08-io-integrations.md` §OSC Planning Contract. The Snap apply route is the canonical `/favslots/{n}` (explicit `apply`; **not** `/favslots/{n}/apply`), with `/favslots/{n}/save` and `/favslots/{n}/clear` on the save / clear suffixes; the legacy `/favslots/{n} {mode}` string-argument form is accepted only as a `compat-syn-v1` alias, never rendered as canonical in the OSC panel.
+
+`OscSettings` carries an `OscNetworkExposure` field that defaults to **Loopback only** (`127.0.0.1` inbound bind) per `adr/ADR-013-networking-defaults-and-security.md` §1 Bind defaults and `08-io-integrations.md` §OSC Operator Settings Panel Contract. Exposing OSC on a routable interface is an explicit operator opt-in; the UI must not render `0.0.0.0` as a default. The panel surfaces the three-option radio (Loopback only / Local subnet / Allowlisted IPs) the contract specifies, with Loopback preselected on first run.
+
 ### 7.2. Build pipeline
 
 1. `cargo build --release` in `app/shell/` triggers `build.rs`.
@@ -472,8 +480,8 @@ Port work lands inside Phase 1 implementation, not before bundle v0.2-beta. Exec
 | Sequence step | Dependency posture | Exit criteria |
 |---|---|---|
 | S1. Tauri 2 + Svelte 5 scaffold + token surface | Start here | `src/` builds under Vite; `app/shell/` launches; token CSS custom properties compile; Pulse theme renders an empty shell. |
-| S2. Primitives port | After S1 | All `lib/primitives/*.svelte` ported with ARIA + keyboard complete per §4.1. Axe-core fixture (single view + primitives) passes. |
-| S3. Shell + Topbar + Rail + StatusBar + HotkeyOverlay | After S2 | `lib/hud/*.svelte` complete with adapter-health taxonomy wired to Rust stub events. |
+| S2. Primitives port | After S1 | All `lib/primitives/*.svelte` ported with ARIA + keyboard complete per §4.1. Axe-core fixture (single view + primitives) passes. Focus-trap primitive in `lib/a11y/` ready for dialog consumers (screenshot modal, license panel, entitlement-locked navigation). |
+| S3. Shell + Topbar + Rail + StatusBar + HotkeyOverlay | After S2 | `lib/hud/*.svelte` complete with adapter-health taxonomy wired to Rust stub events. Command-palette action registry scaffolded (action contract per `46-ux-bundle-a11y-color-audit.md` a11y matrix when it lands); keyboard-only navigation tour defined through Rail + Topbar + HotkeyOverlay. |
 | S4. Perform / Library / Playlist views | After S3 | Three views functional against stub Rust core; Snap bar with 16 slots; transition shape catalog wired. |
 | S5. Scene editor + CodeMirror 6 + Inputs Inspector | After S4 | Editor with GLSL / JS / JSON modes; symbol completion + hover-doc from catalog; diagnostics; live-reload indicator. NFR-10 latency measurement passes on GPU-A baseline. |
 | S6. OSC + MIDI settings panels (full 20+ row per gap audit) | After S4 (parallel with S5 allowed) | `EV-UX-OSC-SETTINGS-CONTRACT` + `EV-UX-MIDI-SETTINGS-CONTRACT` behaviour complete. |
