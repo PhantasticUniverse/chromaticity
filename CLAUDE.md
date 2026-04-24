@@ -260,6 +260,17 @@ tree.
     required-context validates every commit in the PR range, not just the
     merge commit). Lefthook's pre-push `trailer-check` validates the branch
     HEAD commit message.
+  - **`trailer-check` has three firing points, not two.** The PR-event job in
+    `.github/workflows/policy.yml` (a) range-walks branch commits AND (b)
+    reconstructs the synthesised squash body from `PR_TITLE + "\n\n" + PR_BODY`
+    and pipes it through `scripts/trailer-check.sh --stdin`. The (b) step is
+    the one that catches a PR body that bypassed `.github/pull_request_template.md`
+    and omits Profile-Impact — branch-commit trailers DO NOT survive squash-
+    merge, so (a) alone will pass on a bad-body PR. The third firing point is
+    the `push`-to-`main` backstop on HEAD; a red status there indicates either
+    a parser regression or a PR that bypassed (b), and is remediated with a
+    forward-looking fix commit (branch protection disallows history rewrite of
+    `main`). PR #83 / merge `09a067d` motivated adding step (b).
 - **`gh pr update-branch` breaks DCO and `trailer-check`.** The command asks GitHub to
   update the PR branch from its base, which creates a SERVER-side merge commit signed
   only by GitHub (`GitHub <noreply@github.com>`, no `Signed-off-by`, no

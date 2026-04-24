@@ -147,6 +147,12 @@ Risk: R-<NN>
 - `Profile-Impact` trailer is enforced by a custom check; absence blocks merge.
 - `ADR:` and `Evidence:` trailers are enforced only when the PR labels include `architecture` (Sec.16).
 
+The `trailer-check` required context fires at three distinct points:
+
+1. **PR-event, range-walk.** Every feature-branch commit in `base..head` is validated individually so rebased / fixup commits retain their trailers.
+2. **PR-event, synthesised squash body.** The repo's squash template (Settings → General → Squash merging → "Default to pull request title and description", confirmed by `gh api repos/.../squash_merge_commit_message == "PR_BODY"`) composes the main-side commit body from the PR title and PR body. Branch-commit trailers do NOT survive the squash. The workflow reconstructs `PR_TITLE + "\n\n" + PR_BODY` and pipes it through `scripts/trailer-check.sh --stdin` so a PR body missing `Profile-Impact` or `Signed-off-by` is caught during the review window rather than leaking to `main`. PR #83 (merge commit `09a067d`) is the motivating incident.
+3. **`push`-to-`main`, HEAD.** Defense-in-depth backstop: validates the main-side squash commit after it lands. A red result here is a symptom of either a parser regression or a PR that bypassed point (2), and motivates a forward-looking remediation PR rather than a revert (the backstop is forward-looking; main history is not rewritten).
+
 ### 4.7 Rejected alternatives
 
 - **Gitmoji / emoji-led commits** — rejected: not machine-readable for changelog automation and pollutes clean-room provenance records.
@@ -300,13 +306,30 @@ The table omits the AO-local partitions (`chromaticity-planning/` and `Contents/
 - **Location authority:** `/CODEOWNERS` must exist and `.github/CODEOWNERS` / `docs/CODEOWNERS` must not exist.
 - **Parser/owner validity:** GitHub's `GET /repos/{owner}/{repo}/codeowners/errors?ref=<head-sha>` endpoint must report zero errors.
 
-When the parser check fails, triage from the emitted workflow annotations:
+#### 8.1.1 Parser-failure triage runbook
 
-- malformed glob/pattern syntax
-- unknown or non-resolvable owner token
-- invalid line/column mapping in the source file
+When the `Validate CODEOWNERS via GitHub parser` step fails, the failing ref (the PR head SHA, or the merge-group head SHA, or — on `push` — `github.sha`) is printed in the annotation. Reproduce locally before editing:
 
-Treat this as a merge-blocking policy failure; do not bypass by removing required contexts.
+```
+gh api \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/codeowners/errors?ref=<head-sha>" \
+  | jq '.errors[] | {line: .source.line, col: .source.column, kind, message, suggestion}'
+```
+
+Each `.errors[]` entry carries the token `kind` (the parser's structural class), a human-readable `message`, an optional `suggestion`, and `source.line`/`source.column` pinning the offending line in the `CODEOWNERS` file at the named ref. The emitted `kind` values and their remediations:
+
+| `kind`                                   | Root cause                                                                                                              | Fix                                                                                                                                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Invalid owner format`                   | Owner token lacks the `@`-prefix, or uses a raw e-mail where a `@user` / `@org/team` is required.                       | Replace with `@user`, `@org/team`, or a verified-e-mail form `username@example.com` registered to a GitHub account.                                                            |
+| `Unknown owner` / `owner_no_push_access` | The `@user` or `@org/team` exists but has no push access to the repo (or is not a repo collaborator / team member).     | Add the user/team as a repo collaborator (Settings → Access), OR remove the pattern, OR replace with an owner that has push access. Do not invite purely to silence the lint. |
+| `Invalid pattern` / `Too short pattern`  | Glob syntax violates GitHub's CODEOWNERS pattern grammar — usually `**` misuse, a negation (`!`) at line start (unsupported), or a leading-slash omission. | Rewrite with explicit `/` anchors; GitHub's grammar is stricter than `.gitignore`. `docs/43` patterns have been shaken-out; use them as templates.                             |
+| `Too many owners`                        | Single rule exceeds the 3-owner cap per rule (GitHub limit).                                                            | Split the subtree into narrower rules each with ≤3 owners, or move a deputy to the 8.2 independent-review channel instead of CODEOWNERS.                                      |
+| `Not located at`                         | GitHub is resolving a file at `.github/CODEOWNERS` or `docs/CODEOWNERS` ahead of `/CODEOWNERS`.                         | Delete the non-root copy; `codeowners-location` already gates against this but the parser reports it here as well.                                                            |
+| `File not found`                         | The `ref=<sha>` parameter does not resolve a `CODEOWNERS` file at that commit.                                          | Confirm the ref exists on the default branch or in the PR's head commit tree; on merge_group the ref is `merge_group.head_sha`.                                               |
+
+Treat this as a merge-blocking policy failure; do not bypass by removing the required context. Edits to `CODEOWNERS` are a `policy`-scoped change (serial-list per `CLAUDE.md` "Agent parallelism playbook") — land them alone, not as part of an unrelated subtree PR.
 
 Planning docs, ADRs, and legal-surface files are AO-only: the Deputy cannot self-merge changes to them even under T1. T2 transfers most of this authority to the Acting AO per `23-...md`, with the following **legal-baseline carve-out** that remains non-delegable at T2 and may transition only at T3:
 
@@ -336,6 +359,85 @@ When a PR author and the CODEOWNERS-listed primary reviewer are the same person,
   - **GPG** (long-lived key, uploaded to GitHub). Accepted as fallback for local development without network at commit time.
   - **SSH signing** (`gpg.format = ssh`). Accepted.
 - Feature-branch commits need not be signed, but the final squash-merge commit on `main` is signed either by the author or by the merge automation on the author's behalf (signed attestations preserved either way).
+
+#### 9.1.1 Contributor onboarding (one-time setup)
+
+Pick one signing method and register it with GitHub once per workstation. The `signed-commits` required context parses each commit's `.commit.verification` block from the GitHub API and blocks merge when `verified == false` OR `reason != "valid"`. The **`unknown_key`** failure class is the most common onboarding pitfall: it means the commit was signed with a key the contributor's GitHub account has not published, so GitHub cannot confirm the signer identity. The remediation is always to publish the public key (or the Sigstore identity) under the contributor's GitHub account and re-push a new signed commit; you cannot retroactively verify an already-pushed commit.
+
+**Sigstore gitsign (preferred)** — no key material to manage:
+
+```
+brew install sigstore/tap/gitsign              # macOS
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+git config --global gpg.x509.program gitsign
+git config --global gpg.format x509
+git config --global gitsign.connectorID https://github.com/login/oauth
+```
+
+Every `git commit` opens a browser tab for OIDC; the Fulcio-issued certificate binds your GitHub identity to the signature and the signature is recorded to Rekor. GitHub's verification API automatically trusts the Sigstore chain, so no key upload is required. `reason == "valid"` on first push.
+
+**SSH signing** — least friction for contributors already carrying an SSH auth key:
+
+```
+ssh-keygen -t ed25519 -C "chromaticity-signing" -f ~/.ssh/id_ed25519_signing
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519_signing.pub
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+```
+
+Upload `~/.ssh/id_ed25519_signing.pub` to <https://github.com/settings/ssh/new> with **Key type: Signing Key** (NOT authentication — GitHub separates the two; uploading under the wrong type yields `unknown_key` even though `ssh-keygen -Y verify` succeeds locally).
+
+**GPG** — long-lived key, fallback when network at commit time is unavailable:
+
+```
+gpg --full-generate-key                        # choose ED25519, no expiry on personal workstation acceptable
+gpg --list-secret-keys --keyid-format=long
+git config --global user.signingkey <LONG-KEY-ID>
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+gpg --armor --export <LONG-KEY-ID>
+```
+
+Paste the armored block into <https://github.com/settings/gpg/new>. The e-mail associated with the GPG UID MUST match the `user.email` in git config AND MUST be marked **verified** at <https://github.com/settings/emails> — an unverified e-mail yields `bad_email` on the verification API response even though the signature itself is valid.
+
+#### 9.1.2 Verification checklist (local + remote)
+
+Run both halves before opening a PR. A commit that passes locally but fails the API check is the `unknown_key` class.
+
+**Local (git recognises the signature):**
+
+```
+git log -1 --show-signature
+# Expect "Good signature from" (gitsign / GPG) or "Good ... signature" (SSH).
+# A "No signature" result means commit.gpgsign is off or the signer program
+# is misconfigured; fix before pushing.
+```
+
+**Remote (GitHub recognises the key and binds it to the signer identity):**
+
+```
+gh api \
+  repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/commits/$(git rev-parse HEAD) \
+  --jq '.commit.verification'
+# Expect: {"verified": true, "reason": "valid", "signature": "...", "payload": "..."}
+```
+
+The `reason` field is the single source of truth for what the `signed-commits` required check will decide. The taxonomy and remediations:
+
+| `reason`                | Meaning                                                                                     | Remediation                                                                                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `valid`                 | Signature OK and signer is bound to a GitHub identity.                                      | Proceed.                                                                                                                                                                                |
+| `unsigned`              | No signature on the commit.                                                                 | Enable `commit.gpgsign true` for the chosen method; amend + force-push-with-lease on the feature branch (never on `main`).                                                              |
+| `unknown_key`           | Signature is well-formed but the signing key is not registered to the committer's account. | For SSH, confirm the key is uploaded under **Signing Key** type (not Authentication). For GPG, confirm the armored export was pasted at `/settings/gpg/new`. For gitsign, confirm the OIDC identity matches `user.email`. Amend + force-push-with-lease after fixing. |
+| `bad_email`             | Committer e-mail does not match any verified e-mail on the signer's GitHub account.        | Add and verify the e-mail at <https://github.com/settings/emails>, OR set `git config user.email` to an already-verified one. Amend + force-push-with-lease.                           |
+| `unverified_email`      | Committer e-mail is claimed by a user but not verified.                                    | Verify via the confirmation link GitHub e-mails; no commit re-sign needed, the API re-resolves on next fetch.                                                                          |
+| `no_user`               | Committer e-mail cannot be resolved to any GitHub user.                                    | Same as `bad_email` — use a verified-on-account e-mail for `user.email`.                                                                                                               |
+| `malformed_signature`   | Signature bytes are truncated or corrupt.                                                  | Re-sign (new commit); the underlying cause is almost always a misconfigured signer program.                                                                                            |
+| `expired_key`           | GPG/SSH key has passed its declared expiry.                                                | Generate a new key, upload it, update `user.signingkey`, re-sign.                                                                                                                      |
+
+Re-signing requires amending the commit locally and force-pushing with lease (`git push --force-with-lease=<branch>:<old-sha>`) to the feature branch. Do NOT force-push to `main` — branch protection disallows it and the `signed-commits` check is forward-looking (a future clean push is sufficient; historical failures on `main` remain as red marks on that specific commit and do not block subsequent work).
 
 ### 9.2 DCO sign-off
 

@@ -164,6 +164,38 @@ jobs:
           done < <(git rev-list "$BASE_SHA..$HEAD_SHA")
           exit "$fail"
 
+      # Pre-merge validation of the synthesised squash-merge commit
+      # body on pull_request events. The repo's squash template is
+      # "Default to pull request title and description" (confirmed
+      # via `gh api repos/.../.squash_merge_commit_message` ==
+      # `PR_BODY`), so the main-side commit body equals PR_BODY
+      # verbatim with PR_TITLE as subject. Branch-commit trailers do
+      # NOT survive the squash, so the range-walker above passes even
+      # when the PR body carries no trailers at all. This step
+      # reconstructs what will actually land on main and validates it
+      # through the same trailer-check codepath so a missing
+      # Profile-Impact or Signed-off-by is caught during the PR review
+      # window rather than surfacing post-merge on the push-to-main
+      # backstop below. PR #83 (merge commit 09a067d) is the
+      # motivating incident: the PR body omitted Profile-Impact,
+      # the range-walker passed, and `Validate HEAD on push to main`
+      # failed after merge — leaving a red status on main's history
+      # for a class of failure that belongs pre-merge.
+      #
+      # Untrusted-payload handling: PR_TITLE and PR_BODY are bound to
+      # step-level env: entries and consumed only via `printf '%s'`
+      # (never interpolated into command text), matching the
+      # workflow-wide convention stated at the top of this file.
+      - name: Validate synthesised squash-merge body on pull_request
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -eu
+          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" \
+            | bash scripts/trailer-check.sh --stdin
+
       # Defense-in-depth on main-side commits. The squash-merge
       # commit body = PR body verbatim under the repo's squash
       # template, but multi-commit PRs pick up an auto-injected
@@ -172,7 +204,8 @@ jobs:
       # a bad shape slip would otherwise accumulate silently on
       # main; this step catches at merge time rather than on the
       # next PR that hits trailer-check. f6de2f5 motivated this
-      # gap-close.
+      # gap-close; 09a067d (PR #83) motivated the PR-event
+      # synthesised-body step above that now fires BEFORE merge.
       - name: Validate HEAD on push to main
         if: github.event_name == 'push'
         run: bash scripts/trailer-check.sh HEAD
