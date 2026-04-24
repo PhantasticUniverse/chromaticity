@@ -35,6 +35,7 @@
 use core::net::{IpAddr, SocketAddr};
 use std::net::UdpSocket;
 
+use chromaticity_observability::catalog::OscPacketOutcome;
 use rosc::{OscPacket, decoder};
 
 use crate::defaults::{DEFAULT_INBOUND_BIND, DEFAULT_MAX_BUNDLE_DEPTH, DEFAULT_MAX_PACKET_BYTES};
@@ -151,10 +152,44 @@ pub trait OscAdapter {
 /// configured list. The T1 pin [`empty_allowlist_blocks_all`]
 /// asserts the default-constructed adapter carries no allowlist
 /// entries.
+///
+/// Per-outcome packet-disposition counters are maintained in-memory
+/// and exposed via [`UdpOscAdapter::packet_outcome_count`]. This is
+/// the interim observable for the
+/// `chromaticity_osc_inbound_packets_total` emission site declared
+/// in `docs/31-supportability-privacy-ops-policy.md`; slice-3 will
+/// route each outcome through the runtime bus via
+/// `chromaticity_observability::catalog::MetricEvent::OscInboundPackets`
+/// and reduce this adapter-local table to a bus-side counter. The
+/// counter vocabulary matches [`OscPacketOutcome`]; only the three
+/// variants reachable in slice-2 (`Accepted`, `OversizedDropped`,
+/// `ParseError`) are ever incremented here. `AllowlistRejected` and
+/// `RateLimitedDropped` stay pinned at 0 until the allowlist and
+/// rate-limit slice lands.
 pub struct UdpOscAdapter {
     socket: Option<UdpSocket>,
     recv_buf: Vec<u8>,
     allowlist: Vec<IpAddr>,
+    outcome_counts: PacketOutcomeCounts,
+}
+
+/// Per-[`OscPacketOutcome`] packet counter storage for
+/// [`UdpOscAdapter`].
+///
+/// Laid out as named `u64` fields (one per outcome variant) rather
+/// than a map so the compiler sees the full key set and external
+/// callers cannot accidentally depend on the storage shape.
+/// [`OscPacketOutcome`] is `#[non_exhaustive]` across the crate
+/// boundary, so the getter [`UdpOscAdapter::packet_outcome_count`]
+/// keeps a wildcard arm for future variants that slice-2 has not
+/// been taught to produce.
+#[derive(Debug, Default)]
+struct PacketOutcomeCounts {
+    accepted: u64,
+    oversized_dropped: u64,
+    allowlist_rejected: u64,
+    rate_limited_dropped: u64,
+    parse_error: u64,
 }
 
 impl UdpOscAdapter {
@@ -169,6 +204,7 @@ impl UdpOscAdapter {
             socket: None,
             recv_buf: vec![0u8; DEFAULT_MAX_PACKET_BYTES],
             allowlist: Vec::new(),
+            outcome_counts: PacketOutcomeCounts::default(),
         }
     }
 
@@ -182,6 +218,64 @@ impl UdpOscAdapter {
     #[must_use]
     pub fn allowlist_is_empty(&self) -> bool {
         self.allowlist.is_empty()
+    }
+
+    /// Bound local socket address, or `None` if the adapter is
+    /// currently unbound.
+    ///
+    /// Exposes the OS-assigned ephemeral port when [`bind`] was
+    /// invoked with port 0, so integration-style tests can target
+    /// the adapter from a peer `UdpSocket`.
+    ///
+    /// [`bind`]: OscAdapter::bind
+    #[must_use]
+    pub fn local_addr(&self) -> Option<SocketAddr> {
+        self.socket.as_ref().and_then(|s| s.local_addr().ok())
+    }
+
+    /// Current count of packets that [`poll`] mapped to the given
+    /// [`OscPacketOutcome`] since this adapter was constructed.
+    ///
+    /// Slice-2 maintains the counter table inside the adapter;
+    /// slice-3 will replace this in-memory state with a
+    /// `MetricEvent::OscInboundPackets` emission through the
+    /// runtime bus (the mapping from [`OscAdapterError`] to
+    /// [`OscPacketOutcome`] is the same on both sides, so the
+    /// observed counts stay equivalent across the transition).
+    ///
+    /// The wildcard arm covers future [`OscPacketOutcome`]
+    /// variants — the enum is `#[non_exhaustive]` across the
+    /// crate boundary — which slice-2 has not been taught to
+    /// produce; any such variant reads as 0.
+    ///
+    /// [`poll`]: OscAdapter::poll
+    #[must_use]
+    pub fn packet_outcome_count(&self, outcome: OscPacketOutcome) -> u64 {
+        match outcome {
+            OscPacketOutcome::Accepted => self.outcome_counts.accepted,
+            OscPacketOutcome::OversizedDropped => self.outcome_counts.oversized_dropped,
+            OscPacketOutcome::AllowlistRejected => self.outcome_counts.allowlist_rejected,
+            OscPacketOutcome::RateLimitedDropped => self.outcome_counts.rate_limited_dropped,
+            OscPacketOutcome::ParseError => self.outcome_counts.parse_error,
+            _ => 0,
+        }
+    }
+
+    /// Increment the counter for `outcome` by one.
+    ///
+    /// Unknown variants (future `#[non_exhaustive]` additions) are
+    /// ignored rather than panicked on; slice-3 teaches the
+    /// adapter to produce them explicitly when the allowlist /
+    /// rate-limit paths land.
+    fn record_outcome(&mut self, outcome: OscPacketOutcome) {
+        match outcome {
+            OscPacketOutcome::Accepted => self.outcome_counts.accepted += 1,
+            OscPacketOutcome::OversizedDropped => self.outcome_counts.oversized_dropped += 1,
+            OscPacketOutcome::AllowlistRejected => self.outcome_counts.allowlist_rejected += 1,
+            OscPacketOutcome::RateLimitedDropped => self.outcome_counts.rate_limited_dropped += 1,
+            OscPacketOutcome::ParseError => self.outcome_counts.parse_error += 1,
+            _ => (),
+        }
     }
 }
 
@@ -213,16 +307,31 @@ impl OscAdapter for UdpOscAdapter {
         let Some(socket) = self.socket.as_ref() else {
             return Ok(());
         };
-        match socket.recv_from(&mut self.recv_buf) {
-            Ok((len, _src_addr)) => {
-                // Slice-2 parses and validates but drops the packet;
-                // slice-3 routes it via the hub-facing event channel.
-                let _ = validate_packet(&self.recv_buf[..len]);
-                Ok(())
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(()),
-            Err(e) => Err(OscAdapterError::RecvFailed(e)),
-        }
+        let (len, _src_addr) = match socket.recv_from(&mut self.recv_buf) {
+            Ok(pair) => pair,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => return Ok(()),
+            Err(e) => return Err(OscAdapterError::RecvFailed(e)),
+        };
+        // Slice-2 parses and validates but drops the packet;
+        // slice-3 routes it via the hub-facing event channel.
+        //
+        // The per-outcome counter updated below is the interim
+        // observable for `chromaticity_osc_inbound_packets_total`
+        // (docs/31) — it exposes packet disposition without
+        // anticipating the event-channel shape. `BundleDepthExceeded`
+        // and `MalformedPacket` both fold into `ParseError`; the
+        // catalog's `OscPacketOutcome` enum has no depth-specific
+        // variant, so `ParseError` is the nearest per-slice-2 fit
+        // (any non-oversize `validate_packet` error lands here, which
+        // also fences future `OscAdapterError` variants the
+        // allowlist / rate-limit slice may introduce).
+        let outcome = match validate_packet(&self.recv_buf[..len]) {
+            Ok(_) => OscPacketOutcome::Accepted,
+            Err(OscAdapterError::OversizedPacket { .. }) => OscPacketOutcome::OversizedDropped,
+            Err(_) => OscPacketOutcome::ParseError,
+        };
+        self.record_outcome(outcome);
+        Ok(())
     }
 }
 

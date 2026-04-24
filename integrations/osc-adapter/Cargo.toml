@@ -37,6 +37,15 @@ workspace = true
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
+# chromaticity-observability owns the canonical `OscPacketOutcome`
+# label-enum mirroring docs/31 §Scheme and Metric Catalog. The OSC
+# adapter imports this enum so the in-adapter packet-outcome counter
+# keys off the same vocabulary the slice-3 runtime-bus wiring will
+# route through `MetricEvent::OscInboundPackets`. Slice-2 does NOT
+# depend on any other observability surface (no `MetricSink`, no
+# emitter types); adding those couplings is a slice-3 concern.
+chromaticity-observability = { path = "../../engine/observability" }
+
 # rosc 0.10 is the OSC 1.0 codec backing the Phase-1 slice-2 UDP
 # packet-receive loop. License MIT OR Apache-2.0 (allow-listed in
 # deny.toml). Slice-2 uses the decoder only; the encoder path
