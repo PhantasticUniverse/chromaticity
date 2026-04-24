@@ -3,15 +3,15 @@
 
 //! Chromaticity engine runtime.
 //!
-//! Phase-1 slice-2. Exposes the canonical state core
-//! ([`state`]) with its ADR-004 §Decision placeholder sub-stores and
+//! Phase-1 slice-3a. Exposes the canonical state core
+//! ([`state`]) with minimal ADR-004 §Decision sub-stores and
 //! the command-bus surface ([`command_bus`]): typed [`Command`] and
 //! [`Event`] envelopes, the [`CommandChannel`] pluggable transport
 //! trait, a crossbeam-channel-backed [`CrossbeamChannel`]
 //! implementation, and the [`InMemoryBus`] `CommandBus` that composes
-//! a channel with a monotonic [`EventSeq`] counter. The event-sourced
-//! reconciliation layer (validator + store mutation) and a persistence
-//! or cross-process channel implementation land in slice-3. The
+//! a channel with a monotonic [`EventSeq`] counter. Persistent
+//! reconciliation, validation, migration, and a cross-process channel
+//! implementation land in later slices. The
 //! render-graph implementation remains reserved as a future module in
 //! this crate, to be extracted only when incremental-compile savings
 //! or license-boundary concerns justify.
@@ -35,7 +35,7 @@
 pub use command_bus::{
     Command, CommandBus, CommandBusError, CommandChannel, ControlId, ControlValue,
     CrossbeamChannel, Event, EventPayload, EventSeq, InMemoryBus, MappingId, MappingSource,
-    PresetId,
+    PresetId, SnapSlotId,
 };
 
 pub mod command_bus;

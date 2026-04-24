@@ -3,93 +3,173 @@
 
 //! Canonical runtime state core.
 //!
-//! Produces evidence for `EV-DETERMINISM` via the determinism-replay
-//! baseline pin in the `tests` module below.
-//!
 //! Per ADR-004 (canonical state model) the runtime maintains a single
-//! canonical `State` value that is the only source of truth for
-//! control values, preset / playlist state, and integration mappings.
+//! canonical `State` value that is the only source of truth for control
+//! values, preset / playlist / Snap state, and integration mappings.
 //! Durable mutation of this value is restricted to the state commit
 //! thread per ADR-006.
 //!
-//! Slice-2 expands the state core with placeholder sub-stores mirroring
-//! the ADR-004 §Decision topology (controls, presets, playlists,
-//! mappings). Each sub-store is a crate-private empty data-shape
-//! declaration; the event-sourced reconciliation path that populates
-//! them lands in slice-3 alongside the validator. All fields are
-//! crate-private so downstream crates cannot bypass the command bus in
-//! [`crate::command_bus`].
+//! Slice-3a expands the state core with minimal in-memory sub-stores
+//! mirroring the ADR-004 §Decision topology. Mutation remains
+//! crate-private and flows through committed
+//! [`crate::command_bus::Event`] values so downstream crates cannot
+//! bypass the command bus.
+
+use crate::command_bus::{
+    ControlId, ControlValue, Event, EventPayload, MappingId, MappingSource, PresetId, SnapSlotId,
+};
+use std::collections::{HashMap, HashSet};
 
 /// Canonical runtime state.
 ///
-/// Carries the monotonic `frame` counter plus the four ADR-004 §Decision
-/// sub-stores as placeholder topology. The struct is intentionally
-/// opaque: all mutation flows through validated commands dispatched on
-/// the state commit thread (ADR-006).
+/// Carries the monotonic `frame` counter plus the ADR-004 §Decision
+/// sub-stores. The struct is intentionally opaque: all mutation flows
+/// through committed events dispatched on the state commit thread
+/// (ADR-006).
 #[derive(Debug, Default)]
 pub struct State {
     /// Monotonic frame counter advanced by the scheduler tick
     /// (ADR-001 §Decision). Crate-private to keep mutation inside the
-    /// state commit thread per ADR-006. `#[allow(dead_code)]` is
-    /// slice-2 transitional: the scheduler-tick path that advances this
-    /// field lands alongside the event-sourced reconciliation layer in
-    /// slice-3.
+    /// state commit thread per ADR-006. The scheduler-tick path lands in
+    /// a later slice.
     #[allow(dead_code)]
     pub(crate) frame: u64,
-    /// Control-value store. Populated by the control-set reconciliation
-    /// path in slice-3.
+    /// Control-value store.
     #[allow(dead_code)]
     pub(crate) control_store: ControlStore,
-    /// Preset store. Populated by the preset-recall reconciliation path
-    /// in slice-3.
+    /// Preset store.
     #[allow(dead_code)]
     pub(crate) preset_store: PresetStore,
-    /// Playlist store. Populated by the playlist-advance reconciliation
-    /// path in slice-3.
+    /// Playlist store.
     #[allow(dead_code)]
     pub(crate) playlist_store: PlaylistStore,
-    /// Integration-mapping store. Populated by the mapping-bind
-    /// reconciliation path in slice-3.
+    /// Snap / favslot store.
+    #[allow(dead_code)]
+    pub(crate) snap_store: SnapStore,
+    /// Integration-mapping store.
     #[allow(dead_code)]
     pub(crate) mapping_store: MappingStore,
 }
 
-/// Placeholder for the slice-3 control-value store.
-///
-/// Empty data-shape declaration reserving the topology slot per
-/// ADR-004 §Decision. No runtime behaviour; Slice-3's event-sourced
-/// reconciliation layer grows the concrete storage.
-#[derive(Debug, Default)]
-pub(crate) struct ControlStore {}
+impl State {
+    /// Apply one committed event to the canonical state.
+    ///
+    /// This remains crate-private: sibling crates dispatch commands and
+    /// the commit-thread path calls [`crate::command_bus::InMemoryBus`]
+    /// `commit_*_into` helpers.
+    pub(crate) fn apply_event(&mut self, event: &Event) {
+        match event.payload {
+            EventPayload::ControlChanged { id, new_value } => {
+                self.control_store.values.insert(id, new_value);
+            }
+            EventPayload::PresetRecalled { id } => {
+                self.preset_store.active = Some(id);
+            }
+            EventPayload::PlaylistAdvanced { step } => {
+                self.playlist_store.position += i64::from(step);
+            }
+            EventPayload::SnapRecalled { slot } => {
+                self.snap_store.active = Some(slot);
+            }
+            EventPayload::SnapSaved { slot } => {
+                self.snap_store.saved.insert(slot);
+                self.snap_store.active = Some(slot);
+            }
+            EventPayload::SnapCleared { slot } => {
+                self.snap_store.saved.remove(&slot);
+                if self.snap_store.active == Some(slot) {
+                    self.snap_store.active = None;
+                }
+            }
+            EventPayload::MappingBound { id, source } => {
+                self.mapping_store.bindings.insert(id, source);
+            }
+        }
+    }
 
-/// Placeholder for the slice-3 preset store. See [`ControlStore`].
-#[derive(Debug, Default)]
-pub(crate) struct PresetStore {}
+    /// Read the current value for a control.
+    #[must_use]
+    pub fn control_value(&self, id: ControlId) -> Option<ControlValue> {
+        self.control_store.values.get(&id).copied()
+    }
 
-/// Placeholder for the slice-3 playlist store. See [`ControlStore`].
-#[derive(Debug, Default)]
-pub(crate) struct PlaylistStore {}
+    /// Read the active preset, if one has been recalled.
+    #[must_use]
+    pub fn active_preset(&self) -> Option<PresetId> {
+        self.preset_store.active
+    }
 
-/// Placeholder for the slice-3 integration-mapping store. See
-/// [`ControlStore`].
+    /// Read the current playlist cursor position.
+    #[must_use]
+    pub fn playlist_position(&self) -> i64 {
+        self.playlist_store.position
+    }
+
+    /// Read the active Snap slot, if one has been recalled or saved.
+    #[must_use]
+    pub fn active_snap_slot(&self) -> Option<SnapSlotId> {
+        self.snap_store.active
+    }
+
+    /// Return whether a Snap slot currently has saved state.
+    #[must_use]
+    pub fn snap_slot_saved(&self, slot: SnapSlotId) -> bool {
+        self.snap_store.saved.contains(&slot)
+    }
+
+    /// Read the integration source bound for a mapping id.
+    #[must_use]
+    pub fn mapping_source(&self, id: MappingId) -> Option<MappingSource> {
+        self.mapping_store.bindings.get(&id).copied()
+    }
+}
+
+/// Control-value store.
 #[derive(Debug, Default)]
-pub(crate) struct MappingStore {}
+pub(crate) struct ControlStore {
+    values: HashMap<ControlId, ControlValue>,
+}
+
+/// Preset store. See [`ControlStore`].
+#[derive(Debug, Default)]
+pub(crate) struct PresetStore {
+    active: Option<PresetId>,
+}
+
+/// Playlist store. See [`ControlStore`].
+#[derive(Debug, Default)]
+pub(crate) struct PlaylistStore {
+    position: i64,
+}
+
+/// Snap / favslot store. See [`ControlStore`].
+#[derive(Debug, Default)]
+pub(crate) struct SnapStore {
+    active: Option<SnapSlotId>,
+    saved: HashSet<SnapSlotId>,
+}
+
+/// Integration-mapping store. See [`ControlStore`].
+#[derive(Debug, Default)]
+pub(crate) struct MappingStore {
+    bindings: HashMap<MappingId, MappingSource>,
+}
 
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
-    //! Evidence: EV-DETERMINISM (T0) — determinism-replay baseline.
+    //! Evidence: EV-STATE-REPLAY (T1) — state reconciliation baseline.
     //!
-    //! Phase-1 baseline test claiming the EV-DETERMINISM evidence row
-    //! (`docs/26-evidence-artifact-registry.md` line 37). The full
-    //! determinism-replay suite arrives with the event-sourced command
-    //! validator in a later slice; this test merely asserts the
-    //! canonical state core constructs at its deterministic defaults
-    //! without panicking. T0 per docs/43 §15.5: the subject module's
-    //! public surface is a `#[derive(Default)]` data-shape declaration
-    //! with no non-derive-generated behaviour. Upgrade path is T2
-    //! once the determinism-replay corpus lands.
+    //! T1 per docs/43 §15.5: pins the minimal event-reconciliation
+    //! behaviour for control, preset, playlist, Snap, and mapping
+    //! stores. The full replay / migration corpus remains a later T2
+    //! artifact.
+
     use super::State;
+    use crate::{
+        Command, CommandBus, ControlId, ControlValue, InMemoryBus, MappingId, MappingSource,
+        PresetId, SnapSlotId,
+    };
 
     #[test]
     fn state_default_is_deterministic() {
@@ -97,5 +177,59 @@ mod tests {
         let b = State::default();
         assert_eq!(a.frame, 0);
         assert_eq!(a.frame, b.frame);
+    }
+
+    #[test]
+    fn committed_events_update_state_stores() {
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+        let snap = SnapSlotId::new(3).expect("valid snap slot");
+
+        bus.dispatch(Command::ControlSet {
+            id: ControlId(7),
+            value: ControlValue(0.75),
+        })
+        .expect("control command must dispatch");
+        bus.dispatch(Command::PresetRecall { id: PresetId(2) })
+            .expect("preset command must dispatch");
+        bus.dispatch(Command::PlaylistAdvance { step: 4 })
+            .expect("playlist command must dispatch");
+        bus.dispatch(Command::SnapSave { slot: snap })
+            .expect("snap save command must dispatch");
+        bus.dispatch(Command::SnapRecall { slot: snap })
+            .expect("snap recall command must dispatch");
+        bus.dispatch(Command::MappingBind {
+            id: MappingId(9),
+            source: MappingSource::Midi,
+        })
+        .expect("mapping command must dispatch");
+
+        let events = bus.commit_all_into(&mut state);
+        assert_eq!(events.len(), 6);
+        assert_eq!(state.control_value(ControlId(7)), Some(ControlValue(0.75)));
+        assert_eq!(state.active_preset(), Some(PresetId(2)));
+        assert_eq!(state.playlist_position(), 4);
+        assert_eq!(state.active_snap_slot(), Some(snap));
+        assert!(state.snap_slot_saved(snap));
+        assert_eq!(
+            state.mapping_source(MappingId(9)),
+            Some(MappingSource::Midi)
+        );
+    }
+
+    #[test]
+    fn snap_clear_removes_saved_and_active_slot() {
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+        let snap = SnapSlotId::new(5).expect("valid snap slot");
+
+        bus.dispatch(Command::SnapSave { slot: snap })
+            .expect("snap save command must dispatch");
+        bus.dispatch(Command::SnapClear { slot: snap })
+            .expect("snap clear command must dispatch");
+        bus.commit_all_into(&mut state);
+
+        assert!(!state.snap_slot_saved(snap));
+        assert_eq!(state.active_snap_slot(), None);
     }
 }
