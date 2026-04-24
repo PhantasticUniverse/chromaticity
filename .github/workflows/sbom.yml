@@ -11,7 +11,7 @@
 #                    set the output to `true` so release-time SBOM
 #                    emission is never path-gated.
 #   cargo-cyclonedx - CycloneDX 1.5 SBOM for the Rust workspace.
-#   syft            - SPDX 2.3 SBOM for the assembled app bundle
+#   syft            - CycloneDX 1.5 SBOM for the assembled app bundle
 #                     (Node + Rust transitive closure).
 #   sbom-summary    - required-status aggregator. `needs:` every other
 #                     job and succeeds when each dependent job is
@@ -143,13 +143,13 @@ jobs:
 
       - uses: anchore/sbom-action@v0
         with:
-          format: spdx-json
-          output-file: chromaticity.spdx.json
+          format: cyclonedx-json
+          output-file: chromaticity.cdx.json
 
       - uses: actions/upload-artifact@v4
         with:
           name: app-sbom
-          path: chromaticity.spdx.json
+          path: chromaticity.cdx.json
           if-no-files-found: error
 
   sbom-summary:
