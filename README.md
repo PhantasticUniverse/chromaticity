@@ -12,17 +12,19 @@ scheduled no earlier than Phase 4c and requires AO-signed approval.
 
 ## Status
 
-**Phase 0 — Governance Bootstrap.** No application source has landed yet. The first
-commit stream establishes the legal, provenance, and review guardrails required for
-clean-room-defensible implementation. Scaffold work (Tauri 2 + Svelte 5 + Rust
-workspace per `docs/adr/ADR-018-non-scene-ui-toolkit.md` and
-`docs/adr/ADR-011-rendering-backend.md`) begins after Phase 0 policy gates pass.
+**Phase 1 — Implementation Slices in Progress.** The repository contains active
+application and engine code (Tauri 2 + Svelte 5 + TypeScript + Rust 2024) with
+policy, evidence, and CI gates running continuously on `main`. Phase 0 governance and
+clean-room baseline artifacts are established; current work advances Phase 1 evidence
+rows (scene import/schema, determinism, observability, and coverage gates) toward
+release-cumulative readiness.
 
 ## Repository Layout
 
 ```
 chromaticity/
 ├── README.md
+├── CHANGELOG.md                 # release-please-managed release history
 ├── LICENSE                    # see §License below
 ├── LICENSES/                  # REUSE 3.2 canonical license texts
 ├── REUSE.toml                 # per-glob license + copyright defaults
@@ -30,31 +32,44 @@ chromaticity/
 ├── CODE_OF_CONDUCT.md
 ├── SECURITY.md                # coordinated disclosure
 ├── CODEOWNERS                 # subtree review authority
+├── Cargo.toml                 # Rust workspace root
+├── Cargo.lock                 # locked Rust dependency graph
+├── package.json               # frontend workspace scripts and tooling
 ├── .editorconfig
 ├── .gitattributes
 ├── .gitignore
 ├── .github/                   # PR/issue templates, labels, workflows
+├── app/                       # Tauri app shell + app-facing modules
+├── engine/                    # runtime, scene, audio, observability crates
+├── integrations/              # external protocol adapters (OSC, etc.)
+├── scripts/                   # policy/evidence automation helpers
 ├── docs/                      # normative planning corpus (promoted)
 │   ├── README.md              # document map
 │   └── adr/                   # Architecture Decision Records (MADR 4.0.0)
-└── chromaticity-planning/     # ARCHIVE-ONLY; gitignored; see below
+├── src/                       # Svelte UI source
+└── tests/                     # cross-cutting test harnesses
 ```
 
-### Archive-only planning corpus
+### AO-local partitions (not in version control)
 
-`chromaticity-planning/` contains review rounds, intake audits, deep-dive
-findings, scoring matrices, pre-dev UX bundles, and the `ERRATA-v0.2-beta.md`
-record. It is **intentionally excluded from production history** via
-`.gitignore` and lives on the AO/Deputy's disk for clean-room review only.
-Normative content from that corpus has been promoted into `docs/` in this
-commit stream; the rest is historical and does not ship.
+Two partitions live on the Accountable Owner's and technical lead's
+workstations only and are excluded from version control via `.gitignore`.
+They are tracked normatively in `docs/43-development-standards.md` §18.1
+and `docs/29-cleanroom-legal-policy-baseline.md` §Corpus Partitioning,
+which together carry the access boundary, origin tagging, and clean-room
+promotion path:
 
-> **Deviation note vs `docs/43-development-standards.md` §18.1.** The
-> standards doc anticipated the planning corpus living in-tree as
-> `chromaticity-planning/`. The kickoff plan (ratified 2026-04-23) adopted
-> the split-and-archive strategy described above. A `policy`-scoped
-> amendment to §18.1 will land in a subsequent PR; `chromaticity-planning/`
-> remains ignored in the interim.
+- `chromaticity-planning/` — Phase-0 planning corpus paper trail
+  (review rounds, intake audits, deep-dive findings, scoring matrices,
+  pre-dev UX bundles, and the `ERRATA-v0.2-beta.md` record).
+- `Contents/` — reference-app materials consulted for feature-coverage
+  and quality-parity verification under the clean-room SOP.
+
+Neither partition is accessible to the dev-team clean-room working
+surface. Content promoted into the shipped corpus (`docs/`, `engine/`,
+`integrations/`, etc.) follows the clean-room reconstruction protocol in
+`docs/29-cleanroom-legal-policy-baseline.md` and is authored
+Chromaticity-originated, never copied verbatim.
 
 ## Document Map
 

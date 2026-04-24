@@ -189,7 +189,7 @@ clean-room policy.
 Full detail: `docs/43-development-standards.md` §12.
 
 - **Rust**: Rust 2024, `rustfmt`, `cargo clippy -D warnings`,
-  `#![forbid(unsafe_op_in_unsafe_fn)]` where applicable,
+  workspace-wide `unsafe_code = "forbid"`,
   no `HashMap` default hasher in `EV-DETERMINISM` paths.
 - **TypeScript**: `strict: true`, `noUncheckedIndexedAccess: true`,
   `exactOptionalPropertyTypes: true`, `prettier` default config,
@@ -201,7 +201,7 @@ Full detail: `docs/43-development-standards.md` §12.
   `eslint-plugin-chromaticity-sandbox` enforces host-API whitelist.
 
 Pre-commit hooks (lefthook) run the fast subset locally. See
-`lefthook.yml` when it lands in Commit D.
+`lefthook.yml` for the current hook graph and command set.
 
 ## Evidence Tags
 
@@ -211,7 +211,7 @@ Tests that contribute to an evidence row carry a language-native tag:
 - TS/JS: `test("...", { evidence: ["EV-SCRIPT-CONTRACT"] }, ...)`
 - GLSL: fixture sidecar `evidence:` list.
 
-`evidence-tag-lint` becomes required at Phase 1 exit.
+`evidence-tag-lint` is required from Phase 1 onward.
 
 ## Security
 
