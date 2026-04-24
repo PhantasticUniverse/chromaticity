@@ -18,7 +18,7 @@
 //!   Phase-1 command taxonomy per
 //!   `docs/04-runtime-architecture.md` §Command envelope and ADR-004
 //!   §Decision (control-set, preset-recall, playlist-advance,
-//!   mapping-bind).
+//!   mapping-bind, and Snap-slot actions).
 //! - The [`CommandChannel`] pluggable transport trait and its
 //!   [`CrossbeamChannel`] in-memory implementation backed by
 //!   `crossbeam-channel 0.5`. The trait seam exists so slice-3
@@ -33,9 +33,9 @@
 //!
 //! - The validator path (commands are accepted as handed; no pre-
 //!   commit rejection).
-//! - Store reconciliation (events are a 1:1 map of their source
-//!   commands; `State` stores are placeholder data-shape declarations
-//!   only).
+//! - Persistent or cross-process store reconciliation. Slice-3a adds
+//!   the in-memory `State` mutation helper used by tests and the future
+//!   commit thread.
 //! - A cross-process or persistence-backed channel implementation.
 //! - Full replay determinism across multi-producer dispatch
 //!   (crossbeam-channel guarantees per-producer FIFO, not a globally
@@ -51,6 +51,7 @@
 //!   including every assigned [`EventSeq`] value — is a pure function
 //!   of the input command sequence.
 
+use crate::state::State;
 use crossbeam_channel::{Receiver, Sender, TryRecvError, unbounded};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -77,6 +78,35 @@ pub struct ControlValue(pub f32);
 /// Stable identifier for a preset.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct PresetId(pub u32);
+
+/// Stable identifier for a Snap / favslot slot.
+///
+/// The compatibility surface exposes exactly sixteen slots (`0..=15`).
+/// The tuple payload stays private so callers construct only valid slots
+/// through [`Self::new`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct SnapSlotId(u8);
+
+impl SnapSlotId {
+    /// Highest valid Snap slot index.
+    pub const MAX: u8 = 15;
+
+    /// Construct a Snap slot id when `slot <= 15`.
+    #[must_use]
+    pub fn new(slot: u8) -> Option<Self> {
+        if slot <= Self::MAX {
+            Some(Self(slot))
+        } else {
+            None
+        }
+    }
+
+    /// Return the zero-based slot index.
+    #[must_use]
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+}
 
 /// Stable identifier for a mapping.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -118,6 +148,12 @@ pub enum Command {
     /// Advance the active playlist by `step` entries; negative values
     /// move backward.
     PlaylistAdvance { step: i32 },
+    /// Recall a Snap slot for the active scene.
+    SnapRecall { slot: SnapSlotId },
+    /// Save current state into a Snap slot.
+    SnapSave { slot: SnapSlotId },
+    /// Clear a Snap slot.
+    SnapClear { slot: SnapSlotId },
     /// Bind a mapping from an integration source to a control.
     MappingBind {
         id: MappingId,
@@ -143,6 +179,15 @@ pub enum EventPayload {
     PlaylistAdvanced {
         step: i32,
     },
+    SnapRecalled {
+        slot: SnapSlotId,
+    },
+    SnapSaved {
+        slot: SnapSlotId,
+    },
+    SnapCleared {
+        slot: SnapSlotId,
+    },
     MappingBound {
         id: MappingId,
         source: MappingSource,
@@ -158,6 +203,9 @@ impl EventPayload {
             },
             Command::PresetRecall { id } => Self::PresetRecalled { id },
             Command::PlaylistAdvance { step } => Self::PlaylistAdvanced { step },
+            Command::SnapRecall { slot } => Self::SnapRecalled { slot },
+            Command::SnapSave { slot } => Self::SnapSaved { slot },
+            Command::SnapClear { slot } => Self::SnapCleared { slot },
             Command::MappingBind { id, source } => Self::MappingBound { id, source },
         }
     }
@@ -286,12 +334,30 @@ impl InMemoryBus {
         Some(Event { seq, payload })
     }
 
+    /// Commit the next pending command and apply the resulting event to
+    /// canonical [`State`].
+    pub fn commit_one_into(&self, state: &mut State) -> Option<Event> {
+        let event = self.commit_one()?;
+        state.apply_event(&event);
+        Some(event)
+    }
+
     /// Commit every pending command, returning events in commit
     /// order. The returned `EventSeq` values are strictly increasing.
     #[must_use]
     pub fn commit_all(&self) -> Vec<Event> {
         let mut events = Vec::new();
         while let Some(event) = self.commit_one() {
+            events.push(event);
+        }
+        events
+    }
+
+    /// Commit every pending command into canonical [`State`], returning
+    /// the emitted events in commit order.
+    pub fn commit_all_into(&self, state: &mut State) -> Vec<Event> {
+        let mut events = Vec::new();
+        while let Some(event) = self.commit_one_into(state) {
             events.push(event);
         }
         events
@@ -329,7 +395,7 @@ mod drift_pins {
 
     use super::{
         Command, CommandBus, CommandBusError, CommandChannel, ControlId, ControlValue,
-        EventPayload, InMemoryBus, MappingId, MappingSource, PresetId,
+        EventPayload, InMemoryBus, MappingId, MappingSource, PresetId, SnapSlotId,
     };
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -360,7 +426,7 @@ mod drift_pins {
     }
 
     fn sample_command(lcg: &mut Lcg) -> Command {
-        let kind = lcg.next_u32() % 4;
+        let kind = lcg.next_u32() % 7;
         let id_val = lcg.next_u32();
         match kind {
             0 => Command::ControlSet {
@@ -373,9 +439,18 @@ mod drift_pins {
             2 => Command::PlaylistAdvance {
                 step: lcg.next_u32() as i32,
             },
-            _ => Command::MappingBind {
+            3 => Command::MappingBind {
                 id: MappingId(id_val),
                 source: MappingSource::Osc,
+            },
+            4 => Command::SnapRecall {
+                slot: SnapSlotId::new((id_val % 16) as u8).expect("modulo keeps slot in range"),
+            },
+            5 => Command::SnapSave {
+                slot: SnapSlotId::new((id_val % 16) as u8).expect("modulo keeps slot in range"),
+            },
+            _ => Command::SnapClear {
+                slot: SnapSlotId::new((id_val % 16) as u8).expect("modulo keeps slot in range"),
             },
         }
     }
@@ -510,6 +585,18 @@ mod drift_pins {
         bus.dispatch(Command::PresetRecall { id: PresetId(3) })
             .unwrap();
         bus.dispatch(Command::PlaylistAdvance { step: -2 }).unwrap();
+        bus.dispatch(Command::SnapRecall {
+            slot: SnapSlotId::new(4).expect("valid snap slot"),
+        })
+        .unwrap();
+        bus.dispatch(Command::SnapSave {
+            slot: SnapSlotId::new(5).expect("valid snap slot"),
+        })
+        .unwrap();
+        bus.dispatch(Command::SnapClear {
+            slot: SnapSlotId::new(5).expect("valid snap slot"),
+        })
+        .unwrap();
         bus.dispatch(Command::MappingBind {
             id: MappingId(1),
             source: MappingSource::Midi,
@@ -526,6 +613,15 @@ mod drift_pins {
                 },
                 EventPayload::PresetRecalled { id: PresetId(3) },
                 EventPayload::PlaylistAdvanced { step: -2 },
+                EventPayload::SnapRecalled {
+                    slot: SnapSlotId::new(4).expect("valid snap slot"),
+                },
+                EventPayload::SnapSaved {
+                    slot: SnapSlotId::new(5).expect("valid snap slot"),
+                },
+                EventPayload::SnapCleared {
+                    slot: SnapSlotId::new(5).expect("valid snap slot"),
+                },
                 EventPayload::MappingBound {
                     id: MappingId(1),
                     source: MappingSource::Midi,
