@@ -45,11 +45,22 @@ impl SilentSource {
 
 impl IngestBoundary for SilentSource {
     fn try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus {
-        if self.remaining_hops == 0 {
-            return IngestStatus::Closed;
-        }
-        self.remaining_hops -= 1;
-        *out = AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, vec![0.0; 128]);
-        IngestStatus::Ready
+        let status = if self.remaining_hops == 0 {
+            IngestStatus::Closed
+        } else {
+            self.remaining_hops -= 1;
+            *out = AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, vec![0.0; 128]);
+            IngestStatus::Ready
+        };
+        // Slice-2 `EV-OBSERVABILITY` emission site: every
+        // `IngestBoundary::try_pull` outcome drives the three
+        // `docs/31` §Phase-1 baseline catalog audio counters
+        // (ingest_frames, ingest_samples, ingest_state_transitions)
+        // through the process-wide observability tracker. The
+        // samples-count is sourced from the populated frame only
+        // on the `Ready` branch; `Closed` leaves `out` unchanged
+        // and `record_pull_outcome` ignores the argument.
+        crate::observability::record_pull_outcome(&status, out.samples().len());
+        status
     }
 }

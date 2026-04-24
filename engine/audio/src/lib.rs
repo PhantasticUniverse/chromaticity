@@ -14,6 +14,17 @@
 //!   ingest that graduated from its slice-1 test-double incarnation.
 //!   Slice-2 wires it as the fallback source the analyser uses until
 //!   the real device-capture ingest lands in slice-3.
+//! - [`observability`] — the slice-2 `EV-OBSERVABILITY` emission
+//!   site for `chromaticity_audio_ingest_frames_total`,
+//!   `chromaticity_audio_ingest_samples_total`, and
+//!   `chromaticity_audio_ingest_state_transitions_total`. Every
+//!   [`ingest::IngestBoundary::try_pull`] implementor routes its
+//!   outcome through the module's `record_pull_outcome` at the
+//!   outcome boundary so the three `docs/31` §Phase-1 baseline
+//!   catalog audio counters accumulate for the Phase-1 exit gate.
+//!   The [`observability::AudioIngestStateTracker`] is the slice-2
+//!   synthesised lifecycle (`Starting -> Running -> Draining ->
+//!   Closed`) per the module-top TODO(slice-3) reconciliation.
 //!
 //! Slice-2 dep-slot: `cpal 0.15` is authorised in `Cargo.toml` as
 //! a dep-slot only — no cpal type is imported and no cpal function
@@ -41,6 +52,7 @@
 
 pub mod frame;
 pub mod ingest;
+pub mod observability;
 pub mod silent;
 
 #[cfg(test)]
@@ -62,6 +74,7 @@ mod drift_pins {
 
     use super::frame::{AudioFrame, DEFAULT_SAMPLE_RATE_HZ};
     use super::ingest::{IngestBoundary, IngestMode, IngestState, IngestStatus};
+    use super::observability;
     use super::silent::SilentSource;
 
     #[test]
@@ -75,6 +88,9 @@ mod drift_pins {
 
     #[test]
     fn ingest_boundary_reports_ready_then_closed() {
+        // Serialize against the observability emission-site tests;
+        // every try_pull call mutates the process-wide tracker.
+        let _serialize = observability::test_serialize_lock();
         let mut source = SilentSource::new(1);
         let mut frame = AudioFrame::default();
 
@@ -87,6 +103,7 @@ mod drift_pins {
 
     #[test]
     fn silent_source_honors_hop_count() {
+        let _serialize = observability::test_serialize_lock();
         let mut source = SilentSource::new(3);
         let mut frame = AudioFrame::default();
 

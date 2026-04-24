@@ -366,6 +366,7 @@ dependencies = [
 name = "chromaticity-audio"
 version = "0.0.0"
 dependencies = [
+ "chromaticity-observability",
  "cpal",
  "workspace-hack",
 ]
