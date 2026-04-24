@@ -354,7 +354,7 @@ mod drift_pins {
     }
 
     #[test]
-    fn unknown_symbol_rejected_in_strict_emits_warning_in_compat() {
+    fn unknown_symbol_rejected_in_both_modes_for_slice2_subset() {
         // Slice-2 semantics: unknown symbols are rejected in BOTH
         // modes because the representative subset is authoritative
         // until the slice-3 full-catalog loader lands. The test

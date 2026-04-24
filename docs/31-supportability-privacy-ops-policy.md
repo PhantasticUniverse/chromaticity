@@ -70,6 +70,13 @@ Authoritative target for the forward reference in `adr/ADR-016-observability-and
 
 Phase-1 baseline is 14 metrics. All are emission-ready with or without a transport; Phase-4d merely attaches the Prometheus loopback endpoint to the same in-process emitter.
 
+Runtime `kind` label vocab (closed set for Phase-1):
+
+- `chromaticity_runtime_commands_dispatched_total.kind`:
+  `control_set`, `preset_recall`, `playlist_advance`, `snap_recall`, `snap_save`, `snap_clear`, `mapping_bind`
+- `chromaticity_runtime_events_emitted_total.kind`:
+  `control_changed`, `preset_recalled`, `playlist_advanced`, `snap_recalled`, `snap_saved`, `snap_cleared`, `mapping_bound`
+
 ### Privacy posture
 
 No metric in this catalog carries user content, scene content, script content, audio samples, or any derived statistic computable against unbounded input. All values are counts, durations, or bounded-enum state. The `Any telemetry schema change requires privacy impact checklist update` rule above applies to every modification of this catalog.
