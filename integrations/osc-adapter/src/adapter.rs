@@ -35,7 +35,7 @@
 use core::net::{IpAddr, SocketAddr};
 use std::net::UdpSocket;
 
-use chromaticity_observability::catalog::OscPacketOutcome;
+use chromaticity_observability::catalog::{OscAdapterState, OscBindErrorReason, OscPacketOutcome};
 use rosc::{OscPacket, decoder};
 
 use crate::defaults::{DEFAULT_INBOUND_BIND, DEFAULT_MAX_BUNDLE_DEPTH, DEFAULT_MAX_PACKET_BYTES};
@@ -166,11 +166,24 @@ pub trait OscAdapter {
 /// `ParseError`) are ever incremented here. `AllowlistRejected` and
 /// `RateLimitedDropped` stay pinned at 0 until the allowlist and
 /// rate-limit slice lands.
+///
+/// Adapter-lifecycle and bind-failure counters follow the same
+/// adapter-local interim pattern. [`UdpOscAdapter::state_transition_count`]
+/// backs the `chromaticity_osc_adapter_state_transitions_total`
+/// emission site, while [`UdpOscAdapter::bind_error_count`] backs
+/// `chromaticity_osc_bind_errors_total`. Slice-3 will route these
+/// through the runtime bus via
+/// `chromaticity_observability::catalog::MetricEvent::OscAdapterStateTransition`
+/// and `chromaticity_observability::catalog::MetricEvent::OscBindErrors`,
+/// matching the existing `MetricEvent::OscInboundPackets` plan.
 pub struct UdpOscAdapter {
     socket: Option<UdpSocket>,
     recv_buf: Vec<u8>,
     allowlist: Vec<IpAddr>,
+    current_state: OscAdapterState,
     outcome_counts: PacketOutcomeCounts,
+    state_transition_counts: StateTransitionCounts,
+    bind_error_counts: BindErrorCounts,
 }
 
 /// Per-[`OscPacketOutcome`] packet counter storage for
@@ -192,6 +205,48 @@ struct PacketOutcomeCounts {
     parse_error: u64,
 }
 
+/// Per-([`OscAdapterState`], [`OscAdapterState`]) transition counter
+/// storage for [`UdpOscAdapter`].
+///
+/// Laid out as named `u64` fields rather than a map so the compiler
+/// sees the full known key set. Future-proof: [`OscAdapterState`] is
+/// `#[non_exhaustive]` across the crate boundary, so getters use
+/// `_ => 0` wildcard arms.
+#[derive(Debug, Default)]
+struct StateTransitionCounts {
+    unbound_to_unbound: u64,
+    unbound_to_binding: u64,
+    unbound_to_bound: u64,
+    unbound_to_unbinding: u64,
+    binding_to_unbound: u64,
+    binding_to_binding: u64,
+    binding_to_bound: u64,
+    binding_to_unbinding: u64,
+    bound_to_unbound: u64,
+    bound_to_binding: u64,
+    bound_to_bound: u64,
+    bound_to_unbinding: u64,
+    unbinding_to_unbound: u64,
+    unbinding_to_binding: u64,
+    unbinding_to_bound: u64,
+    unbinding_to_unbinding: u64,
+}
+
+/// Per-[`OscBindErrorReason`] bind-error counter storage for
+/// [`UdpOscAdapter`].
+///
+/// Laid out as named `u64` fields rather than a map so the compiler
+/// sees the full known key set. Future-proof:
+/// [`OscBindErrorReason`] is `#[non_exhaustive]` across the crate
+/// boundary, so getters use `_ => 0` wildcard arms.
+#[derive(Debug, Default)]
+struct BindErrorCounts {
+    address_in_use: u64,
+    permission_denied: u64,
+    address_not_available: u64,
+    other: u64,
+}
+
 impl UdpOscAdapter {
     /// Construct a fresh, unbound adapter with the ADR-013 defaults.
     ///
@@ -204,7 +259,10 @@ impl UdpOscAdapter {
             socket: None,
             recv_buf: vec![0u8; DEFAULT_MAX_PACKET_BYTES],
             allowlist: Vec::new(),
+            current_state: OscAdapterState::Unbound,
             outcome_counts: PacketOutcomeCounts::default(),
+            state_transition_counts: StateTransitionCounts::default(),
+            bind_error_counts: BindErrorCounts::default(),
         }
     }
 
@@ -261,6 +319,95 @@ impl UdpOscAdapter {
         }
     }
 
+    /// Current count of adapter lifecycle transitions from `from`
+    /// to `to` since this adapter was constructed.
+    ///
+    /// Slice-2 maintains the counter table inside the adapter;
+    /// slice-3 will replace this in-memory state with a
+    /// `MetricEvent::OscAdapterStateTransition` emission through
+    /// the runtime bus.
+    ///
+    /// The wildcard arm covers future [`OscAdapterState`] variants -
+    /// the enum is `#[non_exhaustive]` across the crate boundary -
+    /// which slice-2 has not been taught to produce; any such
+    /// variant pair reads as 0.
+    #[must_use]
+    pub fn state_transition_count(&self, from: OscAdapterState, to: OscAdapterState) -> u64 {
+        match (from, to) {
+            (OscAdapterState::Unbound, OscAdapterState::Unbound) => {
+                self.state_transition_counts.unbound_to_unbound
+            }
+            (OscAdapterState::Unbound, OscAdapterState::Binding) => {
+                self.state_transition_counts.unbound_to_binding
+            }
+            (OscAdapterState::Unbound, OscAdapterState::Bound) => {
+                self.state_transition_counts.unbound_to_bound
+            }
+            (OscAdapterState::Unbound, OscAdapterState::Unbinding) => {
+                self.state_transition_counts.unbound_to_unbinding
+            }
+            (OscAdapterState::Binding, OscAdapterState::Unbound) => {
+                self.state_transition_counts.binding_to_unbound
+            }
+            (OscAdapterState::Binding, OscAdapterState::Binding) => {
+                self.state_transition_counts.binding_to_binding
+            }
+            (OscAdapterState::Binding, OscAdapterState::Bound) => {
+                self.state_transition_counts.binding_to_bound
+            }
+            (OscAdapterState::Binding, OscAdapterState::Unbinding) => {
+                self.state_transition_counts.binding_to_unbinding
+            }
+            (OscAdapterState::Bound, OscAdapterState::Unbound) => {
+                self.state_transition_counts.bound_to_unbound
+            }
+            (OscAdapterState::Bound, OscAdapterState::Binding) => {
+                self.state_transition_counts.bound_to_binding
+            }
+            (OscAdapterState::Bound, OscAdapterState::Bound) => {
+                self.state_transition_counts.bound_to_bound
+            }
+            (OscAdapterState::Bound, OscAdapterState::Unbinding) => {
+                self.state_transition_counts.bound_to_unbinding
+            }
+            (OscAdapterState::Unbinding, OscAdapterState::Unbound) => {
+                self.state_transition_counts.unbinding_to_unbound
+            }
+            (OscAdapterState::Unbinding, OscAdapterState::Binding) => {
+                self.state_transition_counts.unbinding_to_binding
+            }
+            (OscAdapterState::Unbinding, OscAdapterState::Bound) => {
+                self.state_transition_counts.unbinding_to_bound
+            }
+            (OscAdapterState::Unbinding, OscAdapterState::Unbinding) => {
+                self.state_transition_counts.unbinding_to_unbinding
+            }
+            _ => 0,
+        }
+    }
+
+    /// Current count of bind failures mapped to `reason` since this
+    /// adapter was constructed.
+    ///
+    /// Slice-2 maintains the counter table inside the adapter;
+    /// slice-3 will replace this in-memory state with a
+    /// `MetricEvent::OscBindErrors` emission through the runtime bus.
+    ///
+    /// The wildcard arm covers future [`OscBindErrorReason`]
+    /// variants - the enum is `#[non_exhaustive]` across the crate
+    /// boundary - which slice-2 has not been taught to produce; any
+    /// such variant reads as 0.
+    #[must_use]
+    pub fn bind_error_count(&self, reason: OscBindErrorReason) -> u64 {
+        match reason {
+            OscBindErrorReason::AddressInUse => self.bind_error_counts.address_in_use,
+            OscBindErrorReason::PermissionDenied => self.bind_error_counts.permission_denied,
+            OscBindErrorReason::AddressNotAvailable => self.bind_error_counts.address_not_available,
+            OscBindErrorReason::Other => self.bind_error_counts.other,
+            _ => 0,
+        }
+    }
+
     /// Increment the counter for `outcome` by one.
     ///
     /// Unknown variants (future `#[non_exhaustive]` additions) are
@@ -277,6 +424,91 @@ impl UdpOscAdapter {
             _ => (),
         }
     }
+
+    /// Increment the counter for the adapter lifecycle transition
+    /// from `from` to `to` by one.
+    ///
+    /// Unknown variants (future `#[non_exhaustive]` additions) are
+    /// ignored rather than panicked on; slice-3 teaches the adapter
+    /// to produce them explicitly when the lifecycle enum is
+    /// reconciled with `docs/08-io-integrations.md`.
+    fn record_state_transition(&mut self, from: OscAdapterState, to: OscAdapterState) {
+        match (from, to) {
+            (OscAdapterState::Unbound, OscAdapterState::Unbound) => {
+                self.state_transition_counts.unbound_to_unbound += 1;
+            }
+            (OscAdapterState::Unbound, OscAdapterState::Binding) => {
+                self.state_transition_counts.unbound_to_binding += 1;
+            }
+            (OscAdapterState::Unbound, OscAdapterState::Bound) => {
+                self.state_transition_counts.unbound_to_bound += 1;
+            }
+            (OscAdapterState::Unbound, OscAdapterState::Unbinding) => {
+                self.state_transition_counts.unbound_to_unbinding += 1;
+            }
+            (OscAdapterState::Binding, OscAdapterState::Unbound) => {
+                self.state_transition_counts.binding_to_unbound += 1;
+            }
+            (OscAdapterState::Binding, OscAdapterState::Binding) => {
+                self.state_transition_counts.binding_to_binding += 1;
+            }
+            (OscAdapterState::Binding, OscAdapterState::Bound) => {
+                self.state_transition_counts.binding_to_bound += 1;
+            }
+            (OscAdapterState::Binding, OscAdapterState::Unbinding) => {
+                self.state_transition_counts.binding_to_unbinding += 1;
+            }
+            (OscAdapterState::Bound, OscAdapterState::Unbound) => {
+                self.state_transition_counts.bound_to_unbound += 1;
+            }
+            (OscAdapterState::Bound, OscAdapterState::Binding) => {
+                self.state_transition_counts.bound_to_binding += 1;
+            }
+            (OscAdapterState::Bound, OscAdapterState::Bound) => {
+                self.state_transition_counts.bound_to_bound += 1;
+            }
+            (OscAdapterState::Bound, OscAdapterState::Unbinding) => {
+                self.state_transition_counts.bound_to_unbinding += 1;
+            }
+            (OscAdapterState::Unbinding, OscAdapterState::Unbound) => {
+                self.state_transition_counts.unbinding_to_unbound += 1;
+            }
+            (OscAdapterState::Unbinding, OscAdapterState::Binding) => {
+                self.state_transition_counts.unbinding_to_binding += 1;
+            }
+            (OscAdapterState::Unbinding, OscAdapterState::Bound) => {
+                self.state_transition_counts.unbinding_to_bound += 1;
+            }
+            (OscAdapterState::Unbinding, OscAdapterState::Unbinding) => {
+                self.state_transition_counts.unbinding_to_unbinding += 1;
+            }
+            _ => (),
+        }
+    }
+
+    /// Increment the counter for `reason` by one.
+    ///
+    /// Unknown variants (future `#[non_exhaustive]` additions) are
+    /// ignored rather than panicked on; slice-3 teaches the adapter
+    /// to produce them explicitly if structured bind-error reporting
+    /// widens.
+    fn record_bind_error(&mut self, reason: OscBindErrorReason) {
+        match reason {
+            OscBindErrorReason::AddressInUse => self.bind_error_counts.address_in_use += 1,
+            OscBindErrorReason::PermissionDenied => self.bind_error_counts.permission_denied += 1,
+            OscBindErrorReason::AddressNotAvailable => {
+                self.bind_error_counts.address_not_available += 1;
+            }
+            OscBindErrorReason::Other => self.bind_error_counts.other += 1,
+            _ => (),
+        }
+    }
+
+    fn enter_state(&mut self, to: OscAdapterState) {
+        let from = self.current_state;
+        self.current_state = to;
+        self.record_state_transition(from, to);
+    }
 }
 
 impl Default for UdpOscAdapter {
@@ -289,17 +521,34 @@ impl OscAdapter for UdpOscAdapter {
     type Error = OscAdapterError;
 
     fn bind(&mut self, addr: SocketAddr) -> Result<(), Self::Error> {
-        let socket = UdpSocket::bind(addr).map_err(OscAdapterError::BindFailed)?;
-        socket
-            .set_nonblocking(true)
-            .map_err(OscAdapterError::BindFailed)?;
+        let previous_state = self.current_state;
+        self.enter_state(OscAdapterState::Binding);
+        let socket = match UdpSocket::bind(addr) {
+            Ok(socket) => socket,
+            Err(e) => {
+                self.record_bind_error(bind_error_reason(&e));
+                self.enter_state(previous_state);
+                return Err(OscAdapterError::BindFailed(e));
+            }
+        };
+        if let Err(e) = socket.set_nonblocking(true) {
+            self.record_bind_error(bind_error_reason(&e));
+            self.enter_state(previous_state);
+            return Err(OscAdapterError::BindFailed(e));
+        }
         self.socket = Some(socket);
+        self.enter_state(OscAdapterState::Bound);
         Ok(())
     }
 
     fn unbind(&mut self) -> Result<(), Self::Error> {
+        if self.current_state == OscAdapterState::Unbound {
+            return Ok(());
+        }
+        self.enter_state(OscAdapterState::Unbinding);
         // Dropping the socket releases the OS-level binding.
         self.socket = None;
+        self.enter_state(OscAdapterState::Unbound);
         Ok(())
     }
 
@@ -332,6 +581,15 @@ impl OscAdapter for UdpOscAdapter {
         };
         self.record_outcome(outcome);
         Ok(())
+    }
+}
+
+fn bind_error_reason(error: &std::io::Error) -> OscBindErrorReason {
+    match error.kind() {
+        std::io::ErrorKind::AddrInUse => OscBindErrorReason::AddressInUse,
+        std::io::ErrorKind::PermissionDenied => OscBindErrorReason::PermissionDenied,
+        std::io::ErrorKind::AddrNotAvailable => OscBindErrorReason::AddressNotAvailable,
+        _ => OscBindErrorReason::Other,
     }
 }
 
@@ -459,5 +717,63 @@ mod drift_pins {
         // floor; slice-3 will cap against the §3 hard 1000 msg/s
         // ceiling independently.
         assert_eq!(resolve_rate_limit(500, 100), 500);
+    }
+}
+
+#[cfg(test)]
+mod observability_pins {
+    //! Evidence: EV-OBSERVABILITY (T1) — bind-error reason mapping
+    //! and private counter-helper coverage for the docs/31
+    //! `chromaticity_osc_bind_errors_total` catalog row.
+    //!
+    //! Live bind-path coverage lives in
+    //! `tests/adapter_bind_path.rs`. This module pins the portable
+    //! synthetic cases (`PermissionDenied`, `AddressNotAvailable`,
+    //! `Other`) without depending on OS-specific socket behavior.
+
+    use std::io::{Error, ErrorKind};
+
+    use chromaticity_observability::catalog::OscBindErrorReason;
+
+    use super::{UdpOscAdapter, bind_error_reason};
+
+    #[test]
+    fn bind_error_reason_maps_std_io_kinds_to_catalog_reasons() {
+        assert_eq!(
+            bind_error_reason(&Error::from(ErrorKind::AddrInUse)),
+            OscBindErrorReason::AddressInUse,
+        );
+        assert_eq!(
+            bind_error_reason(&Error::from(ErrorKind::PermissionDenied)),
+            OscBindErrorReason::PermissionDenied,
+        );
+        assert_eq!(
+            bind_error_reason(&Error::from(ErrorKind::AddrNotAvailable)),
+            OscBindErrorReason::AddressNotAvailable,
+        );
+        assert_eq!(
+            bind_error_reason(&Error::other("synthetic uncategorized bind error")),
+            OscBindErrorReason::Other,
+        );
+    }
+
+    #[test]
+    fn record_bind_error_counts_each_catalog_reason() {
+        for reason in [
+            OscBindErrorReason::AddressInUse,
+            OscBindErrorReason::PermissionDenied,
+            OscBindErrorReason::AddressNotAvailable,
+            OscBindErrorReason::Other,
+        ] {
+            let mut adapter = UdpOscAdapter::new();
+
+            adapter.record_bind_error(reason);
+
+            assert_eq!(
+                adapter.bind_error_count(reason),
+                1,
+                "record_bind_error should increment {reason:?} exactly once",
+            );
+        }
     }
 }
