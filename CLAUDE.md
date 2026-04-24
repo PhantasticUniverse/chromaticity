@@ -324,6 +324,37 @@ before push, not onto a sibling sub-agent's branch. Sibling branches are only vi
 via origin after their respective merges; local stacking produces dependency chains
 that the squash-merge workflow silently breaks.
 
+## Adjudicating briefs against the tree
+
+Briefs describing concrete file paths, test tiers, or slice scope sometimes conflict
+with in-source invariants or normative docs. Default posture: **the tree wins**, same
+as the "When this file is wrong" rule at the bottom of this doc. Three heuristics,
+surfaced from the PR #47 `EV-COMPAT-FIXTURE-COVERAGE` scope-correction:
+
+- **Crate-private visibility is a slice-boundary signal, not friction to route around.**
+  `pub(crate)` on a schema type whose module-level prose documents a slice-N widening
+  trigger means the briefer cannot route around it with a `serde_json` dev-dep,
+  `#[doc(hidden)]` test constructors, or struct-literal fixtures in a separate
+  integration-test crate. The visibility invariant IS the slice scope declaration.
+  Example: PR #50's `engine/scene/src/schema.rs` module-level prose makes this
+  load-bearing explicit — "every field is `pub` (the slice-2 `pub(crate)` visibility
+  was the slice-boundary signal this slice realizes)" — confirming the slice-2
+  visibility was the boundary marker that the slice-3a deserializer honored when it
+  opened the schema. A brief proposing external construction in slice-2 was the
+  weaker document and the work correctly relocated in-crate at T1.
+- **Docstring invariants in schema / contract files are normative.** Module-level
+  prose in files whose job is to declare a contract (`engine/*/src/schema.rs`,
+  `docs/26`, `docs/34`, `docs/43`) is the slice boundary encoded in-source. When a
+  brief conflicts with an in-source invariant that cites ADRs or slice scope, the
+  brief is the weaker document.
+- **Re-derive test tier from the registry `Generation Source` column, not the brief.**
+  A brief's `T<n>` label is inherited data; the canonical axis is `docs/26` row
+  `Generation Source` (e.g. row 23's "Scene import harness + golden corpus fixtures"
+  as the T2 target for `EV-SCENE-IMPORT`) read against `docs/43` §15.5 T-tier
+  definitions. A tier-mislabel produces a test module that can't satisfy its row — a
+  rollup inconsistency `evidence-tag-lint` surfaces much later than the PR that
+  introduced it.
+
 ## Where authoritative answers live
 
 - **Dev standards**: `docs/43-development-standards.md`.
