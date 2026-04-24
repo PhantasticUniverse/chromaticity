@@ -44,7 +44,7 @@
 //!
 //! 1. `slider` — MIN, MAX, DEFAULT all present and DEFAULT∈[MIN,MAX]
 //! 2. `toggle` — DEFAULT∈{0,1} and no MIN/MAX
-//! 3. `color`  — DEFAULT is a 3- or 4-float array
+//! 3. `color`  — DEF_COLOR is present or DEFAULT is a 3- or 4-float array
 //! 4. `xy`     — DEFAULT is a 2-float array
 //! 5. strict-reject — `missing-type`
 //!
@@ -217,8 +217,11 @@ fn coerce_missing_type(decl: &ControlDecl) -> Option<ControlKind> {
         }
     }
 
-    // Step 3 — color: DEFAULT is a 3- or 4-float array.
-    if matches!(&decl.default, ControlValue::Vec3(_) | ControlValue::Vec4(_)) {
+    // Step 3 — color: DEF_COLOR is present OR DEFAULT is a 3- or
+    // 4-float array.
+    if decl.def_color.is_some()
+        || matches!(&decl.default, ControlValue::Vec3(_) | ControlValue::Vec4(_))
+    {
         return Some(ControlKind::Color);
     }
 
@@ -239,6 +242,9 @@ fn kind_tag(kind: ControlKind) -> &'static str {
         ControlKind::Toggle => "toggle",
         ControlKind::Color => "color",
         ControlKind::Xy => "xy",
+        ControlKind::Bang => "bang",
+        ControlKind::Dropdown => "dropdown",
+        ControlKind::Knob => "knob",
     }
 }
 
@@ -391,6 +397,7 @@ mod drift_pins {
             default: ControlValue::Float(1.0),
             min: Some(0.0),
             max: Some(2.0),
+            ..ControlDecl::default()
         });
 
         let warnings =
@@ -445,6 +452,7 @@ mod drift_pins {
             default: ControlValue::Float(5.0),
             min: Some(2.5),
             max: Some(7.5),
+            ..ControlDecl::default()
         });
 
         let warnings =
@@ -503,7 +511,7 @@ mod compat_fixture_coverage {
     //! - Step 2 (toggle): every DEFAULT spelling the validator
     //!   accepts — `Bool(true)`, `Bool(false)`, `Float(0.0)`,
     //!   `Float(1.0)` — when neither `min` nor `max` is set.
-    //! - Step 3 (color): `Vec3` and `Vec4` default shapes.
+    //! - Step 3 (color): `DEF_COLOR`, `Vec3`, and `Vec4` shapes.
     //! - Step 4 (xy): `Vec2` default shape.
     //! - Step 5 (strict-reject): fallback exhaustion. Identical
     //!   `Err(ValidationError::MissingControlType)` return in BOTH
@@ -557,6 +565,7 @@ mod compat_fixture_coverage {
             default,
             min,
             max,
+            ..ControlDecl::default()
         });
         scene
     }
@@ -659,6 +668,21 @@ mod compat_fixture_coverage {
             assert_compat_coerces(&scene, &name, "color");
             assert_strict_rejects_missing_type(&scene, &name);
         }
+    }
+
+    #[test]
+    fn cp01_step3_def_color_coerces_in_compat_rejects_in_strict() {
+        let mut scene = Scene::default();
+        scene.controls.push(ControlDecl {
+            name: "palette".to_string(),
+            kind: None,
+            default: ControlValue::Float(0.5),
+            def_color: Some([0.1, 0.2, 0.3, 1.0]),
+            ..ControlDecl::default()
+        });
+
+        assert_compat_coerces(&scene, "palette", "color");
+        assert_strict_rejects_missing_type(&scene, "palette");
     }
 
     // ---- Step 4: xy (Vec2 default) ----

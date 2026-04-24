@@ -28,7 +28,7 @@
 //!   (flatten-preserved in `Scene::extensions`).
 //! - `DATA_SOURCES` interpretation (parse-reserved per CP-12).
 //! - `.chromaPack` zip transport, `script.js` / `main.glsl` pairing,
-//!   `images/` handling.
+//!   and `images/` loading beyond package-presence checks.
 //! - The full `docs/36-reactive-symbol-catalog.md` loader.
 //!
 //! Governing ADRs:
@@ -178,18 +178,18 @@ pub struct PassSpec {
 /// Author-declared control taxonomy per
 /// `docs/28-implementation-contract-pack.md` §CP-01 CR-01.
 ///
-/// Slice-3a covers the four parity-core kinds the CP-01 missing-TYPE
-/// fallback rule lists (`slider`, `toggle`, `color`, `xy`). Future
-/// kinds (e.g. native `enum` controls under `native-chroma-v1`) land
-/// with the profile surface that introduces them.
+/// Slice-3a covers the four CP-01 missing-TYPE fallback kinds
+/// (`slider`, `toggle`, `color`, `xy`) plus the observed reference
+/// corpus outliers that need to survive parse / validation before their
+/// full runtime semantics land (`bang`, `dropdown`, `knob`).
 ///
 /// The custom [`Deserialize`] impl applies the "first ASCII-
 /// whitespace-split token" rule: reference-app scenes spell things
 /// like `slider smooth`, `xy traveler`, `bang counter smooth` in
 /// `TYPE` (`docs/02` §Observed control types lines 31–33), and the
 /// slice-3a parser preserves only the canonical base kind. Unknown
-/// first tokens produce a `serde::de::Error` carrying the raw
-/// spelling.
+/// first tokens outside the observed set produce a `serde::de::Error`
+/// carrying the raw spelling.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize)]
 #[non_exhaustive]
 #[serde(rename_all = "lowercase")]
@@ -202,6 +202,14 @@ pub enum ControlKind {
     Color,
     /// 2-component 2-D position.
     Xy,
+    /// Momentary trigger control. Runtime edge semantics land later.
+    Bang,
+    /// Discrete option control with labels / values preserved on
+    /// [`ControlDecl`].
+    Dropdown,
+    /// Rotary scalar control. Runtime semantics normalize through the
+    /// same scalar pipeline as slider in a later slice.
+    Knob,
 }
 
 impl<'de> Deserialize<'de> for ControlKind {
@@ -216,6 +224,9 @@ impl<'de> Deserialize<'de> for ControlKind {
             "toggle" => Ok(ControlKind::Toggle),
             "color" => Ok(ControlKind::Color),
             "xy" => Ok(ControlKind::Xy),
+            "bang" => Ok(ControlKind::Bang),
+            "dropdown" => Ok(ControlKind::Dropdown),
+            "knob" => Ok(ControlKind::Knob),
             _ => Err(serde::de::Error::custom(format!(
                 "unknown-control-type: {raw}"
             ))),
@@ -267,13 +278,13 @@ impl Default for ControlValue {
 /// - `DEFAULT` → [`Self::default`].
 /// - `MIN` → [`Self::min`] (optional).
 /// - `MAX` → [`Self::max`] (optional).
-///
-/// Additional observed keys (`UI_GROUP`, `DESCRIPTION`, `PARAMS`,
-/// `DEF_COLOR`, `LABELS`, `VALUES`, `IS_META`, legacy `LABEL`) are
-/// not yet mapped to canonical fields and are dropped by the
-/// `Deserialize` derive at slice-3a. They become flattened
-/// extensions in the slice that introduces them to the canonical
-/// model.
+/// - `UI_GROUP`, `DESCRIPTION`, `PARAMS`, `DEF_COLOR`, `LABELS`,
+///   `VALUES`, `IS_META`, and legacy `LABEL` are preserved explicitly
+///   so clean-room fixture coverage can reason about reference-observed
+///   UX grouping, smoothing, dropdown, metadata, and color fallback
+///   semantics without reparsing raw JSON.
+/// - Any additional observed or future control keys flatten through
+///   [`Self::extensions`] for non-lossy compat ingestion.
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ControlDecl {
@@ -290,4 +301,26 @@ pub struct ControlDecl {
     pub min: Option<f64>,
     #[serde(rename = "MAX", default)]
     pub max: Option<f64>,
+    #[serde(rename = "UI_GROUP", default, skip_serializing_if = "Option::is_none")]
+    pub ui_group: Option<String>,
+    #[serde(
+        rename = "DESCRIPTION",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
+    #[serde(rename = "PARAMS", default, skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
+    #[serde(rename = "DEF_COLOR", default, skip_serializing_if = "Option::is_none")]
+    pub def_color: Option<[f64; 4]>,
+    #[serde(rename = "LABELS", default, skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<serde_json::Value>,
+    #[serde(rename = "VALUES", default, skip_serializing_if = "Vec::is_empty")]
+    pub values: Vec<serde_json::Value>,
+    #[serde(rename = "IS_META", default, skip_serializing_if = "Option::is_none")]
+    pub is_meta: Option<bool>,
+    #[serde(rename = "LABEL", default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(flatten)]
+    pub extensions: serde_json::Map<String, serde_json::Value>,
 }

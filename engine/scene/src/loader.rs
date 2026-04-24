@@ -10,18 +10,13 @@
 //! a compat-profile bump per
 //! `docs/22-compatibility-versioning-policy.md` §Version Axes.
 //!
-//! Slice-3a scope: in-memory deserialization only
-//! ([`load_scene_json`] over `impl Read`, [`parse_scene_json`] over
-//! `&str`). On-disk path helpers, `.chromaPack` zip transport,
-//! `script.js` / `main.glsl` pairing, and the `DATA_SOURCES` stanza
-//! interpretation all remain deferred to later slices. The first
-//! external reader for [`crate::schema`] field visibility is the
-//! T2 on-disk corpus harness that C-α2 will land at
-//! `engine/scene/tests/validator/main.rs`; see
-//! `docs/26-evidence-artifact-registry.md` row 23
-//! (`EV-SCENE-IMPORT`).
+//! Slice-3a scope: in-memory deserialization plus a minimal
+//! package-level `.chroma` directory reader. `.chromaPack` zip
+//! transport, `script.js` / `main.glsl` interpretation, and the
+//! `DATA_SOURCES` stanza remain deferred to later slices.
 
 use crate::schema::Scene;
+use std::path::{Path, PathBuf};
 
 /// Errors returned by the slice-3a JSON loader surface.
 ///
@@ -39,6 +34,12 @@ pub enum LoadError {
     /// I/O failure reading the scene source. Only [`load_scene_json`]
     /// can produce this variant.
     Io(std::io::Error),
+    /// The requested package path is not a directory.
+    NotDirectory(PathBuf),
+    /// The requested package path is not a `.chroma` directory.
+    UnsupportedPackageExtension(PathBuf),
+    /// The requested package directory has no `scene.json` entry point.
+    MissingSceneJson(PathBuf),
     /// JSON shape-level failure surfaced by [`serde_json`], including
     /// the slice-3a spelling of unknown control types (see the type
     /// doc).
@@ -59,6 +60,21 @@ impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LoadError::Io(err) => write!(f, "scene loader I/O error: {err}"),
+            LoadError::NotDirectory(path) => {
+                write!(
+                    f,
+                    "scene package path is not a directory: {}",
+                    path.display()
+                )
+            }
+            LoadError::UnsupportedPackageExtension(path) => write!(
+                f,
+                "scene package path is not a .chroma directory: {}",
+                path.display()
+            ),
+            LoadError::MissingSceneJson(path) => {
+                write!(f, "scene package missing scene.json: {}", path.display())
+            }
             LoadError::Json(err) => write!(f, "scene loader JSON error: {err}"),
             LoadError::UnknownControlType { control_name, raw } => {
                 write!(f, "unknown control type for {control_name:?}: {raw:?}")
@@ -72,7 +88,10 @@ impl std::error::Error for LoadError {
         match self {
             LoadError::Io(err) => Some(err),
             LoadError::Json(err) => Some(err),
-            LoadError::UnknownControlType { .. } => None,
+            LoadError::NotDirectory(_)
+            | LoadError::UnsupportedPackageExtension(_)
+            | LoadError::MissingSceneJson(_)
+            | LoadError::UnknownControlType { .. } => None,
         }
     }
 }
@@ -99,6 +118,29 @@ pub fn parse_scene_json(s: &str) -> Result<Scene, LoadError> {
     Ok(serde_json::from_str(s)?)
 }
 
+/// Load a Chromaticity-native `.chroma` directory package.
+///
+/// This is intentionally only the package entry-point reader: it proves
+/// the directory contract and deserializes `scene.json`. Shader, script,
+/// asset, and zip-package interpretation remain separate later slices.
+pub fn load_chroma_dir(path: impl AsRef<Path>) -> Result<Scene, LoadError> {
+    let path = path.as_ref();
+    if !path.is_dir() {
+        return Err(LoadError::NotDirectory(path.to_path_buf()));
+    }
+    if path.extension().and_then(std::ffi::OsStr::to_str) != Some("chroma") {
+        return Err(LoadError::UnsupportedPackageExtension(path.to_path_buf()));
+    }
+
+    let scene_json = path.join("scene.json");
+    if !scene_json.is_file() {
+        return Err(LoadError::MissingSceneJson(scene_json));
+    }
+
+    let file = std::fs::File::open(scene_json)?;
+    load_scene_json(file)
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod loader_drift_pins {
@@ -119,7 +161,7 @@ mod loader_drift_pins {
     //! scene corpus); the T2 on-disk corpus harness lands with C-α2
     //! at `engine/scene/tests/validator/main.rs`.
 
-    use super::{LoadError, parse_scene_json};
+    use super::{LoadError, load_chroma_dir, parse_scene_json};
     use crate::schema::{ControlKind, ControlValue};
 
     #[test]
@@ -204,7 +246,10 @@ mod loader_drift_pins {
                 "CONTROLS": [
                     {"NAME": "a", "TYPE": "slider smooth", "DEFAULT": 0.0},
                     {"NAME": "b", "TYPE": "xy traveler", "DEFAULT": [0.0, 0.0]},
-                    {"NAME": "c", "TYPE": "toggle", "DEFAULT": true}
+                    {"NAME": "c", "TYPE": "toggle", "DEFAULT": true},
+                    {"NAME": "d", "TYPE": "bang counter", "DEFAULT": 0.0},
+                    {"NAME": "e", "TYPE": "dropdown smooth", "DEFAULT": 0.0},
+                    {"NAME": "f", "TYPE": "knob traveler", "DEFAULT": 0.0}
                 ]
             }"#,
         )
@@ -212,6 +257,48 @@ mod loader_drift_pins {
         assert_eq!(scene.controls[0].kind, Some(ControlKind::Slider));
         assert_eq!(scene.controls[1].kind, Some(ControlKind::Xy));
         assert_eq!(scene.controls[2].kind, Some(ControlKind::Toggle));
+        assert_eq!(scene.controls[3].kind, Some(ControlKind::Bang));
+        assert_eq!(scene.controls[4].kind, Some(ControlKind::Dropdown));
+        assert_eq!(scene.controls[5].kind, Some(ControlKind::Knob));
+    }
+
+    #[test]
+    fn observed_control_metadata_is_preserved() {
+        let scene = parse_scene_json(
+            r#"{
+                "CONTROLS": [
+                    {
+                        "NAME": "mode",
+                        "TYPE": "dropdown",
+                        "DEFAULT": 1.0,
+                        "UI_GROUP": "routing",
+                        "DESCRIPTION": "Mode selector",
+                        "PARAMS": 0.25,
+                        "DEF_COLOR": [0.1, 0.2, 0.3, 1.0],
+                        "LABELS": ["A", "B"],
+                        "VALUES": [0, 1],
+                        "IS_META": true,
+                        "LABEL": "Mode",
+                        "CUSTOM": {"kept": true}
+                    }
+                ]
+            }"#,
+        )
+        .expect("observed control metadata must parse");
+
+        let c = &scene.controls[0];
+        assert_eq!(c.ui_group.as_deref(), Some("routing"));
+        assert_eq!(c.description.as_deref(), Some("Mode selector"));
+        assert_eq!(c.params, Some(serde_json::json!(0.25)));
+        assert_eq!(c.def_color, Some([0.1, 0.2, 0.3, 1.0]));
+        assert_eq!(
+            c.labels,
+            vec![serde_json::json!("A"), serde_json::json!("B")]
+        );
+        assert_eq!(c.values, vec![serde_json::json!(0), serde_json::json!(1)]);
+        assert_eq!(c.is_meta, Some(true));
+        assert_eq!(c.label.as_deref(), Some("Mode"));
+        assert!(c.extensions.contains_key("CUSTOM"));
     }
 
     #[test]
@@ -306,5 +393,71 @@ mod loader_drift_pins {
         assert_eq!(c.default, ControlValue::Float(0.0));
         assert!(c.min.is_none());
         assert!(c.max.is_none());
+        assert!(c.ui_group.is_none());
+        assert!(c.description.is_none());
+        assert!(c.params.is_none());
+        assert!(c.def_color.is_none());
+        assert!(c.labels.is_empty());
+        assert!(c.values.is_empty());
+        assert!(c.is_meta.is_none());
+        assert!(c.label.is_none());
+        assert!(c.extensions.is_empty());
+    }
+
+    #[test]
+    fn chroma_directory_loader_reads_scene_json_entrypoint() {
+        let root = std::env::temp_dir().join(format!(
+            "chromaticity-loader-{}-{}.chroma",
+            std::process::id(),
+            "ok"
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).expect("temp chroma dir must be created");
+        std::fs::write(root.join("scene.json"), r#"{"TITLE":"Loaded"}"#)
+            .expect("scene.json must be written");
+
+        let scene = load_chroma_dir(&root).expect(".chroma dir must load");
+        assert_eq!(
+            scene.extensions.get("TITLE"),
+            Some(&serde_json::json!("Loaded"))
+        );
+
+        std::fs::remove_dir_all(root).expect("temp chroma dir must be removed");
+    }
+
+    #[test]
+    fn chroma_directory_loader_rejects_non_chroma_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "chromaticity-loader-{}-{}",
+            std::process::id(),
+            "not-chroma"
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).expect("temp dir must be created");
+
+        match load_chroma_dir(&root) {
+            Err(LoadError::UnsupportedPackageExtension(path)) => assert_eq!(path, root),
+            other => panic!("expected UnsupportedPackageExtension, got {other:?}"),
+        }
+
+        std::fs::remove_dir_all(root).expect("temp dir must be removed");
+    }
+
+    #[test]
+    fn chroma_directory_loader_requires_scene_json() {
+        let root = std::env::temp_dir().join(format!(
+            "chromaticity-loader-{}-{}.chroma",
+            std::process::id(),
+            "missing"
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).expect("temp chroma dir must be created");
+
+        match load_chroma_dir(&root) {
+            Err(LoadError::MissingSceneJson(path)) => assert_eq!(path, root.join("scene.json")),
+            other => panic!("expected MissingSceneJson, got {other:?}"),
+        }
+
+        std::fs::remove_dir_all(root).expect("temp chroma dir must be removed");
     }
 }
