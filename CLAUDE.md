@@ -50,7 +50,7 @@ Policy / evidence:
 
 ```
 bash scripts/evidence-tag-lint.sh    # strict on tier tokens, evidence-tag coverage (engine/**, integrations/**), and EV-ID validity against docs/26
-bash scripts/adr-lint.sh             # 17 Phase-0 grace warnings expected
+bash scripts/adr-lint.sh             # Phase-0 grace mode currently reports 0 warnings
 bash scripts/trailer-check.sh HEAD   # DCO + Profile-Impact trailers
 npm run commitlint:last              # Conventional Commits check
 ```
