@@ -26,6 +26,23 @@ Before this ADR may be authored:
 2. The four Accountable-Owner decisions in `41-data-ingestion-differentiator.md` Sec.Open decisions requiring Accountable Owner signoff before ADR-017 authoring starts are recorded.
 3. At least one V2 provider has completed a discovery spike (provenance + license class + transport prototype) so the ADR can ground its cadence, payload-size, and backpressure decisions in at least one real data point.
 
+## Evidence
+
+`EV-*` IDs whose status is produced, advanced, or blocked by this decision. This ADR is a reserved slot; the eleven evidence rows below are post-MVP placeholders enumerated in `26-evidence-artifact-registry.md` so that forward-references resolve. None can transition out of `Planned` until this ADR is authored, ratified, and the corresponding implementation slices ship.
+
+- `EV-DATA-INGEST-SCHEMA` — `DATA_SOURCES` scene.json schema conformance. Activated when this ADR locks the schema shape per `41-data-ingestion-differentiator.md` Sec.Forward-compat reservations and the slice that lands `engine/scene` parser support ships.
+- `EV-DATA-INGEST-PROVIDER-REGISTRY` — provider registry structure, licensing posture, capability-token binding. Activated on this ADR's provider-registry decision plus `adr/ADR-009-activation-and-entitlements.md` capability-token surface.
+- `EV-DATA-INGEST-CASSETTE` — cassette record/replay reproducibility per `22-compatibility-versioning-policy.md` Sec.Data-Pinned Fixtures. Activated when this ADR ships the cassette format decision.
+- `EV-DATA-INGEST-FRAME-BUDGET` — data-ingestion frame-budget reservation under live fetch per `10-performance-latency-budgets.md` Sec.Frame Performance reserved post-MVP data-upload budget. Activated on this ADR's thread-pool + scheduler-interaction decision.
+- `EV-DATA-INGEST-BACKPRESSURE` — backpressure and degrade-on-stall posture. Activated on this ADR's backpressure policy decision.
+- `EV-DATA-INGEST-OFFLINE` — every provider has a defined fallback state and renders sanely with the source unavailable. Activated on this ADR's error-state rendering UX decision.
+- `EV-DATA-INGEST-OBSERVABILITY` — runtime outbound destinations are a strict subset of `OBSERVABILITY-INVENTORY.md` Sec.Data Sources per `adr/ADR-016-observability-and-telemetry-posture.md` Sec.Post-MVP data-ingestion interaction. Activated on this ADR plus the first inventory entry per provider.
+- `EV-DATA-INGEST-LICENSE` — extends `EV-LICENSE-AUDIT` scope to cover each shipped data provider (provenance, license class, ToS posture). Activated per-provider when this ADR's provider-registry decision admits the provider per `29-cleanroom-legal-policy-baseline.md` Sec.External Data Source Licensing Policy.
+- `EV-DATA-INGEST-CAPABILITY-GATING` — disabled-capability tokens block the data adapter with `data-entitlement-denied` diagnostic per `adr/ADR-009-activation-and-entitlements.md` Sec.Capability namespace `data.ingest.*`. Activated on this ADR + ADR-009 capability-token surface.
+- `EV-DATA-INGEST-KEY-STORAGE` — operator-supplied API keys stored in OS secrets store only and excluded from support bundles, crash reports, telemetry. Activated on this ADR's key-handling decision plus `adr/ADR-016-observability-and-telemetry-posture.md` payload-redaction posture.
+
+The reserved-slot status `Proposed (reserved slot; normative content deferred post-MVP)` is the documented acceptable state during Phase 0 through MVP per `43-development-standards.md` Sec.14; `EV-ARCH-CONTRACT-BASELINE` (`26-evidence-artifact-registry.md` row 22) does not enumerate this ADR among its gating-ADR artifact set precisely because the reserved-slot posture is intentional and contract-pack closure is not blocked on this ADR's authoring.
+
 ## Traceability
 
 - `41-data-ingestion-differentiator.md` - incoming requirements package (primary reference).

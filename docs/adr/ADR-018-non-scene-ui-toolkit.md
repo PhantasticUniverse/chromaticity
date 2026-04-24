@@ -110,7 +110,26 @@ Token names and the token families above are normative and change only via an AD
 - NFR-10 measurement harness per `37-authoring-environment-spec.md` §3.3a validates keystroke-to-paint latency against declared budgets.
 - Tauri, Svelte, CodeMirror 6, and `ts-rs` versions are pinned per release per `22-compatibility-versioning-policy.md`; bumps run the full regression suite.
 
+## Evidence
+
+`EV-*` IDs whose status is produced, advanced, or blocked by this decision. The toolkit choice (Tauri 2 + Svelte 5 + TypeScript + CodeMirror 6) is the architectural precondition for every NFR-10 / NFR-11 / NFR-12 evidence row that touches the non-scene UI surface; an alternative toolkit (Electron, Qt, native pair, Flutter, Tauri 1) would have shifted the closure path of each row below.
+
+- `EV-ARCH-CONTRACT-BASELINE` — this ADR is enumerated in row 22 of `26-evidence-artifact-registry.md` as one of the gating Accepted ADRs that the contract-pack baseline measures completion against. The row cannot reach `Pass` without this ADR; this ADR's `Accepted` status is the precondition the row currently records.
+- `EV-ACCESSIBILITY-AA` — WCAG 2.2 AA closure on the non-scene UI per `03-product-requirements.md` NFR-11. The accessibility-bridge decision (system web view surfaces to OS accessibility tree natively; axe-core in CI; manual VoiceOver/NVDA per release) is the scope this row measures. The Design-Tokens table's target-size, focus-indicator, and reduced-motion specifications are the normative tokens the row's audits validate.
+- `EV-COLOR-MANAGEMENT-SRGB` — V1 sRGB output per NFR-12. The "scene canvas as separate native surface" decision is the only configuration that lets the row distinguish UI-surface sRGB conformance from scene-canvas colour management (the latter is owned by `adr/ADR-011-rendering-backend.md`); a single composited surface would have collapsed the two and made the row untestable.
+- `EV-AUTHORING-UX-LATENCY` — hover-docs / symbol-search / first-paint-on-open p95 budgets per `37-authoring-environment-spec.md` Sec.3.3a. The Svelte 5 + native-web-view choice is what makes the budgets achievable on GPU-A baseline hardware; a heavier framework (React + Electron) would have pushed p95 outside budget per the `Negative` consequences inventory.
+- `EV-DOCS-UX-LATENCY` — same harness as `EV-AUTHORING-UX-LATENCY` against the docs viewer surface. Same toolkit precondition; CodeMirror 6 hover/completion integration is the per-symbol authoring path the row's hover-docs latency measures end-to-end.
+- `EV-LICENSE-AUDIT` — dependency licensing posture. The toolkit decision is bounded to Tauri (MIT/Apache-2.0), Svelte (MIT), CodeMirror 6 (MIT), and `ts-rs` (MIT/Apache-2.0); each is `EV-LICENSE-AUDIT`-compatible. A Qt-LGPL-static-link or proprietary-toolkit alternative would have failed this row at audit time per the `Alternatives Considered` rejection rationale.
+- `EV-UX-CONTROL-CONTRACT`, `EV-UX-FLOW-CONTRACT`, `EV-UX-HUD-CONTRACT`, `EV-UX-AUTHORING-CONTRACT`, `EV-UX-LIBRARY-CONTRACT`, `EV-UX-OSC-SETTINGS-CONTRACT`, `EV-UX-MIDI-SETTINGS-CONTRACT` — UX sign-off packets. The Design Tokens table in this ADR (token names, contrast-pair registry structure, target-size floor, motion tokens) is the normative source the UX bundle fills in; every UX contract row above is constrained by the structure locked here even though the values are filled by the bundle.
+
 ## Traceability
+- `03-product-requirements.md` NFR-10, NFR-11, NFR-12
+- `13-risk-register.md` R-29 (accessibility regression), R-30 (color management regression)
+- `20-requirements-traceability-matrix.md` NFR-11, NFR-12 rows
+- `26-evidence-artifact-registry.md` `EV-ACCESSIBILITY-AA`, `EV-COLOR-MANAGEMENT-SRGB`, `EV-AUTHORING-UX-LATENCY`, `EV-DOCS-UX-LATENCY`
+- `37-authoring-environment-spec.md` §3.2 editor surface + §3.3a NFR-10 measurement harness
+- `adr/ADR-011-rendering-backend.md` for scene canvas colour management
+- `29-cleanroom-legal-policy-baseline.md` `EV-LICENSE-AUDIT` for dependency license posture
 - `03-product-requirements.md` NFR-10, NFR-11, NFR-12
 - `13-risk-register.md` R-29 (accessibility regression), R-30 (color management regression)
 - `20-requirements-traceability-matrix.md` NFR-11, NFR-12 rows
