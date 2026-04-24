@@ -52,9 +52,12 @@
 //!   of the input command sequence.
 
 use crate::state::State;
+use chromaticity_observability::catalog::{CommandKind, EventKind, RuntimeLifecycleState};
 use crossbeam_channel::{Receiver, Sender, TryRecvError, unbounded};
 use std::fmt;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 /// Stable identifier for a control.
 ///
@@ -304,19 +307,152 @@ impl CommandChannel for CrossbeamChannel {
 /// In-memory command bus composing a [`CommandChannel`] with the
 /// monotonic [`EventSeq`] counter that pins the slice-2
 /// EV-DETERMINISM T1 invariants.
+///
+/// Per-kind command-dispatch, event-emit, and lifecycle-transition
+/// counters are maintained in-memory alongside a monotonic
+/// `start: Instant` for uptime sampling, and exposed via
+/// [`InMemoryBus::command_dispatched_count`],
+/// [`InMemoryBus::event_emitted_count`],
+/// [`InMemoryBus::lifecycle_transition_count`], and
+/// [`InMemoryBus::uptime_seconds`]. These are the interim observables
+/// for the `chromaticity_runtime_commands_dispatched_total`,
+/// `chromaticity_runtime_events_emitted_total`,
+/// `chromaticity_runtime_lifecycle_transitions_total`, and
+/// `chromaticity_runtime_uptime_seconds` emission sites declared in
+/// `docs/31-supportability-privacy-ops-policy.md` §Phase-1 baseline
+/// catalog. Slice-3 will route each increment through the runtime bus
+/// via
+/// `chromaticity_observability::catalog::MetricEvent::RuntimeCommandsDispatched`,
+/// `RuntimeEventsEmitted`, `RuntimeLifecycleTransition`, and
+/// `RuntimeUptime`, and reduce this bus-local table to a sink-side
+/// counter (per `engine/observability/src/lib.rs` lines 26-27 the
+/// runtime-bus wiring that feeds `EmitMetric` implementations is
+/// slice-3 scope).
+///
+/// Command / event vocabularies match
+/// [`chromaticity_observability::catalog::CommandKind`] and
+/// [`chromaticity_observability::catalog::EventKind`]. Only the four
+/// slice-2 variants of each kind are ever incremented here; the
+/// three Snap variants (`SnapRecall` / `SnapSave` / `SnapClear`) fold
+/// into `ControlSet` / `ControlChanged` respectively per the
+/// catalog's reduced Phase-1 surface. The lifecycle counter exposes
+/// only `Starting → Running` (at construction) and
+/// `Running → Stopping` (in [`Drop`]); further transitions land with
+/// the slice-3 scheduler lifecycle.
 pub struct InMemoryBus {
     channel: Box<dyn CommandChannel>,
     next_seq: AtomicU64,
+    command_counts: CommandKindCounts,
+    event_counts: EventKindCounts,
+    // `Arc`-wrapped so the drift-pin test for the `Drop` impl can
+    // observe the `Running → Stopping` increment after the bus is
+    // dropped; the bus itself owns exactly one strong reference and
+    // no code outside this module clones it.
+    lifecycle_counts: Arc<LifecycleTransitionCounts>,
+    start: Instant,
+}
+
+/// Per-[`CommandKind`] dispatch counters for [`InMemoryBus`].
+///
+/// Named `AtomicU64` fields (not a map) so the compiler sees the full
+/// key set and external callers cannot depend on the storage shape.
+/// `CommandKind` is `#[non_exhaustive]` across the crate boundary, so
+/// the getter keeps a wildcard arm for future variants that slice-2
+/// has not been taught to produce.
+#[derive(Debug, Default)]
+struct CommandKindCounts {
+    control_set: AtomicU64,
+    preset_recall: AtomicU64,
+    playlist_advance: AtomicU64,
+    mapping_bind: AtomicU64,
+}
+
+/// Per-[`EventKind`] emission counters for [`InMemoryBus`]. Same
+/// storage-shape rationale as [`CommandKindCounts`].
+#[derive(Debug, Default)]
+struct EventKindCounts {
+    control_changed: AtomicU64,
+    preset_recalled: AtomicU64,
+    playlist_advanced: AtomicU64,
+    mapping_bound: AtomicU64,
+}
+
+/// Lifecycle `(from, to)` transition counters for [`InMemoryBus`].
+///
+/// Slice-2 only records the two transitions
+/// `Starting → Running` and `Running → Stopping`; every other
+/// `(from, to)` pair resolves to `0` through
+/// [`InMemoryBus::lifecycle_transition_count`]. Additional pairs
+/// become wired when the slice-3 scheduler lifecycle lands, per the
+/// TODO on `RuntimeLifecycleState` at
+/// `engine/observability/src/catalog.rs`.
+#[derive(Debug, Default)]
+struct LifecycleTransitionCounts {
+    starting_to_running: AtomicU64,
+    running_to_stopping: AtomicU64,
+}
+
+/// Map a slice-2 [`Command`] variant onto the catalog's reduced
+/// [`CommandKind`] surface.
+///
+/// Snap variants (`SnapRecall` / `SnapSave` / `SnapClear`) fold into
+/// `CommandKind::ControlSet` because `docs/31` §Phase-1 baseline
+/// catalog does not (yet) model Snap as a distinct kind.
+// TODO(slice-3): widen `CommandKind` to cover Snap variants once the
+// docs/31 amendment that adds Snap kinds lands.
+fn command_kind(command: &Command) -> CommandKind {
+    match command {
+        Command::ControlSet { .. }
+        | Command::SnapRecall { .. }
+        | Command::SnapSave { .. }
+        | Command::SnapClear { .. } => CommandKind::ControlSet,
+        Command::PresetRecall { .. } => CommandKind::PresetRecall,
+        Command::PlaylistAdvance { .. } => CommandKind::PlaylistAdvance,
+        Command::MappingBind { .. } => CommandKind::MappingBind,
+    }
+}
+
+/// Map a slice-2 [`EventPayload`] variant onto the catalog's reduced
+/// [`EventKind`] surface.
+///
+/// Snap event variants (`SnapRecalled` / `SnapSaved` / `SnapCleared`)
+/// fold into `EventKind::ControlChanged` for the same reason Snap
+/// command variants fold into `ControlSet`.
+// TODO(slice-3): widen `EventKind` to cover Snap variants once the
+// docs/31 amendment that adds Snap kinds lands.
+fn event_kind(payload: &EventPayload) -> EventKind {
+    match payload {
+        EventPayload::ControlChanged { .. }
+        | EventPayload::SnapRecalled { .. }
+        | EventPayload::SnapSaved { .. }
+        | EventPayload::SnapCleared { .. } => EventKind::ControlChanged,
+        EventPayload::PresetRecalled { .. } => EventKind::PresetRecalled,
+        EventPayload::PlaylistAdvanced { .. } => EventKind::PlaylistAdvanced,
+        EventPayload::MappingBound { .. } => EventKind::MappingBound,
+    }
 }
 
 impl InMemoryBus {
     /// Construct a bus backed by the given channel.
+    ///
+    /// Records a `Starting → Running` lifecycle transition at
+    /// construction, following the pattern ADR-006 names for the
+    /// state-commit thread coming online.
     #[must_use]
     pub fn with_channel(channel: Box<dyn CommandChannel>) -> Self {
-        Self {
+        let bus = Self {
             channel,
             next_seq: AtomicU64::new(0),
-        }
+            command_counts: CommandKindCounts::default(),
+            event_counts: EventKindCounts::default(),
+            lifecycle_counts: Arc::new(LifecycleTransitionCounts::default()),
+            start: Instant::now(),
+        };
+        bus.record_lifecycle_transition(
+            RuntimeLifecycleState::Starting,
+            RuntimeLifecycleState::Running,
+        );
+        bus
     }
 
     /// Construct a bus backed by a default [`CrossbeamChannel`].
@@ -331,6 +467,7 @@ impl InMemoryBus {
         let command = self.channel.try_recv()?;
         let seq = EventSeq(self.next_seq.fetch_add(1, Ordering::SeqCst));
         let payload = EventPayload::from_command(command);
+        self.record_event_emitted(event_kind(&payload));
         Some(Event { seq, payload })
     }
 
@@ -362,11 +499,146 @@ impl InMemoryBus {
         }
         events
     }
+
+    /// Current count of commands mapped to `kind` and dispatched
+    /// through this bus since construction.
+    ///
+    /// The wildcard arm covers future [`CommandKind`] variants —
+    /// the enum is `#[non_exhaustive]` across the crate boundary —
+    /// which slice-2 has not been taught to produce; any such
+    /// variant reads as 0.
+    #[must_use]
+    pub fn command_dispatched_count(&self, kind: CommandKind) -> u64 {
+        match kind {
+            CommandKind::ControlSet => self.command_counts.control_set.load(Ordering::Relaxed),
+            CommandKind::PresetRecall => self.command_counts.preset_recall.load(Ordering::Relaxed),
+            CommandKind::PlaylistAdvance => {
+                self.command_counts.playlist_advance.load(Ordering::Relaxed)
+            }
+            CommandKind::MappingBind => self.command_counts.mapping_bind.load(Ordering::Relaxed),
+            _ => 0,
+        }
+    }
+
+    /// Current count of events of `kind` emitted by
+    /// [`InMemoryBus::commit_one`] since construction. Wildcard arm
+    /// follows the same `#[non_exhaustive]` rationale as
+    /// [`InMemoryBus::command_dispatched_count`].
+    #[must_use]
+    pub fn event_emitted_count(&self, kind: EventKind) -> u64 {
+        match kind {
+            EventKind::ControlChanged => self.event_counts.control_changed.load(Ordering::Relaxed),
+            EventKind::PresetRecalled => self.event_counts.preset_recalled.load(Ordering::Relaxed),
+            EventKind::PlaylistAdvanced => {
+                self.event_counts.playlist_advanced.load(Ordering::Relaxed)
+            }
+            EventKind::MappingBound => self.event_counts.mapping_bound.load(Ordering::Relaxed),
+            _ => 0,
+        }
+    }
+
+    /// Current count of `(from, to)` lifecycle transitions recorded
+    /// on this bus. Slice-2 only records
+    /// `Starting → Running` (at construction) and
+    /// `Running → Stopping` (in [`Drop`]); every other pair reads as
+    /// 0.
+    #[must_use]
+    pub fn lifecycle_transition_count(
+        &self,
+        from: RuntimeLifecycleState,
+        to: RuntimeLifecycleState,
+    ) -> u64 {
+        match (from, to) {
+            (RuntimeLifecycleState::Starting, RuntimeLifecycleState::Running) => self
+                .lifecycle_counts
+                .starting_to_running
+                .load(Ordering::Relaxed),
+            (RuntimeLifecycleState::Running, RuntimeLifecycleState::Stopping) => self
+                .lifecycle_counts
+                .running_to_stopping
+                .load(Ordering::Relaxed),
+            _ => 0,
+        }
+    }
+
+    /// Seconds elapsed since this bus was constructed, sampled via
+    /// `Instant::elapsed` at call time. Pulled rather than pushed —
+    /// no timer thread — so the gauge reads the same value any two
+    /// callers in the same second see, and advances monotonically.
+    #[must_use]
+    pub fn uptime_seconds(&self) -> u64 {
+        self.start.elapsed().as_secs()
+    }
+
+    /// Increment the counter for `kind` by one. Unknown variants
+    /// (future `#[non_exhaustive]` additions to [`CommandKind`]) are
+    /// ignored rather than panicked on.
+    fn record_command_dispatched(&self, kind: CommandKind) {
+        let counter = match kind {
+            CommandKind::ControlSet => &self.command_counts.control_set,
+            CommandKind::PresetRecall => &self.command_counts.preset_recall,
+            CommandKind::PlaylistAdvance => &self.command_counts.playlist_advance,
+            CommandKind::MappingBind => &self.command_counts.mapping_bind,
+            _ => return,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Increment the counter for `kind` by one. Unknown variants
+    /// (future `#[non_exhaustive]` additions to [`EventKind`]) are
+    /// ignored rather than panicked on.
+    fn record_event_emitted(&self, kind: EventKind) {
+        let counter = match kind {
+            EventKind::ControlChanged => &self.event_counts.control_changed,
+            EventKind::PresetRecalled => &self.event_counts.preset_recalled,
+            EventKind::PlaylistAdvanced => &self.event_counts.playlist_advanced,
+            EventKind::MappingBound => &self.event_counts.mapping_bound,
+            _ => return,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Increment the counter for the `(from, to)` lifecycle pair by
+    /// one. Pairs outside the slice-2 recorded set are ignored
+    /// rather than panicked on.
+    fn record_lifecycle_transition(&self, from: RuntimeLifecycleState, to: RuntimeLifecycleState) {
+        let counter = match (from, to) {
+            (RuntimeLifecycleState::Starting, RuntimeLifecycleState::Running) => {
+                &self.lifecycle_counts.starting_to_running
+            }
+            (RuntimeLifecycleState::Running, RuntimeLifecycleState::Stopping) => {
+                &self.lifecycle_counts.running_to_stopping
+            }
+            _ => return,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 impl CommandBus for InMemoryBus {
     fn dispatch(&self, command: Command) -> Result<(), CommandBusError> {
-        self.channel.send(command)
+        // Map the command to its `CommandKind` at the start of
+        // dispatch so slice-3 can lift this straight into a
+        // `MetricEvent::RuntimeCommandsDispatched` emission without
+        // touching the call site.
+        let kind = command_kind(&command);
+        self.channel.send(command)?;
+        self.record_command_dispatched(kind);
+        Ok(())
+    }
+}
+
+impl Drop for InMemoryBus {
+    fn drop(&mut self) {
+        // `Running → Stopping` is the one terminal transition the
+        // slice-2 runtime emits. Slice-3's scheduler lifecycle will
+        // grow additional terminal arcs (`Paused → Stopping`,
+        // crash-path transitions) but those land with the concrete
+        // scheduler, not this bus.
+        self.record_lifecycle_transition(
+            RuntimeLifecycleState::Running,
+            RuntimeLifecycleState::Stopping,
+        );
     }
 }
 
@@ -627,6 +899,282 @@ mod drift_pins {
                     source: MappingSource::Midi,
                 },
             ]
+        );
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod observability_emission {
+    //! Evidence: EV-OBSERVABILITY (T1) — runtime emission site against docs/31 §Phase-1 baseline catalog (commands_dispatched, events_emitted, lifecycle_transitions, uptime).
+    //!
+    //! T1 per `docs/43-development-standards.md` §15.5: each test pins
+    //! the slice-2 emission contract for one of the four runtime
+    //! metrics the catalog at `engine/observability/src/catalog.rs`
+    //! declares. The free-function drift pins in `drift_pins` above
+    //! already cover the determinism and channel invariants of
+    //! [`InMemoryBus`]; this module is additive and covers the
+    //! `dispatch → record_command_dispatched`,
+    //! `commit_one → record_event_emitted`,
+    //! `with_channel → record_lifecycle_transition(Starting, Running)`,
+    //! and `Drop → record_lifecycle_transition(Running, Stopping)`
+    //! chains that slice-3 will rebase onto the runtime-bus
+    //! `MetricEvent::Runtime*` emissions.
+    //!
+    //! Coverage is limited to the slice-2 emission set. `RuntimeUptime`
+    //! is a sampled gauge rather than a counter — it advances
+    //! monotonically across calls (possibly as a no-op inside a single
+    //! second); the test pins the no-regress invariant, not a
+    //! clock-specific value.
+    //!
+    //! Snap folding is pinned by
+    //! [`snap_variants_fold_into_control_set_command_counter`] and
+    //! [`snap_events_fold_into_control_changed_event_counter`]; the
+    //! `TODO(slice-3)` markers on `command_kind` and `event_kind`
+    //! identify the docs/31 amendment that would invalidate those
+    //! two tests.
+    //!
+    //! The `Running → Stopping` test observes post-`Drop` state via
+    //! the `Arc<LifecycleTransitionCounts>` the bus holds internally.
+    //! No other module clones the `Arc`; this test is the sole
+    //! consumer, and it relies on the same-module access to
+    //! `bus.lifecycle_counts` that private-field visibility grants.
+    //! Slice-3 replaces this path with a `MetricEvent` emission the
+    //! bus-side counter captures directly.
+
+    use super::{
+        Command, CommandBus, ControlId, ControlValue, InMemoryBus, LifecycleTransitionCounts,
+        MappingId, MappingSource, PresetId, SnapSlotId,
+    };
+    use chromaticity_observability::catalog::{CommandKind, EventKind, RuntimeLifecycleState};
+    use std::sync::Arc;
+    use std::sync::atomic::Ordering;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn control_set_dispatch_increments_control_set_command_counter() {
+        let bus = InMemoryBus::in_memory();
+        bus.dispatch(Command::ControlSet {
+            id: ControlId(0),
+            value: ControlValue(0.0),
+        })
+        .unwrap();
+        assert_eq!(bus.command_dispatched_count(CommandKind::ControlSet), 1);
+        assert_eq!(bus.command_dispatched_count(CommandKind::PresetRecall), 0);
+        assert_eq!(
+            bus.command_dispatched_count(CommandKind::PlaylistAdvance),
+            0
+        );
+        assert_eq!(bus.command_dispatched_count(CommandKind::MappingBind), 0);
+    }
+
+    #[test]
+    fn preset_recall_dispatch_increments_preset_recall_command_counter() {
+        let bus = InMemoryBus::in_memory();
+        bus.dispatch(Command::PresetRecall { id: PresetId(1) })
+            .unwrap();
+        assert_eq!(bus.command_dispatched_count(CommandKind::PresetRecall), 1);
+        assert_eq!(bus.command_dispatched_count(CommandKind::ControlSet), 0);
+    }
+
+    #[test]
+    fn playlist_advance_dispatch_increments_playlist_advance_command_counter() {
+        let bus = InMemoryBus::in_memory();
+        bus.dispatch(Command::PlaylistAdvance { step: 2 }).unwrap();
+        bus.dispatch(Command::PlaylistAdvance { step: -1 }).unwrap();
+        assert_eq!(
+            bus.command_dispatched_count(CommandKind::PlaylistAdvance),
+            2
+        );
+    }
+
+    #[test]
+    fn mapping_bind_dispatch_increments_mapping_bind_command_counter() {
+        let bus = InMemoryBus::in_memory();
+        bus.dispatch(Command::MappingBind {
+            id: MappingId(7),
+            source: MappingSource::Osc,
+        })
+        .unwrap();
+        bus.dispatch(Command::MappingBind {
+            id: MappingId(8),
+            source: MappingSource::Midi,
+        })
+        .unwrap();
+        assert_eq!(bus.command_dispatched_count(CommandKind::MappingBind), 2);
+    }
+
+    #[test]
+    fn snap_variants_fold_into_control_set_command_counter() {
+        // Slice-2 Snap folding: SnapRecall / SnapSave / SnapClear
+        // all record as `CommandKind::ControlSet` per the catalog's
+        // reduced Phase-1 surface. When docs/31 gains dedicated Snap
+        // kinds this test will need to split.
+        let bus = InMemoryBus::in_memory();
+        let slot = SnapSlotId::new(3).expect("valid snap slot");
+        bus.dispatch(Command::SnapRecall { slot }).unwrap();
+        bus.dispatch(Command::SnapSave { slot }).unwrap();
+        bus.dispatch(Command::SnapClear { slot }).unwrap();
+        assert_eq!(bus.command_dispatched_count(CommandKind::ControlSet), 3);
+        // Non-Snap kinds remain at 0; folding only affects
+        // ControlSet.
+        assert_eq!(bus.command_dispatched_count(CommandKind::PresetRecall), 0);
+        assert_eq!(bus.command_dispatched_count(CommandKind::MappingBind), 0);
+    }
+
+    #[test]
+    fn commit_one_increments_matching_event_kind_counter() {
+        let bus = InMemoryBus::in_memory();
+        bus.dispatch(Command::ControlSet {
+            id: ControlId(0),
+            value: ControlValue(0.0),
+        })
+        .unwrap();
+        bus.dispatch(Command::PresetRecall { id: PresetId(0) })
+            .unwrap();
+        bus.dispatch(Command::PlaylistAdvance { step: 1 }).unwrap();
+        bus.dispatch(Command::MappingBind {
+            id: MappingId(1),
+            source: MappingSource::Osc,
+        })
+        .unwrap();
+
+        // Dispatch does NOT advance event counters; only commit does.
+        assert_eq!(bus.event_emitted_count(EventKind::ControlChanged), 0);
+        assert_eq!(bus.event_emitted_count(EventKind::PresetRecalled), 0);
+        assert_eq!(bus.event_emitted_count(EventKind::PlaylistAdvanced), 0);
+        assert_eq!(bus.event_emitted_count(EventKind::MappingBound), 0);
+
+        let events = bus.commit_all();
+        assert_eq!(events.len(), 4);
+        assert_eq!(bus.event_emitted_count(EventKind::ControlChanged), 1);
+        assert_eq!(bus.event_emitted_count(EventKind::PresetRecalled), 1);
+        assert_eq!(bus.event_emitted_count(EventKind::PlaylistAdvanced), 1);
+        assert_eq!(bus.event_emitted_count(EventKind::MappingBound), 1);
+    }
+
+    #[test]
+    fn snap_events_fold_into_control_changed_event_counter() {
+        // Mirror of snap_variants_fold_into_control_set for the event
+        // side: SnapRecalled / SnapSaved / SnapCleared all record as
+        // `EventKind::ControlChanged`.
+        let bus = InMemoryBus::in_memory();
+        let slot = SnapSlotId::new(1).expect("valid snap slot");
+        bus.dispatch(Command::SnapRecall { slot }).unwrap();
+        bus.dispatch(Command::SnapSave { slot }).unwrap();
+        bus.dispatch(Command::SnapClear { slot }).unwrap();
+        let events = bus.commit_all();
+        assert_eq!(events.len(), 3);
+        assert_eq!(bus.event_emitted_count(EventKind::ControlChanged), 3);
+        assert_eq!(bus.event_emitted_count(EventKind::PresetRecalled), 0);
+    }
+
+    #[test]
+    fn bus_construction_records_starting_to_running_lifecycle_transition() {
+        let bus = InMemoryBus::in_memory();
+        assert_eq!(
+            bus.lifecycle_transition_count(
+                RuntimeLifecycleState::Starting,
+                RuntimeLifecycleState::Running,
+            ),
+            1
+        );
+        // Running → Stopping has not fired yet; the bus is still
+        // alive.
+        assert_eq!(
+            bus.lifecycle_transition_count(
+                RuntimeLifecycleState::Running,
+                RuntimeLifecycleState::Stopping,
+            ),
+            0
+        );
+        // Pairs slice-2 does not record read as 0.
+        assert_eq!(
+            bus.lifecycle_transition_count(
+                RuntimeLifecycleState::Running,
+                RuntimeLifecycleState::Paused,
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn drop_records_running_to_stopping_lifecycle_transition() {
+        // Observe the post-drop counter value via an `Arc` clone the
+        // test retains. Inside the bus-lifetime block,
+        // `running_to_stopping` is still 0. Once the bus is dropped at
+        // the end of that block, the `Drop` impl fires and the
+        // retained Arc reads 1.
+        let retained: Arc<LifecycleTransitionCounts>;
+        {
+            let bus = InMemoryBus::in_memory();
+            retained = Arc::clone(&bus.lifecycle_counts);
+            assert_eq!(
+                retained.starting_to_running.load(Ordering::Relaxed),
+                1,
+                "construction should record Starting → Running",
+            );
+            assert_eq!(
+                retained.running_to_stopping.load(Ordering::Relaxed),
+                0,
+                "bus is still alive; Drop has not run yet",
+            );
+            // `bus` drops here.
+        }
+        assert_eq!(
+            retained.running_to_stopping.load(Ordering::Relaxed),
+            1,
+            "Drop impl should record Running → Stopping",
+        );
+    }
+
+    #[test]
+    fn uptime_seconds_is_monotonic() {
+        let bus = InMemoryBus::in_memory();
+        // First sample bounds the monotonic invariant's baseline.
+        let first = bus.uptime_seconds();
+        // Two more reads in quick succession must not regress; any
+        // forward motion is fine, including staying within the same
+        // whole second. A short sleep gives the clock a chance to
+        // advance past a second boundary without forcing it to.
+        let second = bus.uptime_seconds();
+        thread::sleep(Duration::from_millis(5));
+        let third = bus.uptime_seconds();
+        assert!(second >= first, "uptime regressed: {second} < {first}");
+        assert!(third >= second, "uptime regressed: {third} < {second}");
+    }
+
+    #[test]
+    fn multi_producer_command_counter_is_thread_safe() {
+        // Dispatch happens from producer threads; the counter uses
+        // `AtomicU64` so independent increments on different threads
+        // never lose updates. Pin the total — not the ordering —
+        // against a multi-producer fan-in.
+        const PRODUCERS: u32 = 4;
+        const PER_PRODUCER: u32 = 64;
+
+        let bus = Arc::new(InMemoryBus::in_memory());
+        let handles: Vec<_> = (0..PRODUCERS)
+            .map(|_| {
+                let bus = Arc::clone(&bus);
+                thread::spawn(move || {
+                    for seq in 0..PER_PRODUCER {
+                        bus.dispatch(Command::ControlSet {
+                            id: ControlId(seq),
+                            value: ControlValue(0.0),
+                        })
+                        .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert_eq!(
+            bus.command_dispatched_count(CommandKind::ControlSet),
+            u64::from(PRODUCERS * PER_PRODUCER),
         );
     }
 }

@@ -390,6 +390,7 @@ dependencies = [
 name = "chromaticity-runtime"
 version = "0.0.0"
 dependencies = [
+ "chromaticity-observability",
  "crossbeam-channel",
  "workspace-hack",
 ]
