@@ -163,3 +163,161 @@ impl IngestState {
         self.mode
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod observability_emission {
+    //! Evidence: EV-OBSERVABILITY (T1) — audio emission site against
+    //! docs/31 §Phase-1 baseline catalog (ingest_frames,
+    //! ingest_samples, ingest_state_transitions; tracker is a
+    //! slice-2 synthesis per OSC adapter precedent).
+    //!
+    //! T1 per `docs/43 §15.5`: each test pins either a catalog-row
+    //! invariant (`ingest_frames_total` `status` label increments,
+    //! `ingest_samples_total` delta on `Ready`) or a documented
+    //! state-machine invariant on the slice-2
+    //! [`AudioIngestStateTracker`] synthesis (`Starting -> Running`
+    //! on first `Ready`, `Running -> Draining` after two
+    //! consecutive non-`Ready`, `Closed` terminal). The tracker
+    //! itself is a best-effort slice-2 synthesis per the OSC
+    //! adapter precedent (`engine/observability/src/catalog.rs`
+    //! lines 167-170 `OscAdapterState` docstring): the canonical
+    //! audio-pipeline lifecycle reifies with the slice-3
+    //! scheduler, at which point this module's `TODO(slice-3)`
+    //! markers reconcile.
+
+    use chromaticity_observability::catalog::{AudioIngestFrameStatus, AudioIngestState};
+
+    use crate::frame::AudioFrame;
+    use crate::ingest::{IngestBoundary, IngestStatus};
+    use crate::observability::{self, AudioIngestStateTracker, frames_count, samples_count};
+    use crate::silent::SilentSource;
+
+    #[test]
+    fn silent_source_ready_increments_ready_frames_and_samples_by_128() {
+        let _serialize = observability::test_serialize_lock();
+
+        let before_ready = frames_count(AudioIngestFrameStatus::Ready);
+        let before_samples = samples_count();
+
+        let mut source = SilentSource::new(1);
+        let mut frame = AudioFrame::default();
+        assert_eq!(source.try_pull(&mut frame), IngestStatus::Ready);
+
+        let after_ready = frames_count(AudioIngestFrameStatus::Ready);
+        let after_samples = samples_count();
+
+        // SilentSource publishes a single 128-sample silent block
+        // per `Ready` at DEFAULT_SAMPLE_RATE_HZ (silent.rs:52),
+        // matching docs/06 §7.1 framing baseline.
+        assert_eq!(after_ready - before_ready, 1);
+        assert_eq!(after_samples - before_samples, 128);
+    }
+
+    #[test]
+    fn silent_source_exhaustion_increments_closed_frames() {
+        let _serialize = observability::test_serialize_lock();
+
+        let before_closed = frames_count(AudioIngestFrameStatus::Closed);
+        let before_samples = samples_count();
+
+        // Hop budget 0 -> first try_pull is Closed.
+        let mut source = SilentSource::new(0);
+        let mut frame = AudioFrame::default();
+        assert_eq!(source.try_pull(&mut frame), IngestStatus::Closed);
+
+        let after_closed = frames_count(AudioIngestFrameStatus::Closed);
+        let after_samples = samples_count();
+
+        assert_eq!(after_closed - before_closed, 1);
+        // Closed MUST NOT advance the samples counter per docs/31
+        // §Phase-1 baseline catalog `ingest_samples_total` row
+        // ("Monotonic total PCM samples delivered").
+        assert_eq!(after_samples, before_samples);
+    }
+
+    #[test]
+    fn tracker_transitions_starting_to_running_on_first_ready() {
+        // Fresh tracker; no serialize lock needed (local state
+        // only, no interaction with the process-wide counters).
+        let mut tracker = AudioIngestStateTracker::new();
+        assert_eq!(tracker.current_state(), AudioIngestState::Starting);
+        assert_eq!(
+            tracker.observe(AudioIngestFrameStatus::Ready),
+            AudioIngestState::Running,
+        );
+        assert_eq!(
+            tracker.transition_count(AudioIngestState::Starting, AudioIngestState::Running),
+            1,
+        );
+    }
+
+    #[test]
+    fn tracker_transitions_running_to_draining_after_two_consecutive_nonready() {
+        let mut tracker = AudioIngestStateTracker::new();
+        // Leave Starting via Ready so the two-consecutive rule
+        // applies from Running (§7.11 parity with IngestState).
+        tracker.observe(AudioIngestFrameStatus::Ready);
+        assert_eq!(tracker.current_state(), AudioIngestState::Running);
+        // First non-Ready does not yet flip the state.
+        assert_eq!(
+            tracker.observe(AudioIngestFrameStatus::WouldBlock),
+            AudioIngestState::Running,
+        );
+        // Second consecutive non-Ready (mixed kinds count the
+        // same, matching IngestState) crosses the threshold.
+        assert_eq!(
+            tracker.observe(AudioIngestFrameStatus::Closed),
+            AudioIngestState::Draining,
+        );
+        assert_eq!(
+            tracker.transition_count(AudioIngestState::Running, AudioIngestState::Draining),
+            1,
+        );
+    }
+
+    #[test]
+    fn tracker_closed_is_terminal() {
+        let mut tracker = AudioIngestStateTracker::new();
+        // Drive Starting -> Running -> Draining -> Closed via the
+        // slice-2 mapping: first Ready promotes to Running, two
+        // consecutive Closed promotes to Draining, a third Closed
+        // while Draining drops us into Closed.
+        tracker.observe(AudioIngestFrameStatus::Ready);
+        tracker.observe(AudioIngestFrameStatus::Closed);
+        tracker.observe(AudioIngestFrameStatus::Closed);
+        assert_eq!(tracker.current_state(), AudioIngestState::Draining);
+        tracker.observe(AudioIngestFrameStatus::Closed);
+        assert_eq!(tracker.current_state(), AudioIngestState::Closed);
+
+        let terminal_transitions =
+            tracker.transition_count(AudioIngestState::Draining, AudioIngestState::Closed);
+        assert_eq!(terminal_transitions, 1);
+
+        // Subsequent observations are no-ops: the tracker stays
+        // Closed and no further transition counts accrue.
+        tracker.observe(AudioIngestFrameStatus::Ready);
+        assert_eq!(tracker.current_state(), AudioIngestState::Closed);
+        tracker.observe(AudioIngestFrameStatus::WouldBlock);
+        assert_eq!(tracker.current_state(), AudioIngestState::Closed);
+
+        // `Draining -> Running` would have incremented had the
+        // Ready above been honoured; the invariant is that it
+        // stayed at the one `Draining -> Closed` recorded above.
+        assert_eq!(
+            tracker.transition_count(AudioIngestState::Draining, AudioIngestState::Running),
+            0,
+        );
+        assert_eq!(
+            tracker.transition_count(AudioIngestState::Draining, AudioIngestState::Closed),
+            terminal_transitions,
+        );
+
+        // Sanity: transition_count for an unreachable pair reads
+        // 0 via the wildcard arm.
+        assert_eq!(
+            tracker.transition_count(AudioIngestState::Starting, AudioIngestState::Closed),
+            0,
+        );
+    }
+}

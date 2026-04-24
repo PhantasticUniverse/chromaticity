@@ -33,6 +33,17 @@ workspace = true
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
+# chromaticity-observability owns the canonical `AudioIngestFrameStatus`
+# and `AudioIngestState` label-enums mirroring docs/31 §Scheme and
+# Metric Catalog. Slice-2 imports those label enums only (no
+# `MetricSink` / emitter coupling) so the in-crate emission-site
+# counters key off the same vocabulary the slice-3 runtime-bus
+# wiring will route through `MetricEvent::AudioIngestFrames` /
+# `MetricEvent::AudioIngestSamples` /
+# `MetricEvent::AudioIngestStateTransition`. Mirrors the slice-2
+# pattern seeded by `integrations/osc-adapter/Cargo.toml`.
+chromaticity-observability = { version = "0.0.0", path = "../observability" }
+
 # cpal 0.15 is the Phase-2 device-capture path, authorised as a
 # dep-slot under the slice-2 brief. No cpal types are imported or
 # invoked in slice-2 Rust code; the slot exists so slice-3 can land
