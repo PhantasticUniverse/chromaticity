@@ -36,3 +36,15 @@ workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# chromaticity-observability owns the canonical `SceneValidationOutcome`
+# and `SceneLintCategory` label-enums mirroring docs/31 §Scheme and
+# Metric Catalog. The scene crate imports these enums so the in-process
+# validation / lint counters (see `crate::observability`) key off the
+# same vocabulary the slice-3 runtime-bus wiring will route through
+# `MetricEvent::SceneValidations` and `MetricEvent::SceneLintWarnings`.
+# Slice-2 does NOT depend on any other observability surface (no
+# `MetricSink`, no emitter types); adding those couplings is a slice-3
+# concern. Mirrors the integrations/osc-adapter/Cargo.toml dependency
+# pattern that added the same dep for `OscPacketOutcome` emission.
+chromaticity-observability = { version = "0.0.0", path = "../observability" }

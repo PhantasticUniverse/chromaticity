@@ -51,7 +51,10 @@
 //! Author-supplied MIN/MAX are preserved unchanged per CP-01 line 46
 //! ("do not overwrite author-provided range hints").
 
+use chromaticity_observability::catalog::{SceneLintCategory, SceneValidationOutcome};
+
 use crate::lint::Warning;
+use crate::observability::validation_counters;
 use crate::schema::{ControlDecl, ControlKind, ControlValue, Scene};
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -135,6 +138,7 @@ pub enum ValidationError {
 /// The order is not yet part of any compat surface; slice-3 may
 /// reorder freely.
 pub fn validate(scene: &Scene, mode: ValidationMode) -> Result<Vec<Warning>, ValidationError> {
+    let counters = validation_counters();
     let mut warnings: Vec<Warning> = Vec::new();
 
     // 1. Node-ID uniqueness. Strict and compat both reject.
@@ -142,6 +146,7 @@ pub fn validate(scene: &Scene, mode: ValidationMode) -> Result<Vec<Warning>, Val
     for pass in &scene.passes {
         let name = pass.node.0.as_str();
         if !seen_nodes.insert(name) {
+            counters.record_validation(SceneValidationOutcome::Fail);
             return Err(ValidationError::DuplicateNode(name.to_string()));
         }
     }
@@ -152,6 +157,7 @@ pub fn validate(scene: &Scene, mode: ValidationMode) -> Result<Vec<Warning>, Val
     for pass in &scene.passes {
         for binding in &pass.uniform_bindings {
             if !KNOWN_SYMBOLS.contains(binding.symbol.as_str()) {
+                counters.record_validation(SceneValidationOutcome::Fail);
                 return Err(ValidationError::UnknownSymbol(binding.symbol.clone()));
             }
         }
@@ -165,10 +171,12 @@ pub fn validate(scene: &Scene, mode: ValidationMode) -> Result<Vec<Warning>, Val
                     // CP-01 line 44: strict mode rejects
                     // unconditionally with a pointer to the first
                     // offending NAME.
+                    counters.record_validation(SceneValidationOutcome::Fail);
                     return Err(ValidationError::MissingControlType(control.name.clone()));
                 }
                 ValidationMode::Compat => match coerce_missing_type(control) {
                     Some(kind) => {
+                        counters.record_lint_warning(SceneLintCategory::CoercionApplied);
                         warnings.push(Warning::CoercionApplied {
                             control_name: control.name.clone(),
                             from: "missing-type".to_string(),
@@ -178,6 +186,7 @@ pub fn validate(scene: &Scene, mode: ValidationMode) -> Result<Vec<Warning>, Val
                     None => {
                         // CP-01 step 5: strict-reject applies in
                         // compat mode too when no fallback matched.
+                        counters.record_validation(SceneValidationOutcome::Fail);
                         return Err(ValidationError::MissingControlType(control.name.clone()));
                     }
                 },
@@ -185,6 +194,7 @@ pub fn validate(scene: &Scene, mode: ValidationMode) -> Result<Vec<Warning>, Val
         }
     }
 
+    counters.record_validation(SceneValidationOutcome::Pass);
     Ok(warnings)
 }
 
