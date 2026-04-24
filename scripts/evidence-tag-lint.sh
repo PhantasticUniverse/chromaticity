@@ -93,7 +93,7 @@ valid_ids="$(
 # <path>:<line-no>:<line>.
 evidence_lines="$(
     find "$repo" \
-        -type d \( -name target -o -name node_modules -o -name dist -o -name .git \) -prune \
+        -type d \( -name target -o -name node_modules -o -name dist -o -name .git -o -name Contents -o -name chromaticity-planning \) -prune \
         -o -type f -name '*.rs' -print 2>/dev/null \
     | xargs grep -nHE '^[[:space:]]*//! Evidence:' 2>/dev/null \
     || true
@@ -187,7 +187,7 @@ while IFS= read -r file; do
     fi
 done <<EOF
 $(find "$repo/engine" "$repo/integrations" \
-    -type d \( -name target -o -name node_modules -o -name dist -o -name .git \) -prune \
+    -type d \( -name target -o -name node_modules -o -name dist -o -name .git -o -name Contents -o -name chromaticity-planning \) -prune \
     -o -type f -name '*.rs' -print 2>/dev/null)
 EOF
 
