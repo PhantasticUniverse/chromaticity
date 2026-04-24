@@ -241,12 +241,10 @@ jobs:
           ADR_LINT_REQUIRE_ARCH_REVIEW: ${{ github.event_name == 'pull_request' && '1' || '0' }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # TODO: set ADR_LINT_REQUIRE_EV_TRACE: '1' once the
-          # ADR-001..008 backfill per docs/43 Sec.7.3 lands. Promoting
-          # the 17 Phase-0 grace warnings on ADR-005..008 / 017 / 018
-          # to errors depends on each ADR gaining `## Evidence` and
-          # `## Traceability` sections per docs/43 Sec.14.3. Tracked
-          # by the ADR-backfill work package (AO-held).
+          # ADR-001..008 / 017 / 018 backfill has landed and grace-mode
+          # warnings are now zero on main. Keep ADR_LINT_REQUIRE_EV_TRACE
+          # unset until explicit AO sign-off authorizes promotion to
+          # hard errors.
         run: bash scripts/adr-lint.sh
 
   secret-scan:
