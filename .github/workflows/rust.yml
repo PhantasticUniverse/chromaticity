@@ -118,6 +118,7 @@ jobs:
               - 'engine/**'
               - 'integrations/**'
               - 'release-eng/**'
+              - 'dist/.gitkeep'
               - '.github/workflows/rust.yml'
 
       # Non-pull_request events (push to main, merge_group queue) bypass the
@@ -174,9 +175,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Seed frontend dist sentinel
+      - name: Verify frontend dist sentinel
         shell: bash
-        run: mkdir -p dist && touch dist/.gitkeep
+        run: test -f dist/.gitkeep
 
       # PR on Linux, any push-to-main, or any merge_group (queue) event
       # on any OS: run full clippy with -D warnings. This is the
@@ -221,8 +222,8 @@ jobs:
         with:
           tool: cargo-nextest
 
-      - name: Seed frontend dist sentinel
-        run: mkdir -p dist && touch dist/.gitkeep
+      - name: Verify frontend dist sentinel
+        run: test -f dist/.gitkeep
 
       - name: Run unit + integration tests (nextest)
         run: cargo nextest run --workspace --all-targets --no-fail-fast
