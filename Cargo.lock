@@ -399,6 +399,7 @@ dependencies = [
 name = "chromaticity-scene"
 version = "0.0.0"
 dependencies = [
+ "chromaticity-observability",
  "serde",
  "serde_json",
  "workspace-hack",
