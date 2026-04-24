@@ -13,6 +13,7 @@
 #   - commit-convention-lint : EV-COMMIT-CONVENTION-LINT
 #   - dco                    : Sec.9.2 DCO on every commit in the range
 #   - trailer-check          : Sec.4.5 mandatory trailers
+#   - codeowners-location    : Sec.8.1 CODEOWNERS location guard
 #   - reuse-lint             : EV-LICENSE-HEADERS
 #   - adr-lint               : EV-ADR-LINT (only when docs/adr/ changed)
 #   - secret-scan            : Sec.18.3 belt-and-suspenders
@@ -184,6 +185,23 @@ jobs:
       # untrusted input consumed; command is a static literal.
       - name: Run trailer-check regression harness
         run: bash scripts/test-trailer-check.sh
+
+  codeowners-location:
+    name: codeowners-location
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify root CODEOWNERS is authoritative
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f CODEOWNERS
+          if [ -e .github/CODEOWNERS ] || [ -e docs/CODEOWNERS ]; then
+            printf '::error::GitHub reads .github/CODEOWNERS before /CODEOWNERS; keep only the root file authoritative.\n'
+            exit 1
+          fi
 
   reuse-lint:
     name: reuse-lint
