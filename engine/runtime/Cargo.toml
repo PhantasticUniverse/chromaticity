@@ -33,6 +33,18 @@ workspace = true
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
+# chromaticity-observability owns the canonical `CommandKind`,
+# `EventKind`, and `RuntimeLifecycleState` label-enums mirroring
+# docs/31 §Scheme and Metric Catalog. The runtime bus imports these
+# enums so the in-bus emission counters key off the same vocabulary
+# the slice-3 runtime-bus wiring will route through
+# `MetricEvent::RuntimeCommandsDispatched`, `RuntimeEventsEmitted`,
+# `RuntimeLifecycleTransition`, and `RuntimeUptime`. Slice-2 does NOT
+# depend on any other observability surface (no `MetricSink`, no
+# emitter types); those couplings are slice-3 scope per
+# engine/observability/src/lib.rs lines 26-27.
+chromaticity-observability = { version = "0.0.0", path = "../observability" }
+
 # crossbeam-channel 0.5 backs the Phase-1 in-memory CommandChannel
 # implementation. Wrapped behind the crate-local `CommandChannel`
 # trait so slice-3 persistence work can substitute a disk-backed or
