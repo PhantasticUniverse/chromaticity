@@ -18,7 +18,7 @@ Sequence implementation work so high-risk/high-leverage foundations are delivere
    - `EV-HOTKEY-PARITY-DESIGN` (ratification),
    - `EV-ENTITLEMENT-DESIGN`, `EV-ENTITLEMENT-TOKEN-FORMAT`,
    - `EV-DOCS-PHASE0-SEED`,
-   - `EV-CLEANROOM-POLICY-BASELINE`, `EV-LEGAL-PROVENANCE` (policy baseline),
+   - `EV-CLEANROOM-POLICY-BASELINE`,
    - `EV-OBSERVABILITY-INVENTORY`,
    - `EV-GATE-MODEL-AUDIT`,
    - `EV-COMMIT-CONVENTION-LINT`, `EV-LICENSE-HEADERS`, `EV-ADR-LINT` (development standards gates per `43-development-standards.md`).
