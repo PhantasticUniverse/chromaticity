@@ -295,6 +295,19 @@ The repo ships a `CODEOWNERS` file mapping subtrees to the named humans who hold
 
 The table omits the AO-local partitions (`chromaticity-planning/` and `Contents/`) by construction: both are `.gitignore`d per Sec.18.1, and a `CODEOWNERS` rule matching a path that no tracked file occupies silently disables itself for that path. The AO-only review boundary on those partitions is maintained by the AO-local-on-workstation posture, not by code-owner routing.
 
+`policy.yml` enforces two distinct CODEOWNERS checks on every PR:
+
+- **Location authority:** `/CODEOWNERS` must exist and `.github/CODEOWNERS` / `docs/CODEOWNERS` must not exist.
+- **Parser/owner validity:** GitHub's `GET /repos/{owner}/{repo}/codeowners/errors?ref=<head-sha>` endpoint must report zero errors.
+
+When the parser check fails, triage from the emitted workflow annotations:
+
+- malformed glob/pattern syntax
+- unknown or non-resolvable owner token
+- invalid line/column mapping in the source file
+
+Treat this as a merge-blocking policy failure; do not bypass by removing required contexts.
+
 Planning docs, ADRs, and legal-surface files are AO-only: the Deputy cannot self-merge changes to them even under T1. T2 transfers most of this authority to the Acting AO per `23-...md`, with the following **legal-baseline carve-out** that remains non-delegable at T2 and may transition only at T3:
 
 - `chromaticity-planning/29-cleanroom-legal-policy-baseline.md`

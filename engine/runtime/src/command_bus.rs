@@ -331,11 +331,10 @@ impl CommandChannel for CrossbeamChannel {
 ///
 /// Command / event vocabularies match
 /// [`chromaticity_observability::catalog::CommandKind`] and
-/// [`chromaticity_observability::catalog::EventKind`]. Only the four
-/// slice-2 variants of each kind are ever incremented here; the
-/// three Snap variants (`SnapRecall` / `SnapSave` / `SnapClear`) fold
-/// into `ControlSet` / `ControlChanged` respectively per the
-/// catalog's reduced Phase-1 surface. The lifecycle counter exposes
+/// [`chromaticity_observability::catalog::EventKind`]. The runtime
+/// command/event taxonomy emits dedicated Snap kinds so observability
+/// can distinguish control writes from slot recall/save/clear traffic.
+/// The lifecycle counter exposes
 /// only `Starting → Running` (at construction) and
 /// `Running → Stopping` (in [`Drop`]); further transitions land with
 /// the slice-3 scheduler lifecycle.
@@ -364,6 +363,9 @@ struct CommandKindCounts {
     control_set: AtomicU64,
     preset_recall: AtomicU64,
     playlist_advance: AtomicU64,
+    snap_recall: AtomicU64,
+    snap_save: AtomicU64,
+    snap_clear: AtomicU64,
     mapping_bind: AtomicU64,
 }
 
@@ -374,6 +376,9 @@ struct EventKindCounts {
     control_changed: AtomicU64,
     preset_recalled: AtomicU64,
     playlist_advanced: AtomicU64,
+    snap_recalled: AtomicU64,
+    snap_saved: AtomicU64,
+    snap_cleared: AtomicU64,
     mapping_bound: AtomicU64,
 }
 
@@ -392,42 +397,30 @@ struct LifecycleTransitionCounts {
     running_to_stopping: AtomicU64,
 }
 
-/// Map a slice-2 [`Command`] variant onto the catalog's reduced
-/// [`CommandKind`] surface.
-///
-/// Snap variants (`SnapRecall` / `SnapSave` / `SnapClear`) fold into
-/// `CommandKind::ControlSet` because `docs/31` §Phase-1 baseline
-/// catalog does not (yet) model Snap as a distinct kind.
-// TODO(slice-3): widen `CommandKind` to cover Snap variants once the
-// docs/31 amendment that adds Snap kinds lands.
+/// Map a slice-2 [`Command`] variant onto
+/// [`chromaticity_observability::catalog::CommandKind`].
 fn command_kind(command: &Command) -> CommandKind {
     match command {
-        Command::ControlSet { .. }
-        | Command::SnapRecall { .. }
-        | Command::SnapSave { .. }
-        | Command::SnapClear { .. } => CommandKind::ControlSet,
+        Command::ControlSet { .. } => CommandKind::ControlSet,
         Command::PresetRecall { .. } => CommandKind::PresetRecall,
         Command::PlaylistAdvance { .. } => CommandKind::PlaylistAdvance,
+        Command::SnapRecall { .. } => CommandKind::SnapRecall,
+        Command::SnapSave { .. } => CommandKind::SnapSave,
+        Command::SnapClear { .. } => CommandKind::SnapClear,
         Command::MappingBind { .. } => CommandKind::MappingBind,
     }
 }
 
-/// Map a slice-2 [`EventPayload`] variant onto the catalog's reduced
-/// [`EventKind`] surface.
-///
-/// Snap event variants (`SnapRecalled` / `SnapSaved` / `SnapCleared`)
-/// fold into `EventKind::ControlChanged` for the same reason Snap
-/// command variants fold into `ControlSet`.
-// TODO(slice-3): widen `EventKind` to cover Snap variants once the
-// docs/31 amendment that adds Snap kinds lands.
+/// Map a slice-2 [`EventPayload`] variant onto
+/// [`chromaticity_observability::catalog::EventKind`].
 fn event_kind(payload: &EventPayload) -> EventKind {
     match payload {
-        EventPayload::ControlChanged { .. }
-        | EventPayload::SnapRecalled { .. }
-        | EventPayload::SnapSaved { .. }
-        | EventPayload::SnapCleared { .. } => EventKind::ControlChanged,
+        EventPayload::ControlChanged { .. } => EventKind::ControlChanged,
         EventPayload::PresetRecalled { .. } => EventKind::PresetRecalled,
         EventPayload::PlaylistAdvanced { .. } => EventKind::PlaylistAdvanced,
+        EventPayload::SnapRecalled { .. } => EventKind::SnapRecalled,
+        EventPayload::SnapSaved { .. } => EventKind::SnapSaved,
+        EventPayload::SnapCleared { .. } => EventKind::SnapCleared,
         EventPayload::MappingBound { .. } => EventKind::MappingBound,
     }
 }
@@ -515,6 +508,9 @@ impl InMemoryBus {
             CommandKind::PlaylistAdvance => {
                 self.command_counts.playlist_advance.load(Ordering::Relaxed)
             }
+            CommandKind::SnapRecall => self.command_counts.snap_recall.load(Ordering::Relaxed),
+            CommandKind::SnapSave => self.command_counts.snap_save.load(Ordering::Relaxed),
+            CommandKind::SnapClear => self.command_counts.snap_clear.load(Ordering::Relaxed),
             CommandKind::MappingBind => self.command_counts.mapping_bind.load(Ordering::Relaxed),
             _ => 0,
         }
@@ -532,6 +528,9 @@ impl InMemoryBus {
             EventKind::PlaylistAdvanced => {
                 self.event_counts.playlist_advanced.load(Ordering::Relaxed)
             }
+            EventKind::SnapRecalled => self.event_counts.snap_recalled.load(Ordering::Relaxed),
+            EventKind::SnapSaved => self.event_counts.snap_saved.load(Ordering::Relaxed),
+            EventKind::SnapCleared => self.event_counts.snap_cleared.load(Ordering::Relaxed),
             EventKind::MappingBound => self.event_counts.mapping_bound.load(Ordering::Relaxed),
             _ => 0,
         }
@@ -578,6 +577,9 @@ impl InMemoryBus {
             CommandKind::ControlSet => &self.command_counts.control_set,
             CommandKind::PresetRecall => &self.command_counts.preset_recall,
             CommandKind::PlaylistAdvance => &self.command_counts.playlist_advance,
+            CommandKind::SnapRecall => &self.command_counts.snap_recall,
+            CommandKind::SnapSave => &self.command_counts.snap_save,
+            CommandKind::SnapClear => &self.command_counts.snap_clear,
             CommandKind::MappingBind => &self.command_counts.mapping_bind,
             _ => return,
         };
@@ -592,6 +594,9 @@ impl InMemoryBus {
             EventKind::ControlChanged => &self.event_counts.control_changed,
             EventKind::PresetRecalled => &self.event_counts.preset_recalled,
             EventKind::PlaylistAdvanced => &self.event_counts.playlist_advanced,
+            EventKind::SnapRecalled => &self.event_counts.snap_recalled,
+            EventKind::SnapSaved => &self.event_counts.snap_saved,
+            EventKind::SnapCleared => &self.event_counts.snap_cleared,
             EventKind::MappingBound => &self.event_counts.mapping_bound,
             _ => return,
         };
@@ -927,12 +932,9 @@ mod observability_emission {
     //! second); the test pins the no-regress invariant, not a
     //! clock-specific value.
     //!
-    //! Snap folding is pinned by
-    //! [`snap_variants_fold_into_control_set_command_counter`] and
-    //! [`snap_events_fold_into_control_changed_event_counter`]; the
-    //! `TODO(slice-3)` markers on `command_kind` and `event_kind`
-    //! identify the docs/31 amendment that would invalidate those
-    //! two tests.
+    //! Dedicated Snap command/event attribution is pinned by
+    //! [`snap_variants_increment_dedicated_command_counters`] and
+    //! [`snap_events_increment_dedicated_event_counters`].
     //!
     //! The `Running → Stopping` test observes post-`Drop` state via
     //! the `Arc<LifecycleTransitionCounts>` the bus holds internally.
@@ -1006,19 +1008,16 @@ mod observability_emission {
     }
 
     #[test]
-    fn snap_variants_fold_into_control_set_command_counter() {
-        // Slice-2 Snap folding: SnapRecall / SnapSave / SnapClear
-        // all record as `CommandKind::ControlSet` per the catalog's
-        // reduced Phase-1 surface. When docs/31 gains dedicated Snap
-        // kinds this test will need to split.
+    fn snap_variants_increment_dedicated_command_counters() {
         let bus = InMemoryBus::in_memory();
         let slot = SnapSlotId::new(3).expect("valid snap slot");
         bus.dispatch(Command::SnapRecall { slot }).unwrap();
         bus.dispatch(Command::SnapSave { slot }).unwrap();
         bus.dispatch(Command::SnapClear { slot }).unwrap();
-        assert_eq!(bus.command_dispatched_count(CommandKind::ControlSet), 3);
-        // Non-Snap kinds remain at 0; folding only affects
-        // ControlSet.
+        assert_eq!(bus.command_dispatched_count(CommandKind::SnapRecall), 1);
+        assert_eq!(bus.command_dispatched_count(CommandKind::SnapSave), 1);
+        assert_eq!(bus.command_dispatched_count(CommandKind::SnapClear), 1);
+        assert_eq!(bus.command_dispatched_count(CommandKind::ControlSet), 0);
         assert_eq!(bus.command_dispatched_count(CommandKind::PresetRecall), 0);
         assert_eq!(bus.command_dispatched_count(CommandKind::MappingBind), 0);
     }
@@ -1044,6 +1043,9 @@ mod observability_emission {
         assert_eq!(bus.event_emitted_count(EventKind::ControlChanged), 0);
         assert_eq!(bus.event_emitted_count(EventKind::PresetRecalled), 0);
         assert_eq!(bus.event_emitted_count(EventKind::PlaylistAdvanced), 0);
+        assert_eq!(bus.event_emitted_count(EventKind::SnapRecalled), 0);
+        assert_eq!(bus.event_emitted_count(EventKind::SnapSaved), 0);
+        assert_eq!(bus.event_emitted_count(EventKind::SnapCleared), 0);
         assert_eq!(bus.event_emitted_count(EventKind::MappingBound), 0);
 
         let events = bus.commit_all();
@@ -1055,10 +1057,7 @@ mod observability_emission {
     }
 
     #[test]
-    fn snap_events_fold_into_control_changed_event_counter() {
-        // Mirror of snap_variants_fold_into_control_set for the event
-        // side: SnapRecalled / SnapSaved / SnapCleared all record as
-        // `EventKind::ControlChanged`.
+    fn snap_events_increment_dedicated_event_counters() {
         let bus = InMemoryBus::in_memory();
         let slot = SnapSlotId::new(1).expect("valid snap slot");
         bus.dispatch(Command::SnapRecall { slot }).unwrap();
@@ -1066,7 +1065,10 @@ mod observability_emission {
         bus.dispatch(Command::SnapClear { slot }).unwrap();
         let events = bus.commit_all();
         assert_eq!(events.len(), 3);
-        assert_eq!(bus.event_emitted_count(EventKind::ControlChanged), 3);
+        assert_eq!(bus.event_emitted_count(EventKind::SnapRecalled), 1);
+        assert_eq!(bus.event_emitted_count(EventKind::SnapSaved), 1);
+        assert_eq!(bus.event_emitted_count(EventKind::SnapCleared), 1);
+        assert_eq!(bus.event_emitted_count(EventKind::ControlChanged), 0);
         assert_eq!(bus.event_emitted_count(EventKind::PresetRecalled), 0);
     }
 

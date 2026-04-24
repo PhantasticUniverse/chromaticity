@@ -76,6 +76,9 @@ pub enum CommandKind {
     ControlSet,
     PresetRecall,
     PlaylistAdvance,
+    SnapRecall,
+    SnapSave,
+    SnapClear,
     MappingBind,
 }
 
@@ -89,6 +92,9 @@ pub enum EventKind {
     ControlChanged,
     PresetRecalled,
     PlaylistAdvanced,
+    SnapRecalled,
+    SnapSaved,
+    SnapCleared,
     MappingBound,
 }
 
@@ -656,6 +662,30 @@ mod catalog_conformance {
         ),
     ];
 
+    /// `docs/31` runtime command-kind label closed set under
+    /// `chromaticity_runtime_commands_dispatched_total.kind`.
+    const EXPECTED_RUNTIME_COMMAND_KIND_LABELS: &[&str] = &[
+        "control_set",
+        "preset_recall",
+        "playlist_advance",
+        "snap_recall",
+        "snap_save",
+        "snap_clear",
+        "mapping_bind",
+    ];
+
+    /// `docs/31` runtime event-kind label closed set under
+    /// `chromaticity_runtime_events_emitted_total.kind`.
+    const EXPECTED_RUNTIME_EVENT_KIND_LABELS: &[&str] = &[
+        "control_changed",
+        "preset_recalled",
+        "playlist_advanced",
+        "snap_recalled",
+        "snap_saved",
+        "snap_cleared",
+        "mapping_bound",
+    ];
+
     /// Enumerate one sample of every [`MetricEvent`] variant, in
     /// declaration order.
     ///
@@ -778,6 +808,88 @@ mod catalog_conformance {
         labels
     }
 
+    /// Enumerate all [`CommandKind`] variants in declaration order.
+    ///
+    /// The loop below is deliberately exhaustive with no `_` arm so
+    /// enum additions fail at rustc level until this fixture and docs
+    /// expectations are updated.
+    fn every_command_kind_variant() -> Vec<CommandKind> {
+        let variants = vec![
+            CommandKind::ControlSet,
+            CommandKind::PresetRecall,
+            CommandKind::PlaylistAdvance,
+            CommandKind::SnapRecall,
+            CommandKind::SnapSave,
+            CommandKind::SnapClear,
+            CommandKind::MappingBind,
+        ];
+        for kind in &variants {
+            match kind {
+                CommandKind::ControlSet
+                | CommandKind::PresetRecall
+                | CommandKind::PlaylistAdvance
+                | CommandKind::SnapRecall
+                | CommandKind::SnapSave
+                | CommandKind::SnapClear
+                | CommandKind::MappingBind => (),
+            }
+        }
+        variants
+    }
+
+    /// Enumerate all [`EventKind`] variants in declaration order.
+    ///
+    /// The loop below is deliberately exhaustive with no `_` arm so
+    /// enum additions fail at rustc level until this fixture and docs
+    /// expectations are updated.
+    fn every_event_kind_variant() -> Vec<EventKind> {
+        let variants = vec![
+            EventKind::ControlChanged,
+            EventKind::PresetRecalled,
+            EventKind::PlaylistAdvanced,
+            EventKind::SnapRecalled,
+            EventKind::SnapSaved,
+            EventKind::SnapCleared,
+            EventKind::MappingBound,
+        ];
+        for kind in &variants {
+            match kind {
+                EventKind::ControlChanged
+                | EventKind::PresetRecalled
+                | EventKind::PlaylistAdvanced
+                | EventKind::SnapRecalled
+                | EventKind::SnapSaved
+                | EventKind::SnapCleared
+                | EventKind::MappingBound => (),
+            }
+        }
+        variants
+    }
+
+    fn command_kind_label(kind: CommandKind) -> &'static str {
+        match kind {
+            CommandKind::ControlSet => "control_set",
+            CommandKind::PresetRecall => "preset_recall",
+            CommandKind::PlaylistAdvance => "playlist_advance",
+            CommandKind::SnapRecall => "snap_recall",
+            CommandKind::SnapSave => "snap_save",
+            CommandKind::SnapClear => "snap_clear",
+            CommandKind::MappingBind => "mapping_bind",
+        }
+    }
+
+    fn event_kind_label(kind: EventKind) -> &'static str {
+        match kind {
+            EventKind::ControlChanged => "control_changed",
+            EventKind::PresetRecalled => "preset_recalled",
+            EventKind::PlaylistAdvanced => "playlist_advanced",
+            EventKind::SnapRecalled => "snap_recalled",
+            EventKind::SnapSaved => "snap_saved",
+            EventKind::SnapCleared => "snap_cleared",
+            EventKind::MappingBound => "mapping_bound",
+        }
+    }
+
     // ---- Conformance tests ----
 
     /// Catches `docs/31`-only additions: every metric name the
@@ -887,6 +999,42 @@ mod catalog_conformance {
                 "metric {name} label-set drift: catalog {actual_labels:?} vs docs/31 {expected_labels:?}",
             );
         }
+    }
+
+    /// Runtime command kind labels are a docs/31 closed set. Any
+    /// enum-level addition or token rename MUST be paired with a
+    /// docs/31 schema update.
+    #[test]
+    fn runtime_command_kind_labels_match_docs31_closed_set() {
+        let actual: std::collections::HashSet<&str> = every_command_kind_variant()
+            .into_iter()
+            .map(command_kind_label)
+            .collect();
+        let expected: std::collections::HashSet<&str> = EXPECTED_RUNTIME_COMMAND_KIND_LABELS
+            .iter()
+            .copied()
+            .collect();
+        assert_eq!(
+            actual, expected,
+            "runtime command kind label drift vs docs/31 closed set",
+        );
+    }
+
+    /// Runtime event kind labels are a docs/31 closed set. Any
+    /// enum-level addition or token rename MUST be paired with a
+    /// docs/31 schema update.
+    #[test]
+    fn runtime_event_kind_labels_match_docs31_closed_set() {
+        let actual: std::collections::HashSet<&str> = every_event_kind_variant()
+            .into_iter()
+            .map(event_kind_label)
+            .collect();
+        let expected: std::collections::HashSet<&str> =
+            EXPECTED_RUNTIME_EVENT_KIND_LABELS.iter().copied().collect();
+        assert_eq!(
+            actual, expected,
+            "runtime event kind label drift vs docs/31 closed set",
+        );
     }
 
     /// `docs/31` §Phase-1 baseline catalog closes with
