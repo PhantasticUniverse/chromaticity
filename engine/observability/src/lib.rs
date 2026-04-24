@@ -49,3 +49,16 @@
 
 pub mod catalog;
 pub mod emit;
+
+/// Construct the current observability schema-version metric event.
+///
+/// This free function is the Phase-1 emission site for
+/// `chromaticity_observability_schema_version`: callers consume the
+/// crate-root API and receive the catalog-typed gauge event for the
+/// running binary.
+#[must_use]
+pub fn current_schema_version() -> catalog::MetricEvent {
+    catalog::MetricEvent::ObservabilitySchemaVersion {
+        value: catalog::PHASE_1_SCHEMA_VERSION,
+    }
+}

@@ -15,9 +15,14 @@
 //! Phase 4d loopback-only health surface, a support-bundle collector
 //! for the opt-in export path, and so on).
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{
+    Mutex, PoisonError,
+    atomic::{AtomicU64, Ordering},
+};
 
-use crate::catalog::MetricEvent;
+use crate::catalog::{MetricEvent, ObservabilitySubsystem};
+
+const OBSERVABILITY_SUBSYSTEM_COUNT: usize = 5;
 
 /// Object-safe sink for metric events.
 ///
@@ -42,12 +47,18 @@ pub trait EmitMetric: Send + Sync {
 /// vector protected by a `Mutex`; [`Self::drain`] returns and clears
 /// the buffer.
 ///
+/// The in-process counter is the slice-2 emission-site claim for
+/// `chromaticity_observability_events_emitted_total`; slice-3 will
+/// route the counter through `MetricEvent::ObservabilityEventsEmitted`
+/// on the runtime bus.
+///
 /// Used directly by the slice-2 drift pins. Slice-3 tests that need
 /// to observe telemetry use this implementation as the default test
 /// sink.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct InMemoryEmitter {
     events: Mutex<Vec<MetricEvent>>,
+    subsystem_event_counts: [AtomicU64; OBSERVABILITY_SUBSYSTEM_COUNT],
 }
 
 impl InMemoryEmitter {
@@ -56,6 +67,7 @@ impl InMemoryEmitter {
     pub fn new() -> Self {
         Self {
             events: Mutex::new(Vec::new()),
+            subsystem_event_counts: std::array::from_fn(|_| AtomicU64::new(0)),
         }
     }
 
@@ -84,13 +96,146 @@ impl InMemoryEmitter {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Count of metric events emitted for `subsystem` since this
+    /// emitter was constructed.
+    ///
+    /// The wildcard arm covers future [`ObservabilitySubsystem`]
+    /// variants that this slice has not been taught to count; any
+    /// such variant reads as 0.
+    #[must_use]
+    #[allow(unreachable_patterns)]
+    pub fn events_emitted_count(&self, subsystem: ObservabilitySubsystem) -> u64 {
+        match subsystem {
+            ObservabilitySubsystem::Runtime
+            | ObservabilitySubsystem::Scene
+            | ObservabilitySubsystem::Audio
+            | ObservabilitySubsystem::Osc
+            | ObservabilitySubsystem::Observability => {
+                self.subsystem_event_counts[subsystem_index(subsystem)].load(Ordering::Relaxed)
+            }
+            _ => 0,
+        }
+    }
+}
+
+impl Default for InMemoryEmitter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn subsystem_index(subsystem: ObservabilitySubsystem) -> usize {
+    match subsystem {
+        ObservabilitySubsystem::Runtime => 0,
+        ObservabilitySubsystem::Scene => 1,
+        ObservabilitySubsystem::Audio => 2,
+        ObservabilitySubsystem::Osc => 3,
+        ObservabilitySubsystem::Observability => 4,
+    }
 }
 
 impl EmitMetric for InMemoryEmitter {
     fn emit(&self, event: MetricEvent) {
+        self.subsystem_event_counts[subsystem_index(event.subsystem())]
+            .fetch_add(1, Ordering::Relaxed);
         match self.events.lock() {
             Ok(mut guard) => guard.push(event),
             Err(poison) => poison.into_inner().push(event),
+        }
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod observability_emission {
+    //! Evidence: EV-OBSERVABILITY (T1) — observability meta emission sites against docs/31 §Phase-1 baseline catalog (events_emitted, schema_version).
+
+    use super::{EmitMetric, InMemoryEmitter};
+    use crate::{
+        catalog::{
+            AudioIngestFrameStatus, CommandKind, EventKind, MetricEvent, MetricKind,
+            ObservabilitySubsystem, OscPacketOutcome, PHASE_1_SCHEMA_VERSION,
+            SceneValidationOutcome,
+        },
+        current_schema_version,
+    };
+
+    #[test]
+    fn emit_increments_the_right_subsystem_counter() {
+        let emitter = InMemoryEmitter::new();
+
+        emitter.emit(MetricEvent::SceneValidations {
+            outcome: SceneValidationOutcome::Pass,
+            value: 1,
+        });
+
+        assert_eq!(
+            emitter.events_emitted_count(ObservabilitySubsystem::Scene),
+            1
+        );
+        assert_eq!(
+            emitter.events_emitted_count(ObservabilitySubsystem::Runtime),
+            0
+        );
+    }
+
+    #[test]
+    fn multiple_subsystems_track_independently() {
+        let emitter = InMemoryEmitter::new();
+
+        emitter.emit(MetricEvent::RuntimeCommandsDispatched {
+            kind: CommandKind::ControlSet,
+            value: 1,
+        });
+        emitter.emit(MetricEvent::RuntimeEventsEmitted {
+            kind: EventKind::ControlChanged,
+            value: 1,
+        });
+        emitter.emit(MetricEvent::AudioIngestFrames {
+            status: AudioIngestFrameStatus::Ready,
+            value: 1,
+        });
+        emitter.emit(MetricEvent::OscInboundPackets {
+            outcome: OscPacketOutcome::Accepted,
+            value: 1,
+        });
+        emitter.emit(MetricEvent::ObservabilityEventsEmitted {
+            subsystem: ObservabilitySubsystem::Audio,
+            value: 1,
+        });
+
+        assert_eq!(
+            emitter.events_emitted_count(ObservabilitySubsystem::Runtime),
+            2
+        );
+        assert_eq!(
+            emitter.events_emitted_count(ObservabilitySubsystem::Audio),
+            1
+        );
+        assert_eq!(emitter.events_emitted_count(ObservabilitySubsystem::Osc), 1);
+        assert_eq!(
+            emitter.events_emitted_count(ObservabilitySubsystem::Observability),
+            1
+        );
+        assert_eq!(
+            emitter.events_emitted_count(ObservabilitySubsystem::Scene),
+            0
+        );
+    }
+
+    #[test]
+    fn current_schema_version_returns_phase1_gauge_event() {
+        let event = current_schema_version();
+
+        assert_eq!(event.kind(), MetricKind::Gauge);
+        match event {
+            MetricEvent::ObservabilitySchemaVersion { value } => {
+                assert_eq!(value, PHASE_1_SCHEMA_VERSION);
+            }
+            other => {
+                unreachable!("current_schema_version returned {other:?}")
+            }
         }
     }
 }

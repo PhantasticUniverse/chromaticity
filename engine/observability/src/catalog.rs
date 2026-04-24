@@ -200,6 +200,9 @@ pub enum OscBindErrorReason {
 // schema changes.
 // ---------------------------------------------------------------------------
 
+/// Schema version of the docs/31 §Phase-1 baseline catalog this Rust catalog mirrors.
+pub const PHASE_1_SCHEMA_VERSION: u64 = 1;
+
 /// One emission of a catalog metric.
 ///
 /// Variants map 1:1 to docs/31 rows. Counter variants carry `value: u64`
@@ -313,6 +316,32 @@ impl MetricEvent {
             _ => MetricKind::Counter,
         }
     }
+
+    /// Docs/31 subsystem assignment for this metric row.
+    ///
+    /// Exhaustive match with no `_` arm: adding a [`MetricEvent`] variant
+    /// without extending this mapping fails at rustc level inside this crate.
+    #[must_use]
+    pub fn subsystem(&self) -> ObservabilitySubsystem {
+        match self {
+            Self::RuntimeLifecycleTransition { .. }
+            | Self::RuntimeUptime { .. }
+            | Self::RuntimeCommandsDispatched { .. }
+            | Self::RuntimeEventsEmitted { .. } => ObservabilitySubsystem::Runtime,
+            Self::SceneValidations { .. } | Self::SceneLintWarnings { .. } => {
+                ObservabilitySubsystem::Scene
+            }
+            Self::AudioIngestStateTransition { .. }
+            | Self::AudioIngestFrames { .. }
+            | Self::AudioIngestSamples { .. } => ObservabilitySubsystem::Audio,
+            Self::OscInboundPackets { .. }
+            | Self::OscAdapterStateTransition { .. }
+            | Self::OscBindErrors { .. } => ObservabilitySubsystem::Osc,
+            Self::ObservabilityEventsEmitted { .. } | Self::ObservabilitySchemaVersion { .. } => {
+                ObservabilitySubsystem::Observability
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -421,8 +450,9 @@ mod catalog_conformance {
     //! `docs/31-supportability-privacy-ops-policy.md` §Phase-1
     //! baseline catalog; the "conformance" is that the Rust
     //! [`MetricEvent`] enum + its [`MetricEvent::name`] /
-    //! [`MetricEvent::kind`] methods match `docs/31` verbatim,
-    //! with label sets matching each row's `labels` column.
+    //! [`MetricEvent::kind`] / [`MetricEvent::subsystem`] methods
+    //! match `docs/31` verbatim, with label sets matching each row's
+    //! `labels` column.
     //!
     //! Registry binding. `docs/26-evidence-artifact-registry.md`
     //! row 38 and `docs/31-supportability-privacy-ops-policy.md`
@@ -448,10 +478,11 @@ mod catalog_conformance {
     //!   level. `#[non_exhaustive]` on `MetricEvent` affects only
     //!   external-crate callers; inside the defining crate
     //!   exhaustive matching is required.
-    //! - **Test-time.** The [`EXPECTED`] table transcribes
-    //!   `docs/31` §Phase-1 baseline catalog verbatim; the four
-    //!   conformance tests cross-check it bidirectionally against
-    //!   the catalog and each row's label set. The fifth test
+    //! - **Test-time.** The [`EXPECTED`] and
+    //!   [`EXPECTED_SUBSYSTEMS`] tables transcribe `docs/31`
+    //!   §Phase-1 baseline catalog verbatim; conformance tests
+    //!   cross-check them bidirectionally against the catalog and
+    //!   each row's label set. [`catalog_has_exactly_phase1_baseline_count`]
     //!   pins the 14-row count (`docs/31` §Phase-1 baseline
     //!   catalog final line: "Phase-1 baseline is 14 metrics")
     //!   as a belt-and-suspenders anchor against row additions
@@ -473,19 +504,8 @@ mod catalog_conformance {
     use super::{
         AudioIngestFrameStatus, AudioIngestState, CommandKind, EventKind, MetricEvent, MetricKind,
         ObservabilitySubsystem, OscAdapterState, OscBindErrorReason, OscPacketOutcome,
-        RuntimeLifecycleState, SceneLintCategory, SceneValidationOutcome,
+        PHASE_1_SCHEMA_VERSION, RuntimeLifecycleState, SceneLintCategory, SceneValidationOutcome,
     };
-
-    /// Phase-1 schema-version anchor, emitted through
-    /// [`MetricEvent::ObservabilitySchemaVersion`].
-    ///
-    /// Bumping this requires a paired `docs(policy)` PR amending
-    /// `docs/31-supportability-privacy-ops-policy.md` §Phase-1
-    /// baseline catalog first (the authoritative trigger per the
-    /// docs/31 Schema change process section), then incrementing
-    /// this constant and updating [`PHASE_1_BASELINE_COUNT`] if
-    /// the schema version ships a row-count change.
-    const PHASE_1_SCHEMA_VERSION: u64 = 1;
 
     /// Phase-1 baseline catalog size. Transcribed from
     /// `docs/31-supportability-privacy-ops-policy.md` §Phase-1
@@ -571,6 +591,68 @@ mod catalog_conformance {
             "chromaticity_observability_schema_version",
             MetricKind::Gauge,
             &[],
+        ),
+    ];
+
+    /// `docs/31` §Phase-1 baseline catalog subsystem assignments.
+    ///
+    /// Tuple shape: `(metric_name, ObservabilitySubsystem)`.
+    const EXPECTED_SUBSYSTEMS: &[(&str, ObservabilitySubsystem)] = &[
+        (
+            "chromaticity_runtime_lifecycle_transitions_total",
+            ObservabilitySubsystem::Runtime,
+        ),
+        (
+            "chromaticity_runtime_uptime_seconds",
+            ObservabilitySubsystem::Runtime,
+        ),
+        (
+            "chromaticity_runtime_commands_dispatched_total",
+            ObservabilitySubsystem::Runtime,
+        ),
+        (
+            "chromaticity_runtime_events_emitted_total",
+            ObservabilitySubsystem::Runtime,
+        ),
+        (
+            "chromaticity_scene_validations_total",
+            ObservabilitySubsystem::Scene,
+        ),
+        (
+            "chromaticity_scene_lint_warnings_total",
+            ObservabilitySubsystem::Scene,
+        ),
+        (
+            "chromaticity_audio_ingest_state_transitions_total",
+            ObservabilitySubsystem::Audio,
+        ),
+        (
+            "chromaticity_audio_ingest_frames_total",
+            ObservabilitySubsystem::Audio,
+        ),
+        (
+            "chromaticity_audio_ingest_samples_total",
+            ObservabilitySubsystem::Audio,
+        ),
+        (
+            "chromaticity_osc_inbound_packets_total",
+            ObservabilitySubsystem::Osc,
+        ),
+        (
+            "chromaticity_osc_adapter_state_transitions_total",
+            ObservabilitySubsystem::Osc,
+        ),
+        (
+            "chromaticity_osc_bind_errors_total",
+            ObservabilitySubsystem::Osc,
+        ),
+        (
+            "chromaticity_observability_events_emitted_total",
+            ObservabilitySubsystem::Observability,
+        ),
+        (
+            "chromaticity_observability_schema_version",
+            ObservabilitySubsystem::Observability,
         ),
     ];
 
@@ -749,6 +831,35 @@ mod catalog_conformance {
             assert_eq!(
                 actual_kind, expected_kind,
                 "metric {name} kind drift: catalog reports {actual_kind:?}, docs/31 declares {expected_kind:?}",
+            );
+        }
+    }
+
+    /// Each [`MetricEvent`] variant's [`MetricEvent::subsystem`] must
+    /// match the docs/31 subsystem segment for that row's canonical
+    /// metric name. This pins the per-variant assignment against silent
+    /// reassignment even when names and labels still conform.
+    #[test]
+    fn subsystem_assignments_match_docs31() {
+        assert_eq!(
+            EXPECTED_SUBSYSTEMS.len(),
+            PHASE_1_BASELINE_COUNT,
+            "EXPECTED_SUBSYSTEMS row count drift vs docs/31 Phase-1 baseline",
+        );
+        let expected_map: std::collections::HashMap<&str, ObservabilitySubsystem> =
+            EXPECTED_SUBSYSTEMS
+                .iter()
+                .map(|(name, subsystem)| (*name, *subsystem))
+                .collect();
+        for event in every_metric_event_variant() {
+            let name = event.name();
+            let actual_subsystem = event.subsystem();
+            let expected_subsystem = *expected_map.get(name).expect(
+                "variant absent from EXPECTED_SUBSYSTEMS — caught by every_catalog_variant_appears_in_docs31",
+            );
+            assert_eq!(
+                actual_subsystem, expected_subsystem,
+                "metric {name} subsystem drift: catalog reports {actual_subsystem:?}, docs/31 declares {expected_subsystem:?}",
             );
         }
     }
