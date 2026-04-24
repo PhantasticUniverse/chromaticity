@@ -44,7 +44,7 @@ workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 # route through `MetricEvent::OscInboundPackets`. Slice-2 does NOT
 # depend on any other observability surface (no `MetricSink`, no
 # emitter types); adding those couplings is a slice-3 concern.
-chromaticity-observability = { path = "../../engine/observability" }
+chromaticity-observability = { version = "0.0.0", path = "../../engine/observability" }
 
 # rosc 0.10 is the OSC 1.0 codec backing the Phase-1 slice-2 UDP
 # packet-receive loop. License MIT OR Apache-2.0 (allow-listed in
