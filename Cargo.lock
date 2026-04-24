@@ -381,6 +381,7 @@ dependencies = [
 name = "chromaticity-osc-adapter"
 version = "0.0.0"
 dependencies = [
+ "chromaticity-observability",
  "rosc",
  "workspace-hack",
 ]
