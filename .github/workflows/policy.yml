@@ -14,6 +14,7 @@
 #   - dco                    : Sec.9.2 DCO on every commit in the range
 #   - trailer-check          : Sec.4.5 mandatory trailers
 #   - codeowners-location    : Sec.8.1 CODEOWNERS location guard
+#   - signed-commits         : Sec.9.1 cryptographic commit signatures
 #   - reuse-lint             : EV-LICENSE-HEADERS
 #   - adr-lint               : EV-ADR-LINT (only when docs/adr/ changed)
 #   - secret-scan            : Sec.18.3 belt-and-suspenders
@@ -202,6 +203,51 @@ jobs:
             printf '::error::GitHub reads .github/CODEOWNERS before /CODEOWNERS; keep only the root file authoritative.\n'
             exit 1
           fi
+
+  signed-commits:
+    name: signed-commits
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify GitHub commit signatures
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            commits="$HEAD_SHA"
+          else
+            commits="$(git rev-list "$BASE_SHA..$HEAD_SHA")"
+          fi
+
+          fail=0
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+            verification="$(
+              curl --fail --silent --show-error \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/$REPOSITORY/commits/$sha" \
+              | jq -r '.commit.verification | "\(.verified) \(.reason)"'
+            )"
+            if [ "$verification" != "true valid" ]; then
+              printf '::error::commit %s is not GitHub-verified (%s)\n' "$sha" "$verification"
+              fail=1
+            fi
+          done < <(printf '%s\n' "$commits")
+
+          exit "$fail"
 
   reuse-lint:
     name: reuse-lint
