@@ -2,9 +2,16 @@
 // SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Chromaticity desktop application shell entrypoint.
-// Minimal Tauri 2 bootstrap at Phase-1 entry; real command handlers,
-// shared-type registration (via ts-rs), and window choreography arrive
-// in subsequent PRs per ADR-018.
+// Tauri 2 bootstrap that registers the shell-side `AppState` and the
+// Phase-1 D2 IPC handlers (`set_control`, `get_control`) so the UI can
+// drive the runtime command bus through typed IPC. ts-rs binding
+// generation lives in `tests/export_bindings.rs` (test-target export
+// per ts-rs 10's conventional pattern).
+
+pub mod commands;
+pub mod state;
+
+use crate::state::AppState;
 
 /// Launch the Tauri application event loop.
 ///
@@ -12,5 +19,11 @@
 /// capability mismatch, window creation failure, etc.); the binary
 /// entry in `src/main.rs` logs the error and exits non-zero.
 pub fn run() -> Result<(), tauri::Error> {
-    tauri::Builder::default().run(tauri::generate_context!())
+    tauri::Builder::default()
+        .manage(AppState::new())
+        .invoke_handler(tauri::generate_handler![
+            commands::control::set_control,
+            commands::control::get_control,
+        ])
+        .run(tauri::generate_context!())
 }

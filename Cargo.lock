@@ -355,10 +355,13 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 name = "chromaticity-app"
 version = "0.0.0"
 dependencies = [
+ "chromaticity-runtime",
+ "chromaticity-ui-bridge",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "ts-rs",
  "workspace-hack",
 ]
 
