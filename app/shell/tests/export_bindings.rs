@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+// SPDX-FileCopyrightText: 2026 Chromaticity
+
+//! Re-export ts-rs bindings for the IPC types into the frontend tree.
+//!
+//! Test-target export (the conventional ts-rs 10 pattern): running
+//! `cargo test -p chromaticity-app` regenerates
+//! `src/lib/ipc/bindings/<TypeName>.ts` so committed bindings stay in
+//! lockstep with the bridge crate's serde/ts-rs surface. CI's
+//! `cargo test --workspace --all-targets` step fires this test;
+//! drift surfaces locally to whoever runs `cargo test` and via review
+//! diff on PR pushes.
+//!
+//! The frontend index file at `src/lib/ipc/bindings/index.ts` is hand-
+//! authored and re-exports the per-type files generated here.
+
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
+use chromaticity_ui_bridge::{ControlId, ControlValue};
+use std::path::PathBuf;
+use ts_rs::TS;
+
+#[test]
+fn export_bindings_to_frontend_tree() {
+    // `cargo test -p chromaticity-app` runs with cwd = `app/shell/`,
+    // so the relative path resolves to the repo-root frontend dir.
+    let out_dir = PathBuf::from("../../src/lib/ipc/bindings");
+    std::fs::create_dir_all(&out_dir).expect("create bindings out dir");
+
+    ControlId::export_all_to(&out_dir).expect("export ControlId bindings");
+    ControlValue::export_all_to(&out_dir).expect("export ControlValue bindings");
+}
