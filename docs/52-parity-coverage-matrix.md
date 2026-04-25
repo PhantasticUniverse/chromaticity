@@ -49,7 +49,7 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 
 | Feature | Status | Reference | Notes |
 |---|---|---|---|
-| Controls (per-node control values) | planned:EV-STATE-REPLAY | `04-runtime-architecture.md` §Core Components; `28-implementation-contract-pack.md` §CP-01 | Command/event envelopes exist, but the current `State` control store is still a placeholder. |
+| Controls (per-node control values) | implemented | `04-runtime-architecture.md` §Core Components; `28-implementation-contract-pack.md` §CP-01 | `engine/runtime/src/state.rs::State::control_value` reads the post-commit value; `app/shell/src/commands/control.rs` exposes the `set_control` / `get_control` Tauri round-trip (PR #94). |
 | Presets (snapshot + recall) | planned:EV-PRESET-PLAYLIST | `03-product-requirements.md` FR-6; `07-control-state-presets.md` | `PresetRecall` exists as an event shape; durable preset state and snapshot semantics are not implemented. |
 | Playlists (advance / rewind / bounds) | planned:EV-PRESET-PLAYLIST | `03-product-requirements.md` FR-6; `08-io-integrations.md` §OSC Conformance Test IDs | `PlaylistAdvance` exists as an event shape, but cursor bounds, wrap, rewind, and persistence are not implemented. |
 | Snap / favslots (16-slot surface) | planned:EV-PRESET-PLAYLIST | `38-scene-library-and-import-spec.md` §8 Evidence; `08-io-integrations.md` §OSC Discovery and Announcement Routes | Snap slot count and OSC surface are specified; runtime storage / save / clear / recall are not implemented. |
@@ -108,4 +108,4 @@ These counts are informational only; this matrix is not a gate.
 
 | implemented | planned:* | post-MVP | intentionally-rejected | n/a |
 |---:|---:|---:|---:|---:|
-| 10 | 50 | 1 | 4 | 0 |
+| 11 | 49 | 1 | 4 | 0 |
