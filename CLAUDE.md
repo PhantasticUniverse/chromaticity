@@ -185,10 +185,14 @@ tree.
   references, and the parser then mis-identifies the footer boundary and fails
   `footer-leading-blank`. Write "the present PR", "PR number 2", or "this PR" in body
   prose instead. Subject lines are unaffected.
-- **`gh pr edit --title` may silently no-op** due to a GraphQL Projects-classic
-  deprecation error — the command returns zero plus a warning but the title does not
-  change. Use
-  `gh api -X PATCH repos/OWNER/REPO/pulls/<N> -f title='<new title>'` instead.
+- **`gh pr edit --title` and `gh pr edit --body-file` may silently no-op** due to a
+  GraphQL Projects-classic deprecation error hitting the underlying PR-edit mutation —
+  both commands return zero plus a warning but the title / body does not change. Do
+  not trust the zero exit; verify with `gh pr view <N> --json title` (or `--json body`)
+  after the edit. Workaround uses the REST PATCH endpoint:
+  `gh api -X PATCH repos/OWNER/REPO/pulls/<N> -f title='<new title>'` for the title,
+  and `gh api -X PATCH repos/OWNER/REPO/pulls/<N> --field body=@/tmp/pr-body.md` for
+  the body.
 - **`pull_request` workflows do not retrigger on title / body edits by default** — the
   trigger types are `[opened, synchronize, reopened]`. To re-run CI after a title edit
   (e.g., to clear a commitlint title failure), close + reopen the PR:
