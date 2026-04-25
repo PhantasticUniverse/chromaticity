@@ -44,7 +44,7 @@ mod fixtures {
 
     use chromaticity_runtime::{
         Command, CommandBus, CommandBusError, CommandChannel, ControlId, ControlValue, Event,
-        EventPayload, EventSeq, InMemoryBus, MappingId, MappingSource, PresetId,
+        EventPayload, EventSeq, InMemoryBus, MappingId, MappingSource, PresetId, SnapSlotId,
     };
     use std::sync::Arc;
     use std::thread;
@@ -71,6 +71,9 @@ mod fixtures {
     //   tag 0x04 MappingBound { id, source }
     //             = be_u32(id.0) || source_tag_u8
     //     source_tag 0x01 Osc, 0x02 Midi
+    //   tag 0x05 SnapRecalled { slot } = u8(slot.get())
+    //   tag 0x06 SnapSaved    { slot } = u8(slot.get())
+    //   tag 0x07 SnapCleared  { slot } = u8(slot.get())
     //
     // New `Command` / `EventPayload` variants fail the match's
     // exhaustiveness check at compile time OR hit the wildcard
@@ -111,6 +114,18 @@ mod fixtures {
                     ),
                 };
                 out.push(source_tag);
+            }
+            EventPayload::SnapRecalled { slot } => {
+                out.push(0x05);
+                out.push(slot.get());
+            }
+            EventPayload::SnapSaved { slot } => {
+                out.push(0x06);
+                out.push(slot.get());
+            }
+            EventPayload::SnapCleared { slot } => {
+                out.push(0x07);
+                out.push(slot.get());
             }
             other => panic!(
                 "determinism corpus: unencoded EventPayload variant {other:?}; \
@@ -174,7 +189,7 @@ mod fixtures {
     }
 
     fn sample_command(lcg: &mut Lcg) -> Command {
-        let kind = lcg.next_u32() % 4;
+        let kind = lcg.next_u32() % 7;
         let id_val = lcg.next_u32();
         match kind {
             0 => Command::ControlSet {
@@ -187,9 +202,18 @@ mod fixtures {
             2 => Command::PlaylistAdvance {
                 step: lcg.next_u32() as i32,
             },
-            _ => Command::MappingBind {
+            3 => Command::MappingBind {
                 id: MappingId(id_val),
                 source: MappingSource::Osc,
+            },
+            4 => Command::SnapRecall {
+                slot: SnapSlotId::new((id_val % 16) as u8).expect("modulo keeps slot in range"),
+            },
+            5 => Command::SnapSave {
+                slot: SnapSlotId::new((id_val % 16) as u8).expect("modulo keeps slot in range"),
+            },
+            _ => Command::SnapClear {
+                slot: SnapSlotId::new((id_val % 16) as u8).expect("modulo keeps slot in range"),
             },
         }
     }
@@ -237,7 +261,7 @@ mod fixtures {
         const SEED: u64 = 0x0C1D_5EED;
         const COUNT: u32 = 50;
         const EXPECTED_LEN: usize = 50;
-        const GOLDEN_HASH: u64 = 0xECE7_0663_8E5D_B484;
+        const GOLDEN_HASH: u64 = 0xD920_9A03_881F_3F36;
 
         let trials = replay(|| {
             let bus = InMemoryBus::in_memory();
@@ -259,7 +283,7 @@ mod fixtures {
         const SEED: u64 = 0x0C1D_5EED;
         const COUNT: u32 = 256;
         const EXPECTED_LEN: usize = 256;
-        const GOLDEN_HASH: u64 = 0xBBBB_C34A_428B_8E00;
+        const GOLDEN_HASH: u64 = 0x94BE_433C_49F5_53A0;
 
         let trials = replay(|| {
             let bus = InMemoryBus::in_memory();
@@ -441,14 +465,14 @@ mod fixtures {
     #[test]
     fn full_payload_mirror_round_trip() {
         const NAME: &str = "full-payload-mirror";
-        const EXPECTED_LEN: usize = 4;
-        const GOLDEN_HASH: u64 = 0x6E03_9D7D_9550_A4B6;
+        const EXPECTED_LEN: usize = 7;
+        const GOLDEN_HASH: u64 = 0x1395_DCA7_C173_F216;
 
-        // Exercises all four `Command` variants plus both
+        // Exercises all seven `Command` variants plus both
         // `MappingSource` tags in a fixed single-producer order.
         // Content is chosen to populate distinct tag bytes and
-        // distinct non-zero ids so the canonical encoding varies
-        // across every byte of the 4-event stream.
+        // distinct non-zero ids / slots so the canonical encoding
+        // varies across every byte of the 7-event stream.
         let commands: Vec<Command> = vec![
             Command::ControlSet {
                 id: ControlId(7),
@@ -459,6 +483,15 @@ mod fixtures {
             Command::MappingBind {
                 id: MappingId(1),
                 source: MappingSource::Midi,
+            },
+            Command::SnapRecall {
+                slot: SnapSlotId::new(2).expect("valid snap slot"),
+            },
+            Command::SnapSave {
+                slot: SnapSlotId::new(11).expect("valid snap slot"),
+            },
+            Command::SnapClear {
+                slot: SnapSlotId::new(15).expect("valid snap slot"),
             },
         ];
 
