@@ -12,12 +12,15 @@ scheduled no earlier than Phase 4c and requires AO-signed approval.
 
 ## Status
 
-**Phase 1 — Implementation Slices in Progress.** The repository contains active
-application and engine code (Tauri 2 + Svelte 5 + TypeScript + Rust 2024) with
-policy, evidence, and CI gates running continuously on `main`. Phase 0 governance and
-clean-room baseline artifacts are established; current work advances Phase 1 evidence
-rows (scene import/schema, determinism, observability, and coverage gates) toward
-release-cumulative readiness.
+**Phase 1 code underway; Phase 0 evidence not fully closed.** The repository
+contains active application and engine code (Tauri 2 + Svelte 5 + TypeScript +
+Rust 2024), with policy, evidence, and CI gates running continuously on `main`.
+Phase 0 governance and clean-room baseline ADRs are established, but several
+Phase 0 evidence rows remain Planned in `docs/26-evidence-artifact-registry.md`
+(notably `EV-OBSERVABILITY-INVENTORY`). Current work advances both threads in
+parallel: landing Phase 1 implementation slices (scene import/schema,
+determinism, observability, runtime command bus) while closing the remaining
+Phase 0 evidence artifacts toward release-cumulative readiness.
 
 ## Repository Layout
 
