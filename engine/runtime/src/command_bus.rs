@@ -53,7 +53,7 @@
 
 use crate::state::State;
 use chromaticity_observability::catalog::{CommandKind, EventKind, RuntimeLifecycleState};
-use crossbeam_channel::{Receiver, Sender, TryRecvError, unbounded};
+use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -225,6 +225,10 @@ pub struct Event {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CommandBusError {
+    /// The bus is full and shed the command without enqueuing it.
+    /// Caller decides whether to drop, retry, or fail; slice-2 does
+    /// not embed a per-caller policy.
+    Backpressure,
     /// The bus has been closed and no longer accepts dispatches.
     Closed,
 }
@@ -232,6 +236,7 @@ pub enum CommandBusError {
 impl fmt::Display for CommandBusError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Backpressure => write!(f, "command bus is full"),
             Self::Closed => write!(f, "command bus is closed"),
         }
     }
@@ -269,18 +274,32 @@ pub trait CommandChannel: Send + Sync {
     fn try_recv(&self) -> Option<Command>;
 }
 
-/// Unbounded MPMC in-memory channel backed by `crossbeam-channel`.
+/// Bounded MPMC in-memory channel backed by `crossbeam-channel`.
+///
+/// The depth is fixed at [`CrossbeamChannel::CAPACITY`]; non-blocking
+/// `try_send` semantics ensure dispatch never blocks a producer thread
+/// on a full queue. Closes Risk 3 from the slice-2 review: an
+/// unbounded channel exposes the OSC-adapter ingest path to a
+/// memory-exhaustion DoS surface where a hostile sender can grow the
+/// queue without back-pressure feedback.
 pub struct CrossbeamChannel {
     tx: Sender<Command>,
     rx: Receiver<Command>,
 }
 
 impl CrossbeamChannel {
-    /// Construct a new unbounded channel with paired sender and
+    /// Bounded channel depth. At 60 fps with ~8 OSC msgs/frame
+    /// typical (~500/s peak), 1024 gives ~2 s of buffering before the
+    /// channel sheds; sufficient for slice-2's single-producer
+    /// commit-thread cadence and well above the ADR-013 OSC ingest
+    /// rate ceilings.
+    pub const CAPACITY: usize = 1024;
+
+    /// Construct a new bounded channel with paired sender and
     /// receiver held internally.
     #[must_use]
     pub fn new() -> Self {
-        let (tx, rx) = unbounded();
+        let (tx, rx) = bounded(Self::CAPACITY);
         Self { tx, rx }
     }
 }
@@ -293,7 +312,14 @@ impl Default for CrossbeamChannel {
 
 impl CommandChannel for CrossbeamChannel {
     fn send(&self, command: Command) -> Result<(), CommandBusError> {
-        self.tx.send(command).map_err(|_| CommandBusError::Closed)
+        // `try_send` so a full queue surfaces as
+        // `CommandBusError::Backpressure` instead of blocking the
+        // producer; the caller picks the shed policy. Disconnect
+        // continues to map onto `Closed`.
+        self.tx.try_send(command).map_err(|err| match err {
+            TrySendError::Full(_) => CommandBusError::Backpressure,
+            TrySendError::Disconnected(_) => CommandBusError::Closed,
+        })
     }
 
     fn try_recv(&self) -> Option<Command> {
@@ -672,7 +698,8 @@ mod drift_pins {
 
     use super::{
         Command, CommandBus, CommandBusError, CommandChannel, ControlId, ControlValue,
-        EventPayload, InMemoryBus, MappingId, MappingSource, PresetId, SnapSlotId,
+        CrossbeamChannel, EventPayload, InMemoryBus, MappingId, MappingSource, PresetId,
+        SnapSlotId,
     };
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -842,6 +869,26 @@ mod drift_pins {
         let bus = InMemoryBus::with_channel(Box::new(ClosedChannel));
         let result = bus.dispatch(Command::PresetRecall { id: PresetId(0) });
         assert_eq!(result, Err(CommandBusError::Closed));
+    }
+
+    #[test]
+    fn dispatch_on_full_bounded_channel_returns_backpressure_error() {
+        // Pump CAPACITY commands without draining; the next dispatch
+        // must surface `Backpressure` rather than block the producer
+        // or grow the heap. Pins the slice-2 DoS-surface closure: the
+        // bounded channel sheds with a typed error instead of
+        // unbounded-buffer growth.
+        let bus = InMemoryBus::in_memory();
+        for i in 0..CrossbeamChannel::CAPACITY {
+            bus.dispatch(Command::PresetRecall {
+                id: PresetId(i as u32),
+            })
+            .expect("dispatch within capacity should succeed");
+        }
+        let overflow = bus.dispatch(Command::PresetRecall {
+            id: PresetId(CrossbeamChannel::CAPACITY as u32),
+        });
+        assert_eq!(overflow, Err(CommandBusError::Backpressure));
     }
 
     #[test]
