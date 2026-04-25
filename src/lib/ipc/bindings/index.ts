@@ -10,3 +10,4 @@
 
 export type { ControlId } from './ControlId';
 export type { ControlValue } from './ControlValue';
+export type { SnapSlotId } from './SnapSlotId';

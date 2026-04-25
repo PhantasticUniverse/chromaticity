@@ -3,8 +3,10 @@
 
 //! Tauri `#[command]` handlers exposed to the frontend.
 //!
-//! Phase-1 D2 ships the first IPC contract: the control round-trip in
-//! [`control`]. Subsequent slices grow this surface with playlist,
-//! preset, Snap, and observability bridges.
+//! Phase-1 D2 ships the control round-trip in [`control`]; D3 layers
+//! the Snap{Recall, Save, Clear} round-trip in [`snap`]. Subsequent
+//! slices grow this surface with playlist, preset, and observability
+//! bridges.
 
 pub mod control;
+pub mod snap;
