@@ -66,7 +66,13 @@ impl State {
                 self.preset_store.active = Some(id);
             }
             EventPayload::PlaylistAdvanced { step } => {
-                self.playlist_store.position += i64::from(step);
+                // Saturate at i64 bounds to prevent silent two's-complement
+                // wrap if `position` approaches `i64::MAX` / `i64::MIN`.
+                // `apply_event` is currently infallible; promotion to a
+                // typed `BusError::PositionOverflow` can land alongside
+                // Result-ifying the apply path in a future PR.
+                self.playlist_store.position =
+                    self.playlist_store.position.saturating_add(i64::from(step));
             }
             EventPayload::SnapRecalled { slot } => {
                 self.snap_store.active = Some(slot);
@@ -166,6 +172,7 @@ mod tests {
     //! artifact.
 
     use super::State;
+    use crate::command_bus::{Event, EventPayload, EventSeq};
     use crate::{
         Command, CommandBus, ControlId, ControlValue, InMemoryBus, MappingId, MappingSource,
         PresetId, SnapSlotId,
@@ -215,6 +222,21 @@ mod tests {
             state.mapping_source(MappingId(9)),
             Some(MappingSource::Midi)
         );
+    }
+
+    #[test]
+    fn playlist_advance_saturates_at_i64_max() {
+        // Risk 2: silent two's-complement wrap if `position + step`
+        // crosses `i64::MAX`. `apply_event` clamps via `saturating_add`
+        // until the apply path can be Result-ified end-to-end.
+        let mut state = State::default();
+        state.playlist_store.position = i64::MAX - 1;
+        let event = Event {
+            seq: EventSeq(0),
+            payload: EventPayload::PlaylistAdvanced { step: i32::MAX },
+        };
+        state.apply_event(&event);
+        assert_eq!(state.playlist_position(), i64::MAX);
     }
 
     #[test]
