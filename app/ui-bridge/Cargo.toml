@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity UI ↔ engine type-bridge crate (per docs/47-ui-port-plan.md §7.2).
+#
+# Hosts the typed-IPC surface: serde + ts-rs newtype wrappers around
+# engine types so the Tauri command boundary carries fully typed payloads
+# and the Svelte frontend gets compile-time TypeScript bindings via
+# ts-rs export. Engine types stay free of IPC concerns; bridge wrappers
+# expose `From` impls in both directions to keep the conversion in one
+# place.
+#
+# Phase-1 D1 scaffold. Initial surface: ControlId, ControlValue. Later
+# slices add Command, Event, SnapshotPayload, and other bridge-facing
+# types as the IPC contract grows.
+#
+# See also docs/43-development-standards.md §12.1. All workspace lints
+# (including unsafe_code = forbid, clippy::unwrap_used = deny,
+# clippy::expect_used = deny) are inherited; no local relaxation.
+
+[package]
+name = "chromaticity-ui-bridge"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity UI ↔ engine typed-IPC bridge surface."
+
+[lints]
+workspace = true
+
+[dependencies]
+chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }
+serde = { version = "1", features = ["derive"] }
+ts-rs = "10"
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }

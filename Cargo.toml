@@ -19,6 +19,7 @@ resolver = "3"
 members = [
     "workspace-hack",
     "app/shell",
+    "app/ui-bridge",
     "engine/runtime",
     "engine/scene",
     "engine/audio",
