@@ -6,8 +6,9 @@
 # (alpha 0.1.0, Apache-2.0). Token values mirror the operator-default
 # "Pulse" theme; the alternate "Atelier" and "Console" themes are
 # acknowledged in the Overview prose but not enumerated in the
-# frontmatter — multi-theme spread lives in `chromaticity-planning/`
-# until `docs/47-ui-port-plan.md` §11 promotes per-theme token files.
+# frontmatter — multi-theme spreads live in the planning bundle and
+# land in `src/lib/tokens/tokens.css` (Pulse `:root` plus
+# `[data-theme]` overrides) per `docs/47-ui-port-plan.md` §9.
 #
 # When this file disagrees with the rendered Svelte 5 + Tauri 2 shell:
 # the shell wins and this file is updated in a follow-up `docs(repo)`
@@ -15,10 +16,11 @@
 version: alpha
 name: chromaticity
 description: |
-  Operator-first, live-performance visual control surface. Three
-  intentional themes (Pulse / Atelier / Console). Hardware-literate
-  primitives, density-switchable scaling, tabular monospace for live
-  numerics, neon-lime accent on Pulse defaults.
+  Live-visuals authoring + operator surface. Ships three built-in
+  themes (Pulse / Atelier / Console) so users see the possibilities
+  out of the box. Hardware-literate primitives, density-switchable
+  scaling, tabular monospace for live numerics, neon-lime accent on
+  the Pulse default.
 colors:
   bg-0: '#070810'
   bg-1: '#0C0E16'
@@ -238,13 +240,13 @@ components:
 
 ## Overview
 
-Chromaticity is a deterministic, audio-reactive live-visuals runtime and authoring environment. Every pixel of chrome competes for attention with whatever the operator pushes to the stage output, so the design committed up front to **three intentional themes** rather than a neutral default:
+Chromaticity is a deterministic, audio-reactive live-visuals runtime and authoring environment. The default chrome runs dark and high-contrast so it doesn't compete with stage output, but the operator picks from three built-in themes — **Pulse**, **Atelier**, **Console** — based on mood. They're presets, not contracts; the three exist as a starter pack so users see the range right away.
 
-- **Pulse** — dark canvas, neon-lime accent, soft glow, high saturation. Operator default. The token values in the YAML frontmatter above are Pulse.
-- **Atelier** — warm-paper editorial, zero glow, serif display (Fraunces). Used during scene authoring when the operator is reading prose, not driving live.
-- **Console** — desaturated hardware aesthetic, chicklet bevels, amber-LED accent. Mimics the look of a physical lighting desk for muscle-memory transfer.
+- **Pulse** — dark canvas, neon-lime accent, soft glow, high saturation. The token values in the YAML frontmatter above are Pulse.
+- **Atelier** — warm-paper editorial, zero glow, serif display (Fraunces).
+- **Console** — desaturated hardware aesthetic, chicklet bevels, amber-LED accent.
 
-Atelier and Console swap the color and elevation spreads but keep typography, spacing, and component anatomy identical; the contract above stays valid for all three with re-themed values. The full multi-theme spread lives in the planning bundle until promoted per `docs/47-ui-port-plan.md` §11.
+Each theme swaps the color and elevation spreads but keeps typography, spacing, and component anatomy identical; the contract above stays valid for all three with re-themed values. The full multi-theme spread lives in the planning bundle until promoted into `src/lib/tokens/tokens.css` (Pulse `:root` plus `[data-theme]` overrides) per `docs/47-ui-port-plan.md` §9. A fourth theme is welcome as a design contribution — themes are aesthetic variety, not a closed contract.
 
 The non-cosmetic intent behind the design:
 
@@ -353,11 +355,10 @@ Beyond the frontmatter contract, the operator-facing surface includes these prim
 - Use `mono-md` or `timecode` with `tnum` for any number that changes during playback.
 - Give icon-only buttons both `aria-label` and (when toggleable) `aria-pressed`.
 - Honour `prefers-reduced-motion` — orbit rings, beat pulses, modulation halos, and ghost dots all collapse to instant.
-- Ship every new surface in **all three** themes before merging to `main`.
+- Verify new surfaces don't visually break under any of the three built-in themes. Fully theming a new surface for the operator default (Pulse) is the merge gate; full Atelier / Console parity is nice-to-have, not a release block.
 
 **Don't**
 
-- Don't introduce a fourth theme. The three-theme commitment is normative; alternates land via theme-internal token spreads, not new themes.
 - Don't invent new radii. The five-step `rounded` scale plus per-theme overrides covers every approved surface.
 - Don't use `colors.primary` for destructive actions. `colors.danger` exists for that.
 - Don't pile elevation. Two surface levels of contrast is enough for any panel-in-panel composition.
