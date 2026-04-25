@@ -7,7 +7,7 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 | Feature | Status | Reference | Notes |
 |---|---|---|---|
 | `scene.json` deserialization | implemented | `02-synesthesia-contracts.md` §Observed root keys; `05-scene-system.md` §Loader Modes | `engine/scene/src/loader.rs` parses in-memory JSON into the canonical schema; this does not imply package-level loading. |
-| `.chroma` directory entry point | planned:EV-SCENE-IMPORT | `05-scene-system.md` §Scene Package Model; `38-scene-library-and-import-spec.md` §7 Packaging and UTI | Native package semantics are specified, but the loader still documents on-disk helpers as deferred in the current tree. |
+| `.chroma` directory entry point | implemented | `05-scene-system.md` §Scene Package Model; `38-scene-library-and-import-spec.md` §7 Packaging and UTI | `engine/scene/src/loader.rs::load_chroma_dir` validates the `.chroma` directory contract and deserializes `scene.json`; shader, script, asset, and zip-package interpretation remain deferred per the module's slice-boundary comment. |
 | `.chromaPack` archive | planned:EV-SCENE-IMPORT | `22-compatibility-versioning-policy.md` §Package Extensions and File-Type Ownership Policy; `38-scene-library-and-import-spec.md` §7 Packaging and UTI | Zip transport remains planned; extension ownership is separately validated by `EV-EXTENSION-OWNERSHIP`. |
 | `script.js` interpretation | planned:EV-SCRIPT-CONTRACT | `02-synesthesia-contracts.md` §3 Script Lifecycle; `28-implementation-contract-pack.md` §CP-07 | Script lifecycle, mutation APIs, and sandbox behavior are not implemented by the current scene loader. |
 | `main.glsl` pairing | planned:EV-SCENE-IMPORT | `02-synesthesia-contracts.md` §Scene Package Contract; `05-scene-system.md` §Scene Package Model | Package-to-shader entry pairing is still deferred; current schema parses `scene.json` only. |
@@ -17,18 +17,18 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 | Pass execution | planned:EV-RENDER-CONFORMANCE | `05-scene-system.md` §Canonical Internal Scene Model; `adr/ADR-011-rendering-backend.md` | No renderer pass execution path is present in the current engine tree. |
 | `.synScene` conversion input | planned:EV-SCENE-IMPORT | `22-compatibility-versioning-policy.md` §Reference-app extension handling; `38-scene-library-and-import-spec.md` §7 Packaging and UTI | `.synScene` is accepted only as non-destructive import input and converted to `.chroma`; no conversion implementation is present yet. |
 | `.synScene` OS association / extension claiming | intentionally-rejected | `22-compatibility-versioning-policy.md` §Reference Extension Handling | Chromaticity must not claim, register, or re-register the reference-owned extension. |
-| Control metadata preservation (`UI_GROUP`, `DESCRIPTION`, `PARAMS`, `DEF_COLOR`, `LABELS`, `VALUES`, `IS_META`, `LABEL`) | planned:EV-SCENE-IMPORT | `02-synesthesia-contracts.md` §Observed control keys; `28-implementation-contract-pack.md` §CP-01 | The current `ControlDecl` still drops these fields rather than preserving them structurally. |
+| Control metadata preservation (`UI_GROUP`, `DESCRIPTION`, `PARAMS`, `DEF_COLOR`, `LABELS`, `VALUES`, `IS_META`, `LABEL`) | implemented | `02-synesthesia-contracts.md` §Observed control keys; `28-implementation-contract-pack.md` §CP-01 | `engine/scene/src/schema.rs::ControlDecl` preserves all eight fields as explicit `serde(rename = ...)` bindings; unknown keys flatten non-lossily through the `extensions` bag. |
 
 ## Control taxonomy
 
 | Feature | Status | Reference | Notes |
 |---|---|---|---|
 | Base kinds: `slider`, `toggle`, `color`, `xy` | implemented | `28-implementation-contract-pack.md` §CP-01; `02-synesthesia-contracts.md` §Observed control types | The parser accepts these base kinds and the validator exercises CP-01 fallback paths for their current shapes. |
-| Base kinds: `bang`, `dropdown`, `knob` | planned:EV-SCENE-IMPORT | `02-synesthesia-contracts.md` §Observed control types; `08-io-integrations.md` §OSC Discovery and Announcement Routes | The current `ControlKind` rejects these first tokens; runtime semantics and UI / OSC exposure are not present. |
+| Base kinds: `bang`, `dropdown`, `knob` | implemented | `02-synesthesia-contracts.md` §Observed control types; `08-io-integrations.md` §OSC Discovery and Announcement Routes | `engine/scene/src/schema.rs::ControlKind` accepts all three first tokens; these kinds require explicit `TYPE` and do not trigger CP-01 coercion. Runtime semantics (bang edge, dropdown discrete-option exposure, knob scalar normalization) and UI / OSC wiring are tracked under their own rows. |
 | Slider variants: `smooth`, `traveler`, `counter`, `speed` | planned:EV-RENDER-CONFORMANCE | `02-synesthesia-contracts.md` §Traveler Controls; `adr/ADR-008-transition-and-traveler-semantics.md` | First-token parsing accepts some compound spellings, but variant semantics are not preserved or executed. |
 | Missing-`TYPE` compat coercion | implemented | `28-implementation-contract-pack.md` §CP-01; `34-golden-corpus-definition.md` §Coverage Dimensions | T1 validator tests cover the deterministic fallback order for existing schema shapes; T2 corpus coverage remains tracked by `EV-COMPAT-FIXTURE-COVERAGE`. |
-| CP-01 `DEF_COLOR` fallback | planned:EV-COMPAT-FIXTURE-COVERAGE | `28-implementation-contract-pack.md` §CP-01 | The current schema does not preserve `DEF_COLOR`, so the documented color fallback branch is not executable yet. |
-| Dropdown labels / values exposure | planned:EV-INTEGRATION-MATRIX | `08-io-integrations.md` §OSC Discovery and Announcement Routes; `02-synesthesia-contracts.md` §Observed control keys | `LABELS` / `VALUES` are not yet preserved, so dropdown discovery and MIDI mapping cannot be fully conformed. |
+| CP-01 `DEF_COLOR` fallback | implemented | `28-implementation-contract-pack.md` §CP-01 | `ControlDecl.def_color` is preserved at the schema and `engine/scene/src/validator.rs::coerce_missing_type` consumes it under CP-01 step 3; the `compat_fixture_coverage` T1 `cp01_step3_def_color_coerces_in_compat_rejects_in_strict` test pins the compat-vs-strict branch. |
+| Dropdown labels / values exposure | planned:EV-INTEGRATION-MATRIX | `08-io-integrations.md` §OSC Discovery and Announcement Routes; `02-synesthesia-contracts.md` §Observed control keys | `LABELS` / `VALUES` are preserved structurally on `ControlDecl`; OSC discovery routes and MIDI mapping surface remain planned under this row. |
 
 ## Library and import
 
@@ -64,7 +64,7 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 
 | Feature | Status | Reference | Notes |
 |---|---|---|---|
-| OSC adapter (bind, poll, validate, rate-limit, allowlist) | planned:EV-INTEGRATION-MATRIX | `08-io-integrations.md` §OSC Planning Contract; `adr/ADR-013-networking-defaults-and-security.md` | Route parsing and hardening defaults exist, but full socket bind / poll / command side effects are not complete. |
+| OSC adapter (bind, poll, validate, rate-limit, allowlist) | planned:EV-INTEGRATION-MATRIX | `08-io-integrations.md` §OSC Planning Contract; `adr/ADR-013-networking-defaults-and-security.md` | `integrations/osc-adapter/src/adapter.rs` implements socket bind / unbind / poll and `validate_packet` hardening; the rate-limit precedence rule is pinned in `resolve_rate_limit`. Allowlist enforcement, rate-limit state machine, and hub-facing event channel remain planned. |
 | MIDI adapter | planned:EV-INTEGRATION-MATRIX | `08-io-integrations.md` §MIDI Planning Contract | MIDI learn, device reconnect, outbound mirror, and persistence remain planned. |
 | Media / camera | planned:EV-INTEGRATION-MATRIX | `08-io-integrations.md` §Camera/Media Contract; `30-mvp-support-matrix.md` §Media Path Classes | Media files and camera adapters are planned integration surfaces. |
 | System audio ingest | planned:EV-AUDIO-ROUTING-MATRIX | `06-audio-engine.md` §Pipeline; `30-mvp-support-matrix.md` §Audio Device Classes | Audio frame scaffolding exists, but real system-audio / loopback routing is not complete. |
@@ -80,7 +80,7 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 | Feature | Status | Reference | Notes |
 |---|---|---|---|
 | Metric schema conformance | implemented | `31-supportability-privacy-ops-policy.md` §Scheme and Metric Catalog; `26-evidence-artifact-registry.md` `EV-OBSERVABILITY` | `engine/observability` mirrors the 14-metric catalog with conformance tests. |
-| Metric emission sites (per-metric) | planned:EV-OBSERVABILITY | `31-supportability-privacy-ops-policy.md` §Evidence Mapping | The current crate provides an in-process emitter stub; runtime subsystem wiring remains planned. |
+| Metric emission sites (per-metric) | implemented | `31-supportability-privacy-ops-policy.md` §Evidence Mapping | Emission-site wiring is complete across all five subsystems per `EV-OBSERVABILITY` Pass in `docs/26`: observability meta (`engine/observability/src/emit.rs`), runtime (`engine/runtime/src/command_bus.rs` per-`CommandKind` / per-`EventKind` / lifecycle transition counters), scene (`engine/scene/src/observability.rs` + `validator.rs` validation and lint counters), audio (`engine/audio/src/observability.rs::record_pull_outcome` from every `IngestBoundary::try_pull`), and OSC (`integrations/osc-adapter/src/adapter.rs::UdpOscAdapter` via `record_outcome` / `enter_state` / `record_bind_error`). |
 | Observability inventory (ADR-016 transparency artifact) | planned:EV-OBSERVABILITY-INVENTORY | `adr/ADR-016-observability-and-telemetry-posture.md` §Transparency artifact | The shipped `OBSERVABILITY-INVENTORY.md` artifact is not present yet. |
 | Support bundle | planned:EV-SUPPORT-OPS-READINESS | `31-supportability-privacy-ops-policy.md` §Support Bundle Policy | Support bundle export and inclusion controls remain planned. |
 | Loopback health metrics endpoint | planned:EV-HEALTH-METRICS-LOOPBACK-ONLY | `adr/ADR-016-observability-and-telemetry-posture.md` §Health metrics / telemetry | Transport is Phase 4d; Phase 1 has no network I/O. |
@@ -108,4 +108,4 @@ These counts are informational only; this matrix is not a gate.
 
 | implemented | planned:* | post-MVP | intentionally-rejected | n/a |
 |---:|---:|---:|---:|---:|
-| 5 | 55 | 1 | 4 | 0 |
+| 10 | 50 | 1 | 4 | 0 |
