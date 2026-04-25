@@ -6,13 +6,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 <script lang="ts">
   import type { ControlId, ControlValue } from './lib/ipc/bindings';
   import { dispatchAndRead } from './lib/stores/control';
+  import {
+    clearSnap,
+    readSnapState,
+    recallSnap,
+    saveSnap,
+    type SnapState,
+  } from './lib/stores/snap';
 
   const TARGET_ID: ControlId = 0;
+  const SLOT_INDICES = Array.from({ length: 16 }, (_, i) => i);
 
   let sliderValue = $state<ControlValue>(0);
   let readback = $state<ControlValue | null>(null);
   let lastError = $state<string | null>(null);
   let pending = $state(false);
+
+  let snapState = $state<SnapState>({
+    active: null,
+    saved: SLOT_INDICES.map(() => false),
+  });
+  let snapPending = $state(false);
+  let snapError = $state<string | null>(null);
 
   async function handleInput(event: Event) {
     const next = parseFloat((event.currentTarget as HTMLInputElement).value);
@@ -27,11 +42,45 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       pending = false;
     }
   }
+
+  async function refreshSnap() {
+    snapState = await readSnapState();
+  }
+
+  async function withSnapAction(action: () => Promise<void>) {
+    snapPending = true;
+    snapError = null;
+    try {
+      await action();
+      await refreshSnap();
+    } catch (err) {
+      snapError = err instanceof Error ? err.message : String(err);
+    } finally {
+      snapPending = false;
+    }
+  }
+
+  async function handleSlotClick(slot: number) {
+    const isSaved = snapState.saved[slot] === true;
+    const isActive = snapState.active === slot;
+    if (isSaved && !isActive) {
+      await withSnapAction(() => recallSnap(slot));
+    } else {
+      await withSnapAction(() => saveSnap(slot));
+    }
+  }
+
+  async function handleSlotContext(event: MouseEvent, slot: number) {
+    event.preventDefault();
+    if (snapState.saved[slot] === true) {
+      await withSnapAction(() => clearSnap(slot));
+    }
+  }
 </script>
 
 <main>
   <h1>Chromaticity</h1>
-  <p>Tauri 2 + Svelte 5 + TypeScript shell — Phase-1 D2 control round-trip.</p>
+  <p>Tauri 2 + Svelte 5 + TypeScript shell — Phase-1 D3 snap round-trip.</p>
 
   <label class="control">
     <span>control 0</span>
@@ -54,6 +103,33 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   {#if lastError}
     <p class="error">error: {lastError}</p>
   {/if}
+
+  <section class="snap">
+    <h2>snap slots</h2>
+    <div class="snap-grid">
+      {#each SLOT_INDICES as slot (slot)}
+        {@const isSaved = snapState.saved[slot] === true}
+        {@const isActive = snapState.active === slot}
+        <button
+          type="button"
+          class="snap-slot"
+          class:saved={isSaved}
+          class:active={isActive}
+          disabled={snapPending}
+          onclick={() => handleSlotClick(slot)}
+          oncontextmenu={(event) => handleSlotContext(event, slot)}
+        >
+          {slot}
+        </button>
+      {/each}
+    </div>
+    <p class="snap-readback">
+      active: {snapState.active === null ? '—' : snapState.active}
+    </p>
+    {#if snapError}
+      <p class="error">error: {snapError}</p>
+    {/if}
+  </section>
 </main>
 
 <style>
@@ -81,5 +157,41 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .error {
     color: #c0392b;
+  }
+  .snap {
+    margin-top: 2rem;
+  }
+  .snap h2 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .snap-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.25rem;
+  }
+  .snap-slot {
+    aspect-ratio: 1 / 1;
+    border: 1px solid #888;
+    background: #f4f4f4;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+  .snap-slot.saved {
+    background: #c4ff3d;
+    color: #111;
+    border-color: #111;
+  }
+  .snap-slot.active {
+    text-decoration: underline;
+    font-weight: bold;
+  }
+  .snap-slot:disabled {
+    cursor: progress;
+  }
+  .snap-readback {
+    font-variant-numeric: tabular-nums;
+    margin-top: 0.5rem;
   }
 </style>

@@ -24,6 +24,11 @@ pub fn run() -> Result<(), tauri::Error> {
         .invoke_handler(tauri::generate_handler![
             commands::control::set_control,
             commands::control::get_control,
+            commands::snap::recall_snap,
+            commands::snap::save_snap,
+            commands::snap::clear_snap,
+            commands::snap::active_snap_slot,
+            commands::snap::snap_slot_saved,
         ])
         .run(tauri::generate_context!())
 }
