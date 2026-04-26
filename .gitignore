@@ -57,6 +57,12 @@ Cargo.lock.bak
 app/shell/target/
 app/shell/gen/schemas/
 
+# ts-rs auto-export side-effect of running `cargo test -p chromaticity-ui-bridge`.
+# The canonical bindings live at `src/lib/ipc/bindings/` (emitted by
+# `app/shell/tests/export_bindings.rs`); this default-output dir is a
+# duplicate test artifact, not a tracked surface.
+app/ui-bridge/bindings/
+
 # -----------------------------------------------------------------------------
 # Test / coverage / evidence scratch
 # -----------------------------------------------------------------------------
