@@ -63,17 +63,19 @@ export const EMPTY_OSC: EmptyStateCopy = {
 };
 
 /*
- * Wave-16 PR2 stub copy for three of the four newly-routed views in
- * the v0.2 sidebar redesign. Each entry stands in for the eventual
- * W17+ port of the bundle's per-view JSX (`media.jsx`, `audio.jsx`,
- * and the `LicenseView` component in `v02_supplement.jsx`). Body
- * prose names the canonical bundle source path so the eventual port
- * lands deterministically. Action fields stay `undefined` — these
- * are placeholder views, not entrypoints to disabled actions.
+ * Wave-16 PR2 stub copy for the newly-routed views in the v0.2 sidebar
+ * redesign. Each entry stands in for the eventual W17+ port of the
+ * bundle's per-view JSX (`media.jsx`, `audio.jsx`). Body prose names
+ * the canonical bundle source path so the eventual port lands
+ * deterministically. Action fields stay `undefined` — these are
+ * placeholder views, not entrypoints to disabled actions.
  *
- * The fourth W16 PR2 entry, `EMPTY_WELCOME`, was removed in W16 PR3
- * when `Welcome.svelte` ported the full hero + quick-start cards
- * from `views/onboard.jsx` and stopped rendering an `EmptyState`.
+ * Two of the original four W16 PR2 stubs have shipped their full ports
+ * and the corresponding entries have been removed:
+ *   - `EMPTY_WELCOME` removed in W16 PR3 alongside the `Welcome.svelte`
+ *     port of `views/onboard.jsx`.
+ *   - `EMPTY_LICENSE` removed in W17 PR2 alongside the `License.svelte`
+ *     port of `v02_supplement.jsx::LicenseView`.
  */
 
 export const EMPTY_SOURCES: EmptyStateCopy = {
@@ -84,9 +86,4 @@ export const EMPTY_SOURCES: EmptyStateCopy = {
 export const EMPTY_AUDIO_UNIFORMS: EmptyStateCopy = {
   title: 'Audio Uniforms view coming in W17+',
   body: 'Live audio analysis monitor — frequency bands + time uniforms + BPM ring (per v0.2 audio.jsx). Canvas visualizers gate on the audio adapter Phase-3+ wiring.',
-};
-
-export const EMPTY_LICENSE: EmptyStateCopy = {
-  title: 'License view coming in W17+',
-  body: 'Capability table + license info per v0.2 v02_supplement.jsx::LicenseView. Read-only display of activation state + per-cap entitlement flags.',
 };
