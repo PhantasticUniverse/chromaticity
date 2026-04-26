@@ -470,7 +470,7 @@ ADR-018's token surface exports **two parallel** representations so Svelte compo
 
 - `npm run check` (svelte-check) + `npm run tsc` (tsc --noEmit, both tsconfigs) + `npm run lint` (eslint; token lint added when `eslint-plugin-chromaticity-ui-tokens` lands).
 - `cargo test --workspace --all-targets` (Rust + ts-rs export drift check).
-- Vitest for UI logic + Playwright for axe-core fixtures per `46-ux-bundle-a11y-color-audit.md` §7 land when the first frontend test is scaffolded.
+- Vitest for UI logic shipped W11 PR #119 (commit `a62ef90`) — `vitest.config.ts` with jsdom environment + `@testing-library/svelte` + `@testing-library/jest-dom`; first test target is the `<ErrorMessage>` primitive at `src/lib/primitives/ErrorMessage.test.ts`. Run via `npm test` (or `npm run test:watch`). Playwright for axe-core fixtures per `46-ux-bundle-a11y-color-audit.md` §7 lands when accessibility CI gating activates.
 - `cargo tauri build` dry-run on both platforms.
 
 ## 11. Implementation sequence
@@ -491,6 +491,22 @@ Port work lands inside Phase 1 implementation, not before bundle v0.2-beta. Exec
 | S10. Accessibility + color-management CI gates green | Final sequence gate | axe-core matrix passes; `EV-ACCESSIBILITY-AA` Phase-prep complete; `EV-COLOR-MANAGEMENT-SRGB` Phase-prep complete. |
 
 S1-S10 covers the UI portion of Phase 1 only. Runtime (wgpu pipeline, audio analysis, adapters) lands in parallel under WP-1..WP-8 per `12-work-breakdown-estimates.md`.
+
+### 11.1 Wave delivery log (Phase-1)
+
+Wave-by-wave UI port progress; each wave maps onto the S1-S10 sequence above as noted. Phase-1 EXIT was achieved at W12 (commit `e818752` for the sixth evidence gate close, `0d83fb5` for the wave close including PR3 shell scaffolding).
+
+| Wave | Scope | Sequence step | Reference |
+|---|---|---|---|
+| W6 | ThemeSwitcher primitive + tokens cascade across three themes (Pulse / Atelier / Console). | S1 (token surface complete) | `45-design-token-mapping.md` |
+| W7 | Housekeeping sweep + body paint; OSC observability follow-up landed `OscHealthState::{Healthy, Recovering, Degraded}` per `EV-OBSERVABILITY` mitigation. | S1 | `13-risk-register.md` R-05 |
+| W8 | HotkeyOverlay + 5 widget primitives (Fader, Knob, Toggle, Meter, ControlGroup) + EmptyState. | S2, S3 | §4.1; `42-operator-hotkey-map.md` |
+| W9 | Library backbone — filesystem scan IPC + view + search/chips/size selector. | S4 | `38-scene-library-and-import-spec.md` §2 |
+| W10 | Inputs Inspector view + scene-fixtures. | S5 (inspector subset) | `37-authoring-environment-spec.md` §3 |
+| W11 | ErrorMessage primitive + IpcError typed discriminated union (`src/lib/types/ipc-error.ts`) + Vitest scaffold (`vitest.config.ts` + jsdom + `@testing-library/svelte` + `@testing-library/jest-dom`) + Tauri ship-time bundling of three demo `.chroma` packages via `bundle.resources` (W11 PR #118 / #119 / #120). | S2, S4 | `EV-COMPAT-FIXTURE-COVERAGE` Pass; `EV-LIBRARY-BUNDLE-LAYOUT` partial advance |
+| W12 | Reactive-symbol scene-import T2 corpus + scene-lint pipeline (closes `EV-SCENE-IMPORT` and `EV-SCHEMA-LINT`); app shell scaffolding (AppShell + SidebarRail 12-icon-4-wired + StatusBar + RouteStore + Perform/Library/Author/Settings views) (W12 PR #121 / #122 / #123). **Phase-1 EXIT.** | S3, S4 | `EV-SCENE-IMPORT` Pass; `EV-SCHEMA-LINT` Pass; `EV-EVIDENCE-TAG-COVERAGE` Pass |
+
+W13+ candidate ranking (per the W12 wireframe-aligned audit; subject to AO re-prioritisation): CueTransitionCurve component, Playlist v2 view (cue table), MIDI view, OSC view, Audio view, Author full port (W14+), Media / Patch / Import (W15+ low priority).
 
 ## 12. Risks + mitigations
 

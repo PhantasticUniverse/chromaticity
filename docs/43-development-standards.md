@@ -559,6 +559,8 @@ Applies to: Tauri frontend (per ADR-018), authoring-env frontend (per `37-...md`
 - **Linter**: `eslint` with `@typescript-eslint/recommended` + `eslint-plugin-svelte` + `eslint-plugin-import`. No `any` in shipped code (`@typescript-eslint/no-explicit-any` = error) except in typed-boundary shims which must carry a comment justifying the escape hatch.
 - **Module resolution**: native ESM. No CommonJS in first-party code.
 - **Runtime**: the non-scene UI toolkit is governed by ADR-018; this section only specifies lint/format minimums.
+- **Test framework**: **Vitest** with the `jsdom` environment + `@testing-library/svelte` + `@testing-library/jest-dom` (scaffolded W11 PR #119, commit `a62ef90`; config at `vitest.config.ts`). Test files live alongside source as `src/**/*.test.ts`. Run via `npm test` (one-shot) or `npm run test:watch`. Coverage instrumentation is future scope; the W11 scaffold targets first-test feasibility for the `<ErrorMessage>` primitive.
+- **Typed IPC error surface**: `src/lib/types/ipc-error.ts` defines a discriminated union `IpcError = { kind: 'invoke_unavailable' | 'command_failed' | 'unknown'; ... }`. UI consumers MUST convert raw `catch` values via `toIpcError(err, commandName)` before surfacing them; the resulting `.message` is what `<ErrorMessage>` renders. This gate keeps unknown error shapes from leaking into the view tree (W11 PR #119, commit `a62ef90`).
 
 ### 12.3 Scene-author JavaScript (QuickJS sandbox)
 
@@ -584,6 +586,7 @@ Applies to: non-scene UI per ADR-018.
 - `svelte-check --tsconfig ./tsconfig.json` required in CI.
 - `eslint-plugin-svelte` with Chromaticity accessibility rule pack (contributes to `EV-ACCESSIBILITY-AA`).
 - Storybook for every public component; axe-core accessibility check runs on every story.
+- **Svelte 5 runes-in-module idiom**: when a `$state` / `$derived` / `$effect` rune is required in a `.ts` module (e.g., a Svelte store that holds reactive state), the file MUST be named `*.svelte.ts` (per Svelte 5's runes-in-module convention). The first such file is `src/lib/stores/route.svelte.ts` (W12 PR #123, commit `0d83fb5`). The repo's `eslint.config.js` carries an explicit parser override for the `**/*.svelte.ts` glob that routes those files through `typescript-eslint`'s parser instead of `svelte-eslint-parser`; without that override `eslint-plugin-svelte`'s flat-config recommended preset captures `.svelte.ts` and lints them with the Svelte parser, which lacks a TypeScript delegate and breaks lint cleanliness.
 
 ### 12.6 Common
 

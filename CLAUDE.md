@@ -122,6 +122,9 @@ body / footer ≤ 100 chars per line. Scope is mandatory on every commit.
   `verbatimModuleSyntax`, and `moduleResolution: "bundler"`.
 - Svelte 5 runes mode (`compilerOptions.runes: true`). Use `$state`, `$derived`, `$effect` —
   not Svelte 4 stores.
+- When a rune is needed in a `.ts` module (e.g., reactive state in a store), use the
+  `.svelte.ts` extension; ESLint has a parser override for this glob (per
+  `feedback_eslint_svelte_dot_ts_parser.md`).
 
 **REUSE 3.2:**
 
