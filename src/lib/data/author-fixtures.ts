@@ -481,3 +481,190 @@ function findLineCommentStart(line: string, marker: string): number {
   }
   return -1;
 }
+
+/* ---------- W21 PR3 Author CodeMirror flow fixtures ---------- */
+
+/* The fixtures below back the Save / Revert / Load Backup / Compare
+ * workflows that the W21 PR3 brief enables. They are visual stubs:
+ * the Save action snapshots local `$state` only, the backup list is
+ * a hardcoded 3-row history, and the comparison source map is a small
+ * hand-curated set of "what would `Spectrozonal` / `Polar Bloom` look
+ * like next to the current scene" GLSL fragments. Phase-3+/4a
+ * (`EV-SCRIPT-CONTRACT`, docs/26) wires real persistence and real
+ * scene-content fetch; the fixture file is the substitution boundary,
+ * mirroring the W18 PR2 posture for the editor body. */
+
+/** A timestamped backup snapshot. The Author view's "load backup"
+ *  popover renders these in reverse-chronological order. */
+export interface AuthorBackupSnapshot {
+  readonly id: string;
+  /** Display timestamp (e.g. "2026-04-26 13:14:08"). */
+  readonly timestamp: string;
+  /** Caption shown next to the timestamp ("auto-save", "manual save"). */
+  readonly note: string;
+  /** Per-tab content this snapshot would restore. Same shape as
+   *  `AUTHOR_FILE_SOURCES` so the loader is a direct map. */
+  readonly content: Readonly<Record<AuthorFileTab, string>>;
+}
+
+/** Hand-rolled "yesterday's draft" GLSL — a plausible earlier state of
+ *  the kaleidoscope shader with one fewer rotation in the array and a
+ *  simpler `hsv2rgb` body. Used by both the Load-Backup popover and
+ *  the Compare-a-Scene picker so snapshots have meaningful diffs. */
+const AUTHOR_GLSL_BACKUP_PREV = `// License CC0: Smooth Kaleidoscope 2
+// Earlier draft — fewer rotations, simpler hsv2rgb path.
+
+#define TIME        TIME
+#define RESOLUTION  RENDERSIZE
+#define PI          3.141592654
+#define TAU         (2.0*PI)
+#define ROT(x)      mat2(cos(x), -sin(x), sin(x), cos(x))
+
+const mat2[] rotations = mat2[](ROT(0.0*PI/2.0), ROT(1.0*PI/2.0));
+
+float rand(vec2 n) {
+  return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+}
+
+vec3 hsv2rgb(vec3 c) {
+  return vec3(c.z) * mix(vec3(1.0), vec3(c.x), c.y);
+}
+`;
+
+/** Older "first commit" backup — just the comment header and TIME /
+ *  RENDERSIZE defines. Designed to produce a diff that's visibly
+ *  different from both the live source and the prev backup. */
+const AUTHOR_GLSL_BACKUP_INITIAL = `// License CC0: Smooth Kaleidoscope 2 — initial sketch.
+
+#define TIME        TIME
+#define RESOLUTION  RENDERSIZE
+#define PI          3.141592654
+`;
+
+/** Three timestamped backup snapshots, newest first. Phase-3+/4a wires
+ *  real persistence; for now this is hardcoded fixture data. */
+export const AUTHOR_BACKUPS: readonly AuthorBackupSnapshot[] = [
+  {
+    id: 'backup-2026-04-26-1314',
+    timestamp: '2026-04-26 13:14:08',
+    note: 'auto-save',
+    content: {
+      'main.glsl': AUTHOR_GLSL_BACKUP_PREV,
+      'script.js': AUTHOR_SCRIPT_SOURCE,
+      'config.json': AUTHOR_CONFIG_SOURCE,
+      'readme.md': AUTHOR_README_SOURCE,
+    },
+  },
+  {
+    id: 'backup-2026-04-26-1209',
+    timestamp: '2026-04-26 12:09:42',
+    note: 'manual save',
+    content: {
+      'main.glsl': AUTHOR_GLSL_BACKUP_PREV,
+      'script.js': AUTHOR_SCRIPT_SOURCE,
+      'config.json': AUTHOR_CONFIG_SOURCE,
+      'readme.md': AUTHOR_README_SOURCE,
+    },
+  },
+  {
+    id: 'backup-2026-04-25-1832',
+    timestamp: '2026-04-25 18:32:11',
+    note: 'auto-save',
+    content: {
+      'main.glsl': AUTHOR_GLSL_BACKUP_INITIAL,
+      'script.js': AUTHOR_SCRIPT_SOURCE,
+      'config.json': AUTHOR_CONFIG_SOURCE,
+      'readme.md': AUTHOR_README_SOURCE,
+    },
+  },
+];
+
+/** Per-scene comparison source. Keyed by `AuthorSceneRow.idx` so the
+ *  Compare-a-Scene picker can offer the 8 scene rows as comparison
+ *  targets and surface a meaningful GLSL fragment for each. */
+export const AUTHOR_COMPARISON_SOURCES: Readonly<Record<number, string>> = {
+  1: `// Spectrozonal — clean-room comparison stub.
+#define TIME        TIME
+#define PI          3.141592654
+
+vec3 spectrozonal(vec2 uv) {
+  float r = length(uv - 0.5);
+  float a = atan(uv.y - 0.5, uv.x - 0.5);
+  return vec3(0.5 + 0.5 * sin(a * 6.0 + TIME),
+              0.5 + 0.5 * sin(a * 4.0 + TIME * 0.7),
+              0.5 + 0.5 * sin(r * 12.0 - TIME));
+}
+`,
+  2: `// Lygia Digitizer Demo — clean-room comparison stub.
+#define TIME        TIME
+#define RESOLUTION  RENDERSIZE
+#define PI          3.141592654
+
+vec3 digitize(vec2 uv) {
+  vec2 cell = floor(uv * RESOLUTION / 8.0);
+  float n = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+  return vec3(step(0.5, n));
+}
+`,
+  3: `// Simple Tygia — clean-room comparison stub.
+#define TIME        TIME
+#define PI          3.141592654
+
+vec3 fluid(vec2 uv) {
+  vec2 p = uv * 4.0;
+  float v = sin(p.x + TIME) + sin(p.y + TIME * 1.3);
+  return vec3(0.5 + 0.5 * sin(v));
+}
+`,
+  4: AUTHOR_GLSL_SOURCE,
+  5: `// Gaussian Smoothrite — clean-room comparison stub.
+#define TIME        TIME
+#define PI          3.141592654
+
+float gauss(float x, float s) {
+  return exp(-(x * x) / (2.0 * s * s));
+}
+
+vec3 smoothrite(vec2 uv) {
+  float r = length(uv - 0.5);
+  float g = gauss(r, 0.18 + 0.05 * sin(TIME));
+  return vec3(g);
+}
+`,
+  6: `// Iridescent Drift — clean-room comparison stub.
+#define TIME        TIME
+#define TAU         (2.0*3.141592654)
+
+vec3 iridescent(vec2 uv) {
+  float t = TIME * 0.4;
+  return vec3(
+    0.5 + 0.5 * sin(uv.x * TAU + t),
+    0.5 + 0.5 * sin(uv.y * TAU + t * 1.1),
+    0.5 + 0.5 * sin((uv.x + uv.y) * TAU + t * 0.7)
+  );
+}
+`,
+  7: `// Polar Bloom — clean-room comparison stub.
+#define TIME        TIME
+#define PI          3.141592654
+#define TAU         (2.0*PI)
+
+vec3 polarBloom(vec2 uv) {
+  vec2 c = uv - 0.5;
+  float r = length(c);
+  float a = atan(c.y, c.x);
+  float bloom = 0.5 + 0.5 * sin(a * 8.0 + TIME * 1.2);
+  return vec3(bloom, bloom * (1.0 - r), 1.0 - r);
+}
+`,
+  8: `// Vector Pulse — clean-room comparison stub.
+#define TIME        TIME
+#define PI          3.141592654
+
+vec3 vectorPulse(vec2 uv) {
+  vec2 p = uv * 2.0 - 1.0;
+  float pulse = sin(length(p) * 12.0 - TIME * 4.0);
+  return vec3(0.5 + 0.5 * pulse) * (1.0 - length(p));
+}
+`,
+};
