@@ -49,7 +49,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     left: 0;
     right: 0;
     bottom: 0;
-    background: var(--color-primary);
+    background: var(--tint, var(--color-primary));
     border-radius: 0 0 1px 1px;
     opacity: 0.95;
   }
