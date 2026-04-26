@@ -36,6 +36,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Wave-18 PR3 promotes the MIDI route from the previously-disabled
   // sidebar stub to a full bundle port (`views/MIDI.svelte`). Dispatch
   // arm added in bundle ordering (after `sources`, before `osc`).
+  //
+  // Wave-19 PR1 promotes the Patch route from the previously-disabled
+  // sidebar stub to a full bundle port (`views/Patch.svelte`). Dispatch
+  // arm added in bundle ordering (after `osc`, before `settings`).
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
   import { routeStore } from './stores/route.svelte';
@@ -46,6 +50,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import License from './views/License.svelte';
   import MIDI from './views/MIDI.svelte';
   import Osc from './views/Osc.svelte';
+  import Patch from './views/Patch.svelte';
   import Perform from './views/Perform.svelte';
   import Playlist from './views/Playlist.svelte';
   import Settings from './views/Settings.svelte';
@@ -77,6 +82,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <MIDI />
     {:else if routeStore.current === 'osc'}
       <Osc />
+    {:else if routeStore.current === 'patch'}
+      <Patch />
     {:else if routeStore.current === 'settings'}
       <Settings />
     {:else if routeStore.current === 'license'}

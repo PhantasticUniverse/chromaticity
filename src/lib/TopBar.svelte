@@ -48,6 +48,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     sources: 'Sources',
     midi: 'MIDI',
     osc: 'OSC · LISTENING — Port 7000',
+    patch: 'PATCH',
     settings: 'Settings',
     license: 'License',
     welcome: 'Welcome',

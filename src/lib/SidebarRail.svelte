@@ -28,6 +28,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // view, leaving Patch and Import as the only disabled top-section
   // entries. The full bundle port lives in `views/MIDI.svelte`.
   //
+  // Wave-19 PR1 promotes the Patch entry from disabled stub to routed
+  // view; the full bundle port lives in `views/Patch.svelte`. Import
+  // remains disabled in this PR (W19 PR2 sub-agent owns that port in
+  // parallel).
+  //
   // Icons remain Unicode glyphs in W16; SVG icon vendoring is W17+.
   // Glyphs picked for legibility across the three themes (pulse /
   // atelier / console). Per the auto-memory
@@ -60,7 +65,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { route: 'midi', label: 'MIDI', glyph: '♪' },
     { route: 'osc', label: 'OSC', glyph: '⌘' },
     { label: 'Import', glyph: '↓', section: 'top' },
-    { label: 'Patch', glyph: '◫', section: 'top' },
+    { route: 'patch', label: 'Patch', glyph: '◫' },
     { route: 'settings', label: 'Settings', glyph: '⚙' },
     { route: 'license', label: 'License', glyph: '◆' },
     { route: 'welcome', label: 'Welcome', glyph: '✦' },

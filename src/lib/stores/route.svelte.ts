@@ -31,6 +31,12 @@
 // promotes the previously-disabled MIDI sidebar entry to a routed view.
 // Insert position mirrors the bundle's VIEWS ordering (between `sources`
 // and `osc`).
+//
+// Wave-19 PR1 adds `patch` to the union: the W19 Patch view full port
+// from `chromaticity-planning/ui-predev-bundle-v0.2-beta/views/patch.jsx`
+// promotes the previously-disabled Patch sidebar entry to a routed view.
+// Insert position mirrors the bundle's VIEWS ordering (after `osc`,
+// before `settings`).
 
 export type RouteName =
   | 'perform'
@@ -41,6 +47,7 @@ export type RouteName =
   | 'sources'
   | 'midi'
   | 'osc'
+  | 'patch'
   | 'settings'
   | 'license'
   | 'welcome';
