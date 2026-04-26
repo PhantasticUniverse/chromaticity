@@ -4,67 +4,64 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 -->
 
 <script lang="ts">
-  // Wave-18 PR2 Author view full port — replaces the W12 PR3 stub
-  // (Inputs Inspector mounted on hardcoded scene fixtures) with the
-  // full Scene Editor layout per the canonical bundle JSX
+  // Wave-18 PR2 Author view full port — full Scene Editor layout per
+  // the canonical bundle JSX
   // (`chromaticity-planning/ui-predev-bundle-v0.2-beta/views/scene.jsx`,
   // the `SceneEditorView` component mapped to `id: "author"` in the
   // production sidebar / route store; bundle calls it "Scene Editor"
-  // but production naming is "Author"). The W12 PR3 deferral note
-  // ("CodeMirror code panes, live preview, scene-load console, LOAD
-  // BACKUP / COMPARE & SCENE actions is W13+") is the trigger this
-  // PR resolves.
+  // but production naming is "Author").
   //
-  // Locked W18 PR2 deviations from the bundle:
-  //   - CodeMirror is NOT introduced. The bundle's editor is itself a
-  //     read-only DOM rendering of a regex-tokenised line list (see
-  //     the bundle's `tokens()` helper at scene.jsx:61-90); there is
-  //     no CodeMirror dependency in the bundle source. This port
-  //     mirrors that approach with a `<pre>`-style line grid in the
-  //     centre pane — a future PR can swap it for a real editor when
-  //     the script-contract IPC slice lands in Phase-2
-  //     (`EV-SCRIPT-CONTRACT`, docs/26). The fixture file
-  //     (`src/lib/data/author-fixtures.ts`) is the substitution
-  //     boundary.
+  // W21 PR3 evolution — replaces the W18 PR2 read-only `<pre><code>`
+  // editor body with a CodeMirror 6 EditorView per file tab, adds
+  // chroma_* native + syn_* compat autocomplete on the GLSL tab, and
+  // wires unsaved-changes / save / revert / load-backup / compare-a-
+  // scene workflows. CodeMirror is a CONTROLLED divergence from the
+  // bundle: the bundle's editor is itself a read-only DOM rendering of
+  // a regex-tokenised line list (see `tokens()` at scene.jsx:61-90);
+  // there is no CodeMirror dependency in the bundle source. The W20
+  // feature-parity report flagged Author as the largest authoring-
+  // quality gap because the bundle's read-only display is not enough
+  // for production operators — this PR closes that gap. The fixture
+  // file (`src/lib/data/author-fixtures.ts`) remains the substitution
+  // boundary for the eventual Phase-3+/4a real-persistence wiring
+  // (`EV-SCRIPT-CONTRACT`, docs/26).
+  //
+  // Other locked deviations carried forward from W18 PR2:
   //   - The bundle's `<SceneStill>`, `<Preview>`, `<PreviewTools>`
   //     shared primitives are not yet ported as Svelte widgets; this
   //     view renders the scene-thumbnail tile and live-preview panel
-  //     as static gradient blobs (the same approach W17 PR3 Audio
-  //     Uniforms took for its `<Preview>` substitution). No new icon
-  //     / canvas primitives are introduced.
+  //     as static gradient blobs.
   //   - The bundle's `<SsfInspector>` (Inputs Inspector tab) maps to
   //     the existing W10 Inputs view; the right-rail `ssf` tab routes
   //     to a button that nudges the user toward Inputs rather than
-  //     mounting Inputs in-place — keeping Author's right rail one
-  //     level shallower until the script-contract slice lands.
-  //   - All buttons are visual stubs; no IPC is wired. Click handlers
-  //     are no-ops for `aria-pressed` togglability only.
+  //     mounting Inputs in-place.
   //   - The bundle's `localStorage`-backed tab persistence is dropped;
-  //     a session-local `$state` is sufficient and avoids storage IO
-  //     ahead of the Phase-2 user-settings persistence work.
-  //   - W20 view-internal icon sweep: every toolbar / file-tab / inspector
-  //     glyph now renders via the W19 PR3 vendored `Icon.svelte` SVG
-  //     primitive instead of Unicode placeholders. Bundle-canonical names
-  //     per `views/scene.jsx` (`edit` / `folder` / `copy` / `settings` /
-  //     `camera` / `undo` / `save` / `chevron` / `fullscreen` / `list` /
-  //     `palette` / `sliders` / `plus` / `refresh` / `upload` / `trash` /
-  //     `layers` / `search`). The inspector tab strip's per-tab glyph
-  //     comes from each tab id's bundle rail-button mapping.
+  //     session-local `$state` is sufficient.
+  //
+  // Namespace policy (`docs/36-reactive-symbol-catalog.md` §Namespace
+  // governance): the GLSL autocomplete vocabulary lives in
+  // `src/lib/data/glsl-completions.ts` and exposes BOTH `chroma_*`
+  // native symbols (primary, higher boost) AND `syn_*` compat symbols
+  // (secondary, lower boost). New feature work must NOT add fresh
+  // `syn_*` symbols beyond what the catalog documents. This view
+  // consumes the vocabulary; it does not extend it.
   import {
+    AUTHOR_BACKUPS,
+    AUTHOR_COMPARISON_SOURCES,
     AUTHOR_CONSOLE_ROWS,
     AUTHOR_CONTROL_EDIT,
-    AUTHOR_FILE_KINDS,
     AUTHOR_FILE_SOURCES,
     AUTHOR_PRESETS,
     AUTHOR_RENDER_PASSES,
     AUTHOR_SCENE_META,
     AUTHOR_SCENE_ROWS,
-    tokeniseLine,
     type AuthorFileTab,
     type AuthorInspectorTab,
-    type AuthorToken,
+    type AuthorSceneRow,
   } from '../data/author-fixtures';
+  import Editor, { type EditorLanguage } from '../Editor.svelte';
   import Icon, { type IconName } from '../Icon.svelte';
+  import SceneDiff from '../SceneDiff.svelte';
   import Fader from '../widgets/Fader.svelte';
 
   let activeFile = $state<AuthorFileTab>('main.glsl');
@@ -88,11 +85,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { id: 'plus', label: 'Import', icon: 'plus' },
   ];
 
-  const sourceLines = $derived<readonly string[]>(AUTHOR_FILE_SOURCES[activeFile].split('\n'));
-  const highlightKind = $derived(AUTHOR_FILE_KINDS[activeFile]);
+  /* ---------------- Editor buffer state -------------------------------- */
 
-  function lineTokens(line: string): readonly AuthorToken[] {
-    return tokeniseLine(line, highlightKind);
+  /* `buffers` carries the live editor contents per tab; `saved` carries
+   * the last-saved snapshot per tab. Both seed from `AUTHOR_FILE_SOURCES`
+   * so the initial render matches the W18 PR2 fixture. Save copies
+   * `buffers[file]` into `saved[file]`; Revert copies the other way.
+   * Per-tab `isDirty` derives from `buffers[file] !== saved[file]`. */
+  let buffers = $state<Record<AuthorFileTab, string>>({
+    'main.glsl': AUTHOR_FILE_SOURCES['main.glsl'],
+    'script.js': AUTHOR_FILE_SOURCES['script.js'],
+    'config.json': AUTHOR_FILE_SOURCES['config.json'],
+    'readme.md': AUTHOR_FILE_SOURCES['readme.md'],
+  });
+  let saved = $state<Record<AuthorFileTab, string>>({
+    'main.glsl': AUTHOR_FILE_SOURCES['main.glsl'],
+    'script.js': AUTHOR_FILE_SOURCES['script.js'],
+    'config.json': AUTHOR_FILE_SOURCES['config.json'],
+    'readme.md': AUTHOR_FILE_SOURCES['readme.md'],
+  });
+
+  /** Active tab dirty flag. Drives the toolbar warn pill + Save/Revert
+   *  enabled state. */
+  const isDirty = $derived(buffers[activeFile] !== saved[activeFile]);
+
+  /** Any tab dirty — used to show the unsaved-changes pill even when
+   *  the user is on a non-dirty tab. */
+  const anyDirty = $derived(FILE_TABS.some((file) => buffers[file] !== saved[file]));
+
+  function editorLanguage(file: AuthorFileTab): EditorLanguage {
+    if (file === 'main.glsl') return 'glsl';
+    if (file === 'script.js') return 'js';
+    if (file === 'config.json') return 'json';
+    return 'md';
   }
 
   function selectFile(file: AuthorFileTab): void {
@@ -103,14 +128,60 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     activeTab = tab;
   }
 
-  function tokenClass(kind: AuthorToken['kind']): string {
-    if (kind === 'comment') return 'cm-c';
-    if (kind === 'keyword') return 'cm-k';
-    if (kind === 'uniform') return 'cm-u';
-    if (kind === 'number') return 'cm-n';
-    if (kind === 'string') return 'cm-s';
-    return '';
+  function onEditorChange(next: string): void {
+    buffers[activeFile] = next;
   }
+
+  function saveAll(): void {
+    // Local-only snapshot. Phase-3+/4a wires the EV-SCRIPT-CONTRACT IPC.
+    saved = { ...buffers };
+  }
+
+  function revertActive(): void {
+    buffers[activeFile] = saved[activeFile];
+  }
+
+  /* ---------------- Load-backup popover -------------------------------- */
+
+  let backupOpen = $state<boolean>(false);
+  function toggleBackup(): void {
+    backupOpen = !backupOpen;
+    if (backupOpen) compareOpen = false;
+  }
+  function loadBackup(id: string): void {
+    const snap = AUTHOR_BACKUPS.find((b) => b.id === id);
+    if (snap === undefined) return;
+    // Replace all tab buffers AND saved snapshots so the loaded
+    // backup becomes the new "clean" baseline. The user can then
+    // edit + Revert to discard back to the loaded backup.
+    buffers = { ...snap.content };
+    saved = { ...snap.content };
+    backupOpen = false;
+  }
+
+  /* ---------------- Compare-a-scene popover + diff --------------------- */
+
+  let compareOpen = $state<boolean>(false);
+  let compareSelectedIdx = $state<number | null>(null);
+  function toggleCompare(): void {
+    compareOpen = !compareOpen;
+    if (compareOpen) backupOpen = false;
+  }
+  function pickCompare(row: AuthorSceneRow): void {
+    compareSelectedIdx = row.idx;
+    compareOpen = false;
+  }
+  function clearCompare(): void {
+    compareSelectedIdx = null;
+  }
+  const compareRow = $derived<AuthorSceneRow | null>(
+    compareSelectedIdx === null
+      ? null
+      : (AUTHOR_SCENE_ROWS.find((r) => r.idx === compareSelectedIdx) ?? null),
+  );
+  const compareSource = $derived<string>(
+    compareSelectedIdx === null ? '' : (AUTHOR_COMPARISON_SOURCES[compareSelectedIdx] ?? ''),
+  );
 </script>
 
 <section class="au-author" aria-label="Author scene editor">
@@ -148,21 +219,100 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
       </div>
       <div class="au-author__sceneinfo-actions">
-        <button class="au-author__btn" type="button" disabled>load backup</button>
-        <button class="au-author__btn" type="button" disabled>compare a scene</button>
+        <div class="au-author__popwrap">
+          <button
+            class="au-author__btn"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={backupOpen ? 'true' : 'false'}
+            onclick={toggleBackup}
+          >
+            load backup
+          </button>
+          {#if backupOpen}
+            <div class="au-author__pop" role="menu" aria-label="Recent backup snapshots">
+              <span class="au-author__pop-label">Recent snapshots</span>
+              {#each AUTHOR_BACKUPS as backup (backup.id)}
+                <button
+                  class="au-author__pop-item"
+                  type="button"
+                  role="menuitem"
+                  onclick={() => loadBackup(backup.id)}
+                >
+                  <span class="mono au-author__pop-time">{backup.timestamp}</span>
+                  <span class="au-author__pop-note">{backup.note}</span>
+                </button>
+              {/each}
+              <p class="au-author__pop-foot mono">
+                Phase-3+ wires real persistence; these are fixture snapshots.
+              </p>
+            </div>
+          {/if}
+        </div>
+        <div class="au-author__popwrap">
+          <button
+            class="au-author__btn"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={compareOpen ? 'true' : 'false'}
+            onclick={toggleCompare}
+          >
+            compare a scene
+          </button>
+          {#if compareOpen}
+            <div class="au-author__pop" role="menu" aria-label="Pick a scene to compare">
+              <span class="au-author__pop-label">Compare against</span>
+              {#each AUTHOR_SCENE_ROWS as row (row.idx)}
+                <button
+                  class="au-author__pop-item"
+                  class:au-author__pop-item--active={row.active}
+                  type="button"
+                  role="menuitem"
+                  disabled={row.active}
+                  onclick={() => pickCompare(row)}
+                  title={row.active ? 'Current scene cannot be compared with itself' : ''}
+                >
+                  <span class="mono au-author__pop-idx">
+                    {String(row.idx).padStart(2, '0')}
+                  </span>
+                  <span class="au-author__pop-name">{row.name}</span>
+                  <span class="mono au-author__pop-tag">{row.tag}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
     </section>
 
-    <!-- Editor toolbar + tabs + code grid -->
+    <!-- Editor toolbar + tabs + CodeMirror body -->
     <section class="au-author__panel au-author__editor" aria-label="Scene source editor">
       <div class="au-author__toolbar">
-        <button class="au-author__icon-btn" type="button" disabled title="Revert">
+        <button
+          class="au-author__icon-btn"
+          type="button"
+          disabled={!isDirty}
+          onclick={revertActive}
+          title="Revert {activeFile} to last saved"
+          aria-label="Revert {activeFile} to last saved"
+        >
           <Icon name="undo" size={12} />
         </button>
-        <button class="au-author__icon-btn" type="button" disabled title="Save">
+        <button
+          class="au-author__icon-btn"
+          type="button"
+          disabled={!anyDirty}
+          onclick={saveAll}
+          title="Save all tabs"
+          aria-label="Save all tabs"
+        >
           <Icon name="save" size={12} />
         </button>
-        <span class="au-author__toolbar-warn mono">you have unsaved changes</span>
+        {#if anyDirty}
+          <span class="au-author__toolbar-warn mono" aria-live="polite">
+            you have unsaved changes
+          </span>
+        {/if}
         <span class="au-author__spacer" aria-hidden="true"></span>
         <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
           show Chromaticity docs
@@ -177,12 +327,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <button
             class="au-author__filetab"
             class:au-author__filetab--active={activeFile === file}
+            class:au-author__filetab--dirty={buffers[file] !== saved[file]}
             role="tab"
             aria-selected={activeFile === file ? 'true' : 'false'}
             type="button"
             onclick={() => selectFile(file)}
           >
-            {file}
+            {file}{buffers[file] !== saved[file] ? ' *' : ''}
           </button>
         {/each}
         <span class="au-author__spacer" aria-hidden="true"></span>
@@ -192,22 +343,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </span>
       </div>
 
-      <div class="au-author__code" role="document" aria-label="{activeFile} source">
-        {#each sourceLines as line, i (i)}
-          <div class="au-author__line">
-            <span class="au-author__gutter mono">{String(i + 1).padStart(3, ' ')}</span>
-            <span class="au-author__codeline mono">
-              {#each lineTokens(line) as token, ti (ti)}
-                {#if token.kind === 'plain'}
-                  <span>{token.text}</span>
-                {:else}
-                  <span class={tokenClass(token.kind)}>{token.text}</span>
-                {/if}
-              {/each}
+      {#if compareSelectedIdx !== null && compareRow !== null}
+        <div class="au-author__compare">
+          <header class="au-author__compare-head">
+            <span class="au-author__caps">comparing</span>
+            <span class="mono au-author__compare-name">
+              {AUTHOR_SCENE_META.title} ↔ {compareRow.name}
             </span>
-          </div>
-        {/each}
-      </div>
+            <span class="au-author__spacer" aria-hidden="true"></span>
+            <button
+              class="au-author__btn au-author__btn--ghost"
+              type="button"
+              onclick={clearCompare}
+            >
+              close diff
+            </button>
+          </header>
+          <SceneDiff
+            leftLabel={AUTHOR_SCENE_META.title}
+            rightLabel={compareRow.name}
+            leftSource={buffers['main.glsl']}
+            rightSource={compareSource}
+          />
+        </div>
+      {:else}
+        {#key activeFile}
+          <Editor
+            value={buffers[activeFile]}
+            language={editorLanguage(activeFile)}
+            ariaLabel="{activeFile} source"
+            onChange={onEditorChange}
+          />
+        {/key}
+      {/if}
     </section>
 
     <!-- Console output -->
@@ -846,8 +1014,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /* ---------------- Editor toolbar ------------------------------------- */
   .au-author__editor {
     display: grid;
-    grid-template-rows: auto auto minmax(220px, 1fr);
+    grid-template-rows: auto auto minmax(280px, 1fr);
     overflow: hidden;
+    min-height: 360px;
   }
 
   .au-author__toolbar {
@@ -898,6 +1067,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     color: var(--color-text-0);
     box-shadow: inset 0 -2px 0 var(--color-primary);
   }
+  .au-author__filetab--dirty {
+    color: var(--color-warning);
+  }
+  .au-author__filetab--active.au-author__filetab--dirty {
+    color: var(--color-warning);
+  }
   .au-author__compiled {
     display: inline-flex;
     align-items: center;
@@ -914,52 +1089,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     box-shadow: 0 0 calc(6px * var(--glow, 1)) var(--color-success);
   }
 
-  /* ---------------- Code grid ------------------------------------------ */
-  .au-author__code {
-    background: var(--color-bg-1);
-    overflow: auto;
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-mono-sm);
-    line-height: 1.55;
-    padding: var(--space-sm) 0;
-    max-height: 360px;
-  }
-  .au-author__line {
-    display: grid;
-    grid-template-columns: 48px minmax(0, 1fr);
-    gap: var(--space-sm);
-    padding: 0 var(--space-md);
-  }
-  .au-author__line:hover {
-    background: var(--color-bg-2);
-  }
-  .au-author__gutter {
-    color: var(--color-text-4);
-    text-align: right;
-    user-select: none;
-  }
-  .au-author__codeline {
-    color: var(--color-text-1);
-    white-space: pre;
-    overflow-x: auto;
-  }
-
-  :global(.au-author__codeline .cm-c) {
-    color: var(--color-text-3);
-    font-style: italic;
-  }
-  :global(.au-author__codeline .cm-k) {
-    color: var(--color-signal-magenta);
-  }
-  :global(.au-author__codeline .cm-u) {
-    color: var(--color-signal-cyan);
-  }
-  :global(.au-author__codeline .cm-n) {
-    color: var(--color-signal-orange);
-  }
-  :global(.au-author__codeline .cm-s) {
-    color: var(--color-signal-lime);
-  }
+  /* W21 PR3: the W18 PR2 read-only line grid (`.au-author__code`,
+     `.au-author__line`, `.au-author__gutter`, `.au-author__codeline`,
+     and the `.cm-c|k|u|n|s` legacy token classes) has been removed.
+     CodeMirror 6 mounted via `Editor.svelte` replaces it; theme
+     colours come from the `chromaticityTheme` + `HighlightStyle` in
+     that wrapper, both of which read tokens.css directly. */
 
   /* ---------------- Console output ------------------------------------- */
   .au-author__console {
@@ -1426,5 +1561,109 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-caps-sm);
     line-height: var(--line-height-body);
     color: var(--color-text-4);
+  }
+
+  /* ---------------- Popovers (load backup / compare scene) ------------- */
+  .au-author__popwrap {
+    position: relative;
+  }
+  .au-author__pop {
+    position: absolute;
+    top: calc(100% + var(--space-xs));
+    right: 0;
+    min-width: 260px;
+    max-height: 320px;
+    overflow: auto;
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-panel);
+    padding: var(--space-xs) 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .au-author__pop-label {
+    padding: var(--space-xs) var(--space-md);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-3);
+    border-bottom: 1px solid var(--color-line-1);
+    margin-bottom: var(--space-xs);
+  }
+  .au-author__pop-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--space-sm);
+    align-items: baseline;
+    padding: var(--space-xs) var(--space-md);
+    background: transparent;
+    border: 0;
+    color: var(--color-text-1);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-body-sm);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+  }
+  .au-author__pop-item:hover:not(:disabled) {
+    background: var(--color-bg-4);
+  }
+  .au-author__pop-item:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+  .au-author__pop-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .au-author__pop-item--active {
+    color: var(--color-primary);
+  }
+  .au-author__pop-time,
+  .au-author__pop-idx {
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-3);
+  }
+  .au-author__pop-note {
+    color: var(--color-text-2);
+  }
+  .au-author__pop-name {
+    color: var(--color-text-1);
+  }
+  .au-author__pop-tag {
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-4);
+  }
+  .au-author__pop-foot {
+    margin: var(--space-xs) 0 0;
+    padding: var(--space-xs) var(--space-md);
+    font-size: var(--font-size-caps-sm);
+    color: var(--color-text-4);
+    border-top: 1px solid var(--color-line-1);
+  }
+
+  /* ---------------- Compare-a-scene wrapper ---------------------------- */
+  .au-author__compare {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-1);
+    padding: var(--space-sm) var(--space-md);
+    gap: var(--space-sm);
+    overflow: hidden;
+  }
+  .au-author__compare-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+  .au-author__compare-name {
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
   }
 </style>
