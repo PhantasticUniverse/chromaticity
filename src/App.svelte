@@ -4,6 +4,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 <script lang="ts">
+  import HotkeyOverlay from './lib/HotkeyOverlay.svelte';
   import type { ControlId, ControlValue, PresetId } from './lib/ipc/bindings';
   import { dispatchAndRead } from './lib/stores/control';
   import { dispatchPlaylistAdvanceAndRead, readPlaylistPosition } from './lib/stores/playlist';
@@ -39,6 +40,33 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let playlistPos = $state<number>(0);
   let playlistPending = $state(false);
   let playlistError = $state<string | null>(null);
+
+  let hotkeysOpen = $state(false);
+
+  // Document-level `?` toggle for the hotkey overlay. Pass-through when the
+  // user is typing in an input, textarea, or contentEditable surface so we
+  // never swallow keystrokes inside the search field itself or any future
+  // editable region. The Shift+/ branch covers US keyboards where `?` is
+  // produced by Shift+/; `event.key === '?'` covers layouts where the OS
+  // already resolves the shifted glyph.
+  $effect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === '?' || (event.key === '/' && event.shiftKey)) {
+        event.preventDefault();
+        hotkeysOpen = !hotkeysOpen;
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  });
 
   // Mount-time hydration: read canonical state once on first render so
   // the UI reflects any pre-existing runtime state. The empty-deps
@@ -262,6 +290,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     {/if}
   </section>
 </main>
+
+<HotkeyOverlay open={hotkeysOpen} onCloseRequest={() => (hotkeysOpen = false)} />
 
 <style>
   /* Token-driven demo surface. Hard-coded hex was swapped to tokens from
