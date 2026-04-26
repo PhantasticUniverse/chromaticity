@@ -3,16 +3,29 @@
 
 //! Evidence: EV-SCENE-IMPORT (T1) — scene-import golden harness;
 //! Phase-1 forward pin against the bundled demo `.chroma` corpus.
+//! Evidence: EV-COMPAT-FIXTURE-COVERAGE (T2) — CP-01 fallback corpus
+//! golden hashes pinned against the shipped `cp01-*.chroma` fixtures.
 //!
-//! Loads each demo `.chroma` fixture under
+//! Loads each `.chroma` fixture under
 //! `engine/scene/tests/fixtures/scenes/` and pins a canonical-form
 //! FNV-1a 64-bit golden hash on its deserialized [`Scene`]
-//! representation. This is the T1 drift-pin tier per
-//! `docs/43-development-standards.md` §15.5; the T2 corpus coverage
-//! that closes `EV-SCENE-IMPORT` (per `docs/26-evidence-artifact-registry.md`
-//! row "Scene import harness + golden corpus fixtures") is W11 work
-//! covering the CP-01 missing-`TYPE` fallback branches per
-//! `docs/28-implementation-contract-pack.md` §CP-01.
+//! representation.
+//!
+//! The four `golden_demo_*` / extensions-metadata tests stay at the T1
+//! drift-pin tier per `docs/43-development-standards.md` §15.5; the
+//! T2 corpus coverage that closes `EV-SCENE-IMPORT` over the full
+//! baseline corpus per `docs/26-evidence-artifact-registry.md` row
+//! "Scene import harness + golden corpus fixtures" is broader work
+//! beyond Wave-11 PR1's CP-01 scope.
+//!
+//! The five `golden_cp01_*` tests added in Wave-11 PR1 are the T2
+//! file-fixture wing of `EV-COMPAT-FIXTURE-COVERAGE` per `docs/26`
+//! row 27 — they pin the deserialized canonical-form hash of each
+//! shipped CP-01 fallback fixture (`cp01-slider`, `cp01-toggle`,
+//! `cp01-color`, `cp01-xy`, `cp01-reject`) so silent drift in either
+//! the schema serialization or the fixture content fails at build.
+//! The companion compat-vs-strict assertions live in
+//! `engine/scene/tests/cp01_compat.rs`.
 //!
 //! # Regenerating goldens
 //!
@@ -25,11 +38,10 @@
 //!
 //! Each failed `golden_*` test prints `actual: 0x...` in its assertion
 //! message; copy the new hash into the matching `EXPECTED` constant
-//! and re-run. The fourth test
-//! (`loader_extracts_extensions_metadata`) does not need regeneration —
-//! it asserts known string values from the fixtures and tracks the
-//! same `extensions.get(...)` path the W9 library scanner uses in
-//! `app/shell/src/commands/library.rs`.
+//! and re-run. The `loader_extracts_extensions_metadata` test does not
+//! need regeneration — it asserts known string values from the fixtures
+//! and tracks the same `extensions.get(...)` path the W9 library
+//! scanner uses in `app/shell/src/commands/library.rs`.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -160,5 +172,72 @@ fn loader_extracts_extensions_metadata() {
     assert!(
         categories.contains(&"TEXT"),
         "demo-text should carry 'TEXT' category, got {categories:?}",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// EV-COMPAT-FIXTURE-COVERAGE (T2) — CP-01 fallback corpus golden hashes.
+//
+// Each `golden_cp01_*` test pins the canonical-form FNV-1a 64-bit hash of a
+// shipped `cp01-<branch>.chroma` fixture under
+// `engine/scene/tests/fixtures/scenes/`. Drift in the schema serializer or
+// the fixture content fails the matching test. The companion
+// compat-vs-strict assertions live in
+// `engine/scene/tests/cp01_compat.rs`. See `docs/26` row 27 + `docs/28`
+// §CP-01 for the rule definitions, and `docs/43` §15.5 for the T2 tier.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn golden_cp01_slider() {
+    // EV-COMPAT-FIXTURE-COVERAGE (T2)
+    let actual = load_and_hash("cp01-slider.chroma");
+    const EXPECTED: u64 = 0xE1E8_7D83_B56F_0D23;
+    assert_eq!(
+        actual, EXPECTED,
+        "cp01-slider golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_cp01_toggle() {
+    // EV-COMPAT-FIXTURE-COVERAGE (T2)
+    let actual = load_and_hash("cp01-toggle.chroma");
+    const EXPECTED: u64 = 0x0A64_B0F5_2503_93EF;
+    assert_eq!(
+        actual, EXPECTED,
+        "cp01-toggle golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_cp01_color() {
+    // EV-COMPAT-FIXTURE-COVERAGE (T2)
+    let actual = load_and_hash("cp01-color.chroma");
+    const EXPECTED: u64 = 0x1772_E3B6_672C_17A9;
+    assert_eq!(
+        actual, EXPECTED,
+        "cp01-color golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_cp01_xy() {
+    // EV-COMPAT-FIXTURE-COVERAGE (T2)
+    let actual = load_and_hash("cp01-xy.chroma");
+    const EXPECTED: u64 = 0x574D_6B1F_7584_AE3A;
+    assert_eq!(
+        actual, EXPECTED,
+        "cp01-xy golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_cp01_reject() {
+    // EV-COMPAT-FIXTURE-COVERAGE (T2)
+    let actual = load_and_hash("cp01-reject.chroma");
+    const EXPECTED: u64 = 0x2F3A_9DD8_5A52_670C;
+    assert_eq!(
+        actual, EXPECTED,
+        "cp01-reject golden mismatch (actual: {actual:#018x})",
     );
 }

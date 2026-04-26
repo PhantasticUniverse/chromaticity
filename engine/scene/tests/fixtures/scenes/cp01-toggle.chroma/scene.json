@@ -1,0 +1,15 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "CP-01 Toggle Fallback",
+  "CREDIT": "chromaticity cp-01 corpus",
+  "DESCRIPTION": "Single missing-TYPE control with DEFAULT 0.0 and no MIN/MAX. Compat coerces to toggle per docs/28 §CP-01 step 2; strict rejects.",
+  "TAGS": ["cp-01", "fallback", "toggle"],
+  "CATEGORIES": ["BUILT-IN", "ABSTRACT"],
+  "CONTROLS": [
+    {
+      "NAME": "enabled",
+      "DEFAULT": 0.0
+    }
+  ],
+  "PASSES": []
+}

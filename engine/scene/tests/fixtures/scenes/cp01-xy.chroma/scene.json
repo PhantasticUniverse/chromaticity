@@ -1,0 +1,15 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "CP-01 XY Fallback",
+  "CREDIT": "chromaticity cp-01 corpus",
+  "DESCRIPTION": "Single missing-TYPE control with a 2-float DEFAULT array and no MIN/MAX/DEF_COLOR. Compat coerces to xy per docs/28 §CP-01 step 4; strict rejects.",
+  "TAGS": ["cp-01", "fallback", "xy"],
+  "CATEGORIES": ["BUILT-IN", "GEOMETRIC"],
+  "CONTROLS": [
+    {
+      "NAME": "anchor",
+      "DEFAULT": [0.5, 0.5]
+    }
+  ],
+  "PASSES": []
+}

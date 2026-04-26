@@ -1,0 +1,16 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "CP-01 Color Fallback",
+  "CREDIT": "chromaticity cp-01 corpus",
+  "DESCRIPTION": "Single missing-TYPE control with a 4-float DEF_COLOR tuple. Compat coerces to color per docs/28 §CP-01 step 3; strict rejects.",
+  "TAGS": ["cp-01", "fallback", "color"],
+  "CATEGORIES": ["BUILT-IN", "ABSTRACT"],
+  "CONTROLS": [
+    {
+      "NAME": "tint",
+      "DEFAULT": 0.0,
+      "DEF_COLOR": [0.18, 0.42, 0.71, 1.0]
+    }
+  ],
+  "PASSES": []
+}
