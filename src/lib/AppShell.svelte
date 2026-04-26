@@ -18,24 +18,34 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //   └─────────────────────────────────────────┘
   //
   // Route dispatch is a `{#if}` ladder rather than a route → component
-  // map. With four routes the ladder is more readable, and Svelte 5's
-  // exhaustiveness via the `RouteName` literal union catches a missing
-  // branch at `npm run check` time. Per CLAUDE.md "three similar lines
-  // beats a premature abstraction" — this is exactly that case.
+  // map. With ten routes the ladder is still more readable than a
+  // dispatch table, and Svelte 5's exhaustiveness via the `RouteName`
+  // literal union catches a missing branch at `npm run check` time.
+  // Per CLAUDE.md "three similar lines beats a premature abstraction" —
+  // this is still exactly that case, even at 10 branches.
   //
   // The `<HotkeyOverlay>` modal rides above every view at z-index 1000;
   // its keydown handler is owned by `App.svelte` so the global `?`
   // listener stays installed regardless of active route.
+  //
+  // Wave-16 PR2 adds the four enabled-but-stub views (Welcome / Sources
+  // / Audio Uniforms / License) per the v0.2 sidebar redesign. Each
+  // stub renders an `EmptyState`; W17+ replaces each with a full port
+  // of its respective bundle JSX.
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
   import { routeStore } from './stores/route.svelte';
   import TopBar from './TopBar.svelte';
+  import AudioUniforms from './views/AudioUniforms.svelte';
   import Author from './views/Author.svelte';
   import Library from './views/Library.svelte';
+  import License from './views/License.svelte';
   import Osc from './views/Osc.svelte';
   import Perform from './views/Perform.svelte';
   import Playlist from './views/Playlist.svelte';
   import Settings from './views/Settings.svelte';
+  import Sources from './views/Sources.svelte';
+  import Welcome from './views/Welcome.svelte';
 </script>
 
 <div class="app-shell">
@@ -52,12 +62,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <Library />
     {:else if routeStore.current === 'author'}
       <Author />
+    {:else if routeStore.current === 'audio-uniforms'}
+      <AudioUniforms />
     {:else if routeStore.current === 'playlist'}
       <Playlist />
+    {:else if routeStore.current === 'sources'}
+      <Sources />
     {:else if routeStore.current === 'osc'}
       <Osc />
     {:else if routeStore.current === 'settings'}
       <Settings />
+    {:else if routeStore.current === 'license'}
+      <License />
+    {:else if routeStore.current === 'welcome'}
+      <Welcome />
     {/if}
   </main>
   <footer class="app-shell__status">

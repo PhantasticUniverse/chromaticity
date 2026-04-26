@@ -4,22 +4,33 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 -->
 
 <script lang="ts">
-  // Wave-12 PR3 left navigation rail. Renders the 12-icon list seen in
-  // every wireframe (`.playwright-mcp/wireframe-reference/01-…07-…png`):
-  // Perform / Library / Author / Patch / Playlist / Media / MIDI / OSC /
-  // Import / Settings in the top section, Help / Account at the bottom.
+  // Wave-16 PR2 sidebar redesign — matches the v0.2 bundle's canonical
+  // 13-icon nav set per the bundle JSX
+  // (`chromaticity-planning/ui-predev-bundle-v0.2-beta/Chromaticity.html`
+  // lines 57-71, the `VIEWS` array). Order mirrors the bundle:
+  // Perform / Library / Author / Audio Uniforms / Playlist / Sources /
+  // MIDI / OSC / Import / Patch / Settings / License / Welcome in the
+  // top section, Account / Help at the bottom.
   //
-  // Only 4 routes (perform / library / author / settings) are wired in
-  // W12; the other 8 render as `aria-disabled` buttons with a tooltip
-  // signalling W13+ landing. Keeping them visible (rather than hidden)
-  // mirrors the wireframe layout so the operator's spatial memory of
-  // "Library is the second icon" is established now.
+  // Wired routes after this PR (10 of 13 nav entries): perform / library
+  // / author / audio-uniforms / playlist / sources / osc / settings /
+  // license / welcome. The four routed-but-stub views (welcome /
+  // sources / audio-uniforms / license) render an `EmptyState` until
+  // their respective W17+ ports replace each stub with full content.
   //
-  // Icons are Unicode glyphs in W12 — proper SVG icons are W13+ and gated
-  // on the bundle's icon-set licensing review. Glyphs were chosen for
-  // legibility across the three themes (pulse / atelier / console);
-  // each glyph evokes the bundle JSX semantics without claiming
-  // pixel-parity with the wireframe.
+  // Disabled entries (3): Patch (full node-graph port is W17+ scope per
+  // brief), MIDI (W14+ candidate, view-port pending), Import (W14+
+  // candidate, view-port pending). Bottom section (Account / Help)
+  // remains disabled per W12 — both gate on entitlement / support-
+  // bundle infrastructure that lands later.
+  //
+  // Icons remain Unicode glyphs in W16; SVG icon vendoring is W17+.
+  // Glyphs picked for legibility across the three themes (pulse /
+  // atelier / console). Per the auto-memory
+  // `feedback_wireframes_normative_for_ui_ux.md`, the bundle JSX is the
+  // canonical structural reference; the wireframe screenshots in
+  // `v0.2-ui-wireframe-screenshots/pulse/` confirm the same nav set
+  // visually but defer to the JSX when they appear to disagree.
   import { routeStore, type RouteName } from './stores/route.svelte';
 
   interface NavEntry {
@@ -34,23 +45,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     readonly section: 'top' | 'bottom';
   }
 
-  // Order mirrors `.playwright-mcp/wireframe-reference/README.md` §sidebar.
+  // Order mirrors the v0.2 bundle's `VIEWS` array.
   const NAV_TOP: readonly (NavEntry | DisabledEntry)[] = [
     { route: 'perform', label: 'Perform', glyph: '▶' },
     { route: 'library', label: 'Library', glyph: '▦' },
     { route: 'author', label: 'Author', glyph: '✎' },
-    { label: 'Patch', glyph: '◫', section: 'top' },
+    { route: 'audio-uniforms', label: 'Audio', glyph: '〰' },
     { route: 'playlist', label: 'Playlist', glyph: '☰' },
-    { label: 'Media', glyph: '◉', section: 'top' },
+    { route: 'sources', label: 'Sources', glyph: '▣' },
     { label: 'MIDI', glyph: '♪', section: 'top' },
     { route: 'osc', label: 'OSC', glyph: '⌘' },
     { label: 'Import', glyph: '↓', section: 'top' },
+    { label: 'Patch', glyph: '◫', section: 'top' },
     { route: 'settings', label: 'Settings', glyph: '⚙' },
+    { route: 'license', label: 'License', glyph: '◆' },
+    { route: 'welcome', label: 'Welcome', glyph: '✦' },
   ] as const;
 
   const NAV_BOTTOM: readonly DisabledEntry[] = [
-    { label: 'Help', glyph: '?', section: 'bottom' },
     { label: 'Account', glyph: '◐', section: 'bottom' },
+    { label: 'Help', glyph: '?', section: 'bottom' },
   ] as const;
 
   function isWired(entry: NavEntry | DisabledEntry): entry is NavEntry {
@@ -80,7 +94,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             class="sidebar-rail__btn"
             aria-disabled="true"
             disabled
-            title="{entry.label} — coming in W13+"
+            title="{entry.label} — coming in W17+"
           >
             <span class="sidebar-rail__glyph" aria-hidden="true">{entry.glyph}</span>
             <span class="sidebar-rail__label">{entry.label}</span>
@@ -97,7 +111,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           class="sidebar-rail__btn"
           aria-disabled="true"
           disabled
-          title="{entry.label} — coming in W13+"
+          title="{entry.label} — coming in W17+"
         >
           <span class="sidebar-rail__glyph" aria-hidden="true">{entry.glyph}</span>
           <span class="sidebar-rail__label">{entry.label}</span>

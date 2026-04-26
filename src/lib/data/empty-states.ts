@@ -61,3 +61,33 @@ export const EMPTY_OSC: EmptyStateCopy = {
   primaryAction: { label: 'Bind Port 7000' },
   secondaryAction: { label: 'Choose Port…' },
 };
+
+/*
+ * Wave-16 PR2 stub copy for the four newly-routed views in the v0.2
+ * sidebar redesign. Each entry stands in for the eventual W17+ port of
+ * the bundle's per-view JSX (`onboard.jsx`, `media.jsx`, `audio.jsx`,
+ * and the `LicenseView` component in `v02_supplement.jsx`). Body prose
+ * names the canonical bundle source path so the eventual port lands
+ * deterministically. Action fields stay `undefined` — these are
+ * placeholder views, not entrypoints to disabled actions.
+ */
+
+export const EMPTY_WELCOME: EmptyStateCopy = {
+  title: 'Welcome view coming in W17+',
+  body: 'First-launch onboarding hero with quick-start cards (per chromaticity-planning/ui-predev-bundle-v0.2-beta/views/onboard.jsx). The W16 PR2 sidebar redesign enables the route; W17 ports the hero content.',
+};
+
+export const EMPTY_SOURCES: EmptyStateCopy = {
+  title: 'Sources view coming in W17+',
+  body: 'Media + asset library replacing the old Media wireframe (per v0.2 media.jsx, whose internal panel is already titled "Sources"). Sources sidebar + asset grid + inspector pane.',
+};
+
+export const EMPTY_AUDIO_UNIFORMS: EmptyStateCopy = {
+  title: 'Audio Uniforms view coming in W17+',
+  body: 'Live audio analysis monitor — frequency bands + time uniforms + BPM ring (per v0.2 audio.jsx). Canvas visualizers gate on the audio adapter Phase-3+ wiring.',
+};
+
+export const EMPTY_LICENSE: EmptyStateCopy = {
+  title: 'License view coming in W17+',
+  body: 'Capability table + license info per v0.2 v02_supplement.jsx::LicenseView. Read-only display of activation state + per-cap entitlement flags.',
+};

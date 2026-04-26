@@ -43,9 +43,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     perform: 'Perform',
     library: 'Library',
     author: 'Author',
+    'audio-uniforms': 'Audio Uniforms',
     playlist: 'Playlist',
+    sources: 'Sources',
     osc: 'OSC · LISTENING — Port 7000',
     settings: 'Settings',
+    license: 'License',
+    welcome: 'Welcome',
   };
 
   // Adapter status pills mirroring the v0.2 wireframe pack's top-right
