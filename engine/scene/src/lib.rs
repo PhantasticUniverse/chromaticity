@@ -45,7 +45,11 @@
 //! latter added in slice-3a ahead of the C-α2 T2 on-disk corpus
 //! harness that advances `docs/26` row 23 past `pending:artifact`)
 //! and `EV-SCHEMA-LINT` (T0 variant constructibility in
-//! `lint::drift_pins`).
+//! `lint::drift_pins`; T1 taxonomy + classification pins in
+//! `lint::warning_class_taxonomy` and
+//! `lint::scene_lint_classification`; T2 corpus conformance in
+//! `engine/scene/tests/lint_corpus.rs` over the shipped
+//! 15-fixture `.chroma` set, advancing `docs/26` row 26 to Pass).
 //!
 //! Governing ADRs:
 //!
