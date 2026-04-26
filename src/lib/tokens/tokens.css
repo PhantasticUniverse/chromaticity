@@ -1,0 +1,216 @@
+/* SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary */
+/* SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> */
+
+/*
+ * Chromaticity design tokens.
+ *
+ * Realises the DESIGN.md token contract per docs/47-ui-port-plan.md Sec. 9
+ * (Token delivery: CSS custom properties + TS constants). The :root block
+ * is the operator-default Pulse spread sourced from DESIGN.md frontmatter.
+ * `[data-theme="atelier"]` and `[data-theme="console"]` overrides cover the
+ * starter-pack variety per PR #97 — they only emit colour and elevation
+ * tokens; typography, spacing, and radii are inherited from :root.
+ *
+ * No `data-theme` attribute on <html> means Pulse applies (cascade default).
+ */
+
+:root {
+  /* ------------- Colours (Pulse) ---------------------------------------- */
+  --color-bg-0: #070810;
+  --color-bg-1: #0c0e16;
+  --color-bg-2: #11141d;
+  --color-bg-3: #171a25;
+  --color-bg-4: #1e2230;
+  --color-bg-5: #262b3c;
+
+  --color-line-1: #1e222e;
+  --color-line-2: #2a3040;
+  --color-line-3: #3a4158;
+
+  --color-text-0: #f4f6fb;
+  --color-text-1: #c9cfdb;
+  --color-text-2: #838a9a;
+  --color-text-3: #575e6e;
+  --color-text-4: #3c4253;
+
+  --color-primary: #c4ff3d;
+  --color-on-primary: #0c0e16;
+  --color-success: #3de5ff;
+  --color-warning: #ffb64d;
+  --color-danger: #ff4d5e;
+  --color-info: #3de5ff;
+
+  --color-signal-cyan: #3de5ff;
+  --color-signal-magenta: #ff3d9e;
+  --color-signal-orange: #ff8a3d;
+  --color-signal-violet: #9b6bff;
+  --color-signal-lime: #b8ff3d;
+  --color-signal-amber: #ffb64d;
+  --color-signal-red: #ff4d5e;
+
+  --color-band-bass: #ff4d5e;
+  --color-band-mid: #ffb64d;
+  --color-band-midhi: #c4ff3d;
+  --color-band-high: #3de5ff;
+  --color-band-full: #9b6bff;
+
+  --color-cat-color: #ff6b6b;
+  --color-cat-motion: #3de5ff;
+  --color-cat-fx: #c4ff3d;
+  --color-cat-media: #ffb64d;
+  --color-cat-limit: #9b6bff;
+  --color-cat-geom: #3de5ff;
+  --color-cat-general: #8b93a3;
+
+  /* ------------- Typography --------------------------------------------- */
+  --font-family-sans: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  --font-family-display: var(--font-family-sans);
+
+  --font-size-display-lg: 28px;
+  --font-size-display-md: 20px;
+  --font-size-display-sm: 14px;
+  --font-size-body-md: 13px;
+  --font-size-body-sm: 12px;
+  --font-size-label: 12px;
+  --font-size-caps-sm: 9px;
+  --font-size-caps-md: 10px;
+  --font-size-mono-sm: 11px;
+  --font-size-mono-md: 12px;
+  --font-size-timecode: 14px;
+
+  --font-weight-display: 600;
+  --font-weight-body: 400;
+  --font-weight-label: 500;
+
+  --line-height-display: 1.1;
+  --line-height-body: 1.35;
+  --line-height-label: 1.2;
+  --line-height-mono: 1.2;
+  --line-height-tight: 1;
+
+  --letter-spacing-display: -0.02em;
+  --letter-spacing-caps-sm: 0.16em;
+  --letter-spacing-caps-md: 0.14em;
+  --letter-spacing-timecode: 0.02em;
+
+  /* ------------- Spacing (2px base) ------------------------------------- */
+  --space-unit: 2px;
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-md: 8px;
+  --space-lg: 12px;
+  --space-xl: 16px;
+  --space-2xl: 20px;
+  --space-3xl: 24px;
+  --space-4xl: 32px;
+
+  /* ------------- Radii -------------------------------------------------- */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 999px;
+
+  /* ------------- Elevation --------------------------------------------- */
+  --glow: 1;
+  --shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* Atelier — warm-paper editorial. Hairline-only borders, zero glow.
+ * Hex values extracted from chromaticity-planning/ui-predev-bundle-v0.2-beta/styles.css.
+ */
+[data-theme='atelier'] {
+  --color-bg-0: #f3f1ec;
+  --color-bg-1: #fbfaf6;
+  --color-bg-2: #f7f5ef;
+  --color-bg-3: #edeae2;
+  --color-bg-4: #e4e0d5;
+  --color-bg-5: #d6d1c2;
+
+  --color-line-1: #e4e0d5;
+  --color-line-2: #d2cdbf;
+  --color-line-3: #b3ae9e;
+
+  --color-text-0: #16150f;
+  --color-text-1: #2e2c22;
+  --color-text-2: #6b6656;
+  --color-text-3: #8f8a78;
+  --color-text-4: #b3ae9e;
+
+  --color-primary: #2b1f14;
+  --color-on-primary: #fbfaf6;
+  --color-success: #4a6b2b;
+  --color-warning: #8a6b1f;
+  --color-danger: #a8332e;
+  --color-info: #2b6b8a;
+
+  --color-signal-cyan: #2b6b8a;
+  --color-signal-magenta: #b83a6a;
+  --color-signal-orange: #b85a24;
+  --color-signal-violet: #5a4a8a;
+  --color-signal-lime: #4a6b2b;
+  --color-signal-amber: #8a6b1f;
+  --color-signal-red: #a8332e;
+
+  --color-cat-color: #a8332e;
+  --color-cat-motion: #2b6b8a;
+  --color-cat-fx: #4a6b2b;
+  --color-cat-media: #8a6b1f;
+  --color-cat-limit: #5a4a8a;
+  --color-cat-geom: #2b6b8a;
+  --color-cat-general: #6b6656;
+
+  --glow: 0;
+  --shadow-panel: 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+/* Console — desaturated hardware aesthetic, amber-LED accent, chicklet bevels.
+ * Hex values extracted from chromaticity-planning/ui-predev-bundle-v0.2-beta/styles.css.
+ */
+[data-theme='console'] {
+  --color-bg-0: #1a1c1e;
+  --color-bg-1: #232528;
+  --color-bg-2: #2a2d31;
+  --color-bg-3: #32353a;
+  --color-bg-4: #3a3e44;
+  --color-bg-5: #44484f;
+
+  --color-line-1: #15161a;
+  --color-line-2: #0e0f12;
+  --color-line-3: #4e535b;
+
+  --color-text-0: #e8e8e8;
+  --color-text-1: #c0c0c2;
+  --color-text-2: #8a8c90;
+  --color-text-3: #64666b;
+  --color-text-4: #4a4c51;
+
+  --color-primary: #e8a341;
+  --color-on-primary: #1a1c1e;
+  --color-success: #6aa88a;
+  --color-warning: #c89a4a;
+  --color-danger: #c84a5a;
+  --color-info: #5aa8c8;
+
+  --color-signal-cyan: #5aa8c8;
+  --color-signal-magenta: #c85a8a;
+  --color-signal-orange: #c88a4a;
+  --color-signal-violet: #7a6aa8;
+  --color-signal-lime: #a8b85a;
+  --color-signal-amber: #c89a4a;
+  --color-signal-red: #c84a5a;
+
+  --color-cat-color: #c85a5a;
+  --color-cat-motion: #5aa8c8;
+  --color-cat-fx: #a8b85a;
+  --color-cat-media: #c89a4a;
+  --color-cat-limit: #7a6aa8;
+  --color-cat-geom: #5aa8c8;
+  --color-cat-general: #8a8c90;
+
+  --glow: 0.3;
+  --shadow-panel:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(0, 0, 0, 0.5);
+}

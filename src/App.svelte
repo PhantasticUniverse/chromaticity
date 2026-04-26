@@ -133,17 +133,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 </main>
 
 <style>
+  /* Token-driven demo surface. Hard-coded hex was swapped to tokens from
+   * src/lib/tokens/tokens.css; setting `data-theme` on <html> re-themes
+   * without further CSS changes. */
   main {
-    font-family: system-ui, sans-serif;
-    padding: 2rem;
+    font-family: var(--font-family-sans);
+    color: var(--color-text-0);
+    background: var(--color-bg-0);
+    padding: var(--space-4xl);
     max-width: 32rem;
   }
   .control {
     display: grid;
     grid-template-columns: 6rem 1fr 4rem;
     align-items: center;
-    gap: 0.75rem;
-    margin: 1.5rem 0;
+    gap: var(--space-lg);
+    margin: var(--space-3xl) 0;
   }
   .control input[type='range'] {
     width: 100%;
@@ -154,34 +159,36 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .readback {
     font-variant-numeric: tabular-nums;
+    color: var(--color-text-1);
   }
   .error {
-    color: #c0392b;
+    color: var(--color-danger);
   }
   .snap {
-    margin-top: 2rem;
+    margin-top: var(--space-4xl);
   }
   .snap h2 {
-    font-size: 1rem;
-    margin-bottom: 0.75rem;
+    font-size: var(--font-size-display-sm);
+    margin-bottom: var(--space-lg);
   }
   .snap-grid {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
-    gap: 0.25rem;
+    gap: var(--space-xs);
   }
   .snap-slot {
     aspect-ratio: 1 / 1;
-    border: 1px solid #888;
-    background: #f4f4f4;
-    color: #888;
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-3);
+    color: var(--color-text-3);
     font-variant-numeric: tabular-nums;
     cursor: pointer;
+    border-radius: var(--radius-sm);
   }
   .snap-slot.saved {
-    background: #c4ff3d;
-    color: #111;
-    border-color: #111;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    border-color: var(--color-on-primary);
   }
   .snap-slot.active {
     text-decoration: underline;
@@ -192,6 +199,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .snap-readback {
     font-variant-numeric: tabular-nums;
-    margin-top: 0.5rem;
+    margin-top: var(--space-md);
+    color: var(--color-text-2);
   }
 </style>
