@@ -4,6 +4,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 <script lang="ts">
+  import { EMPTY_LIBRARY } from './lib/data/empty-states';
+  import EmptyState from './lib/EmptyState.svelte';
   import HotkeyOverlay from './lib/HotkeyOverlay.svelte';
   import type { ControlId, ControlValue, PresetId } from './lib/ipc/bindings';
   import { dispatchAndRead } from './lib/stores/control';
@@ -300,6 +302,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <Swatch color="#c4ff3d" label="primary" />
     </ControlGroup>
   </section>
+
+  <section class="future-views">
+    <h2>future views</h2>
+    <EmptyState title={EMPTY_LIBRARY.title} body={EMPTY_LIBRARY.body} iconName="library">
+      {#snippet actions()}
+        <button type="button" disabled>{EMPTY_LIBRARY.primaryAction?.label}</button>
+        {#if EMPTY_LIBRARY.secondaryAction}
+          <button type="button" disabled>{EMPTY_LIBRARY.secondaryAction.label}</button>
+        {/if}
+      {/snippet}
+    </EmptyState>
+  </section>
 </main>
 
 <HotkeyOverlay open={hotkeysOpen} onCloseRequest={() => (hotkeysOpen = false)} />
@@ -394,6 +408,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     margin-top: var(--space-4xl);
   }
   .widgets h2 {
+    font-size: var(--font-size-display-sm);
+    margin-bottom: var(--space-lg);
+  }
+  .future-views {
+    margin-top: var(--space-4xl);
+  }
+  .future-views h2 {
     font-size: var(--font-size-display-sm);
     margin-bottom: var(--space-lg);
   }
