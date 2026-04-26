@@ -24,6 +24,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // remains disabled per W12 — both gate on entitlement / support-
   // bundle infrastructure that lands later.
   //
+  // Wave-18 PR3 promotes the MIDI entry from disabled stub to routed
+  // view, leaving Patch and Import as the only disabled top-section
+  // entries. The full bundle port lives in `views/MIDI.svelte`.
+  //
   // Icons remain Unicode glyphs in W16; SVG icon vendoring is W17+.
   // Glyphs picked for legibility across the three themes (pulse /
   // atelier / console). Per the auto-memory
@@ -53,7 +57,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { route: 'audio-uniforms', label: 'Audio', glyph: '〰' },
     { route: 'playlist', label: 'Playlist', glyph: '☰' },
     { route: 'sources', label: 'Sources', glyph: '▣' },
-    { label: 'MIDI', glyph: '♪', section: 'top' },
+    { route: 'midi', label: 'MIDI', glyph: '♪' },
     { route: 'osc', label: 'OSC', glyph: '⌘' },
     { label: 'Import', glyph: '↓', section: 'top' },
     { label: 'Patch', glyph: '◫', section: 'top' },
