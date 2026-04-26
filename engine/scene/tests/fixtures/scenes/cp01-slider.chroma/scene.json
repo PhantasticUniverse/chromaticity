@@ -1,0 +1,17 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "CP-01 Slider Fallback",
+  "CREDIT": "chromaticity cp-01 corpus",
+  "DESCRIPTION": "Single missing-TYPE control with MIN, MAX, and a numeric DEFAULT inside the author-supplied range. Compat coerces to slider; strict rejects with missing-type per docs/28 §CP-01.",
+  "TAGS": ["cp-01", "fallback", "slider"],
+  "CATEGORIES": ["BUILT-IN", "GEOMETRIC"],
+  "CONTROLS": [
+    {
+      "NAME": "intensity",
+      "DEFAULT": 0.4,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": []
+}

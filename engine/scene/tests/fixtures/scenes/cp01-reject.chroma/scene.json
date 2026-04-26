@@ -1,0 +1,17 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "CP-01 Reject Fallback",
+  "CREDIT": "chromaticity cp-01 corpus",
+  "DESCRIPTION": "Single missing-TYPE control whose shape fails every CP-01 fallback branch: numeric DEFAULT 5.0 outside MIN/MAX [0.0, 1.0] (slider range fails), MIN/MAX present (toggle disqualified), DEFAULT not a vector (color/xy disqualified). Compat and strict both reject with missing-type per docs/28 §CP-01 step 5.",
+  "TAGS": ["cp-01", "fallback", "reject"],
+  "CATEGORIES": ["BUILT-IN", "ABSTRACT"],
+  "CONTROLS": [
+    {
+      "NAME": "out_of_range",
+      "DEFAULT": 5.0,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": []
+}
