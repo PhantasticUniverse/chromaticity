@@ -72,7 +72,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - adapter conformance tests,
  - health state machine,
  - bounded retry and clear diagnostics.
-- Residual: Low / Medium. `EV-INTEGRATION-MATRIX` + 100/250/500/1000/2000 reconnect cadence + per-adapter isolation hold SLO-04 comfortably; residual is dominated by vendor-specific driver behaviour.
+- Residual: Low / Medium. `EV-INTEGRATION-MATRIX` + 100/250/500/1000/2000 reconnect cadence + per-adapter isolation hold SLO-04 comfortably; the OSC adapter additionally realises bounded retry (5 attempts, exponential 100/200/400/800/1600 ms) and an adapter-internal health state machine (`Healthy` / `Recovering` / `Degraded`) in PR 100, with route-mismatch diagnostics carried as a slice-3 TODO. Residual is dominated by vendor-specific driver behaviour.
 - Owner: Integration lead.
 
 ### R-06 State Race Conditions Across Input Sources
