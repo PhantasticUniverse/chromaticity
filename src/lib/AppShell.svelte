@@ -94,7 +94,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .app-shell {
     display: grid;
     grid-template-columns: 76px 1fr;
-    grid-template-rows: 36px 1fr 28px;
+    grid-template-rows: 52px 1fr 28px;
     grid-template-areas:
       'topbar topbar'
       'rail main'

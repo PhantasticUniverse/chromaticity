@@ -56,12 +56,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     border-radius: 50%;
     background: conic-gradient(
       from 225deg,
-      var(--color-primary) calc(var(--pct, 0.5) * 270deg),
+      var(--tint, var(--color-primary)) calc(var(--pct, 0.5) * 270deg),
       transparent 0
     );
     mask: radial-gradient(circle, transparent 52%, #000 54%, #000 60%, transparent 62%);
     -webkit-mask: radial-gradient(circle, transparent 52%, #000 54%, #000 60%, transparent 62%);
-    filter: drop-shadow(0 0 calc(4px * var(--glow)) var(--color-primary));
+    filter: drop-shadow(0 0 calc(4px * var(--glow)) var(--tint, var(--color-primary)));
   }
   .knob-ind {
     position: absolute;
@@ -69,11 +69,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     left: 50%;
     width: 2px;
     height: calc(48px * 0.4);
-    background: linear-gradient(180deg, var(--color-primary), var(--color-text-0));
+    background: linear-gradient(180deg, var(--tint, var(--color-primary)), var(--color-text-0));
     border-radius: 2px;
     transform-origin: 50% 100%;
     transform: translate(-50%, -100%) rotate(var(--rot, 0deg));
-    box-shadow: 0 0 calc(6px * var(--glow)) var(--color-primary);
+    box-shadow: 0 0 calc(6px * var(--glow)) var(--tint, var(--color-primary));
   }
   .knob-val {
     position: absolute;

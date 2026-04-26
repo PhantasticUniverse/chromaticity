@@ -79,9 +79,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
 <header class="top-bar">
   <div class="top-bar__brand">
-    <span class="top-bar__wordmark">Chromaticity</span>
-    <span class="top-bar__sep" aria-hidden="true">·</span>
-    <span class="top-bar__title">{ROUTE_TITLES[routeStore.current]}</span>
+    <span class="top-bar__brand-mark" aria-hidden="true"></span>
+    <span class="top-bar__brand-text">
+      <span class="top-bar__wordmark">Chromaticity</span>
+      <span class="top-bar__title">{ROUTE_TITLES[routeStore.current]}</span>
+    </span>
   </div>
 
   <div class="top-bar__center" aria-hidden="true"></div>
@@ -127,7 +129,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     align-items: center;
     gap: var(--space-md);
     padding: 0 var(--space-md);
-    height: 36px;
+    height: 52px;
     background: var(--color-bg-1);
     border-bottom: 1px solid var(--color-line-1);
     color: var(--color-text-0);
@@ -136,29 +138,125 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   .top-bar__brand {
     display: flex;
-    align-items: baseline;
-    gap: var(--space-xs);
-    font-size: var(--font-size-body-md);
-    font-weight: 600;
+    align-items: center;
+    gap: var(--space-sm);
   }
 
+  /* Brand mark — chromatic conic ring + dark inner disc + glowing accent
+   * dot. Ported from `chromaticity-planning/ui-predev-bundle-v0.2-beta/
+   * styles.css::.brand-mark`. The base is a 26px circle with a 5-color
+   * conic gradient; ::after carves a dark inner disc; ::before places a
+   * glowing primary-tinted dot at the center. Per-theme overrides below
+   * tune the palette + glow per the bundle's pulse / atelier / console
+   * theme rules. */
+  .top-bar__brand-mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: conic-gradient(
+      from 220deg at 50% 60%,
+      var(--color-primary) 0deg,
+      var(--color-signal-cyan) 90deg,
+      var(--color-signal-magenta) 180deg,
+      var(--color-signal-amber) 270deg,
+      var(--color-primary) 360deg
+    );
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .top-bar__brand-mark::after {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    background: var(--color-bg-1);
+    border-radius: 50%;
+  }
+
+  .top-bar__brand-mark::before {
+    content: '';
+    position: absolute;
+    inset: 9px;
+    background: var(--color-primary);
+    border-radius: 50%;
+    z-index: 1;
+    box-shadow: 0 0 8px var(--color-primary);
+  }
+
+  /* Atelier (light/modernist): replace the chromatic ring with a solid
+   * ink ring + solid bg-1 inner; drop the glow per the bundle. */
+  :global([data-theme='atelier']) .top-bar__brand-mark {
+    background: var(--color-text-0);
+  }
+  :global([data-theme='atelier']) .top-bar__brand-mark::before {
+    background: var(--color-bg-1);
+    box-shadow: none;
+  }
+
+  .top-bar__brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    line-height: 1;
+  }
+
+  /* Wordmark — chromatic gradient text under pulse via `background-clip:
+   * text` per bundle's `[data-theme="pulse"] .tb-brand .name` rule.
+   * Atelier renders a larger italic display face; console renders a
+   * compact mono caps treatment (per the bundle's per-theme overrides).
+   * The base style below is the pulse default; the two theme overrides
+   * specialize. */
   .top-bar__wordmark {
-    color: var(--color-primary);
-    letter-spacing: 0.02em;
+    font-family: var(--font-family-display, var(--font-family-sans));
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    white-space: nowrap;
+    background: linear-gradient(
+      90deg,
+      var(--color-primary),
+      var(--color-signal-cyan) 60%,
+      var(--color-signal-magenta)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
-  .top-bar__sep {
-    color: var(--color-text-3);
-    font-weight: 400;
+  :global([data-theme='atelier']) .top-bar__wordmark {
+    font-family: var(--font-family-display, serif);
+    font-size: 18px;
+    font-weight: 500;
+    font-style: italic;
+    letter-spacing: -0.02em;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--color-text-0);
+  }
+
+  :global([data-theme='console']) .top-bar__wordmark {
+    font-family: var(--font-family-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--color-text-0);
+    text-transform: uppercase;
   }
 
   .top-bar__title {
-    color: var(--color-text-1);
-    font-weight: 500;
+    color: var(--color-text-3);
     font-family: var(--font-family-mono);
-    font-size: var(--font-size-body-sm);
+    font-size: 9px;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.14em;
+    line-height: 1;
+    white-space: nowrap;
   }
 
   /* `.top-bar__center` reserves the middle column for future scene

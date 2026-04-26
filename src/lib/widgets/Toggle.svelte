@@ -43,7 +43,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     position: absolute;
     left: 0;
     right: 0;
-    background: var(--color-primary);
+    background: var(--tint, var(--color-primary));
     opacity: 0.95;
     top: 100%;
     bottom: 0;
@@ -113,8 +113,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     transition: transform 0.15s ease;
   }
   .tog.tog-h.on .tog-switch {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
+    background: var(--tint, var(--color-primary));
+    border-color: var(--tint, var(--color-primary));
   }
   .tog.tog-h.on .tog-switch::after {
     transform: translateX(14px);
