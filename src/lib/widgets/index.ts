@@ -7,9 +7,14 @@
 //
 // Wave-13 PR2 adds `CueTransitionCurve`, the bezier transition-curve
 // editor consumed by the Playlist v2 view (W13 PR3).
+//
+// Wave-21 PR2 adds `TestCard`, the static SVG NTSC SMPTE calibration
+// pattern consumed by the Perform view's Preview hero when the Test
+// Card MediaStrip card is active.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
 export { default as Swatch } from './Swatch.svelte';
 export { default as ControlGroup } from './ControlGroup.svelte';
 export { default as CueTransitionCurve } from './CueTransitionCurve.svelte';
+export { default as TestCard } from './TestCard.svelte';

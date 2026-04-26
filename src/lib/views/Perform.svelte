@@ -66,7 +66,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/perform-fixtures';
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
-  import { ControlGroup, Fader, Knob, Swatch, Toggle } from '../widgets';
+  import { ControlGroup, Fader, Knob, Swatch, TestCard, Toggle } from '../widgets';
 
   let activeScene = $state<number>(SETLIST_ACTIVE_INDEX);
   let activeMedia = $state<number>(MEDIA_DEFAULT_ACTIVE_INDEX);
@@ -80,6 +80,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // the Phase-4+ ChromaCtx → Svelte migration lands; the watermark overlay
   // stays out of the DOM until then.
   const unlicensed = false;
+
+  // W21 PR2: the Preview hero swaps to the static SMPTE test-card pattern
+  // when the test-card MediaStrip card is active. Per the W18 PR1
+  // frozen-frame contract, switching tiles dispatches no IPC; the hero
+  // simply re-renders the alternate placeholder surface.
+  const testCardActive = $derived(MEDIA_CARDS[activeMedia]?.kind === 'test');
 
   /** Deterministic hue from the per-card seed — mirrors the bundle's
    * `<SceneStill seed={…}>` per-tile variation without depending on the
@@ -175,20 +181,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   </div>
 
   <div class="perform__right">
-    <!-- Preview hero (gradient-blob substitute for the unported <Preview>) -->
-    <div class="preview" role="img" aria-label="Live scene preview · Glitch (placeholder)">
-      <span class="preview__blob preview__blob--a" aria-hidden="true"></span>
-      <span class="preview__blob preview__blob--b" aria-hidden="true"></span>
-      <span class="preview__blob preview__blob--c" aria-hidden="true"></span>
-      <span class="preview__blob preview__blob--d" aria-hidden="true"></span>
-      <span class="preview__blob preview__blob--e" aria-hidden="true"></span>
-      <span class="preview__overlay" aria-hidden="true"></span>
-      <span class="preview__label">Glitch</span>
-      {#if unlicensed}
-        <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
-        <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
-      {/if}
-    </div>
+    <!-- Preview hero. Default surface is the W18 PR1 gradient-blob
+         substitute for the unported `<Preview>`; W21 PR2 swaps to the
+         static SMPTE test-card pattern when the test-card MediaStrip
+         card is active (calibration / output diagnostic surface). -->
+    {#if testCardActive}
+      <div class="preview preview--test">
+        <TestCard label="Test Card" />
+        {#if unlicensed}
+          <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
+        {/if}
+      </div>
+    {:else}
+      <div class="preview" role="img" aria-label="Live scene preview · Glitch (placeholder)">
+        <span class="preview__blob preview__blob--a" aria-hidden="true"></span>
+        <span class="preview__blob preview__blob--b" aria-hidden="true"></span>
+        <span class="preview__blob preview__blob--c" aria-hidden="true"></span>
+        <span class="preview__blob preview__blob--d" aria-hidden="true"></span>
+        <span class="preview__blob preview__blob--e" aria-hidden="true"></span>
+        <span class="preview__overlay" aria-hidden="true"></span>
+        <span class="preview__label">Glitch</span>
+        {#if unlicensed}
+          <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
+          <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Scene panel -->
     <section class="panel scene-panel" aria-label="Scenes">
@@ -356,6 +374,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <span class="media-card__webcam" aria-hidden="true">
         <span class="media-card__webcam-glyph">◉</span>
       </span>
+    {:else if card.kind === 'test'}
+      <span class="media-card__test" aria-hidden="true">
+        <span class="media-card__test-bar" style="background:#ffffff"></span>
+        <span class="media-card__test-bar" style="background:#ffff00"></span>
+        <span class="media-card__test-bar" style="background:#00ffff"></span>
+        <span class="media-card__test-bar" style="background:#00ff00"></span>
+        <span class="media-card__test-bar" style="background:#ff00ff"></span>
+        <span class="media-card__test-bar" style="background:#ff0000"></span>
+        <span class="media-card__test-bar" style="background:#0000ff"></span>
+        <span class="media-card__test-bar" style="background:#000000"></span>
+      </span>
+      <span class="media-card__kind" aria-hidden="true"><Icon name="grid" size={14} /></span>
     {:else}
       <span
         class="media-card__thumb"
@@ -598,6 +628,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .media-card__webcam-glyph {
     font-size: 20px;
     font-family: var(--font-family-mono);
+  }
+  .media-card__test {
+    position: absolute;
+    inset: 0;
+    display: flex;
+  }
+  .media-card__test-bar {
+    flex: 1 1 0;
+    height: 100%;
   }
   .media-card__thumb {
     position: absolute;

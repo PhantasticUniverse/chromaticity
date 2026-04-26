@@ -173,8 +173,12 @@ export const META_CONTROL_GROUPS: readonly PerformControlGroup[] = [
 
 /** Media strip card — `kind: 'none'` is a disabled tile, `'webcam'` is a
  * live-source tile (webcam / display capture), `'video'` is a procedurally
- * generated thumbnail surrogate. */
-export type MediaCardKind = 'none' | 'webcam' | 'video';
+ * generated thumbnail surrogate, `'test'` is the W21 PR2 static SMPTE
+ * test-card calibration pattern (no per-frame animation; no rendering
+ * backend dependency). When the test-card tile is active, the Perform
+ * view's Preview hero renders the `<TestCard>` widget instead of the
+ * gradient-blob placeholder. */
+export type MediaCardKind = 'none' | 'webcam' | 'video' | 'test';
 
 export interface PerformMediaCard {
   readonly id: string;
@@ -187,6 +191,7 @@ export interface PerformMediaCard {
 }
 
 /** Bundle JSX lines 96-103 — first three slots are none / webcam / display,
+ * the W21 PR2 fourth slot is the static Test Card calibration pattern,
  * remaining 12 slots are procedurally-named videos with `seed = i*7+3`.
  * `activeMedia === 1` per `React.useState(1)` initial state, so the second
  * card (webcam) renders as selected by default. */
@@ -194,6 +199,7 @@ export const MEDIA_CARDS: readonly PerformMediaCard[] = [
   { id: 'm-none', label: 'none', kind: 'none', seed: 0 },
   { id: 'm-webcam', label: 'webcam', kind: 'webcam', seed: 0 },
   { id: 'm-display', label: 'display', kind: 'webcam', seed: 0 },
+  { id: 'm-test', label: 'test card', kind: 'test', seed: 0 },
   ...[
     'jellyfish.mp4',
     'RoadTrip.mp4',
