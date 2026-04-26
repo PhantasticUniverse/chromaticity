@@ -1,0 +1,62 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Reactive Audio",
+  "CREDIT": "chromaticity t2 corpus",
+  "DESCRIPTION": "Audio-reactive scene with six reactive controls bound to spectrum, level, and time symbols. Exercises the docs/36 representative reactive-symbol family at the per-pass UNIFORMS surface.",
+  "TAGS": ["audio", "reactive", "spectrum"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "low_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "mid_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "high_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "level_smoothing",
+      "TYPE": "knob",
+      "DEFAULT": 0.4,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "time_scale",
+      "TYPE": "slider",
+      "DEFAULT": 1.0,
+      "MIN": 0.0,
+      "MAX": 4.0
+    },
+    {
+      "NAME": "tint",
+      "TYPE": "color",
+      "DEFAULT": [0.27, 0.66, 0.93, 1.0]
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_spectrum", "SYMBOL": "syn_Spectrum" },
+        { "NAME": "u_level", "SYMBOL": "syn_Level" },
+        { "NAME": "u_synTime", "SYMBOL": "syn_Time" },
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" }
+      ]
+    }
+  ]
+}

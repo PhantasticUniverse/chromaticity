@@ -1,0 +1,41 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Meta Controls Parity",
+  "CREDIT": "chromaticity t2 corpus",
+  "DESCRIPTION": "Four meta-flagged controls (IS_META: true) covering CP-08 ingestion shape: an output mirror toggle, an output invert toggle, a global tint, and a master gain. Exercises ControlDecl.is_meta surfacing through the loader.",
+  "TAGS": ["meta", "global"],
+  "CATEGORIES": ["BUILT-IN", "ABSTRACT"],
+  "CONTROLS": [
+    {
+      "NAME": "meta_mirror",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "IS_META": true,
+      "UI_GROUP": "meta-output"
+    },
+    {
+      "NAME": "meta_invert",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "IS_META": true,
+      "UI_GROUP": "meta-output"
+    },
+    {
+      "NAME": "meta_tint",
+      "TYPE": "color",
+      "DEFAULT": [1.0, 1.0, 1.0, 1.0],
+      "IS_META": true,
+      "UI_GROUP": "meta-output"
+    },
+    {
+      "NAME": "meta_gain",
+      "TYPE": "slider",
+      "DEFAULT": 1.0,
+      "MIN": 0.0,
+      "MAX": 2.0,
+      "IS_META": true,
+      "UI_GROUP": "meta-pipeline"
+    }
+  ],
+  "PASSES": []
+}

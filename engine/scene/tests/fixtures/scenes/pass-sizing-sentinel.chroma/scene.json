@@ -1,0 +1,36 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Pass Sizing Sentinel",
+  "CREDIT": "chromaticity t2 corpus",
+  "DESCRIPTION": "Three-pass scene exercising CP-10 pass-sizing sentinels: an intermediate buffer with WIDTH and HEIGHT both 0 (resolves to scene size), a half-resolution explicit pass, and a backbuff target with absent dimensions (resolves to output size).",
+  "TAGS": ["multipass", "pass-sizing", "sentinel"],
+  "CATEGORIES": ["BUILT-IN", "GEOMETRIC"],
+  "CONTROLS": [
+    {
+      "NAME": "intensity",
+      "TYPE": "slider",
+      "DEFAULT": 0.7,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "scratch",
+      "WIDTH": 0,
+      "HEIGHT": 0,
+      "FLOAT": true
+    },
+    {
+      "TARGET": "halfres",
+      "WIDTH": 640,
+      "HEIGHT": 360,
+      "FLOAT": true,
+      "WRAP": "clamp",
+      "FILTER": "linear"
+    },
+    {
+      "TARGET": "backbuff"
+    }
+  ]
+}

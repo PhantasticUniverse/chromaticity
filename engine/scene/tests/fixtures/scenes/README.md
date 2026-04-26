@@ -27,10 +27,12 @@ falls under the repo-default REUSE annotation (`LicenseRef-Chromaticity-Propriet
 - `app/shell/src/commands/library.rs` tests — un-ignored in Wave-10 PR1; the
   fixture-backed coverage exercises `chromaticity_scene::loader::load_chroma_dir`
   on `demo-kaleido.chroma` directly without staging under `$HOME`.
-- `engine/scene/tests/import.rs` — Wave-10 PR3 conformance harness; closes
-  `EV-SCENE-IMPORT` (T2) over the demo corpus, and Wave-11 PR1 extends the
-  same harness with golden hashes for the `cp01-*.chroma` fallback fixtures
-  under `EV-COMPAT-FIXTURE-COVERAGE` (T2).
+- `engine/scene/tests/import.rs` — Wave-10 PR3 conformance harness; pins
+  the demo corpus golden hashes (T1 drift-pin tier), Wave-11 PR1 extends
+  the same harness with golden hashes for the `cp01-*.chroma` fallback
+  fixtures under `EV-COMPAT-FIXTURE-COVERAGE` (T2), and Wave-12 PR1 adds
+  T2 golden hashes for the reactive-symbol-family fixtures listed below
+  to close `EV-SCENE-IMPORT` per `docs/26` row 25 and `docs/43` §15.5.
 - `engine/scene/tests/cp01_compat.rs` — Wave-11 PR1 compat-vs-strict
   assertions over the `cp01-*.chroma` fixtures; this is the file-fixture
   counterpart to the `compat_fixture_coverage` T1 module in
@@ -74,6 +76,49 @@ the in-validator `compat_fixture_coverage` T1 module pins against
 hand-built `Scene` structs; `engine/scene/tests/cp01_compat.rs` re-runs the
 same compat-vs-strict assertions through `load_chroma_dir`, which is what
 "shipped reference scenes" requires per `docs/26` row 27.
+
+## Reactive-symbol-family corpus (Wave-12 PR1)
+
+Seven additional `.chroma` packages exercise broader Coverage Dimensions named
+in `docs/34-golden-corpus-definition.md` §Minimum Coverage Requirements within
+the bounds of what the slice-3a schema in `engine/scene/src/schema.rs` plus
+the `engine/scene/src/loader.rs` deserializer actually parses. Closing
+`EV-SCENE-IMPORT` per `docs/26` row 25 requires conformance over a fixture
+corpus per `docs/43` §15.5; these fixtures are the file-shipped corpus and
+`engine/scene/tests/import.rs` pins their canonical-form FNV-1a 64-bit
+golden hashes:
+
+- `multipass-feedback.chroma` — two-pass scene with per-pass `UNIFORMS`
+  canonical bindings and a `backbuff` final target. Covers docs/34 multipass
+  plus per-pass uniform-binding shape.
+- `multipass-chain.chroma` — four-pass linear chain producing distinct
+  intermediate render targets (`luma`, `blurH`, `blurV`, `backbuff`). Covers
+  docs/34 multipass-chain shape.
+- `reactive-audio.chroma` — six audio-reactive controls and per-pass
+  `UNIFORMS` bindings to `syn_Spectrum`, `syn_Level`, `syn_Time`, `TIME`, and
+  `RENDERSIZE`. Covers the reactive-symbol-family branch of docs/34 over the
+  slice-3a representative subset in
+  `engine/scene/src/validator.rs::KNOWN_SYMBOLS`.
+- `meta-controls.chroma` — four `IS_META: true` controls covering CP-08
+  meta ingestion shape (state-ownership runtime semantics deferred).
+- `traveler-controls.chroma` — three controls with compound `TYPE` tokens
+  (`slider traveler`, `xy traveler`, `bang counter`). Covers the ADR-008
+  traveler shape ingestion path; the slice-3a parser keeps only the
+  canonical base kind, with the original spelling round-tripping through the
+  JSON.
+- `transition-hard.chroma` — declares `HARD_TRANSITIONS` and
+  `SMOOTH_TRANSITIONS` per CP-09. Slice-3a flattens these into
+  `Scene::extensions` (parse-reserve); structured execution lands in a later
+  slice.
+- `pass-sizing-sentinel.chroma` — three passes exercising CP-10 sentinels:
+  a `WIDTH`/`HEIGHT` of `0` (scene-size resolution), an absolute
+  half-resolution pass, and a `backbuff` with absent dimensions (output-size
+  resolution).
+
+These fixtures intentionally do NOT cover dimensions the slice-3a loader cannot
+parse: `script.js` interpretation, `.chromaPack` zip transport, `main.glsl`
+pairing, structured transition execution, media / camera / external-texture
+runtime, Shadertoy import, ISF reject. Those defer to slice-4+ work.
 
 ## Adding new fixtures
 

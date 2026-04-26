@@ -1,0 +1,49 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Multipass Chain",
+  "CREDIT": "chromaticity t2 corpus",
+  "DESCRIPTION": "Four-pass linear chain producing distinct intermediate render targets: a base luminance pass, a horizontal blur, a vertical blur, and a composite to backbuff. Exercises pass ordering and per-pass dimension flatten.",
+  "TAGS": ["multipass", "chain"],
+  "CATEGORIES": ["BUILT-IN", "GEOMETRIC"],
+  "CONTROLS": [
+    {
+      "NAME": "blur_radius",
+      "TYPE": "slider",
+      "DEFAULT": 4.0,
+      "MIN": 0.0,
+      "MAX": 16.0
+    },
+    {
+      "NAME": "exposure",
+      "TYPE": "knob",
+      "DEFAULT": 1.0,
+      "MIN": 0.0,
+      "MAX": 4.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "luma",
+      "WIDTH": 960,
+      "HEIGHT": 540,
+      "FLOAT": true
+    },
+    {
+      "TARGET": "blurH",
+      "WIDTH": 960,
+      "HEIGHT": 540,
+      "FLOAT": true,
+      "WRAP": "clamp"
+    },
+    {
+      "TARGET": "blurV",
+      "WIDTH": 960,
+      "HEIGHT": 540,
+      "FLOAT": true,
+      "WRAP": "clamp"
+    },
+    {
+      "TARGET": "backbuff"
+    }
+  ]
+}

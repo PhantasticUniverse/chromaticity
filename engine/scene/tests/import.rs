@@ -3,6 +3,8 @@
 
 //! Evidence: EV-SCENE-IMPORT (T1) — scene-import golden harness;
 //! Phase-1 forward pin against the bundled demo `.chroma` corpus.
+//! Evidence: EV-SCENE-IMPORT (T2) — reactive-symbol-family corpus
+//! golden hashes pinned against the Wave-12 PR1 `.chroma` fixtures.
 //! Evidence: EV-COMPAT-FIXTURE-COVERAGE (T2) — CP-01 fallback corpus
 //! golden hashes pinned against the shipped `cp01-*.chroma` fixtures.
 //!
@@ -12,11 +14,18 @@
 //! representation.
 //!
 //! The four `golden_demo_*` / extensions-metadata tests stay at the T1
-//! drift-pin tier per `docs/43-development-standards.md` §15.5; the
-//! T2 corpus coverage that closes `EV-SCENE-IMPORT` over the full
-//! baseline corpus per `docs/26-evidence-artifact-registry.md` row
-//! "Scene import harness + golden corpus fixtures" is broader work
-//! beyond Wave-11 PR1's CP-01 scope.
+//! drift-pin tier per `docs/43-development-standards.md` §15.5.
+//!
+//! The seven `golden_t2_*` tests added in Wave-12 PR1 are the T2
+//! corpus-conformance wing of `EV-SCENE-IMPORT` per `docs/26` row 25
+//! and `docs/43-development-standards.md` §15.5: they pin the
+//! deserialized canonical-form hash of seven reactive-symbol-family
+//! fixtures (`multipass-feedback`, `multipass-chain`, `reactive-audio`,
+//! `meta-controls`, `traveler-controls`, `transition-hard`,
+//! `pass-sizing-sentinel`) selected against the docs/34 Coverage
+//! Dimensions the slice-3a schema actually parses. Closing T2 over
+//! this corpus advances `EV-SCENE-IMPORT` past `pending:artifact`
+//! to Pass.
 //!
 //! The five `golden_cp01_*` tests added in Wave-11 PR1 are the T2
 //! file-fixture wing of `EV-COMPAT-FIXTURE-COVERAGE` per `docs/26`
@@ -239,5 +248,99 @@ fn golden_cp01_reject() {
     assert_eq!(
         actual, EXPECTED,
         "cp01-reject golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// EV-SCENE-IMPORT (T2) — reactive-symbol-family corpus golden hashes.
+//
+// Each `golden_t2_*` test pins the canonical-form FNV-1a 64-bit hash of one
+// Wave-12 PR1 fixture under `engine/scene/tests/fixtures/scenes/`. Together
+// they exercise the docs/34 Coverage Dimensions the slice-3a schema parses:
+// multipass shape (2- and 4-pass chains, per-pass UNIFORMS canonical
+// bindings), the reactive-symbol family over the slice-3a representative
+// subset (`syn_Spectrum`, `syn_Level`, `syn_Time`, `TIME`, `RENDERSIZE`,
+// `syn_FinalPass`), CP-08 meta-control flagging via `IS_META`, ADR-008
+// traveler shape ingestion via compound TYPE tokens, CP-09 transition
+// declarations (parse-reserve only at slice-3a; structured execution
+// deferred), and CP-10 pass-sizing sentinels (`WIDTH`/`HEIGHT` of `0` and
+// absent). Closing T2 over this corpus advances `EV-SCENE-IMPORT` past
+// `pending:artifact` per `docs/26` row 25 + `docs/43` §15.5.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn golden_t2_multipass_feedback() {
+    // EV-SCENE-IMPORT (T2)
+    let actual = load_and_hash("multipass-feedback.chroma");
+    const EXPECTED: u64 = 0x4E69_6B09_F0B3_FEF2;
+    assert_eq!(
+        actual, EXPECTED,
+        "multipass-feedback golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_t2_multipass_chain() {
+    // EV-SCENE-IMPORT (T2)
+    let actual = load_and_hash("multipass-chain.chroma");
+    const EXPECTED: u64 = 0x4682_4B11_BA4B_BE97;
+    assert_eq!(
+        actual, EXPECTED,
+        "multipass-chain golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_t2_reactive_audio() {
+    // EV-SCENE-IMPORT (T2)
+    let actual = load_and_hash("reactive-audio.chroma");
+    const EXPECTED: u64 = 0x42F7_41DA_9256_EE7E;
+    assert_eq!(
+        actual, EXPECTED,
+        "reactive-audio golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_t2_meta_controls() {
+    // EV-SCENE-IMPORT (T2)
+    let actual = load_and_hash("meta-controls.chroma");
+    const EXPECTED: u64 = 0x9716_E621_FEB7_7762;
+    assert_eq!(
+        actual, EXPECTED,
+        "meta-controls golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_t2_traveler_controls() {
+    // EV-SCENE-IMPORT (T2)
+    let actual = load_and_hash("traveler-controls.chroma");
+    const EXPECTED: u64 = 0xAC6A_7DB9_46C2_40C3;
+    assert_eq!(
+        actual, EXPECTED,
+        "traveler-controls golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_t2_transition_hard() {
+    // EV-SCENE-IMPORT (T2)
+    let actual = load_and_hash("transition-hard.chroma");
+    const EXPECTED: u64 = 0x3B25_C96A_FBBD_2C94;
+    assert_eq!(
+        actual, EXPECTED,
+        "transition-hard golden mismatch (actual: {actual:#018x})",
+    );
+}
+
+#[test]
+fn golden_t2_pass_sizing_sentinel() {
+    // EV-SCENE-IMPORT (T2)
+    let actual = load_and_hash("pass-sizing-sentinel.chroma");
+    const EXPECTED: u64 = 0x1C2D_3C1F_6528_9D82;
+    assert_eq!(
+        actual, EXPECTED,
+        "pass-sizing-sentinel golden mismatch (actual: {actual:#018x})",
     );
 }
