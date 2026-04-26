@@ -27,6 +27,14 @@ Thumbs.db
 # -----------------------------------------------------------------------------
 chromaticity-planning/
 Contents/
+# v0.2 wireframe pack the AO drops into the repo root for review during
+# UI port waves. Same posture as `chromaticity-planning/`: read-only
+# design reference, never committed.
+v0.2-ui-wireframe-screenshots/
+# Operator-supplied screen captures dropped at repo root (e.g. for
+# debug-bundle review). Never committed.
+support-bundle.png
+capture.png
 
 # -----------------------------------------------------------------------------
 # Build outputs
