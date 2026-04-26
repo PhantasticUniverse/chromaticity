@@ -12,14 +12,17 @@ scheduled no earlier than Phase 4c and requires AO-signed approval.
 
 ## Status
 
-**Phase 1 code underway; Phase 0 evidence not fully closed.** The repository
+**Phase 1 EXIT achieved; Phase 0 evidence not fully closed.** The repository
 contains active application and engine code (Tauri 2 + Svelte 5 + TypeScript +
 Rust 2024), with policy, evidence, and CI gates running continuously on `main`.
-Phase 0 governance and clean-room baseline ADRs are established, but several
-Phase 0 evidence rows remain Planned in `docs/26-evidence-artifact-registry.md`
-(notably `EV-OBSERVABILITY-INVENTORY`). Current work advances both threads in
-parallel: landing Phase 1 implementation slices (scene import/schema,
-determinism, observability, runtime command bus) while closing the remaining
+All six Phase 1 exit-gate evidence rows are `Pass` per
+`docs/26-evidence-artifact-registry.md` (`EV-DETERMINISM`,
+`EV-OBSERVABILITY`, `EV-EVIDENCE-TAG-COVERAGE`, `EV-COMPAT-FIXTURE-COVERAGE`,
+`EV-SCENE-IMPORT`, `EV-SCHEMA-LINT` — sixth gate closed at commit `e818752`,
+W12 close at `0d83fb5`). Phase 0 governance and clean-room baseline ADRs are
+established, but several Phase 0 evidence rows remain Planned (notably
+`EV-OBSERVABILITY-INVENTORY`). Current work advances Phase 1+ implementation
+(UI port waves, runtime expansion) in parallel with closing the remaining
 Phase 0 evidence artifacts toward release-cumulative readiness.
 
 ## Repository Layout

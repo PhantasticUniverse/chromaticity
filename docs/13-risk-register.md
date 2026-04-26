@@ -72,7 +72,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - adapter conformance tests,
  - health state machine,
  - bounded retry and clear diagnostics.
-- Residual: Low / Medium. `EV-INTEGRATION-MATRIX` + 100/250/500/1000/2000 reconnect cadence + per-adapter isolation hold SLO-04 comfortably; the OSC adapter additionally realises bounded retry (5 attempts, exponential 100/200/400/800/1600 ms) and an adapter-internal health state machine (`Healthy` / `Recovering` / `Degraded`) in PR 100, with route-mismatch diagnostics carried as a slice-3 TODO. Residual is dominated by vendor-specific driver behaviour.
+- Residual: Low. `EV-INTEGRATION-MATRIX` + 100/250/500/1000/2000 reconnect cadence + per-adapter isolation hold SLO-04 comfortably; the OSC adapter additionally realises bounded retry (5 attempts, exponential 100/200/400/800/1600 ms — landed across W4 OSC adapter slice work) and an adapter-internal health state machine (`OscHealthState::{Healthy, Recovering, Degraded}` in PR 100, with `simulate_recv_failure_for_test` seam added W7 PR2 to cover the `Degraded` transition). Route-mismatch diagnostics remain a slice-3 TODO. Residual is dominated by vendor-specific driver behaviour.
 - Owner: Integration lead.
 
 ### R-06 State Race Conditions Across Input Sources
@@ -104,8 +104,9 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 - Mitigation:
  - prioritize golden harness as first-class deliverable,
  - require gate evidence before phase exits,
- - enforce supportability/privacy readiness audit before release.
-- Residual: Low. Gate-ledger discipline + `EV-GATE-MODEL-AUDIT` make missing evidence a visible release-blocker, not a silent gap.
+ - enforce supportability/privacy readiness audit before release,
+ - W7 audit identified pre-W11 frontend/scene gaps; W11 PR #119 (commit `a62ef90`) introduced the first frontend test framework — Vitest + jsdom + `@testing-library/svelte` + `@testing-library/jest-dom` — closing the UI-side test-harness gap; W12 PR #121 (commit `2b4bffe`) added 7 reactive-symbol scene-import fixtures + 7 T2 golden hashes; W12 PR #122 (commit `e818752`) added the scene-lint pipeline + 14 T1 unit tests + 15 T2 corpus tests. Phase-1 EXIT achieved with 6/6 evidence gates Pass per `26-evidence-artifact-registry.md`.
+- Residual: Low. Gate-ledger discipline + `EV-GATE-MODEL-AUDIT` make missing evidence a visible release-blocker, not a silent gap; the Phase-1 closeout demonstrates the harness scales to gate close on schedule.
 - Owner: Quality lead.
 
 ### R-09 Architecture Drift Without Decision Logging
