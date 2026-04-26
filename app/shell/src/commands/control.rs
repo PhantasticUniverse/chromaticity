@@ -16,12 +16,43 @@
 //! engine-side error variants ([`chromaticity_runtime::CommandBusError::Backpressure`],
 //! [`chromaticity_runtime::CommandBusError::Closed`]) feed
 //! [`std::fmt::Display`] into the wrapper.
+//!
+//! Each Tauri-facing handler is a thin wrapper over an inner
+//! `*_impl(&AppState, ...)` function so the round-trip glue is unit
+//! testable without a Tauri runtime.
 
 use chromaticity_runtime::{Command, CommandBus};
 use chromaticity_ui_bridge::{ControlId, ControlValue};
 use tauri::State;
 
 use crate::state::AppState;
+
+/// Inner implementation invoked by both the Tauri wrapper and unit
+/// tests; takes a borrowed [`AppState`] directly.
+fn set_control_impl(app: &AppState, id: ControlId, value: ControlValue) -> Result<(), String> {
+    app.bus
+        .dispatch(Command::ControlSet {
+            id: id.into(),
+            value: value.into(),
+        })
+        .map_err(|err| err.to_string())?;
+    let mut state = app
+        .state
+        .lock()
+        .map_err(|err| format!("state mutex poisoned: {err}"))?;
+    let _ = app.bus.commit_one_into(&mut state);
+    Ok(())
+}
+
+/// Inner implementation invoked by both the Tauri wrapper and unit
+/// tests; takes a borrowed [`AppState`] directly.
+fn get_control_impl(app: &AppState, id: ControlId) -> Result<Option<ControlValue>, String> {
+    let state = app
+        .state
+        .lock()
+        .map_err(|err| format!("state mutex poisoned: {err}"))?;
+    Ok(state.control_value(id.into()).map(Into::into))
+}
 
 /// Set the control identified by `id` to `value`, applying the
 /// committed event to canonical state synchronously.
@@ -31,19 +62,7 @@ pub fn set_control(
     id: ControlId,
     value: ControlValue,
 ) -> Result<(), String> {
-    app_state
-        .bus
-        .dispatch(Command::ControlSet {
-            id: id.into(),
-            value: value.into(),
-        })
-        .map_err(|err| err.to_string())?;
-    let mut state = app_state
-        .state
-        .lock()
-        .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app_state.bus.commit_one_into(&mut state);
-    Ok(())
+    set_control_impl(app_state.inner(), id, value)
 }
 
 /// Read the current value of the control identified by `id`. Returns
@@ -53,9 +72,46 @@ pub fn get_control(
     app_state: State<'_, AppState>,
     id: ControlId,
 ) -> Result<Option<ControlValue>, String> {
-    let state = app_state
-        .state
-        .lock()
-        .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    Ok(state.control_value(id.into()).map(Into::into))
+    get_control_impl(app_state.inner(), id)
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod tests {
+    //! Unit tests for the D2 control round-trip handler glue. The
+    //! engine-side `commit_one_into → apply_event` chain is covered by
+    //! `engine/runtime` tests; these tests pin the SHELL-side
+    //! `Mutex::lock → dispatch → commit_one_into → readback` chain that
+    //! is otherwise only exercised end-to-end through Tauri.
+
+    use super::{get_control_impl, set_control_impl};
+    use crate::state::AppState;
+    use chromaticity_ui_bridge::{ControlId, ControlValue};
+
+    #[test]
+    fn set_control_then_get_control_round_trip() {
+        let app = AppState::new();
+        set_control_impl(&app, ControlId(0), ControlValue(0.5)).unwrap();
+        assert_eq!(
+            get_control_impl(&app, ControlId(0)).unwrap(),
+            Some(ControlValue(0.5)),
+        );
+    }
+
+    #[test]
+    fn get_control_unknown_id_returns_none() {
+        let app = AppState::new();
+        assert_eq!(get_control_impl(&app, ControlId(99)).unwrap(), None);
+    }
+
+    #[test]
+    fn set_control_overwrites_previous_value() {
+        let app = AppState::new();
+        set_control_impl(&app, ControlId(7), ControlValue(0.25)).unwrap();
+        set_control_impl(&app, ControlId(7), ControlValue(0.75)).unwrap();
+        assert_eq!(
+            get_control_impl(&app, ControlId(7)).unwrap(),
+            Some(ControlValue(0.75)),
+        );
+    }
 }

@@ -17,35 +17,79 @@
 //! carries a human-readable failure across the IPC boundary;
 //! [`chromaticity_runtime::CommandBusError`] feeds [`std::fmt::Display`]
 //! into the wrapper.
+//!
+//! Each Tauri-facing handler is a thin wrapper over an inner
+//! `*_impl(&AppState, ...)` function so the round-trip glue is unit
+//! testable without a Tauri runtime.
 
 use chromaticity_runtime::{Command, CommandBus, PresetId};
 use tauri::State;
 
 use crate::state::AppState;
 
+fn recall_preset_impl(app: &AppState, id: u32) -> Result<(), String> {
+    app.bus
+        .dispatch(Command::PresetRecall { id: PresetId(id) })
+        .map_err(|err| err.to_string())?;
+    let mut state = app
+        .state
+        .lock()
+        .map_err(|err| format!("state mutex poisoned: {err}"))?;
+    let _ = app.bus.commit_one_into(&mut state);
+    Ok(())
+}
+
+fn active_preset_impl(app: &AppState) -> Result<Option<u32>, String> {
+    let state = app
+        .state
+        .lock()
+        .map_err(|err| format!("state mutex poisoned: {err}"))?;
+    Ok(state.active_preset().map(|p| p.0))
+}
+
 /// Recall the preset identified by `id` and apply the committed event
 /// to canonical state synchronously.
 #[tauri::command]
 pub fn recall_preset(app_state: State<'_, AppState>, id: u32) -> Result<(), String> {
-    app_state
-        .bus
-        .dispatch(Command::PresetRecall { id: PresetId(id) })
-        .map_err(|err| err.to_string())?;
-    let mut state = app_state
-        .state
-        .lock()
-        .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app_state.bus.commit_one_into(&mut state);
-    Ok(())
+    recall_preset_impl(app_state.inner(), id)
 }
 
 /// Return the active preset id, or `None` when no preset has been
 /// recalled.
 #[tauri::command]
 pub fn active_preset(app_state: State<'_, AppState>) -> Result<Option<u32>, String> {
-    let state = app_state
-        .state
-        .lock()
-        .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    Ok(state.active_preset().map(|p| p.0))
+    active_preset_impl(app_state.inner())
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod tests {
+    //! Unit tests for the D4 preset round-trip handler glue. Pins the
+    //! SHELL-side `dispatch → commit_one_into → readback` chain.
+    //! `PresetId` is a transparent `u32` newtype with no validator, so
+    //! there is no invalid-input test to write.
+
+    use super::{active_preset_impl, recall_preset_impl};
+    use crate::state::AppState;
+
+    #[test]
+    fn recall_preset_then_active_preset_round_trip() {
+        let app = AppState::new();
+        recall_preset_impl(&app, 42).unwrap();
+        assert_eq!(active_preset_impl(&app).unwrap(), Some(42));
+    }
+
+    #[test]
+    fn active_preset_initial_is_none() {
+        let app = AppState::new();
+        assert_eq!(active_preset_impl(&app).unwrap(), None);
+    }
+
+    #[test]
+    fn recall_preset_overwrites_active() {
+        let app = AppState::new();
+        recall_preset_impl(&app, 1).unwrap();
+        recall_preset_impl(&app, 2).unwrap();
+        assert_eq!(active_preset_impl(&app).unwrap(), Some(2));
+    }
 }
