@@ -63,25 +63,23 @@ export const EMPTY_OSC: EmptyStateCopy = {
 };
 
 /*
- * Wave-16 PR2 stub copy for the newly-routed views in the v0.2 sidebar
- * redesign. Each entry stands in for the eventual W17+ port of the
- * bundle's per-view JSX (`media.jsx`, `audio.jsx`). Body prose names
- * the canonical bundle source path so the eventual port lands
- * deterministically. Action fields stay `undefined` — these are
- * placeholder views, not entrypoints to disabled actions.
+ * Wave-16 PR2 stub copy for one remaining newly-routed view in the
+ * v0.2 sidebar redesign. The remaining entry stands in for the
+ * eventual W17+ port of the bundle's `audio.jsx` per-view JSX. Body
+ * prose names the canonical bundle source path so the eventual port
+ * lands deterministically. Action fields stay `undefined` — this is a
+ * placeholder view, not an entrypoint to disabled actions.
  *
- * Two of the original four W16 PR2 stubs have shipped their full ports
- * and the corresponding entries have been removed:
+ * Three of the original four W16 PR2 stubs have shipped their full
+ * ports and the corresponding entries have been removed:
  *   - `EMPTY_WELCOME` removed in W16 PR3 alongside the `Welcome.svelte`
  *     port of `views/onboard.jsx`.
  *   - `EMPTY_LICENSE` removed in W17 PR2 alongside the `License.svelte`
  *     port of `v02_supplement.jsx::LicenseView`.
+ *   - `EMPTY_SOURCES` removed in W17 PR1 alongside the `Sources.svelte`
+ *     port of `views/media.jsx`. All three retirements followed the
+ *     W16 PR3 "sole-consumer dead-code policy" precedent.
  */
-
-export const EMPTY_SOURCES: EmptyStateCopy = {
-  title: 'Sources view coming in W17+',
-  body: 'Media + asset library replacing the old Media wireframe (per v0.2 media.jsx, whose internal panel is already titled "Sources"). Sources sidebar + asset grid + inspector pane.',
-};
 
 export const EMPTY_AUDIO_UNIFORMS: EmptyStateCopy = {
   title: 'Audio Uniforms view coming in W17+',
