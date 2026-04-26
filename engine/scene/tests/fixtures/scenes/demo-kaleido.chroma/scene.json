@@ -1,0 +1,47 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Demo Kaleido",
+  "CREDIT": "chromaticity demo",
+  "DESCRIPTION": "Six-fold radial mirror with drifting hue and a soft warp envelope.",
+  "TAGS": ["abstract", "geometric"],
+  "CATEGORIES": ["BUILT-IN", "ABSTRACT", "GEOMETRIC"],
+  "CONTROLS": [
+    {
+      "NAME": "segments",
+      "TYPE": "slider",
+      "DEFAULT": 6.0,
+      "MIN": 2.0,
+      "MAX": 24.0
+    },
+    {
+      "NAME": "rotation_speed",
+      "TYPE": "slider",
+      "DEFAULT": 0.25,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "warp_amount",
+      "TYPE": "knob",
+      "DEFAULT": 0.4,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "invert",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "tint",
+      "TYPE": "color",
+      "DEFAULT": [0.62, 0.31, 0.88, 1.0]
+    },
+    {
+      "NAME": "focus",
+      "TYPE": "xy",
+      "DEFAULT": [0.5, 0.5]
+    }
+  ],
+  "PASSES": []
+}

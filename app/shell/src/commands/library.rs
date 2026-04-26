@@ -227,20 +227,88 @@ mod tests {
         );
     }
 
+    // The two tests below were `#[ignore]`'d at Wave-9 PR1 because the
+    // production `list_scene_packages_impl` requires the input path to
+    // live under the platform-default scene root (`$HOME/Library/...`,
+    // `$XDG_DATA_HOME/...`), and routine `cargo test` must not stage
+    // fixtures under the user's real home directory.
+    //
+    // Wave-10 PR1 reroutes both to the loader directly
+    // (`chromaticity_scene::loader::load_chroma_dir`) using the
+    // repo-resident demo corpus at
+    // `engine/scene/tests/fixtures/scenes/`. This exercises the
+    // metadata-extraction contract that `list_scene_packages_impl`
+    // depends on (canonical-model fields surface through the
+    // `extensions` map exactly the way the IPC handler reads them) and
+    // the malformed-input rejection that the `let Ok(scene) = ...`
+    // skip pattern in the IPC handler relies on, without touching
+    // `$HOME`. The IPC handler's own unit coverage (default-root
+    // resolution, nonexistent-path empty-Ok, traversal rejection) lives
+    // in the four tests above.
+
     #[test]
-    #[ignore = "requires staging a .chroma fixture under the platform-default scene root; run with `cargo test -- --ignored` after staging per docs/38 §2.2"]
     fn list_scene_packages_one_chroma_returns_one_card() {
         // Evidence: EV-LIBRARY-DISCOVERY (T1) — fixture-backed coverage
-        // for the metadata-extraction path. Wired but ignored to avoid
-        // touching the user's real $HOME during routine `cargo test`.
+        // for the metadata-extraction path against the repo-resident
+        // `demo-kaleido.chroma` package. Surfaces the same `TITLE`,
+        // `CREDIT`, `DESCRIPTION`, `TAGS`, `CATEGORIES` fields the
+        // `SceneCard` mapping in `list_scene_packages_impl` reads from
+        // `Scene::extensions`.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../engine/scene/tests/fixtures/scenes/demo-kaleido.chroma");
+
+        let scene =
+            chromaticity_scene::loader::load_chroma_dir(&fixture).expect("fixture must load");
+
+        assert_eq!(
+            super::extract_string(&scene.extensions, "TITLE"),
+            "Demo Kaleido",
+        );
+        assert_eq!(
+            super::extract_string(&scene.extensions, "CREDIT"),
+            "chromaticity demo",
+        );
+        assert!(
+            !super::extract_string(&scene.extensions, "DESCRIPTION").is_empty(),
+            "DESCRIPTION must surface for library display"
+        );
+        assert_eq!(
+            super::extract_string_array(&scene.extensions, "TAGS"),
+            vec!["abstract".to_string(), "geometric".to_string()],
+        );
+        assert_eq!(
+            super::extract_string_array(&scene.extensions, "CATEGORIES"),
+            vec![
+                "BUILT-IN".to_string(),
+                "ABSTRACT".to_string(),
+                "GEOMETRIC".to_string(),
+            ],
+        );
+        assert!(!scene.controls.is_empty(), "demo-kaleido carries controls");
     }
 
     #[test]
-    #[ignore = "requires staging a malformed .chroma fixture under the platform-default scene root; run with `cargo test -- --ignored` after staging per docs/38 §2.2"]
     fn list_scene_packages_malformed_scene_json_skipped() {
-        // Evidence: EV-LIBRARY-DISCOVERY (T1) — pins the silent-skip
-        // tolerance for malformed `scene.json`. Wired but ignored to
-        // avoid touching the user's real $HOME during routine
-        // `cargo test`.
+        // Evidence: EV-LIBRARY-DISCOVERY (T1) — pins the loader-level
+        // contract that the `let Ok(scene) = load_chroma_dir(...)` skip
+        // arm in `list_scene_packages_impl` relies on: malformed
+        // `scene.json` returns `Err`, which the IPC handler then
+        // tolerates silently.
+        let root = std::env::temp_dir().join(format!(
+            "chromaticity-library-malformed-{}.chroma",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).expect("temp .chroma dir must be created");
+        std::fs::write(root.join("scene.json"), "{ this is not json")
+            .expect("malformed scene.json must be written");
+
+        let result = chromaticity_scene::loader::load_chroma_dir(&root);
+        assert!(
+            result.is_err(),
+            "malformed scene.json must surface as Err so the IPC handler skips it"
+        );
+
+        std::fs::remove_dir_all(root).expect("temp dir must be removed");
     }
 }

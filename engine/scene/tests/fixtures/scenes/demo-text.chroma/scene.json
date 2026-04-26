@@ -1,0 +1,23 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Demo Text",
+  "CREDIT": "chromaticity demo",
+  "DESCRIPTION": "Centered glyph plate with adjustable color and scale.",
+  "TAGS": ["text"],
+  "CATEGORIES": ["BUILT-IN", "TEXT"],
+  "CONTROLS": [
+    {
+      "NAME": "glyph_color",
+      "TYPE": "color",
+      "DEFAULT": [0.95, 0.95, 0.95, 1.0]
+    },
+    {
+      "NAME": "scale",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.1,
+      "MAX": 2.0
+    }
+  ],
+  "PASSES": []
+}
