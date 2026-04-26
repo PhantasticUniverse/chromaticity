@@ -4,8 +4,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 <script lang="ts">
-  import type { ControlId, ControlValue } from './lib/ipc/bindings';
+  import type { ControlId, ControlValue, PresetId } from './lib/ipc/bindings';
   import { dispatchAndRead } from './lib/stores/control';
+  import { dispatchPlaylistAdvanceAndRead, readPlaylistPosition } from './lib/stores/playlist';
+  import { dispatchPresetRecallAndRead, readActivePreset } from './lib/stores/preset';
   import {
     clearSnap,
     readSnapState,
@@ -28,6 +30,38 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   });
   let snapPending = $state(false);
   let snapError = $state<string | null>(null);
+
+  let activePresetId = $state<PresetId | null>(null);
+  let presetPending = $state(false);
+  let presetError = $state<string | null>(null);
+
+  let playlistPos = $state<number>(0);
+  let playlistPending = $state(false);
+  let playlistError = $state<string | null>(null);
+
+  // Mount-time hydration: read canonical state once on first render so
+  // the UI reflects any pre-existing runtime state. The empty-deps
+  // `$effect` runs once after the component mounts; reading from
+  // module-state runes (none referenced here) would re-fire it.
+  $effect(() => {
+    void (async () => {
+      try {
+        snapState = await readSnapState();
+      } catch (err) {
+        snapError = err instanceof Error ? err.message : String(err);
+      }
+      try {
+        activePresetId = await readActivePreset();
+      } catch (err) {
+        presetError = err instanceof Error ? err.message : String(err);
+      }
+      try {
+        playlistPos = await readPlaylistPosition();
+      } catch (err) {
+        playlistError = err instanceof Error ? err.message : String(err);
+      }
+    })();
+  });
 
   async function handleInput(event: Event) {
     const next = parseFloat((event.currentTarget as HTMLInputElement).value);
@@ -74,6 +108,51 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     event.preventDefault();
     if (snapState.saved[slot] === true) {
       await withSnapAction(() => clearSnap(slot));
+    }
+  }
+
+  async function handlePresetStep(delta: number) {
+    // No-op when stepping forward without an anchor; clicking "next"
+    // before any preset is recalled has no defined target id.
+    if (activePresetId === null) {
+      return;
+    }
+    const target = activePresetId + delta;
+    if (target < 0) {
+      return;
+    }
+    presetPending = true;
+    presetError = null;
+    try {
+      activePresetId = await dispatchPresetRecallAndRead(target);
+    } catch (err) {
+      presetError = err instanceof Error ? err.message : String(err);
+    } finally {
+      presetPending = false;
+    }
+  }
+
+  async function handlePresetRecallZero() {
+    presetPending = true;
+    presetError = null;
+    try {
+      activePresetId = await dispatchPresetRecallAndRead(0);
+    } catch (err) {
+      presetError = err instanceof Error ? err.message : String(err);
+    } finally {
+      presetPending = false;
+    }
+  }
+
+  async function handlePlaylistStep(step: number) {
+    playlistPending = true;
+    playlistError = null;
+    try {
+      playlistPos = await dispatchPlaylistAdvanceAndRead(step);
+    } catch (err) {
+      playlistError = err instanceof Error ? err.message : String(err);
+    } finally {
+      playlistPending = false;
     }
   }
 </script>
@@ -128,6 +207,50 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     </p>
     {#if snapError}
       <p class="error">error: {snapError}</p>
+    {/if}
+  </section>
+
+  <section class="preset">
+    <h2>presets</h2>
+    <div class="row">
+      <button
+        type="button"
+        disabled={presetPending || activePresetId === null || activePresetId === 0}
+        onclick={() => handlePresetStep(-1)}
+      >
+        prev
+      </button>
+      {#if activePresetId === null}
+        <button type="button" disabled={presetPending} onclick={handlePresetRecallZero}>
+          recall 0
+        </button>
+      {:else}
+        <button type="button" disabled={presetPending} onclick={() => handlePresetStep(1)}>
+          next
+        </button>
+      {/if}
+    </div>
+    <p class="readback">
+      active preset: {activePresetId === null ? '—' : activePresetId}
+    </p>
+    {#if presetError}
+      <p class="error">error: {presetError}</p>
+    {/if}
+  </section>
+
+  <section class="playlist">
+    <h2>playlist</h2>
+    <div class="row">
+      <button type="button" disabled={playlistPending} onclick={() => handlePlaylistStep(-1)}>
+        prev
+      </button>
+      <button type="button" disabled={playlistPending} onclick={() => handlePlaylistStep(1)}>
+        next
+      </button>
+    </div>
+    <p class="readback">position: {playlistPos}</p>
+    {#if playlistError}
+      <p class="error">error: {playlistError}</p>
     {/if}
   </section>
 </main>
@@ -201,5 +324,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     font-variant-numeric: tabular-nums;
     margin-top: var(--space-md);
     color: var(--color-text-2);
+  }
+  .preset,
+  .playlist {
+    margin-top: var(--space-4xl);
+  }
+  .preset h2,
+  .playlist h2 {
+    font-size: var(--font-size-display-sm);
+    margin-bottom: var(--space-lg);
+  }
+  .row {
+    display: flex;
+    gap: var(--space-sm);
   }
 </style>

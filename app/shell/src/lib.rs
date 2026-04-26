@@ -29,6 +29,10 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::snap::clear_snap,
             commands::snap::active_snap_slot,
             commands::snap::snap_slot_saved,
+            commands::preset::recall_preset,
+            commands::preset::active_preset,
+            commands::playlist::advance_playlist,
+            commands::playlist::playlist_position,
         ])
         .run(tauri::generate_context!())
 }

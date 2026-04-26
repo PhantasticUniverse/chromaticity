@@ -10,4 +10,5 @@
 
 export type { ControlId } from './ControlId';
 export type { ControlValue } from './ControlValue';
+export type { PresetId } from './PresetId';
 export type { SnapSlotId } from './SnapSlotId';
