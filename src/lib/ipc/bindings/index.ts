@@ -12,4 +12,5 @@ export type { ControlId } from './ControlId';
 export type { ControlValue } from './ControlValue';
 export type { PresetId } from './PresetId';
 export type { SceneCard } from './SceneCard';
+export type { SceneSource } from './SceneSource';
 export type { SnapSlotId } from './SnapSlotId';

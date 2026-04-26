@@ -19,10 +19,23 @@
 //! No `tauri-plugin-fs` involvement: Tauri 2 capabilities only gate
 //! plugin commands, so a `#[tauri::command]` handler that reads via
 //! `std::fs` is not subject to the capability allowlist.
+//!
+//! Wave-11 PR2 introduces the bundled-resources path
+//! (`docs/52-parity-coverage-matrix.md` row 37, partial advance on
+//! `EV-LIBRARY-BUNDLE-LAYOUT`): three demo `.chroma` packages are
+//! copied into the Tauri AppBundle's `Resources/scenes/` directory at
+//! link time via `bundle.resources` in `tauri.conf.json`, and the
+//! `bundled_scene_root` / `list_bundled_scene_packages` commands
+//! surface that ship-time corpus to the frontend so a fresh
+//! `npm run tauri dev` shows BUILT-IN library cards out of the box
+//! without first running `scripts/stage-demo-scenes.sh`. Cards from
+//! the bundled root are tagged `SceneSource::Bundled`; cards from the
+//! user's writable root are tagged `SceneSource::User`.
 
 use chromaticity_scene::loader::load_chroma_dir;
-use chromaticity_ui_bridge::SceneCard;
-use std::path::Path;
+use chromaticity_ui_bridge::{SceneCard, SceneSource};
+use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Manager};
 
 /// Format tag emitted for every card in this slice; future imports
 /// (`compat-syn-scene`, `shadertoy-v1-import`, `isf-import`) widen the
@@ -79,7 +92,25 @@ fn extract_string_array(
         .unwrap_or_default()
 }
 
-fn list_scene_packages_impl(root: &str) -> Result<Vec<SceneCard>, String> {
+/// Configures whether `list_scene_packages_impl` enforces the
+/// user-default-root descendant check (the W9 path-traversal guard
+/// that prevents the IPC surface from scanning anywhere outside the
+/// platform-default scenes directory).
+///
+/// `User` keeps the original W9 guard. `Bundled` skips it because the
+/// bundled root resolves to `<AppBundle>/Resources/scenes/`, which is
+/// not a descendant of the user's `$HOME`-rooted scenes directory.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum RootGuard {
+    EnforceUserDefault,
+    AllowBundled,
+}
+
+fn list_scene_packages_impl(
+    root: &str,
+    source: SceneSource,
+    guard: RootGuard,
+) -> Result<Vec<SceneCard>, String> {
     // Canonicalise the input path. A `NotFound` is the graceful empty-
     // library case (the user's scenes directory simply does not exist
     // yet); other I/O errors surface to the caller.
@@ -89,15 +120,17 @@ fn list_scene_packages_impl(root: &str) -> Result<Vec<SceneCard>, String> {
         Err(e) => return Err(format!("could not canonicalize {root}: {e}")),
     };
 
-    // Scope the input to the platform-default root or a descendant of
-    // it. If the default root itself does not exist yet, refuse rather
-    // than silently widen the scan.
-    let default_root = default_scene_root_impl()?;
-    let canonical_default = Path::new(&default_root)
-        .canonicalize()
-        .map_err(|e| format!("could not canonicalize default root {default_root}: {e}"))?;
-    if !canonical_input.starts_with(&canonical_default) {
-        return Err("path is outside the allowed scene root".into());
+    if guard == RootGuard::EnforceUserDefault {
+        // Scope the input to the platform-default root or a descendant
+        // of it. If the default root itself does not exist yet, refuse
+        // rather than silently widen the scan.
+        let default_root = default_scene_root_impl()?;
+        let canonical_default = Path::new(&default_root)
+            .canonicalize()
+            .map_err(|e| format!("could not canonicalize default root {default_root}: {e}"))?;
+        if !canonical_input.starts_with(&canonical_default) {
+            return Err("path is outside the allowed scene root".into());
+        }
     }
 
     let entries = std::fs::read_dir(&canonical_input)
@@ -135,22 +168,75 @@ fn list_scene_packages_impl(root: &str) -> Result<Vec<SceneCard>, String> {
             categories: extract_string_array(&scene.extensions, "CATEGORIES"),
             path,
             format_tag: FORMAT_TAG_NATIVE.to_string(),
+            source,
         });
     }
     Ok(cards)
 }
 
+/// Resolve the Tauri-bundled scene-library root.
+///
+/// At link time `app/shell/tauri.conf.json`'s `bundle.resources` entry
+/// copies the three demo `.chroma` packages into
+/// `<AppBundle>/Resources/scenes/`. `tauri::AppHandle::path::resource_dir()`
+/// returns the absolute path to that `Resources` directory at runtime;
+/// this helper appends the `scenes` subdirectory.
+fn bundled_scene_root_impl(handle: &AppHandle) -> Result<PathBuf, String> {
+    let resource_dir = handle
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("resource_dir unavailable: {e}"))?;
+    Ok(resource_dir.join("scenes"))
+}
+
 /// List every `.chroma` package directly under `root`, returning a
 /// [`SceneCard`] per package per `docs/38` §2.2.
+///
+/// Cards are tagged [`SceneSource::User`] because the public command
+/// only reads the user-writable scene root; the bundled corpus is
+/// surfaced via [`list_bundled_scene_packages`].
 #[tauri::command]
 pub fn list_scene_packages(root: String) -> Result<Vec<SceneCard>, String> {
-    list_scene_packages_impl(&root)
+    list_scene_packages_impl(&root, SceneSource::User, RootGuard::EnforceUserDefault)
+}
+
+/// List every `.chroma` package directly under the Tauri-bundled
+/// scene root (`<AppBundle>/Resources/scenes/`). Cards are tagged
+/// [`SceneSource::Bundled`].
+///
+/// Surfaces the W11 ship-time corpus per
+/// `docs/52-parity-coverage-matrix.md` row 37 so a fresh
+/// `npm run tauri dev` lists the demo `.chroma` packages without
+/// running `scripts/stage-demo-scenes.sh`.
+#[tauri::command]
+pub fn list_bundled_scene_packages(handle: AppHandle) -> Result<Vec<SceneCard>, String> {
+    let root = bundled_scene_root_impl(&handle)?;
+    list_scene_packages_impl(
+        &root.to_string_lossy(),
+        SceneSource::Bundled,
+        RootGuard::AllowBundled,
+    )
 }
 
 /// Return the platform-default scene-library root path.
 #[tauri::command]
 pub fn default_scene_root() -> Result<String, String> {
     default_scene_root_impl()
+}
+
+/// Return the Tauri-bundled scene-library root path
+/// (`<AppBundle>/Resources/scenes/`).
+///
+/// Cited from `docs/52-parity-coverage-matrix.md` row 37: surfaces the
+/// W11 ship-time corpus to the frontend in addition to
+/// [`default_scene_root`], so the Library view can merge bundled and
+/// user-staged cards.
+#[tauri::command]
+pub fn bundled_scene_root(handle: AppHandle) -> Result<String, String> {
+    let path = bundled_scene_root_impl(&handle)?;
+    path.into_os_string()
+        .into_string()
+        .map_err(|os| format!("bundled scene root is not valid utf-8: {os:?}"))
 }
 
 #[cfg(test)]
@@ -162,7 +248,8 @@ mod tests {
     //! library fallback when the input path does not exist, and the
     //! descendant-of-default-root scope check.
 
-    use super::{default_scene_root_impl, list_scene_packages_impl};
+    use super::{RootGuard, default_scene_root_impl, list_scene_packages_impl};
+    use chromaticity_ui_bridge::SceneSource;
 
     #[test]
     fn default_scene_root_returns_platform_default() {
@@ -189,8 +276,12 @@ mod tests {
             default_scene_root_impl().unwrap(),
             std::process::id()
         );
-        let cards =
-            list_scene_packages_impl(&nonexistent).expect("nonexistent path must yield empty Ok");
+        let cards = list_scene_packages_impl(
+            &nonexistent,
+            SceneSource::User,
+            RootGuard::EnforceUserDefault,
+        )
+        .expect("nonexistent path must yield empty Ok");
         assert!(cards.is_empty());
     }
 
@@ -205,7 +296,11 @@ mod tests {
         // The canonicalize step needs the path to exist; std::env::temp_dir
         // is guaranteed to exist on the test host.
         let temp = std::env::temp_dir();
-        let result = list_scene_packages_impl(&temp.to_string_lossy());
+        let result = list_scene_packages_impl(
+            &temp.to_string_lossy(),
+            SceneSource::User,
+            RootGuard::EnforceUserDefault,
+        );
         match result {
             Err(e) => assert!(
                 e.contains("outside the allowed scene root")
@@ -213,6 +308,45 @@ mod tests {
                 "got: {e}",
             ),
             Ok(_) => panic!("expected Err for {temp:?}, got Ok"),
+        }
+    }
+
+    #[test]
+    fn list_scene_packages_bundled_root_yields_bundled_source_cards() {
+        // Evidence: EV-LIBRARY-DISCOVERY (T1) — pins the W11 PR2
+        // bundled-resources path. The `RootGuard::AllowBundled` arm
+        // skips the user-default-root descendant check (the bundled
+        // root resolves under `<AppBundle>/Resources/`, not under
+        // `$HOME`), and every emitted card carries
+        // `SceneSource::Bundled` so the frontend can render the
+        // BUILT-IN chip without inferring from the path prefix.
+        //
+        // Uses the repo-resident demo corpus as a stand-in for the
+        // post-link `Resources/scenes/` directory; `bundle.resources`
+        // in `app/shell/tauri.conf.json` copies the same `.chroma`
+        // packages there at link time.
+        let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../engine/scene/tests/fixtures/scenes");
+
+        let cards = list_scene_packages_impl(
+            &fixtures.to_string_lossy(),
+            SceneSource::Bundled,
+            RootGuard::AllowBundled,
+        )
+        .expect("bundled-root scan must succeed against the repo fixture corpus");
+
+        assert!(
+            !cards.is_empty(),
+            "fixture corpus must surface at least one card"
+        );
+        for card in &cards {
+            assert_eq!(
+                card.source,
+                SceneSource::Bundled,
+                "every card from a bundled root must carry SceneSource::Bundled (got {:?} for {})",
+                card.source,
+                card.id,
+            );
         }
     }
 

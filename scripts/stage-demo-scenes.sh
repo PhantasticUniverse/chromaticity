@@ -8,8 +8,16 @@
 #
 # Idempotent: existing directories at the destination are left in place
 # (the script reports "skip" rather than overwriting). Removing or
-# updating staged fixtures is a manual operation; the demo corpus is
-# repo-resident and never bundled into release artifacts.
+# updating staged fixtures is a manual operation.
+#
+# As of W11 PR2 the three demo `.chroma` packages are also bundled into
+# the Tauri AppBundle's Resources/scenes/ directory at link time via
+# bundle.resources in app/shell/tauri.conf.json, and surfaced through
+# the bundled_scene_root / list_bundled_scene_packages IPC commands.
+# This script is now a "force-stage" / dev-override fallback — useful
+# for testing the user-staged path explicitly, populating the corpus
+# in environments where the Tauri-bundled assets are unavailable, or
+# seeding the user root with a writable copy of the demos.
 
 set -euo pipefail
 

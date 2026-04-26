@@ -28,6 +28,11 @@
   "bundle": {
     "active": false,
     "targets": "all",
-    "icon": ["icons/icon.png"]
+    "icon": ["icons/icon.png"],
+    "resources": {
+      "../../engine/scene/tests/fixtures/scenes/demo-kaleido.chroma/scene.json": "scenes/demo-kaleido.chroma/scene.json",
+      "../../engine/scene/tests/fixtures/scenes/demo-spectrum.chroma/scene.json": "scenes/demo-spectrum.chroma/scene.json",
+      "../../engine/scene/tests/fixtures/scenes/demo-text.chroma/scene.json": "scenes/demo-text.chroma/scene.json"
+    }
   }
 }

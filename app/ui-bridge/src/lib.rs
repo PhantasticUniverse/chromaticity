@@ -142,6 +142,28 @@ impl From<chromaticity_runtime::PresetId> for PresetId {
     }
 }
 
+/// Provenance tag for a [`SceneCard`]: whether the package was
+/// surfaced from the Tauri bundle (ship-time corpus) or from the
+/// user's writable scene root.
+///
+/// Realises the W11 ship-time-bundling slice flagged by
+/// `docs/52-parity-coverage-matrix.md` row 37 ("Bundled scenes under
+/// `Resources/scenes/`"). The Library view reads the discriminant to
+/// render the `BUILT-IN` chip on bundled cards; future Phase-4b work
+/// (`EV-LIBRARY-BUNDLE-LAYOUT`) extends the bundled root to the full
+/// `welcome / library / examples / shadertoy-fixtures` layout per
+/// `docs/38-scene-library-and-import-spec.md` §2.1.
+///
+/// ts-rs renders the enum as a flat string union (`"Bundled" | "User"`)
+/// because there are no payload-bearing variants, so the wire shape
+/// is a single JSON string.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum SceneSource {
+    Bundled,
+    User,
+}
+
 /// IPC-facing scene library card.
 ///
 /// One entry per `.chroma` package surfaced by the W9 scene-library
@@ -153,7 +175,10 @@ impl From<chromaticity_runtime::PresetId> for PresetId {
 ///
 /// The shape is intentionally a record struct (not a transparent
 /// newtype): every field is independently consumed by the library
-/// browser's grid / list / search surfaces.
+/// browser's grid / list / search surfaces. The trailing `source`
+/// field (W11 PR2) tags the card's provenance — either the ship-time
+/// Tauri bundle or the user's writable scene root — so the UI can
+/// render a `BUILT-IN` chip without inferring from the path prefix.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 #[ts(export)]
 pub struct SceneCard {
@@ -165,6 +190,7 @@ pub struct SceneCard {
     pub categories: Vec<String>,
     pub path: String,
     pub format_tag: String,
+    pub source: SceneSource,
 }
 
 #[cfg(test)]
