@@ -142,6 +142,31 @@ impl From<chromaticity_runtime::PresetId> for PresetId {
     }
 }
 
+/// IPC-facing scene library card.
+///
+/// One entry per `.chroma` package surfaced by the W9 scene-library
+/// directory scan. Carries the `docs/38-scene-library-and-import-spec.md`
+/// §2.2 metadata (`TITLE`, `CREDIT`, `DESCRIPTION`, `TAGS`,
+/// `CATEGORIES`) plus the package path and the format tag from §2.2's
+/// catalog-metadata bullet — slice-1 only emits the `native-chroma-scene`
+/// tag because the loader reads `.chroma` packages today.
+///
+/// The shape is intentionally a record struct (not a transparent
+/// newtype): every field is independently consumed by the library
+/// browser's grid / list / search surfaces.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct SceneCard {
+    pub id: String,
+    pub title: String,
+    pub credit: String,
+    pub description: String,
+    pub tags: Vec<String>,
+    pub categories: Vec<String>,
+    pub path: String,
+    pub format_tag: String,
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {

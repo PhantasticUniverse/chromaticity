@@ -15,6 +15,12 @@ docs/
 
 # Generated artifacts.
 generated/
+# ts-rs writes the per-type IPC bindings here from
+# app/shell/tests/export_bindings.rs; the shape is whatever ts-rs emits.
+# The hand-authored barrel `src/lib/ipc/bindings/index.ts` stays under
+# the formatter via the negation below.
+src/lib/ipc/bindings/*.ts
+!src/lib/ipc/bindings/index.ts
 **/*.sbom.json
 **/*.sbom.xml
 CHANGELOG.md

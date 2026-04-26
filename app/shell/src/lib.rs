@@ -33,6 +33,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::preset::active_preset,
             commands::playlist::advance_playlist,
             commands::playlist::playlist_position,
+            commands::library::list_scene_packages,
+            commands::library::default_scene_root,
         ])
         .run(tauri::generate_context!())
 }
