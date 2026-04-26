@@ -32,6 +32,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Author from './views/Author.svelte';
   import Library from './views/Library.svelte';
   import Perform from './views/Perform.svelte';
+  import Playlist from './views/Playlist.svelte';
   import Settings from './views/Settings.svelte';
 </script>
 
@@ -46,6 +47,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <Library />
     {:else if routeStore.current === 'author'}
       <Author />
+    {:else if routeStore.current === 'playlist'}
+      <Playlist />
     {:else if routeStore.current === 'settings'}
       <Settings />
     {/if}
