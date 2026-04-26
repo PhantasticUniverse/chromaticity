@@ -36,13 +36,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     placeholder thumbnails (a hue-rotating gradient surrogate) for
   //     each, mirroring the `<SceneStill>` substitution the W17 PR1
   //     Sources view took for the same reason.
-  //   - The bundle's `<Icon name="..." />` glyphs render as inline Unicode
-  //     (▤ ⊞ ✎ + ⊟ ⟲ ↩ ↪ ⤩ ▶ ↻ ⓧ 🜨) per the established W17 PR1 / PR3
-  //     "no new icon primitives in this PR" pattern. The visual-stub
-  //     buttons (Lock all / Default / Random / Add / Refresh / Play /
-  //     Shuffle) are clickable but no IPC is wired; toggling locally
-  //     `activeScene` / `activeMedia` is allowed, dispatching to runtime
-  //     is Phase-3+/4a `EV-INTEGRATION-MATRIX` scope.
+  //   - The bundle's `<Icon name="..." />` glyphs now render via the W19
+  //     PR3 vendored `Icon.svelte` SVG primitive instead of Unicode
+  //     placeholders — header buttons (Lock all / Random / Refresh / rail
+  //     Scenes / Presets / Edit / Add / Play / Previous / Next / Shuffle)
+  //     all reference bundle-canonical icon names (`lock` / `random` /
+  //     `refresh` / `list` / `grid` / `edit` / `plus` / `play` / `prev`
+  //     / `next` / `shuffle`) per `components.jsx::Icon`. The MediaCard's
+  //     play-overlay glyph likewise uses `play`. Visual-stub buttons stay
+  //     clickable but no IPC is wired; toggling locally `activeScene` /
+  //     `activeMedia` is allowed, dispatching to runtime is Phase-3+/4a
+  //     `EV-INTEGRATION-MATRIX` scope.
   //   - The W12 PR3 IPC dev surface (control 0 slider + runtime read-back,
   //     16-slot snap grid, preset prev/recall/next, playlist prev/next,
   //     widgets showcase) is retired from Perform. The underlying stores
@@ -61,6 +65,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type PerformMediaCard,
   } from '../data/perform-fixtures';
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
+  import Icon from '../Icon.svelte';
   import { ControlGroup, Fader, Knob, Swatch, Toggle } from '../widgets';
 
   let activeScene = $state<number>(SETLIST_ACTIVE_INDEX);
@@ -107,11 +112,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </h2>
         <span class="panel__spacer" aria-hidden="true"></span>
         <button type="button" class="btn btn--ghost" title="Lock all">
-          <span class="btn__glyph" aria-hidden="true">⌬</span>
+          <Icon name="lock" size={12} />
         </button>
         <button type="button" class="btn btn--ghost">Default</button>
         <button type="button" class="btn btn--ghost">
-          <span class="btn__glyph" aria-hidden="true">⤨</span> Random
+          <Icon name="random" size={12} /> Random
         </button>
       </header>
       <div class="panel__body panel__body--row-scroll">
@@ -128,7 +133,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <span class="panel__spacer" aria-hidden="true"></span>
         <button type="button" class="btn btn--ghost">Default</button>
         <button type="button" class="btn btn--ghost">
-          <span class="btn__glyph" aria-hidden="true">⤨</span> Random
+          <Icon name="random" size={12} /> Random
         </button>
       </header>
       <div class="panel__body panel__body--row-scroll">
@@ -158,7 +163,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
         <span class="panel__spacer" aria-hidden="true"></span>
         <button type="button" class="btn btn--ghost" title="Refresh">
-          <span class="btn__glyph" aria-hidden="true">↻</span>
+          <Icon name="refresh" size={12} />
         </button>
       </header>
       <div class="panel__body media-grid">
@@ -197,7 +202,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             title="Scenes"
             onclick={() => (railMode = 'scenes')}
           >
-            <span class="rail-btn__glyph" aria-hidden="true">≣</span>
+            <Icon name="list" size={13} />
           </button>
           <button
             type="button"
@@ -207,7 +212,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             title="Presets"
             onclick={() => (railMode = 'presets')}
           >
-            <span class="rail-btn__glyph" aria-hidden="true">⊞</span>
+            <Icon name="grid" size={13} />
           </button>
           <button
             type="button"
@@ -217,7 +222,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             title="Edit"
             onclick={() => (railMode = 'edit')}
           >
-            <span class="rail-btn__glyph" aria-hidden="true">✎</span>
+            <Icon name="edit" size={13} />
           </button>
           <button
             type="button"
@@ -227,7 +232,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             title="Add"
             onclick={() => (railMode = 'add')}
           >
-            <span class="rail-btn__glyph" aria-hidden="true">+</span>
+            <Icon name="plus" size={13} />
           </button>
         </div>
         <span class="panel__spacer" aria-hidden="true"></span>
@@ -266,19 +271,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </label>
         <span class="mono scene-panel__timecode">00h 00m 00s</span>
         <button type="button" class="rail-btn rail-btn--small" title="Play setlist">
-          <span class="rail-btn__glyph" aria-hidden="true">▶</span>
+          <Icon name="play" size={12} />
         </button>
       </div>
 
       <div class="scene-panel__nav">
         <button type="button" class="btn btn--full">
-          <span class="btn__glyph" aria-hidden="true">‹</span> Previous
+          <Icon name="prev" size={12} /> Previous
         </button>
         <button type="button" class="btn btn--full">
-          Next <span class="btn__glyph" aria-hidden="true">›</span>
+          Next <Icon name="next" size={12} />
         </button>
         <button type="button" class="btn btn--ghost" title="Shuffle">
-          <span class="btn__glyph" aria-hidden="true">⤬</span>
+          <Icon name="shuffle" size={12} />
         </button>
         <span class="mono scene-panel__auto">auto</span>
       </div>
@@ -357,7 +362,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         aria-hidden="true"
         style="--thumb-hue: {tintAngle(card.seed)}deg;"
       ></span>
-      <span class="media-card__kind" aria-hidden="true">▶</span>
+      <span class="media-card__kind" aria-hidden="true"><Icon name="play" size={14} /></span>
     {/if}
     <span class="media-card__label">{card.label}</span>
   </button>
@@ -509,11 +514,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .btn--full {
     flex: 1;
     justify-content: center;
-  }
-  .btn__glyph {
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-mono-md);
-    line-height: 1;
   }
 
   /* ---------------- Tabs (media filter) ----------------------------------- */
@@ -774,11 +774,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .rail-btn--small {
     width: 24px;
     height: 24px;
-  }
-  .rail-btn__glyph {
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-mono-sm);
-    line-height: 1;
   }
 
   .scene-panel__mode {
