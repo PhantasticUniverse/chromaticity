@@ -356,6 +356,7 @@ name = "chromaticity-app"
 version = "0.0.0"
 dependencies = [
  "chromaticity-runtime",
+ "chromaticity-scene",
  "chromaticity-ui-bridge",
  "serde",
  "serde_json",
