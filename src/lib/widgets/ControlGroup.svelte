@@ -7,10 +7,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Wave-8 visual primitive: control-group container. Renders a header band
   // with the group's name and a category-tinted top border, then yields to a
   // children snippet. The tint maps `name` to a `--color-cat-*` token; names
-  // outside the canonical set fall back to `--color-cat-general`.
+  // outside the canonical set fall back to `--color-cat-general`. Callers
+  // may pass an explicit `tint` prop (a CSS colour or `var(--…)`) to override
+  // the name-based lookup — required for the v0.2 bundle's PerformView whose
+  // group names ("action", "effects", "speed", "push", "dive", "mirror",
+  // "video", "limit colors", "general") do not all overlap with the
+  // canonical `--color-cat-*` keys; the bundle JSX passes `tint` directly
+  // per-group, so the W18 PR1 Perform port mirrors that contract.
   import type { Snippet } from 'svelte';
 
-  let { name, children }: { name: string; children: Snippet } = $props();
+  let { name, tint, children }: { name: string; tint?: string; children: Snippet } = $props();
 
   const TINTS: Record<string, string> = {
     color: 'var(--color-cat-color)',
@@ -20,10 +26,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     limit: 'var(--color-cat-limit)',
     geom: 'var(--color-cat-geom)',
   };
-  const tint = $derived(TINTS[name.toLowerCase()] ?? 'var(--color-cat-general)');
+  const resolvedTint = $derived(tint ?? TINTS[name.toLowerCase()] ?? 'var(--color-cat-general)');
 </script>
 
-<div class="group" style="--tint: {tint}">
+<div class="group" style="--tint: {resolvedTint}">
   <div class="group-head">
     <span class="group-name">{name}</span>
   </div>
