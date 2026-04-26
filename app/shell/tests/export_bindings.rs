@@ -16,7 +16,9 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-use chromaticity_ui_bridge::{ControlId, ControlValue, PresetId, SceneCard, SnapSlotId};
+use chromaticity_ui_bridge::{
+    ControlId, ControlValue, PresetId, SceneCard, SceneSource, SnapSlotId,
+};
 use std::path::PathBuf;
 use ts_rs::TS;
 
@@ -32,4 +34,5 @@ fn export_bindings_to_frontend_tree() {
     SnapSlotId::export_all_to(&out_dir).expect("export SnapSlotId bindings");
     PresetId::export_all_to(&out_dir).expect("export PresetId bindings");
     SceneCard::export_all_to(&out_dir).expect("export SceneCard bindings");
+    SceneSource::export_all_to(&out_dir).expect("export SceneSource bindings");
 }

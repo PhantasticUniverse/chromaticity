@@ -21,7 +21,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { EMPTY_LIBRARY } from '../data/empty-states';
   import EmptyState from '../EmptyState.svelte';
   import type { SceneCard } from '../ipc/bindings';
-  import { fetchSceneCards, getDefaultRoot } from '../stores/library';
+  import { fetchBundledSceneCards, fetchSceneCards, getDefaultRoot } from '../stores/library';
 
   let cards = $state<SceneCard[]>([]);
   let loading = $state(true);
@@ -70,10 +70,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   $effect(() => {
+    // W11 PR2: merge bundled (ship-time) + user-staged scene cards.
+    // `Promise.allSettled` is deliberate — bundled is more reliable
+    // than user (the user root may not exist on a fresh install), so
+    // a failed user-root fetch must not collapse the bundled corpus,
+    // and vice versa.
     void (async () => {
       try {
-        const root = await getDefaultRoot();
-        cards = await fetchSceneCards(root);
+        const [bundledResult, userResult] = await Promise.allSettled([
+          fetchBundledSceneCards(),
+          (async () => fetchSceneCards(await getDefaultRoot()))(),
+        ]);
+
+        const merged: SceneCard[] = [];
+        const errors: string[] = [];
+
+        if (bundledResult.status === 'fulfilled') {
+          merged.push(...bundledResult.value);
+        } else {
+          const reason = bundledResult.reason;
+          errors.push(reason instanceof Error ? reason.message : String(reason));
+        }
+        if (userResult.status === 'fulfilled') {
+          merged.push(...userResult.value);
+        } else {
+          const reason = userResult.reason;
+          errors.push(reason instanceof Error ? reason.message : String(reason));
+        }
+
+        cards = merged;
+        // Only surface an error when both fetches failed — partial
+        // results render as the merged grid.
+        if (merged.length === 0 && errors.length > 0) {
+          error = errors.join('; ');
+        }
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);
       } finally {
@@ -148,7 +178,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <div class="scene-tile__thumbnail-disc"></div>
           </div>
           <div class="scene-tile__meta">
-            <h3 class="scene-tile__title">{card.title || card.id}</h3>
+            <div class="scene-tile__title-row">
+              <h3 class="scene-tile__title">{card.title || card.id}</h3>
+              {#if card.source === 'Bundled'}
+                <span class="scene-tile__builtin" aria-label="bundled scene">BUILT-IN</span>
+              {/if}
+            </div>
             {#if card.credit}
               <p class="scene-tile__credit">{card.credit}</p>
             {/if}
@@ -283,10 +318,27 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     flex-direction: column;
     gap: 2px;
   }
+  .scene-tile__title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    flex-wrap: wrap;
+  }
   .scene-tile__title {
     margin: 0;
     font-size: var(--font-size-body-md);
     color: var(--color-text-0);
+  }
+  .scene-tile__builtin {
+    /* Reuses --color-cat-general; no new theme tokens needed. */
+    background: var(--color-cat-general);
+    color: var(--color-on-primary);
+    border-radius: var(--radius-xs);
+    padding: 1px var(--space-xs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    letter-spacing: var(--letter-spacing-caps-sm);
+    text-transform: uppercase;
   }
   .scene-tile__credit {
     margin: 0;
