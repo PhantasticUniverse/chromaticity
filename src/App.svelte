@@ -17,6 +17,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type SnapState,
   } from './lib/stores/snap';
   import ThemeSwitcher from './lib/ThemeSwitcher.svelte';
+  import { Fader, Knob, Toggle, Swatch, ControlGroup } from './lib/widgets';
 
   const TARGET_ID: ControlId = 0;
   const SLOT_INDICES = Array.from({ length: 16 }, (_, i) => i);
@@ -289,6 +290,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <p class="error">error: {playlistError}</p>
     {/if}
   </section>
+
+  <section class="widgets">
+    <h2>widgets</h2>
+    <ControlGroup name="motion">
+      <Fader value={0.62} label="amount" modulated />
+      <Knob value={0.3} label="speed" showValue />
+      <Toggle value={true} label="enabled" />
+      <Swatch color="#c4ff3d" label="primary" />
+    </ControlGroup>
+  </section>
 </main>
 
 <HotkeyOverlay open={hotkeysOpen} onCloseRequest={() => (hotkeysOpen = false)} />
@@ -378,5 +389,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .topbar {
     margin: var(--space-lg) 0;
+  }
+  .widgets {
+    margin-top: var(--space-4xl);
+  }
+  .widgets h2 {
+    font-size: var(--font-size-display-sm);
+    margin-bottom: var(--space-lg);
   }
 </style>
