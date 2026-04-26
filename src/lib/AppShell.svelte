@@ -40,12 +40,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Wave-19 PR1 promotes the Patch route from the previously-disabled
   // sidebar stub to a full bundle port (`views/Patch.svelte`). Dispatch
   // arm added in bundle ordering (after `osc`, before `settings`).
+  //
+  // Wave-19 PR2 promotes the Import route from the previously-disabled
+  // sidebar stub to a full bundle port (`views/Import.svelte`). Dispatch
+  // arm added in bundle ordering (between `osc` and `patch`). After this
+  // PR every routed entry in the v0.2 sidebar's top section is mounted.
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
   import { routeStore } from './stores/route.svelte';
   import TopBar from './TopBar.svelte';
   import AudioUniforms from './views/AudioUniforms.svelte';
   import Author from './views/Author.svelte';
+  import Import from './views/Import.svelte';
   import Library from './views/Library.svelte';
   import License from './views/License.svelte';
   import MIDI from './views/MIDI.svelte';
@@ -82,6 +88,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <MIDI />
     {:else if routeStore.current === 'osc'}
       <Osc />
+    {:else if routeStore.current === 'import'}
+      <Import />
     {:else if routeStore.current === 'patch'}
       <Patch />
     {:else if routeStore.current === 'settings'}
