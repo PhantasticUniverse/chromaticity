@@ -33,47 +33,52 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // remains disabled in this PR (W19 PR2 sub-agent owns that port in
   // parallel).
   //
-  // Icons remain Unicode glyphs in W16; SVG icon vendoring is W17+.
-  // Glyphs picked for legibility across the three themes (pulse /
-  // atelier / console). Per the auto-memory
-  // `feedback_wireframes_normative_for_ui_ux.md`, the bundle JSX is the
-  // canonical structural reference; the wireframe screenshots in
-  // `v0.2-ui-wireframe-screenshots/pulse/` confirm the same nav set
-  // visually but defer to the JSX when they appear to disagree.
+  // Wave-19 PR3 swaps the Unicode glyph column for the vendored
+  // `Icon.svelte` SVG primitive. The icon-name mapping follows the
+  // bundle's `VIEWS` array verbatim (Chromaticity.html lines 57-71):
+  // perform / library / edit / audio / list / media / midi / link /
+  // plus / cpu / settings / lock / heart, plus user / help in the
+  // bottom section. Each name resolves to a 24×24 viewBox stroke icon
+  // that inherits `currentColor` from the existing button color
+  // cascade, so the Pulse / Atelier / Console theme cycle continues to
+  // work with no additional plumbing.
+  import Icon, { type IconName } from './Icon.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
 
   interface NavEntry {
     readonly route: RouteName;
     readonly label: string;
-    readonly glyph: string;
+    readonly icon: IconName;
   }
 
   interface DisabledEntry {
     readonly label: string;
-    readonly glyph: string;
+    readonly icon: IconName;
     readonly section: 'top' | 'bottom';
   }
 
-  // Order mirrors the v0.2 bundle's `VIEWS` array.
+  // Order and icon-name choices mirror the v0.2 bundle's `VIEWS` array
+  // (Chromaticity.html lines 57-71). The bottom-section names come from
+  // the same file's RailIcon usages (lines 176-177).
   const NAV_TOP: readonly (NavEntry | DisabledEntry)[] = [
-    { route: 'perform', label: 'Perform', glyph: '▶' },
-    { route: 'library', label: 'Library', glyph: '▦' },
-    { route: 'author', label: 'Author', glyph: '✎' },
-    { route: 'audio-uniforms', label: 'Audio', glyph: '〰' },
-    { route: 'playlist', label: 'Playlist', glyph: '☰' },
-    { route: 'sources', label: 'Sources', glyph: '▣' },
-    { route: 'midi', label: 'MIDI', glyph: '♪' },
-    { route: 'osc', label: 'OSC', glyph: '⌘' },
-    { label: 'Import', glyph: '↓', section: 'top' },
-    { route: 'patch', label: 'Patch', glyph: '◫' },
-    { route: 'settings', label: 'Settings', glyph: '⚙' },
-    { route: 'license', label: 'License', glyph: '◆' },
-    { route: 'welcome', label: 'Welcome', glyph: '✦' },
+    { route: 'perform', label: 'Perform', icon: 'perform' },
+    { route: 'library', label: 'Library', icon: 'library' },
+    { route: 'author', label: 'Author', icon: 'edit' },
+    { route: 'audio-uniforms', label: 'Audio', icon: 'audio' },
+    { route: 'playlist', label: 'Playlist', icon: 'list' },
+    { route: 'sources', label: 'Sources', icon: 'media' },
+    { route: 'midi', label: 'MIDI', icon: 'midi' },
+    { route: 'osc', label: 'OSC', icon: 'link' },
+    { label: 'Import', icon: 'plus', section: 'top' },
+    { route: 'patch', label: 'Patch', icon: 'cpu' },
+    { route: 'settings', label: 'Settings', icon: 'settings' },
+    { route: 'license', label: 'License', icon: 'lock' },
+    { route: 'welcome', label: 'Welcome', icon: 'heart' },
   ] as const;
 
   const NAV_BOTTOM: readonly DisabledEntry[] = [
-    { label: 'Account', glyph: '◐', section: 'bottom' },
-    { label: 'Help', glyph: '?', section: 'bottom' },
+    { label: 'Account', icon: 'user', section: 'bottom' },
+    { label: 'Help', icon: 'help', section: 'bottom' },
   ] as const;
 
   function isWired(entry: NavEntry | DisabledEntry): entry is NavEntry {
@@ -94,7 +99,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             title={entry.label}
             onclick={() => routeStore.set(entry.route)}
           >
-            <span class="sidebar-rail__glyph" aria-hidden="true">{entry.glyph}</span>
+            <span class="sidebar-rail__glyph">
+              <Icon name={entry.icon} size={20} />
+            </span>
             <span class="sidebar-rail__label">{entry.label}</span>
           </button>
         {:else}
@@ -105,7 +112,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             disabled
             title="{entry.label} — coming in W17+"
           >
-            <span class="sidebar-rail__glyph" aria-hidden="true">{entry.glyph}</span>
+            <span class="sidebar-rail__glyph">
+              <Icon name={entry.icon} size={20} />
+            </span>
             <span class="sidebar-rail__label">{entry.label}</span>
           </button>
         {/if}
@@ -122,7 +131,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           disabled
           title="{entry.label} — coming in W17+"
         >
-          <span class="sidebar-rail__glyph" aria-hidden="true">{entry.glyph}</span>
+          <span class="sidebar-rail__glyph">
+            <Icon name={entry.icon} size={20} />
+          </span>
           <span class="sidebar-rail__label">{entry.label}</span>
         </button>
       </li>
@@ -190,8 +201,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     cursor: not-allowed;
   }
   .sidebar-rail__glyph {
-    font-size: var(--font-size-display-md);
-    line-height: var(--line-height-tight);
+    /* Icon inherits `currentColor` from the surrounding button text
+     * color cascade; the wrapper just provides a centered flex shell
+     * so the SVG sits visually balanced above the label. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
     color: inherit;
   }
   .sidebar-rail__label {
