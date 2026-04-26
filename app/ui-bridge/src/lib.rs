@@ -193,6 +193,53 @@ pub struct SceneCard {
     pub source: SceneSource,
 }
 
+/// IPC mirror of the W4 [`integrations::osc_adapter::OscHealthState`]
+/// enum.
+///
+/// Surfaces the OSC adapter's bind-retry state machine to the UI per
+/// `docs/08-io-integrations.md` §OSC. The W4 hardening pass added
+/// `Healthy / Recovering / Degraded` to the internal adapter; this
+/// IPC mirror lets the W14 OSC view render the operator-facing
+/// adapter-health pill.
+///
+/// W14 scope: the stub `osc_health_snapshot` command in
+/// `app/shell/src/commands/osc.rs` returns a placeholder
+/// `Healthy / 0 attempted / unbound` snapshot since the OSC adapter
+/// is not yet wired into [`AppState`]. Phase-3 wiring will replace
+/// the stub with a real read-through to the live adapter.
+///
+/// ts-rs renders the enum as a flat string union
+/// (`"Healthy" | "Recovering" | "Degraded"`).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum OscHealthState {
+    Healthy,
+    Recovering,
+    Degraded,
+}
+
+/// IPC-facing snapshot of OSC adapter health metrics.
+///
+/// The W14 OSC view reads this on mount to render the adapter
+/// health pill + listen-address readout. Fields:
+///
+/// - `state` — the W4 `OscHealthState` discriminant, mirroring the
+///   internal bind-retry state machine.
+/// - `attempted_binds` — running count of bind attempts since the
+///   adapter was constructed; consumed by the operator's debug
+///   readout when adapter recovery is in progress.
+/// - `local_addr` — `Some(<addr>)` when the adapter is bound;
+///   `None` when unbound (initial state, or after a fatal
+///   bind-loop exit). Stringified at the IPC boundary because
+///   [`std::net::SocketAddr`] doesn't have a ts-rs binding.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct OscHealthSnapshot {
+    pub state: OscHealthState,
+    pub attempted_binds: u32,
+    pub local_addr: Option<String>,
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {

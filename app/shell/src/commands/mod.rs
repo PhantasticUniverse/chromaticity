@@ -11,6 +11,7 @@
 
 pub mod control;
 pub mod library;
+pub mod osc;
 pub mod playlist;
 pub mod preset;
 pub mod snap;
