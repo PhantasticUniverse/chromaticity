@@ -91,3 +91,25 @@ impl From<chromaticity_runtime::SnapSlotId> for SnapSlotId {
         Self(id.get())
     }
 }
+
+/// IPC-facing wrapper for [`chromaticity_runtime::PresetId`].
+///
+/// Carries the serde + ts-rs derives needed to cross the Tauri command
+/// boundary. Mirrors [`ControlId`]'s transparent-newtype shape: the
+/// engine-side type is a transparent `u32` newtype with no validator,
+/// so both `From` impls are infallible.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PresetId(pub u32);
+
+impl From<PresetId> for chromaticity_runtime::PresetId {
+    fn from(id: PresetId) -> Self {
+        chromaticity_runtime::PresetId(id.0)
+    }
+}
+
+impl From<chromaticity_runtime::PresetId> for PresetId {
+    fn from(id: chromaticity_runtime::PresetId) -> Self {
+        Self(id.0)
+    }
+}
