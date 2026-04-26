@@ -1,0 +1,30 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Transition Shapes",
+  "CREDIT": "chromaticity t2 corpus",
+  "DESCRIPTION": "Carries HARD_TRANSITIONS and SMOOTH_TRANSITIONS declarations exercising the CP-09 entry shapes. Slice-3a flattens these into Scene.extensions for parse-reserve; structured execution lands in a later slice.",
+  "TAGS": ["transition", "hard", "smooth"],
+  "CATEGORIES": ["BUILT-IN", "ABSTRACT"],
+  "CONTROLS": [
+    {
+      "NAME": "mode",
+      "TYPE": "dropdown",
+      "DEFAULT": 0.0,
+      "LABELS": ["calm", "stutter", "burst"],
+      "VALUES": [0, 1, 2]
+    },
+    {
+      "NAME": "fade_amount",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "HARD_TRANSITIONS": [
+    { "UNIFORM": "mode", "VALUES": [0, 1, 2, 2] },
+    { "UNIFORM": "fade_amount", "VALUES": [0.25, 0.5, 0.75] }
+  ],
+  "SMOOTH_TRANSITIONS": [{ "UNIFORMS": ["fade_amount"], "DURATION": 1.5 }],
+  "PASSES": [{ "TARGET": "backbuff" }]
+}

@@ -1,0 +1,46 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Multipass Feedback",
+  "CREDIT": "chromaticity t2 corpus",
+  "DESCRIPTION": "Two-pass feedback chain: an accumulator buffer reads its prior frame and the final pass mixes accumulator with the live signal. Exercises per-pass UNIFORMS canonical bindings and TARGET resolution.",
+  "TAGS": ["multipass", "feedback", "reactive"],
+  "CATEGORIES": ["BUILT-IN", "ABSTRACT"],
+  "CONTROLS": [
+    {
+      "NAME": "feedback_decay",
+      "TYPE": "slider",
+      "DEFAULT": 0.85,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "mix",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "accum",
+      "WIDTH": 1280,
+      "HEIGHT": 720,
+      "FLOAT": true,
+      "WRAP": "clamp",
+      "FILTER": "linear",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" }
+      ]
+    },
+    {
+      "TARGET": "backbuff",
+      "FLOAT": false,
+      "UNIFORMS": [
+        { "NAME": "u_final", "SYMBOL": "syn_FinalPass" },
+        { "NAME": "u_time", "SYMBOL": "TIME" }
+      ]
+    }
+  ]
+}

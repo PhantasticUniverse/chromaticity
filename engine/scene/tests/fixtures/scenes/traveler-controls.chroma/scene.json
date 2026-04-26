@@ -1,0 +1,28 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Traveler Controls",
+  "CREDIT": "chromaticity t2 corpus",
+  "DESCRIPTION": "Three controls using compound TYPE tokens that the slice-3a parser splits on whitespace: a slider traveler, an xy traveler, and a bang counter. Exercises the ADR-008 traveler shape ingestion path; runtime traveler edge semantics remain a later slice.",
+  "TAGS": ["traveler", "compound-type"],
+  "CATEGORIES": ["BUILT-IN", "GEOMETRIC"],
+  "CONTROLS": [
+    {
+      "NAME": "traveler_speed",
+      "TYPE": "slider traveler",
+      "DEFAULT": 0.3,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "anchor",
+      "TYPE": "xy traveler",
+      "DEFAULT": [0.5, 0.5]
+    },
+    {
+      "NAME": "step",
+      "TYPE": "bang counter",
+      "DEFAULT": 0.0
+    }
+  ],
+  "PASSES": []
+}
