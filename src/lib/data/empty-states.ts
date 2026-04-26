@@ -13,6 +13,20 @@
  * Action handlers are W9+ wiring; this module ships copy + types only.
  * The `EmptyState` Svelte primitive consumes these constants and renders
  * the action labels inside `disabled` buttons until W9 routes them.
+ *
+ * Historical: the W16 PR2 sidebar redesign added four stub copy entries
+ * (`EMPTY_WELCOME`, `EMPTY_SOURCES`, `EMPTY_AUDIO_UNIFORMS`,
+ * `EMPTY_LICENSE`) for the newly-routed v0.2 placeholder views. All four
+ * have since been retired alongside their full ports, per the W16 PR3
+ * "sole-consumer dead-code policy" precedent:
+ *   - `EMPTY_WELCOME` retired in W16 PR3 (`Welcome.svelte` from
+ *     `views/onboard.jsx`).
+ *   - `EMPTY_LICENSE` retired in W17 PR2 (`License.svelte` from
+ *     `v02_supplement.jsx::LicenseView`).
+ *   - `EMPTY_SOURCES` retired in W17 PR1 (`Sources.svelte` from
+ *     `views/media.jsx`).
+ *   - `EMPTY_AUDIO_UNIFORMS` retired in W17 PR3 (`AudioUniforms.svelte`
+ *     from `views/audio.jsx`).
  */
 
 export interface EmptyStateAction {
@@ -60,28 +74,4 @@ export const EMPTY_OSC: EmptyStateCopy = {
   body: 'Receive OSC from any device on your network — iPad, TouchOSC, Ableton, QLab, or another Chromaticity instance. Bind a port to start routing messages.',
   primaryAction: { label: 'Bind Port 7000' },
   secondaryAction: { label: 'Choose Port…' },
-};
-
-/*
- * Wave-16 PR2 stub copy for one remaining newly-routed view in the
- * v0.2 sidebar redesign. The remaining entry stands in for the
- * eventual W17+ port of the bundle's `audio.jsx` per-view JSX. Body
- * prose names the canonical bundle source path so the eventual port
- * lands deterministically. Action fields stay `undefined` — this is a
- * placeholder view, not an entrypoint to disabled actions.
- *
- * Three of the original four W16 PR2 stubs have shipped their full
- * ports and the corresponding entries have been removed:
- *   - `EMPTY_WELCOME` removed in W16 PR3 alongside the `Welcome.svelte`
- *     port of `views/onboard.jsx`.
- *   - `EMPTY_LICENSE` removed in W17 PR2 alongside the `License.svelte`
- *     port of `v02_supplement.jsx::LicenseView`.
- *   - `EMPTY_SOURCES` removed in W17 PR1 alongside the `Sources.svelte`
- *     port of `views/media.jsx`. All three retirements followed the
- *     W16 PR3 "sole-consumer dead-code policy" precedent.
- */
-
-export const EMPTY_AUDIO_UNIFORMS: EmptyStateCopy = {
-  title: 'Audio Uniforms view coming in W17+',
-  body: 'Live audio analysis monitor — frequency bands + time uniforms + BPM ring (per v0.2 audio.jsx). Canvas visualizers gate on the audio adapter Phase-3+ wiring.',
 };
