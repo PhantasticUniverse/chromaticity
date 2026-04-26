@@ -61,6 +61,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     port is not wired to the brief's `useEmptyMode` toggle. The
   //     `EMPTY_MIDI_DEVICES` copy in `data/empty-states.ts` remains
   //     unchanged for future reuse if/when an empty-mode route lands.
+  //   - W20 view-internal icon sweep: learn-mode toggle, learn-panel
+  //     header / close, per-row remove, bang glyph, device-settings
+  //     button, BPM-source reorder, snap-mode separators all render
+  //     via the W19 PR3 `Icon.svelte` primitive (`x` / `link` / `bang`
+  //     / `settings` / `caret` / `chevron`) per `views/midi.jsx`.
   import {
     BPM_SYNC_SOURCES,
     MIDI_CAPABILITY,
@@ -80,6 +85,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MidiBindingRow,
     type MidiTabId,
   } from '../data/midi-fixtures';
+  import Icon from '../Icon.svelte';
 
   // Tab state, learn-mode state, snap-mode state, devices allowlist state.
   let activeTab = $state<MidiTabId>('global');
@@ -215,12 +221,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           ? 'Cancel learn mode'
           : 'Click to map — 4s idle fallback offers manual binding when no signal arrives'}
       >
-        {learning ? '✕ Cancel Learn' : '⚡ Click to map'}
+        {#if learning}
+          <Icon name="x" size={12} /> Cancel Learn
+        {:else}
+          <Icon name="link" size={12} /> Click to map
+        {/if}
       </button>
 
       {#if learning}
         <span class="midi__toolbar-hint midi__toolbar-hint--learn">
-          ⚡ Waiting for input — wiggle a CC or press a note.
+          <Icon name="link" size={11} /> Waiting for input — wiggle a CC or press a note.
         </span>
       {:else}
         <span class="midi__toolbar-hint">{MIDI_TAB_HINTS[activeTab]}</span>
@@ -308,7 +318,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                       aria-label="Device settings — {d.name}"
                       title="Device details"
                     >
-                      ⚙
+                      <Icon name="settings" size={11} />
                     </button>
                   </li>
                 {/each}
@@ -474,7 +484,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                       aria-label="Remove binding {row.target}"
                       title="Remove binding"
                     >
-                      ✕
+                      <Icon name="x" size={10} />
                     </button>
                   </td>
                 </tr>
@@ -535,7 +545,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                     {#each [0, 1, 2, 3] as i (i)}
                       <div class="midi__widget midi__widget--bang">
                         <button type="button" class="midi__bang" aria-label="BANG {i}">
-                          <span class="midi__bang-glyph" aria-hidden="true">●</span>
+                          <span class="midi__bang-glyph"><Icon name="bang" size={22} /></span>
                         </button>
                         <span class="midi__widget-label mono">BANG {i}</span>
                       </div>
@@ -574,14 +584,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     {#if learning}
       <article class="midi__panel midi__panel--learn">
         <header class="midi__panel-head midi__panel-head--learn">
-          <h2 class="midi__panel-title midi__panel-title--learn">⚡ Learn Mode</h2>
+          <h2 class="midi__panel-title midi__panel-title--learn">
+            <Icon name="link" size={14} /> Learn Mode
+          </h2>
           <button
             type="button"
             class="midi__btn midi__btn--icon"
             aria-label="Close learn panel"
             onclick={() => (learning = false)}
           >
-            ✕
+            <Icon name="x" size={11} />
           </button>
         </header>
         <div class="midi__panel-body">
@@ -709,21 +721,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <span class="midi__bpm-actions">
                 <button
                   type="button"
-                  class="midi__btn midi__btn--icon"
+                  class="midi__btn midi__btn--icon midi__btn--icon-up"
                   aria-label="Move {src.name} up"
                   disabled={i === 0}
                   title="Reorder — wired post-MVP"
                 >
-                  ↑
+                  <Icon name="caret" size={11} />
                 </button>
                 <button
                   type="button"
-                  class="midi__btn midi__btn--icon"
+                  class="midi__btn midi__btn--icon midi__btn--icon-down"
                   aria-label="Move {src.name} down"
                   disabled={i === BPM_SYNC_SOURCES.length - 1}
                   title="Reorder — wired post-MVP"
                 >
-                  ↓
+                  <Icon name="caret" size={11} />
                 </button>
               </span>
             </li>
@@ -961,6 +973,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     padding: 2px var(--space-xs);
     min-width: 22px;
     line-height: 1;
+  }
+  /* Reuse the chevron-down `caret` glyph for the BPM reorder pair —
+     flipping the up button via transform keeps the icon vocabulary
+     bundle-aligned without introducing a new icon name. */
+  .midi__btn--icon-up :global(svg) {
+    transform: rotate(180deg);
   }
   .midi__btn--grow {
     flex: 1;

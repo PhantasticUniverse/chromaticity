@@ -34,11 +34,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     field — same approach the W16 PR3 Welcome view took for its
   //     `<Preview>` substitution, for the same reason (runtime / scene
   //     crates are not wired through to the UI yet).
+  //   - W20 view-internal icon sweep: Snapshot button, "How to use"
+  //     collapse caret, and the docs deep-link arrow render via the W19
+  //     PR3 vendored `Icon.svelte` primitive (`camera` / `caret` /
+  //     `chevron` / `arrow`) per `views/audio.jsx`. Inline `●` / `○`
+  //     hit-state markers in the band-bar value column have no clean
+  //     bundle Icon mapping and stay as Unicode (font-driven; the
+  //     filled-circle `bang` icon is a different metaphor).
   import {
     AUDIO_UNIFORMS_FIXTURE,
     HOW_TO_USE_BLOCKS,
     type FrequencyBandBar,
   } from '../data/audio-uniform-fixtures';
+  import Icon from '../Icon.svelte';
 
   let streaming = $state<boolean>(AUDIO_UNIFORMS_FIXTURE.streamingActive);
   let docsOpen = $state<boolean>(true);
@@ -123,8 +131,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         >
           {streaming ? 'Freeze' : 'Resume'}
         </button>
-        <button type="button" class="au__btn" disabled title="Snapshot — wired in Phase-3+">
-          Snapshot
+        <button
+          type="button"
+          class="au__btn"
+          disabled
+          aria-label="Snapshot"
+          title="Snapshot — wired in Phase-3+"
+        >
+          <Icon name="camera" size={11} /> Snapshot
         </button>
       </div>
     </header>
@@ -313,7 +327,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         onclick={toggleDocs}
       >
         <span>how to use</span>
-        <span class="au__docs-chevron" aria-hidden="true">{docsOpen ? '▾' : '▸'}</span>
+        <span class="au__docs-chevron" class:au__docs-chevron--collapsed={!docsOpen}>
+          <Icon name={docsOpen ? 'caret' : 'chevron'} size={11} />
+        </span>
       </button>
       {#if docsOpen}
         <div class="au__docs-body">
@@ -337,7 +353,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             </div>
           {/each}
           <a class="au__docs-link mono" href="#audio-uniforms-docs">
-            ↗ Read the Chromaticity Audio Uniforms docs
+            <Icon name="arrow" size={11} /> Read the Chromaticity Audio Uniforms docs
           </a>
         </div>
       {/if}

@@ -29,9 +29,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     honours the wireframe's coloured-tile aesthetic without
   //     coupling to runtime scope. Same pattern as the W16 PR3
   //     Welcome view's blob field.
-  //   - The bundle's `<Icon name="…" />` glyphs render as inline
-  //     Unicode (▣ ◉ ♡ ↻ ▤ ⛶ + ♥ ⋯) per the brief's "no new icon
-  //     primitives in this PR" constraint.
+  //   - W20 view-internal icon sweep: per-collection sidebar glyphs,
+  //     search input, grid/list toggle, sidebar add, inspector tag-add,
+  //     and inspector favourite all render via the W19 PR3 vendored
+  //     `Icon.svelte` primitive. Bundle-canonical names per
+  //     `views/media.jsx` (`folder` / `camera` / `heart` / `refresh` /
+  //     `fullscreen` / `search` / `grid` / `list` / `plus`). The "More"
+  //     three-dot button has no clean bundle Icon mapping and stays as
+  //     `⋯` text per the policy on Unicode-only fallbacks.
   //   - `Add to scene` is a visual stub at this slice (W14+ wires the
   //     real path into Library / Perform when the media adapter lands).
   //   - Heart-favourite and 3-dot (more) buttons are visual-only stubs.
@@ -44,6 +49,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type AssetFormat,
     type MediaAsset,
   } from '../data/sources-fixtures';
+  import Icon from '../Icon.svelte';
 
   let selectedCollectionId = $state<string>(DEFAULT_COLLECTION_ID);
   let selectedAssetId = $state<string>(DEFAULT_ASSET_ID);
@@ -96,7 +102,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         title="Add source — wired in W17+ when the media adapter lands"
         disabled
       >
-        +
+        <Icon name="plus" size={12} />
       </button>
     </header>
     <ul class="sources__collections">
@@ -110,7 +116,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             aria-current={collection.id === selectedCollectionId ? 'true' : undefined}
             onclick={() => selectCollection(collection.id)}
           >
-            <span class="sources__collection-glyph" aria-hidden="true">{collection.glyph}</span>
+            <span class="sources__collection-glyph"><Icon name={collection.icon} size={14} /></span>
             <span class="sources__collection-name">{collection.name}</span>
             <span class="sources__collection-count">{collection.count}</span>
           </button>
@@ -129,7 +135,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
       <div class="sources__grid-toolbar">
         <label class="sources__search">
-          <span class="sources__search-glyph" aria-hidden="true">⌕</span>
+          <span class="sources__search-glyph"><Icon name="search" size={14} /></span>
           <input
             type="search"
             class="sources__search-input"
@@ -151,7 +157,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </select>
         <div class="sources__view-toggle" role="group" aria-label="View mode">
           <button type="button" class="sources__view-btn on" aria-pressed="true" title="Grid view">
-            ▦
+            <Icon name="grid" size={12} />
           </button>
           <button
             type="button"
@@ -160,7 +166,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             title="List view"
             disabled
           >
-            ☰
+            <Icon name="list" size={12} />
           </button>
         </div>
       </div>
@@ -260,7 +266,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             title="Add tag — editing wired in W17+"
             aria-label="Add tag"
           >
-            +
+            <Icon name="plus" size={10} />
           </button>
         </div>
       </section>
@@ -281,7 +287,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           title="Favourite — wired in W17+"
           disabled
         >
-          ♥
+          <Icon name="heart" size={12} />
         </button>
         <button
           type="button"

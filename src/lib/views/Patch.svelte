@@ -29,12 +29,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     graph as a static visual stub. The Auto Layout / Commit / Undo
   //     toolbar buttons remain visible but are no-op stubs (post-Phase-3
   //     scope when the patch-graph runtime adapter lands).
-  //   - Bundle uses an `Icon` component for the toolbar undo / inspector
-  //     midi+link+x+plus glyphs. PR3 in this same wave is porting the
-  //     canonical Icon component; W19 PR1 self-contains by inlining the
-  //     same SVG path data the bundle's `components.jsx::Icon` exposes,
-  //     so no cross-PR import dependency. Post-merge of PR3, a follow-up
-  //     can swap the inline SVG to <Icon name="..." /> if desired.
+  //   - W19 PR1 inlined SVG path data for the toolbar undo + inspector
+  //     midi/link/x/plus glyphs because the canonical `Icon.svelte`
+  //     primitive landed in the same wave (PR3) but had not merged when
+  //     PR1 was authored. W20 view-internal icon sweep now swaps those
+  //     inline `<svg>`s for `<Icon name="..." />` references against the
+  //     vendored union (`undo` / `midi` / `link` / `x` / `plus`) per
+  //     `views/patch.jsx`.
   //   - Palette items render as static visual rows; the bundle's hover
   //     swap to `--surface-sunken` is preserved via `:hover` pseudo, but
   //     the cursor `grab` affordance is stub-level (no real drag).
@@ -59,6 +60,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     PATCH_WIRES,
     patchPinPos,
   } from '../data/patch-fixtures';
+  import Icon from '../Icon.svelte';
 
   // SVG viewbox — scaled to the canonical bundle layout (~1100x600).
   // Wires render in this same coordinate system so the SVG and absolute-
@@ -117,24 +119,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <h2 class="patch__panel-title">Patch · Glitch</h2>
       <span class="patch__canvas-spacer" aria-hidden="true"></span>
       <button type="button" class="patch__btn" title="Undo — wired post-MVP" aria-label="Undo">
-        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
-          <path
-            d="M3 8h7a3 3 0 0 1 0 6H7"
-            stroke="currentColor"
-            stroke-width="1.5"
-            fill="none"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M5 5L3 8l2 3"
-            stroke="currentColor"
-            stroke-width="1.5"
-            fill="none"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <Icon name="undo" size={12} />
       </button>
       <button type="button" class="patch__btn" title="Auto-layout — wired post-MVP">
         Auto Layout
@@ -220,50 +205,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           </div>
           {#if row.source}
             <div class="patch__inspector-source">
-              {#if row.source.icon === 'midi'}
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 16 16"
-                  aria-hidden="true"
-                  class="patch__inspector-icon"
-                >
-                  <circle
-                    cx="8"
-                    cy="8"
-                    r="6"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    fill="none"
-                  />
-                  <circle cx="5" cy="8" r="1" fill="currentColor" />
-                  <circle cx="8" cy="5" r="1" fill="currentColor" />
-                  <circle cx="11" cy="8" r="1" fill="currentColor" />
-                </svg>
-              {:else}
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 16 16"
-                  aria-hidden="true"
-                  class="patch__inspector-icon"
-                >
-                  <path
-                    d="M6 10a3 3 0 0 1 0-4l2-2a3 3 0 0 1 4 4"
-                    stroke="currentColor"
-                    stroke-width="1.4"
-                    fill="none"
-                    stroke-linecap="round"
-                  />
-                  <path
-                    d="M10 6a3 3 0 0 1 0 4l-2 2a3 3 0 0 1-4-4"
-                    stroke="currentColor"
-                    stroke-width="1.4"
-                    fill="none"
-                    stroke-linecap="round"
-                  />
-                </svg>
-              {/if}
+              <span class="patch__inspector-icon"><Icon name={row.source.icon} size={10} /></span>
               <span class="patch__inspector-source-name mono" style="color: {row.source.tint}">
                 {row.source.name}
               </span>
@@ -274,15 +216,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 title="Unroute — wired post-MVP"
                 aria-label="Unroute {row.key}"
               >
-                <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true">
-                  <path
-                    d="M4 4l8 8M12 4l-8 8"
-                    stroke="currentColor"
-                    stroke-width="1.4"
-                    fill="none"
-                    stroke-linecap="round"
-                  />
-                </svg>
+                <Icon name="x" size={10} />
               </button>
             </div>
           {:else}
@@ -294,16 +228,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 class="patch__btn patch__btn--ghost patch__btn--sm"
                 title="Route a source — wired post-MVP"
               >
-                <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true">
-                  <path
-                    d="M8 3v10M3 8h10"
-                    stroke="currentColor"
-                    stroke-width="1.4"
-                    fill="none"
-                    stroke-linecap="round"
-                  />
-                </svg>
-                route
+                <Icon name="plus" size={10} /> route
               </button>
             </div>
           {/if}

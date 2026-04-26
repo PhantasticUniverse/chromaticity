@@ -31,6 +31,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //
   // The W12 theme switcher lives in the Settings view (relocated W14
   // PR3); not duplicated here.
+  //
+  // W20 view-internal icon sweep: CPU / GPU metric chips pick up the
+  // W19 PR3 vendored `Icon.svelte` primitive (`cpu` / `gpu`) per
+  // `extras.jsx`'s `<span className="sb-chip"><Icon name="..." size={10} />`
+  // mapping.
+  import Icon from './Icon.svelte';
 
   const VERSION = '0.0.0';
 
@@ -53,11 +59,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   </span>
   <span class="status-bar__right">
     <span class="status-bar__metric" title="CPU utilization (W15+: real telemetry)">
+      <Icon name="cpu" size={10} />
       <span class="status-bar__metric-label">CPU</span>
       <span class="status-bar__metric-value">{CPU_PCT ?? '—'}</span>
     </span>
     <span class="status-bar__sep" aria-hidden="true">·</span>
     <span class="status-bar__metric" title="GPU utilization (W15+: real telemetry)">
+      <Icon name="gpu" size={10} />
       <span class="status-bar__metric-label">GPU</span>
       <span class="status-bar__metric-value">{GPU_PCT ?? '—'}</span>
     </span>

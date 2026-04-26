@@ -42,6 +42,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //   - The bundle's `localStorage`-backed tab persistence is dropped;
   //     a session-local `$state` is sufficient and avoids storage IO
   //     ahead of the Phase-2 user-settings persistence work.
+  //   - W20 view-internal icon sweep: every toolbar / file-tab / inspector
+  //     glyph now renders via the W19 PR3 vendored `Icon.svelte` SVG
+  //     primitive instead of Unicode placeholders. Bundle-canonical names
+  //     per `views/scene.jsx` (`edit` / `folder` / `copy` / `settings` /
+  //     `camera` / `undo` / `save` / `chevron` / `fullscreen` / `list` /
+  //     `palette` / `sliders` / `plus` / `refresh` / `upload` / `trash` /
+  //     `layers` / `search`). The inspector tab strip's per-tab glyph
+  //     comes from each tab id's bundle rail-button mapping.
   import {
     AUTHOR_CONSOLE_ROWS,
     AUTHOR_CONTROL_EDIT,
@@ -56,6 +64,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type AuthorInspectorTab,
     type AuthorToken,
   } from '../data/author-fixtures';
+  import Icon, { type IconName } from '../Icon.svelte';
   import Fader from '../widgets/Fader.svelte';
 
   let activeFile = $state<AuthorFileTab>('main.glsl');
@@ -71,12 +80,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     'readme.md',
   ];
 
-  const INSPECTOR_TABS: readonly { id: AuthorInspectorTab; label: string; glyph: string }[] = [
-    { id: 'list', label: 'Scenes', glyph: '☰' },
-    { id: 'palette', label: 'Presets', glyph: '◐' },
-    { id: 'edit', label: 'Edit', glyph: '✎' },
-    { id: 'ssf', label: 'Inputs', glyph: '⋮' },
-    { id: 'plus', label: 'Import', glyph: '+' },
+  const INSPECTOR_TABS: readonly { id: AuthorInspectorTab; label: string; icon: IconName }[] = [
+    { id: 'list', label: 'Scenes', icon: 'list' },
+    { id: 'palette', label: 'Presets', icon: 'palette' },
+    { id: 'edit', label: 'Edit', icon: 'edit' },
+    { id: 'ssf', label: 'Inputs', icon: 'sliders' },
+    { id: 'plus', label: 'Import', icon: 'plus' },
   ];
 
   const sourceLines = $derived<readonly string[]>(AUTHOR_FILE_SOURCES[activeFile].split('\n'));
@@ -116,7 +125,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </div>
       <div class="au-author__sceneinfo-body">
         <div class="au-author__sceneinfo-eyebrow">
-          <span class="au-author__eyebrow-glyph" aria-hidden="true">✎</span>
+          <span class="au-author__eyebrow-glyph"><Icon name="edit" size={11} /></span>
           <span>editing</span>
         </div>
         <h2 class="au-author__sceneinfo-title">{AUTHOR_SCENE_META.title}</h2>
@@ -125,16 +134,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </p>
         <div class="au-author__sceneinfo-row">
           <button class="au-author__icon-btn" type="button" disabled title="Open scene folder">
-            <span aria-hidden="true">⌸</span>
+            <Icon name="folder" size={11} />
           </button>
           <button class="au-author__icon-btn" type="button" disabled title="Duplicate scene">
-            <span aria-hidden="true">⎘</span>
+            <Icon name="copy" size={11} />
           </button>
           <button class="au-author__icon-btn" type="button" disabled title="Scene settings">
-            <span aria-hidden="true">⚙</span>
+            <Icon name="settings" size={11} />
           </button>
           <button class="au-author__icon-btn" type="button" disabled title="Capture thumbnail">
-            <span aria-hidden="true">⌖</span>
+            <Icon name="camera" size={11} />
           </button>
         </div>
       </div>
@@ -148,10 +157,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <section class="au-author__panel au-author__editor" aria-label="Scene source editor">
       <div class="au-author__toolbar">
         <button class="au-author__icon-btn" type="button" disabled title="Revert">
-          <span aria-hidden="true">↺</span>
+          <Icon name="undo" size={12} />
         </button>
         <button class="au-author__icon-btn" type="button" disabled title="Save">
-          <span aria-hidden="true">💾</span>
+          <Icon name="save" size={12} />
         </button>
         <span class="au-author__toolbar-warn mono">you have unsaved changes</span>
         <span class="au-author__spacer" aria-hidden="true"></span>
@@ -159,7 +168,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           show Chromaticity docs
         </button>
         <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
-          settings ⚙
+          settings <Icon name="settings" size={10} />
         </button>
       </div>
 
@@ -206,12 +215,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <div class="au-author__console-head">
         <button
           class="au-author__icon-btn"
+          class:au-author__icon-btn--collapsed={!consoleOpen}
           type="button"
           aria-expanded={consoleOpen ? 'true' : 'false'}
           onclick={() => (consoleOpen = !consoleOpen)}
           title={consoleOpen ? 'Collapse console' : 'Expand console'}
         >
-          <span aria-hidden="true">{consoleOpen ? '▾' : '▸'}</span>
+          <Icon name={consoleOpen ? 'caret' : 'chevron'} size={11} />
         </button>
         <span class="au-author__section-label">Console Output</span>
         <span class="au-author__console-led" aria-hidden="true"></span>
@@ -252,15 +262,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <!-- Preview tools (visual stubs) -->
     <div class="au-author__panel au-author__previewtools" role="region" aria-label="Preview tools">
       <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
-        <span aria-hidden="true">▶</span> play
+        <Icon name="play" size={11} /> play
       </button>
       <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
-        <span aria-hidden="true">↺</span> reset
+        <Icon name="undo" size={11} /> reset
       </button>
       <span class="au-author__spacer" aria-hidden="true"></span>
       <span class="au-author__previewtools-fps mono">60 fps</span>
       <button class="au-author__icon-btn" type="button" disabled title="Fullscreen">
-        <span aria-hidden="true">⤢</span>
+        <Icon name="fullscreen" size={12} />
       </button>
     </div>
 
@@ -277,19 +287,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             title={tab.label}
             onclick={() => selectTab(tab.id)}
           >
-            <span aria-hidden="true">{tab.glyph}</span>
+            <Icon name={tab.icon} size={13} />
             <span class="au-author__tab-label">{tab.label}</span>
           </button>
         {/each}
         <span class="au-author__spacer" aria-hidden="true"></span>
         <button class="au-author__icon-btn" type="button" disabled title="Reset inspector">
-          <span aria-hidden="true">↺</span>
+          <Icon name="refresh" size={11} />
         </button>
         <button class="au-author__icon-btn" type="button" disabled title="Open folder">
-          <span aria-hidden="true">⌸</span>
+          <Icon name="folder" size={11} />
         </button>
         <button class="au-author__icon-btn" type="button" disabled title="Export">
-          <span aria-hidden="true">↑</span>
+          <Icon name="upload" size={11} />
         </button>
       </div>
 
@@ -335,10 +345,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                   readonly
                 />
                 <button class="au-author__icon-btn" type="button" disabled title="Capture">
-                  <span aria-hidden="true">⌖</span>
+                  <Icon name="camera" size={11} />
                 </button>
                 <button class="au-author__icon-btn" type="button" disabled title="Open folder">
-                  <span aria-hidden="true">⌸</span>
+                  <Icon name="folder" size={11} />
                 </button>
               </div>
             </label>
@@ -349,17 +359,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <div class="au-author__group-head">
               <button
                 class="au-author__icon-btn"
+                class:au-author__icon-btn--collapsed={!controlsOpen}
                 type="button"
                 aria-expanded={controlsOpen ? 'true' : 'false'}
                 onclick={() => (controlsOpen = !controlsOpen)}
                 title={controlsOpen ? 'Collapse controls' : 'Expand controls'}
               >
-                <span aria-hidden="true">{controlsOpen ? '▾' : '▸'}</span>
+                <Icon name={controlsOpen ? 'caret' : 'chevron'} size={11} />
               </button>
               <h3 class="au-author__subhead">Controls</h3>
               <span class="au-author__spacer" aria-hidden="true"></span>
               <button class="au-author__icon-btn" type="button" disabled title="Add control">
-                <span aria-hidden="true">+</span>
+                <Icon name="plus" size={11} />
               </button>
             </div>
 
@@ -467,7 +478,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                   disabled
                   title="Delete control"
                 >
-                  <span aria-hidden="true">🗑</span>
+                  <Icon name="trash" size={11} />
                 </button>
                 <span class="au-author__spacer" aria-hidden="true"></span>
                 <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
@@ -486,7 +497,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <div class="au-author__passes">
               {#each AUTHOR_RENDER_PASSES as pass (pass.name)}
                 <div class="au-author__pass" class:au-author__pass--main={pass.main}>
-                  <span class="au-author__pass-glyph" aria-hidden="true">▤</span>
+                  <span class="au-author__pass-glyph"><Icon name="layers" size={12} /></span>
                   <span class="mono au-author__pass-name">{pass.name}</span>
                   <span class="au-author__spacer" aria-hidden="true"></span>
                   <span class="mono au-author__pass-meta">{pass.res}</span>
@@ -500,7 +511,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 </div>
               {/each}
               <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
-                <span aria-hidden="true">+</span> Add Pass
+                <Icon name="plus" size={11} /> Add Pass
               </button>
             </div>
           </div>
@@ -527,15 +538,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 <span class="mono au-author__preset-label">{preset.label}</span>
                 <span class="au-author__spacer" aria-hidden="true"></span>
                 <button class="au-author__icon-btn" type="button" disabled title="Edit preset">
-                  <span aria-hidden="true">✎</span>
+                  <Icon name="edit" size={10} />
                 </button>
                 <button class="au-author__icon-btn" type="button" disabled title="Delete preset">
-                  <span aria-hidden="true">🗑</span>
+                  <Icon name="trash" size={10} />
                 </button>
               </div>
             {/each}
             <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
-              <span aria-hidden="true">+</span> Save Current as Preset
+              <Icon name="plus" size={11} /> Save Current as Preset
             </button>
           </div>
         {:else if activeTab === 'ssf'}
@@ -559,7 +570,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                   readonly
                 />
                 <button class="au-author__icon-btn" type="button" disabled title="Search">
-                  <span aria-hidden="true">⌕</span>
+                  <Icon name="search" size={11} />
                 </button>
               </div>
               <div class="au-author__import-actions">
