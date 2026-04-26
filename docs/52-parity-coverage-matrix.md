@@ -52,7 +52,7 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 | Controls (per-node control values) | implemented | `04-runtime-architecture.md` §Core Components; `28-implementation-contract-pack.md` §CP-01 | `engine/runtime/src/state.rs::State::control_value` reads the post-commit value; `app/shell/src/commands/control.rs` exposes the `set_control` / `get_control` Tauri round-trip (PR #94). |
 | Presets (snapshot + recall) | planned:EV-PRESET-PLAYLIST | `03-product-requirements.md` FR-6; `07-control-state-presets.md` | `PresetRecall` exists as an event shape; durable preset state and snapshot semantics are not implemented. |
 | Playlists (advance / rewind / bounds) | planned:EV-PRESET-PLAYLIST | `03-product-requirements.md` FR-6; `08-io-integrations.md` §OSC Conformance Test IDs | `PlaylistAdvance` exists as an event shape, but cursor bounds, wrap, rewind, and persistence are not implemented. |
-| Snap / favslots (16-slot surface) | planned:EV-PRESET-PLAYLIST | `38-scene-library-and-import-spec.md` §8 Evidence; `08-io-integrations.md` §OSC Discovery and Announcement Routes | Snap slot count and OSC surface are specified; runtime storage / save / clear / recall are not implemented. |
+| Snap / favslots (16-slot surface) | implemented | `04-runtime-architecture.md` §Core Components; `38-scene-library-and-import-spec.md` §8 Evidence | `engine/runtime/src/command_bus.rs` defines `Command::SnapRecall` / `SnapSave` / `SnapClear` and their `EventPayload` mirrors (lines 155-159, 185-193); `engine/runtime/src/state.rs::State` applies them via `apply_event` (lines 77-89) and exposes `active_snap_slot` / `snap_slot_saved` accessors (lines 114-122); `app/shell/src/commands/snap.rs` exposes the full Tauri round-trip (PR #98). The OSC discovery / announcement surface remains planned and is not part of the implemented rollup here. |
 | MIDI mappings | planned:EV-INTEGRATION-MATRIX | `08-io-integrations.md` §MIDI Planning Contract | Command shapes can name MIDI as a mapping source, but learn, persistence, reconnect, and adapter behavior are planned. |
 | OSC mappings | planned:EV-INTEGRATION-MATRIX | `08-io-integrations.md` §OSC Planning Contract; `adr/ADR-013-networking-defaults-and-security.md` | OSC defaults/routes have scaffolding; durable mapping state and full route side effects remain planned. |
 | Show bundles | planned:EV-SHOW-BUNDLE-RECOVERY | `22-compatibility-versioning-policy.md` §Package Extensions; `03-product-requirements.md` FR-12 | `.chromaShow` is reserved and not implemented. |
@@ -108,4 +108,4 @@ These counts are informational only; this matrix is not a gate.
 
 | implemented | planned:* | post-MVP | intentionally-rejected | n/a |
 |---:|---:|---:|---:|---:|
-| 11 | 49 | 1 | 4 | 0 |
+| 12 | 48 | 1 | 4 | 0 |
