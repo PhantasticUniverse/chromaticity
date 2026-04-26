@@ -34,11 +34,68 @@
 
 use core::net::{IpAddr, SocketAddr};
 use std::net::UdpSocket;
+use std::time::Duration;
 
 use chromaticity_observability::catalog::{OscAdapterState, OscBindErrorReason, OscPacketOutcome};
 use rosc::{OscPacket, decoder};
 
 use crate::defaults::{DEFAULT_INBOUND_BIND, DEFAULT_MAX_BUNDLE_DEPTH, DEFAULT_MAX_PACKET_BYTES};
+
+/// Maximum [`UdpOscAdapter::bind`] attempts before surrendering.
+///
+/// R-05 mitigation: bounded retry with exponential backoff so transient
+/// `AddressInUse` / `AddressNotAvailable` failures during cold start
+/// (operator unplugged + replugged a controller; OS hasn't released the
+/// previous binding yet) recover without operator intervention. Aligns
+/// with `docs/13-risk-register.md` R-05 "bounded retry and clear
+/// diagnostics" mitigation bullet.
+pub const MAX_BIND_ATTEMPTS: u32 = 5;
+
+/// Backoff schedule between successive bind retries, indexed by the
+/// zero-based attempt count that just failed. Worst-case wall-clock
+/// budget is 100 + 200 + 400 + 800 + 1600 = 3.1 s across the four
+/// inter-attempt sleeps; callers MUST invoke [`UdpOscAdapter::bind`]
+/// off any hot loop. The fifth attempt either succeeds or surfaces
+/// `OscAdapterError::BindFailed` immediately (no trailing sleep).
+const BIND_BACKOFF_MS: [u64; (MAX_BIND_ATTEMPTS - 1) as usize] = [100, 200, 400, 800];
+
+/// Consecutive `RecvFailed` errors in [`UdpOscAdapter::poll`] required
+/// to flip the operational health state to
+/// [`OscHealthState::Degraded`]. Three is the smallest count that
+/// distinguishes a one-off transient (e.g. OS-level interrupt during
+/// recv) from sustained failure that warrants surfacing to operators.
+pub const DEGRADED_AFTER_CONSECUTIVE_RECV_FAILURES: u32 = 3;
+
+/// Operational health of an [`UdpOscAdapter`], orthogonal to the
+/// [`OscAdapterState`] bind-lifecycle enum.
+///
+/// `OscAdapterState` (in [`chromaticity_observability::catalog`])
+/// tracks bind lifecycle for the runtime metric catalog; this enum
+/// tracks operational health within a Bound lifecycle so operators
+/// have a structured signal for "the adapter is still bound but
+/// receiving is unstable" without expanding the catalog label
+/// cardinality. Slice-3 wires this onto a runtime-bus event channel
+/// alongside the existing state-transition emission.
+///
+/// R-05 mitigation: surfaces both the recovering-from-bind-failure
+/// posture and the degraded-recv-path posture as discrete states the
+/// IntegrationHub can route to operator alerts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum OscHealthState {
+    /// Adapter is bound and the recv path is delivering successfully.
+    /// Default state on a fresh successful bind and after any successful
+    /// poll that follows a degraded run.
+    Healthy,
+    /// Bind succeeded only after at least one retry. Stays sticky until
+    /// the next successful poll or unbind so operators can correlate
+    /// the post-recover state with the recorded retry count.
+    Recovering,
+    /// `poll()` saw [`DEGRADED_AFTER_CONSECUTIVE_RECV_FAILURES`]
+    /// consecutive non-WouldBlock recv errors. Cleared by the first
+    /// subsequent successful poll (Accepted / dropped / WouldBlock).
+    Degraded,
+}
 
 /// Errors surfaced by [`UdpOscAdapter`] and by the packet-validation
 /// free function [`validate_packet`].
@@ -181,6 +238,9 @@ pub struct UdpOscAdapter {
     recv_buf: Vec<u8>,
     allowlist: Vec<IpAddr>,
     current_state: OscAdapterState,
+    health_state: OscHealthState,
+    attempted_binds: u32,
+    consecutive_recv_failures: u32,
     outcome_counts: PacketOutcomeCounts,
     state_transition_counts: StateTransitionCounts,
     bind_error_counts: BindErrorCounts,
@@ -260,6 +320,9 @@ impl UdpOscAdapter {
             recv_buf: vec![0u8; DEFAULT_MAX_PACKET_BYTES],
             allowlist: Vec::new(),
             current_state: OscAdapterState::Unbound,
+            health_state: OscHealthState::Healthy,
+            attempted_binds: 0,
+            consecutive_recv_failures: 0,
             outcome_counts: PacketOutcomeCounts::default(),
             state_transition_counts: StateTransitionCounts::default(),
             bind_error_counts: BindErrorCounts::default(),
@@ -276,6 +339,32 @@ impl UdpOscAdapter {
     #[must_use]
     pub fn allowlist_is_empty(&self) -> bool {
         self.allowlist.is_empty()
+    }
+
+    /// Current operational health state.
+    ///
+    /// Distinct from [`OscAdapterState`]: this is the adapter-internal
+    /// recovering / degraded signal that R-05 mitigation surfaces, not
+    /// the bind-lifecycle catalog state. See [`OscHealthState`].
+    #[must_use]
+    pub fn health_state(&self) -> OscHealthState {
+        self.health_state
+    }
+
+    /// Total bind attempts (including the successful one) made on the
+    /// most recent [`bind`] call.
+    ///
+    /// Stays at `0` until the first call to `bind`, and at the count of
+    /// the most recent invocation thereafter (cleared by [`unbind`]).
+    /// Operators / IntegrationHub can use this to distinguish a
+    /// first-shot success (`1`) from a transient-failure recovery
+    /// (`>1`); see [`MAX_BIND_ATTEMPTS`].
+    ///
+    /// [`bind`]: OscAdapter::bind
+    /// [`unbind`]: OscAdapter::unbind
+    #[must_use]
+    pub fn attempted_binds(&self) -> u32 {
+        self.attempted_binds
     }
 
     /// Bound local socket address, or `None` if the adapter is
@@ -523,22 +612,36 @@ impl OscAdapter for UdpOscAdapter {
     fn bind(&mut self, addr: SocketAddr) -> Result<(), Self::Error> {
         let previous_state = self.current_state;
         self.enter_state(OscAdapterState::Binding);
-        let socket = match UdpSocket::bind(addr) {
-            Ok(socket) => socket,
-            Err(e) => {
-                self.record_bind_error(bind_error_reason(&e));
-                self.enter_state(previous_state);
-                return Err(OscAdapterError::BindFailed(e));
+        self.attempted_binds = 0;
+        let mut last_error: Option<std::io::Error> = None;
+        for attempt in 0..MAX_BIND_ATTEMPTS {
+            self.attempted_binds = attempt + 1;
+            match try_bind_once(addr) {
+                Ok(socket) => {
+                    self.socket = Some(socket);
+                    self.enter_state(OscAdapterState::Bound);
+                    self.health_state = if attempt == 0 {
+                        OscHealthState::Healthy
+                    } else {
+                        OscHealthState::Recovering
+                    };
+                    self.consecutive_recv_failures = 0;
+                    return Ok(());
+                }
+                Err(e) => {
+                    self.record_bind_error(bind_error_reason(&e));
+                    last_error = Some(e);
+                    if let Some(backoff_ms) = BIND_BACKOFF_MS.get(attempt as usize) {
+                        std::thread::sleep(Duration::from_millis(*backoff_ms));
+                    }
+                }
             }
-        };
-        if let Err(e) = socket.set_nonblocking(true) {
-            self.record_bind_error(bind_error_reason(&e));
-            self.enter_state(previous_state);
-            return Err(OscAdapterError::BindFailed(e));
         }
-        self.socket = Some(socket);
-        self.enter_state(OscAdapterState::Bound);
-        Ok(())
+        self.enter_state(previous_state);
+        let error = last_error.unwrap_or_else(|| {
+            std::io::Error::other("bind retry loop exited without recording an error")
+        });
+        Err(OscAdapterError::BindFailed(error))
     }
 
     fn unbind(&mut self) -> Result<(), Self::Error> {
@@ -549,6 +652,9 @@ impl OscAdapter for UdpOscAdapter {
         // Dropping the socket releases the OS-level binding.
         self.socket = None;
         self.enter_state(OscAdapterState::Unbound);
+        self.health_state = OscHealthState::Healthy;
+        self.attempted_binds = 0;
+        self.consecutive_recv_failures = 0;
         Ok(())
     }
 
@@ -558,9 +664,28 @@ impl OscAdapter for UdpOscAdapter {
         };
         let (len, _src_addr) = match socket.recv_from(&mut self.recv_buf) {
             Ok(pair) => pair,
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => return Ok(()),
-            Err(e) => return Err(OscAdapterError::RecvFailed(e)),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                // No work; treat as a successful poll for health
+                // purposes so the Degraded sticky-state clears on a
+                // quiescent recv path.
+                self.consecutive_recv_failures = 0;
+                if self.health_state == OscHealthState::Degraded {
+                    self.health_state = OscHealthState::Healthy;
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                self.consecutive_recv_failures = self.consecutive_recv_failures.saturating_add(1);
+                if self.consecutive_recv_failures >= DEGRADED_AFTER_CONSECUTIVE_RECV_FAILURES {
+                    self.health_state = OscHealthState::Degraded;
+                }
+                return Err(OscAdapterError::RecvFailed(e));
+            }
         };
+        // A successful recv clears the consecutive-failure tally and
+        // restores Healthy from any prior Recovering / Degraded.
+        self.consecutive_recv_failures = 0;
+        self.health_state = OscHealthState::Healthy;
         // Slice-2 parses and validates but drops the packet;
         // slice-3 routes it via the hub-facing event channel.
         //
@@ -582,6 +707,16 @@ impl OscAdapter for UdpOscAdapter {
         self.record_outcome(outcome);
         Ok(())
     }
+}
+
+/// Single bind + non-blocking-mode set-up attempt. Factored out of
+/// the retry loop in [`UdpOscAdapter::bind`] so the loop body is one
+/// `Result`-shaped step rather than two; the caller owns counter
+/// updates and backoff.
+fn try_bind_once(addr: SocketAddr) -> Result<UdpSocket, std::io::Error> {
+    let socket = UdpSocket::bind(addr)?;
+    socket.set_nonblocking(true)?;
+    Ok(socket)
 }
 
 fn bind_error_reason(error: &std::io::Error) -> OscBindErrorReason {
