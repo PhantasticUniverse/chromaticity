@@ -29,6 +29,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
   import { routeStore } from './stores/route.svelte';
+  import TopBar from './TopBar.svelte';
   import Author from './views/Author.svelte';
   import Library from './views/Library.svelte';
   import Osc from './views/Osc.svelte';
@@ -38,6 +39,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 </script>
 
 <div class="app-shell">
+  <header class="app-shell__topbar">
+    <TopBar />
+  </header>
   <aside class="app-shell__rail">
     <SidebarRail />
   </aside>
@@ -65,8 +69,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .app-shell {
     display: grid;
     grid-template-columns: 76px 1fr;
-    grid-template-rows: 1fr 28px;
+    grid-template-rows: 36px 1fr 28px;
     grid-template-areas:
+      'topbar topbar'
       'rail main'
       'status status';
     height: 100vh;
@@ -74,6 +79,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: var(--color-bg-0);
     color: var(--color-text-0);
     font-family: var(--font-family-sans);
+  }
+  .app-shell__topbar {
+    grid-area: topbar;
+    overflow: hidden;
   }
   .app-shell__rail {
     grid-area: rail;
