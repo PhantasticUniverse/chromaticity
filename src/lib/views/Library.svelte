@@ -20,8 +20,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   import { EMPTY_LIBRARY } from '../data/empty-states';
   import EmptyState from '../EmptyState.svelte';
+  import ErrorMessage from '../ErrorMessage.svelte';
   import type { SceneCard } from '../ipc/bindings';
   import { fetchBundledSceneCards, fetchSceneCards, getDefaultRoot } from '../stores/library';
+  import { toIpcError } from '../types/ipc-error';
 
   let cards = $state<SceneCard[]>([]);
   let loading = $state(true);
@@ -105,7 +107,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           error = errors.join('; ');
         }
       } catch (err) {
-        error = err instanceof Error ? err.message : String(err);
+        error = toIpcError(err, 'list_scene_packages').message;
       } finally {
         loading = false;
       }
@@ -159,7 +161,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   {#if loading}
     <p class="library__status">loading…</p>
   {:else if error}
-    <p class="library__error">error: {error}</p>
+    <ErrorMessage {error} />
   {:else if cards.length === 0}
     <EmptyState title={EMPTY_LIBRARY.title} body={EMPTY_LIBRARY.body} iconName="library">
       {#snippet actions()}
@@ -213,10 +215,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .library__status {
     color: var(--color-text-2);
-    font-size: var(--font-size-body-sm);
-  }
-  .library__error {
-    color: var(--color-signal-red);
     font-size: var(--font-size-body-sm);
   }
   .library__toolbar {
