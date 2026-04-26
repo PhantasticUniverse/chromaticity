@@ -5,12 +5,14 @@
  *
  * Carries the serde + ts-rs derives needed to cross the Tauri command
  * boundary. The engine-side type validates `0..=15` at construction
- * (`SnapSlotId::MAX == 15`); this newtype carries only the raw `u8`.
+ * (`SnapSlotId::MAX == 15`); this newtype carries only the raw `u8`
+ * because the wire shape is a single number per the ts-rs export.
  *
- * Contract: callers MUST validate the slot via
- * `chromaticity_runtime::SnapSlotId::new(...)` at the IPC boundary
- * BEFORE constructing this wrapper or invoking the
- * `From<SnapSlotId> for chromaticity_runtime::SnapSlotId` impl. The
- * reverse impl from the engine type is always safe.
+ * Validation lives on the conversion edges, not the constructor:
+ * `TryFrom<u8>` enforces `0..=15` when an IPC payload deserializes,
+ * and `TryFrom<SnapSlotId> for chromaticity_runtime::SnapSlotId`
+ * re-validates before the runtime type is constructed. The reverse
+ * `From<chromaticity_runtime::SnapSlotId>` is always infallible
+ * because the runtime constructor already enforces the invariant.
  */
 export type SnapSlotId = number;

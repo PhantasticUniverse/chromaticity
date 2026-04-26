@@ -63,26 +63,54 @@ impl From<chromaticity_runtime::ControlValue> for ControlValue {
 ///
 /// Carries the serde + ts-rs derives needed to cross the Tauri command
 /// boundary. The engine-side type validates `0..=15` at construction
-/// (`SnapSlotId::MAX == 15`); this newtype carries only the raw `u8`.
+/// (`SnapSlotId::MAX == 15`); this newtype carries only the raw `u8`
+/// because the wire shape is a single number per the ts-rs export.
 ///
-/// Contract: callers MUST validate the slot via
-/// `chromaticity_runtime::SnapSlotId::new(...)` at the IPC boundary
-/// BEFORE constructing this wrapper or invoking the
-/// `From<SnapSlotId> for chromaticity_runtime::SnapSlotId` impl. The
-/// reverse impl from the engine type is always safe.
+/// Validation lives on the conversion edges, not the constructor:
+/// `TryFrom<u8>` enforces `0..=15` when an IPC payload deserializes,
+/// and `TryFrom<SnapSlotId> for chromaticity_runtime::SnapSlotId`
+/// re-validates before the runtime type is constructed. The reverse
+/// `From<chromaticity_runtime::SnapSlotId>` is always infallible
+/// because the runtime constructor already enforces the invariant.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct SnapSlotId(pub u8);
 
-impl From<SnapSlotId> for chromaticity_runtime::SnapSlotId {
-    // The IPC handler validates the slot via
-    // `chromaticity_runtime::SnapSlotId::new(...)` BEFORE constructing
-    // this wrapper, so the conversion is infallible by contract. The
-    // targeted `expect_used` allow documents the invariant.
-    #[allow(clippy::expect_used)]
-    fn from(id: SnapSlotId) -> Self {
-        chromaticity_runtime::SnapSlotId::new(id.0)
-            .expect("SnapSlotId already validated at the IPC boundary")
+/// Returned by [`SnapSlotId`]'s fallible conversions when the slot
+/// index lies outside `0..=chromaticity_runtime::SnapSlotId::MAX`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct SnapSlotOutOfRange(pub u8);
+
+impl core::fmt::Display for SnapSlotOutOfRange {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "snap slot {} out of range (max {})",
+            self.0,
+            chromaticity_runtime::SnapSlotId::MAX,
+        )
+    }
+}
+
+impl std::error::Error for SnapSlotOutOfRange {}
+
+impl TryFrom<u8> for SnapSlotId {
+    type Error = SnapSlotOutOfRange;
+
+    fn try_from(slot: u8) -> Result<Self, Self::Error> {
+        if slot <= chromaticity_runtime::SnapSlotId::MAX {
+            Ok(Self(slot))
+        } else {
+            Err(SnapSlotOutOfRange(slot))
+        }
+    }
+}
+
+impl TryFrom<SnapSlotId> for chromaticity_runtime::SnapSlotId {
+    type Error = SnapSlotOutOfRange;
+
+    fn try_from(id: SnapSlotId) -> Result<Self, Self::Error> {
+        chromaticity_runtime::SnapSlotId::new(id.0).ok_or(SnapSlotOutOfRange(id.0))
     }
 }
 
@@ -111,5 +139,127 @@ impl From<PresetId> for chromaticity_runtime::PresetId {
 impl From<chromaticity_runtime::PresetId> for PresetId {
     fn from(id: chromaticity_runtime::PresetId) -> Self {
         Self(id.0)
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod tests {
+    //! Wave-7 round-trip and edge-case coverage for the bridge newtypes.
+    //!
+    //! Pins: bidirectional `From`/`TryFrom` round-trips with the runtime
+    //! types; `SnapSlotId` `0..=15` validation on both fallible edges
+    //! (`TryFrom<u8>` and `TryFrom<SnapSlotId> for runtime::SnapSlotId`);
+    //! transparent JSON shape (single scalar, no tuple wrapping) so the
+    //! Tauri IPC payload matches the ts-rs `type X = number` exports;
+    //! ts-rs type-name stability so an accidental rename surfaces here
+    //! before the committed bindings drift.
+    use super::{ControlId, ControlValue, PresetId, SnapSlotId, SnapSlotOutOfRange};
+    use ts_rs::TS;
+
+    #[test]
+    fn control_id_runtime_round_trip_preserves_value() {
+        let bridge = ControlId(7);
+        let runtime: chromaticity_runtime::ControlId = bridge.into();
+        assert_eq!(runtime, chromaticity_runtime::ControlId(7));
+        let back: ControlId = runtime.into();
+        assert_eq!(back, bridge);
+    }
+
+    #[test]
+    fn control_value_runtime_round_trip_preserves_value() {
+        let bridge = ControlValue(0.25);
+        let runtime: chromaticity_runtime::ControlValue = bridge.into();
+        assert_eq!(runtime, chromaticity_runtime::ControlValue(0.25));
+        let back: ControlValue = runtime.into();
+        assert_eq!(back, bridge);
+    }
+
+    #[test]
+    fn preset_id_runtime_round_trip_preserves_value() {
+        let bridge = PresetId(42);
+        let runtime: chromaticity_runtime::PresetId = bridge.into();
+        assert_eq!(runtime, chromaticity_runtime::PresetId(42));
+        let back: PresetId = runtime.into();
+        assert_eq!(back, bridge);
+    }
+
+    #[test]
+    fn snap_slot_id_runtime_round_trip_preserves_value() {
+        let runtime = chromaticity_runtime::SnapSlotId::new(5).unwrap();
+        let bridge: SnapSlotId = runtime.into();
+        assert_eq!(bridge, SnapSlotId(5));
+        let back = chromaticity_runtime::SnapSlotId::try_from(bridge).unwrap();
+        assert_eq!(back.get(), 5);
+    }
+
+    #[test]
+    fn snap_slot_id_try_from_u8_accepts_zero_through_fifteen() {
+        for slot in 0_u8..=chromaticity_runtime::SnapSlotId::MAX {
+            assert_eq!(SnapSlotId::try_from(slot).unwrap(), SnapSlotId(slot));
+        }
+    }
+
+    #[test]
+    fn snap_slot_id_try_from_u8_rejects_sixteen_and_above() {
+        assert_eq!(
+            SnapSlotId::try_from(16_u8).unwrap_err(),
+            SnapSlotOutOfRange(16),
+        );
+        assert_eq!(
+            SnapSlotId::try_from(u8::MAX).unwrap_err(),
+            SnapSlotOutOfRange(u8::MAX),
+        );
+    }
+
+    #[test]
+    fn snap_slot_id_try_into_runtime_rejects_out_of_range_payload() {
+        // Models a hostile IPC payload that bypassed `TryFrom<u8>` by
+        // constructing the `pub` tuple directly. The runtime-side
+        // conversion MUST refuse the value rather than panic — this is
+        // the latent-panic eviction the W7 audit called out.
+        let hostile = SnapSlotId(16);
+        let result = chromaticity_runtime::SnapSlotId::try_from(hostile);
+        assert_eq!(result.unwrap_err(), SnapSlotOutOfRange(16));
+    }
+
+    #[test]
+    fn control_id_json_round_trip_uses_transparent_scalar() {
+        let json = serde_json::to_string(&ControlId(7)).unwrap();
+        assert_eq!(json, "7");
+        let parsed: ControlId = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, ControlId(7));
+    }
+
+    #[test]
+    fn control_value_json_round_trip_uses_transparent_scalar() {
+        let json = serde_json::to_string(&ControlValue(0.5)).unwrap();
+        assert_eq!(json, "0.5");
+        let parsed: ControlValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, ControlValue(0.5));
+    }
+
+    #[test]
+    fn snap_slot_id_json_round_trip_uses_transparent_scalar() {
+        let json = serde_json::to_string(&SnapSlotId(3)).unwrap();
+        assert_eq!(json, "3");
+        let parsed: SnapSlotId = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, SnapSlotId(3));
+    }
+
+    #[test]
+    fn preset_id_json_round_trip_uses_transparent_scalar() {
+        let json = serde_json::to_string(&PresetId(99)).unwrap();
+        assert_eq!(json, "99");
+        let parsed: PresetId = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, PresetId(99));
+    }
+
+    #[test]
+    fn ts_rs_exported_names_match_committed_bindings() {
+        assert_eq!(<ControlId as TS>::name(), "ControlId");
+        assert_eq!(<ControlValue as TS>::name(), "ControlValue");
+        assert_eq!(<SnapSlotId as TS>::name(), "SnapSlotId");
+        assert_eq!(<PresetId as TS>::name(), "PresetId");
     }
 }
