@@ -19,6 +19,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { SvelteSet } from 'svelte/reactivity';
 
   import { EMPTY_LIBRARY } from '../data/empty-states';
+  import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE, SETLIST_SCENES } from '../data/setlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import ErrorMessage from '../ErrorMessage.svelte';
   import type { SceneCard } from '../ipc/bindings';
@@ -115,94 +116,237 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   });
 </script>
 
-<section class="library">
-  <header class="library__header">
-    <h2>library</h2>
+<div class="library-page">
+  <section class="library">
+    <header class="library__header">
+      <h2>library</h2>
+      {#if !loading && cards.length > 0}
+        <span class="library__count">
+          {filteredCards.length} of {cards.length} scene{cards.length === 1 ? '' : 's'}
+        </span>
+      {/if}
+    </header>
+
     {#if !loading && cards.length > 0}
-      <span class="library__count">
-        {filteredCards.length} of {cards.length} scene{cards.length === 1 ? '' : 's'}
-      </span>
-    {/if}
-  </header>
-
-  {#if !loading && cards.length > 0}
-    <div class="library__toolbar">
-      <input
-        type="search"
-        placeholder="search title, credit, tag…"
-        bind:value={query}
-        class="library__search"
-        aria-label="filter scenes"
-      />
-      <div class="library__chips" role="group" aria-label="category filters">
-        {#each CATEGORIES as cat (cat)}
-          <button
-            type="button"
-            class="library__chip"
-            class:active={activeCategories.has(cat)}
-            aria-pressed={activeCategories.has(cat)}
-            onclick={() => toggleCategory(cat)}
-          >
-            {cat}
-          </button>
-        {/each}
+      <div class="library__toolbar">
+        <input
+          type="search"
+          placeholder="search title, credit, tag…"
+          bind:value={query}
+          class="library__search"
+          aria-label="filter scenes"
+        />
+        <div class="library__chips" role="group" aria-label="category filters">
+          {#each CATEGORIES as cat (cat)}
+            <button
+              type="button"
+              class="library__chip"
+              class:active={activeCategories.has(cat)}
+              aria-pressed={activeCategories.has(cat)}
+              onclick={() => toggleCategory(cat)}
+            >
+              {cat}
+            </button>
+          {/each}
+        </div>
+        <label class="library__size">
+          <span>size</span>
+          <select bind:value={size}>
+            <option value="small">small</option>
+            <option value="medium">medium</option>
+            <option value="large">large</option>
+          </select>
+        </label>
       </div>
-      <label class="library__size">
-        <span>size</span>
-        <select bind:value={size}>
-          <option value="small">small</option>
-          <option value="medium">medium</option>
-          <option value="large">large</option>
-        </select>
-      </label>
-    </div>
-  {/if}
+    {/if}
 
-  {#if loading}
-    <p class="library__status">loading…</p>
-  {:else if error}
-    <ErrorMessage {error} />
-  {:else if cards.length === 0}
-    <EmptyState title={EMPTY_LIBRARY.title} body={EMPTY_LIBRARY.body} iconName="library">
-      {#snippet actions()}
-        <button type="button" disabled>{EMPTY_LIBRARY.primaryAction?.label ?? ''}</button>
-        {#if EMPTY_LIBRARY.secondaryAction}
-          <button type="button" disabled>{EMPTY_LIBRARY.secondaryAction.label}</button>
-        {/if}
-      {/snippet}
-    </EmptyState>
-  {:else}
-    <div class="library__grid" data-size={size}>
-      {#each filteredCards as card (card.id)}
-        <article class="scene-tile">
-          <div class="scene-tile__thumbnail" aria-hidden="true">
-            <!-- Placeholder thumbnail; EV-LIBRARY-THUMBNAIL is Phase-4b. -->
-            <div class="scene-tile__thumbnail-disc"></div>
-          </div>
-          <div class="scene-tile__meta">
-            <div class="scene-tile__title-row">
-              <h3 class="scene-tile__title">{card.title || card.id}</h3>
-              {#if card.source === 'Bundled'}
-                <span class="scene-tile__builtin" aria-label="bundled scene">BUILT-IN</span>
+    {#if loading}
+      <p class="library__status">loading…</p>
+    {:else if error}
+      <ErrorMessage {error} />
+    {:else if cards.length === 0}
+      <EmptyState title={EMPTY_LIBRARY.title} body={EMPTY_LIBRARY.body} iconName="library">
+        {#snippet actions()}
+          <button type="button" disabled>{EMPTY_LIBRARY.primaryAction?.label ?? ''}</button>
+          {#if EMPTY_LIBRARY.secondaryAction}
+            <button type="button" disabled>{EMPTY_LIBRARY.secondaryAction.label}</button>
+          {/if}
+        {/snippet}
+      </EmptyState>
+    {:else}
+      <div class="library__grid" data-size={size}>
+        {#each filteredCards as card (card.id)}
+          <article class="scene-tile">
+            <div class="scene-tile__thumbnail" aria-hidden="true">
+              <!-- Placeholder thumbnail; EV-LIBRARY-THUMBNAIL is Phase-4b. -->
+              <div class="scene-tile__thumbnail-disc"></div>
+            </div>
+            <div class="scene-tile__meta">
+              <div class="scene-tile__title-row">
+                <h3 class="scene-tile__title">{card.title || card.id}</h3>
+                {#if card.source === 'Bundled'}
+                  <span class="scene-tile__builtin" aria-label="bundled scene">BUILT-IN</span>
+                {/if}
+              </div>
+              {#if card.credit}
+                <p class="scene-tile__credit">{card.credit}</p>
               {/if}
             </div>
-            {#if card.credit}
-              <p class="scene-tile__credit">{card.credit}</p>
-            {/if}
-          </div>
-        </article>
+          </article>
+        {/each}
+      </div>
+    {/if}
+  </section>
+
+  <aside class="setlist" aria-label="Setlist">
+    <header class="setlist__head">
+      <span class="setlist__title">Your Setlist</span>
+      <span class="setlist__sep" aria-hidden="true">·</span>
+      <span class="setlist__count">{SETLIST_FIXTURE.length} scenes</span>
+    </header>
+    <ol class="setlist__list">
+      {#each SETLIST_FIXTURE as scene (scene.idx)}
+        <li
+          class="setlist__row"
+          data-tag={scene.tag}
+          class:active={scene.idx === SETLIST_ACTIVE_INDEX}
+        >
+          <span class="setlist__thumb" aria-hidden="true" data-seed={scene.seed}></span>
+          <span class="setlist__name">{scene.name}</span>
+          <span class="setlist__tag" data-tag={scene.tag}>{scene.tag}</span>
+          <span class="setlist__dur">{scene.duration}</span>
+        </li>
       {/each}
-    </div>
-  {/if}
-</section>
+    </ol>
+    <p class="setlist__hint">
+      Hardcoded fixture mirroring v0.2 bundle <code>views/_data.jsx</code> SCENES (12 scenes
+      repeated to 14 cue slots; row {SETLIST_ACTIVE_INDEX} active per JSX). Real setlist persistence +
+      cue-edit IPC is Phase-3 <code>EV-PRESET-PLAYLIST</code> scope.
+      {SETLIST_SCENES.length} unique scenes in the fixture.
+    </p>
+  </aside>
+</div>
 
 <style>
   /* Token-styled scoped CSS. Grid uses CSS directly; ControlGroup is a
    * widget-row primitive and is intentionally NOT reused here. */
+  .library-page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    gap: var(--space-lg);
+    align-items: start;
+  }
   .library {
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
+    min-width: 0;
+  }
+  .setlist {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-line-1);
+    border-radius: var(--radius-sm);
+    padding: var(--space-md);
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 200px);
+    overflow: hidden;
+  }
+  .setlist__head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-xs);
+    padding-bottom: var(--space-xs);
+    border-bottom: 1px solid var(--color-line-1);
+  }
+  .setlist__title {
+    font-size: var(--font-size-body-md);
+    font-weight: 600;
+    color: var(--color-text-0);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .setlist__sep {
+    color: var(--color-text-3);
+  }
+  .setlist__count {
+    color: var(--color-text-2);
+    font-size: var(--font-size-body-xs);
+    font-family: var(--font-family-mono);
+  }
+  .setlist__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .setlist__row {
+    display: grid;
+    grid-template-columns: 24px 1fr max-content max-content;
+    gap: var(--space-xs);
+    align-items: center;
+    padding: var(--space-xs);
+    border-radius: var(--radius-xs);
+    color: var(--color-text-1);
+    font-size: var(--font-size-body-sm);
+    cursor: pointer;
+    transition: background-color 100ms;
+  }
+  .setlist__row:hover {
+    background: var(--color-bg-2);
+  }
+  .setlist__row.active {
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
+    box-shadow: inset 2px 0 0 var(--color-primary);
+  }
+  .setlist__thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-xs);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-line-2));
+    opacity: 0.7;
+  }
+  .setlist__row.active .setlist__thumb {
+    opacity: 1;
+  }
+  .setlist__name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .setlist__tag {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 10px;
+    color: var(--color-text-3);
+    font-family: var(--font-family-mono);
+  }
+  .setlist__tag[data-tag='hot'] {
+    color: var(--color-signal-amber);
+  }
+  .setlist__tag[data-tag='caution'] {
+    color: var(--color-signal-red);
+  }
+  .setlist__dur {
+    color: var(--color-text-3);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .setlist__hint {
+    color: var(--color-text-3);
+    font-size: 10px;
+    line-height: 1.4;
+    margin: 0;
+    padding-top: var(--space-xs);
+    border-top: 1px solid var(--color-line-1);
   }
   .library__header {
     display: flex;
