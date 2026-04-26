@@ -1,0 +1,39 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Demo Spectrum",
+  "CREDIT": "chromaticity demo",
+  "DESCRIPTION": "Three-band spectrum bars with a palette selector and gain trim.",
+  "TAGS": ["audio", "reactive"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "low_band",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "mid_band",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "high_band",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "palette",
+      "TYPE": "dropdown",
+      "DEFAULT": 0.0,
+      "LABELS": ["sunrise", "midnight", "lab"],
+      "VALUES": [0, 1, 2]
+    }
+  ],
+  "PASSES": []
+}
