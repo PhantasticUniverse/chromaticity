@@ -17,7 +17,7 @@
 // SidebarRail's nav button list and AppShell's view dispatch share a
 // single source of truth via exhaustiveness checks.
 
-export type RouteName = 'perform' | 'library' | 'author' | 'settings';
+export type RouteName = 'perform' | 'library' | 'author' | 'playlist' | 'settings';
 
 class RouteStore {
   current: RouteName = $state('perform');
