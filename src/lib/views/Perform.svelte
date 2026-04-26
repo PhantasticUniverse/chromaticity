@@ -13,17 +13,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // delta is that this lives under a routed view container instead
   // of the page root.
   //
-  // The `<ThemeSwitcher>` lives in the Perform header for W12 — moving
-  // it to the StatusBar or a Settings view is W13+. Keeping it here
-  // preserves the muscle memory of operators who used the pre-shell UI
-  // and keeps W12's surface area minimal.
+  // The `<ThemeSwitcher>` lived in the Perform header through W12; W14
+  // PR3 relocates it to the Settings view (the wireframe-aligned home
+  // for theme preferences). Operators reach it via the SETTINGS rail
+  // entry. This matches the bundle's `views/settings.jsx` layout.
   import ErrorMessage from '../ErrorMessage.svelte';
   import type { ControlId, ControlValue, PresetId } from '../ipc/bindings';
   import { dispatchAndRead } from '../stores/control';
   import { dispatchPlaylistAdvanceAndRead, readPlaylistPosition } from '../stores/playlist';
   import { dispatchPresetRecallAndRead, readActivePreset } from '../stores/preset';
   import { clearSnap, readSnapState, recallSnap, saveSnap, type SnapState } from '../stores/snap';
-  import ThemeSwitcher from '../ThemeSwitcher.svelte';
   import { toIpcError } from '../types/ipc-error';
   import { Fader, Knob, Toggle, Swatch, ControlGroup } from '../widgets';
 
@@ -168,7 +167,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <section class="perform">
   <header class="perform__header">
     <h1>Chromaticity</h1>
-    <ThemeSwitcher />
   </header>
   <p class="perform__intro">
     Tauri 2 + Svelte 5 + TypeScript shell — Phase-1 control / snap / preset / playlist IPC

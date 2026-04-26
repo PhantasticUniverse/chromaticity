@@ -24,6 +24,7 @@ export default [
       'node_modules/**',
       'dist/**',
       'target/**',
+      '**/target/**',
       'app/shell/target/**',
       'app/shell/gen/**',
       'build/**',
@@ -31,6 +32,10 @@ export default [
       'generated/**',
       '.svelte-kit/**',
       '.vite/**',
+      // Sub-agent worktree state (`.claude/worktrees/agent-*` checkouts
+      // each carry their own `target/` and `node_modules/` while in
+      // flight; the parent CWD must not lint these).
+      '.claude/**',
       // Clean-room / archive boundaries — never lint these.
       // See docs/29-cleanroom-legal-policy-baseline.md §Clean-room SOP.
       'Contents/**',
