@@ -4,6 +4,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 <script lang="ts">
+  import {
+    CHROMA_FIXTURE_NATIVE,
+    CHROMA_FIXTURE_COMPAT,
+    type ChromaSceneFixture,
+  } from './lib/data/scene-fixtures';
   import HotkeyOverlay from './lib/HotkeyOverlay.svelte';
   import type { ControlId, ControlValue, PresetId } from './lib/ipc/bindings';
   import { dispatchAndRead } from './lib/stores/control';
@@ -17,6 +22,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type SnapState,
   } from './lib/stores/snap';
   import ThemeSwitcher from './lib/ThemeSwitcher.svelte';
+  import Inputs from './lib/views/Inputs.svelte';
   import Library from './lib/views/Library.svelte';
   import { Fader, Knob, Toggle, Swatch, ControlGroup } from './lib/widgets';
 
@@ -44,6 +50,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let playlistError = $state<string | null>(null);
 
   let hotkeysOpen = $state(false);
+
+  let selectedFixtureKey = $state<'native' | 'compat'>('native');
+  const selectedFixture = $derived<ChromaSceneFixture>(
+    selectedFixtureKey === 'native' ? CHROMA_FIXTURE_NATIVE : CHROMA_FIXTURE_COMPAT,
+  );
 
   // Document-level `?` toggle for the hotkey overlay. Pass-through when the
   // user is typing in an input, textarea, or contentEditable surface so we
@@ -305,6 +316,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   <section class="library-section">
     <Library />
   </section>
+
+  <section class="inputs-section">
+    <Inputs scene={selectedFixture} />
+    <label class="inputs-section__picker">
+      <span>fixture</span>
+      <select bind:value={selectedFixtureKey}>
+        <option value="native">native</option>
+        <option value="compat">compat</option>
+      </select>
+    </label>
+  </section>
 </main>
 
 <HotkeyOverlay open={hotkeysOpen} onCloseRequest={() => (hotkeysOpen = false)} />
@@ -404,5 +426,26 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .library-section {
     margin-top: var(--space-4xl);
+  }
+  .inputs-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    margin-top: var(--space-4xl);
+  }
+  .inputs-section__picker {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-1);
+    align-self: flex-start;
+  }
+  .inputs-section__picker select {
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    padding: 2px var(--space-xs);
   }
 </style>
