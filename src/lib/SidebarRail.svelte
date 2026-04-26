@@ -33,15 +33,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // remains disabled in this PR (W19 PR2 sub-agent owns that port in
   // parallel).
   //
-  // Wave-19 PR3 swaps the Unicode glyph column for the vendored
-  // `Icon.svelte` SVG primitive. The icon-name mapping follows the
-  // bundle's `VIEWS` array verbatim (Chromaticity.html lines 57-71):
-  // perform / library / edit / audio / list / media / midi / link /
-  // plus / cpu / settings / lock / heart, plus user / help in the
-  // bottom section. Each name resolves to a 24×24 viewBox stroke icon
-  // that inherits `currentColor` from the existing button color
-  // cascade, so the Pulse / Atelier / Console theme cycle continues to
-  // work with no additional plumbing.
+  // Wave-19 PR3 swapped the Unicode glyph column for the vendored
+  // `Icon.svelte` SVG primitive. Icon-name mapping follows the bundle's
+  // `VIEWS` array verbatim (Chromaticity.html lines 57-71): perform /
+  // library / edit / audio / list / media / midi / link / plus / cpu /
+  // settings / lock / heart, plus user / help in the bottom section.
+  // Each name resolves to a 24×24 viewBox stroke icon that inherits
+  // `currentColor` from the existing button color cascade, so the
+  // Pulse / Atelier / Console theme cycle keeps working unchanged.
+  //
+  // Wave-19 PR2 promotes the Import entry from disabled stub to routed
+  // view; the full bundle port lives in `views/Import.svelte`. After
+  // this PR, every top-section sidebar entry is routed — the only
+  // remaining disabled entries are the bottom-section Account / Help,
+  // both gated on entitlement / support-bundle infrastructure that
+  // lands later.
   import Icon, { type IconName } from './Icon.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
 
@@ -69,7 +75,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { route: 'sources', label: 'Sources', icon: 'media' },
     { route: 'midi', label: 'MIDI', icon: 'midi' },
     { route: 'osc', label: 'OSC', icon: 'link' },
-    { label: 'Import', icon: 'plus', section: 'top' },
+    { route: 'import', label: 'Import', icon: 'plus' },
     { route: 'patch', label: 'Patch', icon: 'cpu' },
     { route: 'settings', label: 'Settings', icon: 'settings' },
     { route: 'license', label: 'License', icon: 'lock' },

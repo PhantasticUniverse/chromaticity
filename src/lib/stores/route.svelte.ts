@@ -37,6 +37,12 @@
 // promotes the previously-disabled Patch sidebar entry to a routed view.
 // Insert position mirrors the bundle's VIEWS ordering (after `osc`,
 // before `settings`).
+//
+// Wave-19 PR2 adds `import` to the union: the W19 Import view full port
+// from `chromaticity-planning/ui-predev-bundle-v0.2-beta/views/import.jsx`
+// promotes the previously-disabled Import sidebar entry to a routed view,
+// closing the v0.2 surface inventory. Insert position mirrors the bundle's
+// VIEWS ordering (between `osc` and `patch`).
 
 export type RouteName =
   | 'perform'
@@ -47,6 +53,7 @@ export type RouteName =
   | 'sources'
   | 'midi'
   | 'osc'
+  | 'import'
   | 'patch'
   | 'settings'
   | 'license'
