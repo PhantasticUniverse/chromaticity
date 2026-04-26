@@ -3,6 +3,7 @@
 
 import { mount } from 'svelte';
 
+import './lib/tokens/tokens.css';
 import App from './App.svelte';
 
 const target = document.getElementById('app');
