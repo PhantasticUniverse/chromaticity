@@ -15,6 +15,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     saveSnap,
     type SnapState,
   } from './lib/stores/snap';
+  import ThemeSwitcher from './lib/ThemeSwitcher.svelte';
 
   const TARGET_ID: ControlId = 0;
   const SLOT_INDICES = Array.from({ length: 16 }, (_, i) => i);
@@ -160,6 +161,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 <main>
   <h1>Chromaticity</h1>
   <p>Tauri 2 + Svelte 5 + TypeScript shell — Phase-1 D3 snap round-trip.</p>
+
+  <div class="topbar">
+    <ThemeSwitcher />
+  </div>
 
   <label class="control">
     <span>control 0</span>
@@ -337,5 +342,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .row {
     display: flex;
     gap: var(--space-sm);
+  }
+  .topbar {
+    margin: var(--space-lg) 0;
   }
 </style>
