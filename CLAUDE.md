@@ -153,7 +153,10 @@ body / footer ≤ 100 chars per line. Scope is mandatory on every commit.
 
 - `dist/.gitkeep` — Tauri's `generate_context!()` macro expands at `cargo check` time and
   reads `frontendDist` via `build.rs`. A missing `dist/` triggers a compile-time panic.
-  `.gitignore` tracks only the sentinel and ignores everything else inside.
+  `.gitignore` tracks only the sentinel and ignores everything else inside. **Note:**
+  `npm run build` (vite build) clobbers the sentinel when emitting fresh artifacts;
+  restore with `git checkout -- dist/.gitkeep` before staging, or you commit the
+  deletion and break `cargo check` on fresh clones. `npm run dev` does not clobber.
 - `app/shell/icons/icon.png` — Tauri config requires a window icon even when
   `bundle.active = false`. The 93-byte transparent placeholder is intentional.
 - `Cargo.lock` — tracked (required for reproducible builds).
