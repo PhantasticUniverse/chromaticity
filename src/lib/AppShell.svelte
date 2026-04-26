@@ -45,6 +45,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // sidebar stub to a full bundle port (`views/Import.svelte`). Dispatch
   // arm added in bundle ordering (between `osc` and `patch`). After this
   // PR every routed entry in the v0.2 sidebar's top section is mounted.
+  //
+  // Wave-21 PR4 mounts `<ConsoleDrawer>` as an overlay layer above the
+  // grid. The drawer's visibility is owned by `consoleStore.isOpen`
+  // (toggled by the StatusBar's Console button). The component renders
+  // nothing when closed, so the cost of always mounting it is a single
+  // top-level `{#if}` evaluation per reactive tick.
+  import ConsoleDrawer from './ConsoleDrawer.svelte';
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
   import { routeStore } from './stores/route.svelte';
@@ -104,6 +111,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <StatusBar />
   </footer>
 </div>
+
+<ConsoleDrawer />
 
 <style>
   .app-shell {

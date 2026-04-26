@@ -36,7 +36,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // W19 PR3 vendored `Icon.svelte` primitive (`cpu` / `gpu`) per
   // `extras.jsx`'s `<span className="sb-chip"><Icon name="..." size={10} />`
   // mapping.
+  //
+  // W21 PR4 wires the Console button to `consoleStore.toggle()`, which
+  // opens the app-level `<ConsoleDrawer>` mounted in `AppShell.svelte`.
+  // The button's `aria-pressed` reflects the open state so screen
+  // readers can announce the drawer's visibility.
   import Icon from './Icon.svelte';
+  import { consoleStore } from './stores/console.svelte';
 
   const VERSION = '0.0.0';
 
@@ -94,7 +100,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <button
       type="button"
       class="status-bar__console"
-      title="Open diagnostics console (W15+: console drawer)"
+      onclick={() => consoleStore.toggle()}
+      aria-pressed={consoleStore.isOpen}
+      title="Toggle diagnostics console drawer"
     >
       Console
     </button>
