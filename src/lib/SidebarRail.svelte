@@ -43,7 +43,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { route: 'playlist', label: 'Playlist', glyph: '☰' },
     { label: 'Media', glyph: '◉', section: 'top' },
     { label: 'MIDI', glyph: '♪', section: 'top' },
-    { label: 'OSC', glyph: '⌘', section: 'top' },
+    { route: 'osc', label: 'OSC', glyph: '⌘' },
     { label: 'Import', glyph: '↓', section: 'top' },
     { route: 'settings', label: 'Settings', glyph: '⚙' },
   ] as const;

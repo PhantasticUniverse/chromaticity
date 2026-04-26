@@ -37,6 +37,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::library::list_bundled_scene_packages,
             commands::library::default_scene_root,
             commands::library::bundled_scene_root,
+            commands::osc::osc_health_snapshot,
         ])
         .run(tauri::generate_context!())
 }
