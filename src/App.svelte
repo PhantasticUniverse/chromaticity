@@ -4,8 +4,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 <script lang="ts">
-  import { EMPTY_LIBRARY } from './lib/data/empty-states';
-  import EmptyState from './lib/EmptyState.svelte';
   import HotkeyOverlay from './lib/HotkeyOverlay.svelte';
   import type { ControlId, ControlValue, PresetId } from './lib/ipc/bindings';
   import { dispatchAndRead } from './lib/stores/control';
@@ -19,6 +17,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type SnapState,
   } from './lib/stores/snap';
   import ThemeSwitcher from './lib/ThemeSwitcher.svelte';
+  import Library from './lib/views/Library.svelte';
   import { Fader, Knob, Toggle, Swatch, ControlGroup } from './lib/widgets';
 
   const TARGET_ID: ControlId = 0;
@@ -303,16 +302,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     </ControlGroup>
   </section>
 
-  <section class="future-views">
-    <h2>future views</h2>
-    <EmptyState title={EMPTY_LIBRARY.title} body={EMPTY_LIBRARY.body} iconName="library">
-      {#snippet actions()}
-        <button type="button" disabled>{EMPTY_LIBRARY.primaryAction?.label}</button>
-        {#if EMPTY_LIBRARY.secondaryAction}
-          <button type="button" disabled>{EMPTY_LIBRARY.secondaryAction.label}</button>
-        {/if}
-      {/snippet}
-    </EmptyState>
+  <section class="library-section">
+    <Library />
   </section>
 </main>
 
@@ -411,11 +402,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     font-size: var(--font-size-display-sm);
     margin-bottom: var(--space-lg);
   }
-  .future-views {
+  .library-section {
     margin-top: var(--space-4xl);
-  }
-  .future-views h2 {
-    font-size: var(--font-size-display-sm);
-    margin-bottom: var(--space-lg);
   }
 </style>

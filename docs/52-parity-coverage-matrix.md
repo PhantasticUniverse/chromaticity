@@ -35,7 +35,7 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 | Feature | Status | Reference | Notes |
 |---|---|---|---|
 | Bundled scenes under `Resources/scenes/` | planned:EV-LIBRARY-BUNDLE-LAYOUT | `38-scene-library-and-import-spec.md` §2.1 | Bundle layout is specified; no bundled scene corpus or bundle-walk assertion is implemented in this tree. |
-| User-folder scanning | planned:EV-LIBRARY-DISCOVERY | `38-scene-library-and-import-spec.md` §2 | Operator-owned scene folder indexing remains planned. |
+| User-folder scanning | implemented | `38-scene-library-and-import-spec.md` §2 | `app/shell/src/commands/library.rs` (PR 112 — `list_scene_packages` + `default_scene_root`); `src/lib/views/Library.svelte` (this PR); `src/lib/stores/library.ts` (PR 112 store cache). |
 | Thumbnails + fallback | planned:EV-LIBRARY-THUMBNAIL | `38-scene-library-and-import-spec.md` §3 | Thumbnail source chain and deterministic regeneration are specified but not implemented. |
 | Search / filter / tag | planned:EV-LIBRARY-DISCOVERY | `38-scene-library-and-import-spec.md` §2 | Full-text search, tags, filters, sort, and index behavior remain planned. |
 | Drag-to-playlist | planned:EV-UX-LIBRARY-CONTRACT | `38-scene-library-and-import-spec.md` §2; `03-product-requirements.md` FR-14 | UX contract coverage exists as a planned gate; runtime playlist mutation is covered separately by `EV-PRESET-PLAYLIST`. |
@@ -108,4 +108,4 @@ These counts are informational only; this matrix is not a gate.
 
 | implemented | planned:* | post-MVP | intentionally-rejected | n/a |
 |---:|---:|---:|---:|---:|
-| 12 | 48 | 1 | 4 | 0 |
+| 13 | 47 | 1 | 4 | 0 |
