@@ -146,7 +146,9 @@ body / footer ≤ 100 chars per line. Scope is mandatory on every commit.
 
 - `Contents/` — clean-room reference material; source tooling must not parse it (see
   `docs/29-cleanroom-legal-policy-baseline.md`).
-- `chromaticity-planning/` — archive-only planning corpus.
+- `chromaticity-planning/` — read-only design + planning references (`.gitignored`,
+  source tooling must not parse them); the `ui-predev-bundle*/` subtrees are active port
+  references for UI/UX work — see "UI design references" below.
 - `LICENSES/` — canonical third-party license text; preserve upstream formatting.
 - `docs/adr/*` and `docs/29-cleanroom-legal-policy-baseline.md` — non-delegable; AO-only
   approval.
@@ -375,6 +377,56 @@ surfaced from the PR #47 `EV-COMPAT-FIXTURE-COVERAGE` scope-correction:
   definitions. A tier-mislabel produces a test module that can't satisfy its row — a
   rollup inconsistency `evidence-tag-lint` surfaces much later than the PR that
   introduced it.
+
+## UI design references — wireframes drive UI/UX work
+
+Two read-only assets in `chromaticity-planning/` define the canonical visual targets for
+every UI/UX decision (`.gitignored` and `.prettierignored`; source tooling must not parse
+them, but `Read` and review are the entire point of the bundle):
+
+- **`chromaticity-planning/ui-predev-bundle-v0.2-beta/`** — design-surface-complete
+  React/JSX bundle (stamped 2026-04-23f, marked partial: design-surface only;
+  engineering-mechanics deferred to dev queue). Per-view JSX under `views/` (perform,
+  library, scene/author, playlist, media, midi, osc, import, settings, audio, patch,
+  onboard) plus shared primitives — `cue_curve.jsx` (cubic bezier transition curve, the
+  W13 PR2 port source), `hotkeys_data.jsx` (canonical 70+ row hotkey vocabulary with the
+  `cap` entitlement field), `empty_states.jsx` (per-view copy), `v02_supplement.jsx`
+  (ChromaCtx + AdapterPill / DegradedBanner / OutputRoutingTile / WatermarkOverlay /
+  LockedRow chrome), `extras.jsx` (ThemeSwitcher / FavslotsBar / SnapBar /
+  ControlHotkeysHint), `screenshot_modal.jsx`, plus `views/_data.jsx` fixture corpus and
+  `styles.css` with all three themes (Pulse / Atelier / Console). The older
+  `ui-predev-bundle/` (v0.1-alpha) sibling exists for historical comparison; the v0.2-beta
+  bundle is canonical.
+- **`chromaticity-planning/ui-predev-bundle/screenshots/`** — wireframe screenshots,
+  numbered: 01-library-scene-grid, 02-author-scene-editor, 03-playlist-cue-table,
+  04-media-library, 05-mappings-midi-pads, 06-osc-link-settings, 07-import-shadertoy-isf.
+  Copied to `.playwright-mcp/wireframe-reference/` with descriptive filenames + an index
+  README during W9 for easier reference during port work.
+
+When scoping a UI/UX wave or PR, read `.playwright-mcp/wireframe-reference/README.md`
+first, then the relevant numbered screenshot, then the corresponding bundle JSX.
+Wireframe-faithful ports are the default; divergences need explicit AO approval. The
+bundle JSX is portable as a structural reference — React patterns (Context, hooks)
+translate to Svelte 5 idioms (stores, runes); the bezier math, hotkey vocabulary, OSC
+route taxonomy, and empty-state copy are pure data and port nearly directly. Per the
+auto-memory `feedback_wireframes_normative_for_ui_ux.md`, this is a load-bearing
+principle, not a stylistic preference — failing to consult the wireframes leads to UX
+work that needs to be redone when shell architecture lands (avoided by W12) or when
+entitlement infrastructure gates components (deferred for W14+).
+
+UI ports already in production: W6 ThemeSwitcher (3-theme cascade); W8 widget primitives
+(Fader / Knob / Toggle / Swatch / ControlGroup) + HotkeyOverlay + EmptyState; W9 Library
+backbone; W10 Inputs Inspector; W11 ErrorMessage primitive + Vitest scaffold + Tauri
+ship-time bundling; W12 app shell (AppShell + 12-icon SidebarRail + StatusBar +
+RouteStore + Perform / Library / Author / Settings views); W13 CueTransitionCurve widget
+
+- Playlist v2 view (first un-disabled bundle-port routed view in the W12 shell). High-
+  leverage W14+ candidates per the post-Phase-1 bundle audit: MIDI view (689 LoC source,
+  wireframe-05), OSC view (395 LoC source, wireframe-06), Audio view (281 LoC source +
+  canvas Spectrum / BpmRing / BeatDots visualizers), Author full port (414 LoC source,
+  requires CodeMirror integration), Adapter UI suite (AdapterPill + DegradedBanner +
+  OutputRoutingTile, entitlement-gated; needs ChromaCtx → Svelte stores migration as
+  prereq).
 
 ## Where authoritative answers live
 
