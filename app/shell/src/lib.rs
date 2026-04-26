@@ -38,6 +38,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::library::default_scene_root,
             commands::library::bundled_scene_root,
             commands::osc::osc_health_snapshot,
+            commands::picker::pick_folder,
         ])
         .run(tauri::generate_context!())
 }
