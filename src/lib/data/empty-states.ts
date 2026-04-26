@@ -63,19 +63,18 @@ export const EMPTY_OSC: EmptyStateCopy = {
 };
 
 /*
- * Wave-16 PR2 stub copy for the four newly-routed views in the v0.2
- * sidebar redesign. Each entry stands in for the eventual W17+ port of
- * the bundle's per-view JSX (`onboard.jsx`, `media.jsx`, `audio.jsx`,
- * and the `LicenseView` component in `v02_supplement.jsx`). Body prose
- * names the canonical bundle source path so the eventual port lands
- * deterministically. Action fields stay `undefined` — these are
- * placeholder views, not entrypoints to disabled actions.
+ * Wave-16 PR2 stub copy for three of the four newly-routed views in
+ * the v0.2 sidebar redesign. Each entry stands in for the eventual
+ * W17+ port of the bundle's per-view JSX (`media.jsx`, `audio.jsx`,
+ * and the `LicenseView` component in `v02_supplement.jsx`). Body
+ * prose names the canonical bundle source path so the eventual port
+ * lands deterministically. Action fields stay `undefined` — these
+ * are placeholder views, not entrypoints to disabled actions.
+ *
+ * The fourth W16 PR2 entry, `EMPTY_WELCOME`, was removed in W16 PR3
+ * when `Welcome.svelte` ported the full hero + quick-start cards
+ * from `views/onboard.jsx` and stopped rendering an `EmptyState`.
  */
-
-export const EMPTY_WELCOME: EmptyStateCopy = {
-  title: 'Welcome view coming in W17+',
-  body: 'First-launch onboarding hero with quick-start cards (per chromaticity-planning/ui-predev-bundle-v0.2-beta/views/onboard.jsx). The W16 PR2 sidebar redesign enables the route; W17 ports the hero content.',
-};
 
 export const EMPTY_SOURCES: EmptyStateCopy = {
   title: 'Sources view coming in W17+',
