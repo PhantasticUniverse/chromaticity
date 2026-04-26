@@ -42,9 +42,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     ADR-011 rendering backend (Phase-2+).
   //   - Bundle's `<SceneStill kind seed>` thumbnails on each Recent
   //     Import row → hue-gradient mini-tile keyed off the row's seed.
-  //   - Bundle's `<Icon name="folder" />` and `<Icon name="edit" />`
-  //     buttons → Unicode glyphs (▤ for folder, ✎ for edit) per
-  //     the brief's "do not import from Icon.svelte" constraint.
+  //   - W19 PR2 left the bundle's `<Icon name="folder" />` and
+  //     `<Icon name="edit" />` buttons as Unicode glyphs (▤ / ✎) per
+  //     the original brief's "do not import from Icon.svelte" constraint.
+  //     W20 view-internal icon sweep replaces those with the W19 PR3
+  //     vendored `Icon.svelte` primitive (`folder` / `edit`).
   //   - Console "clear" button is a visual-only stub (real transcript
   //     management is post-Phase-1 scope).
   //   - Browse / Preview / Import buttons on each converter card are
@@ -64,6 +66,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     RECENT_IMPORTS,
     type ImportConverter,
   } from '../data/import-fixtures';
+  import Icon from '../Icon.svelte';
 
   // Per-card input state. Map keyed on converter id so the state
   // persists when the operator switches cards. Defaults are empty
@@ -130,7 +133,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               title="Browse — wired post-Phase-1 when the file picker lands"
               disabled
             >
-              <span aria-hidden="true">▤</span>
+              <Icon name="folder" size={11} />
             </button>
             <button
               type="button"
@@ -195,7 +198,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               title="Edit — wired post-Phase-1"
               disabled
             >
-              <span aria-hidden="true">✎</span>
+              <Icon name="edit" size={11} />
             </button>
           </li>
         {/each}

@@ -33,6 +33,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Per `feedback_wireframes_normative_for_ui_ux.md`, this is the
   // wireframe-faithful chrome that anchors operator orientation
   // across views.
+  //
+  // W20 view-internal icon sweep: GO LIVE button glyph picks up the W19
+  // PR3 vendored `Icon.svelte` primitive (`play` size 11) per
+  // `Chromaticity.html`'s `<button className="btn go sm" aria-label="Go
+  // live"><Icon name="play" size={11} /> GO LIVE</button>` mapping.
+  import Icon from './Icon.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
 
   // Per-route subtitle. Hardcoded for W15; future enhancement could
@@ -118,7 +124,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       class="top-bar__go-live"
       title="Go live — visual stub in W15; output activation + entitlement check are post-MVP"
     >
-      <span class="top-bar__go-live-glyph" aria-hidden="true">▶</span>
+      <span class="top-bar__go-live-glyph"><Icon name="play" size={11} /></span>
       GO LIVE
     </button>
   </div>
@@ -392,9 +398,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   .top-bar__go-live-glyph {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
     margin-right: 4px;
-    font-size: 10px;
   }
 
   .top-bar__go-live {

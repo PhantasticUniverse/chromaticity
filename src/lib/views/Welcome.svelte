@@ -24,13 +24,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     scene crates which are not yet wired through to the UI; the
   //     gradient honours the wireframe's blurred-blob aesthetic
   //     without coupling to runtime scope.
-  //   - The bundle's `<Icon name="..." />` glyphs are rendered as
-  //     inline Unicode (▶ ▣ +) per the brief's "no new icon primitives
-  //     in this PR" constraint.
+  //   - W16 PR3 rendered the bundle's `<Icon name="..." />` glyphs as
+  //     Unicode placeholders (▶ ▣ +) per the original brief's "no new
+  //     icon primitives in this PR" constraint. W20 view-internal icon
+  //     sweep replaces them with the W19 PR3 vendored `Icon.svelte`
+  //     primitive (`play` / `folder` / `plus` for the three cards;
+  //     `mic` / `note` / `link` for the hint row) per `views/onboard.jsx`.
   //   - LAUNCH on Quick Start routes to Library (operator picks a
   //     scene); LAUNCH on Empty Project routes to Perform (blank-canvas
   //     equivalent today). IMPORT remains disabled until the W17+
   //     Import view ports `views/import.jsx`.
+  import Icon from '../Icon.svelte';
   import { routeStore } from '../stores/route.svelte';
 
   function launchQuickStart(): void {
@@ -64,7 +68,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
     <div class="welcome__cards">
       <article class="welcome-card">
-        <span class="welcome-card__icon" aria-hidden="true">▶</span>
+        <span class="welcome-card__icon"><Icon name="play" size={22} /></span>
         <h2 class="welcome-card__title">Quick Start</h2>
         <p class="welcome-card__body">Load a demo set · webcam input · first scene ready</p>
         <button
@@ -77,7 +81,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </article>
 
       <article class="welcome-card">
-        <span class="welcome-card__icon" aria-hidden="true">▣</span>
+        <span class="welcome-card__icon"><Icon name="folder" size={22} /></span>
         <h2 class="welcome-card__title">Import Setlist</h2>
         <p class="welcome-card__body">Bring an existing show in as JSON or .synx</p>
         <button
@@ -91,7 +95,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </article>
 
       <article class="welcome-card">
-        <span class="welcome-card__icon" aria-hidden="true">+</span>
+        <span class="welcome-card__icon"><Icon name="plus" size={22} /></span>
         <h2 class="welcome-card__title">Empty Project</h2>
         <p class="welcome-card__body">Start from a blank canvas with default scenes</p>
         <button type="button" class="welcome-card__cta" onclick={launchEmptyProject}>
@@ -101,11 +105,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </div>
 
     <p class="welcome__hints">
-      <span class="welcome__hint-item">Audio input required</span>
+      <span class="welcome__hint-item">
+        <Icon name="mic" size={12} /> Audio input required
+      </span>
       <span class="welcome__hint-sep" aria-hidden="true">·</span>
-      <span class="welcome__hint-item">MIDI optional</span>
+      <span class="welcome__hint-item">
+        <Icon name="note" size={12} /> MIDI optional
+      </span>
       <span class="welcome__hint-sep" aria-hidden="true">·</span>
-      <span class="welcome__hint-item">Ableton Link supported</span>
+      <span class="welcome__hint-item">
+        <Icon name="link" size={12} /> Ableton Link supported
+      </span>
     </p>
   </div>
 </section>

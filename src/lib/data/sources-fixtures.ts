@@ -20,7 +20,24 @@
  * (filesystem walk, thumbnail extraction, codec / dimensions / duration
  * probe) is `EV-INTEGRATION-MATRIX` Phase-4a scope; the inspector-side
  * preview render gates on the ADR-011 rendering backend (Phase-2+).
+ *
+ * W20 view-internal icon sweep: per-collection `glyph` Unicode
+ * placeholders are now `icon: IconName` references against the W19
+ * PR3 vendored `Icon.svelte` primitive, mirroring the bundle's
+ * `{ icon: "folder" | "camera" | "heart" | "refresh" | "fullscreen" }`
+ * fields verbatim.
  */
+
+/**
+ * Bundle Icon names referenced by the `SOURCE_COLLECTIONS` rows.
+ * Mirrors the bundle's per-row `icon` field verbatim. A subset of the
+ * full `IconName` union exported by `../Icon.svelte`; spelled as a
+ * string-literal union here so this fixture stays a plain `.ts` file
+ * (importing types from `.svelte` modules through plain `tsc` requires
+ * loader-aware tooling — Svelte-side consumers re-typecheck against
+ * `IconName` via the `Icon` component boundary).
+ */
+type SourceCollectionIcon = 'folder' | 'camera' | 'heart' | 'refresh' | 'fullscreen';
 
 /** A logical source collection rendered in the left sidebar. */
 export interface SourceCollection {
@@ -29,9 +46,9 @@ export interface SourceCollection {
   readonly name: string;
   /** Asset count chip rendered on the right of each row. */
   readonly count: number;
-  /** Glyph hint — single-character placeholder until W17+ adopts the
-   * bundle's `<Icon name="..." />` primitive. */
-  readonly glyph: string;
+  /** Bundle Icon name (per `chromaticity-planning/.../media.jsx`).
+   * Drives the W19 PR3 vendored `<Icon name="..." />` primitive. */
+  readonly icon: SourceCollectionIcon;
   /** Optional capability gate (mirrors the bundle's `data-cap` attr).
    * Present on rows that need an entitlement (camera capture, screen
    * capture); the entitlement infrastructure is Phase-4+ scope. */
@@ -50,15 +67,15 @@ export interface SourceCollection {
  *   { n: "Desktop Capture",   c:   1, icon: "fullscreen" },
  */
 export const SOURCE_COLLECTIONS: readonly SourceCollection[] = [
-  { id: 'all-media', name: 'All Media', count: 247, glyph: '▣' },
-  { id: 'live-sources', name: 'Live Sources', count: 3, glyph: '◉', cap: 'io.camera' },
-  { id: 'favorites', name: 'Favorites', count: 42, glyph: '♡' },
-  { id: 'recently-added', name: 'Recently Added', count: 14, glyph: '↻' },
-  { id: 'd-media', name: 'D:\\Media', count: 136, glyph: '▤' },
-  { id: 'd-media-loops', name: 'D:\\Media\\Loops', count: 44, glyph: '▤' },
-  { id: 'd-media-stills', name: 'D:\\Media\\Stills', count: 67, glyph: '▤' },
-  { id: 'd-stock-textures', name: 'D:\\Stock\\Textures', count: 18, glyph: '▤' },
-  { id: 'desktop-capture', name: 'Desktop Capture', count: 1, glyph: '⛶' },
+  { id: 'all-media', name: 'All Media', count: 247, icon: 'folder' },
+  { id: 'live-sources', name: 'Live Sources', count: 3, icon: 'camera', cap: 'io.camera' },
+  { id: 'favorites', name: 'Favorites', count: 42, icon: 'heart' },
+  { id: 'recently-added', name: 'Recently Added', count: 14, icon: 'refresh' },
+  { id: 'd-media', name: 'D:\\Media', count: 136, icon: 'folder' },
+  { id: 'd-media-loops', name: 'D:\\Media\\Loops', count: 44, icon: 'folder' },
+  { id: 'd-media-stills', name: 'D:\\Media\\Stills', count: 67, icon: 'folder' },
+  { id: 'd-stock-textures', name: 'D:\\Stock\\Textures', count: 18, icon: 'folder' },
+  { id: 'desktop-capture', name: 'Desktop Capture', count: 1, icon: 'fullscreen' },
 ];
 
 /** Default-active sidebar row per the bundle JSX `active: true` flag. */

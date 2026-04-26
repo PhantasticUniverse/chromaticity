@@ -24,6 +24,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // and documented inline. Cue selection and inspector tabs / chips /
   // toggles flip local component state; W14+ will wire IPC persistence
   // when the cue model lands runtime-side.
+  //
+  // W20 view-internal icon sweep: playlist sidebar row glyphs (`▶` /
+  // `☰`) now render via the W19 PR3 vendored `Icon.svelte` primitive
+  // (`play` / `list`) per `views/playlist.jsx`'s
+  // `<Icon name={active ? "play" : "list"} size={12} />` mapping.
   import { EMPTY_PLAYLIST_CUES } from '../data/empty-states';
   import {
     PLAYLISTS,
@@ -32,6 +37,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type CueTransitionKind,
   } from '../data/playlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
+  import Icon from '../Icon.svelte';
   import { CueTransitionCurve } from '../widgets';
   import type { CueKind } from '../widgets/cue-transition-curve.math';
 
@@ -114,8 +120,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             aria-current={playlist.id === selectedPlaylistId ? 'true' : undefined}
             onclick={() => selectPlaylist(playlist.id)}
           >
-            <span class="playlist-view__list-glyph" aria-hidden="true">
-              {playlist.id === selectedPlaylistId ? '▶' : '☰'}
+            <span class="playlist-view__list-glyph">
+              <Icon name={playlist.id === selectedPlaylistId ? 'play' : 'list'} size={12} />
             </span>
             <span class="playlist-view__list-name">{playlist.name}</span>
           </button>

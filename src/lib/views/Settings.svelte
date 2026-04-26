@@ -32,7 +32,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //   - Diagnostics + entitlement toggles are visually credible but
   //     `disabled` with tooltip; W15+ wires them.
   //   - Single-column scrollable layout (no internal tabs / sidebars).
+  //   - W20 view-internal icon sweep: the "Generate Support Bundle"
+  //     diagnostics button picks up the W19 PR3 vendored `Icon.svelte`
+  //     primitive (`save`) per `views/settings.jsx`'s `<Icon name="save"
+  //     size={12} />` mapping.
   import { HOTKEYS } from '../data/hotkeys';
+  import Icon from '../Icon.svelte';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
 </script>
 
@@ -140,7 +145,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         disabled
         title="Generates a support bundle (logs + scene state + adapter health) in W15+"
       >
-        Generate Support Bundle
+        <Icon name="save" size={12} /> Generate Support Bundle
       </button>
       <button type="button" disabled title="Tail-style log viewer arrives in W15+">
         View Logs
