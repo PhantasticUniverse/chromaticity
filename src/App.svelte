@@ -160,7 +160,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 <main>
   <h1>Chromaticity</h1>
-  <p>Tauri 2 + Svelte 5 + TypeScript shell — Phase-1 D3 snap round-trip.</p>
+  <p>
+    Tauri 2 + Svelte 5 + TypeScript shell — Phase-1 control / snap / preset / playlist IPC
+    round-trips with three-theme token spread.
+  </p>
 
   <div class="topbar">
     <ThemeSwitcher />

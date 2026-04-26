@@ -17,6 +17,8 @@ This registry is the canonical source of truth for phase-gate evidence requireme
 
 ## Evidence Catalog and Gate Ledger
 
+**Note on UX-contract rows.** Rows `EV-UX-*-CONTRACT` and `EV-HOTKEY-PARITY-DESIGN` carry verbatim-identical "Last Passing Run" prose because they all snapshot the same AO-local UX bundle status (governed by `43-development-standards.md` §18.1). The duplication is intentional — these contracts advance in lockstep with one shared dev-team-queue gate. Per-row individuation lands only when individual contracts diverge past the queue.
+
 | Evidence ID | Purpose | Generation Source | Owner Workcell | Gate Usage | Profile Scope | Status | Artifact Location | Last Passing Run | Approver |
 |---|---|---|---|---|---|---|---|---|---|
 | `EV-ARCH-CONTRACT-BASELINE` | Validate frozen implementation contract pack and ADR closure | Contract baseline checklist + ADR reference audit | Xavier Butler | Phase 0 exit | All profiles | InProgress | `doc-path:docs/adr/ADR-011-rendering-backend.md` + `doc-path:docs/adr/ADR-012-script-sandbox-engine.md` + `doc-path:docs/adr/ADR-013-networking-defaults-and-security.md` + `doc-path:docs/adr/ADR-014-signing-notarization-auto-update.md` + `doc-path:docs/adr/ADR-015-reference-app-user-data-import.md` + `doc-path:docs/adr/ADR-016-observability-and-telemetry-posture.md` + `doc-path:docs/adr/ADR-018-non-scene-ui-toolkit.md` (all Accepted). Pending: formal baseline-checklist instantiation with per-ADR sign-off line and full contract-pack audit closure. | `none (InProgress; all gating ADRs merged)` | Xavier Butler |

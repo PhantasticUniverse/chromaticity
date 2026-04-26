@@ -18,6 +18,7 @@ Thumbs.db
 .claude/
 .codex/
 .aider*
+.playwright-mcp/
 
 # -----------------------------------------------------------------------------
 # Archive-only planning corpus and clean-room reference material.
