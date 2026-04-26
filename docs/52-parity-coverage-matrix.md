@@ -37,7 +37,7 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 | Bundled scenes under `Resources/scenes/` | planned:EV-LIBRARY-BUNDLE-LAYOUT | `38-scene-library-and-import-spec.md` §2.1 | Bundle layout is specified; no bundled scene corpus or bundle-walk assertion is implemented in this tree. |
 | User-folder scanning | implemented | `38-scene-library-and-import-spec.md` §2 | `app/shell/src/commands/library.rs` (PR 112 — `list_scene_packages` + `default_scene_root`); `src/lib/views/Library.svelte` (this PR); `src/lib/stores/library.ts` (PR 112 store cache). |
 | Thumbnails + fallback | planned:EV-LIBRARY-THUMBNAIL | `38-scene-library-and-import-spec.md` §3 | Thumbnail source chain and deterministic regeneration are specified but not implemented. |
-| Search / filter / tag | planned:EV-LIBRARY-DISCOVERY | `38-scene-library-and-import-spec.md` §2 | Full-text search, tags, filters, sort, and index behavior remain planned. |
+| Search / filter / tag | implemented | `38-scene-library-and-import-spec.md` §2; §4 | `src/lib/views/Library.svelte` (this PR — substring search across title/credit/description/tags, 8 hardcoded category chips, and a small/medium/large size selector); §4 catalog promotion will replace the hardcoded chip list with a dynamic curated vocabulary loaded from the registry (TODO comment in source). |
 | Drag-to-playlist | planned:EV-UX-LIBRARY-CONTRACT | `38-scene-library-and-import-spec.md` §2; `03-product-requirements.md` FR-14 | UX contract coverage exists as a planned gate; runtime playlist mutation is covered separately by `EV-PRESET-PLAYLIST`. |
 | Preset launch from library | planned:EV-UX-LIBRARY-CONTRACT | `38-scene-library-and-import-spec.md` §2; `03-product-requirements.md` FR-6 / FR-14 | Launch-with-preset is a library UX and runtime state handshake; neither is complete. |
 | Shadertoy conversion + diagnostics | planned:EV-IMPORT-SHADERTOY | `38-scene-library-and-import-spec.md` §5.1 | Conversion scaffolding, asset mapping, and actionable diagnostics remain planned. |
@@ -108,4 +108,4 @@ These counts are informational only; this matrix is not a gate.
 
 | implemented | planned:* | post-MVP | intentionally-rejected | n/a |
 |---:|---:|---:|---:|---:|
-| 13 | 47 | 1 | 4 | 0 |
+| 14 | 46 | 1 | 4 | 0 |

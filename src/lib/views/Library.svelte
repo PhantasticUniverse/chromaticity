@@ -11,8 +11,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `.chroma` packages — common on a fresh build host — the EMPTY_LIBRARY
   // copy bundle renders the Wave-8 EmptyState primitive with disabled
   // action buttons; W9 PR3 wires those handlers. Thumbnail tiles render a
-  // placeholder disc per `EV-LIBRARY-THUMBNAIL` (Phase-4b) and the search
-  // / filter surface per `EV-LIBRARY-DISCOVERY` row 40 lands in W9 PR3.
+  // placeholder disc per `EV-LIBRARY-THUMBNAIL` (Phase-4b). Search input,
+  // 8 hardcoded category chips, and a small/medium/large size selector
+  // realize `EV-LIBRARY-DISCOVERY` row 40 (default-root + hardcoded-
+  // categories scope; dynamic vocabulary is gated on docs/38 §4 catalog
+  // promotion).
+  import { SvelteSet } from 'svelte/reactivity';
+
   import { EMPTY_LIBRARY } from '../data/empty-states';
   import EmptyState from '../EmptyState.svelte';
   import type { SceneCard } from '../ipc/bindings';
@@ -21,6 +26,48 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let cards = $state<SceneCard[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+
+  const CATEGORIES = [
+    'BUILT-IN',
+    'ABSTRACT',
+    'GEOMETRIC',
+    'ORGANIC',
+    'GLITCH',
+    '3D',
+    'AUDIO REACTIVE',
+    'TEXT',
+  ] as const;
+  // TODO: docs/38 §4 catalog promotion will replace this hardcoded list with
+  // a curated base tag vocabulary loaded from the registry.
+
+  let query = $state('');
+  const activeCategories = new SvelteSet<string>();
+  let size = $state<'small' | 'medium' | 'large'>('medium');
+
+  const filteredCards = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    return cards.filter((card) => {
+      if (q) {
+        const haystack = [card.title, card.credit, card.description, ...card.tags]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (activeCategories.size > 0) {
+        const matches = card.categories.some((c) => activeCategories.has(c.toUpperCase()));
+        if (!matches) return false;
+      }
+      return true;
+    });
+  });
+
+  function toggleCategory(cat: string) {
+    if (activeCategories.has(cat)) {
+      activeCategories.delete(cat);
+    } else {
+      activeCategories.add(cat);
+    }
+  }
 
   $effect(() => {
     void (async () => {
@@ -40,9 +87,44 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <header class="library__header">
     <h2>library</h2>
     {#if !loading && cards.length > 0}
-      <span class="library__count">{cards.length} scene{cards.length === 1 ? '' : 's'}</span>
+      <span class="library__count">
+        {filteredCards.length} of {cards.length} scene{cards.length === 1 ? '' : 's'}
+      </span>
     {/if}
   </header>
+
+  {#if !loading && cards.length > 0}
+    <div class="library__toolbar">
+      <input
+        type="search"
+        placeholder="search title, credit, tag…"
+        bind:value={query}
+        class="library__search"
+        aria-label="filter scenes"
+      />
+      <div class="library__chips" role="group" aria-label="category filters">
+        {#each CATEGORIES as cat (cat)}
+          <button
+            type="button"
+            class="library__chip"
+            class:active={activeCategories.has(cat)}
+            aria-pressed={activeCategories.has(cat)}
+            onclick={() => toggleCategory(cat)}
+          >
+            {cat}
+          </button>
+        {/each}
+      </div>
+      <label class="library__size">
+        <span>size</span>
+        <select bind:value={size}>
+          <option value="small">small</option>
+          <option value="medium">medium</option>
+          <option value="large">large</option>
+        </select>
+      </label>
+    </div>
+  {/if}
 
   {#if loading}
     <p class="library__status">loading…</p>
@@ -58,8 +140,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       {/snippet}
     </EmptyState>
   {:else}
-    <div class="library__grid">
-      {#each cards as card (card.id)}
+    <div class="library__grid" data-size={size}>
+      {#each filteredCards as card (card.id)}
         <article class="scene-tile">
           <div class="scene-tile__thumbnail" aria-hidden="true">
             <!-- Placeholder thumbnail; EV-LIBRARY-THUMBNAIL is Phase-4b. -->
@@ -102,10 +184,75 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     color: var(--color-signal-red);
     font-size: var(--font-size-body-sm);
   }
+  .library__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    align-items: center;
+  }
+  .library__search {
+    flex: 1 1 240px;
+    min-width: 200px;
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--font-size-body-sm);
+  }
+  .library__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+  }
+  .library__chip {
+    background: var(--color-bg-3);
+    color: var(--color-text-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    padding: 2px var(--space-sm);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-sm);
+    cursor: pointer;
+    transition:
+      background 0.12s ease,
+      color 0.12s ease;
+  }
+  .library__chip:hover {
+    background: var(--color-bg-4);
+  }
+  .library__chip.active {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    border-color: var(--color-primary);
+  }
+  .library__size {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-1);
+  }
+  .library__size select {
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    padding: 2px var(--space-xs);
+  }
   .library__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: var(--space-md);
+  }
+  .library__grid[data-size='small'] {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+  .library__grid[data-size='medium'] {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+  .library__grid[data-size='large'] {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   }
   .scene-tile {
     background: var(--color-bg-2);
