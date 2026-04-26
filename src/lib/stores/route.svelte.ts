@@ -25,6 +25,12 @@
 // the full node-graph port is W17+ scope and the sidebar entry remains
 // disabled until then. Member ordering follows the bundle's VIEWS
 // declaration order.
+//
+// Wave-18 PR3 adds `midi` to the union: the W18 MIDI view full port from
+// `chromaticity-planning/ui-predev-bundle-v0.2-beta/views/midi.jsx`
+// promotes the previously-disabled MIDI sidebar entry to a routed view.
+// Insert position mirrors the bundle's VIEWS ordering (between `sources`
+// and `osc`).
 
 export type RouteName =
   | 'perform'
@@ -33,6 +39,7 @@ export type RouteName =
   | 'audio-uniforms'
   | 'playlist'
   | 'sources'
+  | 'midi'
   | 'osc'
   | 'settings'
   | 'license'

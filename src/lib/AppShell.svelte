@@ -32,6 +32,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // / Audio Uniforms / License) per the v0.2 sidebar redesign. Each
   // stub renders an `EmptyState`; W17+ replaces each with a full port
   // of its respective bundle JSX.
+  //
+  // Wave-18 PR3 promotes the MIDI route from the previously-disabled
+  // sidebar stub to a full bundle port (`views/MIDI.svelte`). Dispatch
+  // arm added in bundle ordering (after `sources`, before `osc`).
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
   import { routeStore } from './stores/route.svelte';
@@ -40,6 +44,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Author from './views/Author.svelte';
   import Library from './views/Library.svelte';
   import License from './views/License.svelte';
+  import MIDI from './views/MIDI.svelte';
   import Osc from './views/Osc.svelte';
   import Perform from './views/Perform.svelte';
   import Playlist from './views/Playlist.svelte';
@@ -68,6 +73,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <Playlist />
     {:else if routeStore.current === 'sources'}
       <Sources />
+    {:else if routeStore.current === 'midi'}
+      <MIDI />
     {:else if routeStore.current === 'osc'}
       <Osc />
     {:else if routeStore.current === 'settings'}

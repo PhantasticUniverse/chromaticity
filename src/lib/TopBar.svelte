@@ -46,6 +46,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     'audio-uniforms': 'Audio Uniforms',
     playlist: 'Playlist',
     sources: 'Sources',
+    midi: 'MIDI',
     osc: 'OSC · LISTENING — Port 7000',
     settings: 'Settings',
     license: 'License',
