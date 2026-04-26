@@ -16,8 +16,27 @@
 // Route names are explicitly enumerated rather than open-string so the
 // SidebarRail's nav button list and AppShell's view dispatch share a
 // single source of truth via exhaustiveness checks.
+//
+// Wave-16 PR2 widens the union from 6 to 10 routes per the v0.2 sidebar
+// redesign: `welcome` / `sources` / `audio-uniforms` / `license` are
+// new enabled-but-stub routes that mirror the bundle's `VIEWS` array
+// (`chromaticity-planning/ui-predev-bundle-v0.2-beta/Chromaticity.html`
+// lines 57-71). The bundle's `patch` route stays out of this union —
+// the full node-graph port is W17+ scope and the sidebar entry remains
+// disabled until then. Member ordering follows the bundle's VIEWS
+// declaration order.
 
-export type RouteName = 'perform' | 'library' | 'author' | 'playlist' | 'osc' | 'settings';
+export type RouteName =
+  | 'perform'
+  | 'library'
+  | 'author'
+  | 'audio-uniforms'
+  | 'playlist'
+  | 'sources'
+  | 'osc'
+  | 'settings'
+  | 'license'
+  | 'welcome';
 
 class RouteStore {
   current: RouteName = $state('perform');
