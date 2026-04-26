@@ -81,6 +81,22 @@ export default [
     },
   },
 
+  // `.svelte.ts` is the Svelte 5 module-context extension for runes
+  // outside `.svelte` components (e.g. `src/lib/stores/route.svelte.ts`,
+  // a `$state`-backed route singleton). `eslint-plugin-svelte`'s
+  // `flat/recommended` claims this glob via `svelte-eslint-parser`,
+  // which has no TS-syntax delegate by default, and `class { x = $state(…) }`
+  // (a TS class field with rune RHS) parses as an unexpected token.
+  // The override re-routes `.svelte.ts` through the typescript-eslint
+  // parser so class fields, runes, and TS syntax all parse cleanly.
+  // See `CLAUDE.md` "eslint-plugin-svelte claims .svelte.ts" feedback.
+  {
+    files: ['**/*.svelte.ts'],
+    languageOptions: {
+      parser: tseslint.parser,
+    },
+  },
+
   {
     files: [
       '**/*.config.{js,cjs,mjs,ts}',
