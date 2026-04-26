@@ -416,7 +416,14 @@ export const MIDI_MTC: MtcReadout = {
   timecode: '01:04:22:18',
   framerate: '29.97 fps',
   assemblyState: 'locked',
-  uniformName: 'syn_Timecode',
+  // Per `docs/36-reactive-symbol-catalog.md` namespace governance: new
+  // feature work uses `chroma_*` as canonical. The MTC uniform is a new
+  // symbol the W18 PR3 sub-agent introduced; it was not in the catalog
+  // under any prefix, so the catalog-aligned native name is `chroma_Timecode`.
+  // A `compat-syn-v1` alias would only land if MTC continuity with the
+  // reference is required; that's deferred until the audio/MIDI adapters
+  // wire to runtime IPC (Phase-3+).
+  uniformName: 'chroma_Timecode',
 };
 
 /* ---------- History strip (M-03) ---------- */

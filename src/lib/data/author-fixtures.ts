@@ -354,8 +354,12 @@ const JS_KEYWORDS = new Set([
 
 const JS_UNIFORMS = new Set(['ctx', 'Math', 'console']);
 
+// Per `docs/36-reactive-symbol-catalog.md` namespace governance, both
+// `syn_*` (compat-syn-v1) and `chroma_*` (native-chroma-v1) are valid
+// uniform-prefix patterns. The tokeniser highlights both so scenes
+// authored against either profile render with consistent uniform tinting.
 const GLSL_TOKEN_PATTERN =
-  /(#define\b|\b(?:uniform|void|vec[234]|float|bool|mat[234]|const|return|if|else|for|in|out|define)\b|\b(?:TIME|RENDERSIZE|RESOLUTION|PI|TAU|gl_FragCoord|gl_FragColor|syn_\w+)\b|\b\d+\.?\d*\b)/g;
+  /(#define\b|\b(?:uniform|void|vec[234]|float|bool|mat[234]|const|return|if|else|for|in|out|define)\b|\b(?:TIME|RENDERSIZE|RESOLUTION|PI|TAU|gl_FragCoord|gl_FragColor|syn_\w+|chroma_\w+)\b|\b\d+\.?\d*\b)/g;
 
 const JS_TOKEN_PATTERN =
   /(\b(?:const|let|var|function|if|else|return|new|this)\b|\b(?:ctx|Math|console)\b|\b\d+\.?\d*\b)/g;
@@ -393,7 +397,8 @@ function tokeniseGlslLine(line: string): readonly AuthorToken[] {
 
 function classifyGlslWord(word: string): AuthorTokenKind {
   if (word === '#define' || GLSL_KEYWORDS.has(word)) return 'keyword';
-  if (GLSL_UNIFORMS.has(word) || word.startsWith('syn_')) return 'uniform';
+  if (GLSL_UNIFORMS.has(word) || word.startsWith('syn_') || word.startsWith('chroma_'))
+    return 'uniform';
   if (/^\d+\.?\d*$/.test(word)) return 'number';
   return 'plain';
 }
