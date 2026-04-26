@@ -24,9 +24,13 @@
 
 use std::io::ErrorKind;
 use std::net::{SocketAddr, UdpSocket};
+use std::thread;
+use std::time::Duration;
 
 use chromaticity_observability::catalog::{OscAdapterState, OscBindErrorReason};
-use chromaticity_osc_adapter::adapter::{OscAdapter, OscAdapterError, UdpOscAdapter};
+use chromaticity_osc_adapter::adapter::{
+    MAX_BIND_ATTEMPTS, OscAdapter, OscAdapterError, OscHealthState, UdpOscAdapter,
+};
 
 fn loopback_ephemeral() -> SocketAddr {
     "127.0.0.1:0"
@@ -146,12 +150,121 @@ fn bind_failure_records_address_in_use_and_returns_to_unbound() {
     );
     assert_eq!(
         adapter.bind_error_count(OscBindErrorReason::AddressInUse),
-        1,
-        "occupied port should increment AddressInUse exactly once",
+        u64::from(MAX_BIND_ATTEMPTS),
+        "permanently occupied port should record one AddressInUse per retry attempt",
+    );
+    assert_eq!(
+        adapter.attempted_binds(),
+        MAX_BIND_ATTEMPTS,
+        "retry loop must exhaust MAX_BIND_ATTEMPTS before surfacing BindFailed",
     );
     assert_eq!(
         adapter.bind_error_count(OscBindErrorReason::Other),
         0,
         "AddressInUse must not be folded into Other",
     );
+}
+
+// EV-NET-HARDENING (T1) — R-05 fragility-mitigation pins for the
+// bounded-retry bind loop and the operational-health state machine.
+// See `docs/13-risk-register.md` R-05 "bounded retry and clear
+// diagnostics" mitigation bullet; the registry row stays
+// Planned/`pending:artifact` until the Phase 4a conformance harness
+// produces the full artifact.
+
+#[test]
+fn bind_with_transient_address_in_use_succeeds_after_retry() {
+    let occupier = UdpSocket::bind(loopback_ephemeral()).expect("bind transient occupier");
+    let occupied_addr = occupier.local_addr().expect("occupier exposes local_addr");
+    let mut adapter = UdpOscAdapter::new();
+
+    // Release the port mid-retry so a later attempt in the bounded
+    // retry loop succeeds. The first BIND_BACKOFF_MS step is 100 ms;
+    // releasing after ~150 ms forces at least one failed attempt to
+    // exercise the retry path before the success.
+    let release_handle = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(150));
+        drop(occupier);
+    });
+
+    let result = adapter.bind(occupied_addr);
+    release_handle
+        .join()
+        .expect("occupier-release thread joined");
+
+    assert!(
+        result.is_ok(),
+        "bind retry loop should recover from transient AddressInUse: {result:?}",
+    );
+    let attempts = adapter.attempted_binds();
+    assert!(
+        (2..=MAX_BIND_ATTEMPTS).contains(&attempts),
+        "successful retry should record between 2 and MAX_BIND_ATTEMPTS attempts; saw {attempts}",
+    );
+    assert_eq!(
+        adapter.health_state(),
+        OscHealthState::Recovering,
+        "post-retry health state should be Recovering until the first successful poll",
+    );
+    assert!(
+        adapter.bind_error_count(OscBindErrorReason::AddressInUse) >= 1,
+        "transient AddressInUse should bump the bind-error counter at least once",
+    );
+}
+
+#[test]
+fn state_machine_tracks_recovery_after_bind_failure() {
+    // A first-shot success transitions Healthy directly without
+    // touching the Recovering posture.
+    let mut healthy = UdpOscAdapter::new();
+    assert_eq!(healthy.health_state(), OscHealthState::Healthy);
+    healthy
+        .bind(loopback_ephemeral())
+        .expect("first-shot bind succeeds on ephemeral loopback");
+    assert_eq!(healthy.attempted_binds(), 1);
+    assert_eq!(
+        healthy.health_state(),
+        OscHealthState::Healthy,
+        "first-shot bind must not flip health to Recovering",
+    );
+
+    // A retry-driven success records the Recovering posture and the
+    // catalog-side Unbound -> Binding -> Bound transition path.
+    let occupier = UdpSocket::bind(loopback_ephemeral()).expect("bind occupier");
+    let occupied_addr = occupier.local_addr().expect("occupier exposes local_addr");
+    let mut recovering = UdpOscAdapter::new();
+    let release_handle = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(150));
+        drop(occupier);
+    });
+
+    recovering
+        .bind(occupied_addr)
+        .expect("retry path eventually succeeds");
+    release_handle
+        .join()
+        .expect("occupier-release thread joined");
+
+    assert_eq!(
+        recovering.health_state(),
+        OscHealthState::Recovering,
+        "retry-driven bind must surface Recovering health",
+    );
+    assert!(recovering.attempted_binds() >= 2);
+    assert_eq!(
+        recovering.state_transition_count(OscAdapterState::Unbound, OscAdapterState::Binding),
+        1,
+        "lifecycle path stays Unbound -> Binding regardless of retry count",
+    );
+    assert_eq!(
+        recovering.state_transition_count(OscAdapterState::Binding, OscAdapterState::Bound),
+        1,
+        "successful retry records exactly one Binding -> Bound transition",
+    );
+
+    // unbind() clears the Recovering sticky-state and the attempt
+    // counter so the next bind starts clean.
+    recovering.unbind().expect("unbind succeeds");
+    assert_eq!(recovering.health_state(), OscHealthState::Healthy);
+    assert_eq!(recovering.attempted_binds(), 0);
 }

@@ -58,6 +58,14 @@ pub(crate) struct RouteAddr {
 /// leading `/`, or an unrecognised top-level prefix. Slice-2's
 /// parser is deliberately strict; slice-3 may widen the accept set
 /// as the route-handler design settles.
+///
+/// TODO(slice-3, R-05): once `poll()` parses the inbound packet's
+/// OSC address, surface a `RouteMismatch` outcome here for unknown
+/// prefixes. Deferred from the slice-2 R-05 hardening pass because
+/// it requires (a) a new `OscPacketOutcome` variant in
+/// `chromaticity-observability::catalog` (cross-subtree) and (b)
+/// route-extraction from the parsed [`OscPacket`], which is
+/// slice-3 dispatch scope per `lib.rs` module prose.
 #[allow(dead_code)]
 pub(crate) fn parse(s: &str) -> Option<RouteAddr> {
     let rest = s.strip_prefix('/')?;
