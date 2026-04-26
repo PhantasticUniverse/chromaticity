@@ -127,6 +127,53 @@ describe('CueTransitionCurve', () => {
     expect(lastCall).toMatchObject({ kind: 'snap', snap: '0.5' });
   });
 
+  it('re-syncs cp1 / cp2 when props change', async () => {
+    // W14 PR1 regression guard: the W13 PR2 implementation seeded local
+    // `$state` from props via `untrack(...)` AND lacked the prop-change
+    // re-sync `$effect`, so calling `rerender({...})` left the curve
+    // visual stuck at first-mount values. With the fix, prop changes
+    // propagate to the SVG `path` `d` attribute on the next render.
+    const { container, rerender } = render(CueTransitionCurve, {
+      props: {
+        kind: 'fade' as const,
+        cp1: [0.42, 0.0] as [number, number],
+        cp2: [0.58, 1.0] as [number, number],
+      },
+    });
+    const initialPath = container.querySelector('path.cue-curve__path')?.getAttribute('d');
+    expect(initialPath).not.toBeNull();
+    expect(initialPath).toContain('C');
+
+    await rerender({
+      kind: 'fade' as const,
+      cp1: [0.7, 0.0] as [number, number],
+      cp2: [0.3, 1.0] as [number, number],
+    });
+    const updatedPath = container.querySelector('path.cue-curve__path')?.getAttribute('d');
+    expect(updatedPath).not.toBeNull();
+    expect(updatedPath).not.toBe(initialPath);
+
+    // Numeric readout reflects the new control points (rendered to two
+    // decimal places via `toFixed(2)`).
+    const readout = container.querySelector('.cue-curve__readout')?.textContent ?? '';
+    expect(readout).toContain('0.70');
+    expect(readout).toContain('0.30');
+  });
+
+  it('re-syncs kind when props change', async () => {
+    // Kind prop change must flip the active mode tab. Pre-fix the local
+    // `activeKind` was snapshotted at mount and did not update.
+    const { container, rerender, getByRole } = render(CueTransitionCurve, {
+      props: { kind: 'fade' as const },
+    });
+    expect(container.querySelector('.cue-curve')?.getAttribute('data-active-kind')).toBe('fade');
+    expect(getByRole('tab', { name: 'Fade' }).getAttribute('aria-selected')).toBe('true');
+
+    await rerender({ kind: 'cut' as const });
+    expect(container.querySelector('.cue-curve')?.getAttribute('data-active-kind')).toBe('cut');
+    expect(getByRole('tab', { name: 'Cut' }).getAttribute('aria-selected')).toBe('true');
+  });
+
   it('pointerdown on a handle followed by window pointermove fires onchange with new cp values', async () => {
     const onchange = vi.fn();
     const { container } = render(CueTransitionCurve, {

@@ -56,11 +56,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   // --- Local state ---------------------------------------------------------
   // The component keeps its own working copy of the four cue inputs. Props
-  // act as the initial value; subsequent edits live in this state and bubble
-  // out via `onchange`. This mirrors the React `useState(initialX)` pattern
-  // in the source jsx. The seed values are read inside `untrack(...)` so the
-  // rune initialiser captures the snapshot value rather than the live prop
-  // reference (suppresses Svelte's `state_referenced_locally` warning).
+  // act as the initial value AND as a re-sync source: when the parent (e.g.
+  // the W13 PR3 Playlist v2 inspector) passes new cue props (a different
+  // selected cue), the local state must re-bind so the curve visual tracks
+  // the parent's selection. The W13 PR2 implementation seeded `$state` from
+  // props via `untrack(...)` to suppress Svelte's `state_referenced_locally`
+  // warning — but the same `untrack` also snapshotted props at first mount
+  // and detached subsequent prop changes from the local state, which was
+  // the W14 PR1 bug surfaced by the W13 PR3 inspector mount.
+  //
+  // Two-step fix:
+  //   1. Seed `$state` from props via `untrack(...)` so the rune initialiser
+  //      captures a snapshot value rather than a live prop reference. This
+  //      keeps the `state_referenced_locally` warning suppressed; the
+  //      warning is the compiler's nudge that "this read happens once" and
+  //      `untrack` is the documented way to confirm that intent for a seed.
+  //   2. Add a `$effect` that re-reads the props reactively and assigns
+  //      them back to the local state. The effect runs once on mount (a
+  //      no-op since the seeds already match) and on every subsequent
+  //      prop change, re-binding the visual to the new cue. The effect
+  //      intentionally clobbers any in-flight handle drag — when the
+  //      parent passes new cp1/cp2 it has selected a different cue, and
+  //      the canonical source of truth for the visual is the new cue's
+  //      curve, not the operator's stale drag against the previous cue.
+  //
+  // The drag → onchange → parent → prop change → effect round-trip is a
+  // no-op once the values match, so this does not loop.
   let activeKind = $state<CueKind>(untrack(() => kind));
   let activeCp1 = $state<[number, number]>(untrack(() => [cp1[0], cp1[1]]));
   let activeCp2 = $state<[number, number]>(untrack(() => [cp2[0], cp2[1]]));
@@ -68,6 +89,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let dragging = $state<'cp1' | 'cp2' | null>(null);
   let animT = $state(0);
   let svgEl: SVGSVGElement | undefined = $state();
+
+  // Re-sync internal state from props on parent prop change. The four
+  // assignments below are reactive reads; any change to a prop fires the
+  // effect and re-binds the local working copy.
+  $effect(() => {
+    activeKind = kind;
+    activeCp1 = [cp1[0], cp1[1]];
+    activeCp2 = [cp2[0], cp2[1]];
+    activeSnap = snap;
+  });
 
   // --- Layout constants ---------------------------------------------------
   const W = 280;
