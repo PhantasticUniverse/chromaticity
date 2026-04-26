@@ -9,6 +9,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     CHROMA_FIXTURE_COMPAT,
     type ChromaSceneFixture,
   } from './lib/data/scene-fixtures';
+  import ErrorMessage from './lib/ErrorMessage.svelte';
   import HotkeyOverlay from './lib/HotkeyOverlay.svelte';
   import type { ControlId, ControlValue, PresetId } from './lib/ipc/bindings';
   import { dispatchAndRead } from './lib/stores/control';
@@ -22,6 +23,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type SnapState,
   } from './lib/stores/snap';
   import ThemeSwitcher from './lib/ThemeSwitcher.svelte';
+  import { toIpcError } from './lib/types/ipc-error';
   import Inputs from './lib/views/Inputs.svelte';
   import Library from './lib/views/Library.svelte';
   import { Fader, Knob, Toggle, Swatch, ControlGroup } from './lib/widgets';
@@ -90,17 +92,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       try {
         snapState = await readSnapState();
       } catch (err) {
-        snapError = err instanceof Error ? err.message : String(err);
+        snapError = toIpcError(err, 'read_snap_state').message;
       }
       try {
         activePresetId = await readActivePreset();
       } catch (err) {
-        presetError = err instanceof Error ? err.message : String(err);
+        presetError = toIpcError(err, 'read_active_preset').message;
       }
       try {
         playlistPos = await readPlaylistPosition();
       } catch (err) {
-        playlistError = err instanceof Error ? err.message : String(err);
+        playlistError = toIpcError(err, 'read_playlist_position').message;
       }
     })();
   });
@@ -113,7 +115,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     try {
       readback = await dispatchAndRead(TARGET_ID, next);
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+      lastError = toIpcError(err, 'dispatch_control').message;
     } finally {
       pending = false;
     }
@@ -130,7 +132,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       await action();
       await refreshSnap();
     } catch (err) {
-      snapError = err instanceof Error ? err.message : String(err);
+      snapError = toIpcError(err, 'snap_action').message;
     } finally {
       snapPending = false;
     }
@@ -168,7 +170,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     try {
       activePresetId = await dispatchPresetRecallAndRead(target);
     } catch (err) {
-      presetError = err instanceof Error ? err.message : String(err);
+      presetError = toIpcError(err, 'dispatch_preset_recall').message;
     } finally {
       presetPending = false;
     }
@@ -180,7 +182,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     try {
       activePresetId = await dispatchPresetRecallAndRead(0);
     } catch (err) {
-      presetError = err instanceof Error ? err.message : String(err);
+      presetError = toIpcError(err, 'dispatch_preset_recall').message;
     } finally {
       presetPending = false;
     }
@@ -192,7 +194,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     try {
       playlistPos = await dispatchPlaylistAdvanceAndRead(step);
     } catch (err) {
-      playlistError = err instanceof Error ? err.message : String(err);
+      playlistError = toIpcError(err, 'dispatch_playlist_advance').message;
     } finally {
       playlistPending = false;
     }
@@ -228,9 +230,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     runtime read-back: {readback === null ? '—' : readback.toFixed(2)}
   </p>
 
-  {#if lastError}
-    <p class="error">error: {lastError}</p>
-  {/if}
+  <ErrorMessage error={lastError} />
 
   <section class="snap">
     <h2>snap slots</h2>
@@ -254,9 +254,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <p class="snap-readback">
       active: {snapState.active === null ? '—' : snapState.active}
     </p>
-    {#if snapError}
-      <p class="error">error: {snapError}</p>
-    {/if}
+    <ErrorMessage error={snapError} />
   </section>
 
   <section class="preset">
@@ -282,9 +280,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <p class="readback">
       active preset: {activePresetId === null ? '—' : activePresetId}
     </p>
-    {#if presetError}
-      <p class="error">error: {presetError}</p>
-    {/if}
+    <ErrorMessage error={presetError} />
   </section>
 
   <section class="playlist">
@@ -298,9 +294,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       </button>
     </div>
     <p class="readback">position: {playlistPos}</p>
-    {#if playlistError}
-      <p class="error">error: {playlistError}</p>
-    {/if}
+    <ErrorMessage error={playlistError} />
   </section>
 
   <section class="widgets">
@@ -359,9 +353,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .readback {
     font-variant-numeric: tabular-nums;
     color: var(--color-text-1);
-  }
-  .error {
-    color: var(--color-danger);
   }
   .snap {
     margin-top: var(--space-4xl);

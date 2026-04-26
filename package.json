@@ -19,7 +19,9 @@
     "commitlint:last-2": "commitlint --from=HEAD~2 --to=HEAD --verbose",
     "commitlint:ci": "commitlint --from=${COMMITLINT_FROM:-origin/main} --to=${COMMITLINT_TO:-HEAD} --verbose",
     "format:check": "prettier --check \"**/*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}\"",
-    "format:fix": "prettier --write \"**/*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}\""
+    "format:fix": "prettier --write \"**/*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -32,18 +34,22 @@
     "@eslint/js": "^9",
     "@sveltejs/vite-plugin-svelte": "^5",
     "@tauri-apps/cli": "^2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.3.1",
     "@types/node": "^20",
     "eslint": "^9",
     "eslint-plugin-import": "^2.31",
     "eslint-plugin-svelte": "^3",
     "globals": "^16",
+    "jsdom": "^29.0.2",
     "prettier": "^3.3.3",
     "prettier-plugin-svelte": "^3",
     "svelte-check": "^4",
     "svelte-eslint-parser": "^1",
     "typescript": "^5.6",
     "typescript-eslint": "^8",
-    "vite": "^6"
+    "vite": "^6",
+    "vitest": "^4.1.5"
   },
   "engines": {
     "node": ">=20.11.0"
