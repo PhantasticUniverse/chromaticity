@@ -162,7 +162,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     // line so the W21 console drawer's future log subscription has a
     // breadcrumb to render, then close the modal.
     console.info(
-      `TODO: create new scene "${name || 'untitled scene'}" — Phase-3+ EV-SCENE-AUTHORING scope`,
+      `TODO: create new scene "${name || 'untitled scene'}" — Phase-3+ EV-AUTHORING-SCAFFOLDER scope`,
     );
     newSceneOpen = false;
   }
