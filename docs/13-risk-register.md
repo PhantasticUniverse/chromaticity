@@ -451,7 +451,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 - Owner: AI Runtime Workcell + Accountable Owner.
 
 ### R-34 Svelte 5 Runes Idiom Drift
-- Probability: Low (Phase-1 port waves W6-W22 settled the rune-vs-store split across primitives, app shell, and routed views; the `**/*.svelte.ts` parser override landed W12 PR #123 commit `0d83fb5` once the first reactive store needed in-module runes, and the convention has held without re-litigation since)
+- Probability: Low (port waves W6-W22 settled the rune-vs-store split across primitives, app shell, and routed views; Phase-1 EXIT was W12 PR #122 commit `e818752` and the `**/*.svelte.ts` parser override landed in the same wave at W12 PR #123 commit `0d83fb5` once the first reactive store needed in-module runes — post-Phase-1 ports W13-W22 carried the convention forward without re-litigation)
 - Impact: Medium (inconsistent state placement produces bugs that are easy to introduce and expensive to debug)
 - Trigger: Two or more PRs in the same review sequence diverge on state placement for equivalent cross-component concerns (e.g. one puts `$state` in a child, another lifts it to a parent context); OR `eslint-plugin-chromaticity-ui-tokens` lint fails on hard-coded tokens after a one-release grace sequence.
 - Mitigation:
