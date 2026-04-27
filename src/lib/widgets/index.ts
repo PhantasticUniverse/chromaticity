@@ -22,6 +22,9 @@
 // drag; frozen-frame, no IPC) and `VuStereo` (synthetic stereo level
 // meters with peak-hold decay) — both consumed by the Perform view's
 // SceneControls and MetaControls panels respectively.
+//
+// Wave-23 PR3 adds `CuePad`, the rows × cols clickable pad-grid
+// primitive consumed by the MIDI view's Virtual Pad mirror panel.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
@@ -33,3 +36,10 @@ export { default as BpmRing } from './BpmRing.svelte';
 export { default as BeatDots } from './BeatDots.svelte';
 export { default as CrossFader } from './CrossFader.svelte';
 export { default as VuStereo } from './VuStereo.svelte';
+export { default as CuePad } from './CuePad.svelte';
+
+// Visual state vocabulary for `CuePad` cells. Lifted into the barrel so
+// consumers can type their `cells` arrays without reaching into the
+// component file (Svelte's `*.svelte` module shim only re-exports the
+// default).
+export type CuePadState = 'idle' | 'armed' | 'active' | 'modulated';

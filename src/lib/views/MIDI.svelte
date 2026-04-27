@@ -37,7 +37,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //   M-12 Start-scenes tab (scene# → note bindings).
   //   M-13 Devices panel (allowlist toggles, vendor / port / map count,
   //        MPE pill on Seaboard).
-  //   M-14 Virtual Pad mirror (8x8 grid, deterministic on-cells).
+  //   M-14 Virtual Pad mirror (W23 PR3 adopts the `CuePad` widget
+  //        primitive — 4×8 grid of clickable pads with idle / armed /
+  //        active / modulated visual states, click cycles state locally;
+  //        no MIDI IPC dispatch — frozen-frame mirror).
   //
   // Locked W18 PR3 deviations from the bundle:
   //   - Bundle's `requestAnimationFrame` learn waveform → frozen inline
@@ -79,13 +82,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     MIDI_TAB_HINTS,
     MPE_BANNER_COPY,
     RELATIVE_ENCODER_MODES,
-    VIRTUAL_PAD_CELLS,
     type MidiDevice,
     type MidiBindingMode,
     type MidiBindingRow,
     type MidiTabId,
   } from '../data/midi-fixtures';
   import Icon from '../Icon.svelte';
+  import { CuePad, type CuePadState } from '../widgets';
 
   // Tab state, learn-mode state, snap-mode state, devices allowlist state.
   let activeTab = $state<MidiTabId>('global');
@@ -114,6 +117,35 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   function toggleDevice(deviceId: string): void {
     devices = devices.map((d) => (d.id === deviceId ? { ...d, allowed: !d.allowed } : d));
+  }
+
+  // M-14 Virtual Pad mirror — W23 PR3 adopts the `CuePad` widget primitive
+  // and seeds a 4×8 (32-cell) state vector with a deterministic mix of
+  // armed / active / modulated cells for visual interest. Click cycles a
+  // cell `idle → armed → active → idle`; no MIDI IPC dispatch (frozen
+  // frame, awaits the integration adapter wiring).
+  const VIRTUAL_PAD_ROWS = 4;
+  const VIRTUAL_PAD_COLS = 8;
+  function seedPadState(): CuePadState[] {
+    const seeded: CuePadState[] = Array.from(
+      { length: VIRTUAL_PAD_ROWS * VIRTUAL_PAD_COLS },
+      () => 'idle',
+    );
+    const armed = [3, 12, 19, 27];
+    const active = [0, 9, 17, 24];
+    const modulated = [5, 14, 22, 30];
+    for (const i of armed) seeded[i] = 'armed';
+    for (const i of active) seeded[i] = 'active';
+    for (const i of modulated) seeded[i] = 'modulated';
+    return seeded;
+  }
+  let padState = $state<CuePadState[]>(seedPadState());
+  function cyclePad(row: number, col: number): void {
+    const i = row * VIRTUAL_PAD_COLS + col;
+    const next: CuePadState[] = [...padState];
+    const current = next[i] ?? 'idle';
+    next[i] = current === 'idle' ? 'armed' : current === 'armed' ? 'active' : 'idle';
+    padState = next;
   }
 
   // Hidden in `snaps` and `devices` tabs — those render dedicated
@@ -768,24 +800,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <h2 class="midi__panel-title">Virtual Pad</h2>
         <span class="midi__panel-sub">Launchpad X · mirror</span>
       </header>
-      <div class="midi__panel-body">
-        <div
-          class="midi__pad"
-          data-cap={MIDI_CAPABILITY.output}
-          role="img"
-          aria-label="Virtual pad mirror — 8x8 grid"
-        >
-          {#each VIRTUAL_PAD_CELLS as cell (cell.index)}
-            <span
-              class="midi__pad-cell"
-              class:midi__pad-cell--on={cell.on}
-              style={cell.on
-                ? `--pad-hue: ${cell.hue}; background: hsl(${cell.hue} 90% 55%); box-shadow: 0 0 12px hsl(${cell.hue} 90% 55% / 0.6);`
-                : ''}
-              aria-hidden="true"
-            ></span>
-          {/each}
-        </div>
+      <div class="midi__panel-body" data-cap={MIDI_CAPABILITY.output}>
+        <CuePad
+          rows={VIRTUAL_PAD_ROWS}
+          cols={VIRTUAL_PAD_COLS}
+          cells={padState}
+          onPadClick={cyclePad}
+        />
       </div>
     </article>
   </aside>
@@ -1790,19 +1811,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .midi__mtc-uniform {
     color: var(--color-info);
-  }
-
-  /* ---------------- Virtual pad (M-14) ----------------------------- */
-  .midi__pad {
-    display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: 4px;
-  }
-  .midi__pad-cell {
-    aspect-ratio: 1 / 1;
-    border-radius: var(--radius-xs);
-    background: var(--color-bg-0);
-    border: 1px solid var(--color-line-1);
   }
 
   /* ---------------- Shared utility -------------------------------- */
