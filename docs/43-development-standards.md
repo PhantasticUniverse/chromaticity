@@ -291,9 +291,8 @@ The repo ships a `CODEOWNERS` file mapping subtrees to the named humans who hold
 | `/engine/scene/` | AI Scene Workcell | Xavier Butler | Fletcher Hammond |
 | `/engine/audio/` | AI Audio Workcell | Xavier Butler | Fletcher Hammond |
 | `/integrations/` | AI Integration Workcell | Xavier Butler | Fletcher Hammond |
-| `/app/authoring/` | AI Scene Workcell | Xavier Butler | Fletcher Hammond |
-| `/app/library/` | AI Scene Workcell | Xavier Butler | Fletcher Hammond |
-| `/app/ui/` | AI UX Workcell | Xavier Butler | Fletcher Hammond |
+| `/app/shell/` | AI UX Workcell | Xavier Butler | Fletcher Hammond |
+| `/app/ui-bridge/` | AI UX Workcell | Xavier Butler | Fletcher Hammond |
 | `/docs/` | AI Docs Workcell | Xavier Butler | Fletcher Hammond |
 | `/release-eng/` | Accountable Owner | Xavier Butler | Fletcher Hammond |
 | `/docs/adr/` | Accountable Owner | Xavier Butler | (non-delegable; AO only) |

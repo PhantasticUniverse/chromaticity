@@ -49,12 +49,11 @@
 /integrations/                   @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
-# App subtrees (reserved; populated by Phase 1 scaffold)
+# App subtrees (Phase 1 has populated `shell` and `ui-bridge`; future
+# subtrees re-enter via a `policy`-scoped PR adding both the rule and the
+# matching docs/43 §8.1 row).
 # -----------------------------------------------------------------------------
-/app/authoring/                  @PhantasticUniverse
-/app/library/                    @PhantasticUniverse
 /app/shell/                      @PhantasticUniverse
-/app/ui/                         @PhantasticUniverse
 /app/ui-bridge/                  @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
