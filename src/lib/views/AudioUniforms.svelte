@@ -47,6 +47,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type FrequencyBandBar,
   } from '../data/audio-uniform-fixtures';
   import Icon from '../Icon.svelte';
+  import { BpmRing, BeatDots } from '../widgets';
+
+  // Wave-23 PR1: synthetic BPM for the hero-block tempo visualizers.
+  // Matches the `bpmUniforms[0].displayValue = '128.0'` entry in the
+  // audio-uniforms fixture so the hero ring/dots and the BPM uniform
+  // card below tell the same story.
+  const HERO_BPM = 128;
 
   let streaming = $state<boolean>(AUDIO_UNIFORMS_FIXTURE.streamingActive);
   let docsOpen = $state<boolean>(true);
@@ -172,6 +179,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               />
             {/each}
           </svg>
+        </div>
+        <div class="au__hero-tempo">
+          <BpmRing bpm={HERO_BPM} size={72} />
+          <div class="au__hero-tempo-meta">
+            <span class="au__section-label">tempo · 4-count</span>
+            <BeatDots bpm={HERO_BPM} />
+          </div>
         </div>
       </section>
 
@@ -557,6 +571,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au__spectrum-bar {
     fill: var(--color-band-midhi);
     opacity: 0.85;
+  }
+  .au__hero-tempo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding-top: var(--space-xs);
+  }
+  .au__hero-tempo-meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    min-width: 0;
   }
 
   /* ---------------- Band tiles ----------------------------------------- */

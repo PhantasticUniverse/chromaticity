@@ -11,6 +11,12 @@
 // Wave-21 PR2 adds `TestCard`, the static SVG NTSC SMPTE calibration
 // pattern consumed by the Perform view's Preview hero when the Test
 // Card MediaStrip card is active.
+//
+// Wave-23 PR1 adds `BpmRing` and `BeatDots`, the two synthetic-tempo
+// visualizers ported from the bundle's `components.jsx` for the
+// AudioUniforms hero block. Both render frozen-frame synthetic BPM —
+// no IPC, no audio-pipeline data — and short-circuit to a static
+// frame under `prefers-reduced-motion: reduce`.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
@@ -18,3 +24,5 @@ export { default as Swatch } from './Swatch.svelte';
 export { default as ControlGroup } from './ControlGroup.svelte';
 export { default as CueTransitionCurve } from './CueTransitionCurve.svelte';
 export { default as TestCard } from './TestCard.svelte';
+export { default as BpmRing } from './BpmRing.svelte';
+export { default as BeatDots } from './BeatDots.svelte';
