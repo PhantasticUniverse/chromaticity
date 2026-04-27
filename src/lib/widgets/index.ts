@@ -114,6 +114,16 @@ export { default as WatermarkOverlay } from './WatermarkOverlay.svelte';
 // `EV-INTEGRATION-MATRIX` scope.
 export { default as AdapterPill } from './AdapterPill.svelte';
 export { type AdapterPillState } from './adapter-pill.types';
+// Wave-34b adds `LockedRow`, the canonical "feature-locked
+// affordance" treatment ported from `v02_supplement.jsx` lines 171-
+// 188. Per CLAUDE.md MVP entitlement enforcement is watermark-only
+// (only `render.watermark.off` is evaluated at runtime in MVP); the
+// LockedRow primitive ships ready for post-MVP SKU rollouts to gate
+// non-watermark capabilities. Call-site pattern: conditional render
+// driven by `capabilitiesStore.has(capabilityId)` per the W33b
+// store; the widget itself does not check the store, it is purely
+// the visual treatment for an already-decided locked state.
+export { default as LockedRow } from './LockedRow.svelte';
 export {
   DEFAULT_COMMAND_PALETTE_ACTIONS,
   type CommandPaletteAction,
