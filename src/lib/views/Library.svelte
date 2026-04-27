@@ -22,13 +22,31 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE, SETLIST_SCENES } from '../data/setlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import ErrorMessage from '../ErrorMessage.svelte';
+  import Icon from '../Icon.svelte';
   import type { SceneCard } from '../ipc/bindings';
-  import { fetchBundledSceneCards, fetchSceneCards, getDefaultRoot } from '../stores/library';
+  import NewSceneModal from '../NewSceneModal.svelte';
+  import {
+    clearCache,
+    fetchBundledSceneCards,
+    fetchSceneCards,
+    getDefaultRoot,
+  } from '../stores/library';
   import { toIpcError } from '../types/ipc-error';
 
   let cards = $state<SceneCard[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+
+  // W22 PR3 header CTAs. `refreshing` drives the refresh-icon spin while
+  // a re-scan is in flight; `newSceneOpen` toggles the frozen-frame
+  // modal. The marketplace CTA is disabled in browser-mode where
+  // `window.__TAURI_INTERNALS__` is absent — the same signal
+  // `toIpcError` keys off in `types/ipc-error.ts`.
+  let refreshing = $state(false);
+  let newSceneOpen = $state(false);
+  const tauriAvailable =
+    typeof window !== 'undefined' &&
+    Object.prototype.hasOwnProperty.call(window, '__TAURI_INTERNALS__');
 
   const CATEGORIES = [
     'BUILT-IN',
@@ -72,48 +90,86 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
   }
 
+  // W11 PR2: merge bundled (ship-time) + user-staged scene cards.
+  // `Promise.allSettled` is deliberate — bundled is more reliable
+  // than user (the user root may not exist on a fresh install), so
+  // a failed user-root fetch must not collapse the bundled corpus,
+  // and vice versa. Extracted from the mount-time `$effect` so the
+  // W22 PR3 Refresh CTA can re-invoke it.
+  async function loadCards() {
+    try {
+      const [bundledResult, userResult] = await Promise.allSettled([
+        fetchBundledSceneCards(),
+        (async () => fetchSceneCards(await getDefaultRoot()))(),
+      ]);
+
+      const merged: SceneCard[] = [];
+      const errors: string[] = [];
+
+      if (bundledResult.status === 'fulfilled') {
+        merged.push(...bundledResult.value);
+      } else {
+        const reason = bundledResult.reason;
+        errors.push(reason instanceof Error ? reason.message : String(reason));
+      }
+      if (userResult.status === 'fulfilled') {
+        merged.push(...userResult.value);
+      } else {
+        const reason = userResult.reason;
+        errors.push(reason instanceof Error ? reason.message : String(reason));
+      }
+
+      cards = merged;
+      // Only surface an error when both fetches failed — partial
+      // results render as the merged grid.
+      error = merged.length === 0 && errors.length > 0 ? errors.join('; ') : null;
+    } catch (err) {
+      error = toIpcError(err, 'list_scene_packages').message;
+    }
+  }
+
   $effect(() => {
-    // W11 PR2: merge bundled (ship-time) + user-staged scene cards.
-    // `Promise.allSettled` is deliberate — bundled is more reliable
-    // than user (the user root may not exist on a fresh install), so
-    // a failed user-root fetch must not collapse the bundled corpus,
-    // and vice versa.
     void (async () => {
       try {
-        const [bundledResult, userResult] = await Promise.allSettled([
-          fetchBundledSceneCards(),
-          (async () => fetchSceneCards(await getDefaultRoot()))(),
-        ]);
-
-        const merged: SceneCard[] = [];
-        const errors: string[] = [];
-
-        if (bundledResult.status === 'fulfilled') {
-          merged.push(...bundledResult.value);
-        } else {
-          const reason = bundledResult.reason;
-          errors.push(reason instanceof Error ? reason.message : String(reason));
-        }
-        if (userResult.status === 'fulfilled') {
-          merged.push(...userResult.value);
-        } else {
-          const reason = userResult.reason;
-          errors.push(reason instanceof Error ? reason.message : String(reason));
-        }
-
-        cards = merged;
-        // Only surface an error when both fetches failed — partial
-        // results render as the merged grid.
-        if (merged.length === 0 && errors.length > 0) {
-          error = errors.join('; ');
-        }
-      } catch (err) {
-        error = toIpcError(err, 'list_scene_packages').message;
+        await loadCards();
       } finally {
         loading = false;
       }
     })();
   });
+
+  async function handleRefresh() {
+    if (refreshing) return;
+    refreshing = true;
+    clearCache();
+    try {
+      await loadCards();
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  function handleOpenNewScene() {
+    newSceneOpen = true;
+  }
+
+  function handleCloseNewScene() {
+    newSceneOpen = false;
+  }
+
+  function handleCreateNewScene(name: string) {
+    // Frozen-frame: real scene creation is Phase-3+. Emit a console
+    // line so the W21 console drawer's future log subscription has a
+    // breadcrumb to render, then close the modal.
+    console.info(
+      `TODO: create new scene "${name || 'untitled scene'}" — Phase-3+ EV-SCENE-AUTHORING scope`,
+    );
+    newSceneOpen = false;
+  }
+
+  function handleGetMoreScenes() {
+    console.info('TODO: external link to scene marketplace — Phase-3+');
+  }
 </script>
 
 <div class="library-page">
@@ -125,6 +181,42 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           {filteredCards.length} of {cards.length} scene{cards.length === 1 ? '' : 's'}
         </span>
       {/if}
+      <div class="library__ctas" role="group" aria-label="Library actions">
+        <button
+          type="button"
+          class="library__cta primary"
+          onclick={handleOpenNewScene}
+          title="Create a new scene (stub)"
+        >
+          <Icon name="plus" size={12} />
+          New Scene
+        </button>
+        <button
+          type="button"
+          class="library__cta"
+          onclick={handleRefresh}
+          aria-busy={refreshing}
+          disabled={refreshing}
+          title="Re-scan the bundled and user scene roots"
+        >
+          <span class="library__cta-icon" class:spinning={refreshing} aria-hidden="true">
+            <Icon name="refresh" size={12} />
+          </span>
+          Refresh Index
+        </button>
+        <button
+          type="button"
+          class="library__cta"
+          onclick={handleGetMoreScenes}
+          disabled={!tauriAvailable}
+          title={tauriAvailable
+            ? 'Open the scene marketplace (stub)'
+            : 'External-link CTA disabled in browser preview — available in the native shell'}
+        >
+          <Icon name="upload" size={12} />
+          Get More Scenes
+        </button>
+      </div>
     </header>
 
     {#if !loading && cards.length > 0}
@@ -226,6 +318,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </p>
   </aside>
 </div>
+
+<NewSceneModal open={newSceneOpen} onCreate={handleCreateNewScene} onClose={handleCloseNewScene} />
 
 <style>
   /* Token-styled scoped CSS. Grid uses CSS directly; ControlGroup is a
@@ -352,10 +446,68 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: flex;
     align-items: baseline;
     gap: var(--space-sm);
+    flex-wrap: wrap;
   }
   .library__count {
     color: var(--color-text-2);
     font-size: var(--font-size-body-sm);
+  }
+  .library__ctas {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-left: auto;
+  }
+  .library__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    background: var(--color-bg-3);
+    color: var(--color-text-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--font-size-body-sm);
+    cursor: pointer;
+    transition:
+      background 0.12s ease,
+      color 0.12s ease;
+  }
+  .library__cta:hover:not(:disabled) {
+    background: var(--color-bg-4);
+    color: var(--color-text-0);
+  }
+  .library__cta:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+  .library__cta:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .library__cta.primary {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    border-color: var(--color-primary);
+  }
+  .library__cta.primary:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+  .library__cta-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .library__cta-icon.spinning {
+    animation: library-cta-spin 0.9s linear infinite;
+  }
+  @keyframes library-cta-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
   .library__status {
     color: var(--color-text-2);
