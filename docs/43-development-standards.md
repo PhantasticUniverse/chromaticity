@@ -294,7 +294,6 @@ The repo ships a `CODEOWNERS` file mapping subtrees to the named humans who hold
 | `/app/shell/` | AI UX Workcell | Xavier Butler | Fletcher Hammond |
 | `/app/ui-bridge/` | AI UX Workcell | Xavier Butler | Fletcher Hammond |
 | `/docs/` | AI Docs Workcell | Xavier Butler | Fletcher Hammond |
-| `/release-eng/` | Accountable Owner | Xavier Butler | Fletcher Hammond |
 | `/docs/adr/` | Accountable Owner | Xavier Butler | (non-delegable; AO only) |
 | `/LICENSES/`, `/REUSE.toml`, `/SECURITY.md` | Accountable Owner | Xavier Butler | (non-delegable; AO only) |
 

@@ -57,9 +57,15 @@
 /app/ui-bridge/                  @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
-# Release engineering, CI, release automation
+# Release engineering, CI, release automation.
+#
+# `/release-eng/` is reserved per docs/47-ui-port-plan.md §2 but does not
+# yet exist as a tracked subtree. A CODEOWNERS rule matching a path with
+# no tracked files silently disables itself, so the rule is held until
+# the directory lands; re-entry follows the same `policy`-scoped pattern
+# as the `/app/*` block above (rule and matching docs/43 §8.1 row added
+# in the same PR that creates the subtree).
 # -----------------------------------------------------------------------------
-/release-eng/                    @PhantasticUniverse
 /.github/workflows/              @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
