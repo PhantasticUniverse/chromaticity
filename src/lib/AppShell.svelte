@@ -81,6 +81,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // dismiss-on-click no-ops pending Phase-3+/4a `EV-INTEGRATION-MATRIX`
   // wiring (Snap recall, OSC address surfacing, support-bundle
   // generation, offline-docs dispatch).
+  //
+  // Wave-33a mounts `<WatermarkOverlay>` as a fixed bottom-right
+  // overlay at z-index 990 (under HotkeyOverlay / CommandPalette). The
+  // mount is gated on a hardcoded `WATERMARK_VISIBLE_FIXTURE` flag for
+  // now (default `false`, matching the License-view `activated`
+  // fixture's `render.watermark.off: true` capability). W33b
+  // capabilities-store wiring threads the live capability through and
+  // inverts it (visible when capability is denied). Per `adr/ADR-009-
+  // activation-and-entitlements.md` the operative MVP watermark is
+  // drawn by the Rust rendering backend; this UI overlay is the
+  // bundle's dev-time visual mock of the no-license state.
   import ConsoleDrawer from './ConsoleDrawer.svelte';
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
@@ -105,11 +116,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     DegradedBanner,
     SnapBar,
     type CommandPaletteAction,
+    WatermarkOverlay,
   } from './widgets';
 
   let snapActive = $state(2);
   let bannerVisible = $state(true);
   let commandPaletteOpen = $state(false);
+
+  // Hardcoded mock of the no-license / watermark-visible state.
+  // Default `false` matches the License view's `activated` fixture
+  // (which holds `render.watermark.off: true`); flip to `true` to
+  // exercise the W33a overlay manually until W33b capabilities-store
+  // threads the live capability through.
+  const WATERMARK_VISIBLE_FIXTURE = false;
 
   const BANNER_FIXTURE = {
     severity: 'warning' as const,
@@ -204,6 +223,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   onClose={() => (commandPaletteOpen = false)}
   commands={commandPaletteActions}
 />
+
+<WatermarkOverlay visible={WATERMARK_VISIBLE_FIXTURE} />
 
 <style>
   .app-shell {

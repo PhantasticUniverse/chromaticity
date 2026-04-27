@@ -92,6 +92,16 @@ export { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
 export { default as OutputRoutingTile } from './OutputRoutingTile.svelte';
 export { default as DegradedBanner } from './DegradedBanner.svelte';
 export { default as CommandPalette } from './CommandPalette.svelte';
+// Wave-33a adds `WatermarkOverlay`, the bottom-right "Chromaticity"
+// wordmark + ring overlay ported from the bundle's `v02_supplement.jsx`
+// `WatermarkOverlay` JSX (lines 277-286). Display-only chrome; the
+// operative watermark is drawn by the Rust rendering backend on the
+// scene canvas per `adr/ADR-009-activation-and-entitlements.md`. The
+// UI overlay here is the bundle's dev-time visual mock of the
+// "watermark visible" state; AppShell mounts it gated on a hardcoded
+// fixture today (W33b capabilities-store wiring inverts it from
+// `render.watermark.off`, real verifier IPC lands in Phase-3+/4a).
+export { default as WatermarkOverlay } from './WatermarkOverlay.svelte';
 export {
   DEFAULT_COMMAND_PALETTE_ACTIONS,
   type CommandPaletteAction,
