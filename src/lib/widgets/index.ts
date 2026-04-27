@@ -71,6 +71,13 @@ export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
 export { default as Swatch } from './Swatch.svelte';
+// Wave-32: xy / bang / dropdown round out the W8 widget primitive set
+// per the bundle's `chroma_inspector.jsx::ChromaCtrlBody` switch
+// statement. Inputs.svelte uses these to replace the W10 placeholder
+// pill that previously rendered for non-mappable control types.
+export { default as Xy } from './Xy.svelte';
+export { default as Bang } from './Bang.svelte';
+export { default as Dropdown } from './Dropdown.svelte';
 export { default as ControlGroup } from './ControlGroup.svelte';
 export { default as CueTransitionCurve } from './CueTransitionCurve.svelte';
 export { default as TestCard } from './TestCard.svelte';
