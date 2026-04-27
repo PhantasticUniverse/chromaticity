@@ -66,7 +66,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/perform-fixtures';
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
-  import { ControlGroup, Fader, Knob, Swatch, TestCard, Toggle } from '../widgets';
+  import {
+    ControlGroup,
+    CrossFader,
+    Fader,
+    Knob,
+    Swatch,
+    TestCard,
+    Toggle,
+    VuStereo,
+  } from '../widgets';
 
   let activeScene = $state<number>(SETLIST_ACTIVE_INDEX);
   let activeMedia = $state<number>(MEDIA_DEFAULT_ACTIVE_INDEX);
@@ -74,6 +83,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let perfMode = $state<'perform' | 'edit'>('perform');
   let railMode = $state<'scenes' | 'presets' | 'edit' | 'add'>('scenes');
   let setlistChoice = $state<string>(SETLIST_OPTIONS[0] ?? 'Demo Scenes');
+  // W23 PR2 frozen-frame: dragging only updates local state, no IPC.
+  let crossfaderPos = $state<number>(0.5);
 
   // W18 PR1 locked: ChromaCtx / entitlement store does not exist yet, so
   // `unlicensed` is hardcoded false. Wire to the entitlement store when
@@ -125,6 +136,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <Icon name="random" size={12} /> Random
         </button>
       </header>
+      <div class="scene-controls__xfade">
+        <CrossFader
+          value={crossfaderPos}
+          labels={['A', 'B']}
+          onChange={(v) => (crossfaderPos = v)}
+        />
+      </div>
       <div class="panel__body panel__body--row-scroll">
         {#each SCENE_CONTROL_GROUPS as group (group.name)}
           {@render controlGroupBlock(group)}
@@ -137,6 +155,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <header class="panel__head">
         <h2 class="panel__title">Meta Controls</h2>
         <span class="panel__spacer" aria-hidden="true"></span>
+        <div class="meta-controls__vu" aria-hidden="false">
+          <VuStereo width={92} />
+        </div>
         <button type="button" class="btn btn--ghost">Default</button>
         <button type="button" class="btn btn--ghost">
           <Icon name="random" size={12} /> Random
@@ -488,6 +509,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   .cg-wrap {
     flex: 0 0 auto;
+  }
+
+  /* W23 PR2 — CrossFader sits in its own row inside SceneControls,
+     above the control-group row-scroll. Padding mirrors the panel head. */
+  .scene-controls__xfade {
+    padding: var(--space-sm) var(--space-lg);
+    border-bottom: 1px solid var(--color-line-2);
+    background: var(--color-bg-2);
+  }
+
+  /* W23 PR2 — VuStereo lives in the MetaControls header next to the
+     action buttons; sized to fit the 32px header without crowding. */
+  .meta-controls__vu {
+    display: flex;
+    align-items: center;
   }
 
   /* ---------------- Buttons ----------------------------------------------- */

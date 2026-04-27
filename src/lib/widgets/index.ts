@@ -17,6 +17,11 @@
 // AudioUniforms hero block. Both render frozen-frame synthetic BPM —
 // no IPC, no audio-pipeline data — and short-circuit to a static
 // frame under `prefers-reduced-motion: reduce`.
+//
+// Wave-23 PR2 adds `CrossFader` (horizontal A↔B crossfader with pointer-
+// drag; frozen-frame, no IPC) and `VuStereo` (synthetic stereo level
+// meters with peak-hold decay) — both consumed by the Perform view's
+// SceneControls and MetaControls panels respectively.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
@@ -26,3 +31,5 @@ export { default as CueTransitionCurve } from './CueTransitionCurve.svelte';
 export { default as TestCard } from './TestCard.svelte';
 export { default as BpmRing } from './BpmRing.svelte';
 export { default as BeatDots } from './BeatDots.svelte';
+export { default as CrossFader } from './CrossFader.svelte';
+export { default as VuStereo } from './VuStereo.svelte';
