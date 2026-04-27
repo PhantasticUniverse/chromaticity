@@ -58,7 +58,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
-  import { ControlGroup, Fader } from '../widgets';
+  import { ControlGroup, Fader, OutputRoutingTile } from '../widgets';
 
   /* ----- Audio Device state ----- */
   let audioInput = $state(AUDIO_INPUT_DEVICES[0]?.id ?? 'default');
@@ -337,6 +337,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <p class="settings__hint">
       Capability-gated rows (custom resolution, HDR) carry <code>data-cap</code> attributes for the W15+
       entitlement infrastructure to discover.
+    </p>
+
+    <div class="settings__output-routing">
+      <span class="settings__label">Active output routing</span>
+      <OutputRoutingTile />
+    </div>
+    <p class="settings__hint">
+      Frozen-frame status panel — display + Syphon/Spout rows mirror the bundle's
+      <code>OutputRoutingTile</code>. Live adapter probing arrives in Phase-3+/4a per
+      <code>EV-INTEGRATION-MATRIX</code>; capability hints (<code>io.syphon.output</code>,
+      <code>io.spout.output</code>, <code>io.ndi.output</code>) ride along as
+      <code>data-cap</code> attributes for the W15+ entitlement infra.
     </p>
   </article>
 
@@ -854,6 +866,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .settings__times {
     color: var(--color-text-3);
     font-size: var(--font-size-body-sm);
+  }
+
+  /* ----- Output routing tile (W27 PR2) ----- */
+
+  .settings__output-routing {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin: var(--space-md) 0;
   }
 
   /* ----- Pill toggle (V-Sync, Custom resolution) ----- */
