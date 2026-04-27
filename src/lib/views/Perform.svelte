@@ -15,10 +15,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `v0.2-ui-wireframe-screenshots/pulse/perform.png` capture is the
   // visual confirmation (it renders the same JSX).
   //
-  // Layout: 2-column. Left column = SceneControls + MetaControls +
-  // MediaStrip stacked vertically. Right column = Preview hero +
-  // ScenePanel (rail of 4 buttons + Perform/Edit toggle + Setlist
-  // selector + Prev/Next/Shuffle row + scrollable scene list).
+  // Layout: 3-column (W26 PR1). Left column = SceneControls +
+  // MetaControls + MediaStrip stacked vertically. Middle column =
+  // Preview hero + AudioReactivity panel. Right column = ScenePanel
+  // (rail of 4 buttons + Perform/Edit toggle + Setlist selector +
+  // Prev/Next/Shuffle row + scrollable scene list). The W18 PR1 port
+  // shipped 2-column (left controls + right preview/scenes); W25 PR2
+  // added the AudioReactivity panel into the right column with the
+  // column-3 split flagged as deferred. This refactor closes that
+  // deferral and matches the bundle's classic-variant column shape.
   //
   // Locked W18 PR1 deviations from the bundle:
   //   - The bundle's `<Preview seed={4} kind="glitch" label="Glitch" />`
@@ -120,7 +125,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 </script>
 
 <section class="perform" aria-label="Perform">
-  <div class="perform__left">
+  <div class="perform__col-left">
     <!-- Scene Controls panel -->
     <section class="panel" aria-label="Scene Controls">
       <header class="panel__head">
@@ -202,7 +207,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </section>
   </div>
 
-  <div class="perform__right">
+  <div class="perform__col-middle">
     <!-- Preview hero. Default surface is the W18 PR1 gradient-blob
          substitute for the unported `<Preview>`; W21 PR2 swaps to the
          static SMPTE test-card pattern when the test-card MediaStrip
@@ -234,11 +239,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
          `AudioReactivity` JSX (perform.jsx lines 198-261). Panel chrome
          matches the existing `.panel` / `.panel__head` shared style; the
          widget body provides the 4 band tiles + animated 48-bar FFT +
-         tempo strip per the bundle. The bundle places this in a
-         dedicated middle column; the W18 port's 2-column layout (left =
-         controls + media, right = preview + scenes) absorbs it into the
-         right column instead — column-3 refactor is a future consideration
-         flagged in the PR body. -->
+         tempo strip per the bundle. -->
     <section class="panel" aria-label="Audio reactivity">
       <header class="panel__head">
         <h2 class="panel__title">Audio Reactivity</h2>
@@ -247,7 +248,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <AudioReactivity />
       </div>
     </section>
+  </div>
 
+  <div class="perform__col-right">
     <!-- Scene panel -->
     <section class="panel scene-panel" aria-label="Scenes">
       <header class="panel__head">
@@ -439,29 +442,58 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 {/snippet}
 
 <style>
-  /* ---------------- Outer 2-column grid ------------------------------------ */
+  /* ---------------- Outer 3-column grid ------------------------------------
+   * Wide (>= 1400px): three columns side-by-side per the bundle classic
+   * variant — controls / preview+audio / scenes (1.05fr 1.55fr 1fr).
+   * Mid (1100-1399px): two columns — left + middle stay separate, the
+   * scene panel wraps below to span both via grid-template-areas.
+   * Narrow (< 1100px): single column stack. */
   .perform {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+    grid-template-columns: 1.05fr 1.55fr 1fr;
+    grid-template-areas: 'left middle right';
     gap: var(--space-md);
     align-items: stretch;
     min-height: 0;
   }
 
-  @media (max-width: 1100px) {
+  @media (max-width: 1399px) {
     .perform {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas:
+        'left middle'
+        'right right';
     }
   }
 
-  .perform__left {
+  @media (max-width: 1100px) {
+    .perform {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        'left'
+        'middle'
+        'right';
+    }
+  }
+
+  .perform__col-left {
+    grid-area: left;
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
     min-width: 0;
   }
 
-  .perform__right {
+  .perform__col-middle {
+    grid-area: middle;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    min-width: 0;
+  }
+
+  .perform__col-right {
+    grid-area: right;
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
