@@ -58,6 +58,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
+  import { ControlGroup, Fader } from '../widgets';
 
   /* ----- Audio Device state ----- */
   let audioInput = $state(AUDIO_INPUT_DEVICES[0]?.id ?? 'default');
@@ -111,6 +112,72 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   function removeSceneFolder(id: string) {
     sceneFolders = sceneFolders.filter((f) => f.id !== id);
+  }
+
+  /* ----- Tempo & Sync state (W22 PR1) ----- */
+  // Frozen-frame, no IPC: runtime wiring (Audio estimator, MIDI Clock,
+  // Ableton Link peer discovery) lands in Phase-3+. The priority chain
+  // is FIXED in W22 — drag-reorder + per-source health is Phase-3+ scope
+  // per the M-10 BPM source resolver in
+  // `chromaticity-planning/ui-predev-bundle-v0.2-beta/views/midi.jsx`.
+
+  type BpmSourceId = 'audio' | 'midiclock' | 'link' | 'manual';
+
+  interface BpmSource {
+    readonly id: BpmSourceId;
+    readonly name: string;
+    readonly detail: string;
+  }
+
+  const BPM_SOURCES: readonly BpmSource[] = [
+    { id: 'audio', name: 'Audio estimate', detail: 'live spectrum onset detector' },
+    { id: 'midiclock', name: 'MIDI Clock', detail: 'external clock from MIDI input' },
+    { id: 'link', name: 'Ableton Link', detail: 'peer-to-peer LAN tempo sync' },
+    { id: 'manual', name: 'Manual / Tap', detail: 'tap tempo or fixed BPM entry' },
+  ];
+
+  const ACTIVE_BPM_SOURCE: BpmSourceId = 'audio';
+
+  let manualBpm = $state(120.0);
+  let linkOffsetMs = $state(0);
+  let audioBpmSensitivity = $state(60);
+
+  let tapTimestamps = $state<number[]>([]);
+  let tappedBpm = $state<number | null>(null);
+  let tapResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const TAP_WINDOW = 4;
+  const TAP_RESET_MS = 2000;
+
+  function tapTempo() {
+    const now = performance.now();
+    const next = [...tapTimestamps, now].slice(-TAP_WINDOW);
+    tapTimestamps = next;
+
+    if (next.length >= 2) {
+      let total = 0;
+      for (let i = 1; i < next.length; i++) {
+        total += (next[i] ?? 0) - (next[i - 1] ?? 0);
+      }
+      const meanInterval = total / (next.length - 1);
+      tappedBpm = meanInterval > 0 ? 60000 / meanInterval : null;
+    } else {
+      tappedBpm = null;
+    }
+
+    if (tapResetTimer !== null) {
+      clearTimeout(tapResetTimer);
+    }
+    tapResetTimer = setTimeout(() => {
+      tapTimestamps = [];
+      tappedBpm = null;
+      tapResetTimer = null;
+    }, TAP_RESET_MS);
+  }
+
+  function setManualBpm() {
+    // Frozen-frame: clamp + round-trip through local state only.
+    manualBpm = Math.min(300, Math.max(20, Math.round(manualBpm * 10) / 10));
   }
 </script>
 
@@ -407,6 +474,118 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         arrives alongside the Phase-3+/4a media adapter.
       </p>
     </div>
+  </article>
+
+  <article class="settings__section">
+    <h2>Tempo &amp; Sync</h2>
+
+    <div class="settings__storage-group">
+      <div class="settings__storage-head">
+        <h3 class="settings__storage-title">BPM source priority</h3>
+      </div>
+      <p class="settings__hint settings__hint--inline">
+        First active source wins. Order is fixed in W22; drag-reorder + live source health arrives
+        in Phase-3+ per the M-10 BPM resolver.
+      </p>
+      <ol class="settings__bpm-chain">
+        {#each BPM_SOURCES as src, idx (src.id)}
+          <li class="settings__bpm-row" class:active={src.id === ACTIVE_BPM_SOURCE}>
+            <span class="settings__bpm-rank">{idx + 1}</span>
+            <span
+              class="settings__bpm-dot"
+              aria-hidden="true"
+              data-state={src.id === ACTIVE_BPM_SOURCE ? 'active' : 'idle'}
+            ></span>
+            <span class="settings__bpm-name">{src.name}</span>
+            <span class="settings__bpm-detail">{src.detail}</span>
+            {#if src.id === ACTIVE_BPM_SOURCE}
+              <span class="settings__bpm-badge">active</span>
+            {/if}
+          </li>
+        {/each}
+      </ol>
+    </div>
+
+    <div class="settings__form">
+      <div class="settings__field">
+        <span class="settings__label">Tap tempo</span>
+        <div class="settings__field-row">
+          <button
+            type="button"
+            class="settings__btn settings__btn--ghost"
+            onclick={tapTempo}
+            aria-label="Tap tempo"
+          >
+            <Icon name="bang" size={12} /> Tap
+          </button>
+          <span class="settings__bpm-readout">
+            {#if tappedBpm !== null}
+              {tappedBpm.toFixed(1)} <span class="settings__bpm-unit">BPM</span>
+            {:else}
+              <span class="settings__muted">— BPM</span>
+            {/if}
+          </span>
+          <span class="settings__hint settings__hint--inline">
+            mean of last {TAP_WINDOW} taps; resets after 2s of silence
+          </span>
+        </div>
+      </div>
+      <div class="settings__field">
+        <label for="manual-bpm" class="settings__label">Manual BPM</label>
+        <div class="settings__field-row">
+          <input
+            id="manual-bpm"
+            type="number"
+            class="settings__input settings__input--num"
+            min="20"
+            max="300"
+            step="0.1"
+            bind:value={manualBpm}
+          />
+          <button type="button" class="settings__btn settings__btn--ghost" onclick={setManualBpm}>
+            Set
+          </button>
+        </div>
+      </div>
+      <div class="settings__field">
+        <label for="link-offset" class="settings__label">Link offset (ms)</label>
+        <div class="settings__field-row">
+          <input
+            id="link-offset"
+            type="number"
+            class="settings__input settings__input--num"
+            min="-200"
+            max="200"
+            step="1"
+            bind:value={linkOffsetMs}
+          />
+          <span class="settings__hint settings__hint--inline">
+            compensates for downstream-link latency, signed
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings__bpm-sensitivity">
+      <ControlGroup name="audio" tint="var(--color-cat-motion)">
+        <Fader value={audioBpmSensitivity / 100} label="BPM sense" />
+      </ControlGroup>
+      <div class="settings__bpm-sensitivity-meta">
+        <span class="settings__label">Audio BPM sensitivity</span>
+        <span class="settings__bpm-readout">
+          {audioBpmSensitivity}<span class="settings__bpm-unit">%</span>
+        </span>
+        <p class="settings__hint">
+          Tuning weight applied to the audio onset estimator before it competes in the priority
+          chain. Tinted via <code>--tint</code> per the W18 ControlGroup cascade contract.
+        </p>
+      </div>
+    </div>
+
+    <p class="settings__hint">
+      Frozen-frame stub — no IPC dispatch. Runtime tempo arbiter, drag-reorder of the priority
+      chain, and live Link peer count land in Phase-3+ alongside the audio estimator.
+    </p>
   </article>
 
   <article class="settings__section">
@@ -964,5 +1143,104 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-family: var(--font-family-mono);
     font-size: var(--font-size-body-xs);
     color: var(--color-text-0);
+  }
+
+  /* ----- Tempo & Sync (W22 PR1) ----- */
+
+  .settings__bpm-chain {
+    list-style: none;
+    margin: 0 0 var(--space-md) 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .settings__bpm-row {
+    display: grid;
+    grid-template-columns: 1.5rem 0.6rem auto 1fr auto;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-line-1);
+    border-radius: var(--radius-sm);
+  }
+
+  .settings__bpm-row.active {
+    border-color: var(--color-primary);
+    background: var(--color-bg-2);
+  }
+
+  .settings__bpm-rank {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-3);
+    text-align: right;
+  }
+
+  .settings__bpm-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--color-text-3);
+  }
+
+  .settings__bpm-dot[data-state='active'] {
+    background: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 25%, transparent);
+  }
+
+  .settings__bpm-name {
+    color: var(--color-text-0);
+    font-size: var(--font-size-body-sm);
+  }
+
+  .settings__bpm-row.active .settings__bpm-name {
+    color: var(--color-primary);
+  }
+
+  .settings__bpm-detail {
+    color: var(--color-text-2);
+    font-size: var(--font-size-body-xs);
+  }
+
+  .settings__bpm-badge {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-on-primary);
+    background: var(--color-primary);
+    padding: 1px var(--space-xs);
+    border-radius: var(--radius-xs);
+  }
+
+  .settings__bpm-readout {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-md);
+    color: var(--color-text-0);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .settings__bpm-unit {
+    color: var(--color-text-3);
+    font-size: var(--font-size-body-xs);
+    margin-left: 2px;
+  }
+
+  .settings__bpm-sensitivity {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-lg);
+    margin: var(--space-md) 0;
+  }
+
+  .settings__bpm-sensitivity-meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    flex: 1;
+    min-width: 0;
   }
 </style>
