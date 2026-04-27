@@ -38,8 +38,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // PR3 vendored `Icon.svelte` primitive (`play` size 11) per
   // `Chromaticity.html`'s `<button className="btn go sm" aria-label="Go
   // live"><Icon name="play" size={11} /> GO LIVE</button>` mapping.
+  //
+  // Wave-34a swaps the W15 PR1 inline `top-bar__pill` placeholder for
+  // the bundle-faithful `<AdapterPill>` widget (`v02_supplement.jsx`
+  // lines 20-44; bundle adoption at `Chromaticity.html` lines 228-230).
+  // The `STATUS_PILLS` data shape stays — it still uses W4
+  // `OscHealthState` semantics (`healthy` / `recovering` / `degraded`)
+  // — but maps onto AdapterPill's bundle vocabulary at the call-site.
+  // Per-adapter live wiring remains `EV-INTEGRATION-MATRIX` scope.
   import Icon from './Icon.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
+  import { AdapterPill, type AdapterPillState } from './widgets';
 
   // Per-route subtitle. Hardcoded for W15; future enhancement could
   // accept a per-view dynamic count via route-store metadata (e.g.
@@ -78,11 +87,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // is W15+ once the OSC adapter is plumbed into AppState (W14 PR4
   // shipped the IPC contract; AppState wiring is Phase-3 scope) and
   // the MIDI / output adapters land.
-  const STATUS_PILLS = [
-    { id: 'out', label: 'OUT', status: 'OK', state: 'healthy' },
-    { id: 'midi', label: 'MIDI', status: 'OK', state: 'healthy' },
-    { id: 'osc', label: 'OSC', status: 'WARNING', state: 'recovering' },
+  type OscHealth = 'healthy' | 'recovering' | 'degraded' | 'off';
+
+  const STATUS_PILLS: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly status: OscHealth;
+    readonly detail: string;
+  }> = [
+    { id: 'out', label: 'OUT', status: 'healthy', detail: 'DISP 2 · 1920×1080 @ 60' },
+    { id: 'midi', label: 'MIDI', status: 'healthy', detail: 'LPX · 64 maps' },
+    { id: 'osc', label: 'OSC', status: 'recovering', detail: 'binding udp:7000…' },
   ] as const;
+
+  /**
+   * Map the W4 `OscHealthState`-shaped state vocabulary onto
+   * AdapterPill's bundle vocabulary. The bundle has six states
+   * (`off / warming / ok / rate-limited / disconnected / blocked`);
+   * the OSC adapter today only emits four of those semantics, and
+   * the W4 vocabulary collapses them to three (plus `off`). When the
+   * OSC adapter learns to distinguish rate-limit + blocked states,
+   * this mapping widens at the source rather than here.
+   */
+  function mapHealthToPillState(h: OscHealth): AdapterPillState {
+    switch (h) {
+      case 'healthy':
+        return 'ok';
+      case 'recovering':
+        return 'warming';
+      case 'degraded':
+        return 'disconnected';
+      case 'off':
+        return 'off';
+    }
+  }
 </script>
 
 <header class="top-bar">
@@ -97,16 +135,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <div class="top-bar__center" aria-hidden="true"></div>
 
   <div class="top-bar__hud">
-    <ul class="top-bar__pills" aria-label="Adapter status">
+    <div class="top-bar__pills" role="group" aria-label="Adapter status">
       {#each STATUS_PILLS as pill (pill.id)}
-        <li class="top-bar__pill" data-state={pill.state}>
-          <span class="top-bar__pill-dot" aria-hidden="true"></span>
-          <span class="top-bar__pill-label">{pill.label}</span>
-          <span class="top-bar__pill-sep" aria-hidden="true">·</span>
-          <span class="top-bar__pill-status">{pill.status}</span>
-        </li>
+        <AdapterPill
+          kind={pill.label}
+          state={mapHealthToPillState(pill.status)}
+          detail={pill.detail}
+        />
       {/each}
-    </ul>
+    </div>
     <span class="top-bar__metric" title="Frames per second (W15+: real telemetry)">
       <span class="top-bar__metric-unit">fps</span>
       <span class="top-bar__metric-value">—</span>
@@ -276,79 +313,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     gap: var(--space-sm);
   }
 
+  /* W34a: the W15 PR1 inline `.top-bar__pill*` placeholder rules are
+     dropped — pill rendering moves to the `<AdapterPill>` widget which
+     owns its own styling. The container `.top-bar__pills` stays as a
+     thin flex wrapper so the bundle's tb-section gap rhythm holds. */
   .top-bar__pills {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     display: flex;
     gap: var(--space-xs);
-  }
-
-  .top-bar__pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px var(--space-xs);
-    background: var(--color-bg-2);
-    border: 1px solid var(--color-line-2);
-    border-radius: var(--radius-xs);
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-body-xs);
-    color: var(--color-text-1);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .top-bar__pill-sep {
-    color: var(--color-text-3);
-  }
-
-  .top-bar__pill-status {
-    color: var(--color-text-0);
-    font-weight: 600;
-  }
-
-  .top-bar__pill[data-state='healthy'] .top-bar__pill-status {
-    color: var(--color-signal-green);
-  }
-
-  .top-bar__pill[data-state='recovering'] .top-bar__pill-status {
-    color: var(--color-signal-amber);
-  }
-
-  .top-bar__pill[data-state='degraded'] .top-bar__pill-status {
-    color: var(--color-signal-red);
-  }
-
-  .top-bar__pill[data-state='off'] {
-    color: var(--color-text-3);
-  }
-
-  .top-bar__pill-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-
-  .top-bar__pill[data-state='healthy'] .top-bar__pill-dot {
-    background: var(--color-signal-green);
-    box-shadow: 0 0 4px var(--color-signal-green);
-  }
-
-  .top-bar__pill[data-state='recovering'] .top-bar__pill-dot {
-    background: var(--color-signal-amber);
-    box-shadow: 0 0 4px var(--color-signal-amber);
-  }
-
-  .top-bar__pill[data-state='degraded'] .top-bar__pill-dot {
-    background: var(--color-signal-red);
-    box-shadow: 0 0 4px var(--color-signal-red);
-  }
-
-  .top-bar__pill[data-state='off'] .top-bar__pill-dot {
-    background: transparent;
-    border: 1px solid var(--color-line-2);
   }
 
   .top-bar__rec {
