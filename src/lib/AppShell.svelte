@@ -60,6 +60,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // onto the engine `SnapSlotId` IPC surface is `EV-INTEGRATION-MATRIX`
   // scope (the eight perform-time bookmarks here are a different domain
   // from the sixteen engine slots in `src/lib/snap.ts`).
+  //
+  // Wave-28 PR1 mounts `<DegradedBanner>` directly under the TopBar and
+  // above the SnapBar / routed view. Bundle adoption site:
+  // `Chromaticity.html` line 263 — banner sits flush against the session
+  // HUD row. Content is the bundle's "integrated GPU" warning fixture;
+  // real adapter-health probing is `EV-INTEGRATION-MATRIX` scope (same
+  // posture as the W14 stub status pill in `TopBar.svelte`). `onAction`
+  // routes to Settings via `routeStore.set('settings')`; `onDismiss`
+  // hides the banner via local `bannerVisible` state.
   import ConsoleDrawer from './ConsoleDrawer.svelte';
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
@@ -78,9 +87,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Settings from './views/Settings.svelte';
   import Sources from './views/Sources.svelte';
   import Welcome from './views/Welcome.svelte';
-  import { SnapBar } from './widgets';
+  import { DegradedBanner, SnapBar } from './widgets';
 
   let snapActive = $state(2);
+  let bannerVisible = $state(true);
+
+  const BANNER_FIXTURE = {
+    severity: 'warning' as const,
+    message: 'Running on integrated GPU. Performance reduced.',
+    actionLabel: 'Diagnostics',
+  };
 </script>
 
 <div class="app-shell">
@@ -91,6 +107,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <SidebarRail />
   </aside>
   <main class="app-shell__main">
+    {#if bannerVisible}
+      <div class="app-shell__banner">
+        <DegradedBanner
+          severity={BANNER_FIXTURE.severity}
+          message={BANNER_FIXTURE.message}
+          actionLabel={BANNER_FIXTURE.actionLabel}
+          onAction={() => routeStore.set('settings')}
+          onDismiss={() => (bannerVisible = false)}
+        />
+      </div>
+    {/if}
     {#if routeStore.current === 'perform'}
       <div class="app-shell__snapbar">
         <SnapBar active={snapActive} onPick={(slot) => (snapActive = slot)} />
@@ -164,6 +191,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * the routed view container. */
   .app-shell__snapbar {
     margin: calc(-1 * var(--space-3xl)) calc(-1 * var(--space-4xl)) var(--space-3xl);
+  }
+  /* Same full-bleed treatment for the W28 PR1 DegradedBanner. When the
+   * banner renders alongside the SnapBar (on Perform), the SnapBar
+   * sibling re-applies its own negative top margin so the two strips
+   * stack flush. When only the banner renders, the bottom margin opens
+   * the standard view gap. */
+  .app-shell__banner {
+    margin: calc(-1 * var(--space-3xl)) calc(-1 * var(--space-4xl)) var(--space-3xl);
+  }
+  .app-shell__banner + .app-shell__snapbar {
+    margin-top: 0;
   }
   .app-shell__status {
     grid-area: status;
