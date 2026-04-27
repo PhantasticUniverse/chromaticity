@@ -4,51 +4,104 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 -->
 
 <script lang="ts">
-  // Wave-17 PR2 License view full port — replaces the W16 PR2
-  // `EmptyState` stub with the activation banner + capabilities table
-  // + action buttons + raw-token disclosure per the canonical bundle
-  // JSX `chromaticity-planning/ui-predev-bundle-v0.2-beta/v02_supplement.jsx`,
-  // the `LicenseView` component. The W16 PR2 deviation note flagged
-  // `v02_supplement.jsx` (NOT a `views/license.jsx`) as the canonical
-  // structural source — that JSX file holds the LicenseView alongside
-  // the ChromaCtx / AdapterPill / DegradedBanner chrome primitives.
+  // Wave-30 License view full port — extends the W17 PR2 activated-only
+  // banner to all four state branches (`activated` / `trial` / `expired` /
+  // `unactivated`) and wires Install / Remove / Request-trial buttons to
+  // stub IPC actions per `chromaticity-planning/ui-predev-bundle-v0.2-beta/
+  // v02_supplement.jsx` `LicenseView` lines 191-280.
   //
   // Bundle JSX is the canonical structural reference per the auto-memory
   // `feedback_wireframes_normative_for_ui_ux.md`; the
   // `v0.2-ui-wireframe-screenshots/pulse/license.png` rendering is the
-  // visual confirmation (it renders the same JSX, `state="activated"`
-  // branch).
+  // visual confirmation (it renders the `state="activated"` branch).
   //
-  // Locked W17 PR2 deviations from the bundle JSX:
-  //   - All three actions (INSTALL / REMOVE / REFRESH) render as
-  //     `disabled` visual stubs with tooltips pointing at the
-  //     Phase-3+/4a entitlement IPC scope. The bundle's JSX renders
-  //     INSTALL + REMOVE as enabled and REFRESH as `disabled` with the
-  //     "Available in V2" tooltip; the W17 port uniformly disables all
-  //     three until the entitlement-mutation surface lands.
-  //   - The bundle uses `var(--text-muted)` / `var(--text-primary)` /
-  //     `var(--surface-sunken)` tokens; the Chromaticity tokens.css
-  //     scheme uses `--color-text-*` / `--color-bg-*` semantics. Lime
-  //     accents map to `--color-signal-lime` (closest semantic match
-  //     for the wireframe's green ✓ glyphs — there is no
-  //     `--color-signal-green` in the token set), and the INSTALL
-  //     primary button uses `--color-primary` (the lime brand colour)
-  //     consistent with W17 PR1's primary-CTA pattern.
-  //   - The trial / expired / unactivated state branches and the
-  //     trial "Request trial" button are out of scope for W17 PR2 —
-  //     the fixture is `status: 'activated'` only. The other branches
-  //     port alongside the live entitlement state machine in
-  //     Phase-3+/4a.
-  //   - The bundle's "Copy" button under the raw-token `<pre>` is
-  //     omitted; clipboard plumbing arrives with the diagnostics IPC
-  //     in W15+/Phase-3.
-  import { LICENSE_FIXTURE } from '../data/license-fixtures';
+  // Locked W30 conventions:
+  //   - `fixture` is a `$props()` default so tests can mount each state
+  //     branch directly. The router still receives the activated fixture
+  //     via the default value, preserving the live-app render.
+  //   - Install / Remove / Request-trial buttons fire stub IPC commands
+  //     (`install_license` / `remove_license` / `request_trial` in
+  //     `app/shell/src/commands/license.rs`). The W30 backend returns
+  //     `Err("not implemented")`; `<ErrorMessage>` surfaces the message
+  //     verbatim. Phase-3+/4a swaps the stubs for real entitlement-token
+  //     operations against the runtime license verifier per
+  //     `adr/ADR-009-activation-and-entitlements.md`.
+  //   - Refresh stays `disabled` with the bundle's "Available in V2"
+  //     tooltip per `v02_supplement.jsx` line 261.
+  //   - The `unactivated` branch (the bundle's `state="none"`) renders
+  //     an additional "Request trial" ghost button per JSX line 262.
+  //   - The expiry-line right column hides for `expired` /
+  //     `unactivated` (the bundle suppresses it for those states).
+  //   - The `<details>` raw-token disclosure hides when
+  //     `fixture.rawToken === ''` (unactivated has no token to show).
+  //
+  // Hero-state styling cascade (matches the JSX `headClass` ternary
+  // semantics in line 209): activated → lime, trial → amber, expired
+  // and unactivated → muted/danger. The MVP only enforces
+  // `render.watermark.off` per CLAUDE.md; expired and unactivated show
+  // every capability with `enabled: false` to communicate "watermark
+  // re-enabled / running with watermark" copy from the JSX.
+  import { LICENSE_FIXTURE, type LicenseFixture } from '../data/license-fixtures';
+  import ErrorMessage from '../ErrorMessage.svelte';
+  import { installLicense, removeLicense, requestTrial } from '../ipc/license';
+  import { toIpcError } from '../types/ipc-error';
 
-  const fixture = LICENSE_FIXTURE;
+  let { fixture = LICENSE_FIXTURE }: { fixture?: LicenseFixture } = $props();
+
+  let actionError = $state<string | null>(null);
+
+  const HERO_LABEL: Record<LicenseFixture['status'], string> = {
+    activated: 'Activated',
+    trial: 'Trial',
+    expired: 'Expired',
+    unactivated: 'No License',
+  };
+
+  const HERO_SUBLINE: Record<LicenseFixture['status'], string> = {
+    activated: '',
+    trial: '14 days remaining · bound to this machine',
+    expired: 'Watermark re-enabled. Install a new token to continue.',
+    unactivated: 'Running with watermark. Install a license to remove.',
+  };
+
+  const heroLabel = $derived(HERO_LABEL[fixture.status]);
+  const heroSubline = $derived(HERO_SUBLINE[fixture.status]);
+  const showExpiry = $derived(fixture.status === 'activated' || fixture.status === 'trial');
+  const showActivatedSubline = $derived(fixture.status === 'activated');
+  const showRawToken = $derived(fixture.rawToken !== '');
+  const headModifier = $derived(
+    fixture.status === 'activated' ? 'lime' : fixture.status === 'trial' ? 'amber' : 'muted',
+  );
+
+  async function runAction(action: () => Promise<void>, command: string): Promise<void> {
+    actionError = null;
+    try {
+      await action();
+    } catch (err) {
+      actionError = toIpcError(err, command).message;
+    }
+  }
+
+  async function handleInstall(): Promise<void> {
+    await runAction(installLicense, 'install_license');
+  }
+
+  async function handleRemove(): Promise<void> {
+    await runAction(removeLicense, 'remove_license');
+  }
+
+  async function handleRequestTrial(): Promise<void> {
+    await runAction(requestTrial, 'request_trial');
+  }
 </script>
 
 <section class="license" aria-label="License">
-  <header class="license__hero">
+  <header
+    class="license__hero"
+    class:license__hero--lime={headModifier === 'lime'}
+    class:license__hero--amber={headModifier === 'amber'}
+    class:license__hero--muted={headModifier === 'muted'}
+  >
     <span class="license__hero-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="28" height="28">
         <path
@@ -57,29 +110,37 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           stroke="currentColor"
           stroke-width="1.6"
         />
-        <path
-          d="M8 12.5l2.5 2.5L16 9.5"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
+        {#if fixture.status === 'activated'}
+          <path
+            d="M8 12.5l2.5 2.5L16 9.5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        {/if}
       </svg>
     </span>
     <div class="license__hero-text">
-      <p class="license__hero-status">Activated</p>
+      <p class="license__hero-status">{heroLabel}</p>
       <p class="license__hero-meta">
-        <span class="license__hero-seat">{fixture.seatId}</span>
-        <span class="license__hero-sep" aria-hidden="true">·</span>
-        <span>issued by {fixture.issuedBy}</span>
-        <span class="license__hero-sep" aria-hidden="true">·</span>
-        <span>bound to {fixture.boundTo}</span>
+        {#if showActivatedSubline}
+          <span class="license__hero-seat">{fixture.seatId}</span>
+          <span class="license__hero-sep" aria-hidden="true">·</span>
+          <span>issued by {fixture.issuedBy}</span>
+          <span class="license__hero-sep" aria-hidden="true">·</span>
+          <span>bound to {fixture.boundTo}</span>
+        {:else}
+          <span>{heroSubline}</span>
+        {/if}
       </p>
     </div>
-    <p class="license__hero-expiry">
-      Expires in <b>{fixture.expiresInDays}</b> days
-    </p>
+    {#if showExpiry}
+      <p class="license__hero-expiry">
+        Expires in <b>{fixture.expiresInDays}</b> days
+      </p>
+    {/if}
   </header>
 
   <article class="license__panel">
@@ -119,36 +180,33 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   </article>
 
   <div class="license__actions">
-    <button
-      type="button"
-      class="license__btn license__btn--primary"
-      disabled
-      title="Install license arrives with the entitlement IPC in Phase-3+/4a"
-    >
+    <button type="button" class="license__btn license__btn--primary" onclick={handleInstall}>
       Install License
     </button>
+    <button type="button" class="license__btn" onclick={handleRemove}> Remove License </button>
     <button
       type="button"
-      class="license__btn"
+      class="license__btn license__btn--disabled"
       disabled
-      title="Remove license arrives with the entitlement IPC in Phase-3+/4a"
-    >
-      Remove License
-    </button>
-    <button
-      type="button"
-      class="license__btn"
-      disabled
-      title="Refresh license arrives with the entitlement IPC in Phase-3+/4a"
+      title="Available in V2"
     >
       Refresh License
     </button>
+    {#if fixture.status === 'unactivated'}
+      <button type="button" class="license__btn" onclick={handleRequestTrial}>
+        Request trial
+      </button>
+    {/if}
   </div>
 
-  <details class="license__raw">
-    <summary>Raw token (support)</summary>
-    <pre aria-hidden="true">{fixture.rawToken}</pre>
-  </details>
+  <ErrorMessage error={actionError} />
+
+  {#if showRawToken}
+    <details class="license__raw">
+      <summary>Raw token (support)</summary>
+      <pre aria-hidden="true">{fixture.rawToken}</pre>
+    </details>
+  {/if}
 </section>
 
 <style>
@@ -169,17 +227,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     align-items: center;
     gap: var(--space-md);
     padding: var(--space-md) var(--space-lg);
-    background: color-mix(in oklab, var(--color-signal-lime) 8%, var(--color-bg-1));
-    border: 1px solid color-mix(in oklab, var(--color-signal-lime) 35%, var(--color-line-2));
     border-radius: var(--radius-md);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-1);
+  }
+
+  .license__hero--lime {
+    background: color-mix(in oklab, var(--color-signal-lime) 8%, var(--color-bg-1));
+    border-color: color-mix(in oklab, var(--color-signal-lime) 35%, var(--color-line-2));
+  }
+
+  .license__hero--amber {
+    background: color-mix(in oklab, var(--color-signal-amber) 8%, var(--color-bg-1));
+    border-color: color-mix(in oklab, var(--color-signal-amber) 35%, var(--color-line-2));
+  }
+
+  .license__hero--muted {
+    background: var(--color-bg-1);
+    border-color: var(--color-line-2);
   }
 
   .license__hero-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-signal-lime);
+    color: var(--color-text-2);
     flex-shrink: 0;
+  }
+
+  .license__hero--lime .license__hero-icon {
+    color: var(--color-signal-lime);
+  }
+
+  .license__hero--amber .license__hero-icon {
+    color: var(--color-signal-amber);
   }
 
   .license__hero-text {
@@ -191,7 +272,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     margin: 0 0 2px 0;
     font-size: var(--font-size-display-md);
     font-weight: 600;
+    color: var(--color-text-1);
+  }
+
+  .license__hero--lime .license__hero-status {
     color: var(--color-signal-lime);
+  }
+
+  .license__hero--amber .license__hero-status {
+    color: var(--color-signal-amber);
   }
 
   .license__hero-meta {
@@ -321,11 +410,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-sm);
     background: var(--color-bg-2);
-    color: var(--color-text-2);
+    color: var(--color-text-1);
     font-size: var(--font-size-body-sm);
     font-family: inherit;
-    cursor: not-allowed;
-    opacity: 0.6;
+    cursor: pointer;
+  }
+
+  .license__btn:hover:not(:disabled) {
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
   }
 
   .license__btn--primary {
@@ -335,6 +428,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+
+  .license__btn--primary:hover:not(:disabled) {
+    background: var(--color-primary);
+    color: var(--color-bg-0);
+    filter: brightness(1.1);
+  }
+
+  .license__btn--disabled,
+  .license__btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 
   /* ---------------- Raw token disclosure -------------------------------- */
