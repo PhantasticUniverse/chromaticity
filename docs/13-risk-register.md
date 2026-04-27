@@ -486,13 +486,13 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 - Owner: AI QA/Ops Workcell + Accountable Owner.
 
 ### R-37 UX Bundle Revision Throughput Below Phase 0 Velocity
-- Probability: Medium (first UX bundle revision cycle after the intake; no velocity baseline yet)
-- Impact: High (seven `EV-UX-*-CONTRACT` rows + `EV-HOTKEY-PARITY-DESIGN` remain `InProgress`, which blocks Phase 1 implementation kickoff; Accountable Owner succession thresholds may trigger if the stall is prolonged)
-- Trigger: `EV-UX-*-CONTRACT` rows remain `InProgress` with no bundle `v0.2-beta` landing in the declared Phase-0 sequence; OR P0 gap-audit rows in `44-ux-bundle-gap-audit.md` accumulate without remediation; OR bundle v0.2-beta lands but fails to close >50% of P0 findings.
+- Probability: Medium (Phase-0 bundle delivery risk closed by v0.2-beta canonical 2026-04-23f; row retained as a post-Phase-1 port-velocity monitor against the post-bundle dev queue)
+- Impact: High (PARTIAL views — Inputs, Patch, Settings — gate Phase 2 authoring and live-reactivity work; entitlement-gated chrome elements (AdapterPill, LockedRow, CrashResumeBanner, WatermarkOverlay) gate the Phase 3+ entitlement surface; Vitest adoption depth gates regression catch on the ported views)
+- Trigger: PARTIAL views (Inputs / Patch / Settings) regress or stall through Phase 2 kickoff with no completion signal; OR chrome-element cohort (AdapterPill, LockedRow, CrashResumeBanner, WatermarkOverlay) misses the Phase 3+ entitlement-wiring window without a ChromaCtx → Svelte capabilities-store milestone; OR Vitest view-integration coverage remains absent past Phase 2 kickoff.
 - Mitigation:
- - prompt + scope brief delivered to UX team in one pass covering `45-design-token-mapping.md` + `46-ux-bundle-a11y-color-audit.md` + `49-ux-bundle-supplement-scope.md` + `50-ux-bundle-entitlement-surface-scope.md` + `51-ux-bundle-legal-check.md` (single-rev expectation),
- - strawman closures pre-ratified by Responsible Workcell in `48-ux-bundle-open-questions-routing.md` so UX is not blocked on open-question adjudication,
- - proposed ADR-018 structural amendment (`45-design-token-mapping.md` §10) drafted so token rename is not blocked on ADR review,
- - status check at each sequence checkpoint with escalation to Deputy Accountable Owner if no progress signal appears between checkpoints.
-- Residual: Low / Medium. Mitigations are defensive; residual covers unforeseen scope surprises during revision.
+ - bundle v0.2-beta canonical 2026-04-23f closed the original Phase-0 throughput risk; Phase-0 mitigations (single-rev scope brief, pre-ratified strawmans in `48-ux-bundle-open-questions-routing.md`, ADR-018 structural amendment) ran their course and are retained for historical record,
+ - `47-ui-port-plan.md` wave-log discipline (catch-up landed for W22-W25) preserves per-wave port tracking and surfaces stalls before they accumulate,
+ - `52-parity-coverage-matrix.md` tracks port-state per view (DONE / PARTIAL / STUB / NOT STARTED) so chrome-element gaps and PARTIAL-view regressions stay visible,
+ - capabilities-store milestone (ChromaCtx → Svelte) is the prereq for unblocking AdapterPill / LockedRow / WatermarkOverlay; flag at Phase 3 kickoff if not wired.
+- Residual: Low. Bundle v0.2-beta canonical (stamped 2026-04-23f); 10 of 14 routed views DONE per the Phase-1 closeout audit; 3 PARTIAL (Inputs, Patch, Settings); 1 STUB (License). Chrome-element cohort partial pending entitlement wiring. Residual covers PARTIAL-view regressions, chrome-element entitlement-gating slip, and Vitest adoption depth.
 - Owner: AI UX Workcell + Accountable Owner.
