@@ -11,6 +11,7 @@
 
 pub mod control;
 pub mod library;
+pub mod license;
 pub mod osc;
 pub mod picker;
 pub mod playlist;
