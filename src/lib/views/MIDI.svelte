@@ -88,7 +88,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MidiTabId,
   } from '../data/midi-fixtures';
   import Icon from '../Icon.svelte';
-  import { CuePad, type CuePadState } from '../widgets';
+  import { CuePad, type CuePadCell } from '../widgets';
 
   // Tab state, learn-mode state, snap-mode state, devices allowlist state.
   let activeTab = $state<MidiTabId>('global');
@@ -119,32 +119,55 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     devices = devices.map((d) => (d.id === deviceId ? { ...d, allowed: !d.allowed } : d));
   }
 
-  // M-14 Virtual Pad mirror — W23 PR3 adopts the `CuePad` widget primitive
-  // and seeds a 4×8 (32-cell) state vector with a deterministic mix of
-  // armed / active / modulated cells for visual interest. Click cycles a
-  // cell `idle → armed → active → idle`; no MIDI IPC dispatch (frozen
-  // frame, awaits the integration adapter wiring).
-  const VIRTUAL_PAD_ROWS = 4;
-  const VIRTUAL_PAD_COLS = 8;
-  function seedPadState(): CuePadState[] {
-    const seeded: CuePadState[] = Array.from(
-      { length: VIRTUAL_PAD_ROWS * VIRTUAL_PAD_COLS },
-      () => 'idle',
-    );
-    const armed = [3, 12, 19, 27];
-    const active = [0, 9, 17, 24];
-    const modulated = [5, 14, 22, 30];
-    for (const i of armed) seeded[i] = 'armed';
-    for (const i of active) seeded[i] = 'active';
-    for (const i of modulated) seeded[i] = 'modulated';
-    return seeded;
+  // M-14 Virtual Pad mirror — W23 PR3 adopts the `CuePad` widget primitive;
+  // W23 PR4 binds the pad's row/col dims to the selected pad-capable
+  // controller's hardware grid (Launchpad X = 8×8 RGB grid, APC40 mkII =
+  // 5×8 clip-launch grid) so the visual matches the device an operator
+  // has plugged in, and refactors the seed to the bundle-faithful
+  // `CuePadCell` object shape (per-pad hue) so playing pads render in
+  // the Launchpad X rainbow palette. Click cycles a cell
+  // `idle → armed → playing → idle`; no MIDI IPC dispatch (frozen frame,
+  // awaits the integration adapter wiring).
+  const padCapableDevices = $derived<readonly MidiDevice[]>(
+    devices.filter((d) => d.padDims !== undefined),
+  );
+  let selectedPadDeviceId = $state<string>('dev.lpx');
+  const selectedPadDevice = $derived<MidiDevice | undefined>(
+    padCapableDevices.find((d) => d.id === selectedPadDeviceId) ?? padCapableDevices[0],
+  );
+  const padRows = $derived<number>(selectedPadDevice?.padDims?.rows ?? 8);
+  const padCols = $derived<number>(selectedPadDevice?.padDims?.cols ?? 8);
+
+  // Hue per pad index — palette spans 30 (orange) → 130 (green) matching
+  // the Launchpad X RGB-LED rainbow rendered in the bundle's
+  // `views/midi.jsx` Virtual Pad reference. Deterministic so the visual
+  // is stable across reseeds (controller switches, etc).
+  function hueFor(i: number): number {
+    return 30 + ((i * 11) % 100);
   }
-  let padState = $state<CuePadState[]>(seedPadState());
+  function seedPadCells(rows: number, cols: number): CuePadCell[] {
+    const total = rows * cols;
+    return Array.from({ length: total }, (_, i): CuePadCell => {
+      if (i % 5 === 0) return { state: 'playing', hue: hueFor(i) };
+      if (i % 7 === 3) return { state: 'armed', hue: hueFor(i) };
+      return {};
+    });
+  }
+  let padState = $state<CuePadCell[]>(seedPadCells(8, 8));
+  function selectPadDevice(deviceId: string): void {
+    const next = padCapableDevices.find((d) => d.id === deviceId);
+    if (!next?.padDims) return;
+    selectedPadDeviceId = deviceId;
+    padState = seedPadCells(next.padDims.rows, next.padDims.cols);
+  }
   function cyclePad(row: number, col: number): void {
-    const i = row * VIRTUAL_PAD_COLS + col;
-    const next: CuePadState[] = [...padState];
-    const current = next[i] ?? 'idle';
-    next[i] = current === 'idle' ? 'armed' : current === 'armed' ? 'active' : 'idle';
+    const i = row * padCols + col;
+    const next: CuePadCell[] = [...padState];
+    const cell = next[i] ?? {};
+    const currentState = cell.state ?? 'idle';
+    const nextState: 'idle' | 'armed' | 'playing' =
+      currentState === 'idle' ? 'armed' : currentState === 'armed' ? 'playing' : 'idle';
+    next[i] = nextState === 'idle' ? {} : { state: nextState, hue: cell.hue ?? hueFor(i) };
     padState = next;
   }
 
@@ -798,15 +821,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <article class="midi__panel">
       <header class="midi__panel-head">
         <h2 class="midi__panel-title">Virtual Pad</h2>
-        <span class="midi__panel-sub">Launchpad X · mirror</span>
+        <label class="midi__pad-controller">
+          <span class="visually-hidden">Mirrored controller</span>
+          <select
+            class="midi__pad-controller-select"
+            value={selectedPadDeviceId}
+            onchange={(e) => selectPadDevice(e.currentTarget.value)}
+            aria-label="Mirrored pad controller"
+          >
+            {#each padCapableDevices as device (device.id)}
+              <option value={device.id}>{device.name}</option>
+            {/each}
+          </select>
+          <span class="midi__pad-controller-mode">· mirror</span>
+        </label>
       </header>
       <div class="midi__panel-body" data-cap={MIDI_CAPABILITY.output}>
-        <CuePad
-          rows={VIRTUAL_PAD_ROWS}
-          cols={VIRTUAL_PAD_COLS}
-          cells={padState}
-          onPadClick={cyclePad}
-        />
+        <CuePad rows={padRows} cols={padCols} cells={padState} onPadClick={cyclePad} />
       </div>
     </article>
   </aside>
@@ -1046,6 +1077,64 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     letter-spacing: var(--letter-spacing-caps-sm);
     color: var(--color-text-3);
     margin-left: auto;
+  }
+  .midi__pad-controller {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xxs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-3);
+  }
+  .midi__pad-controller-select {
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    padding: 2px var(--space-sm) 2px var(--space-xs);
+    color: var(--color-text-2);
+    font-family: inherit;
+    font-size: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--color-text-3) 50%),
+      linear-gradient(135deg, var(--color-text-3) 50%, transparent 50%);
+    background-position:
+      calc(100% - 8px) 50%,
+      calc(100% - 4px) 50%;
+    background-size:
+      4px 4px,
+      4px 4px;
+    background-repeat: no-repeat;
+    padding-right: 16px;
+  }
+  .midi__pad-controller-select:hover,
+  .midi__pad-controller-select:focus-visible {
+    border-color: var(--color-line-1);
+    color: var(--color-text-1);
+    outline: none;
+  }
+  .midi__pad-controller-select:focus-visible {
+    border-color: var(--color-primary);
+  }
+  .midi__pad-controller-mode {
+    color: var(--color-text-3);
+  }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
   .midi__panel-active {
     color: var(--color-primary);
