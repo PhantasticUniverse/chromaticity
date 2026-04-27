@@ -62,6 +62,23 @@ export interface PatchNode {
   readonly pins: readonly string[];
 }
 
+/**
+ * Mutable mirror of {@link PatchNode}. The W31 port keeps the
+ * canonical {@link PATCH_NODES} as the read-only seed; the
+ * component clones into a `MutablePatchNode[]` `$state` for live
+ * pointer-drag repositioning. `pins` stays `readonly` because pin
+ * topology is not mutated by drag (only `x` / `y`).
+ */
+export interface MutablePatchNode {
+  readonly id: string;
+  x: number;
+  y: number;
+  readonly w: number;
+  readonly title: string;
+  readonly kind: PatchNodeKind;
+  readonly pins: readonly string[];
+}
+
 export const PATCH_NODES: readonly PatchNode[] = [
   {
     id: 'audio',
@@ -194,6 +211,52 @@ export const PATCH_INSPECTOR_ROWS: readonly PatchInspectorRow[] = [
   { key: 'contrast', value: 0.55, unit: '', source: null },
 ];
 
+/**
+ * Per-node inspector rows. Selecting a node in the W31 port swaps
+ * the inspector body to the entry below; nodes without an explicit
+ * entry fall back to a generated row-per-pin shape via
+ * {@link inspectorRowsForNode}. Only `color` ships with the bundle's
+ * editorial Color-Processor rows; all other nodes are pin-name fallbacks.
+ */
+export const PATCH_INSPECTOR_BY_NODE: Readonly<Record<string, readonly PatchInspectorRow[]>> = {
+  color: PATCH_INSPECTOR_ROWS,
+};
+
+/**
+ * Resolve the inspector rows for a given node id. Returns the
+ * editorial rows from {@link PATCH_INSPECTOR_BY_NODE} when present,
+ * otherwise generates fallback rows from the node's pin list with
+ * `value: 0`, no unit, and no source. Returns the bundle's
+ * Color-Processor rows when `nodeId` is `null` (no selection) so the
+ * inspector renders a meaningful default frame on first paint.
+ */
+export function inspectorRowsForNode(
+  nodeId: string | null,
+  nodes: readonly { readonly id: string; readonly pins: readonly string[] }[],
+): readonly PatchInspectorRow[] {
+  if (nodeId === null) return PATCH_INSPECTOR_ROWS;
+  const explicit = PATCH_INSPECTOR_BY_NODE[nodeId];
+  if (explicit !== undefined) return explicit;
+  const node = nodes.find((n) => n.id === nodeId);
+  if (node === undefined) return [];
+  return node.pins.map((pin) => ({ key: pin, value: 0, unit: '', source: null }));
+}
+
+/**
+ * Resolve the inspector title for a given node id. Mirrors the
+ * bundle's "Inspector · {title}" pattern; falls back to the bundle's
+ * Color-Processor title when no node is selected.
+ */
+export function inspectorTitleForNode(
+  nodeId: string | null,
+  nodes: readonly { readonly id: string; readonly title: string }[],
+): string {
+  if (nodeId === null) return PATCH_INSPECTOR_TITLE;
+  const node = nodes.find((n) => n.id === nodeId);
+  if (node === undefined) return PATCH_INSPECTOR_TITLE;
+  return `Inspector · ${node.title}`;
+}
+
 /* ---------- Pin geometry helper ---------- */
 
 /**
@@ -206,13 +269,33 @@ export function patchPinPos(
   pinName: string,
   side: 'in' | 'out',
 ): readonly [number, number] {
-  const node = PATCH_NODES.find((n) => n.id === nodeId);
+  return patchPinPosFrom(PATCH_NODES, nodeId, pinName, side);
+}
+
+/**
+ * Variant of {@link patchPinPos} that resolves against a caller-
+ * supplied node array — used by the W31 port to compute wire
+ * endpoints from the live mutable `$state` nodes (so wires re-route
+ * automatically when nodes are dragged). Same `[0, 0]` graceful-
+ * degradation contract as the canonical helper.
+ */
+export function patchPinPosFrom(
+  nodes: readonly {
+    readonly id: string;
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly pins: readonly string[];
+  }[],
+  nodeId: string,
+  pinName: string,
+  side: 'in' | 'out',
+): readonly [number, number] {
+  const node = nodes.find((n) => n.id === nodeId);
   if (!node) return [0, 0];
   const pinIdx = node.pins.indexOf(pinName);
   if (pinIdx === -1) return [0, 0];
   const y = node.y + PATCH_HEADER_H + pinIdx * PATCH_ROW_H + PATCH_ROW_H / 2;
-  // Port circles are offset by -5 / +5 relative to the node edge so
-  // their visual centre sits ON the edge (matches bundle).
   const x = side === 'out' ? node.x + node.w : node.x;
   return [x, y];
 }

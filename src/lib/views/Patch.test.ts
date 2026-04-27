@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+//
+// W31 Patch view tests — exercise the click-to-select / inspector-
+// livedata-binding contract, the toolbar Undo button availability,
+// and the static fixture render shape. Drag geometry is not covered
+// here; jsdom's `getBoundingClientRect()` returns zero-sized rects so
+// pointer-coordinate-driven drag math can't be reliably simulated.
+// Cross-platform Playwright drag tests can be added in a follow-up
+// wave if needed; the in-component pointer-drag $effect itself is
+// pattern-shared with `CueTransitionCurve.svelte` which already has
+// its own drag harness.
+//
+// `afterEach(cleanup)` is required (per the
+// `feedback_vitest_svelte_cleanup_required.md` user memory) because
+// `@testing-library/svelte`'s `render` does not auto-cleanup between
+// tests in this Vitest 4 + jsdom configuration; without it
+// multi-render tests collide on global queries.
+
+import '@testing-library/jest-dom/vitest';
+import { within } from '@testing-library/dom';
+import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import Patch from './Patch.svelte';
+
+describe('Patch view', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('renders all six nodes from the fixture', () => {
+    const { getByRole } = render(Patch);
+    expect(getByRole('button', { name: /Audio Input — 5 pins/ })).toBeInTheDocument();
+    expect(getByRole('button', { name: /Scene: Glitch — 6 pins/ })).toBeInTheDocument();
+    expect(getByRole('button', { name: /Color Processor — 4 pins/ })).toBeInTheDocument();
+    // The "— N pins" suffix disambiguates nodes from the same-prefix palette
+    // entries (palette has standalone "LFO" / "MIDI" / "Audio Input" items).
+    expect(getByRole('button', { name: /LFO · 1\/4 — 1 pins/ })).toBeInTheDocument();
+    expect(getByRole('button', { name: /MIDI · Launchpad X — 3 pins/ })).toBeInTheDocument();
+    expect(getByRole('button', { name: /Stage Out — 3 pins/ })).toBeInTheDocument();
+  });
+
+  it('renders all six wires as SVG paths', () => {
+    const { container } = render(Patch);
+    const paths = container.querySelectorAll('.patch__wires path');
+    expect(paths.length).toBe(6);
+  });
+
+  it('inspector defaults to the bundle Color Processor frame', () => {
+    const { container, getByText } = render(Patch);
+    expect(getByText('Inspector · Color Processor')).toBeInTheDocument();
+    // Pin names ("hue" / "saturation" / etc.) appear both in the Color
+    // Processor node body AND its inspector rows — scope queries to the
+    // inspector body to disambiguate.
+    const inspector = container.querySelector('.patch__inspector-body');
+    expect(inspector).not.toBeNull();
+    if (inspector === null) return;
+    const inInspector = within(inspector as HTMLElement);
+    expect(inInspector.getByText('hue')).toBeInTheDocument();
+    expect(inInspector.getByText('saturation')).toBeInTheDocument();
+    expect(inInspector.getByText('brightness')).toBeInTheDocument();
+    expect(inInspector.getByText('contrast')).toBeInTheDocument();
+  });
+
+  it('keyboard-activating a node updates inspector to that node', async () => {
+    const { container, getByRole, getByText } = render(Patch);
+    const audioNode = getByRole('button', { name: /Audio Input — 5 pins/ });
+    audioNode.focus();
+    await fireEvent.keyDown(audioNode, { key: 'Enter' });
+    expect(getByText('Inspector · Audio Input')).toBeInTheDocument();
+    // Pin names ("bass" / "rms" / etc.) appear both in the Audio Input node
+    // body AND its inspector rows after selection — scope queries to the
+    // inspector body to confirm the rows track selection.
+    const inspector = container.querySelector('.patch__inspector-body');
+    expect(inspector).not.toBeNull();
+    if (inspector === null) return;
+    const inInspector = within(inspector as HTMLElement);
+    expect(inInspector.getByText('bass')).toBeInTheDocument();
+    expect(inInspector.getByText('rms')).toBeInTheDocument();
+  });
+
+  it('selected node gets aria-pressed=true', async () => {
+    const { getByRole } = render(Patch);
+    const sceneNode = getByRole('button', { name: /Scene: Glitch — 6 pins/ });
+    expect(sceneNode).toHaveAttribute('aria-pressed', 'false');
+    sceneNode.focus();
+    await fireEvent.keyDown(sceneNode, { key: ' ' });
+    expect(sceneNode).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('toolbar Undo button is disabled before any drag', () => {
+    const { getByRole } = render(Patch);
+    const undoBtn = getByRole('button', { name: /Undo last node move/ });
+    expect(undoBtn).toBeDisabled();
+  });
+
+  it('Auto Layout and Commit toolbar buttons render but stay stub-only', () => {
+    const { getByRole } = render(Patch);
+    expect(getByRole('button', { name: /Auto Layout/ })).toBeInTheDocument();
+    expect(getByRole('button', { name: /Commit/ })).toBeInTheDocument();
+  });
+
+  it('palette renders all five categories', () => {
+    const { getByText } = render(Patch);
+    expect(getByText('Sources')).toBeInTheDocument();
+    expect(getByText('Modulators')).toBeInTheDocument();
+    expect(getByText('Scenes')).toBeInTheDocument();
+    expect(getByText('Processors')).toBeInTheDocument();
+    expect(getByText('Outputs')).toBeInTheDocument();
+  });
+
+  it('inspector unroute clears the source and shows "no source"', async () => {
+    const { getByRole, getAllByText, queryByText } = render(Patch);
+    // Default frame is Color Processor; "hue" row has a MIDI source.
+    // brightness + contrast already render "no source" → count starts at 2.
+    expect(queryByText('MIDI · CC 14')).toBeInTheDocument();
+    expect(getAllByText('no source').length).toBe(2);
+    const unrouteBtn = getByRole('button', { name: /Unroute hue/ });
+    await fireEvent.click(unrouteBtn);
+    expect(queryByText('MIDI · CC 14')).toBeNull();
+    expect(getAllByText('no source').length).toBe(3);
+  });
+});

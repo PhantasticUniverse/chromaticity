@@ -4,61 +4,56 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 -->
 
 <script lang="ts">
-  // Wave-19 PR1 Patch view full port — promotes the previously-disabled
-  // sidebar entry to a routed view per the canonical bundle JSX
-  // (`chromaticity-planning/ui-predev-bundle-v0.2-beta/views/patch.jsx`,
-  // the `PatchView` component mapped to `id: "patch"` in the bundle's
-  // VIEWS array). Replaces the W16 PR2 sidebar disabled stub. The
-  // bundle JSX is the canonical structural reference per the
-  // wireframe-alignment memory (`feedback_wireframes_normative_for_ui_ux.md`).
+  // Wave-31 Patch view interactivity port — extends the W19 PR1 frozen-
+  // frame port with click-to-select, pointer-drag node repositioning,
+  // a position-snapshot undo stack, and inspector livedata binding.
+  // Promotes the view from PARTIAL to DONE per R-37 in `docs/13-risk-
+  // register.md`. Bundle JSX (`chromaticity-planning/ui-predev-bundle-
+  // v0.2-beta/views/patch.jsx`) is the canonical structural reference;
+  // the JSX itself is also frozen-frame (no drag in the React reference)
+  // so this wave goes BEYOND bundle scope per AO direction to make the
+  // patch surface authorable in MVP scope.
   //
-  // Surface ported (mapping the bundle's three columns):
-  //   left   — Palette (5 categories: Sources / Modulators / Scenes /
-  //            Processors / Outputs).
-  //   centre — Node-graph canvas with dotted-grid background, six nodes
-  //            (audio / scene / color / lfo / midi / out), six wires
-  //            rendered as SVG cubic-bezier curves between port anchors.
-  //   right  — Inspector for the currently-selected node (Color
-  //            Processor in the bundle's frozen frame), with four
-  //            param rows (hue / saturation / brightness / contrast),
-  //            inline range bar, and source-routing readout.
+  // Locked W31 conventions:
+  //   - Node positions are `$state` mutable; the read-only `PATCH_NODES`
+  //     fixture is the seed (deep-cloned at component mount).
+  //   - Wire bezier paths are `$derived` from the live nodes so wires
+  //     re-route automatically during drag.
+  //   - Pointer-drag uses the `CueTransitionCurve.svelte` $effect-based
+  //     idiom: pointerdown → set `draggingId` → window-level pointermove
+  //     and pointerup attach via $effect → cleanup on release.
+  //   - Click-vs-drag is discriminated by total pointer travel against a
+  //     4px threshold; drags ≥4px don't change selection, drags <4px
+  //     promote to selection on pointerup.
+  //   - Undo stack snapshots node positions on drag start; the toolbar
+  //     Undo button pops one snapshot at a time. Capped at 10 entries.
+  //   - Inspector livedata: `selectedNodeId` drives the inspector title
+  //     and rows. Color Processor (the bundle's editorial state) is the
+  //     default unselected frame; other nodes get fallback rows
+  //     generated from their pin lists per
+  //     `inspectorRowsForNode` in `patch-fixtures.ts`.
+  //   - Inspector "Unroute" buttons clear the source on a per-row
+  //     local override map; "Route" stays a no-op stub (real source-
+  //     picker is Phase-3+).
+  //   - Phase-3+ deferrals: Auto Layout (graph-layout algorithm), Commit
+  //     (runtime patch-graph IPC), edge-creation drag (port-to-port
+  //     wiring), multi-select, range-thumb editing.
   //
-  // Locked W19 PR1 deviations from the bundle:
-  //   - No drag/drop. Bundle's React-managed selection / drag / commit
-  //     interactivity is out of scope; this port renders the same node
-  //     graph as a static visual stub. The Auto Layout / Commit / Undo
-  //     toolbar buttons remain visible but are no-op stubs (post-Phase-3
-  //     scope when the patch-graph runtime adapter lands).
-  //   - W19 PR1 inlined SVG path data for the toolbar undo + inspector
-  //     midi/link/x/plus glyphs because the canonical `Icon.svelte`
-  //     primitive landed in the same wave (PR3) but had not merged when
-  //     PR1 was authored. W20 view-internal icon sweep now swaps those
-  //     inline `<svg>`s for `<Icon name="..." />` references against the
-  //     vendored union (`undo` / `midi` / `link` / `x` / `plus`) per
-  //     `views/patch.jsx`.
-  //   - Palette items render as static visual rows; the bundle's hover
-  //     swap to `--surface-sunken` is preserved via `:hover` pseudo, but
-  //     the cursor `grab` affordance is stub-level (no real drag).
-  //   - Node-graph SVG is a single layer at z-index 1 (under the node
-  //     DOM) so wire endpoints visually meet the port circles. Header
-  //     toolbar floats at z-index 2 with `backdrop-filter: blur(6px)`
-  //     mirroring the bundle.
-  //
-  // A11y: the SVG canvas is `role="img"` with an `aria-label` summarising
-  // node and wire counts. Each node header repeats its title as
-  // accessible text inside the rounded rectangle. Palette items and
-  // inspector rows are reachable via keyboard tab order; the toolbar
-  // buttons announce their stub-state via `title`.
+  // A11y: nodes get `aria-pressed={selectedNodeId === node.id}` so AT
+  // announces selection. The canvas aria-label summarises node and wire
+  // counts plus an interactive-state hint.
   import {
+    inspectorRowsForNode,
+    inspectorTitleForNode,
+    type MutablePatchNode,
     PATCH_HEADER_H,
-    PATCH_INSPECTOR_ROWS,
-    PATCH_INSPECTOR_TITLE,
     PATCH_KIND_TINT,
     PATCH_NODES,
     PATCH_PALETTE,
     PATCH_ROW_H,
     PATCH_WIRES,
-    patchPinPos,
+    type PatchInspectorSource,
+    patchPinPosFrom,
   } from '../data/patch-fixtures';
   import Icon from '../Icon.svelte';
 
@@ -68,24 +63,177 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const CANVAS_W = 1100;
   const CANVAS_H = 600;
 
-  // Pre-compute wire bezier paths so the template stays declarative.
-  const wirePaths = PATCH_WIRES.map((w) => {
-    const [x1, y1] = patchPinPos(w.from[0], w.from[1], 'out');
-    const [x2, y2] = patchPinPos(w.to[0], w.to[1], 'in');
-    const mx = (x1 + x2) / 2;
-    return {
-      d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`,
-      x1,
-      y1,
-      x2,
-      y2,
-      color: w.color,
+  // Click-vs-drag threshold in pixels. Pointer travel below this on
+  // pointerup promotes to selection; equal-or-above is treated as drag
+  // completion with no selection change.
+  const CLICK_TRAVEL_THRESHOLD = 4;
+
+  // Maximum undo-stack depth. Older snapshots drop off the bottom on
+  // overflow; bounded to keep memory predictable across long sessions.
+  const UNDO_DEPTH = 10;
+
+  // ---- Mutable state -----------------------------------------------------
+
+  // Live, draggable copy of the canonical node fixtures. Cloning the
+  // readonly fixture keeps the seed pristine for unit-test
+  // determinism while letting drag/undo mutate freely in-component.
+  let nodes = $state<MutablePatchNode[]>(PATCH_NODES.map((n) => ({ ...n })));
+
+  // Currently-selected node id (null = bundle's default Color-Processor
+  // editorial frame).
+  let selectedNodeId = $state<string | null>(null);
+
+  // Active drag identity + offset between the pointer and the node's
+  // top-left corner at pointerdown. Both clear on pointerup.
+  let draggingId = $state<string | null>(null);
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  // Pointerdown location for click-vs-drag travel discrimination.
+  let pointerStartX = 0;
+  let pointerStartY = 0;
+
+  // Position-snapshot undo stack. Each entry is the array of `(id, x, y)`
+  // tuples captured immediately before a drag began.
+  type PositionSnapshot = readonly {
+    readonly id: string;
+    readonly x: number;
+    readonly y: number;
+  }[];
+  let undoStack = $state<PositionSnapshot[]>([]);
+
+  // Per-row inspector source-override map. `null` value clears the source
+  // (Unroute). Absent key falls back to the fixture-declared source.
+  let sourceOverride = $state<Record<string, null>>({});
+
+  // ---- Derived inspector + wire state ------------------------------------
+
+  const selectedNode = $derived(
+    selectedNodeId === null ? undefined : nodes.find((n) => n.id === selectedNodeId),
+  );
+
+  const inspectorTitle = $derived(inspectorTitleForNode(selectedNodeId, nodes));
+
+  const inspectorRows = $derived(inspectorRowsForNode(selectedNodeId, nodes));
+
+  const wirePaths = $derived(
+    PATCH_WIRES.map((w) => {
+      const [x1, y1] = patchPinPosFrom(nodes, w.from[0], w.from[1], 'out');
+      const [x2, y2] = patchPinPosFrom(nodes, w.to[0], w.to[1], 'in');
+      const mx = (x1 + x2) / 2;
+      return {
+        d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`,
+        x1,
+        y1,
+        x2,
+        y2,
+        color: w.color,
+      };
+    }),
+  );
+
+  const canUndo = $derived(undoStack.length > 0);
+
+  const ariaLabel = $derived(
+    `Patch graph — ${nodes.length} nodes, ${PATCH_WIRES.length} wires.` +
+      (selectedNode === undefined
+        ? ' Click a node to select; drag to reposition.'
+        : ` Selected: ${selectedNode.title}.`),
+  );
+
+  // ---- Snapshot + undo helpers -------------------------------------------
+
+  function captureSnapshot(): void {
+    const snap: PositionSnapshot = nodes.map((n) => ({ id: n.id, x: n.x, y: n.y }));
+    const next = [...undoStack, snap];
+    // Cap at UNDO_DEPTH; drop the oldest snapshot on overflow.
+    if (next.length > UNDO_DEPTH) next.shift();
+    undoStack = next;
+  }
+
+  function restoreSnapshot(snap: PositionSnapshot): void {
+    for (const entry of snap) {
+      const node = nodes.find((n) => n.id === entry.id);
+      if (node !== undefined) {
+        node.x = entry.x;
+        node.y = entry.y;
+      }
+    }
+  }
+
+  function handleUndo(): void {
+    const last = undoStack[undoStack.length - 1];
+    if (last === undefined) return;
+    undoStack = undoStack.slice(0, -1);
+    restoreSnapshot(last);
+  }
+
+  // ---- Drag lifecycle (CueTransitionCurve $effect idiom) -----------------
+
+  function handleNodePointerDown(e: PointerEvent, node: MutablePatchNode): void {
+    // Don't start drag on the inspector / palette buttons inside the
+    // node — only the header surface initiates drag. Buttons inside the
+    // node body call `e.stopPropagation()` themselves; this is the
+    // catch-all in case a non-button child bubbles.
+    if (e.button !== 0) return;
+    e.preventDefault();
+    if (e.currentTarget instanceof Element) {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
+    draggingId = node.id;
+    dragOffsetX = e.clientX - node.x;
+    dragOffsetY = e.clientY - node.y;
+    pointerStartX = e.clientX;
+    pointerStartY = e.clientY;
+    captureSnapshot();
+  }
+
+  $effect(() => {
+    if (draggingId === null) return;
+    const onMove = (e: PointerEvent): void => {
+      const node = nodes.find((n) => n.id === draggingId);
+      if (node === undefined) return;
+      const nextX = e.clientX - dragOffsetX;
+      const nextY = e.clientY - dragOffsetY;
+      // Soft-clamp to canvas bounds (allow node to peek 40px out so
+      // wires stay visible during repositioning at edges).
+      node.x = Math.max(-40, Math.min(CANVAS_W - 40, nextX));
+      node.y = Math.max(-40, Math.min(CANVAS_H - 40, nextY));
+    };
+    const onUp = (e: PointerEvent): void => {
+      const travel = Math.hypot(e.clientX - pointerStartX, e.clientY - pointerStartY);
+      const releasedId = draggingId;
+      draggingId = null;
+      // If the gesture was below the click threshold, treat as a click
+      // and promote to selection. Drags above threshold leave selection
+      // unchanged.
+      if (travel < CLICK_TRAVEL_THRESHOLD && releasedId !== null) {
+        selectedNodeId = releasedId;
+        // The captured snapshot was a no-op (the node didn't move);
+        // pop it back off so the undo stack stays meaningful.
+        undoStack = undoStack.slice(0, -1);
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
     };
   });
 
-  const ariaLabel =
-    `Patch graph — ${PATCH_NODES.length} nodes, ${PATCH_WIRES.length} wires.` +
-    ` Frozen-frame visual stub; drag and commit interactivity ship post-Phase-3.`;
+  // ---- Inspector source override -----------------------------------------
+
+  function handleUnroute(rowKey: string): void {
+    sourceOverride = { ...sourceOverride, [rowKey]: null };
+  }
+
+  function effectiveSource(
+    rowKey: string,
+    fallback: PatchInspectorSource | null,
+  ): PatchInspectorSource | null {
+    if (Object.prototype.hasOwnProperty.call(sourceOverride, rowKey)) return null;
+    return fallback;
+  }
 </script>
 
 <section class="patch" aria-label="Patch view">
@@ -103,7 +251,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               class="patch__palette-item"
               role="button"
               tabindex="0"
-              title="Drag a {item} into the canvas — wired post-MVP"
+              title="Drag {item} into the canvas (wiring scheduled for Phase-3+ patch-graph adapter)"
             >
               <span class="patch__palette-name">{item}</span>
             </div>
@@ -118,16 +266,27 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <header class="patch__canvas-head">
       <h2 class="patch__panel-title">Patch · Glitch</h2>
       <span class="patch__canvas-spacer" aria-hidden="true"></span>
-      <button type="button" class="patch__btn" title="Undo — wired post-MVP" aria-label="Undo">
+      <button
+        type="button"
+        class="patch__btn"
+        title="Undo last node move"
+        aria-label="Undo last node move"
+        disabled={!canUndo}
+        onclick={handleUndo}
+      >
         <Icon name="undo" size={12} />
       </button>
-      <button type="button" class="patch__btn" title="Auto-layout — wired post-MVP">
+      <button
+        type="button"
+        class="patch__btn"
+        title="Auto Layout (Phase-3+ scope: graph-layout algorithm against the patch-graph adapter)"
+      >
         Auto Layout
       </button>
       <button
         type="button"
         class="patch__btn patch__btn--primary"
-        title="Commit patch — wired post-MVP"
+        title="Commit patch (Phase-3+ scope: runtime patch-graph IPC)"
       >
         Commit
       </button>
@@ -155,13 +314,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
     <!-- Node layer (DOM nodes positioned absolutely in canvas coords) -->
     <div class="patch__nodes" aria-hidden="false">
-      {#each PATCH_NODES as node (node.id)}
+      {#each nodes as node (node.id)}
         <div
           class="patch__node"
+          class:patch__node--selected={selectedNodeId === node.id}
+          class:patch__node--dragging={draggingId === node.id}
           style="left: {node.x}px; top: {node.y}px; width: {node.w}px;
                  --node-tint: {PATCH_KIND_TINT[node.kind]};"
-          role="group"
+          role="button"
+          tabindex="0"
+          aria-pressed={selectedNodeId === node.id}
           aria-label="{node.title} — {node.pins.length} pins"
+          onpointerdown={(e) => handleNodePointerDown(e, node)}
+          onkeydown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              selectedNodeId = node.id;
+            }
+          }}
         >
           <div class="patch__node-head">
             <span class="patch__node-dot" aria-hidden="true"></span>
@@ -187,10 +357,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <!-- Right column: Inspector -->
   <aside class="patch__panel patch__inspector" aria-label="Patch inspector">
     <header class="patch__panel-head">
-      <h2 class="patch__panel-title">{PATCH_INSPECTOR_TITLE}</h2>
+      <h2 class="patch__panel-title">{inspectorTitle}</h2>
     </header>
     <div class="patch__inspector-body">
-      {#each PATCH_INSPECTOR_ROWS as row (row.key)}
+      {#each inspectorRows as row (row.key)}
+        {@const liveSource = effectiveSource(row.key, row.source)}
         <div class="patch__inspector-row">
           <div class="patch__inspector-head">
             <span class="patch__inspector-key mono">{row.key}</span>
@@ -203,18 +374,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <div class="patch__range-fill" style="width: {row.value * 100}%"></div>
             <div class="patch__range-thumb" style="left: {row.value * 100}%"></div>
           </div>
-          {#if row.source}
+          {#if liveSource}
             <div class="patch__inspector-source">
-              <span class="patch__inspector-icon"><Icon name={row.source.icon} size={10} /></span>
-              <span class="patch__inspector-source-name mono" style="color: {row.source.tint}">
-                {row.source.name}
+              <span class="patch__inspector-icon"><Icon name={liveSource.icon} size={10} /></span>
+              <span class="patch__inspector-source-name mono" style="color: {liveSource.tint}">
+                {liveSource.name}
               </span>
               <span class="patch__inspector-spacer" aria-hidden="true"></span>
               <button
                 type="button"
                 class="patch__btn patch__btn--ghost patch__btn--sm"
-                title="Unroute — wired post-MVP"
+                title="Unroute {row.key}"
                 aria-label="Unroute {row.key}"
+                onclick={() => handleUnroute(row.key)}
               >
                 <Icon name="x" size={10} />
               </button>
@@ -226,7 +398,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <button
                 type="button"
                 class="patch__btn patch__btn--ghost patch__btn--sm"
-                title="Route a source — wired post-MVP"
+                title="Route a source (Phase-3+ scope: source-picker against patch-graph adapter)"
               >
                 <Icon name="plus" size={10} /> route
               </button>
@@ -437,6 +609,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     border-top: 2px solid var(--node-tint, var(--color-line-3));
     border-radius: var(--radius-md);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+  .patch__node:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .patch__node--selected {
+    border-color: var(--color-primary);
+    box-shadow:
+      0 8px 20px rgba(0, 0, 0, 0.4),
+      0 0 0 1px var(--color-primary);
+  }
+  .patch__node--dragging {
+    cursor: grabbing;
+    opacity: 0.85;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.55);
   }
   .patch__node-head {
     padding: 6px var(--space-md);
