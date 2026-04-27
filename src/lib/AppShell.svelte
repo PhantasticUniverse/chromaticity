@@ -83,18 +83,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // generation, offline-docs dispatch).
   //
   // Wave-33a mounts `<WatermarkOverlay>` as a fixed bottom-right
-  // overlay at z-index 990 (under HotkeyOverlay / CommandPalette). The
-  // mount is gated on a hardcoded `WATERMARK_VISIBLE_FIXTURE` flag for
-  // now (default `false`, matching the License-view `activated`
-  // fixture's `render.watermark.off: true` capability). W33b
-  // capabilities-store wiring threads the live capability through and
-  // inverts it (visible when capability is denied). Per `adr/ADR-009-
+  // overlay at z-index 990 (under HotkeyOverlay / CommandPalette).
+  // Wave-33b threads `capabilitiesStore.has('render.watermark.off')`
+  // through and inverts it (visible when the capability is denied),
+  // closing the W33a hardcoded-fixture posture. Per `adr/ADR-009-
   // activation-and-entitlements.md` the operative MVP watermark is
-  // drawn by the Rust rendering backend; this UI overlay is the
-  // bundle's dev-time visual mock of the no-license state.
+  // drawn by the Rust rendering backend on the scene canvas; this UI
+  // overlay is the bundle's dev-time visual mock of the no-license
+  // state, threaded the way `BUNDLE-PROVENANCE-v0.2-beta.md` line 32
+  // describes ("WatermarkOverlay threaded into Perform live Preview
+  // via ChromaCtx.licensed").
   import ConsoleDrawer from './ConsoleDrawer.svelte';
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
+  import { capabilitiesStore } from './stores/capabilities.svelte';
   import { routeStore } from './stores/route.svelte';
   import TopBar from './TopBar.svelte';
   import AudioUniforms from './views/AudioUniforms.svelte';
@@ -123,12 +125,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let bannerVisible = $state(true);
   let commandPaletteOpen = $state(false);
 
-  // Hardcoded mock of the no-license / watermark-visible state.
-  // Default `false` matches the License view's `activated` fixture
-  // (which holds `render.watermark.off: true`); flip to `true` to
-  // exercise the W33a overlay manually until W33b capabilities-store
-  // threads the live capability through.
-  const WATERMARK_VISIBLE_FIXTURE = false;
+  // Watermark visibility is the inverse of the `render.watermark.off`
+  // capability per ADR-009: present when the capability is absent
+  // (default / expired / tampered token), absent when held. The W33b
+  // capabilities-store seeds from the `LICENSE_FIXTURE` `activated`
+  // matrix (which grants `render.watermark.off`), so this `$derived`
+  // resolves to `false` in the live activated-license render path.
+  // To exercise the overlay manually, flip the seed in
+  // `src/lib/stores/capabilities.svelte.ts` or call
+  // `capabilitiesStore.setSnapshot({...})` from devtools.
+  const watermarkVisible = $derived(!capabilitiesStore.has('render.watermark.off'));
 
   const BANNER_FIXTURE = {
     severity: 'warning' as const,
@@ -224,7 +230,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   commands={commandPaletteActions}
 />
 
-<WatermarkOverlay visible={WATERMARK_VISIBLE_FIXTURE} />
+<WatermarkOverlay visible={watermarkVisible} />
 
 <style>
   .app-shell {
