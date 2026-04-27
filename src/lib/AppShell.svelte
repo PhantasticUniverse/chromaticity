@@ -51,6 +51,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // (toggled by the StatusBar's Console button). The component renders
   // nothing when closed, so the cost of always mounting it is a single
   // top-level `{#if}` evaluation per reactive tick.
+  //
+  // Wave-27 PR1 mounts `<SnapBar>` between the TopBar and the routed
+  // view, gated on `routeStore.current === 'perform'`. The bundle
+  // (`Chromaticity.html` line 286) treats SnapBar as app-level chrome
+  // visible only on the Perform surface; the local `snapActive` state
+  // tracks which slot is highlighted. Frozen-frame: the deferred wiring
+  // onto the engine `SnapSlotId` IPC surface is `EV-INTEGRATION-MATRIX`
+  // scope (the eight perform-time bookmarks here are a different domain
+  // from the sixteen engine slots in `src/lib/snap.ts`).
   import ConsoleDrawer from './ConsoleDrawer.svelte';
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
@@ -69,6 +78,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Settings from './views/Settings.svelte';
   import Sources from './views/Sources.svelte';
   import Welcome from './views/Welcome.svelte';
+  import { SnapBar } from './widgets';
+
+  let snapActive = $state(2);
 </script>
 
 <div class="app-shell">
@@ -80,6 +92,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   </aside>
   <main class="app-shell__main">
     {#if routeStore.current === 'perform'}
+      <div class="app-shell__snapbar">
+        <SnapBar active={snapActive} onPick={(slot) => (snapActive = slot)} />
+      </div>
       <Perform />
     {:else if routeStore.current === 'library'}
       <Library />
@@ -141,6 +156,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     grid-area: main;
     overflow: auto;
     padding: var(--space-3xl) var(--space-4xl);
+  }
+  /* Break the SnapBar out of `__main`'s side+top padding so it spans
+   * the full main column width directly under the TopBar, matching the
+   * bundle's `Chromaticity.html` layout where SnapBar sits flush against
+   * the TopBar / view boundary. The bottom margin restores the gap to
+   * the routed view container. */
+  .app-shell__snapbar {
+    margin: calc(-1 * var(--space-3xl)) calc(-1 * var(--space-4xl)) var(--space-3xl);
   }
   .app-shell__status {
     grid-area: status;
