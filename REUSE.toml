@@ -123,6 +123,28 @@ SPDX-FileCopyrightText = "2026 Chromaticity"
 SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
 
 # -----------------------------------------------------------------------------
+# `ts-rs` auto-generated TypeScript bindings.
+#
+# The per-type files under `app/ui-bridge/bindings/` (canonical export) and
+# `src/lib/ipc/bindings/` (frontend-side mirror) are emitted by
+# `ts_rs::export_to(...)` from `app/shell/tests/export_bindings.rs` and carry
+# only the `ts-rs` "do not edit manually" header — never an SPDX header.
+# Coverage falls through to the root `**` aggregate today; this block makes
+# the proprietary posture explicit so that a future REUSE 3.x precedence
+# semantics shift cannot silently uncover them. Hand-authored barrels (e.g.
+# `src/lib/ipc/bindings/index.ts`) carry inline SPDX headers and the
+# `precedence = "override"` here is harmless under aggregate semantics.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = [
+  "app/ui-bridge/bindings/**",
+  "src/lib/ipc/bindings/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
+
+# -----------------------------------------------------------------------------
 # Third-party code (when present) lives under third_party/<origin>/ and
 # overrides here with an explicit license per ATTRIBUTION.md. This block is
 # reserved; it becomes active when the first vendored library lands.
