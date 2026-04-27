@@ -45,6 +45,12 @@
 // in `Chromaticity.html` (`{showSnapBar && <SnapBar … />}`). Re-exports
 // `DEFAULT_SNAP_SLOTS` and the `SnapSlot` type so consumers can pass
 // their own slot fixtures without reaching into the component file.
+//
+// Wave-27 PR2 adds `OutputRoutingTile`, the bordered display + Syphon /
+// Spout / NDI / Record status panel consumed by the Settings →
+// Graphics/Output section. Per-platform Syphon-on-mac / Spout-on-win
+// row variant comes from the existing `stores/platform.ts` detection;
+// row state is fixture per the frozen-frame contract.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
@@ -60,6 +66,7 @@ export { default as CuePad } from './CuePad.svelte';
 export { default as AudioReactivity } from './AudioReactivity.svelte';
 export { default as SnapBar } from './SnapBar.svelte';
 export { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
+export { default as OutputRoutingTile } from './OutputRoutingTile.svelte';
 
 // Per-cell shape for `CuePad`. Lifted into the barrel so consumers can
 // type their `cells` arrays without reaching into the component file
