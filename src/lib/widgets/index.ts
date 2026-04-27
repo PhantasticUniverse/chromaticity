@@ -51,6 +51,13 @@
 // Graphics/Output section. Per-platform Syphon-on-mac / Spout-on-win
 // row variant comes from the existing `stores/platform.ts` detection;
 // row state is fixture per the frozen-frame contract.
+//
+// Wave-28 PR1 adds `DegradedBanner`, the warning / error banner ported
+// from the bundle's `v02_supplement.jsx` `DegradedBanner` JSX (lines
+// 47-67). Mounted in `AppShell` between the TopBar and the routed view
+// (or the W27 PR1 SnapBar on Perform), surfacing fixture content per
+// the bundle's `Chromaticity.html` adoption site (line 263). Real
+// adapter-health probing is `EV-INTEGRATION-MATRIX` scope.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
@@ -67,6 +74,7 @@ export { default as AudioReactivity } from './AudioReactivity.svelte';
 export { default as SnapBar } from './SnapBar.svelte';
 export { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
 export { default as OutputRoutingTile } from './OutputRoutingTile.svelte';
+export { default as DegradedBanner } from './DegradedBanner.svelte';
 
 // Per-cell shape for `CuePad`. Lifted into the barrel so consumers can
 // type their `cells` arrays without reaching into the component file
