@@ -31,6 +31,12 @@
 // so each pad can carry its own per-pad hue (matching the Launchpad X
 // rainbow-LED palette in the wireframe), and drops the debug `[r,c]`
 // coord overlay that the W23 PR3 brief invented.
+//
+// Wave-25 PR2 adds `AudioReactivity`, the 4-band-tile + 48-bar FFT +
+// tempo-strip composite consumed by the Perform view's middle column
+// per the bundle's `views/perform.jsx` `AudioReactivity` JSX (lines
+// 198-261). Inline-SVG animation closes the W18 gap where the panel
+// was skipped wholesale because the bundle uses canvas.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
@@ -43,6 +49,7 @@ export { default as BeatDots } from './BeatDots.svelte';
 export { default as CrossFader } from './CrossFader.svelte';
 export { default as VuStereo } from './VuStereo.svelte';
 export { default as CuePad } from './CuePad.svelte';
+export { default as AudioReactivity } from './AudioReactivity.svelte';
 
 // Per-cell shape for `CuePad`. Lifted into the barrel so consumers can
 // type their `cells` arrays without reaching into the component file

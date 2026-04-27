@@ -70,6 +70,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     ControlGroup,
     CrossFader,
     Fader,
+    AudioReactivity,
     Knob,
     Swatch,
     TestCard,
@@ -228,6 +229,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         {/if}
       </div>
     {/if}
+
+    <!-- Audio Reactivity panel — W25 PR2 ports the bundle's
+         `AudioReactivity` JSX (perform.jsx lines 198-261). Panel chrome
+         matches the existing `.panel` / `.panel__head` shared style; the
+         widget body provides the 4 band tiles + animated 48-bar FFT +
+         tempo strip per the bundle. The bundle places this in a
+         dedicated middle column; the W18 port's 2-column layout (left =
+         controls + media, right = preview + scenes) absorbs it into the
+         right column instead — column-3 refactor is a future consideration
+         flagged in the PR body. -->
+    <section class="panel" aria-label="Audio reactivity">
+      <header class="panel__head">
+        <h2 class="panel__title">Audio Reactivity</h2>
+      </header>
+      <div class="panel__body">
+        <AudioReactivity />
+      </div>
+    </section>
 
     <!-- Scene panel -->
     <section class="panel scene-panel" aria-label="Scenes">
