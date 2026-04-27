@@ -44,6 +44,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import {
     AUDIO_UNIFORMS_FIXTURE,
     HOW_TO_USE_BLOCKS,
+    SPARKLINE_GENERATORS,
+    SPECTRUM_BAR_COUNT,
+    buildSparkline,
+    spectrumBarValue,
     type FrequencyBandBar,
   } from '../data/audio-uniform-fixtures';
   import Icon from '../Icon.svelte';
@@ -72,8 +76,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const SPECTRUM_VIEW_H = 36;
   const SPECTRUM_BAR_GAP = 0.15; // viewBox units
   const SPECTRUM_BAR_W =
-    (SPECTRUM_VIEW_W - SPECTRUM_BAR_GAP * (AUDIO_UNIFORMS_FIXTURE.spectrumBars.length - 1)) /
-    AUDIO_UNIFORMS_FIXTURE.spectrumBars.length;
+    (SPECTRUM_VIEW_W - SPECTRUM_BAR_GAP * (SPECTRUM_BAR_COUNT - 1)) / SPECTRUM_BAR_COUNT;
 
   function spectrumBarX(index: number): number {
     return index * (SPECTRUM_BAR_W + SPECTRUM_BAR_GAP);
@@ -83,6 +86,83 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   function spectrumBarY(value: number): number {
     return SPECTRUM_VIEW_H - spectrumBarH(value);
+  }
+
+  // Live animation pipeline — W25 PR1 closes the W17 frozen-frame
+  // deferral. The bundle's `<Spectrum>` and `<Sparkline>` primitives run
+  // a deterministic synthetic generator at ~50 ms cadence; under the
+  // bundle's interpretation of the frozen-frame contract that animation
+  // is in scope (no IPC dispatch / no real audio data — the formula is
+  // purely time-dependent).
+  let liveT = $state<number>(17);
+  let livePeaks = $state<readonly number[]>(new Array(SPECTRUM_BAR_COUNT).fill(0));
+  let audioReducedMotion = $state<boolean>(false);
+
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    audioReducedMotion = mq.matches;
+    const handler = (e: MediaQueryListEvent): void => {
+      audioReducedMotion = e.matches;
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  });
+
+  $effect(() => {
+    if (!streaming) return;
+    if (audioReducedMotion) {
+      liveT = 17;
+      livePeaks = new Array(SPECTRUM_BAR_COUNT).fill(0);
+      return;
+    }
+    // Closure-local peak ring — written each frame, mirrored to the
+    // `livePeaks` $state so the SVG re-renders without the $effect
+    // self-triggering on its own writes.
+    const peaks = new Array<number>(SPECTRUM_BAR_COUNT).fill(0);
+    let raf = 0;
+    let last = 0;
+    const start = performance.now();
+    const tick = (now: number): void => {
+      if (now - last > 50) {
+        last = now;
+        const t = 17 + (now - start) / 1000;
+        for (let i = 0; i < SPECTRUM_BAR_COUNT; i++) {
+          const v = spectrumBarValue(i / SPECTRUM_BAR_COUNT, t);
+          peaks[i] = Math.max((peaks[i] ?? 0) * 0.95, v);
+        }
+        liveT = t;
+        livePeaks = [...peaks];
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  });
+
+  const liveSpectrumBars = $derived.by<readonly number[]>(() => {
+    if (audioReducedMotion || !streaming) return AUDIO_UNIFORMS_FIXTURE.spectrumBars;
+    const out: number[] = [];
+    for (let i = 0; i < SPECTRUM_BAR_COUNT; i++) {
+      out.push(spectrumBarValue(i / SPECTRUM_BAR_COUNT, liveT));
+    }
+    return out;
+  });
+
+  // Sparkline samples by uniform key. Frozen-frame fallback returns the
+  // fixture's own `bpm.sparkline` array; the live tick rebuilds the 60-
+  // point window for each card from its registered generator.
+  const liveSparklines = $derived.by<Readonly<Record<string, readonly number[]>>>(() => {
+    if (audioReducedMotion || !streaming) return {};
+    const out: Record<string, readonly number[]> = {};
+    for (const [key, gen] of Object.entries(SPARKLINE_GENERATORS)) {
+      out[key] = buildSparkline(gen, liveT);
+    }
+    return out;
+  });
+
+  function spectrumPeakY(peak: number): number {
+    return SPECTRUM_VIEW_H - peak * (SPECTRUM_VIEW_H - 1);
   }
 
   // Sparkline SVG geometry — matches the bundle's 100×32 viewBox / 60-point
@@ -161,14 +241,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <span>src <b>{AUDIO_UNIFORMS_FIXTURE.source}</b></span>
           </div>
         </div>
-        <div class="au__hero-canvas" role="img" aria-label="Audio spectrum (frozen frame)">
+        <div
+          class="au__hero-canvas"
+          role="img"
+          aria-label={streaming ? 'Audio spectrum (live synthetic)' : 'Audio spectrum (paused)'}
+        >
           <svg
             class="au__spectrum-svg"
             viewBox="0 0 {SPECTRUM_VIEW_W} {SPECTRUM_VIEW_H}"
             preserveAspectRatio="none"
             aria-hidden="true"
           >
-            {#each AUDIO_UNIFORMS_FIXTURE.spectrumBars as bar, i (i)}
+            {#each liveSpectrumBars as bar, i (i)}
               <rect
                 class="au__spectrum-bar"
                 x={spectrumBarX(i)}
@@ -178,6 +262,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 rx="0.2"
               />
             {/each}
+            {#if !audioReducedMotion && streaming}
+              {#each livePeaks as peak, i (i)}
+                {#if peak > 0.04}
+                  <rect
+                    class="au__spectrum-peak"
+                    x={spectrumBarX(i)}
+                    y={spectrumPeakY(peak)}
+                    width={SPECTRUM_BAR_W}
+                    height="0.4"
+                  />
+                {/if}
+              {/each}
+            {/if}
           </svg>
         </div>
         <div class="au__hero-tempo">
@@ -295,6 +392,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                   <span class="au__bpm-val mono">{bpm.displayValue}</span>
                 </header>
                 {#if bpm.sparkline && bpm.sparkline.length > 0}
+                  {@const samples = liveSparklines[bpm.key] ?? bpm.sparkline}
                   <div class="au__spark" aria-hidden="true">
                     <div class="au__spark-mid"></div>
                     <svg
@@ -304,13 +402,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                     >
                       <path
                         class="au__spark-path"
-                        d={sparklinePath(bpm.sparkline)}
+                        d={sparklinePath(samples)}
                         vector-effect="non-scaling-stroke"
                       />
                       <circle
                         class="au__spark-head"
-                        cx={sparklineHeadX(bpm.sparkline)}
-                        cy={sparklineHeadY(bpm.sparkline)}
+                        cx={sparklineHeadX(samples)}
+                        cy={sparklineHeadY(samples)}
                         r="1.6"
                       />
                     </svg>
@@ -571,6 +669,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au__spectrum-bar {
     fill: var(--color-band-midhi);
     opacity: 0.85;
+  }
+  .au__spectrum-peak {
+    fill: var(--color-text-1);
+    opacity: 0.55;
   }
   .au__hero-tempo {
     display: flex;
