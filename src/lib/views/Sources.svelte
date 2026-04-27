@@ -44,12 +44,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     DEFAULT_ASSET_ID,
     DEFAULT_COLLECTION_ID,
     INSPECTOR_META,
+    LIVE_SOURCES,
     MEDIA_ASSETS,
     SOURCE_COLLECTIONS,
     type AssetFormat,
+    type LiveSource,
     type MediaAsset,
   } from '../data/sources-fixtures';
   import Icon from '../Icon.svelte';
+  import { currentPlatform } from '../stores/platform';
 
   let selectedCollectionId = $state<string>(DEFAULT_COLLECTION_ID);
   let selectedAssetId = $state<string>(DEFAULT_ASSET_ID);
@@ -88,6 +91,34 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   function selectAsset(id: string): void {
     selectedAssetId = id;
+  }
+
+  // W22 PR2 Live Sources (Spout / NDI) section state. Connect button only
+  // flips a local fixture flag — real Spout / NDI ingest is Phase-3+/4a.
+  // SvelteSet would be the idiomatic Svelte-5 reactive collection but a
+  // plain `Record<string, boolean>` keeps the consumer surface simpler
+  // here (boolean lookup per row, no membership semantics needed).
+  const connectedLiveSources = $state<Record<string, boolean>>({});
+
+  function liveSourceDisabled(src: LiveSource): boolean {
+    if (!src.available) return true;
+    return src.kind === 'spout' && currentPlatform !== 'win';
+  }
+
+  function liveSourceTooltip(src: LiveSource): string {
+    if (!src.available)
+      return 'Source is offline — start the producer application to advertise it.';
+    if (src.kind === 'spout' && currentPlatform !== 'win') {
+      return 'Spout is Windows-only — use NDI on macOS.';
+    }
+    return connectedLiveSources[src.id]
+      ? 'Connected — click to disconnect (frozen-frame stub).'
+      : 'Connect to this live source (frozen-frame stub; real ingest in Phase-3+).';
+  }
+
+  function toggleLiveSource(src: LiveSource): void {
+    if (liveSourceDisabled(src)) return;
+    connectedLiveSources[src.id] = !connectedLiveSources[src.id];
   }
 </script>
 
@@ -128,6 +159,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <main class="sources__grid-pane">
     <header class="sources__grid-header">
       <h2 class="sources__grid-title">
+        <span class="sources__grid-eyebrow">Local</span>
+        <span class="sources__grid-sep" aria-hidden="true">·</span>
         {activeCollection?.name ?? 'All Media'}
         <span class="sources__grid-sep" aria-hidden="true">·</span>
         <span class="sources__grid-count">{activeCollection?.count ?? MEDIA_ASSETS.length}</span>
@@ -209,6 +242,74 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </li>
       {/if}
     </ul>
+
+    <section class="sources__live" aria-label="Live sources">
+      <header class="sources__live-header">
+        <h2 class="sources__live-title">
+          <span class="sources__grid-eyebrow">Live</span>
+          <span class="sources__grid-sep" aria-hidden="true">·</span>
+          Spout &amp; NDI
+          <span class="sources__grid-sep" aria-hidden="true">·</span>
+          <span class="sources__grid-count">{LIVE_SOURCES.length}</span>
+        </h2>
+        <p class="sources__live-sub">
+          System-level live texture inputs from other applications. Connect is a frozen-frame stub;
+          real ingest lands in Phase-3+.
+        </p>
+      </header>
+
+      <ul class="sources__live-list">
+        {#each LIVE_SOURCES as src (src.id)}
+          {@const disabled = liveSourceDisabled(src)}
+          {@const connected = connectedLiveSources[src.id] === true}
+          <li
+            class="sources__live-row"
+            class:disabled
+            class:connected
+            title={liveSourceTooltip(src)}
+          >
+            <span class="sources__live-glyph" aria-hidden="true">
+              <Icon name={src.kind === 'spout' ? 'flash' : 'link'} size={14} />
+            </span>
+            <div class="sources__live-meta">
+              <p class="sources__live-name">{src.name}</p>
+              <p class="sources__live-origin">{src.origin}</p>
+            </div>
+            <span class="sources__live-spec">
+              <span>{src.kind.toUpperCase()}</span>
+              <span class="sources__asset-spec-sep" aria-hidden="true">·</span>
+              <span>{src.resolution}</span>
+              <span class="sources__asset-spec-sep" aria-hidden="true">·</span>
+              <span>{src.refreshHz} Hz</span>
+            </span>
+            <span
+              class="sources__live-chip"
+              class:sources__live-chip--win={src.availability === 'win'}
+              class:sources__live-chip--cross={src.availability === 'cross'}
+              aria-label={src.availability === 'win' ? 'Windows-only' : 'Cross-platform'}
+            >
+              {src.availability === 'win' ? 'WIN' : 'CROSS-PLATFORM'}
+            </span>
+            <button
+              type="button"
+              class="sources__live-action"
+              class:sources__live-action--connected={connected}
+              {disabled}
+              onclick={() => toggleLiveSource(src)}
+              aria-pressed={connected}
+            >
+              {#if !src.available}
+                Unavailable
+              {:else if connected}
+                Disconnect
+              {:else}
+                Connect
+              {/if}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </section>
   </main>
 
   <aside class="sources__inspector" aria-label="Asset inspector">
@@ -796,5 +897,160 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .sources__action--danger {
     color: var(--color-danger);
+  }
+
+  /* ---------------- Centre footer: Live Sources (Spout / NDI) ----------- */
+  /* The grid pane is a flex column. The asset grid above has `flex: 1` and
+   * scrolls internally; the Live Sources section is a fixed-height tail.
+   * On compact viewports the grid yields height first; the live list still
+   * shows its first 2-3 rows above the fold. */
+  .sources__grid-eyebrow {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-2);
+    font-weight: 500;
+  }
+  .sources__live {
+    border-top: 1px solid var(--color-line-1);
+    background: var(--color-bg-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    flex: 0 0 auto;
+    max-height: 40%;
+    overflow: auto;
+  }
+  .sources__live-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .sources__live-title {
+    margin: 0;
+    font-size: var(--font-size-body-md);
+    font-weight: 600;
+    color: var(--color-text-0);
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-xs);
+  }
+  .sources__live-sub {
+    margin: 0;
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-2);
+  }
+  .sources__live-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+  .sources__live-row {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1.6fr) minmax(0, 1.4fr) max-content max-content;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    transition:
+      border-color 100ms ease,
+      opacity 100ms ease;
+  }
+  .sources__live-row.disabled {
+    opacity: 0.55;
+  }
+  .sources__live-row.connected {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 1px var(--color-primary);
+  }
+  .sources__live-glyph {
+    color: var(--color-text-2);
+    line-height: 0;
+  }
+  .sources__live-row.connected .sources__live-glyph {
+    color: var(--color-primary);
+  }
+  .sources__live-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .sources__live-name {
+    margin: 0;
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sources__live-origin {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sources__live-spec {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-2);
+    display: inline-flex;
+    gap: var(--space-xs);
+    align-items: baseline;
+  }
+  .sources__live-chip {
+    border-radius: var(--radius-xs);
+    padding: 1px var(--space-xs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    letter-spacing: var(--letter-spacing-caps-sm);
+    text-transform: uppercase;
+    color: var(--color-on-primary);
+    line-height: 1.4;
+  }
+  .sources__live-chip--win {
+    background: var(--color-cat-motion);
+  }
+  .sources__live-chip--cross {
+    background: var(--color-cat-fx);
+  }
+  .sources__live-action {
+    background: var(--color-bg-4);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-0);
+    padding: var(--space-xs) var(--space-md);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-label);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+      background 100ms ease,
+      border-color 100ms ease,
+      color 100ms ease;
+  }
+  .sources__live-action:hover:not(:disabled) {
+    border-color: var(--color-line-3);
+  }
+  .sources__live-action--connected {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .sources__live-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 </style>

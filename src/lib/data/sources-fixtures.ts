@@ -190,3 +190,99 @@ export const INSPECTOR_META: AssetInspectorMeta = {
   added: 'Apr 14, 2026',
   tags: ['organic', 'blue', 'loop', 'underwater', 'slow'],
 };
+
+/* -------------------------------------------------------------------------- */
+/* W22 PR2 — Live Sources (Spout / NDI) section                               */
+/* -------------------------------------------------------------------------- */
+/* The bundle's `media.jsx` only carries a single `Live Sources` sidebar      */
+/* row gated on `cap: "io.camera"`; concrete Spout / NDI rows are not in the  */
+/* v0.2 bundle. The W22 PR2 brief calls for a second list rendered beneath   */
+/* Local Sources with per-source-kind availability semantics:                 */
+/*   - Spout is Windows-only (DirectX-backed shared-texture protocol).        */
+/*   - NDI is cross-platform (macOS + Windows).                               */
+/* Real adapter wiring is `EV-INTEGRATION-MATRIX` Phase-3+/4a; this slice is  */
+/* fixture-only with a `Connect` button that flips a local `connected` flag. */
+
+/** Live-source protocol kind. Drives the per-row availability chip and the
+ * platform-availability gate (Spout disables on macOS). */
+export type LiveSourceKind = 'spout' | 'ndi';
+
+/** Per-row platform-availability category for the chip. `win` renders the
+ * `WIN` chip; `cross` renders `CROSS-PLATFORM`. */
+export type LiveSourceAvailability = 'win' | 'cross';
+
+/** A single live texture source (Spout or NDI sender) advertised by another
+ * application on the host or local network. */
+export interface LiveSource {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: LiveSourceKind;
+  /** Originating application + sender label (e.g. "Resolume Avenue → Spout
+   * Out 1"). Maps to the bundle's media-meta sub-line aesthetic. */
+  readonly origin: string;
+  /** Source resolution, mirrored from the producing application. */
+  readonly resolution: string;
+  /** Source refresh rate in Hz (60 / 30 / 25 / etc.). */
+  readonly refreshHz: number;
+  readonly availability: LiveSourceAvailability;
+  /** Whether the source is currently advertising on the host / network.
+   * One fixture row sets this to `false` to exercise the disabled-row state
+   * (greyed out, "Unavailable" hover hint). */
+  readonly available: boolean;
+}
+
+/** Seeded live-sources fixture corpus per the W22 PR2 brief: 2 Spout
+ * (Windows-only producers), 2 NDI (cross-platform), and 1 unavailable
+ * row to exercise the disabled-state styling. */
+export const LIVE_SOURCES: readonly LiveSource[] = [
+  {
+    id: 'spout-resolume-out-1',
+    name: 'Resolume Avenue · Out 1',
+    kind: 'spout',
+    origin: 'Resolume Avenue → Spout Out 1',
+    resolution: '1920 × 1080',
+    refreshHz: 60,
+    availability: 'win',
+    available: true,
+  },
+  {
+    id: 'spout-notch-renderer-1',
+    name: 'Notch Builder · Renderer 1',
+    kind: 'spout',
+    origin: 'Notch Builder → Renderer 1',
+    resolution: '2560 × 1440',
+    refreshHz: 60,
+    availability: 'win',
+    available: true,
+  },
+  {
+    id: 'ndi-studio-camera-1',
+    name: 'Studio Camera 1',
+    kind: 'ndi',
+    origin: 'NDI · Studio Camera 1',
+    resolution: '1920 × 1080',
+    refreshHz: 30,
+    availability: 'cross',
+    available: true,
+  },
+  {
+    id: 'ndi-vision-mixer',
+    name: 'Vision Mixer Output',
+    kind: 'ndi',
+    origin: 'NDI · Vision Mixer Output',
+    resolution: '1920 × 1080',
+    refreshHz: 25,
+    availability: 'cross',
+    available: true,
+  },
+  {
+    id: 'ndi-stream-deck-offline',
+    name: 'Stream Deck (offline)',
+    kind: 'ndi',
+    origin: 'NDI · Stream Deck',
+    resolution: '1280 × 720',
+    refreshHz: 30,
+    availability: 'cross',
+    available: false,
+  },
+];
