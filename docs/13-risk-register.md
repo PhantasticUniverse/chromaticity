@@ -170,7 +170,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 | R-30 | Color management regression (`EV-COLOR-MANAGEMENT-SRGB`) | Any non-scene UI pixel rendered outside sRGB on a color-managed display in release candidate; ColorSync/ICC round-trip failure on documented profiles |
 | R-31 | `ts-rs` type-binding drift between Rust core and TypeScript UI | CI fails the `npm run check` step on stale bindings; any UI build against a bindings file whose hash differs from a fresh `build.rs` export |
 | R-32 | CodeMirror 6 plugin-ecosystem fragmentation | Any pinned CM6 plugin goes >12 months without upstream activity AND ships a known regression in the authoring flow |
-| R-33 | wgpu / WebView2 composition spike fails | Phase 1 spike per `47-ui-port-plan.md` §6 cannot achieve transparent-region compositing on Windows WebView2, or DPI scaling at >=1.75x regresses pixel-rounding below `target.min` |
+| R-33 | wgpu / WebView2 composition spike fails | wgpu-composition spike per `47-ui-port-plan.md` §6 (rolled forward to `EV-RENDER-CONFORMANCE` Phase-2 coverage after Phase-1 closeout) cannot achieve transparent-region compositing on Windows WebView2, or DPI scaling at >=1.75x regresses pixel-rounding below `target.min` |
 | R-34 | Svelte 5 runes idiom drift | Two or more PRs in the same review sequence diverge on state placement (`$state` vs store) for equivalent cross-component concerns; or `eslint-plugin-chromaticity-ui-tokens` lint fails on hard-coded tokens after a one-release grace sequence |
 | R-35 | NFR-10 keystroke-to-paint latency miss on WebView2 | p95 keystroke-to-paint budget (`37-authoring-environment-spec.md` §3.3a) exceeded on the GPU-A baseline Windows class; macOS WKWebView may pass while Windows WebView2 fails |
 | R-36 | Tauri 2 signing / notarization surface upstream churn | Apple notarization path or Authenticode signing workflow breaks across a minor Tauri 2 bump; `EV-RELEASE-ATTESTATION` regression on release candidate build |
@@ -439,27 +439,27 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 - Owner: AI Scene Workcell (editor surface) + AI QA/Ops Workcell (dependency health audit).
 
 ### R-33 wgpu / WebView2 Composition Spike Fails
-- Probability: Medium (named explicitly as a Phase 1 spike in ADR-018 §Consequences)
+- Probability: Medium (named as a Phase 1 spike in ADR-018 §Consequences; Phase-1 closeout at `4cbb0a4` exited without `engine/runtime/spikes/wgpu-composition/` landing, so the spike is now carried under `EV-RENDER-CONFORMANCE` Phase-2 coverage instead of a standalone Phase-1 deliverable)
 - Impact: High (fallback paths compromise scene-canvas colour fidelity or introduce perceived latency on output)
-- Trigger: Phase 1 wgpu-composition spike in `47-ui-port-plan.md` §6.1 fails any of: native-surface attach/detach across view changes, colour-space preservation on display-profile switch, fullscreen-transition timing within one frame, DPI scaling at 1.0x-3.0x without pixel rounding regressions, preview-tile latency within NFR-10.
+- Trigger: wgpu-composition spike per `47-ui-port-plan.md` §6.1 fails any of: native-surface attach/detach across view changes, colour-space preservation on display-profile switch, fullscreen-transition timing within one frame, DPI scaling at 1.0x-3.0x without pixel rounding regressions, preview-tile latency within NFR-10.
 - Mitigation:
- - Phase 1 spike is explicitly de-risking per ADR-018 §Consequences,
+ - de-risking framing locked in ADR-018 §Consequences,
  - fallback: web-rendered canvas via `<canvas>` + WebGPU (or WebGL) for non-fullscreen preview, native wgpu only in fullscreen path,
  - preview-tile fallback in `47-ui-port-plan.md` §6.2 uses CPU-decoded periodic readbacks for off-stage views regardless of spike outcome,
- - `EV-RENDER-CONFORMANCE` gates the spike outcome before Phase 2 begins.
+ - `EV-RENDER-CONFORMANCE` (Planned per `26-evidence-artifact-registry.md`; Phase 2 + release cumulative gate) is the rolled-forward coverage for the spike outcome.
 - Residual: Medium. Even with fallback, composition-path complexity is a long-tail source of platform-specific bugs; residual is bounded by scope of the fallback.
 - Owner: AI Runtime Workcell + Accountable Owner.
 
 ### R-34 Svelte 5 Runes Idiom Drift
-- Probability: Medium (Svelte 5 runes are new; no team-wide muscle memory)
+- Probability: Low (Phase-1 port waves W6-W22 settled the rune-vs-store split across primitives, app shell, and routed views; the `**/*.svelte.ts` parser override landed W12 PR #123 commit `0d83fb5` once the first reactive store needed in-module runes, and the convention has held without re-litigation since)
 - Impact: Medium (inconsistent state placement produces bugs that are easy to introduce and expensive to debug)
 - Trigger: Two or more PRs in the same review sequence diverge on state placement for equivalent cross-component concerns (e.g. one puts `$state` in a child, another lifts it to a parent context); OR `eslint-plugin-chromaticity-ui-tokens` lint fails on hard-coded tokens after a one-release grace sequence.
 - Mitigation:
- - Svelte 5 runes coding-standard subsection added to `43-development-standards.md` §13 under this plan,
- - single code-owner for `ui/` reviews during Phase 1 to let idioms settle,
+ - Svelte 5 runes-in-module idiom is documented in `43-development-standards.md` §12.5 (file-naming requirement + ESLint parser-override rationale, anchored on the W12 first-occurrence at `src/lib/stores/route.svelte.ts`),
+ - single code-owner for `ui/` reviews held through Phase 1 to let idioms settle,
  - `eslint-plugin-chromaticity-ui-tokens` fails CI on hard-coded tokens,
- - state-placement decision tree committed to `43-development-standards.md` §13 (rune vs store vs context).
-- Residual: Low. Ownership + standards + lint close the loop in the first implementation sequence.
+ - state-placement decision tree (rune vs store vs context) is rolled into the same `43-development-standards.md` §12.5 subsection rather than a separate §13 block as originally scoped.
+- Residual: Low. Ownership + standards + lint close the loop; Phase-1 closeout demonstrated the harness held without divergence-driven rework.
 - Owner: AI UX Workcell + AI QA/Ops Workcell.
 
 ### R-35 NFR-10 Keystroke-to-Paint Latency Miss on WebView2
