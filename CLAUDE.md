@@ -63,19 +63,22 @@ per-crate `target/` to clean.
 ```
 chromaticity/
 ├── app/
-│   └── shell/            # Tauri 2 binary (chromaticity-app crate)
+│   ├── shell/            # Tauri 2 binary (chromaticity-app crate)
+│   └── ui-bridge/        # ts-rs IPC type generator (Rust → TypeScript bindings)
 ├── engine/               # runtime/, scene/, audio/, observability/
 ├── integrations/         # osc-adapter/ (more adapter crates to follow)
-├── release-eng/          # reserved: signing / notarization / updater
-├── third_party/          # reserved: vendored-with-attribution
 ├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
 ├── .config/hakari.toml   # cargo-hakari config; platforms mirror deny.toml graph.targets
 ├── src/                  # Svelte web root; may migrate under app/ui/ later
+├── tests/                # workspace-level cross-cutting tests
 ├── dist/                 # Vite build output — .gitkeep is load-bearing
 ├── docs/                 # normative planning corpus + ADRs
 ├── scripts/              # policy / CI shell helpers
-├── .github/workflows/    # rust, frontend, sbom, evidence-tag-lint, policy
+├── .github/workflows/    # rust, frontend, sbom, evidence-tag-lint, policy, labels
 ├── Cargo.toml            # workspace root (edition 2024, MSRV 1.85.0)
+├── deny.toml             # cargo-deny advisories / licenses / bans / sources
+├── lefthook.yml          # pre-commit / pre-push hooks
+├── vitest.config.ts      # Vitest runner (jsdom + Svelte plugin)
 └── package.json          # @chromaticity/app
 ```
 
@@ -104,7 +107,10 @@ Chromaticity-native surface; `none` = no user-visible API / behavior change.
 `ui` `docs` `ux` `entitlement` `observability` `release-eng` `policy` `repo`.
 
 **Shape:** header ≤ 100 chars; subject ≤ 72 chars, lower-case, no trailing period;
-body / footer ≤ 100 chars per line. Scope is mandatory on every commit.
+body / footer ≤ 100 chars per line. Scope is mandatory on `feat` / `fix` / `perf` /
+`refactor` per `docs/43` §4.3 (enforced by the `scope-required-for-semver-types`
+plugin rule in `commitlint.config.cjs`); optional on `docs` / `test` / `build` / `ci` /
+`chore` / `revert`.
 
 ## Unique conventions and constraints
 
@@ -163,7 +169,7 @@ body / footer ≤ 100 chars per line. Scope is mandatory on every commit.
   restore with `git checkout -- dist/.gitkeep` before staging, or you commit the
   deletion and break `cargo check` on fresh clones. `npm run dev` does not clobber.
 - `app/shell/icons/icon.png` — Tauri config requires a window icon even when
-  `bundle.active = false`. The 93-byte transparent placeholder is intentional.
+  `bundle.active = false`. The 83-byte transparent placeholder is intentional.
 - `Cargo.lock` — tracked (required for reproducible builds).
 - `rust-toolchain.toml` — honored by CI and local builds. Do not override with
   `+stable` / `+nightly` without a work-package requirement.
@@ -387,21 +393,27 @@ them, but `Read` and review are the entire point of the bundle):
 - **`chromaticity-planning/ui-predev-bundle-v0.2-beta/`** — design-surface-complete
   React/JSX bundle (stamped 2026-04-23f, marked partial: design-surface only;
   engineering-mechanics deferred to dev queue). Per-view JSX under `views/` (perform,
-  library, scene/author, playlist, media, midi, osc, import, settings, audio, patch,
-  onboard) plus shared primitives — `cue_curve.jsx` (cubic bezier transition curve, the
-  W13 PR2 port source), `hotkeys_data.jsx` (canonical 70+ row hotkey vocabulary with the
-  `cap` entitlement field), `empty_states.jsx` (per-view copy), `v02_supplement.jsx`
-  (ChromaCtx + AdapterPill / DegradedBanner / OutputRoutingTile / WatermarkOverlay /
-  LockedRow chrome), `extras.jsx` (ThemeSwitcher / FavslotsBar / SnapBar /
-  ControlHotkeysHint), `screenshot_modal.jsx`, plus `views/_data.jsx` fixture corpus and
-  `styles.css` with all three themes (Pulse / Atelier / Console). The older
-  `ui-predev-bundle/` (v0.1-alpha) sibling exists for historical comparison; the v0.2-beta
-  bundle is canonical.
-- **`chromaticity-planning/ui-predev-bundle/screenshots/`** — wireframe screenshots,
-  numbered: 01-library-scene-grid, 02-author-scene-editor, 03-playlist-cue-table,
-  04-media-library, 05-mappings-midi-pads, 06-osc-link-settings, 07-import-shadertoy-isf.
-  Copied to `.playwright-mcp/wireframe-reference/` with descriptive filenames + an index
-  README during W9 for easier reference during port work.
+  library, scene, playlist, media, midi, osc, import, settings, audio, patch, onboard;
+  the bundle's `scene.jsx` is the full Author port source) plus shared primitives —
+  `chroma_inspector.jsx` (input controls palette, the W10 port source), `cue_curve.jsx`
+  (cubic bezier transition curve, the W13 PR2 port source), `hotkeys_data.jsx`
+  (canonical 70+ row hotkey vocabulary with the `cap` entitlement field),
+  `empty_states.jsx` (per-view copy), `v02_supplement.jsx` (ChromaCtx + AdapterPill /
+  DegradedBanner / OutputRoutingTile / WatermarkOverlay / LockedRow / CrashResumeBanner
+  chrome), `extras.jsx` (ThemeSwitcher / FavslotsBar / SnapBar / ControlHotkeysHint),
+  `components.jsx` (Icon / SceneStill / Preview / Spectrum primitives), `shaders.jsx`
+  (GLSL shader demo patterns), `screenshot_modal.jsx`, plus `views/_data.jsx` fixture
+  corpus, `styles.css` with all three themes (Pulse / Atelier / Console), `lib/` and
+  `styles/` subdirs, and provenance markers (`BUNDLE-PROVENANCE-v0.2-beta.md`,
+  `HANDOFF.md`, `DESIGN.md`, `FONTS.md`). The older `ui-predev-bundle/` (v0.1-alpha)
+  sibling exists for historical comparison; the v0.2-beta bundle is canonical.
+- **`chromaticity-planning/ui-predev-bundle/screenshots/`** — raw wireframe captures
+  (timestamp-named PNGs from 2026-04-22). The W9 port pass copied them to
+  `.playwright-mcp/wireframe-reference/` under descriptive filenames
+  (`01-library-scene-grid`, `02-author-scene-editor`, `03-playlist-cue-table`,
+  `04-media-library`, `05-mappings-midi-pads`, `06-osc-link-settings`,
+  `07-import-shadertoy-isf`) plus an index `README.md` for easier reference during port
+  work — that's the directory to read first, not the timestamped originals.
 
 When scoping a UI/UX wave or PR, read `.playwright-mcp/wireframe-reference/README.md`
 first, then the relevant numbered screenshot, then the corresponding bundle JSX.
