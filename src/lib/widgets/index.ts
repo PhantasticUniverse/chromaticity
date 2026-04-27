@@ -37,6 +37,14 @@
 // per the bundle's `views/perform.jsx` `AudioReactivity` JSX (lines
 // 198-261). Inline-SVG animation closes the W18 gap where the panel
 // was skipped wholesale because the bundle uses canvas.
+//
+// Wave-27 PR1 adds `SnapBar`, the 8-slot quick-access snap bar ported
+// from the bundle's `extras.jsx` `SnapBar` JSX (lines 14-46). Mounted
+// in `AppShell` between the TopBar and the routed view, gated on
+// `routeStore.current === 'perform'` per the bundle's adoption site
+// in `Chromaticity.html` (`{showSnapBar && <SnapBar … />}`). Re-exports
+// `DEFAULT_SNAP_SLOTS` and the `SnapSlot` type so consumers can pass
+// their own slot fixtures without reaching into the component file.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
@@ -50,6 +58,8 @@ export { default as CrossFader } from './CrossFader.svelte';
 export { default as VuStereo } from './VuStereo.svelte';
 export { default as CuePad } from './CuePad.svelte';
 export { default as AudioReactivity } from './AudioReactivity.svelte';
+export { default as SnapBar } from './SnapBar.svelte';
+export { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
 
 // Per-cell shape for `CuePad`. Lifted into the barrel so consumers can
 // type their `cells` arrays without reaching into the component file
