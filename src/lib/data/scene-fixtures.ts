@@ -51,6 +51,13 @@ export interface ChromaControl {
   readonly max?: number;
   readonly group?: string;
   readonly description?: string;
+  /**
+   * Discrete-option labels for `dropdown` controls. Mirrors scene.json's
+   * `LABELS` array per `chroma_inspector.jsx` lines 38-39. When omitted,
+   * the W32 `Dropdown` widget falls back to generated `opt N` labels.
+   * Other control types ignore this field.
+   */
+  readonly labels?: readonly string[];
 }
 
 export interface ChromaSceneFixture {
@@ -120,11 +127,12 @@ export const CHROMA_FIXTURE_NATIVE: ChromaSceneFixture = {
       group: 'geometry',
       description: 'center of symmetry',
     },
-    // Synthesized rows so the inspector exercises the dropdown placeholder.
+    // Synthesized rows so the inspector exercises the dropdown widget.
     {
       name: 'palette',
       type: 'dropdown',
       default: 1,
+      labels: ['warm', 'neon', 'ice', 'mono'],
       group: 'color',
       description: 'preset palette index',
     },

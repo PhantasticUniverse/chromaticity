@@ -6,15 +6,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <script lang="ts">
   // Wave-10 view: scene Inputs Inspector. Read-only port of the
   // chromaticity-planning bundle's chroma_inspector.jsx — controls grouped
-  // by `group` field with category-tint accents on the group rail. The
-  // mappable W8 widget primitives (Fader / Knob / Toggle / Swatch) render
-  // for slider / knob / toggle / color rows; non-mappable types
-  // (xy / bang / dropdown) fall back to a placeholder pill until W11
-  // widget primitives land. Fixtures are hardcoded in
-  // `src/lib/data/scene-fixtures.ts`; W11 will replace them with
-  // IPC-loaded scene.json content.
+  // by `group` field with category-tint accents on the group rail.
+  // Wave-32 closes the placeholder gap: the W8 mappable primitives
+  // (Fader / Knob / Toggle / Swatch) render for slider / knob / toggle /
+  // color, and the new W32 primitives (Xy / Bang / Dropdown) cover the
+  // remaining bundle control types per `chroma_inspector.jsx::
+  // ChromaCtrlBody` lines 138-197. Fixtures are hardcoded in
+  // `src/lib/data/scene-fixtures.ts`; W11+ IPC-fed loader will replace
+  // them without changing this view's rendering contract.
   import type { ChromaSceneFixture, ChromaControl } from '../data/scene-fixtures';
-  import { Fader, Knob, Toggle, Swatch } from '../widgets';
+  import { Bang, Dropdown, Fader, Knob, Swatch, Toggle, Xy } from '../widgets';
 
   let { scene }: { scene: ChromaSceneFixture } = $props();
 
@@ -84,9 +85,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 <Toggle value={control.default === true} />
               {:else if control.type === 'color'}
                 <Swatch color={typeof control.default === 'string' ? control.default : '#888'} />
-              {:else}
-                <!-- TODO(W11): widget primitive for {control.type} -->
-                <span class="inputs__row-placeholder">[ {control.type} placeholder ]</span>
+              {:else if control.type === 'xy'}
+                <Xy
+                  value={Array.isArray(control.default) && control.default.length >= 2
+                    ? [control.default[0] as number, control.default[1] as number]
+                    : [0, 0]}
+                />
+              {:else if control.type === 'bang'}
+                <Bang />
+              {:else if control.type === 'dropdown'}
+                <Dropdown
+                  value={typeof control.default === 'number' ? control.default : 0}
+                  labels={control.labels}
+                />
               {/if}
             </div>
             {#if control.min !== undefined && control.max !== undefined}
@@ -176,14 +187,5 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-family: var(--font-family-mono);
     min-width: 6ch;
     text-align: right;
-  }
-  .inputs__row-placeholder {
-    color: var(--color-text-2);
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-body-sm);
-    background: var(--color-bg-3);
-    border: 1px dashed var(--color-line-2);
-    border-radius: var(--radius-xs);
-    padding: 2px var(--space-xs);
   }
 </style>
