@@ -63,12 +63,51 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Icon, { type IconName } from '../Icon.svelte';
   import SceneDiff from '../SceneDiff.svelte';
   import Fader from '../widgets/Fader.svelte';
+  import VuStereo from '../widgets/VuStereo.svelte';
 
   let activeFile = $state<AuthorFileTab>('main.glsl');
   let activeTab = $state<AuthorInspectorTab>('edit');
   let controlsOpen = $state<boolean>(true);
   let consoleOpen = $state<boolean>(true);
   let logMidi = $state<boolean>(false);
+
+  /* W28 PR2 preview-tools state — bundle-faithful port of
+   * `chromaticity-planning/ui-predev-bundle-v0.2-beta/extras.jsx`
+   * `PreviewTools` (lines 189-208). All three flags are local
+   * chrome only; the real preview wiring (HUD overlay, frame-rate
+   * pacing, screenshot capture) is `EV-INTEGRATION-MATRIX` scope
+   * for Phase-3+. The pause toggle still flips icon + `aria-pressed`
+   * + the `--on` modifier so the click feedback is visible; the
+   * screenshot button raises a 200ms `flash` overlay on the preview
+   * tile (gated on `prefers-reduced-motion: reduce`). */
+  let hudVisible = $state<boolean>(true);
+  let paused = $state<boolean>(false);
+  let flash = $state<boolean>(false);
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function togglePaused(): void {
+    paused = !paused;
+  }
+  function toggleHud(): void {
+    hudVisible = !hudVisible;
+  }
+  function triggerScreenshot(): void {
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) return;
+    if (flashTimer !== null) clearTimeout(flashTimer);
+    flash = true;
+    flashTimer = setTimeout(() => {
+      flash = false;
+      flashTimer = null;
+    }, 200);
+  }
+  $effect(() => {
+    return () => {
+      if (flashTimer !== null) clearTimeout(flashTimer);
+    };
+  });
 
   const FILE_TABS: readonly AuthorFileTab[] = [
     'main.glsl',
@@ -425,20 +464,56 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <span class="au-author__preview-blob au-author__preview-blob--b"></span>
       <span class="au-author__preview-blob au-author__preview-blob--c"></span>
       <span class="au-author__preview-label mono">{AUTHOR_SCENE_META.title}</span>
+      {#if flash}
+        <div class="au-author__shot-flash" aria-hidden="true"></div>
+      {/if}
     </div>
 
-    <!-- Preview tools (visual stubs) -->
+    <!-- Preview tools (bundle-faithful, visual stubs) -->
     <div class="au-author__panel au-author__previewtools" role="region" aria-label="Preview tools">
-      <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
-        <Icon name="play" size={11} /> play
+      <button
+        class="au-author__previewtools-btn"
+        class:au-author__previewtools-btn--on={!hudVisible}
+        type="button"
+        title="Show / hide HUD"
+        aria-label="Show or hide HUD"
+        aria-pressed={hudVisible ? 'false' : 'true'}
+        onclick={toggleHud}
+      >
+        <Icon name="eye" size={14} />
       </button>
-      <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
-        <Icon name="undo" size={11} /> reset
+      <button
+        class="au-author__previewtools-btn"
+        type="button"
+        title="Toggle fullscreen"
+        aria-label="Toggle fullscreen"
+      >
+        <Icon name="fullscreen" size={14} />
       </button>
+      <button
+        class="au-author__previewtools-btn"
+        class:au-author__previewtools-btn--on={paused}
+        type="button"
+        title="Pause rendering"
+        aria-label="Pause rendering"
+        aria-pressed={paused ? 'true' : 'false'}
+        onclick={togglePaused}
+      >
+        <Icon name={paused ? 'play' : 'pause'} size={14} />
+      </button>
+      <div class="au-author__previewtools-fps mono">60 fps</div>
       <span class="au-author__spacer" aria-hidden="true"></span>
-      <span class="au-author__previewtools-fps mono">60 fps</span>
-      <button class="au-author__icon-btn" type="button" disabled title="Fullscreen">
-        <Icon name="fullscreen" size={12} />
+      <div class="au-author__previewtools-vu">
+        <VuStereo live={true} />
+      </div>
+      <button
+        class="au-author__previewtools-btn"
+        type="button"
+        title="Screenshot"
+        aria-label="Capture screenshot"
+        onclick={triggerScreenshot}
+      >
+        <Icon name="camera" size={14} />
       </button>
     </div>
 
@@ -1220,6 +1295,72 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au-author__previewtools-fps {
     font-size: var(--font-size-mono-sm);
     color: var(--color-text-3);
+  }
+  /* W28 PR2 — bundle PreviewTools button shape. Wider hit-target than
+     the 24px icon-btn used elsewhere in Author so the strip reads as a
+     dedicated chrome row rather than a list of generic icon affordances;
+     `--on` mirrors the bundle's `on` class (active pause / hidden HUD). */
+  .au-author__previewtools-btn {
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-2);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+  .au-author__previewtools-btn:hover:not(:disabled) {
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
+  }
+  .au-author__previewtools-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .au-author__previewtools-btn--on {
+    color: var(--color-primary);
+    border-color: color-mix(in oklab, var(--color-primary) 35%, var(--color-line-2));
+    background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  }
+  .au-author__previewtools-vu {
+    display: flex;
+    align-items: center;
+  }
+
+  /* Screenshot flash overlay — covers the preview tile (the visual area
+     being "captured"), NOT the tools strip. The 200ms timer in
+     `triggerScreenshot()` clears `flash`; this rule renders the brief
+     white-bias overlay while it is true. Skipped wholesale under
+     `prefers-reduced-motion: reduce` (the script-side guard prevents
+     `flash` from ever flipping true in that mode). */
+  .au-author__shot-flash {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in oklab, var(--color-text-1) 55%, transparent);
+    pointer-events: none;
+    animation: au-author-shot-flash 200ms ease-out forwards;
+  }
+  @keyframes au-author-shot-flash {
+    from {
+      opacity: 0.85;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .au-author__shot-flash {
+      animation: none;
+      opacity: 0;
+    }
   }
 
   /* ---------------- Inspector ------------------------------------------ */
