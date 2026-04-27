@@ -31,6 +31,19 @@
 
 export type MidiDeviceDirection = 'in' | 'out' | 'in+out';
 
+/**
+ * Optional pad-grid metadata for pad-style controllers.
+ *
+ * The MIDI Virtual Pad mirror in the M-14 panel renders a `CuePad` grid
+ * sized to the selected controller's hardware. Controllers without
+ * `padDims` are not pad-capable (keyboards, USB cables, OSC bridges) and
+ * are filtered out of the pad-controller selector.
+ */
+export interface MidiDevicePadDims {
+  readonly rows: number;
+  readonly cols: number;
+}
+
 export interface MidiDevice {
   readonly id: string;
   readonly name: string;
@@ -39,6 +52,7 @@ export interface MidiDevice {
   readonly allowed: boolean;
   readonly maps: number;
   readonly mpeWarned: boolean;
+  readonly padDims?: MidiDevicePadDims;
 }
 
 export const MIDI_DEVICES: readonly MidiDevice[] = [
@@ -50,6 +64,7 @@ export const MIDI_DEVICES: readonly MidiDevice[] = [
     allowed: true,
     maps: 42,
     mpeWarned: false,
+    padDims: { rows: 8, cols: 8 },
   },
   {
     id: 'dev.apc',
@@ -59,6 +74,7 @@ export const MIDI_DEVICES: readonly MidiDevice[] = [
     allowed: true,
     maps: 18,
     mpeWarned: false,
+    padDims: { rows: 5, cols: 8 },
   },
   {
     id: 'dev.touch',
