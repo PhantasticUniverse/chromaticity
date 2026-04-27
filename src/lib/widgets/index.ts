@@ -102,6 +102,18 @@ export { default as CommandPalette } from './CommandPalette.svelte';
 // fixture today (W33b capabilities-store wiring inverts it from
 // `render.watermark.off`, real verifier IPC lands in Phase-3+/4a).
 export { default as WatermarkOverlay } from './WatermarkOverlay.svelte';
+// Wave-34a adds `AdapterPill`, the six-state adapter-health pill
+// ported from `v02_supplement.jsx` lines 20-44. The bundle mounts
+// three pills (OUT / MIDI / OSC) in the TopBar HUD per
+// `Chromaticity.html` lines 228-230; this port replaces the W15 PR1
+// inline `top-bar__pill` placeholder markup with the bundle-faithful
+// component. State vocabulary is the bundle's literal six
+// (`off / warming / ok / rate-limited / disconnected / blocked`); the
+// W4 `OscHealthState` (`Healthy` / `Recovering` / `Degraded`) maps
+// onto a subset at the call-site. Real per-adapter health wiring is
+// `EV-INTEGRATION-MATRIX` scope.
+export { default as AdapterPill } from './AdapterPill.svelte';
+export { type AdapterPillState } from './adapter-pill.types';
 export {
   DEFAULT_COMMAND_PALETTE_ACTIONS,
   type CommandPaletteAction,
