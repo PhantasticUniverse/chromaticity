@@ -105,15 +105,42 @@ export interface AudioUniformsFixture {
  * Spectrum bars — 64 values approximating the wireframe's left-loaded mountain
  * profile (low end loud, high end falling off). The bundle's `<Spectrum>`
  * primitive generates these from the same simulated signal table; the port
- * inlines a frozen sample.
+ * inlines a frozen sample for the static fallback (`prefers-reduced-motion`)
+ * and exposes the bundle's per-frame generator below for the W25 live
+ * animation pipeline in `AudioUniforms.svelte`.
  * ------------------------------------------------------------------------- */
 
-const SPECTRUM_BARS: readonly number[] = [
-  0.42, 0.55, 0.68, 0.78, 0.88, 0.92, 0.86, 0.79, 0.72, 0.66, 0.61, 0.58, 0.62, 0.71, 0.78, 0.81,
-  0.74, 0.65, 0.58, 0.52, 0.48, 0.45, 0.5, 0.58, 0.64, 0.61, 0.55, 0.49, 0.44, 0.4, 0.38, 0.42,
-  0.46, 0.41, 0.36, 0.33, 0.31, 0.34, 0.39, 0.36, 0.31, 0.28, 0.26, 0.29, 0.33, 0.3, 0.26, 0.23,
-  0.21, 0.24, 0.27, 0.24, 0.2, 0.18, 0.17, 0.19, 0.21, 0.19, 0.16, 0.14, 0.13, 0.12, 0.11, 0.1,
-];
+export const SPECTRUM_BAR_COUNT = 64;
+
+/**
+ * Bundle's `<Spectrum>` per-bar signal — clamped to `[0, 1]`. Same formula
+ * as `chromaticity-planning/ui-predev-bundle-v0.2-beta/components.jsx`
+ * `Spectrum` (lines 297+):
+ *
+ *   v = pow(1 - f, 0.7) * (0.4 + |sin(t·(1.3 + f·4) + f·9)|·0.6) *
+ *       (0.6 + sin(t·7 + f·20)·0.3)
+ *
+ * `f` is the bar's normalised position `i / N` (so the leftmost bar's `f`
+ * is `0` and the rightmost's is just under `1`). `t` is the synthetic time
+ * accumulator in seconds.
+ */
+export function spectrumBarValue(f: number, t: number): number {
+  const v =
+    Math.pow(1 - f, 0.7) *
+    (0.4 + Math.abs(Math.sin(t * (1.3 + f * 4) + f * 9)) * 0.6) *
+    (0.6 + Math.sin(t * 7 + f * 20) * 0.3);
+  return Math.max(0, Math.min(1, v));
+}
+
+const SPECTRUM_BARS: readonly number[] = (() => {
+  // Frozen-frame fallback used when `prefers-reduced-motion: reduce`. Sampled
+  // at `t = 17 s` so the static page matches the wireframe screenshot.
+  const out: number[] = [];
+  for (let i = 0; i < SPECTRUM_BAR_COUNT; i++) {
+    out.push(spectrumBarValue(i / SPECTRUM_BAR_COUNT, 17));
+  }
+  return out;
+})();
 
 /* ----------------------------------------------------------------------------
  * Sparkline samples — 60-point frozen snapshot of each oscillator's last 3 s.
@@ -122,7 +149,13 @@ const SPECTRUM_BARS: readonly number[] = [
  * geometry).
  * ------------------------------------------------------------------------- */
 
-function buildSparkline(fn: (u: number) => number, originSec: number): readonly number[] {
+/**
+ * Build a 60-point window of `fn` ending at `originSec`. The window covers
+ * the previous 3 s; sample `i = 0` is the oldest, sample `i = 59` is the
+ * newest. Used for both the frozen-frame fixture (with `originSec = FROZEN_T`)
+ * and the live W25 animation pipeline (called per-frame with `originSec = t`).
+ */
+export function buildSparkline(fn: (u: number) => number, originSec: number): readonly number[] {
   const samples: number[] = [];
   const N = 60;
   const windowSec = 3;
@@ -143,6 +176,23 @@ const SIN_4 = (u: number): number => Math.sin(u * 0.5 * Math.PI) * 0.5 + 0.5;
 const SAW_BEAT = (u: number): number => (u * 2) % 1;
 const TWITCH = (u: number): number => Math.cos(u * 4) * 0.5 + 0.5;
 const STEP_RAND = (u: number): number => (Math.floor(u * 2) * 0.137) % 1;
+
+/**
+ * Per-uniform signal generators for the BPM-card sparklines. Keyed by the
+ * uniform identifier (`syn_BPMSin`, `syn_RandomOnBeat`, etc.); the live
+ * `AudioUniforms.svelte` $effect calls `buildSparkline(SPARKLINE_GENERATORS[k], t)`
+ * each tick to refresh that card's 60-point window.
+ */
+export const SPARKLINE_GENERATORS: Readonly<Record<string, (u: number) => number>> = {
+  syn_RandomOnBeat: STEP_RAND,
+  syn_BPMTri: TRI,
+  syn_BPMSin: SIN_1,
+  syn_BPMTri2: TRI_2,
+  syn_BPMSin2: SIN_2,
+  syn_BPMSin4: SIN_4,
+  syn_BeatTime: SAW_BEAT,
+  syn_BPMTwitcher: TWITCH,
+};
 
 export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
   streamingActive: true,
