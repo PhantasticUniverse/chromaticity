@@ -69,6 +69,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // posture as the W14 stub status pill in `TopBar.svelte`). `onAction`
   // routes to Settings via `routeStore.set('settings')`; `onDismiss`
   // hides the banner via local `bannerVisible` state.
+  //
+  // Wave-29 PR1 mounts `<CommandPalette>` as a fixed overlay at
+  // z-index 1010 (one layer above the HotkeyOverlay's 1000 in
+  // `App.svelte`). A window-level keydown handler toggles
+  // `commandPaletteOpen` on Cmd+K (macOS) / Ctrl+K (Windows / Linux);
+  // `event.preventDefault()` suppresses the browser default. The two
+  // routable rows (`launch-scene` → Library, `open-hotkeys` → Settings)
+  // attach their `onSelect` here so the widget fixture stays free of
+  // `routeStore` import coupling. The remaining five rows are
+  // dismiss-on-click no-ops pending Phase-3+/4a `EV-INTEGRATION-MATRIX`
+  // wiring (Snap recall, OSC address surfacing, support-bundle
+  // generation, offline-docs dispatch).
   import ConsoleDrawer from './ConsoleDrawer.svelte';
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
@@ -87,16 +99,47 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Settings from './views/Settings.svelte';
   import Sources from './views/Sources.svelte';
   import Welcome from './views/Welcome.svelte';
-  import { DegradedBanner, SnapBar } from './widgets';
+  import {
+    CommandPalette,
+    DEFAULT_COMMAND_PALETTE_ACTIONS,
+    DegradedBanner,
+    SnapBar,
+    type CommandPaletteAction,
+  } from './widgets';
 
   let snapActive = $state(2);
   let bannerVisible = $state(true);
+  let commandPaletteOpen = $state(false);
 
   const BANNER_FIXTURE = {
     severity: 'warning' as const,
     message: 'Running on integrated GPU. Performance reduced.',
     actionLabel: 'Diagnostics',
   };
+
+  const COMMAND_PALETTE_ROUTING: Record<string, () => void> = {
+    'launch-scene': () => routeStore.set('library'),
+    'open-hotkeys': () => routeStore.set('settings'),
+  };
+
+  const commandPaletteActions: readonly CommandPaletteAction[] =
+    DEFAULT_COMMAND_PALETTE_ACTIONS.map((action) => {
+      const onSelect = COMMAND_PALETTE_ROUTING[action.id];
+      return onSelect ? { ...action, onSelect } : action;
+    });
+
+  $effect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+        if (event.key === 'k' || event.key === 'K') {
+          event.preventDefault();
+          commandPaletteOpen = !commandPaletteOpen;
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
 </script>
 
 <div class="app-shell">
@@ -155,6 +198,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 </div>
 
 <ConsoleDrawer />
+
+<CommandPalette
+  open={commandPaletteOpen}
+  onClose={() => (commandPaletteOpen = false)}
+  commands={commandPaletteActions}
+/>
 
 <style>
   .app-shell {

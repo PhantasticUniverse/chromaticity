@@ -58,6 +58,15 @@
 // (or the W27 PR1 SnapBar on Perform), surfacing fixture content per
 // the bundle's `Chromaticity.html` adoption site (line 263). Real
 // adapter-health probing is `EV-INTEGRATION-MATRIX` scope.
+//
+// Wave-29 PR1 adds `CommandPalette`, the Cmd/Ctrl+K command palette
+// overlay ported from the bundle's `extras.jsx` `CommandPalette` JSX
+// (lines 124-166). Mounted in `AppShell` at z-index 1010 (one layer
+// above HotkeyOverlay) with a window-level keydown handler that toggles
+// the palette on Cmd+K (macOS) / Ctrl+K (Windows / Linux). Re-exports
+// `DEFAULT_COMMANDS` and the `CommandPaletteAction` interface so
+// AppShell can attach `onSelect` route-dispatch stubs without reaching
+// into the component file.
 export { default as Fader } from './Fader.svelte';
 export { default as Knob } from './Knob.svelte';
 export { default as Toggle } from './Toggle.svelte';
@@ -75,6 +84,11 @@ export { default as SnapBar } from './SnapBar.svelte';
 export { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
 export { default as OutputRoutingTile } from './OutputRoutingTile.svelte';
 export { default as DegradedBanner } from './DegradedBanner.svelte';
+export { default as CommandPalette } from './CommandPalette.svelte';
+export {
+  DEFAULT_COMMAND_PALETTE_ACTIONS,
+  type CommandPaletteAction,
+} from './command-palette.fixtures';
 
 // Per-cell shape for `CuePad`. Lifted into the barrel so consumers can
 // type their `cells` arrays without reaching into the component file
