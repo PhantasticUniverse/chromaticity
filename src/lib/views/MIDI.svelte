@@ -82,9 +82,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     MIDI_TAB_HINTS,
     MPE_BANNER_COPY,
     RELATIVE_ENCODER_MODES,
+    clampWaveformSample,
+    midiLearnWaveformBase,
     type MidiDevice,
     type MidiBindingMode,
     type MidiBindingRow,
+    type MidiHistoryEntry,
     type MidiTabId,
   } from '../data/midi-fixtures';
   import Icon from '../Icon.svelte';
@@ -185,15 +188,117 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   const mpeNotified = $derived(devices.some((d) => d.mpeWarned));
 
-  // Frozen waveform: build SVG path string from the snapshot fixture.
-  // Geometry mirrors the AudioUniforms sparkline approach (100×32 viewBox,
-  // preserveAspectRatio="none") so the SVG scales fluidly into whatever
-  // pixel width the panel grants it.
+  // Live waveform + history ring buffers — W24 PR2 animates what the
+  // W18 port shipped as a static snapshot. The bundle's
+  // `MidiLearnWaveform` runs a ~50ms-step canvas ring buffer fed by
+  // `0.45 + sin(t·0.9)·0.22 + sin(t·2.3)·0.08 + spike + noise`; we
+  // mirror it as an SVG path driven by `$state` arrays so the
+  // pre-ADR-011 no-canvas constraint stays intact while the visual
+  // matches the bundle.
+  //
+  // `prefers-reduced-motion: reduce` short-circuits the animation to
+  // the static fixture; the `$effect` only runs the rAF + setInterval
+  // pair while the learn-mode panel is open (`learning === true`) so
+  // closed-panel CPU is zero.
   const WAVE_W = 100;
   const WAVE_H = 32;
+  const HISTORY_OPTIONS: readonly { readonly msg: string; readonly device: string }[] = [
+    { msg: 'CC 15 MSB', device: 'APC40' },
+    { msg: 'CC 47 LSB', device: 'APC40' },
+    { msg: 'CC 14', device: 'APC40' },
+    { msg: 'Note 42', device: 'LPX' },
+    { msg: 'CC 21', device: 'LPX' },
+  ];
+
+  let liveWaveform = $state<readonly number[]>([...MIDI_LEARN_FIXTURE.waveform]);
+  let liveHistory = $state<readonly MidiHistoryEntry[]>(
+    MIDI_HISTORY_FIXTURE.map((e) => ({ ...e })),
+  );
+  let learnReducedMotion = $state<boolean>(false);
+
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    learnReducedMotion = mq.matches;
+    const handler = (e: MediaQueryListEvent): void => {
+      learnReducedMotion = e.matches;
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  });
+
+  $effect(() => {
+    if (!learning) return;
+    // Reset to fresh fixture state every time the panel re-opens so
+    // operators see a clean baseline rather than the tail of an old
+    // session.
+    if (learnReducedMotion) {
+      liveWaveform = [...MIDI_LEARN_FIXTURE.waveform];
+      liveHistory = MIDI_HISTORY_FIXTURE.map((e) => ({ ...e }));
+      return;
+    }
+    // Closure-local mirrors so the rAF / setInterval bodies don't read
+    // `$state` (which would self-trigger the effect on each write).
+    const samples = [...MIDI_LEARN_FIXTURE.waveform];
+    let history = MIDI_HISTORY_FIXTURE.map((e) => ({ ...e }));
+    liveWaveform = [...samples];
+    liveHistory = [...history];
+
+    let raf = 0;
+    let lastSampleTime = 0;
+    let entryCounter = 1000;
+    const start = performance.now();
+
+    const tick = (now: number): void => {
+      if (now - lastSampleTime > 50) {
+        lastSampleTime = now;
+        // Sweep continues from the fixture's `t = 17 s` tail; using
+        // `Math.random()` for spike + noise matches the bundle.
+        const t = 17 + (now - start) / 1000;
+        const spike = Math.random() < 0.08 ? Math.random() * 0.35 : 0;
+        const noise = (Math.random() - 0.5) * 0.04;
+        samples.shift();
+        samples.push(clampWaveformSample(midiLearnWaveformBase(t) + spike + noise));
+        liveWaveform = [...samples];
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    // Periodic event injection — bundle uses 900ms cadence (3000ms
+    // under reduced motion, but we already short-circuit above).
+    const injectInterval = window.setInterval(() => {
+      const pick =
+        HISTORY_OPTIONS[Math.floor(Math.random() * HISTORY_OPTIONS.length)] ?? HISTORY_OPTIONS[0]!;
+      const val = Math.floor(Math.random() * 128);
+      const next: MidiHistoryEntry = {
+        id: `h-live-${entryCounter++}`,
+        msg: pick.msg,
+        device: pick.device,
+        hex: '0x' + val.toString(16).padStart(2, '0'),
+        value: val,
+        relativeMs: 0,
+      };
+      history = [next, ...history.slice(0, 4)];
+      liveHistory = [...history];
+    }, 900);
+
+    // "ago" label refresh — bundle ticks at 250ms so labels read
+    // smoothly without per-frame DOM thrash.
+    const tickInterval = window.setInterval(() => {
+      history = history.map((e, i) => (i === 0 ? e : { ...e, relativeMs: e.relativeMs + 250 }));
+      liveHistory = [...history];
+    }, 250);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearInterval(injectInterval);
+      window.clearInterval(tickInterval);
+    };
+  });
 
   const wavePath = $derived.by(() => {
-    const samples = MIDI_LEARN_FIXTURE.waveform;
+    const samples = liveWaveform;
     if (samples.length === 0) return '';
     return samples
       .map((sample, i) => {
@@ -207,7 +312,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Filled-area polygon under the path (mirrors the bundle's translucent
   // accent-fill under the line).
   const waveFillPath = $derived.by(() => {
-    const samples = MIDI_LEARN_FIXTURE.waveform;
+    const samples = liveWaveform;
     if (samples.length === 0) return '';
     const top = samples
       .map((sample, i) => {
@@ -220,7 +325,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   });
 
   function lastWaveSampleY(): number {
-    const samples = MIDI_LEARN_FIXTURE.waveform;
+    const samples = liveWaveform;
     if (samples.length === 0) return WAVE_H / 2;
     const last = samples[samples.length - 1] ?? 0;
     return WAVE_H - last * (WAVE_H - 2) - 1;
@@ -725,7 +830,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <div class="midi__learn-cell">
             <span class="midi__caps">history · last 5</span>
             <ul class="midi__history">
-              {#each MIDI_HISTORY_FIXTURE as entry, i (entry.id)}
+              {#each liveHistory as entry, i (entry.id)}
                 <li class="midi__history-row" class:midi__history-row--head={i === 0}>
                   <span class="midi__history-msg mono">{entry.msg}</span>
                   <span class="midi__history-dev mono">{entry.device}</span>

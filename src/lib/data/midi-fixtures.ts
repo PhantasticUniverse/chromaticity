@@ -512,12 +512,23 @@ export interface MidiLearnSnapshot {
 }
 
 /*
- * Frozen waveform sampled from the bundle's `MidiLearnWaveform` signal
- * generator at `t ≈ 17 s` — matches the 160-point ring buffer the bundle
- * fills per-frame. The values are the same `0.45 + sin(t·0.9)·0.22 +
- * sin(t·2.3)·0.08 + spike` formula evaluated at deterministic timestamps,
- * so the SVG path renders identically across mounts.
+ * Bundle's `MidiLearnWaveform` base signal — same
+ * `0.45 + sin(t·0.9)·0.22 + sin(t·2.3)·0.08` core that the bundle
+ * combines with `Math.random()` spike + noise to fill its 160-point
+ * canvas ring buffer per-frame. Exposed so the live W24 PR2 ring-
+ * buffer animation in `MIDI.svelte` and the static snapshot below
+ * share the same generator. Spike + noise composition is the
+ * caller's responsibility (deterministic for fixtures, `Math.random()`
+ * for live).
  */
+export function midiLearnWaveformBase(t: number): number {
+  return 0.45 + Math.sin(t * 0.9) * 0.22 + Math.sin(t * 2.3) * 0.08;
+}
+
+export function clampWaveformSample(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
 const LEARN_WAVEFORM_SAMPLES: readonly number[] = (() => {
   // 80 samples is enough for a 100-unit-wide SVG to render a detailed
   // waveform without bloating the fixture file. The bundle uses 160 in a
@@ -526,11 +537,10 @@ const LEARN_WAVEFORM_SAMPLES: readonly number[] = (() => {
   const out: number[] = [];
   for (let i = 0; i < N; i++) {
     const t = 14 + (i / N) * 3; // sweep t = 14..17 s
-    const base = 0.45 + Math.sin(t * 0.9) * 0.22 + Math.sin(t * 2.3) * 0.08;
     // Deterministic pseudo-spike on every 11th sample so the snapshot is
     // not dead-flat but is reproducible across mounts.
     const spike = i % 11 === 7 ? 0.18 : 0;
-    out.push(Math.max(0, Math.min(1, base + spike)));
+    out.push(clampWaveformSample(midiLearnWaveformBase(t) + spike));
   }
   return out;
 })();
