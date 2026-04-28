@@ -216,6 +216,7 @@ components:
   meter:
     segment-color: '{colors.primary}'
     peak-color: '{colors.warning}'
+    clip-color: '{colors.danger}'
     background: '{colors.bg-3}'
   timecode-display:
     typography: '{typography.timecode}'

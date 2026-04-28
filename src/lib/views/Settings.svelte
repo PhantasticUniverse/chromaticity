@@ -41,8 +41,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { HOTKEYS } from '../data/hotkeys';
   import {
     AUDIO_CHANNEL_LAYOUTS,
+    AUDIO_CHANNEL_LEFT_OPTIONS,
+    AUDIO_CHANNEL_RIGHT_OPTIONS,
     AUDIO_INPUT_DEVICES,
+    AUDIO_INPUT_GAIN_DB_RANGE_DB,
+    AUDIO_INPUT_GAIN_DEFAULT,
     AUDIO_LATENCY_HINTS,
+    AUDIO_METER_BARS,
+    AUDIO_METER_LEVEL,
+    AUDIO_METER_PEAK,
     AUDIO_OUTPUT_DEVICES,
     AUDIO_SAMPLE_RATES,
     BACKUP_RETENTION_OPTIONS,
@@ -58,7 +65,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
-  import { ControlGroup, Fader, OutputRoutingTile } from '../widgets';
+  import { ControlGroup, Fader, Meter, OutputRoutingTile } from '../widgets';
   import SceneStill from '../widgets/SceneStill.svelte';
 
   // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
@@ -87,6 +94,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let sampleRate = $state(AUDIO_SAMPLE_RATES[1]?.id ?? '48000');
   let latencyHint = $state(AUDIO_LATENCY_HINTS[1]?.id ?? 'balanced');
   let channelLayout = $state(AUDIO_CHANNEL_LAYOUTS[1]?.id ?? 'stereo');
+
+  /* ----- Audio routing + gain (W39) ----- */
+  let channelLeft = $state(AUDIO_CHANNEL_LEFT_OPTIONS[0]?.id ?? 'L1');
+  let channelRight = $state(AUDIO_CHANNEL_RIGHT_OPTIONS[0]?.id ?? 'R2');
+  let inputGain = $state(AUDIO_INPUT_GAIN_DEFAULT);
+  /* Symmetric mapping about 0 dB unity at gain=0.5; the ±18 dB span
+   * (range_db / 2) approximates the bundle wireframe's "+3.2 dB" badge
+   * at the ~62% slider mark. */
+  let inputGainDb = $derived((inputGain - 0.5) * AUDIO_INPUT_GAIN_DB_RANGE_DB);
+  let inputGainDbLabel = $derived(`${inputGainDb >= 0 ? '+' : ''}${inputGainDb.toFixed(1)} dB`);
 
   /* ----- Graphics / Output state ----- */
   let resolutionPreset = $state(RESOLUTION_PRESETS[1]?.id ?? '1080p');
@@ -211,7 +228,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         Wireframe-aligned with the bundle's <code>views/settings.jsx</code>; W21 PR1 ships the
         visual-only Audio / Graphics / Storage scaffolding plus the <code>pick_folder</code> IPC contract.
         Live device enumeration + the native folder dialog land in Phase-3+/4a. W38 adds the right-rail
-        Preview + Diagnostics panel mirroring the bundle's two-column layout.
+        Preview + Diagnostics panel mirroring the bundle's two-column layout. W39 expands the Audio Device
+        section with Channel Routing, Input Gain, and a Monitoring meter.
       </p>
     </header>
 
@@ -258,10 +276,66 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             {/each}
           </select>
         </div>
+        <div class="settings__field">
+          <span class="settings__label">Channel Routing</span>
+          <div class="settings__field-row">
+            <label class="settings__a11y-only" for="channel-left">Left channel</label>
+            <select
+              id="channel-left"
+              class="settings__select settings__select--compact"
+              bind:value={channelLeft}
+            >
+              {#each AUDIO_CHANNEL_LEFT_OPTIONS as opt (opt.id)}
+                <option value={opt.id}>{opt.label}</option>
+              {/each}
+            </select>
+            <label class="settings__a11y-only" for="channel-right">Right channel</label>
+            <select
+              id="channel-right"
+              class="settings__select settings__select--compact"
+              bind:value={channelRight}
+            >
+              {#each AUDIO_CHANNEL_RIGHT_OPTIONS as opt (opt.id)}
+                <option value={opt.id}>{opt.label}</option>
+              {/each}
+            </select>
+            <span class="settings__hint settings__hint--inline">stereo</span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <label for="input-gain" class="settings__label">Input Gain</label>
+          <div class="settings__field-row settings__field-row--gain">
+            <input
+              id="input-gain"
+              type="range"
+              class="settings__range"
+              min="0"
+              max="1"
+              step="0.01"
+              bind:value={inputGain}
+              aria-valuetext={inputGainDbLabel}
+            />
+            <span class="settings__bpm-readout settings__bpm-readout--gain">
+              {inputGainDbLabel}
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">Monitoring</span>
+          <div class="settings__field-row settings__field-row--meter">
+            <Meter
+              level={AUDIO_METER_LEVEL}
+              peak={AUDIO_METER_PEAK}
+              bars={AUDIO_METER_BARS}
+              ariaLabel="Audio input monitor"
+            />
+          </div>
+        </div>
       </div>
       <p class="settings__hint">
         Visual stub — live cpal device enumeration arrives in Phase-3+/4a per
-        <code>EV-INTEGRATION-MATRIX</code>.
+        <code>EV-INTEGRATION-MATRIX</code>. The Monitoring meter is frozen-frame; live RMS /
+        peak-hold ride in alongside the audio capture loop per <code>EV-OBSERVABILITY</code>.
       </p>
     </article>
 
@@ -930,6 +1004,56 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     min-width: 0;
     width: 80px;
     font-family: var(--font-family-mono);
+  }
+
+  /* ----- W39 Audio routing / gain / monitoring ----- */
+
+  .settings__select--compact {
+    min-width: 88px;
+    font-family: var(--font-family-mono);
+  }
+
+  .settings__a11y-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .settings__field-row--gain {
+    flex-wrap: nowrap;
+    max-width: 420px;
+    width: 100%;
+  }
+
+  .settings__field-row--meter {
+    flex: 1;
+    max-width: 420px;
+  }
+
+  .settings__range {
+    flex: 1;
+    min-width: 120px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+    background: transparent;
+  }
+
+  .settings__range:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 4px;
+    border-radius: var(--radius-xs);
+  }
+
+  .settings__bpm-readout--gain {
+    font-size: var(--font-size-body-sm);
+    min-width: 72px;
+    text-align: right;
   }
 
   .settings__times {
