@@ -71,6 +71,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     RENDER_SCALE_STEP,
     RESOLUTION_PRESETS,
     SCREEN_FITTING_OPTIONS,
+    SENDER_NAME_DEFAULT,
     type ColorSpaceOption,
     type FolderEntry,
     type MultiDisplayModeOption,
@@ -143,6 +144,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let screenFitting = $state<ScreenFittingOption['id']>('fit');
   let fpsSliderEnabled = $state(false);
   let renderScaleLabel = $derived(`${renderScale.toFixed(2)}×`);
+
+  /* ----- Live Sources (W42) -----
+   * Bundle source: views/settings.jsx lines 115-124. Five boolean
+   * toggles + one text input gating the Syphon/Spout (per-platform
+   * sibling pair), NDI v2 input/output, Constant Output Resolution,
+   * and Sender Name surfaces. Frozen-frame; live source enumeration
+   * + the broadcast/receive IPC ride in alongside the Phase-3+/4a
+   * integration crate. The `data-cap` attributes carry the bundle's
+   * entitlement-gated capability ids (`io.syphon.*`, `io.ndi.*`,
+   * `render.custom-resolution`) for the W15+ post-MVP SKU
+   * infrastructure to consume without further markup changes. */
+  let syphonInputEnabled = $state(true);
+  let syphonOutputEnabled = $state(true);
+  let ndiInputEnabled = $state(false);
+  let ndiOutputEnabled = $state(true);
+  let constantOutputResolution = $state(false);
+  let senderName = $state(SENDER_NAME_DEFAULT);
 
   /* ----- Storage state ----- */
   let mediaFolders = $state<FolderEntry[]>(DEFAULT_MEDIA_FOLDERS.map((f) => ({ ...f })));
@@ -582,6 +600,95 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <code>EV-INTEGRATION-MATRIX</code>; capability hints (<code>io.syphon.output</code>,
         <code>io.spout.output</code>, <code>io.ndi.output</code>) ride along as
         <code>data-cap</code> attributes for the W15+ entitlement infra.
+      </p>
+    </article>
+
+    <article class="settings__section">
+      <h2>Live Sources</h2>
+      <div class="settings__form">
+        <div class="settings__field" data-cap="io.syphon.input">
+          <span class="settings__label">Spout / Syphon Input</span>
+          <button
+            type="button"
+            class="settings__pill-toggle"
+            class:on={syphonInputEnabled}
+            aria-pressed={syphonInputEnabled}
+            aria-label="Spout / Syphon Input"
+            onclick={() => (syphonInputEnabled = !syphonInputEnabled)}
+          >
+            <span class="settings__pill-thumb"></span>
+          </button>
+        </div>
+        <div class="settings__field" data-cap="io.syphon.output">
+          <span class="settings__label">Spout / Syphon Output</span>
+          <button
+            type="button"
+            class="settings__pill-toggle"
+            class:on={syphonOutputEnabled}
+            aria-pressed={syphonOutputEnabled}
+            aria-label="Spout / Syphon Output"
+            onclick={() => (syphonOutputEnabled = !syphonOutputEnabled)}
+          >
+            <span class="settings__pill-thumb"></span>
+          </button>
+        </div>
+        <div class="settings__field" data-cap="io.ndi.input">
+          <span class="settings__label">NDI Input</span>
+          <button
+            type="button"
+            class="settings__pill-toggle"
+            class:on={ndiInputEnabled}
+            aria-pressed={ndiInputEnabled}
+            aria-label="NDI Input"
+            onclick={() => (ndiInputEnabled = !ndiInputEnabled)}
+          >
+            <span class="settings__pill-thumb"></span>
+          </button>
+        </div>
+        <div class="settings__field" data-cap="io.ndi.output">
+          <span class="settings__label">NDI Output</span>
+          <button
+            type="button"
+            class="settings__pill-toggle"
+            class:on={ndiOutputEnabled}
+            aria-pressed={ndiOutputEnabled}
+            aria-label="NDI Output"
+            onclick={() => (ndiOutputEnabled = !ndiOutputEnabled)}
+          >
+            <span class="settings__pill-thumb"></span>
+          </button>
+        </div>
+        <div class="settings__field" data-cap="render.custom-resolution">
+          <span class="settings__label">Constant Output Resolution</span>
+          <button
+            type="button"
+            class="settings__pill-toggle"
+            class:on={constantOutputResolution}
+            aria-pressed={constantOutputResolution}
+            aria-label="Constant Output Resolution"
+            onclick={() => (constantOutputResolution = !constantOutputResolution)}
+          >
+            <span class="settings__pill-thumb"></span>
+          </button>
+        </div>
+        <div class="settings__field">
+          <label for="sender-name" class="settings__label">Sender Name</label>
+          <input
+            id="sender-name"
+            type="text"
+            class="settings__input settings__input--sender"
+            bind:value={senderName}
+            maxlength="32"
+          />
+        </div>
+      </div>
+      <p class="settings__hint">
+        Frozen-frame; live source enumeration and the broadcast / receive IPC arrive in Phase-3+/4a
+        per <code>EV-INTEGRATION-MATRIX</code>. <code>data-cap</code> attributes (<code
+          >io.syphon.input</code
+        >, <code>io.syphon.output</code>, <code>io.ndi.input</code>,
+        <code>io.ndi.output</code>, <code>render.custom-resolution</code>) ride along for the W15+
+        entitlement infra to discover without further markup changes.
       </p>
     </article>
 
@@ -1295,6 +1402,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-body-sm);
     min-width: 72px;
     text-align: right;
+  }
+
+  /* ----- W42 Live Sources ----- */
+  .settings__input--sender {
+    min-width: 0;
+    width: 220px;
+    font-family: var(--font-family-mono);
   }
 
   .settings__times {
