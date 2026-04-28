@@ -272,6 +272,18 @@ export const RENDER_SCALE_MIN = 0.5;
 export const RENDER_SCALE_MAX = 2.0;
 export const RENDER_SCALE_STEP = 0.05;
 
+/* ---------- Live Sources (W42) ----------
+ * Bundle source: views/settings.jsx lines 115-124. Six bundle-faithful
+ * rows that gate the I/O surface for the Spout/Syphon (per-platform
+ * sibling pair), NDI v2 input/output, Constant Output Resolution
+ * toggle, and Sender Name input. The wireframe defaults are five
+ * boolean toggles + one text field. Entitlement gating per
+ * `data-cap` selectors mirrors the bundle wireframe; the watermark-
+ * only MVP enforcement landscape (per CLAUDE.md) means the
+ * `data-cap` attributes ride along here for the W15+ post-MVP SKU
+ * rollouts to consume without further markup changes. */
+export const SENDER_NAME_DEFAULT = 'chrm';
+
 /* ---------- Storage ---------- */
 
 export interface FolderEntry {
