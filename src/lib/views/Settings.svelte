@@ -54,6 +54,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     AUDIO_OUTPUT_DEVICES,
     AUDIO_SAMPLE_RATES,
     BACKUP_RETENTION_OPTIONS,
+    COLOR_SPACE_OPTIONS,
     DEFAULT_BACKUP_PATH,
     DEFAULT_MEDIA_FOLDERS,
     DEFAULT_SCENE_FOLDERS,
@@ -62,10 +63,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     HDR_TARGETS,
     MIDI_CLOCK_INPUT_DEVICES,
     MIDI_CLOCK_OUTPUT_DEVICES,
+    MULTI_DISPLAY_MODE_OPTIONS,
     QUANTIZE_TRANSITION_OPTIONS,
+    RENDER_SCALE_DEFAULT,
+    RENDER_SCALE_MAX,
+    RENDER_SCALE_MIN,
+    RENDER_SCALE_STEP,
     RESOLUTION_PRESETS,
+    SCREEN_FITTING_OPTIONS,
+    type ColorSpaceOption,
     type FolderEntry,
+    type MultiDisplayModeOption,
     type QuantizeTransitionOption,
+    type ScreenFittingOption,
   } from '../data/settings-fixtures';
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
@@ -119,6 +129,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let vsync = $state(true);
   let hdrTarget = $state(HDR_TARGETS[0]?.id ?? 'sdr');
   let display = $state(DISPLAYS[0]?.id ?? 'display-1');
+
+  /* ----- Graphics extensions (W41) -----
+   * Bundle source: views/settings.jsx lines 78-114. The W21 PR1
+   * baseline shipped Render Resolution / Custom Resolution / Target
+   * FPS / V-Sync / HDR Target / Display; W41 adds the wireframe rows
+   * the bundle calls for inside the same Graphics section. Frozen-
+   * frame; the live render-scale + screen-fitting + multi-display
+   * spans land alongside the Phase-3+/4a renderer integration crate. */
+  let colorSpace = $state<ColorSpaceOption['id']>('srgb');
+  let multiDisplayMode = $state<MultiDisplayModeOption['id']>('single');
+  let renderScale = $state(RENDER_SCALE_DEFAULT);
+  let screenFitting = $state<ScreenFittingOption['id']>('fit');
+  let fpsSliderEnabled = $state(false);
+  let renderScaleLabel = $derived(`${renderScale.toFixed(2)}×`);
 
   /* ----- Storage state ----- */
   let mediaFolders = $state<FolderEntry[]>(DEFAULT_MEDIA_FOLDERS.map((f) => ({ ...f })));
@@ -450,6 +474,97 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <option value={opt.id}>{opt.label}</option>
             {/each}
           </select>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">Color Space</span>
+          <div class="settings__field-row">
+            <TabSegment
+              options={COLOR_SPACE_OPTIONS}
+              value={colorSpace}
+              onChange={(id) => (colorSpace = id as ColorSpaceOption['id'])}
+              ariaLabel="Color space"
+            />
+            <span class="settings__hint settings__hint--inline">
+              gamma / primaries for the output surface
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">Multi-Display Mode</span>
+          <div class="settings__field-row">
+            <TabSegment
+              options={MULTI_DISPLAY_MODE_OPTIONS}
+              value={multiDisplayMode}
+              onChange={(id) => (multiDisplayMode = id as MultiDisplayModeOption['id'])}
+              ariaLabel="Multi-display mode"
+            />
+            <span class="settings__hint settings__hint--inline">
+              spanning treats outputs as one canvas; mirror duplicates
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <label for="render-scale" class="settings__label">Render Scale</label>
+          <div class="settings__field-row settings__field-row--gain">
+            <input
+              id="render-scale"
+              type="range"
+              class="settings__range"
+              min={RENDER_SCALE_MIN}
+              max={RENDER_SCALE_MAX}
+              step={RENDER_SCALE_STEP}
+              bind:value={renderScale}
+              aria-valuetext={renderScaleLabel}
+            />
+            <span class="settings__bpm-readout settings__bpm-readout--gain">
+              {renderScaleLabel}
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">Screen Fitting</span>
+          <select
+            id="screen-fitting"
+            class="settings__select"
+            bind:value={screenFitting}
+            aria-label="Screen fitting"
+          >
+            {#each SCREEN_FITTING_OPTIONS as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">Visualizer Window</span>
+          <div class="settings__field-row">
+            <button type="button" class="settings__btn settings__btn--ghost" disabled
+              >Show resizable window</button
+            >
+            <button type="button" class="settings__btn settings__btn--ghost" disabled
+              >Toggle fullscreen</button
+            >
+            <span class="settings__hint settings__hint--inline">
+              window-management IPC arrives in Phase-3+/4a
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">FPS Slider</span>
+          <div class="settings__field-row">
+            <button
+              type="button"
+              class="settings__pill-toggle"
+              class:on={fpsSliderEnabled}
+              aria-pressed={fpsSliderEnabled}
+              aria-label="FPS slider"
+              onclick={() => (fpsSliderEnabled = !fpsSliderEnabled)}
+            >
+              <span class="settings__pill-thumb"></span>
+            </button>
+            <span class="settings__hint settings__hint--inline">
+              show a draggable FPS cap handle in the topbar
+            </span>
+          </div>
         </div>
       </div>
       <p class="settings__hint">

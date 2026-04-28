@@ -214,6 +214,64 @@ export const DISPLAYS: readonly DisplayOption[] = [
   { id: 'display-2', label: 'Display 2 · External 4K (3840 × 2160)' },
 ];
 
+/* ---------- Graphics extensions (W41) ----------
+ * Bundle source: views/settings.jsx lines 78-114. The W21 PR1 port
+ * shipped Render Resolution / Custom Resolution / Target FPS / V-Sync
+ * / HDR Target / Display rows; these new fixtures back the W41
+ * additions: Color Space tab-seg, Multi-Display Mode tab-seg, Render
+ * Scale slider, Visualizer Window action buttons, Screen Fitting
+ * select, FPS Slider toggle.
+ */
+
+export interface ColorSpaceOption {
+  readonly id: 'srgb' | 'rec709' | 'p3' | 'rec2020';
+  readonly label: string;
+}
+
+export const COLOR_SPACE_OPTIONS: readonly ColorSpaceOption[] = [
+  { id: 'srgb', label: 'sRGB' },
+  { id: 'rec709', label: 'Rec.709' },
+  { id: 'p3', label: 'Display P3' },
+  { id: 'rec2020', label: 'Rec.2020' },
+];
+
+export interface MultiDisplayModeOption {
+  readonly id: 'single' | 'mirror' | 'span2' | 'span3';
+  readonly label: string;
+}
+
+export const MULTI_DISPLAY_MODE_OPTIONS: readonly MultiDisplayModeOption[] = [
+  { id: 'single', label: 'single' },
+  { id: 'mirror', label: 'mirror' },
+  { id: 'span2', label: 'span 2' },
+  { id: 'span3', label: 'span 3' },
+];
+
+export interface ScreenFittingOption {
+  readonly id: 'fit' | 'fill' | 'stretch' | 'native';
+  readonly label: string;
+}
+
+export const SCREEN_FITTING_OPTIONS: readonly ScreenFittingOption[] = [
+  { id: 'fit', label: 'Fit Within Window' },
+  { id: 'fill', label: 'Fill Window (crop)' },
+  { id: 'stretch', label: 'Stretch' },
+  { id: 'native', label: '1:1 native' },
+];
+
+/* Render Scale: multiplier applied to the output resolution before
+ * the display swap. Bundle hint reads "Lower for heavy shaders,
+ * higher for supersampling." Range 0.5x .. 2.0x with 0.05 step;
+ * default 1.0x. The wireframe screenshot reads "1.50× (2880p)" at
+ * 75% slider position — i.e. 1.5x against a 1080p output yields a
+ * 1620p internal canvas (the bundle's "2880p" copy is the 4K-source
+ * variant; we display the multiplier and let callers compute the
+ * derived height from the active output preset). */
+export const RENDER_SCALE_DEFAULT = 1.0;
+export const RENDER_SCALE_MIN = 0.5;
+export const RENDER_SCALE_MAX = 2.0;
+export const RENDER_SCALE_STEP = 0.05;
+
 /* ---------- Storage ---------- */
 
 export interface FolderEntry {
