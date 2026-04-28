@@ -90,6 +90,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // wiring (Snap recall, OSC address surfacing, support-bundle
   // generation, offline-docs dispatch).
   //
+  // Wave-44 mounts `<CrashResumeBanner>` directly under the
+  // `<DegradedBanner>` and above the routed view, matching the
+  // bundle's `Chromaticity.html` adoption site (lines 271-280) where
+  // both banners stack inside the same `tweaks.emptyStates ||
+  // tweaks.showCrashResume` wrapper. Visibility is owned by a local
+  // `crashResumeVisible` flag that defaults to `false` — the bundle's
+  // `tweaks.showCrashResume` is a dev-tweak, and live
+  // `CrashResumeState` IPC is `EV-INTEGRATION-MATRIX` scope deferred
+  // to Phase-3+/4a per R-37. To exercise the banner manually flip the
+  // `$state(false)` initializer to `$state(true)`. Fixture props
+  // mirror the bundle (`Warehouse · Saturday`, four restored / one
+  // partial, p50=480 ms). `onSupport` and `onViewLog` are no-op stubs
+  // pending the support-bundle modal port (W44 follow-up) and the
+  // Settings → Diagnostics deep-link; `onDismiss` flips the local
+  // visibility flag.
+  //
   // Wave-33a mounts `<WatermarkOverlay>` as a fixed bottom-right
   // overlay at z-index 990 (under HotkeyOverlay / CommandPalette).
   // Wave-33b threads `capabilitiesStore.has('render.watermark.off')`
@@ -122,6 +138,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Welcome from './views/Welcome.svelte';
   import {
     CommandPalette,
+    CrashResumeBanner,
     DEFAULT_COMMAND_PALETTE_ACTIONS,
     DegradedBanner,
     SnapBar,
@@ -131,6 +148,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   let snapActive = $state(2);
   let bannerVisible = $state(true);
+  let crashResumeVisible = $state(false);
   let commandPaletteOpen = $state(false);
 
   // Watermark visibility is the inverse of the `render.watermark.off`
@@ -148,6 +166,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     severity: 'warning' as const,
     message: 'Running on integrated GPU. Performance reduced.',
     actionLabel: 'Diagnostics',
+  };
+
+  const CRASH_RESUME_FIXTURE = {
+    showName: 'Warehouse · Saturday',
+    controls: 'restored' as const,
+    snaps: 'restored' as const,
+    playlist: 'restored' as const,
+    adapters: 'partial' as const,
+    scene: 'restored' as const,
+    p50: 480,
   };
 
   const COMMAND_PALETTE_ROUTING: Record<string, () => void> = {
@@ -191,6 +219,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           actionLabel={BANNER_FIXTURE.actionLabel}
           onAction={() => routeStore.set('settings')}
           onDismiss={() => (bannerVisible = false)}
+        />
+      </div>
+    {/if}
+    {#if crashResumeVisible}
+      <div class="app-shell__banner">
+        <CrashResumeBanner
+          showName={CRASH_RESUME_FIXTURE.showName}
+          controls={CRASH_RESUME_FIXTURE.controls}
+          snaps={CRASH_RESUME_FIXTURE.snaps}
+          playlist={CRASH_RESUME_FIXTURE.playlist}
+          adapters={CRASH_RESUME_FIXTURE.adapters}
+          scene={CRASH_RESUME_FIXTURE.scene}
+          p50={CRASH_RESUME_FIXTURE.p50}
+          onViewLog={() => routeStore.set('settings')}
+          onSupport={() => {
+            /* W44 follow-up: support-bundle modal port */
+          }}
+          onDismiss={() => (crashResumeVisible = false)}
         />
       </div>
     {/if}

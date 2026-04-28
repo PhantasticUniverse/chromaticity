@@ -93,6 +93,10 @@ export { default as SnapBar } from './SnapBar.svelte';
 export { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
 export { default as OutputRoutingTile } from './OutputRoutingTile.svelte';
 export { default as DegradedBanner } from './DegradedBanner.svelte';
+// Wave-44 adds `CrashResumeBanner`, the post-crash recovery banner
+// ported from `v02_supplement.jsx` lines 70-91. Frozen-frame fixture
+// today; live `CrashResumeState` IPC arrives in Phase-3+/4a per R-37.
+export { default as CrashResumeBanner } from './CrashResumeBanner.svelte';
 export { default as CommandPalette } from './CommandPalette.svelte';
 // Wave-33a adds `WatermarkOverlay`, the bottom-right "Chromaticity"
 // wordmark + ring overlay ported from the bundle's `v02_supplement.jsx`
