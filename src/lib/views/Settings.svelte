@@ -40,6 +40,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // reload. Persistence + IPC wiring tracks the evidence-matrix slice.
   import { HOTKEYS } from '../data/hotkeys';
   import {
+    ABLETON_LINK_PEER_FIXTURE,
     AUDIO_CHANNEL_LAYOUTS,
     AUDIO_CHANNEL_LEFT_OPTIONS,
     AUDIO_CHANNEL_RIGHT_OPTIONS,
@@ -59,13 +60,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     DISPLAYS,
     FPS_TARGETS,
     HDR_TARGETS,
+    MIDI_CLOCK_INPUT_DEVICES,
+    MIDI_CLOCK_OUTPUT_DEVICES,
+    QUANTIZE_TRANSITION_OPTIONS,
     RESOLUTION_PRESETS,
     type FolderEntry,
+    type QuantizeTransitionOption,
   } from '../data/settings-fixtures';
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
-  import { ControlGroup, Fader, Meter, OutputRoutingTile } from '../widgets';
+  import { ControlGroup, Fader, Meter, OutputRoutingTile, TabSegment } from '../widgets';
   import SceneStill from '../widgets/SceneStill.svelte';
 
   // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
@@ -217,6 +222,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     // Frozen-frame: clamp + round-trip through local state only.
     manualBpm = Math.min(300, Math.max(20, Math.round(manualBpm * 10) / 10));
   }
+
+  /* ----- Tempo & Sync extensions (W40) -----
+   * Bundle source: views/settings.jsx lines 52-77. Adds the five
+   * settings.jsx Tempo & Sync rows that the W22 PR1 port left for
+   * later: Ableton Link toggle + peer pill, Start/Stop Sync toggle,
+   * MIDI Clock In + Out (each toggle + device select), and Quantize
+   * Transitions tab-seg. Frozen-frame; live Link peer count + MIDI
+   * clock device enumeration ride in alongside the Phase-3+ tempo
+   * arbiter and the integration crate's MIDI/Link probes. */
+  let linkEnabled = $state(true);
+  let startStopSync = $state(true);
+  let midiClockInEnabled = $state(false);
+  let midiClockInDevice = $state(MIDI_CLOCK_INPUT_DEVICES[0]?.id ?? 'any');
+  let midiClockOutEnabled = $state(true);
+  let midiClockOutDevice = $state(MIDI_CLOCK_OUTPUT_DEVICES[0]?.id ?? 'iac-1');
+  let quantize = $state<QuantizeTransitionOption['id']>('bar');
 </script>
 
 <section class="settings">
@@ -670,6 +691,111 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             />
             <span class="settings__hint settings__hint--inline">
               compensates for downstream-link latency, signed
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">Ableton Link</span>
+          <div class="settings__field-row">
+            <button
+              type="button"
+              class="settings__pill-toggle"
+              class:on={linkEnabled}
+              aria-pressed={linkEnabled}
+              aria-label="Ableton Link"
+              onclick={() => (linkEnabled = !linkEnabled)}
+            >
+              <span class="settings__pill-thumb"></span>
+            </button>
+            <span class="settings__link-pill" data-state={linkEnabled ? 'active' : 'idle'}>
+              <span class="settings__link-dot" aria-hidden="true"></span>
+              {ABLETON_LINK_PEER_FIXTURE.count} peers · {ABLETON_LINK_PEER_FIXTURE.bpm.toFixed(2)}
+              BPM
+            </span>
+            <span class="settings__hint settings__hint--inline">
+              sync BPM + phase with Link-enabled apps on the LAN
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">Start / Stop Sync</span>
+          <div class="settings__field-row">
+            <button
+              type="button"
+              class="settings__pill-toggle"
+              class:on={startStopSync}
+              aria-pressed={startStopSync}
+              aria-label="Start Stop Sync"
+              onclick={() => (startStopSync = !startStopSync)}
+            >
+              <span class="settings__pill-thumb"></span>
+            </button>
+            <span class="settings__hint settings__hint--inline">
+              follow transport start / stop messages across Link peers
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <label for="midi-clock-in-device" class="settings__label">MIDI Clock Input</label>
+          <div class="settings__field-row">
+            <button
+              type="button"
+              class="settings__pill-toggle"
+              class:on={midiClockInEnabled}
+              aria-pressed={midiClockInEnabled}
+              aria-label="MIDI Clock Input"
+              onclick={() => (midiClockInEnabled = !midiClockInEnabled)}
+            >
+              <span class="settings__pill-thumb"></span>
+            </button>
+            <select
+              id="midi-clock-in-device"
+              class="settings__select settings__select--compact"
+              bind:value={midiClockInDevice}
+              disabled={!midiClockInEnabled}
+            >
+              {#each MIDI_CLOCK_INPUT_DEVICES as opt (opt.id)}
+                <option value={opt.id}>{opt.label}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+        <div class="settings__field">
+          <label for="midi-clock-out-device" class="settings__label">MIDI Clock Output</label>
+          <div class="settings__field-row">
+            <button
+              type="button"
+              class="settings__pill-toggle"
+              class:on={midiClockOutEnabled}
+              aria-pressed={midiClockOutEnabled}
+              aria-label="MIDI Clock Output"
+              onclick={() => (midiClockOutEnabled = !midiClockOutEnabled)}
+            >
+              <span class="settings__pill-thumb"></span>
+            </button>
+            <select
+              id="midi-clock-out-device"
+              class="settings__select settings__select--compact"
+              bind:value={midiClockOutDevice}
+              disabled={!midiClockOutEnabled}
+            >
+              {#each MIDI_CLOCK_OUTPUT_DEVICES as opt (opt.id)}
+                <option value={opt.id}>{opt.label}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">Quantize Transitions</span>
+          <div class="settings__field-row">
+            <TabSegment
+              options={QUANTIZE_TRANSITION_OPTIONS}
+              value={quantize}
+              onChange={(id) => (quantize = id as QuantizeTransitionOption['id'])}
+              ariaLabel="Quantize transitions"
+            />
+            <span class="settings__hint settings__hint--inline">
+              snap scene changes to beat, bar, or phrase
             </span>
           </div>
         </div>
@@ -1441,6 +1567,35 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     color: var(--color-text-3);
     font-size: var(--font-size-body-xs);
     margin-left: 2px;
+  }
+
+  /* ----- W40 Ableton Link peer pill ----- */
+  .settings__link-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 2px var(--space-sm);
+    background: var(--color-bg-3);
+    color: var(--color-text-1);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-line-2);
+  }
+  .settings__link-pill[data-state='active'] {
+    color: var(--color-signal-cyan);
+    border-color: color-mix(in oklab, var(--color-signal-cyan) 60%, transparent);
+  }
+  .settings__link-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-text-3);
+  }
+  .settings__link-pill[data-state='active'] .settings__link-dot {
+    background: var(--color-signal-cyan);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-signal-cyan) 25%, transparent);
   }
 
   .settings__bpm-sensitivity {

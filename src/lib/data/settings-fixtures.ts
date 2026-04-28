@@ -123,6 +123,46 @@ export const AUDIO_METER_PEAK = 0.82;
 export const AUDIO_INPUT_GAIN_DEFAULT = 0.59;
 export const AUDIO_INPUT_GAIN_DB_RANGE_DB = 36; /* ±18 dB about 0 dB unity */
 
+/* ---------- Tempo & Sync (W40) ---------- */
+
+/* Frozen-frame Ableton Link peer status mirroring the bundle's
+ * `<span className="pill cyan">4 peers · 128.00 BPM</span>` Settings
+ * row. Phase-3+ runtime tempo arbiter replaces this with a live
+ * `LinkPeerState` IPC stream off the `link-rs` integration crate
+ * (peer count + dominant BPM among the LAN cohort). */
+export const ABLETON_LINK_PEER_FIXTURE = {
+  count: 4,
+  bpm: 128.0,
+} as const;
+
+export interface MidiClockDeviceOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+export const MIDI_CLOCK_INPUT_DEVICES: readonly MidiClockDeviceOption[] = [
+  { id: 'any', label: '— any device —' },
+  { id: 'apc40', label: 'APC40 mkII' },
+  { id: 'launchpad-x', label: 'Launchpad X' },
+];
+
+export const MIDI_CLOCK_OUTPUT_DEVICES: readonly MidiClockDeviceOption[] = [
+  { id: 'iac-1', label: 'IAC Bus 1' },
+  { id: 'launchpad-x', label: 'Launchpad X' },
+];
+
+export interface QuantizeTransitionOption {
+  readonly id: 'off' | 'beat' | 'bar' | 'phrase';
+  readonly label: string;
+}
+
+export const QUANTIZE_TRANSITION_OPTIONS: readonly QuantizeTransitionOption[] = [
+  { id: 'off', label: 'off' },
+  { id: 'beat', label: 'beat' },
+  { id: 'bar', label: 'bar' },
+  { id: 'phrase', label: 'phrase' },
+];
+
 /* ---------- Graphics / Output ---------- */
 
 export interface ResolutionPreset {
