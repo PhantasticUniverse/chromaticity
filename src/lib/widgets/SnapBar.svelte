@@ -21,18 +21,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // (mapping a Perform-bar slot onto an engine `SnapSlotId`, plus the
   // save / clear lifecycle) is `EV-INTEGRATION-MATRIX` scope.
   //
-  // Per-slot thumbnails: the bundle renders `<SceneStill kind={k}
-  // seed={s} … />` per slot. `<SceneStill>` is not yet ported as a
-  // widget — the W18 PR1 Perform port substitutes a hue-rotating
-  // gradient surrogate (the `tintAngle(seed)` formula); this port takes
-  // the same approach. Real previews depend on the ADR-011 rendering
-  // backend (Phase-2+).
+  // Per-slot thumbnails: W36 PR1 wires the `SceneStill` widget primitive
+  // (`./SceneStill.svelte`) to render bundle-faithful procedural canvas
+  // thumbnails per slot, replacing the W27 PR1 hue-rotating gradient
+  // surrogate. The `kind` + `seed` mapping is fixture data on the
+  // `SnapSlot` type; see `snap-bar.fixtures.ts` for the per-slot
+  // assignments mirroring the bundle's `_data.jsx` scene → renderer
+  // mapping. The dark-gradient `::after` overlay is preserved for
+  // meta-text readability over the canvas content.
   //
   // `SnapSlot` and `DEFAULT_SNAP_SLOTS` live in `snap-bar.fixtures.ts`
   // because Svelte's `*.svelte` TS shim only re-exports the default —
   // named exports from `<script module>` are unreachable to consumers,
   // same constraint that put `CuePadCell` in `widgets/index.ts`.
   import Icon from '../Icon.svelte';
+  import SceneStill from './SceneStill.svelte';
   import { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
 
   let {
@@ -44,10 +47,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     active?: number;
     onPick?: (slot: number) => void;
   } = $props();
-
-  function tintAngle(seed: number | undefined): number {
-    return ((seed ?? 0) * 37) % 360;
-  }
 </script>
 
 <div class="snap-bar" aria-label="Snap slots">
@@ -57,11 +56,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       type="button"
       class="snap-slot"
       class:snap-slot--on={active === slot.i}
-      style="--tint: {slot.tint}; --thumb-hue: {tintAngle(slot.seed)}deg;"
+      style="--tint: {slot.tint};"
       onclick={() => onPick?.(slot.i)}
       title={`${slot.name} · ${slot.scene}  (press ${slot.i})`}
     >
-      <span class="snap-slot__thumb" aria-hidden="true"></span>
+      <span class="snap-slot__thumb" aria-hidden="true">
+        <SceneStill kind={slot.kind} seed={slot.seed} width={100} height={44} />
+      </span>
       <span class="snap-slot__meta">
         <span class="snap-slot__num">{slot.i}</span>
         <span class="snap-slot__name">{slot.name}</span>
@@ -132,18 +133,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .snap-slot__thumb {
     flex: 1;
     position: relative;
-    background:
-      radial-gradient(
-        circle at 30% 35%,
-        hsl(var(--thumb-hue, 200deg) 70% 55% / 0.75),
-        transparent 55%
-      ),
-      radial-gradient(
-        circle at 70% 65%,
-        hsl(calc(var(--thumb-hue, 200deg) + 60deg) 70% 45% / 0.7),
-        transparent 60%
-      ),
-      linear-gradient(135deg, var(--color-bg-3), var(--color-bg-1));
+    background: var(--color-bg-3); /* solid fallback before the SceneStill canvas paints */
+    overflow: hidden;
   }
   .snap-slot__thumb::after {
     content: '';
