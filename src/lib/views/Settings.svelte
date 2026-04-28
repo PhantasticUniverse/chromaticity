@@ -59,6 +59,27 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { pickFolder } from '../ipc/picker';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
   import { ControlGroup, Fader, OutputRoutingTile } from '../widgets';
+  import SceneStill from '../widgets/SceneStill.svelte';
+
+  // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
+  // mirroring `views/settings.jsx` lines 187-194 (the right-column
+  // Diagnostics panel rows). Frozen-frame; live values arrive with the
+  // Phase-3+/4a `EV-OBSERVABILITY` runtime metric stream and the OSC view's
+  // adapter-health surface. The strings here parallel the bundle's W20
+  // wireframe-capture exactly so future operators see the same shape they
+  // saw in the bundle preview.
+  interface DiagnosticsRow {
+    readonly key: string;
+    readonly value: string;
+  }
+  const DIAGNOSTICS: readonly DiagnosticsRow[] = [
+    { key: 'GPU', value: 'Apple M3 Pro · 42% · 16 GB' },
+    { key: 'FPS / Frame', value: '61 · 16.4ms' },
+    { key: 'Audio Latency', value: '5.3 ms' },
+    { key: 'MIDI Devices', value: '2 connected' },
+    { key: 'Syphon / Spout', value: 'Streaming → OBS' },
+    { key: 'Ableton Link', value: '4 peers · 128.00 BPM' },
+  ];
 
   /* ----- Audio Device state ----- */
   let audioInput = $state(AUDIO_INPUT_DEVICES[0]?.id ?? 'default');
@@ -182,553 +203,601 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 </script>
 
 <section class="settings">
-  <header class="settings__header">
-    <h1>settings</h1>
-    <p class="settings__intro">
-      Operator preferences, devices, output, storage, hotkey reference, and about. Wireframe-aligned
-      with the bundle's <code>views/settings.jsx</code>; W21 PR1 ships the visual-only Audio /
-      Graphics / Storage scaffolding plus the <code>pick_folder</code>
-      IPC contract. Live device enumeration + the native folder dialog land in Phase-3+/4a.
-    </p>
-  </header>
+  <div class="settings__main">
+    <header class="settings__header">
+      <h1>settings</h1>
+      <p class="settings__intro">
+        Operator preferences, devices, output, storage, hotkey reference, and about.
+        Wireframe-aligned with the bundle's <code>views/settings.jsx</code>; W21 PR1 ships the
+        visual-only Audio / Graphics / Storage scaffolding plus the <code>pick_folder</code> IPC contract.
+        Live device enumeration + the native folder dialog land in Phase-3+/4a. W38 adds the right-rail
+        Preview + Diagnostics panel mirroring the bundle's two-column layout.
+      </p>
+    </header>
 
-  <article class="settings__section">
-    <h2>Audio Device</h2>
-    <div class="settings__form">
-      <div class="settings__field">
-        <label for="audio-input" class="settings__label">Input Device</label>
-        <select id="audio-input" class="settings__select" bind:value={audioInput}>
-          {#each AUDIO_INPUT_DEVICES as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="settings__field">
-        <label for="audio-output" class="settings__label">Output Device</label>
-        <select id="audio-output" class="settings__select" bind:value={audioOutput}>
-          {#each AUDIO_OUTPUT_DEVICES as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="settings__field">
-        <label for="sample-rate" class="settings__label">Sample Rate</label>
-        <select id="sample-rate" class="settings__select" bind:value={sampleRate}>
-          {#each AUDIO_SAMPLE_RATES as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="settings__field">
-        <label for="latency-hint" class="settings__label">Latency Hint</label>
-        <select id="latency-hint" class="settings__select" bind:value={latencyHint}>
-          {#each AUDIO_LATENCY_HINTS as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="settings__field">
-        <label for="channel-layout" class="settings__label">Channel Layout</label>
-        <select id="channel-layout" class="settings__select" bind:value={channelLayout}>
-          {#each AUDIO_CHANNEL_LAYOUTS as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-    </div>
-    <p class="settings__hint">
-      Visual stub — live cpal device enumeration arrives in Phase-3+/4a per
-      <code>EV-INTEGRATION-MATRIX</code>.
-    </p>
-  </article>
-
-  <article class="settings__section">
-    <h2>Graphics / Output</h2>
-    <div class="settings__form">
-      <div class="settings__field">
-        <label for="resolution-preset" class="settings__label">Render Resolution</label>
-        <select
-          id="resolution-preset"
-          class="settings__select"
-          bind:value={resolutionPreset}
-          disabled={customResolution}
-        >
-          {#each RESOLUTION_PRESETS as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="settings__field" data-cap="render.custom-resolution">
-        <span class="settings__label">Custom Resolution</span>
-        <div class="settings__field-row">
-          <button
-            type="button"
-            class="settings__pill-toggle"
-            class:on={customResolution}
-            aria-pressed={customResolution}
-            aria-label="Custom resolution"
-            onclick={() => (customResolution = !customResolution)}
-          >
-            <span class="settings__pill-thumb"></span>
-          </button>
-          <label for="custom-width" class="settings__sublabel">W</label>
-          <input
-            id="custom-width"
-            type="number"
-            class="settings__input settings__input--num"
-            min="320"
-            max="7680"
-            step="2"
-            bind:value={customWidth}
-            disabled={!customResolution}
-          />
-          <span class="settings__times">×</span>
-          <label for="custom-height" class="settings__sublabel">H</label>
-          <input
-            id="custom-height"
-            type="number"
-            class="settings__input settings__input--num"
-            min="240"
-            max="4320"
-            step="2"
-            bind:value={customHeight}
-            disabled={!customResolution}
-          />
-        </div>
-      </div>
-      <div class="settings__field">
-        <label for="fps-target" class="settings__label">Target FPS</label>
-        <select id="fps-target" class="settings__select" bind:value={fpsTarget}>
-          {#each FPS_TARGETS as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="settings__field">
-        <span class="settings__label">V-Sync</span>
-        <button
-          type="button"
-          class="settings__pill-toggle"
-          class:on={vsync}
-          aria-pressed={vsync}
-          aria-label="V-Sync"
-          onclick={() => (vsync = !vsync)}
-        >
-          <span class="settings__pill-thumb"></span>
-        </button>
-      </div>
-      <div class="settings__field" data-cap="render.hdr">
-        <label for="hdr-target" class="settings__label">HDR Target</label>
-        <select id="hdr-target" class="settings__select" bind:value={hdrTarget}>
-          {#each HDR_TARGETS as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="settings__field">
-        <label for="display" class="settings__label">Display</label>
-        <select id="display" class="settings__select" bind:value={display}>
-          {#each DISPLAYS as opt (opt.id)}
-            <option value={opt.id}>{opt.label}</option>
-          {/each}
-        </select>
-      </div>
-    </div>
-    <p class="settings__hint">
-      Capability-gated rows (custom resolution, HDR) carry <code>data-cap</code> attributes for the W15+
-      entitlement infrastructure to discover.
-    </p>
-
-    <div class="settings__output-routing">
-      <span class="settings__label">Active output routing</span>
-      <OutputRoutingTile />
-    </div>
-    <p class="settings__hint">
-      Frozen-frame status panel — display + Syphon/Spout rows mirror the bundle's
-      <code>OutputRoutingTile</code>. Live adapter probing arrives in Phase-3+/4a per
-      <code>EV-INTEGRATION-MATRIX</code>; capability hints (<code>io.syphon.output</code>,
-      <code>io.spout.output</code>, <code>io.ndi.output</code>) ride along as
-      <code>data-cap</code> attributes for the W15+ entitlement infra.
-    </p>
-  </article>
-
-  <article class="settings__section">
-    <h2>Storage</h2>
-
-    <div class="settings__storage-group">
-      <div class="settings__storage-head">
-        <h3 class="settings__storage-title">Media folders</h3>
-        <button
-          type="button"
-          class="settings__btn settings__btn--ghost"
-          onclick={browseMediaFolder}
-          aria-label="Add media folder"
-        >
-          <Icon name="plus" size={12} /> Add Folder
-        </button>
-      </div>
-      {#if mediaFolders.length === 0}
-        <p class="settings__hint">No media folders configured.</p>
-      {:else}
-        <ul class="settings__folder-list">
-          {#each mediaFolders as folder (folder.id)}
-            <li class="settings__folder-row">
-              <span class="settings__folder-icon"><Icon name="folder" size={14} /></span>
-              <span class="settings__folder-path">{folder.path}</span>
-              <button
-                type="button"
-                class="settings__btn settings__btn--ghost"
-                onclick={browseMediaFolder}
-                aria-label="Browse media folder"
-              >
-                Browse
-              </button>
-              <button
-                type="button"
-                class="settings__btn settings__btn--danger"
-                onclick={() => removeMediaFolder(folder.id)}
-                aria-label="Remove media folder"
-              >
-                <Icon name="trash" size={12} /> Remove
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
-
-    <div class="settings__storage-group">
-      <div class="settings__storage-head">
-        <h3 class="settings__storage-title">Custom scene folders</h3>
-        <button
-          type="button"
-          class="settings__btn settings__btn--ghost"
-          onclick={browseSceneFolder}
-          aria-label="Add scene folder"
-        >
-          <Icon name="plus" size={12} /> Add Folder
-        </button>
-      </div>
-      {#if sceneFolders.length === 0}
-        <p class="settings__hint">No custom scene folders configured.</p>
-      {:else}
-        <ul class="settings__folder-list">
-          {#each sceneFolders as folder (folder.id)}
-            <li class="settings__folder-row">
-              <span class="settings__folder-icon"><Icon name="folder" size={14} /></span>
-              <span class="settings__folder-path">{folder.path}</span>
-              <button
-                type="button"
-                class="settings__btn settings__btn--ghost"
-                onclick={browseSceneFolder}
-                aria-label="Browse scene folder"
-              >
-                Browse
-              </button>
-              <button
-                type="button"
-                class="settings__btn settings__btn--danger"
-                onclick={() => removeSceneFolder(folder.id)}
-                aria-label="Remove scene folder"
-              >
-                <Icon name="trash" size={12} /> Remove
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
-
-    <div class="settings__storage-group">
-      <div class="settings__storage-head">
-        <h3 class="settings__storage-title">Backups</h3>
-      </div>
+    <article class="settings__section">
+      <h2>Audio Device</h2>
       <div class="settings__form">
         <div class="settings__field">
-          <span class="settings__label">Path</span>
-          <div class="settings__field-row">
-            <span class="settings__folder-path settings__folder-path--inline">{backupPath}</span>
-            <button
-              type="button"
-              class="settings__btn settings__btn--ghost"
-              onclick={browseBackupFolder}
-              aria-label="Browse backup folder"
-            >
-              <Icon name="folder" size={12} /> Browse
-            </button>
-          </div>
+          <label for="audio-input" class="settings__label">Input Device</label>
+          <select id="audio-input" class="settings__select" bind:value={audioInput}>
+            {#each AUDIO_INPUT_DEVICES as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
         </div>
         <div class="settings__field">
-          <label for="backup-retention" class="settings__label">Retention</label>
-          <select id="backup-retention" class="settings__select" bind:value={backupRetention}>
-            {#each BACKUP_RETENTION_OPTIONS as opt (opt.id)}
+          <label for="audio-output" class="settings__label">Output Device</label>
+          <select id="audio-output" class="settings__select" bind:value={audioOutput}>
+            {#each AUDIO_OUTPUT_DEVICES as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="settings__field">
+          <label for="sample-rate" class="settings__label">Sample Rate</label>
+          <select id="sample-rate" class="settings__select" bind:value={sampleRate}>
+            {#each AUDIO_SAMPLE_RATES as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="settings__field">
+          <label for="latency-hint" class="settings__label">Latency Hint</label>
+          <select id="latency-hint" class="settings__select" bind:value={latencyHint}>
+            {#each AUDIO_LATENCY_HINTS as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="settings__field">
+          <label for="channel-layout" class="settings__label">Channel Layout</label>
+          <select id="channel-layout" class="settings__select" bind:value={channelLayout}>
+            {#each AUDIO_CHANNEL_LAYOUTS as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
           </select>
         </div>
       </div>
-    </div>
+      <p class="settings__hint">
+        Visual stub — live cpal device enumeration arrives in Phase-3+/4a per
+        <code>EV-INTEGRATION-MATRIX</code>.
+      </p>
+    </article>
 
-    <div class="settings__storage-group">
-      <div class="settings__storage-head">
-        <h3 class="settings__storage-title">Cache</h3>
-      </div>
-      <div class="settings__row">
-        <button type="button" class="settings__btn settings__btn--ghost">
-          <Icon name="refresh" size={12} /> Clear thumbnails
-        </button>
-        <button type="button" class="settings__btn settings__btn--ghost">
-          <Icon name="refresh" size={12} /> Clear render cache
-        </button>
+    <article class="settings__section">
+      <h2>Graphics / Output</h2>
+      <div class="settings__form">
+        <div class="settings__field">
+          <label for="resolution-preset" class="settings__label">Render Resolution</label>
+          <select
+            id="resolution-preset"
+            class="settings__select"
+            bind:value={resolutionPreset}
+            disabled={customResolution}
+          >
+            {#each RESOLUTION_PRESETS as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="settings__field" data-cap="render.custom-resolution">
+          <span class="settings__label">Custom Resolution</span>
+          <div class="settings__field-row">
+            <button
+              type="button"
+              class="settings__pill-toggle"
+              class:on={customResolution}
+              aria-pressed={customResolution}
+              aria-label="Custom resolution"
+              onclick={() => (customResolution = !customResolution)}
+            >
+              <span class="settings__pill-thumb"></span>
+            </button>
+            <label for="custom-width" class="settings__sublabel">W</label>
+            <input
+              id="custom-width"
+              type="number"
+              class="settings__input settings__input--num"
+              min="320"
+              max="7680"
+              step="2"
+              bind:value={customWidth}
+              disabled={!customResolution}
+            />
+            <span class="settings__times">×</span>
+            <label for="custom-height" class="settings__sublabel">H</label>
+            <input
+              id="custom-height"
+              type="number"
+              class="settings__input settings__input--num"
+              min="240"
+              max="4320"
+              step="2"
+              bind:value={customHeight}
+              disabled={!customResolution}
+            />
+          </div>
+        </div>
+        <div class="settings__field">
+          <label for="fps-target" class="settings__label">Target FPS</label>
+          <select id="fps-target" class="settings__select" bind:value={fpsTarget}>
+            {#each FPS_TARGETS as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="settings__field">
+          <span class="settings__label">V-Sync</span>
+          <button
+            type="button"
+            class="settings__pill-toggle"
+            class:on={vsync}
+            aria-pressed={vsync}
+            aria-label="V-Sync"
+            onclick={() => (vsync = !vsync)}
+          >
+            <span class="settings__pill-thumb"></span>
+          </button>
+        </div>
+        <div class="settings__field" data-cap="render.hdr">
+          <label for="hdr-target" class="settings__label">HDR Target</label>
+          <select id="hdr-target" class="settings__select" bind:value={hdrTarget}>
+            {#each HDR_TARGETS as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="settings__field">
+          <label for="display" class="settings__label">Display</label>
+          <select id="display" class="settings__select" bind:value={display}>
+            {#each DISPLAYS as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </div>
       </div>
       <p class="settings__hint">
-        Cache cleanup actions are visual-only in W21 PR1; thumbnail + render-cache eviction IPC
-        arrives alongside the Phase-3+/4a media adapter.
+        Capability-gated rows (custom resolution, HDR) carry <code>data-cap</code> attributes for the
+        W15+ entitlement infrastructure to discover.
       </p>
-    </div>
-  </article>
 
-  <article class="settings__section">
-    <h2>Tempo &amp; Sync</h2>
-
-    <div class="settings__storage-group">
-      <div class="settings__storage-head">
-        <h3 class="settings__storage-title">BPM source priority</h3>
+      <div class="settings__output-routing">
+        <span class="settings__label">Active output routing</span>
+        <OutputRoutingTile />
       </div>
-      <p class="settings__hint settings__hint--inline">
-        First active source wins. Order is fixed in W22; drag-reorder + live source health arrives
-        in Phase-3+ per the M-10 BPM resolver.
+      <p class="settings__hint">
+        Frozen-frame status panel — display + Syphon/Spout rows mirror the bundle's
+        <code>OutputRoutingTile</code>. Live adapter probing arrives in Phase-3+/4a per
+        <code>EV-INTEGRATION-MATRIX</code>; capability hints (<code>io.syphon.output</code>,
+        <code>io.spout.output</code>, <code>io.ndi.output</code>) ride along as
+        <code>data-cap</code> attributes for the W15+ entitlement infra.
       </p>
-      <ol class="settings__bpm-chain">
-        {#each BPM_SOURCES as src, idx (src.id)}
-          <li class="settings__bpm-row" class:active={src.id === ACTIVE_BPM_SOURCE}>
-            <span class="settings__bpm-rank">{idx + 1}</span>
-            <span
-              class="settings__bpm-dot"
-              aria-hidden="true"
-              data-state={src.id === ACTIVE_BPM_SOURCE ? 'active' : 'idle'}
-            ></span>
-            <span class="settings__bpm-name">{src.name}</span>
-            <span class="settings__bpm-detail">{src.detail}</span>
-            {#if src.id === ACTIVE_BPM_SOURCE}
-              <span class="settings__bpm-badge">active</span>
-            {/if}
-          </li>
-        {/each}
-      </ol>
-    </div>
+    </article>
 
-    <div class="settings__form">
-      <div class="settings__field">
-        <span class="settings__label">Tap tempo</span>
-        <div class="settings__field-row">
+    <article class="settings__section">
+      <h2>Storage</h2>
+
+      <div class="settings__storage-group">
+        <div class="settings__storage-head">
+          <h3 class="settings__storage-title">Media folders</h3>
           <button
             type="button"
             class="settings__btn settings__btn--ghost"
-            onclick={tapTempo}
-            aria-label="Tap tempo"
+            onclick={browseMediaFolder}
+            aria-label="Add media folder"
           >
-            <Icon name="bang" size={12} /> Tap
-          </button>
-          <span class="settings__bpm-readout">
-            {#if tappedBpm !== null}
-              {tappedBpm.toFixed(1)} <span class="settings__bpm-unit">BPM</span>
-            {:else}
-              <span class="settings__muted">— BPM</span>
-            {/if}
-          </span>
-          <span class="settings__hint settings__hint--inline">
-            mean of last {TAP_WINDOW} taps; resets after 2s of silence
-          </span>
-        </div>
-      </div>
-      <div class="settings__field">
-        <label for="manual-bpm" class="settings__label">Manual BPM</label>
-        <div class="settings__field-row">
-          <input
-            id="manual-bpm"
-            type="number"
-            class="settings__input settings__input--num"
-            min="20"
-            max="300"
-            step="0.1"
-            bind:value={manualBpm}
-          />
-          <button type="button" class="settings__btn settings__btn--ghost" onclick={setManualBpm}>
-            Set
+            <Icon name="plus" size={12} /> Add Folder
           </button>
         </div>
+        {#if mediaFolders.length === 0}
+          <p class="settings__hint">No media folders configured.</p>
+        {:else}
+          <ul class="settings__folder-list">
+            {#each mediaFolders as folder (folder.id)}
+              <li class="settings__folder-row">
+                <span class="settings__folder-icon"><Icon name="folder" size={14} /></span>
+                <span class="settings__folder-path">{folder.path}</span>
+                <button
+                  type="button"
+                  class="settings__btn settings__btn--ghost"
+                  onclick={browseMediaFolder}
+                  aria-label="Browse media folder"
+                >
+                  Browse
+                </button>
+                <button
+                  type="button"
+                  class="settings__btn settings__btn--danger"
+                  onclick={() => removeMediaFolder(folder.id)}
+                  aria-label="Remove media folder"
+                >
+                  <Icon name="trash" size={12} /> Remove
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </div>
-      <div class="settings__field">
-        <label for="link-offset" class="settings__label">Link offset (ms)</label>
-        <div class="settings__field-row">
-          <input
-            id="link-offset"
-            type="number"
-            class="settings__input settings__input--num"
-            min="-200"
-            max="200"
-            step="1"
-            bind:value={linkOffsetMs}
-          />
-          <span class="settings__hint settings__hint--inline">
-            compensates for downstream-link latency, signed
-          </span>
-        </div>
-      </div>
-    </div>
 
-    <div class="settings__bpm-sensitivity">
-      <ControlGroup name="audio" tint="var(--color-cat-motion)">
-        <Fader value={audioBpmSensitivity / 100} label="BPM sense" />
-      </ControlGroup>
-      <div class="settings__bpm-sensitivity-meta">
-        <span class="settings__label">Audio BPM sensitivity</span>
-        <span class="settings__bpm-readout">
-          {audioBpmSensitivity}<span class="settings__bpm-unit">%</span>
-        </span>
+      <div class="settings__storage-group">
+        <div class="settings__storage-head">
+          <h3 class="settings__storage-title">Custom scene folders</h3>
+          <button
+            type="button"
+            class="settings__btn settings__btn--ghost"
+            onclick={browseSceneFolder}
+            aria-label="Add scene folder"
+          >
+            <Icon name="plus" size={12} /> Add Folder
+          </button>
+        </div>
+        {#if sceneFolders.length === 0}
+          <p class="settings__hint">No custom scene folders configured.</p>
+        {:else}
+          <ul class="settings__folder-list">
+            {#each sceneFolders as folder (folder.id)}
+              <li class="settings__folder-row">
+                <span class="settings__folder-icon"><Icon name="folder" size={14} /></span>
+                <span class="settings__folder-path">{folder.path}</span>
+                <button
+                  type="button"
+                  class="settings__btn settings__btn--ghost"
+                  onclick={browseSceneFolder}
+                  aria-label="Browse scene folder"
+                >
+                  Browse
+                </button>
+                <button
+                  type="button"
+                  class="settings__btn settings__btn--danger"
+                  onclick={() => removeSceneFolder(folder.id)}
+                  aria-label="Remove scene folder"
+                >
+                  <Icon name="trash" size={12} /> Remove
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+
+      <div class="settings__storage-group">
+        <div class="settings__storage-head">
+          <h3 class="settings__storage-title">Backups</h3>
+        </div>
+        <div class="settings__form">
+          <div class="settings__field">
+            <span class="settings__label">Path</span>
+            <div class="settings__field-row">
+              <span class="settings__folder-path settings__folder-path--inline">{backupPath}</span>
+              <button
+                type="button"
+                class="settings__btn settings__btn--ghost"
+                onclick={browseBackupFolder}
+                aria-label="Browse backup folder"
+              >
+                <Icon name="folder" size={12} /> Browse
+              </button>
+            </div>
+          </div>
+          <div class="settings__field">
+            <label for="backup-retention" class="settings__label">Retention</label>
+            <select id="backup-retention" class="settings__select" bind:value={backupRetention}>
+              {#each BACKUP_RETENTION_OPTIONS as opt (opt.id)}
+                <option value={opt.id}>{opt.label}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings__storage-group">
+        <div class="settings__storage-head">
+          <h3 class="settings__storage-title">Cache</h3>
+        </div>
+        <div class="settings__row">
+          <button type="button" class="settings__btn settings__btn--ghost">
+            <Icon name="refresh" size={12} /> Clear thumbnails
+          </button>
+          <button type="button" class="settings__btn settings__btn--ghost">
+            <Icon name="refresh" size={12} /> Clear render cache
+          </button>
+        </div>
         <p class="settings__hint">
-          Tuning weight applied to the audio onset estimator before it competes in the priority
-          chain. Tinted via <code>--tint</code> per the W18 ControlGroup cascade contract.
+          Cache cleanup actions are visual-only in W21 PR1; thumbnail + render-cache eviction IPC
+          arrives alongside the Phase-3+/4a media adapter.
         </p>
       </div>
-    </div>
+    </article>
 
-    <p class="settings__hint">
-      Frozen-frame stub — no IPC dispatch. Runtime tempo arbiter, drag-reorder of the priority
-      chain, and live Link peer count land in Phase-3+ alongside the audio estimator.
-    </p>
-  </article>
+    <article class="settings__section">
+      <h2>Tempo &amp; Sync</h2>
 
-  <article class="settings__section">
-    <h2>General</h2>
-    <div class="settings__row">
-      <ThemeSwitcher />
+      <div class="settings__storage-group">
+        <div class="settings__storage-head">
+          <h3 class="settings__storage-title">BPM source priority</h3>
+        </div>
+        <p class="settings__hint settings__hint--inline">
+          First active source wins. Order is fixed in W22; drag-reorder + live source health arrives
+          in Phase-3+ per the M-10 BPM resolver.
+        </p>
+        <ol class="settings__bpm-chain">
+          {#each BPM_SOURCES as src, idx (src.id)}
+            <li class="settings__bpm-row" class:active={src.id === ACTIVE_BPM_SOURCE}>
+              <span class="settings__bpm-rank">{idx + 1}</span>
+              <span
+                class="settings__bpm-dot"
+                aria-hidden="true"
+                data-state={src.id === ACTIVE_BPM_SOURCE ? 'active' : 'idle'}
+              ></span>
+              <span class="settings__bpm-name">{src.name}</span>
+              <span class="settings__bpm-detail">{src.detail}</span>
+              {#if src.id === ACTIVE_BPM_SOURCE}
+                <span class="settings__bpm-badge">active</span>
+              {/if}
+            </li>
+          {/each}
+        </ol>
+      </div>
+
+      <div class="settings__form">
+        <div class="settings__field">
+          <span class="settings__label">Tap tempo</span>
+          <div class="settings__field-row">
+            <button
+              type="button"
+              class="settings__btn settings__btn--ghost"
+              onclick={tapTempo}
+              aria-label="Tap tempo"
+            >
+              <Icon name="bang" size={12} /> Tap
+            </button>
+            <span class="settings__bpm-readout">
+              {#if tappedBpm !== null}
+                {tappedBpm.toFixed(1)} <span class="settings__bpm-unit">BPM</span>
+              {:else}
+                <span class="settings__muted">— BPM</span>
+              {/if}
+            </span>
+            <span class="settings__hint settings__hint--inline">
+              mean of last {TAP_WINDOW} taps; resets after 2s of silence
+            </span>
+          </div>
+        </div>
+        <div class="settings__field">
+          <label for="manual-bpm" class="settings__label">Manual BPM</label>
+          <div class="settings__field-row">
+            <input
+              id="manual-bpm"
+              type="number"
+              class="settings__input settings__input--num"
+              min="20"
+              max="300"
+              step="0.1"
+              bind:value={manualBpm}
+            />
+            <button type="button" class="settings__btn settings__btn--ghost" onclick={setManualBpm}>
+              Set
+            </button>
+          </div>
+        </div>
+        <div class="settings__field">
+          <label for="link-offset" class="settings__label">Link offset (ms)</label>
+          <div class="settings__field-row">
+            <input
+              id="link-offset"
+              type="number"
+              class="settings__input settings__input--num"
+              min="-200"
+              max="200"
+              step="1"
+              bind:value={linkOffsetMs}
+            />
+            <span class="settings__hint settings__hint--inline">
+              compensates for downstream-link latency, signed
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings__bpm-sensitivity">
+        <ControlGroup name="audio" tint="var(--color-cat-motion)">
+          <Fader value={audioBpmSensitivity / 100} label="BPM sense" />
+        </ControlGroup>
+        <div class="settings__bpm-sensitivity-meta">
+          <span class="settings__label">Audio BPM sensitivity</span>
+          <span class="settings__bpm-readout">
+            {audioBpmSensitivity}<span class="settings__bpm-unit">%</span>
+          </span>
+          <p class="settings__hint">
+            Tuning weight applied to the audio onset estimator before it competes in the priority
+            chain. Tinted via <code>--tint</code> per the W18 ControlGroup cascade contract.
+          </p>
+        </div>
+      </div>
+
       <p class="settings__hint">
-        Three-theme cascade per <code>tokens.css</code>. Selection is session-scoped (no persistence
-        yet); resets to <em>pulse</em> on reload.
+        Frozen-frame stub — no IPC dispatch. Runtime tempo arbiter, drag-reorder of the priority
+        chain, and live Link peer count land in Phase-3+ alongside the audio estimator.
       </p>
-    </div>
-    <div class="settings__row settings__row--locked" data-cap="io.osc.input">
-      <label class="settings__toggle">
-        <input
-          type="checkbox"
-          disabled
-          checked
-          title="Entitlement-gated; arrives in W15+ alongside the OSC adapter UI"
-        />
-        <span>OSC input adapter</span>
-      </label>
-      <p class="settings__hint">Locked — entitlement infrastructure lands in W15+.</p>
-    </div>
-    <div class="settings__row settings__row--locked" data-cap="io.camera">
-      <label class="settings__toggle">
-        <input
-          type="checkbox"
-          disabled
-          title="Entitlement-gated; arrives in W15+ alongside the Media library"
-        />
-        <span>Live Sources (camera capture)</span>
-      </label>
-      <p class="settings__hint">Locked — Media adapter integration lands in W15+.</p>
-    </div>
-  </article>
+    </article>
 
-  <article class="settings__section">
-    <h2>Hotkeys</h2>
-    <p class="settings__hint">
-      Read-only reference. The hotkey overlay (<kbd>?</kbd>) shows the same data in modal form.
-      Rebinding is V2 scope per <code>docs/42-operator-hotkey-map.md</code> §V1.
-    </p>
-    {#each HOTKEYS as group (group.title)}
-      <details class="settings__hotkey-group" open>
-        <summary>{group.title}</summary>
-        {#if group.note}
-          <p class="settings__hint settings__hint--inline">{group.note}</p>
-        {/if}
-        <table class="settings__hotkey-table">
-          <thead>
-            <tr>
-              <th scope="col">keys</th>
-              <th scope="col">action</th>
-              <th scope="col">osc</th>
-              <th scope="col">cap</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each group.rows as row, i (i)}
+    <article class="settings__section">
+      <h2>General</h2>
+      <div class="settings__row">
+        <ThemeSwitcher />
+        <p class="settings__hint">
+          Three-theme cascade per <code>tokens.css</code>. Selection is session-scoped (no
+          persistence yet); resets to <em>pulse</em> on reload.
+        </p>
+      </div>
+      <div class="settings__row settings__row--locked" data-cap="io.osc.input">
+        <label class="settings__toggle">
+          <input
+            type="checkbox"
+            disabled
+            checked
+            title="Entitlement-gated; arrives in W15+ alongside the OSC adapter UI"
+          />
+          <span>OSC input adapter</span>
+        </label>
+        <p class="settings__hint">Locked — entitlement infrastructure lands in W15+.</p>
+      </div>
+      <div class="settings__row settings__row--locked" data-cap="io.camera">
+        <label class="settings__toggle">
+          <input
+            type="checkbox"
+            disabled
+            title="Entitlement-gated; arrives in W15+ alongside the Media library"
+          />
+          <span>Live Sources (camera capture)</span>
+        </label>
+        <p class="settings__hint">Locked — Media adapter integration lands in W15+.</p>
+      </div>
+    </article>
+
+    <article class="settings__section">
+      <h2>Hotkeys</h2>
+      <p class="settings__hint">
+        Read-only reference. The hotkey overlay (<kbd>?</kbd>) shows the same data in modal form.
+        Rebinding is V2 scope per <code>docs/42-operator-hotkey-map.md</code> §V1.
+      </p>
+      {#each HOTKEYS as group (group.title)}
+        <details class="settings__hotkey-group" open>
+          <summary>{group.title}</summary>
+          {#if group.note}
+            <p class="settings__hint settings__hint--inline">{group.note}</p>
+          {/if}
+          <table class="settings__hotkey-table">
+            <thead>
               <tr>
-                <td class="settings__hotkey-keys">
-                  {#each row.keys as k, j (j)}
-                    {#if j > 0}<span class="settings__sep">/</span>{/if}<kbd>{k}</kbd>
-                  {/each}
-                </td>
-                <td>{row.action}</td>
-                <td>
-                  {#if row.osc}
-                    <code>{row.osc}</code>
-                  {:else}
-                    <span class="settings__muted">—</span>
-                  {/if}
-                </td>
-                <td>
-                  {#if row.cap}
-                    <span class="settings__cap" data-cap={row.cap}>{row.cap}</span>
-                  {:else}
-                    <span class="settings__muted">—</span>
-                  {/if}
-                </td>
+                <th scope="col">keys</th>
+                <th scope="col">action</th>
+                <th scope="col">osc</th>
+                <th scope="col">cap</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
-      </details>
-    {/each}
-  </article>
+            </thead>
+            <tbody>
+              {#each group.rows as row, i (i)}
+                <tr>
+                  <td class="settings__hotkey-keys">
+                    {#each row.keys as k, j (j)}
+                      {#if j > 0}<span class="settings__sep">/</span>{/if}<kbd>{k}</kbd>
+                    {/each}
+                  </td>
+                  <td>{row.action}</td>
+                  <td>
+                    {#if row.osc}
+                      <code>{row.osc}</code>
+                    {:else}
+                      <span class="settings__muted">—</span>
+                    {/if}
+                  </td>
+                  <td>
+                    {#if row.cap}
+                      <span class="settings__cap" data-cap={row.cap}>{row.cap}</span>
+                    {:else}
+                      <span class="settings__muted">—</span>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </details>
+      {/each}
+    </article>
 
-  <article class="settings__section">
-    <h2>Diagnostics</h2>
-    <div class="settings__row">
-      <button
-        type="button"
-        disabled
-        title="Generates a support bundle (logs + scene state + adapter health) in W15+"
-      >
-        <Icon name="save" size={12} /> Generate Support Bundle
-      </button>
-      <button type="button" disabled title="Tail-style log viewer arrives in W15+">
-        View Logs
-      </button>
+    <article class="settings__section">
+      <h2>About</h2>
+      <dl class="settings__about">
+        <dt>version</dt>
+        <dd>v0.0.0</dd>
+        <dt>phase</dt>
+        <dd>Phase 1 EXIT (6/6 evidence gates Pass)</dd>
+        <dt>license</dt>
+        <dd><code>LicenseRef-Chromaticity-Proprietary</code></dd>
+        <dt>repo</dt>
+        <dd><code>PhantasticUniverse/chromaticity</code></dd>
+        <dt>toolkit</dt>
+        <dd>Tauri 2 + Svelte 5 + Rust 2024 (per ADR-018)</dd>
+      </dl>
+    </article>
+  </div>
+
+  <aside class="settings__rail" aria-label="Settings preview and diagnostics">
+    <div class="settings__preview">
+      <div class="settings__preview-frame">
+        <SceneStill
+          kind="kaleido"
+          seed={7}
+          width={320}
+          height={180}
+          ariaLabel="Settings preview thumbnail"
+        />
+      </div>
+      <span class="settings__preview-label">Monitor</span>
     </div>
-    <p class="settings__hint">
-      Diagnostics actions are stubbed in W14; backend support-bundle IPC + log streaming arrive in
-      W15+ alongside the OSC view's adapter health surface.
-    </p>
-  </article>
 
-  <article class="settings__section">
-    <h2>About</h2>
-    <dl class="settings__about">
-      <dt>version</dt>
-      <dd>v0.0.0</dd>
-      <dt>phase</dt>
-      <dd>Phase 1 EXIT (6/6 evidence gates Pass)</dd>
-      <dt>license</dt>
-      <dd><code>LicenseRef-Chromaticity-Proprietary</code></dd>
-      <dt>repo</dt>
-      <dd><code>PhantasticUniverse/chromaticity</code></dd>
-      <dt>toolkit</dt>
-      <dd>Tauri 2 + Svelte 5 + Rust 2024 (per ADR-018)</dd>
-    </dl>
-  </article>
+    <article class="settings__section settings__section--diag">
+      <h2>Diagnostics</h2>
+      <dl class="settings__diag-data">
+        {#each DIAGNOSTICS as row (row.key)}
+          <div class="settings__diag-row">
+            <dt class="settings__diag-key">{row.key}</dt>
+            <dd class="settings__diag-value">{row.value}</dd>
+          </div>
+        {/each}
+      </dl>
+      <div class="settings__row">
+        <button
+          type="button"
+          disabled
+          title="Generates a support bundle (logs + scene state + adapter health) in W15+"
+        >
+          <Icon name="save" size={12} /> Generate Support Bundle
+        </button>
+        <button type="button" disabled title="Tail-style log viewer arrives in W15+">
+          View Logs
+        </button>
+      </div>
+      <p class="settings__hint">
+        Hardware values are frozen-frame fixtures mirroring the bundle's <code
+          >views/settings.jsx</code
+        >
+        Diagnostics rows. Live values stream in via the Phase-3+/4a runtime
+        <code>EV-OBSERVABILITY</code> metric pipeline; support-bundle IPC and log streaming arrive in
+        W15+ alongside the OSC view's adapter health surface.
+      </p>
+    </article>
+  </aside>
 </section>
 
 <style>
+  /* W38 layout: two-column grid (main + rail) on viewports wide enough
+   * for the bundle's `1fr / 380px` proportions; collapses to single
+   * column on narrow viewports so mobile / split-screen use stays
+   * readable. The rail width stays fixed at 360px (slightly tighter
+   * than the bundle's 380px to leave breathing room around the
+   * preview canvas at typical desktop widths). */
   .settings {
-    max-width: 960px;
+    max-width: 1280px;
     margin: 0 auto;
     padding: var(--space-2xl) var(--space-xl);
     color: var(--color-text-0);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: var(--space-xl);
+    align-items: start;
+  }
+  .settings__main {
+    min-width: 0;
+  }
+  @media (max-width: 960px) {
+    .settings {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
   .settings__header {
@@ -1262,6 +1331,87 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     flex-direction: column;
     gap: var(--space-xs);
     flex: 1;
+    min-width: 0;
+  }
+
+  /* ----- W38 right rail: Preview tile + Diagnostics panel ----------- */
+
+  .settings__rail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    position: sticky;
+    top: var(--space-xl);
+    align-self: start;
+    min-width: 0;
+  }
+  @media (max-width: 960px) {
+    .settings__rail {
+      position: static;
+    }
+  }
+  .settings__preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+  .settings__preview-frame {
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--color-bg-2);
+    box-shadow: var(--shadow-panel);
+  }
+  .settings__preview-label {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-3);
+    padding-left: var(--space-xs);
+  }
+
+  .settings__section--diag {
+    /* override the main-flow spacing so the panel hugs the preview */
+    margin-top: 0;
+  }
+  .settings__diag-data {
+    margin: 0 0 var(--space-md) 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .settings__diag-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-md);
+    padding: var(--space-xs) 0;
+    border-bottom: 1px solid var(--color-line-1);
+  }
+  .settings__diag-row:last-of-type {
+    border-bottom: none;
+  }
+  .settings__diag-key {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-2);
+    margin: 0;
+  }
+  .settings__diag-value {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
+    margin: 0;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     min-width: 0;
   }
 </style>
