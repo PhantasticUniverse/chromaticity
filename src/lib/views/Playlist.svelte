@@ -5,6 +5,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
 <script lang="ts">
   // Wave-13 PR3 view: Playlist v2 cue table editor.
+  // Wave-35 expansion: inspector edit-mode (Label / Scene / Duration /
+  // Crossfade / Control Preset / Trigger inputs + Save+Delete actions).
   //
   // Source of truth (port reference):
   //   chromaticity-planning/ui-predev-bundle-v0.2-beta/views/playlist.jsx
@@ -29,17 +31,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `☰`) now render via the W19 PR3 vendored `Icon.svelte` primitive
   // (`play` / `list`) per `views/playlist.jsx`'s
   // `<Icon name={active ? "play" : "list"} size={12} />` mapping.
+  //
+  // W35 inspector edit-mode: the right-hand panel's read-only `<dl>` is
+  // replaced by an editable form. `cueDraft` is local state, synced from
+  // `selectedCue` via `$effect` whenever selection changes; user edits
+  // mutate the draft only — they neither propagate back to
+  // `FESTIVAL_SET_CUES` nor dispatch IPC. Save and Delete remain inert
+  // surface stubs; per the W13 comment block above, real persistence is
+  // Phase-3 EV-PRESET-PLAYLIST. Switching cues discards in-progress
+  // edits, mirroring the bundle's uncontrolled-input semantics.
   import { EMPTY_PLAYLIST_CUES } from '../data/empty-states';
   import {
     PLAYLISTS,
     FESTIVAL_SET_CUES,
+    SCENE_OPTIONS,
+    CONTROL_PRESET_OPTIONS,
+    CUE_TRIGGER_OPTIONS,
     type CueFixture,
     type CueTransitionKind,
+    type CueTrigger,
   } from '../data/playlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import Icon from '../Icon.svelte';
   import { CueTransitionCurve } from '../widgets';
   import type { CueKind } from '../widgets/cue-transition-curve.math';
+
+  interface CueDraft {
+    label: string;
+    scene: string;
+    duration: string;
+    crossfade: string;
+    transition: CueTransitionKind;
+    controlPreset: string;
+    trigger: CueTrigger;
+  }
 
   let selectedPlaylistId = $state<string>('festival-set-dusk');
   // Default selection per the wireframe: row 3 ("First Drop") is the
@@ -48,6 +73,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let autoAdvance = $state(true);
   let quantizeToBeat = $state(false);
   let loop = $state(true);
+  let cueDraft = $state<CueDraft | null>(null);
 
   const TRANSITION_TABS: ReadonlyArray<{ id: CueTransitionKind; label: string }> = [
     { id: 'cut', label: 'Cut' },
@@ -68,6 +94,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     PLAYLISTS.find((p) => p.id === selectedPlaylistId)?.name ?? '',
   );
 
+  // W35: keep `cueDraft` synced to the current selection. The effect reads
+  // `selectedCue` (and therefore re-runs when its identity changes) and
+  // writes `cueDraft` — it does not read `cueDraft`, so user edits to the
+  // draft do not retrigger the sync. Selecting a different cue or playlist
+  // discards in-progress edits, matching the bundle's uncontrolled-input
+  // behavior.
+  $effect(() => {
+    if (selectedCue) {
+      cueDraft = {
+        label: selectedCue.name,
+        scene: selectedCue.scene,
+        duration: selectedCue.duration,
+        crossfade: selectedCue.crossfade,
+        transition: selectedCue.transition,
+        controlPreset: selectedCue.controlPreset,
+        trigger: selectedCue.trigger,
+      };
+    } else {
+      cueDraft = null;
+    }
+  });
+
   function selectPlaylist(id: string): void {
     selectedPlaylistId = id;
     // Reset to the wireframe-canonical cue default when switching back to
@@ -82,14 +130,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     selectedCueIndex = index;
   }
 
-  function setTransition(cue: CueFixture, kind: CueTransitionKind): void {
-    // W13 is read-mostly — the per-cue transition mutation is W14+ scope
-    // (depends on cue persistence). Local-only echo: clicking a tab
-    // selects it visually but does not edit the underlying fixture row.
-    // The CueTransitionCurve widget owns its own local state for cp1/cp2/
-    // snap/kind and emits onchange; we ignore that payload at this slice.
-    void cue;
-    void kind;
+  function commitDraft(): void {
+    // W35 read-mostly: Save is inert at this slice. Phase-3
+    // EV-PRESET-PLAYLIST persistence will wire IPC + dispatch a cue
+    // mutation command. Until then, the form's submit handler exists
+    // for keyboard accessibility (Enter inside any input) but performs
+    // no propagation. The local draft is preserved until the next cue
+    // selection swap.
+  }
+
+  function deleteDraft(): void {
+    // Same posture as `commitDraft` — inert at W35; Phase-3 wires
+    // removal. Reading `selectedCueIndex` keeps the function signature
+    // consumer-compatible with a future variant that will dispatch a
+    // delete command keyed on the active cue index.
+    void selectedCueIndex;
   }
 
   // Map the inspector-side 4-way `CueTransitionKind` onto the
@@ -176,55 +231,127 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   </main>
 
   <aside class="playlist-view__inspector" aria-label="Cue inspector">
-    {#if selectedCue}
+    {#if selectedCue && cueDraft}
       <header class="playlist-view__inspector-header">
         <span class="playlist-view__inspector-eyebrow">inspector</span>
-        <h2>{selectedCue.name}</h2>
+        <h2>{cueDraft.label}</h2>
       </header>
 
-      <dl class="playlist-view__cue-meta">
-        <div>
-          <dt>scene</dt>
-          <dd>{selectedCue.scene}</dd>
-        </div>
-        <div>
-          <dt>duration</dt>
-          <dd class="playlist-view__cue-mono">{selectedCue.duration}</dd>
-        </div>
-        <div>
-          <dt>crossfade</dt>
-          <dd class="playlist-view__cue-mono">{selectedCue.crossfade}</dd>
-        </div>
-      </dl>
+      <form
+        class="playlist-view__cue-form"
+        aria-label="Edit cue"
+        onsubmit={(e) => {
+          e.preventDefault();
+          commitDraft();
+        }}
+      >
+        <label class="playlist-view__field">
+          <span class="playlist-view__field-label">label</span>
+          <input
+            class="playlist-view__field-input"
+            type="text"
+            bind:value={cueDraft.label}
+            aria-label="Cue label"
+          />
+        </label>
 
-      <nav class="playlist-view__transition-tabs" aria-label="Transition mode">
-        {#each TRANSITION_TABS as tab (tab.id)}
+        <label class="playlist-view__field">
+          <span class="playlist-view__field-label">scene</span>
+          <select
+            class="playlist-view__field-select"
+            bind:value={cueDraft.scene}
+            aria-label="Cue scene"
+          >
+            {#each SCENE_OPTIONS as scene (scene)}
+              <option value={scene}>{scene}</option>
+            {/each}
+          </select>
+        </label>
+
+        <div class="playlist-view__field-row">
+          <label class="playlist-view__field">
+            <span class="playlist-view__field-label">duration</span>
+            <input
+              class="playlist-view__field-input playlist-view__field-input--mono"
+              type="text"
+              bind:value={cueDraft.duration}
+              aria-label="Cue duration"
+            />
+          </label>
+          <label class="playlist-view__field">
+            <span class="playlist-view__field-label">crossfade</span>
+            <input
+              class="playlist-view__field-input playlist-view__field-input--mono"
+              type="text"
+              bind:value={cueDraft.crossfade}
+              aria-label="Cue crossfade"
+            />
+          </label>
+        </div>
+
+        <nav class="playlist-view__transition-tabs" aria-label="Transition mode">
+          {#each TRANSITION_TABS as tab (tab.id)}
+            <button
+              type="button"
+              class="playlist-view__transition-tab"
+              class:on={tab.id === cueDraft.transition}
+              aria-pressed={tab.id === cueDraft.transition}
+              onclick={() => cueDraft && (cueDraft.transition = tab.id)}
+            >
+              {tab.label}
+            </button>
+          {/each}
+        </nav>
+
+        {#if cueDraft.transition !== 'cut'}
+          <CueTransitionCurve
+            kind={curveKindFor(cueDraft.transition)}
+            cp1={[selectedCue.cp1[0], selectedCue.cp1[1]]}
+            cp2={[selectedCue.cp2[0], selectedCue.cp2[1]]}
+            snap={selectedCue.snap}
+            duration={cueDraft.crossfade}
+          />
+        {/if}
+
+        <label class="playlist-view__field">
+          <span class="playlist-view__field-label">control preset</span>
+          <select
+            class="playlist-view__field-select"
+            bind:value={cueDraft.controlPreset}
+            aria-label="Cue control preset"
+          >
+            {#each CONTROL_PRESET_OPTIONS as preset (preset)}
+              <option value={preset}>{preset}</option>
+            {/each}
+          </select>
+        </label>
+
+        <label class="playlist-view__field">
+          <span class="playlist-view__field-label">trigger</span>
+          <select
+            class="playlist-view__field-select"
+            bind:value={cueDraft.trigger}
+            aria-label="Cue trigger"
+          >
+            {#each CUE_TRIGGER_OPTIONS as opt (opt.id)}
+              <option value={opt.id}>{opt.label}</option>
+            {/each}
+          </select>
+        </label>
+
+        <div class="playlist-view__field-actions">
+          <button type="submit" class="playlist-view__action playlist-view__action--save">
+            Save
+          </button>
           <button
             type="button"
-            class="playlist-view__transition-tab"
-            class:on={tab.id === selectedCue.transition}
-            aria-pressed={tab.id === selectedCue.transition}
-            onclick={() => setTransition(selectedCue, tab.id)}
+            class="playlist-view__action playlist-view__action--delete"
+            onclick={() => deleteDraft()}
           >
-            {tab.label}
+            Delete
           </button>
-        {/each}
-      </nav>
-
-      {#if selectedCue.transition !== 'cut'}
-        <CueTransitionCurve
-          kind={curveKindFor(selectedCue.transition)}
-          cp1={[selectedCue.cp1[0], selectedCue.cp1[1]]}
-          cp2={[selectedCue.cp2[0], selectedCue.cp2[1]]}
-          snap={selectedCue.snap}
-          duration={selectedCue.crossfade}
-        />
-      {/if}
-
-      <section class="playlist-view__preset">
-        <h3>control preset</h3>
-        <div class="playlist-view__preset-chip">{selectedCue.controlPreset}</div>
-      </section>
+        </div>
+      </form>
 
       <section class="playlist-view__toggles" aria-label="Playlist settings">
         <label class="playlist-view__toggle">
@@ -473,36 +600,96 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     color: var(--color-text-2);
     font-size: var(--font-size-body-sm);
   }
-  .playlist-view__cue-meta {
-    margin: 0;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: var(--space-md);
-    row-gap: var(--space-sm);
-  }
-  .playlist-view__cue-meta > div {
+  /* W35 inspector edit-mode form. */
+  .playlist-view__cue-form {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-sm);
+    margin: 0;
+  }
+  .playlist-view__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     min-width: 0;
   }
-  .playlist-view__cue-meta > div:first-child {
-    grid-column: span 2;
-  }
-  .playlist-view__cue-meta dt {
+  .playlist-view__field-label {
     font-family: var(--font-family-mono);
     font-size: var(--font-size-caps-sm);
     text-transform: uppercase;
     letter-spacing: var(--letter-spacing-caps-sm);
     color: var(--color-text-3);
   }
-  .playlist-view__cue-meta dd {
-    margin: 0;
+  .playlist-view__field-input,
+  .playlist-view__field-select {
+    background: var(--color-bg-3);
     color: var(--color-text-0);
-    font-size: var(--font-size-body-md);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    padding: var(--space-xs) var(--space-sm);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-body-sm);
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .playlist-view__field-input--mono {
+    font-family: var(--font-family-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .playlist-view__field-input:focus,
+  .playlist-view__field-select:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+    border-color: var(--color-primary);
+  }
+  .playlist-view__field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+  }
+  .playlist-view__field-actions {
+    display: flex;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+  }
+  .playlist-view__action {
+    flex: 0 1 auto;
+    border-radius: var(--radius-xs);
+    padding: var(--space-xs) var(--space-md);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    font-weight: var(--font-weight-label);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition:
+      background 0.12s ease,
+      color 0.12s ease,
+      border-color 0.12s ease;
+  }
+  .playlist-view__action:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .playlist-view__action--save {
+    flex: 1;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    border-color: var(--color-primary);
+  }
+  .playlist-view__action--save:hover {
+    background: color-mix(in oklab, var(--color-primary) 88%, white);
+  }
+  .playlist-view__action--delete {
+    background: var(--color-bg-3);
+    color: var(--color-text-2);
+    border-color: var(--color-line-2);
+  }
+  .playlist-view__action--delete:hover {
+    background: var(--color-bg-4);
+    color: var(--color-text-0);
+    border-color: var(--color-line-3);
   }
   .playlist-view__transition-tabs {
     display: grid;
@@ -533,29 +720,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: var(--color-primary);
     color: var(--color-on-primary);
     border-color: var(--color-primary);
-  }
-  .playlist-view__preset {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-  }
-  .playlist-view__preset h3 {
-    margin: 0;
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-caps-sm);
-    text-transform: uppercase;
-    letter-spacing: var(--letter-spacing-caps-sm);
-    color: var(--color-text-3);
-    font-weight: var(--font-weight-label);
-  }
-  .playlist-view__preset-chip {
-    background: var(--color-bg-3);
-    color: var(--color-text-0);
-    border: 1px solid var(--color-line-2);
-    border-radius: var(--radius-sm);
-    padding: var(--space-xs) var(--space-sm);
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-mono-md);
   }
   .playlist-view__toggles {
     display: flex;

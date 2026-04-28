@@ -2,7 +2,8 @@
 /* SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> */
 
 /*
- * Wave-13 PR3 fixture data for the Playlist v2 view.
+ * Wave-13 PR3 fixture data for the Playlist v2 view, extended at W35
+ * with inspector-edit-mode option lists and the per-cue `trigger` field.
  *
  * Source of truth (port reference):
  *   chromaticity-planning/ui-predev-bundle-v0.2-beta/views/playlist.jsx
@@ -10,10 +11,10 @@
  *   .playwright-mcp/wireframe-reference/03-playlist-cue-table.png
  *
  * Hardcoded fixture per the W10 Inputs precedent: cue persistence is
- * Phase-3 EV-PRESET-PLAYLIST scope and out of band for W13. The shape
- * here is deliberately structured to be close to the future IPC payload
- * so a W14+ persistence pass can substitute the data source without
- * reshaping the view's render.
+ * Phase-3 EV-PRESET-PLAYLIST scope and out of band for W13/W35. The
+ * shape here is deliberately structured to be close to the future IPC
+ * payload so a W14+ persistence pass can substitute the data source
+ * without reshaping the view's render.
  *
  * The wireframe-alignment posture (per the project memory note
  * `feedback_wireframes_normative_for_ui_ux`) keeps the visual layout +
@@ -45,6 +46,16 @@ export type CueTransitionKind = 'cut' | 'fade' | 'snap' | 'beat-snap';
 /** Snap-divisor enum mirrored from `cue-transition-curve.math.ts::CueSnap`. */
 export type CueSnapDivisor = '0.25' | '0.5' | '1' | '2' | '4';
 
+/**
+ * Cue advance-trigger family per `playlist.jsx` line 144-149. Operators pick
+ * one of four advance modes per cue: time-based auto-advance, beat-aligned
+ * advance to next bar, manual operator advance, or external MIDI note. The
+ * runtime cue model lands at Phase-3 (EV-PRESET-PLAYLIST); until then this
+ * is fixture-shape-only, with `'auto'` as the default for every existing
+ * cue (matching the wireframe's default selection for "First Drop").
+ */
+export type CueTrigger = 'auto' | 'beat' | 'manual' | 'midi';
+
 export interface CueFixture {
   readonly index: number;
   readonly name: string;
@@ -56,7 +67,49 @@ export interface CueFixture {
   readonly cp2: readonly [number, number];
   readonly snap: CueSnapDivisor;
   readonly controlPreset: string;
+  readonly trigger: CueTrigger;
 }
+
+/**
+ * W35 stub option lists for the inspector edit-mode dropdowns. These are
+ * fixture lists, not the canonical scene / preset registries — those live
+ * runtime-side and arrive with the Phase-3 cue persistence work. The lists
+ * here cover (a) every value already present in `FESTIVAL_SET_CUES` so the
+ * default-selected option always matches the cue's stored value, plus
+ * (b) a small set of stub additions to make the dropdown actionable in
+ * the W35 UX preview.
+ */
+export const SCENE_OPTIONS: readonly string[] = [
+  'Quicksand',
+  'Glob',
+  'Glitch',
+  'GPU_Melter',
+  'Glassier',
+  'Churning',
+  'Hex Array',
+  'Ink Shot',
+  'MyxoplASM',
+  'Sun_Set',
+  'Plasma Field',
+  'Wireframe Globe',
+];
+
+export const CONTROL_PRESET_OPTIONS: readonly string[] = [
+  'default',
+  'Hard Techno',
+  'Ambient',
+  'Warm Dusk',
+];
+
+export const CUE_TRIGGER_OPTIONS: ReadonlyArray<{
+  readonly id: CueTrigger;
+  readonly label: string;
+}> = [
+  { id: 'auto', label: 'Auto · on duration' },
+  { id: 'beat', label: 'On beat · next bar' },
+  { id: 'manual', label: 'Manual · next button' },
+  { id: 'midi', label: 'MIDI · on note' },
+];
 
 export const PLAYLISTS: readonly PlaylistFixture[] = [
   { id: 'festival-set-dusk', name: 'Festival Set / Dusk', active: true },
@@ -86,6 +139,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.58, 1],
     snap: '1',
     controlPreset: 'default',
+    trigger: 'auto',
   },
   {
     index: 2,
@@ -98,6 +152,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.58, 1],
     snap: '1',
     controlPreset: 'default',
+    trigger: 'auto',
   },
   {
     index: 3,
@@ -110,6 +165,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.3, 1],
     snap: '1',
     controlPreset: 'Hard Techno',
+    trigger: 'auto',
   },
   {
     index: 4,
@@ -122,6 +178,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.5, 1],
     snap: '0.25',
     controlPreset: 'Hard Techno',
+    trigger: 'beat',
   },
   {
     index: 5,
@@ -134,6 +191,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.58, 1],
     snap: '1',
     controlPreset: 'Hard Techno',
+    trigger: 'auto',
   },
   {
     index: 6,
@@ -146,6 +204,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.58, 1],
     snap: '1',
     controlPreset: 'default',
+    trigger: 'auto',
   },
   {
     index: 7,
@@ -158,6 +217,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.5, 1],
     snap: '0.5',
     controlPreset: 'Hard Techno',
+    trigger: 'beat',
   },
   {
     index: 8,
@@ -170,6 +230,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [1, 1],
     snap: '1',
     controlPreset: 'default',
+    trigger: 'manual',
   },
   {
     index: 9,
@@ -182,6 +243,7 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.3, 1],
     snap: '1',
     controlPreset: 'default',
+    trigger: 'auto',
   },
   {
     index: 10,
@@ -194,5 +256,6 @@ export const FESTIVAL_SET_CUES: readonly CueFixture[] = [
     cp2: [0.58, 1],
     snap: '1',
     controlPreset: 'Ambient',
+    trigger: 'auto',
   },
 ];
