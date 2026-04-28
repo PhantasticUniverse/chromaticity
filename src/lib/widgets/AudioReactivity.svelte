@@ -174,10 +174,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <style>
   .audio-reactivity {
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     gap: var(--space-sm);
-    height: 100%;
-    min-height: 160px;
+    flex: 1 1 auto;
+    min-height: 0;
   }
   .audio-reactivity__bands {
     display: grid;
@@ -222,7 +222,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-sm);
     overflow: hidden;
-    min-height: 100px;
+    min-height: 0;
     padding: 4px;
   }
   .audio-reactivity__fft-svg {

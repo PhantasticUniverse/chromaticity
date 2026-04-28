@@ -454,6 +454,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     grid-template-areas: 'left middle right';
     gap: var(--space-md);
     align-items: stretch;
+    height: 100%;
     min-height: 0;
   }
 
@@ -476,28 +477,41 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
   }
 
+  /* W34c fix — column rows track the bundle's
+     `grid-template-rows: auto auto minmax(0, 1fr)` discipline so the
+     last panel in each column absorbs remaining vertical space and
+     adjacent panels honour their natural heights without spilling.
+     The bundle's `.perform-left` uses 3 grid rows for SceneControls /
+     MetaControls / Media; the middle column has 2 rows for Preview
+     (auto, aspect-ratio constrained) + AudioReactivity (1fr). The
+     right column is a single panel grid row that fills remaining
+     space. `min-width: 0` + `min-height: 0` allow grid cells to
+     compress below their content. */
   .perform__col-left {
     grid-area: left;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
     gap: var(--space-md);
     min-width: 0;
+    min-height: 0;
   }
 
   .perform__col-middle {
     grid-area: middle;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: var(--space-md);
     min-width: 0;
+    min-height: 0;
   }
 
   .perform__col-right {
     grid-area: right;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
     gap: var(--space-md);
     min-width: 0;
+    min-height: 0;
   }
 
   /* ---------------- Panel chrome (shared) ---------------------------------- */
@@ -509,6 +523,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: flex;
     flex-direction: column;
     min-width: 0;
+    min-height: 0;
     overflow: hidden;
   }
 
@@ -547,6 +562,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .panel__body {
     padding: var(--space-md);
     min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
     overflow: auto;
   }
 
