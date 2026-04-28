@@ -86,6 +86,7 @@ export { default as BeatDots } from './BeatDots.svelte';
 export { default as CrossFader } from './CrossFader.svelte';
 export { default as VuStereo } from './VuStereo.svelte';
 export { default as Meter } from './Meter.svelte';
+export { default as TabSegment } from './TabSegment.svelte';
 export { default as CuePad } from './CuePad.svelte';
 export { default as AudioReactivity } from './AudioReactivity.svelte';
 export { default as SnapBar } from './SnapBar.svelte';
@@ -115,6 +116,13 @@ export { default as WatermarkOverlay } from './WatermarkOverlay.svelte';
 // `EV-INTEGRATION-MATRIX` scope.
 export { default as AdapterPill } from './AdapterPill.svelte';
 export { type AdapterPillState } from './adapter-pill.types';
+// Wave-40 adds `TabSegment`, the horizontal segmented-button primitive
+// ported from `views/settings.jsx` (`<div className="tab-seg">` adoption
+// sites — Quantize Transitions / Color Space / Multi-Display Mode) and
+// `styles.css` lines 293-297. Consumed by the upcoming Settings sub-
+// section ports (W40 / W41) so the three tab-seg rows share one
+// primitive instead of repeating bundle markup.
+//
 // Wave-34b adds `LockedRow`, the canonical "feature-locked
 // affordance" treatment ported from `v02_supplement.jsx` lines 171-
 // 188. Per CLAUDE.md MVP entitlement enforcement is watermark-only
