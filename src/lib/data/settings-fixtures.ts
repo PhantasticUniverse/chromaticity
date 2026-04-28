@@ -83,6 +83,46 @@ export const AUDIO_CHANNEL_LAYOUTS: readonly AudioChannelLayoutOption[] = [
   { id: 'stereo-5-6', label: 'Stereo (L = 5, R = 6)' },
 ];
 
+/*
+ * W39 Audio Input Gain + Monitoring extension. The bundle's
+ * `views/settings.jsx` lines 35-50 break Channel Routing out of the
+ * single Channel Layout select into a paired L / R picker, then add
+ * Input Gain (Fader + dB readout) and Monitoring (Meter level / peak)
+ * rows below it. The Channel Layout select stays as the bring-up
+ * convenience option (single-pick stereo presets) while the routing
+ * pickers expose the per-channel mapping the bundle wireframe targets.
+ */
+
+export interface AudioChannelOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+export const AUDIO_CHANNEL_LEFT_OPTIONS: readonly AudioChannelOption[] = [
+  { id: 'L1', label: 'L = 1' },
+  { id: 'L3', label: 'L = 3' },
+  { id: 'L5', label: 'L = 5' },
+];
+
+export const AUDIO_CHANNEL_RIGHT_OPTIONS: readonly AudioChannelOption[] = [
+  { id: 'R2', label: 'R = 2' },
+  { id: 'R4', label: 'R = 4' },
+  { id: 'R6', label: 'R = 6' },
+];
+
+/* Frozen-frame audio meter snapshot mirroring the bundle's
+ * `<Meter level={0.68} peak={0.82} bars={28} />` Settings monitoring
+ * row. Phase-3+/4a `EV-OBSERVABILITY` runtime metric stream replaces
+ * these with live RMS / peak-hold from the cpal capture loop. */
+export const AUDIO_METER_BARS = 28;
+export const AUDIO_METER_LEVEL = 0.68;
+export const AUDIO_METER_PEAK = 0.82;
+/* 0.59 maps to +3.24 dB under the ±18 dB symmetric mapping
+ * `(gain - 0.5) * AUDIO_INPUT_GAIN_DB_RANGE_DB`, mirroring the
+ * bundle wireframe's "+3.2 dB" readout at ~62% slider position. */
+export const AUDIO_INPUT_GAIN_DEFAULT = 0.59;
+export const AUDIO_INPUT_GAIN_DB_RANGE_DB = 36; /* ±18 dB about 0 dB unity */
+
 /* ---------- Graphics / Output ---------- */
 
 export interface ResolutionPreset {

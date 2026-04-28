@@ -85,6 +85,7 @@ export { default as BpmRing } from './BpmRing.svelte';
 export { default as BeatDots } from './BeatDots.svelte';
 export { default as CrossFader } from './CrossFader.svelte';
 export { default as VuStereo } from './VuStereo.svelte';
+export { default as Meter } from './Meter.svelte';
 export { default as CuePad } from './CuePad.svelte';
 export { default as AudioReactivity } from './AudioReactivity.svelte';
 export { default as SnapBar } from './SnapBar.svelte';
