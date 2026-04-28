@@ -52,20 +52,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // nothing when closed, so the cost of always mounting it is a single
   // top-level `{#if}` evaluation per reactive tick.
   //
-  // Wave-27 PR1 mounts `<SnapBar>` between the TopBar and the routed
-  // view, gated on `routeStore.current === 'perform'`. The bundle
-  // (`Chromaticity.html` line 286) treats SnapBar as app-level chrome
-  // visible only on the Perform surface; the local `snapActive` state
-  // tracks which slot is highlighted. Frozen-frame: the deferred wiring
-  // onto the engine `SnapSlotId` IPC surface is `EV-INTEGRATION-MATRIX`
-  // scope (the eight perform-time bookmarks here are a different domain
-  // from the sixteen engine slots in `src/lib/snap.ts`).
+  // Wave-27 PR1 mounted `<SnapBar>` as Perform-gated app-level chrome
+  // per the bundle (`Chromaticity.html` line 286, gated on
+  // `view === "perform"`). The W39 follow-up corrects the W27 PR1 mount
+  // position from "between TopBar and routed view" to "between routed
+  // view and StatusBar" — the bundle places `<SnapBar>` AFTER `<main>`
+  // and BEFORE `<StatusBar>`, and `DESIGN.md` lines 290-297 codify that
+  // ordering in the layout block. The fix flips the inside-`__main`
+  // ordering and converts `__main` from a single padded scroll
+  // container into a flex column whose `__view` wrapper owns the
+  // padding + overflow:auto so the snap bar can pin to the bottom of
+  // the column without being shoved off-screen by the view's scroll.
+  // The local `snapActive` state tracks which slot is highlighted;
+  // deferred wiring onto the engine `SnapSlotId` IPC surface is
+  // `EV-INTEGRATION-MATRIX` scope (the eight perform-time bookmarks
+  // here are a different domain from the sixteen engine slots in
+  // `src/lib/snap.ts`).
   //
   // Wave-28 PR1 mounts `<DegradedBanner>` directly under the TopBar and
-  // above the SnapBar / routed view. Bundle adoption site:
-  // `Chromaticity.html` line 263 — banner sits flush against the session
-  // HUD row. Content is the bundle's "integrated GPU" warning fixture;
-  // real adapter-health probing is `EV-INTEGRATION-MATRIX` scope (same
+  // above the routed view. Bundle adoption site: `Chromaticity.html`
+  // line 263 — banner sits flush against the session HUD row. Content
+  // is the bundle's "integrated GPU" warning fixture; real
+  // adapter-health probing is `EV-INTEGRATION-MATRIX` scope (same
   // posture as the W14 stub status pill in `TopBar.svelte`). `onAction`
   // routes to Settings via `routeStore.set('settings')`; `onDismiss`
   // hides the banner via local `bannerVisible` state.
@@ -186,35 +194,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         />
       </div>
     {/if}
+    <div class="app-shell__view">
+      {#if routeStore.current === 'perform'}
+        <Perform />
+      {:else if routeStore.current === 'library'}
+        <Library />
+      {:else if routeStore.current === 'author'}
+        <Author />
+      {:else if routeStore.current === 'audio-uniforms'}
+        <AudioUniforms />
+      {:else if routeStore.current === 'playlist'}
+        <Playlist />
+      {:else if routeStore.current === 'sources'}
+        <Sources />
+      {:else if routeStore.current === 'midi'}
+        <MIDI />
+      {:else if routeStore.current === 'osc'}
+        <Osc />
+      {:else if routeStore.current === 'import'}
+        <Import />
+      {:else if routeStore.current === 'patch'}
+        <Patch />
+      {:else if routeStore.current === 'settings'}
+        <Settings />
+      {:else if routeStore.current === 'license'}
+        <License />
+      {:else if routeStore.current === 'welcome'}
+        <Welcome />
+      {/if}
+    </div>
     {#if routeStore.current === 'perform'}
       <div class="app-shell__snapbar">
         <SnapBar active={snapActive} onPick={(slot) => (snapActive = slot)} />
       </div>
-      <Perform />
-    {:else if routeStore.current === 'library'}
-      <Library />
-    {:else if routeStore.current === 'author'}
-      <Author />
-    {:else if routeStore.current === 'audio-uniforms'}
-      <AudioUniforms />
-    {:else if routeStore.current === 'playlist'}
-      <Playlist />
-    {:else if routeStore.current === 'sources'}
-      <Sources />
-    {:else if routeStore.current === 'midi'}
-      <MIDI />
-    {:else if routeStore.current === 'osc'}
-      <Osc />
-    {:else if routeStore.current === 'import'}
-      <Import />
-    {:else if routeStore.current === 'patch'}
-      <Patch />
-    {:else if routeStore.current === 'settings'}
-      <Settings />
-    {:else if routeStore.current === 'license'}
-      <License />
-    {:else if routeStore.current === 'welcome'}
-      <Welcome />
     {/if}
   </main>
   <footer class="app-shell__status">
@@ -255,29 +267,31 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     grid-area: rail;
     overflow: hidden;
   }
+  /* W39 follow-up: `__main` is now a flex column so the snap bar can
+   * pin to the bottom of the main column (per bundle Chromaticity.html
+   * line 286 ordering and DESIGN.md layout block). The `__view`
+   * wrapper carries the padding + overflow that `__main` used to own
+   * directly, leaving `__main` free of padding so the banner (top)
+   * and snap bar (bottom) sit flush against the column edges without
+   * the negative-margin trick the W27 PR1 / W28 PR1 layout needed. */
   .app-shell__main {
     grid-area: main;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .app-shell__view {
+    flex: 1;
     overflow: auto;
     padding: var(--space-3xl) var(--space-4xl);
+    min-height: 0;
   }
-  /* Break the SnapBar out of `__main`'s side+top padding so it spans
-   * the full main column width directly under the TopBar, matching the
-   * bundle's `Chromaticity.html` layout where SnapBar sits flush against
-   * the TopBar / view boundary. The bottom margin restores the gap to
-   * the routed view container. */
-  .app-shell__snapbar {
-    margin: calc(-1 * var(--space-3xl)) calc(-1 * var(--space-4xl)) var(--space-3xl);
-  }
-  /* Same full-bleed treatment for the W28 PR1 DegradedBanner. When the
-   * banner renders alongside the SnapBar (on Perform), the SnapBar
-   * sibling re-applies its own negative top margin so the two strips
-   * stack flush. When only the banner renders, the bottom margin opens
-   * the standard view gap. */
   .app-shell__banner {
-    margin: calc(-1 * var(--space-3xl)) calc(-1 * var(--space-4xl)) var(--space-3xl);
+    flex-shrink: 0;
   }
-  .app-shell__banner + .app-shell__snapbar {
-    margin-top: 0;
+  .app-shell__snapbar {
+    flex-shrink: 0;
   }
   .app-shell__status {
     grid-area: status;
