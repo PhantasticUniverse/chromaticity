@@ -55,6 +55,7 @@ use std::cell::Cell;
 
 use rquickjs::{CatchResultExt, Context, Ctx, Object, Runtime, Value};
 
+use crate::determinism::{self, Clock, DeterminismState, RandomSeedConfig};
 use crate::error::ScriptError;
 use crate::memory_cap::{self, MemoryCapConfig, MemoryUsageSnapshot};
 use crate::value::ScriptValue;
@@ -115,6 +116,16 @@ pub struct ScriptRuntime {
     // [`Self::execute`] call when a memory cap is active. Same
     // Cell-backed read pattern as `last_observation`.
     last_memory_snapshot: Cell<Option<MemoryUsageSnapshot>>,
+    // Slice-4 determinism shims state. The PRNG handle and the
+    // clock-installed flag live in here; the actual closures
+    // installed on `Math.random` / `Date.now` close over their own
+    // `Rc<RefCell<...>>` shares of the same underlying state, so
+    // [`Self::execute`] does NOT need a per-call install / uninstall
+    // bracket — the shims survive across [`Context::with`] entries
+    // for the lifetime of the runtime. `None` reproduces the slice-1
+    // / slice-2 / slice-3 behaviour: no shim installed, the QuickJS
+    // built-in `Math.random` and `Date.now` are unchanged.
+    determinism_state: Option<DeterminismState>,
 }
 
 impl std::fmt::Debug for ScriptRuntime {
@@ -124,6 +135,7 @@ impl std::fmt::Debug for ScriptRuntime {
             .field("memory_cap_config", &self.memory_cap_config)
             .field("last_observation", &self.last_observation.get())
             .field("last_memory_snapshot", &self.last_memory_snapshot.get())
+            .field("determinism_state", &self.determinism_state)
             .finish_non_exhaustive()
     }
 }
@@ -147,6 +159,7 @@ impl ScriptRuntime {
             memory_cap_config: None,
             last_observation: Cell::new(None),
             last_memory_snapshot: Cell::new(None),
+            determinism_state: None,
         })
     }
 
@@ -246,6 +259,103 @@ impl ScriptRuntime {
     #[must_use]
     pub fn memory_cap_config(&self) -> Option<MemoryCapConfig> {
         self.memory_cap_config
+    }
+
+    /// Configure the seeded `Math.random` shim, returning the
+    /// runtime for chaining.
+    ///
+    /// Slice-4 surface (per ADR-012 §5):
+    ///
+    /// - `seed` — `u64` value to seed the per-runtime xoroshiro128+
+    ///   generator. Any `u64` is acceptable, including `0`; the
+    ///   builder expands the value into the 128-bit PRNG state via
+    ///   `splitmix64`, which guarantees the underlying state is not
+    ///   the all-zero degenerate case.
+    ///
+    /// Effect: replaces the QuickJS default `Math.random` (which
+    /// pulls entropy from the host) with a closure that delegates
+    /// to the per-runtime PRNG. The shim is installed once at
+    /// builder time and lives for the lifetime of the runtime;
+    /// [`Self::execute`] does NOT need a per-call install /
+    /// uninstall bracket because the shim closure captures the
+    /// PRNG state via `Rc<RefCell<_>>` and survives across
+    /// `Context::with` boundaries.
+    ///
+    /// Failure modes: this builder fails with
+    /// [`ScriptError::DeterminismInstall`] iff rquickjs returns an
+    /// error wiring the global override (`globals().Math` lookup,
+    /// `Function::new` wiring, or property `set` failed). The
+    /// builder validates the `seed` via
+    /// [`crate::determinism::RandomSeedConfig::validate`] which is
+    /// always `Ok` today; future config knobs may surface
+    /// [`ScriptError::DeterminismConfig`] from this path.
+    ///
+    /// Builder chaining: composes with [`Self::with_watchdog`] +
+    /// [`Self::with_memory_limit`] + [`Self::with_clock`]; any order
+    /// is valid (each builder is independent).
+    pub fn with_random_seed(mut self, seed: u64) -> Result<Self, ScriptError> {
+        let cfg = RandomSeedConfig::new(seed).validate()?;
+        let mut state = self.determinism_state.take().unwrap_or_default();
+        // The shim install path is a single `Context::with` entry.
+        // The closure captures an `Rc<RefCell<PrngState>>`; the
+        // returned `Rc` clone is folded into the host-side
+        // `DeterminismState` for diagnostics.
+        let install = self
+            .context
+            .with(|ctx: Ctx<'_>| determinism::install_random_shim(&ctx, cfg));
+        let prng_state = install?;
+        determinism::record_random_seed(&mut state, cfg, prng_state);
+        self.determinism_state = Some(state);
+        Ok(self)
+    }
+
+    /// Configure the frame-locked `Date.now` shim, returning the
+    /// runtime for chaining.
+    ///
+    /// Slice-4 surface (per ADR-012 §5):
+    ///
+    /// - `clock` — boxed [`Clock`] trait object. Every script call
+    ///   to `Date.now()` invokes [`Clock::now_ms`] synchronously on
+    ///   the runtime thread. The slice-4 built-in implementors are
+    ///   [`crate::FixedClock`] (always returns its `tick_ms`,
+    ///   matching ADR-012 §5's per-frame replay primitive) and
+    ///   [`crate::MonotonicClock`] (returns
+    ///   `base_ms + Instant::now() - start`).
+    ///
+    /// Effect: replaces the QuickJS default `Date.now` (which
+    /// returns the host wall-clock in milliseconds since the Unix
+    /// epoch) with a closure that delegates to the supplied
+    /// [`Clock`]. The shim is installed once at builder time and
+    /// lives for the lifetime of the runtime, with the same
+    /// across-`Context::with`-boundaries-survival pattern as
+    /// [`Self::with_random_seed`].
+    ///
+    /// Failure modes: this builder fails with
+    /// [`ScriptError::DeterminismInstall`] iff rquickjs returns an
+    /// error wiring the global override.
+    ///
+    /// Builder chaining: composes with [`Self::with_watchdog`] +
+    /// [`Self::with_memory_limit`] + [`Self::with_random_seed`];
+    /// any order is valid (each builder is independent).
+    pub fn with_clock(mut self, clock: Box<dyn Clock + Send>) -> Result<Self, ScriptError> {
+        let mut state = self.determinism_state.take().unwrap_or_default();
+        let install = self
+            .context
+            .with(|ctx: Ctx<'_>| determinism::install_clock_shim(&ctx, clock));
+        install?;
+        determinism::record_clock_installed(&mut state);
+        self.determinism_state = Some(state);
+        Ok(self)
+    }
+
+    /// Determinism state currently in force, or `None` if neither
+    /// [`Self::with_random_seed`] nor [`Self::with_clock`] has been
+    /// called. Read-only diagnostic surface; the underlying PRNG
+    /// state and `Clock` trait object are not exposed (the closure
+    /// installed on the QuickJS side owns the only mutable handle).
+    #[must_use]
+    pub fn determinism_state(&self) -> Option<&DeterminismState> {
+        self.determinism_state.as_ref()
     }
 
     /// Most-recent memory-usage snapshot, or `None` if no
@@ -1204,6 +1314,137 @@ mod execute_drift_pins {
         assert!(
             rt.last_memory_snapshot().is_none(),
             "no memory cap ⇒ no snapshot",
+        );
+    }
+
+    // ----- Slice-4 determinism shim drift pins -----
+
+    #[test]
+    fn determinism_state_absent_by_default() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // [`ScriptRuntime::new`] alone (no shims) must NOT mount a
+        // determinism state; preserves the slice-1 / slice-2 /
+        // slice-3 surface for callers that haven't migrated to the
+        // determinism builders.
+        let rt = ScriptRuntime::new().expect("runtime constructs");
+        assert!(
+            rt.determinism_state().is_none(),
+            "no determinism builders ⇒ no state",
+        );
+    }
+
+    #[test]
+    fn with_random_seed_records_state() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // The builder must round-trip the seed through the
+        // host-side diagnostic surface so callers / tests can
+        // confirm the shim is in force.
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_random_seed(0xDEAD_BEEF)
+            .expect("seed installs");
+        let state = rt
+            .determinism_state()
+            .expect("seed installed ⇒ state present");
+        assert_eq!(state.seed(), Some(0xDEAD_BEEF), "seed echoed");
+        assert!(
+            !state.clock_installed(),
+            "seed-only path must not flag clock as installed",
+        );
+    }
+
+    #[test]
+    fn with_clock_records_state() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // The clock builder must flag the host-side
+        // clock-installed presence bit; the underlying clock is
+        // opaque post-install (the closure owns the only mutable
+        // handle).
+        use crate::determinism::FixedClock;
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_clock(Box::new(FixedClock::new(1_700_000_000_000)))
+            .expect("clock installs");
+        let state = rt
+            .determinism_state()
+            .expect("clock installed ⇒ state present");
+        assert!(state.clock_installed(), "clock flag must flip");
+        assert!(
+            state.seed().is_none(),
+            "clock-only path must not flag seed as installed",
+        );
+    }
+
+    #[test]
+    fn determinism_builders_compose() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // Both shim builders MUST chain on a single runtime —
+        // a seed installed first does not invalidate a later
+        // clock install, and vice versa. Fold into one diagnostic
+        // surface.
+        use crate::determinism::FixedClock;
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_random_seed(7)
+            .expect("seed installs")
+            .with_clock(Box::new(FixedClock::new(42)))
+            .expect("clock installs after seed");
+        let state = rt.determinism_state().expect("composed state present");
+        assert_eq!(state.seed(), Some(7), "seed survived clock install");
+        assert!(
+            state.clock_installed(),
+            "clock flag survived seed-already-installed path",
+        );
+    }
+
+    #[test]
+    fn seeded_random_lowers_to_number() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // Integration drift pin: with a seed installed, a JS-side
+        // call to `Math.random()` must succeed and lower to a
+        // ScriptValue::Number in [0,1). The cross-runtime corpus
+        // (same-seed-same-sequence, isolation) lives in
+        // `engine/script/tests/determinism.rs`.
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_random_seed(1)
+            .expect("seed installs");
+        let v = rt
+            .execute("Math.random()")
+            .expect("seeded Math.random must succeed");
+        let n = match v {
+            ScriptValue::Number(n) => n,
+            other => panic!("expected Number, got {other:?}"),
+        };
+        assert!(
+            (0.0..1.0).contains(&n),
+            "seeded Math.random must return [0,1); got {n}",
+        );
+    }
+
+    #[test]
+    fn frame_locked_clock_lowers_to_number() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // Integration drift pin: with a FixedClock installed, a
+        // JS-side call to `Date.now()` must lower to the exact
+        // injected tick.
+        use crate::determinism::FixedClock;
+        let tick = 1_700_000_000_000_i64;
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_clock(Box::new(FixedClock::new(tick)))
+            .expect("clock installs");
+        let v = rt.execute("Date.now()").expect("Date.now succeeds");
+        let n = match v {
+            ScriptValue::Number(n) => n,
+            other => panic!("expected Number, got {other:?}"),
+        };
+        #[allow(clippy::cast_precision_loss)]
+        let expected = tick as f64;
+        assert_eq!(
+            n.to_bits(),
+            expected.to_bits(),
+            "frame-locked Date.now must return tick verbatim; got {n}",
         );
     }
 }
