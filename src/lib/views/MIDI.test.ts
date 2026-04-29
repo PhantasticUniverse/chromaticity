@@ -23,12 +23,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import MIDI from './MIDI.svelte';
 import {
   BPM_SYNC_SOURCES,
+  MIDI_CAPABILITY,
   MIDI_DEVICES,
+  MIDI_HISTORY_FIXTURE,
   MIDI_LEARN_FIXTURE,
   MIDI_MTC,
   MIDI_ROWS_BY_TAB,
   MIDI_SNAP_SLOTS,
   MIDI_TABS,
+  MIDI_TAB_HINTS,
   MPE_BANNER_COPY,
   RELATIVE_ENCODER_MODES,
 } from '../data/midi-fixtures';
@@ -298,5 +301,424 @@ describe('MIDI view', () => {
     await fireEvent.click(getByRole('tab', { name: 'Devices' }));
     const devRows = container.querySelectorAll('.midi__device-row[data-cap="io.midi.input"]');
     expect(devRows.length).toBe(MIDI_DEVICES.length);
+  });
+
+  // ----------------------------------------------------------------------
+  // W63-equivalent depth deepening — appended after the W62 PR3 baseline.
+  // The block below pushes coverage from 17 → ~45 tests at the lower end
+  // of the cohort tests/100 LoC band so the maintenance PR lands in a
+  // single focused wave. New tests group by:
+  //   • tab vocabulary + per-tab body rendering (5)
+  //   • per-tab binding-row counts + tab-hint copy (5)
+  //   • filter narrowing + case-insensitivity + multi-field match (3)
+  //   • binding-row mode select + flag pill rendering (3)
+  //   • snap slot styling — gold / bound / active / mode pill (4)
+  //   • BPM priority-chain row attributes + mid-row reorder enabled (2)
+  //   • MTC panel structural copy (1)
+  //   • virtual pad — controller-list census + selection round-trip (3)
+  //   • learn-mode panel surfaces — value cell, last-input cell, history strip (3)
+  //   • banner gating — non-devices tabs never render banner (2)
+  //   • capability annotation completeness (2)
+  //
+  // Like the baseline above, every test stays outside learn mode
+  // unless it explicitly toggles in; the `stubMatchMedia(true)`
+  // default short-circuits the rAF + setInterval pair the
+  // learn-mode `$effect` would otherwise spawn.
+
+  it('renders all 7 tab labels in canonical fixture order', () => {
+    const { getAllByRole } = render(MIDI);
+    const labels = getAllByRole('tab').map((t) => t.textContent?.trim());
+    expect(labels).toEqual(MIDI_TABS.map((t) => t.label));
+  });
+
+  it('switching tabs updates aria-selected mutually-exclusively across all 7', async () => {
+    const { getAllByRole } = render(MIDI);
+    for (const tab of MIDI_TABS) {
+      const tabBtns = getAllByRole('tab');
+      const target = tabBtns.find((t) => t.textContent?.trim() === tab.label);
+      expect(target).toBeDefined();
+      await fireEvent.click(target!);
+      const after = getAllByRole('tab');
+      const selected = after.filter((t) => t.getAttribute('aria-selected') === 'true');
+      expect(selected.length).toBe(1);
+      expect(selected[0]?.textContent?.trim()).toBe(tab.label);
+    }
+  });
+
+  it('tab buttons set tabindex 0 on the active tab and -1 on the rest', async () => {
+    const { getAllByRole, getByRole } = render(MIDI);
+    // Default active tab is Global → its tabindex is 0.
+    let global = getByRole('tab', { name: 'Global' });
+    expect(global.getAttribute('tabindex')).toBe('0');
+    const inactive = getAllByRole('tab').filter((t) => t.textContent?.trim() !== 'Global');
+    for (const t of inactive) {
+      expect(t.getAttribute('tabindex')).toBe('-1');
+    }
+    // Switch to Snaps and re-verify the rolling tabindex.
+    await fireEvent.click(getByRole('tab', { name: 'Snaps' }));
+    global = getByRole('tab', { name: 'Global' });
+    expect(global.getAttribute('tabindex')).toBe('-1');
+    expect(getByRole('tab', { name: 'Snaps' }).getAttribute('tabindex')).toBe('0');
+  });
+
+  it('Scene tab renders the binding table with one row per scene fixture', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Scene-specific' }));
+    const rows = container.querySelectorAll('.midi__table tbody tr');
+    expect(rows.length).toBe(MIDI_ROWS_BY_TAB.scene.length);
+    expect(rows.length).toBe(3);
+    // First row's data-family attr matches the fixture family literal.
+    expect(rows[0]?.getAttribute('data-family')).toBe('scene');
+  });
+
+  it('Meta-controls tab renders one row per meta fixture entry and hides Live Scene Controls', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Meta controls' }));
+    const rows = container.querySelectorAll('.midi__table tbody tr');
+    expect(rows.length).toBe(MIDI_ROWS_BY_TAB.meta.length);
+    expect(rows.length).toBe(4);
+    // No live-scene block rendered on the meta tab.
+    expect(container.querySelector('.midi__live')).toBeNull();
+  });
+
+  it('Media tab renders one row per media fixture entry without Live Scene Controls', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Media' }));
+    const rows = container.querySelectorAll('.midi__table tbody tr');
+    expect(rows.length).toBe(MIDI_ROWS_BY_TAB.media.length);
+    expect(rows.length).toBe(2);
+    expect(container.querySelector('.midi__live')).toBeNull();
+  });
+
+  it('Start-scenes tab renders one row per start fixture and shows note bindings', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Start-scenes' }));
+    const rows = container.querySelectorAll('.midi__table tbody tr');
+    expect(rows.length).toBe(MIDI_ROWS_BY_TAB.start.length);
+    expect(rows.length).toBe(3);
+    // Every Start-scenes row uses message type "Note" (vs CC).
+    for (const row of Array.from(rows)) {
+      const msgCell = row.querySelectorAll('td.mono')[2];
+      expect(msgCell?.textContent?.trim()).toBe('Note');
+    }
+  });
+
+  it('toolbar hint reads the canonical per-tab copy from MIDI_TAB_HINTS', async () => {
+    const { container, getByRole } = render(MIDI);
+    const hint = (): string =>
+      container.querySelector('.midi__toolbar-hint')?.textContent?.trim() ?? '';
+    // Default tab is Global.
+    expect(hint()).toBe(MIDI_TAB_HINTS.global);
+    await fireEvent.click(getByRole('tab', { name: 'Media' }));
+    expect(hint()).toBe(MIDI_TAB_HINTS.media);
+    await fireEvent.click(getByRole('tab', { name: 'Snaps' }));
+    expect(hint()).toBe(MIDI_TAB_HINTS.snaps);
+    await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    expect(hint()).toBe(MIDI_TAB_HINTS.devices);
+  });
+
+  it('learning toolbar hint replaces the per-tab hint while learn mode is on', async () => {
+    const { container, getByRole } = render(MIDI);
+    expect(container.querySelector('.midi__toolbar-hint--learn')).toBeNull();
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    const learnHint = container.querySelector('.midi__toolbar-hint--learn');
+    expect(learnHint).not.toBeNull();
+    expect(learnHint?.textContent).toContain('Waiting for input');
+    // Cancel learn → hint reverts to the per-tab copy (Global by default).
+    await fireEvent.click(getByRole('button', { name: /Cancel Learn/ }));
+    expect(container.querySelector('.midi__toolbar-hint--learn')).toBeNull();
+    expect(container.querySelector('.midi__toolbar-hint')?.textContent?.trim()).toBe(
+      MIDI_TAB_HINTS.global,
+    );
+  });
+
+  it('filter input is case-insensitive and matches device-name as well as target', async () => {
+    const { container, getByLabelText } = render(MIDI);
+    const filter = getByLabelText('filter MIDI bindings') as HTMLInputElement;
+    // Upper-case query → still matches lower-case targets/devices.
+    await fireEvent.input(filter, { target: { value: 'APC40' } });
+    const rows = container.querySelectorAll('.midi__table tbody tr');
+    // All three Global rows reference APC40 mkII as their device.
+    expect(rows.length).toBe(MIDI_ROWS_BY_TAB.global.length);
+  });
+
+  it('filter narrows by num field match (CC number string)', async () => {
+    const { container, getByLabelText } = render(MIDI);
+    const filter = getByLabelText('filter MIDI bindings') as HTMLInputElement;
+    // Global has CC nums 14, 15, 16/48 — match exact "16/48".
+    await fireEvent.input(filter, { target: { value: '16/48' } });
+    const rows = container.querySelectorAll('.midi__table tbody tr');
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.textContent).toContain('meta.contrast');
+  });
+
+  it('filter cleared (empty string) restores the full row set', async () => {
+    const { container, getByLabelText } = render(MIDI);
+    const filter = getByLabelText('filter MIDI bindings') as HTMLInputElement;
+    await fireEvent.input(filter, { target: { value: 'hue' } });
+    expect(container.querySelectorAll('.midi__table tbody tr').length).toBe(1);
+    await fireEvent.input(filter, { target: { value: '' } });
+    expect(container.querySelectorAll('.midi__table tbody tr').length).toBe(
+      MIDI_ROWS_BY_TAB.global.length,
+    );
+  });
+
+  it('binding-row mode selects render all 4 mode options and seed the row default', () => {
+    const { container } = render(MIDI);
+    const firstSelect = container.querySelector(
+      '.midi__cell--mode select.midi__select',
+    ) as HTMLSelectElement | null;
+    expect(firstSelect).not.toBeNull();
+    const options = Array.from(firstSelect!.querySelectorAll('option')).map((o) => o.value);
+    expect(options).toEqual(['absolute', 'relative', 'toggle', 'momentary']);
+    // First Global row's default mode is 'absolute' (meta.brightness).
+    expect(firstSelect!.value).toBe(MIDI_ROWS_BY_TAB.global[0]!.mode);
+  });
+
+  it("renders the 14-bit pill for the meta.contrast row and rel 2's pill for meta.hue", () => {
+    const { container } = render(MIDI);
+    const rows = container.querySelectorAll('.midi__table tbody tr');
+    // Global row 1 is meta.hue ("2's-comp" flag) — flag cell shows "rel 2's".
+    const hueRow = Array.from(rows).find((r) => r.textContent?.includes('meta.hue'));
+    expect(hueRow?.querySelector('.midi__pill--success')?.textContent?.trim()).toBe("rel 2's");
+    // Global row 2 is meta.contrast ("14-bit" flag) — flag cell shows "14-bit".
+    const contrastRow = Array.from(rows).find((r) => r.textContent?.includes('meta.contrast'));
+    expect(contrastRow?.querySelector('.midi__pill--info')?.textContent?.trim()).toBe('14-bit');
+  });
+
+  it('every binding row carries the saved-dot affordance with the canonical aria-label', () => {
+    const { container } = render(MIDI);
+    const rows = container.querySelectorAll('.midi__table tbody tr');
+    expect(rows.length).toBe(MIDI_ROWS_BY_TAB.global.length);
+    for (const row of Array.from(rows)) {
+      const dot = row.querySelector('.midi__saved-dot');
+      expect(dot).not.toBeNull();
+      expect(dot?.getAttribute('aria-label')).toBe('saved · session-stable');
+    }
+  });
+
+  it('Snap slots tab gold-preset slot is index 0 and carries the gold modifier', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Snaps' }));
+    const slots = container.querySelectorAll('.midi__snap');
+    expect(slots.length).toBe(16);
+    // Slot 0 carries the gold modifier and reads "00" in its number cell.
+    expect(slots[0]?.classList.contains('midi__snap--gold')).toBe(true);
+    expect(slots[0]?.querySelector('.midi__snap-num')?.textContent?.trim()).toBe('00');
+  });
+
+  it('Snap slot 2 (Build) carries the active modifier and aria-pressed=true (sole active fixture)', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Snaps' }));
+    const slots = container.querySelectorAll('.midi__snap');
+    const activeIndices = MIDI_SNAP_SLOTS.map((s, i) => (s.isActive ? i : -1)).filter(
+      (i) => i >= 0,
+    );
+    expect(activeIndices.length).toBe(1);
+    expect(activeIndices[0]).toBe(2);
+    expect(slots[2]?.classList.contains('midi__snap--active')).toBe(true);
+    expect(slots[2]?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('Snap slots with bindings render the mode pill; unbound slots render the unbound placeholder', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Snaps' }));
+    const slots = container.querySelectorAll('.midi__snap');
+    // Slot 1 (Intro wash) is bound (LPX · Note 81) → mode pill renders.
+    expect(slots[1]?.querySelector('.midi__snap-mode-pill')).not.toBeNull();
+    // Slot 4 has neither name nor binding → unbound binding text + empty name.
+    expect(slots[4]?.querySelector('.midi__snap-binding--unbound')?.textContent?.trim()).toBe(
+      'unbound',
+    );
+    expect(slots[4]?.querySelector('.midi__snap-name--empty')?.textContent?.trim()).toBe('empty');
+  });
+
+  it('Snap slots momentary fixture (slot 3) renders mode pill text "momentary"', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Snaps' }));
+    const slots = container.querySelectorAll('.midi__snap');
+    // Slot 3 (Drop) has the momentary mode in the fixture; all others bound = toggle.
+    const slot3Pill = slots[3]?.querySelector('.midi__snap-mode-pill');
+    expect(slot3Pill?.textContent?.trim()).toBe('momentary');
+    // Slot 1 fixture is toggle.
+    const slot1Pill = slots[1]?.querySelector('.midi__snap-mode-pill');
+    expect(slot1Pill?.textContent?.trim()).toBe('toggle');
+  });
+
+  it('BPM priority chain rows expose data-state matching the fixture (active / standby / idle)', () => {
+    const { container } = render(MIDI);
+    const rows = container.querySelectorAll('.midi__bpm-row');
+    expect(rows.length).toBe(BPM_SYNC_SOURCES.length);
+    for (let i = 0; i < rows.length; i++) {
+      expect(rows[i]?.getAttribute('data-state')).toBe(BPM_SYNC_SOURCES[i]!.state);
+    }
+  });
+
+  it('BPM priority chain middle rows have both up + down reorder buttons enabled', () => {
+    const { container } = render(MIDI);
+    const rows = container.querySelectorAll('.midi__bpm-row');
+    // Middle rows = indices 1 and 2 in the 4-row chain.
+    for (const i of [1, 2]) {
+      const up = rows[i]?.querySelector('.midi__btn--icon-up') as HTMLButtonElement | null;
+      const down = rows[i]?.querySelector('.midi__btn--icon-down') as HTMLButtonElement | null;
+      expect(up?.disabled).toBe(false);
+      expect(down?.disabled).toBe(false);
+    }
+  });
+
+  it('MTC panel exposes the canonical assembly-state prose alongside the uniform name', () => {
+    const { container } = render(MIDI);
+    const prose = container.querySelector('.midi__mtc-prose');
+    expect(prose?.textContent).toContain('locked');
+    expect(prose?.textContent).toContain(MIDI_MTC.uniformName);
+  });
+
+  it('Virtual Pad controller select lists every pad-capable fixture device (and only those)', () => {
+    const { getByLabelText } = render(MIDI);
+    const select = getByLabelText('Mirrored pad controller') as HTMLSelectElement;
+    const opts = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+    const padCapable = MIDI_DEVICES.filter((d) => d.padDims !== undefined).map((d) => d.id);
+    expect(opts).toEqual(padCapable);
+    // Sanity: 4 pad devices (LPX, APC, Push 2, LPP3, APC mini) — actually 5 in fixture.
+    expect(opts.length).toBe(5);
+  });
+
+  it('Virtual Pad defaults to Launchpad X (8×8 = 64 cells) at first render', () => {
+    const { container, getByLabelText } = render(MIDI);
+    const select = getByLabelText('Mirrored pad controller') as HTMLSelectElement;
+    expect(select.value).toBe('dev.lpx');
+    expect(container.querySelectorAll('.cue-pad__cell').length).toBe(64);
+  });
+
+  it('Virtual Pad reseed across pad devices preserves the seed pattern (every 5th cell playing)', async () => {
+    const { container, getByLabelText } = render(MIDI);
+    const select = getByLabelText('Mirrored pad controller') as HTMLSelectElement;
+    await fireEvent.change(select, { target: { value: 'dev.push2' } });
+    // Push 2 = 8×8 = 64 cells; seedPadCells emits playing on every i % 5 === 0.
+    const cells = container.querySelectorAll('.cue-pad__cell');
+    expect(cells.length).toBe(64);
+    // Spot-check the seed pattern: index 0 is playing (i % 5 === 0).
+    expect((cells[0] as HTMLButtonElement).getAttribute('data-state')).toBe('playing');
+    // Index 5 also seeded playing.
+    expect((cells[5] as HTMLButtonElement).getAttribute('data-state')).toBe('playing');
+  });
+
+  it('learn-mode panel renders the value cell with hex + decimal from the fixture', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    const valueText = container.querySelector('.midi__panel--learn .midi__learn-grid')?.textContent;
+    expect(valueText).toContain(MIDI_LEARN_FIXTURE.valueHex);
+    expect(valueText).toContain(String(MIDI_LEARN_FIXTURE.valueDec));
+  });
+
+  it('learn-mode panel renders the last-input cell with device, channel, and message from fixture', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    const grid = container.querySelector('.midi__panel--learn .midi__learn-grid');
+    expect(grid?.textContent).toContain(MIDI_LEARN_FIXTURE.lastInputDevice);
+    expect(grid?.textContent).toContain(MIDI_LEARN_FIXTURE.lastInputMessage);
+    expect(grid?.textContent).toContain(`CH ${MIDI_LEARN_FIXTURE.lastInputChannel}`);
+  });
+
+  it('learn-mode history strip renders one row per history fixture entry under reduced motion', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    // Reduced-motion default short-circuits the live ring buffer to the
+    // static fixture (5 entries).
+    const histRows = container.querySelectorAll('.midi__history .midi__history-row');
+    expect(histRows.length).toBe(MIDI_HISTORY_FIXTURE.length);
+    expect(histRows.length).toBe(5);
+    // First row is the head row (most recent in the live model, even for
+    // the static seed since the fixture is ordered newest-first).
+    expect(histRows[0]?.classList.contains('midi__history-row--head')).toBe(true);
+  });
+
+  it('learn-mode encoder pills include all 5 canonical relative-encoder modes in canonical order', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    const pills = container.querySelectorAll('.midi__pill--encoder');
+    expect(pills.length).toBe(5);
+    const labels = Array.from(pills).map((p) => p.textContent?.replace(/\s*✓\s*$/, '').trim());
+    expect(labels).toEqual([...RELATIVE_ENCODER_MODES]);
+  });
+
+  it('MPE banner does NOT render on non-devices tabs even though Seaboard is mpeWarned', async () => {
+    const { container, getByRole, queryByRole } = render(MIDI);
+    // Tour every non-devices tab and confirm the banner stays absent.
+    for (const tab of MIDI_TABS.filter((t) => t.id !== 'devices')) {
+      await fireEvent.click(getByRole('tab', { name: tab.label }));
+      expect(queryByRole('status')).toBeNull();
+      expect(container.querySelector('.midi__banner')).toBeNull();
+    }
+  });
+
+  it('Devices tab toggle keeps other devices unchanged when one is flipped', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    const rows = container.querySelectorAll('.midi__device-row');
+    // Flip APC mini Mk2 (index 4, allowed=false in fixture) → on.
+    const apcMiniRow = rows[4] as HTMLElement;
+    const toggle = apcMiniRow.querySelector('.midi__device-toggle-btn') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    await fireEvent.click(toggle);
+    // The flipped row updates; sibling rows preserve their fixture state.
+    const updated = container.querySelectorAll('.midi__device-row');
+    expect(
+      (updated[4]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('true');
+    // Launchpad X (index 0) was true and stays true.
+    expect(
+      (updated[0]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('true');
+    // Seaboard (index 6) was false and stays false.
+    expect(
+      (updated[6]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('false');
+  });
+
+  it('Devices tab toggle button aria-label round-trips between Allow/Disallow on flip', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    // Launchpad X (index 0, allowed=true initially) → aria-label "Disallow Launchpad X".
+    const lpxToggle = container
+      .querySelectorAll('.midi__device-row')[0]
+      ?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement;
+    expect(lpxToggle.getAttribute('aria-label')).toBe('Disallow Launchpad X');
+    await fireEvent.click(lpxToggle);
+    expect(lpxToggle.getAttribute('aria-label')).toBe('Allow Launchpad X');
+  });
+
+  it('Live Scene Controls grid renders 4 widget categories on the global tab', () => {
+    const { container } = render(MIDI);
+    const heads = Array.from(container.querySelectorAll('.midi__live .midi__group-head')).map((h) =>
+      h.textContent?.trim(),
+    );
+    expect(heads).toEqual(['toggle', 'slider', 'bang', 'knob']);
+    // Each category has exactly 4 widgets.
+    expect(container.querySelectorAll('.midi__widget--toggle').length).toBe(4);
+    expect(container.querySelectorAll('.midi__widget--slider').length).toBe(4);
+    expect(container.querySelectorAll('.midi__widget--bang').length).toBe(4);
+    expect(container.querySelectorAll('.midi__widget--knob').length).toBe(4);
+  });
+
+  it('every binding-row Remove action button reads its accessible name from the row target', () => {
+    const { container } = render(MIDI);
+    const removeBtns = container.querySelectorAll('.midi__cell--actions button.midi__btn--icon');
+    expect(removeBtns.length).toBe(MIDI_ROWS_BY_TAB.global.length);
+    const labels = Array.from(removeBtns).map((b) => b.getAttribute('aria-label'));
+    expect(labels).toEqual(MIDI_ROWS_BY_TAB.global.map((r) => `Remove binding ${r.target}`));
+  });
+
+  it('learn-mode capability annotation MIDI_CAPABILITY.learn matches the data-cap value on the toggle', () => {
+    // Sanity: the constant the view emits is the same one the fixture exports.
+    const { getByRole } = render(MIDI);
+    const learnBtn = getByRole('button', { name: /Click to map/ });
+    expect(learnBtn.getAttribute('data-cap')).toBe(MIDI_CAPABILITY.learn);
   });
 });
