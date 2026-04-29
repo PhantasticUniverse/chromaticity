@@ -58,3 +58,15 @@ chromaticity-observability = { version = "0.0.0", path = "../observability" }
 # comment at engine/audio/src/ingest.rs top-of-module (the natural
 # integration site for the real callback when it lands).
 cpal = "0.15"
+
+# rustfft 6 powers the slice-1 8-band log-spaced FFT magnitude
+# decomposition behind `uniforms::extract_uniform_snapshot`. Default
+# features enable host-architecture SIMD intrinsics (avx on x86_64,
+# neon on aarch64, sse fallback) — slice-1 stays on default features
+# because the 1024-1024 sample-size FFT runs we feed it benefit from
+# the SIMD path on the per-frame analyser cadence the §7.1 pipeline
+# targets. License: MIT OR Apache-2.0 (both allow-listed by
+# /deny.toml). Transitive crates (num-complex, num-traits,
+# num-integer, primal-check, strength_reduce, transpose) all carry
+# MIT OR Apache-2.0; no allowlist additions required.
+rustfft = "6"

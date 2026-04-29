@@ -3,7 +3,34 @@
 
 //! Chromaticity engine audio.
 //!
-//! Phase-1 slice-2 surface:
+//! # Slice progression
+//!
+//! - **Phase-1 slice-1** (historic): seeded `frame` and the test-double
+//!   silent ingest source.
+//! - **Phase-1 slice-2** (historic): promoted `IngestBoundary` to first
+//!   non-stub status, added the `IngestMode` / `IngestState` §7.11
+//!   degraded-mode accounting, graduated `SilentSource` to the
+//!   production fallback path, and stood up the
+//!   `EV-OBSERVABILITY` emission site (`chromaticity_audio_ingest_*`
+//!   counters in `observability`).
+//! - **Phase-2 EV-AUDIO-TRACE slice-1** (this slice): adds the
+//!   `uniforms` module, the producer side of the audio → render
+//!   uniform marshalling boundary. Pure-data
+//!   [`uniforms::AudioUniformSnapshot`] + the
+//!   [`uniforms::extract_uniform_snapshot`] entry point produce four
+//!   `docs/36-reactive-symbol-catalog.md` v1.1.0 features
+//!   (`syn_BPM`, `syn_RMS`-style instantaneous energy, `syn_PEAK`-
+//!   style instantaneous magnitude, 8-band `syn_FFT[8]` log-spaced
+//!   magnitudes) per single [`frame::AudioFrame`]. Cross-crate
+//!   coupling stays consumer-side: `engine/render` (or any other
+//!   consumer) lifts the snapshot into its own
+//!   [`UniformValue`-shaped] uniform-buffer marshalling, so
+//!   `engine/audio` does NOT take a `chromaticity-render` dep. See
+//!   the `uniforms` module-level prose for the algorithm /
+//!   normalisation choices and the slice-2 BPM history-window
+//!   widening TODO.
+//!
+//! # Surface summary
 //!
 //! - [`frame::AudioFrame`] and the `DEFAULT_SAMPLE_RATE_HZ` baseline.
 //! - [`ingest::IngestBoundary`] trait plus the slice-2 degraded-mode
@@ -25,6 +52,8 @@
 //!   The [`observability::AudioIngestStateTracker`] is the slice-2
 //!   synthesised lifecycle (`Starting -> Running -> Draining ->
 //!   Closed`) per the module-top TODO(slice-3) reconciliation.
+//! - [`uniforms`] — Phase-2 EV-AUDIO-TRACE slice-1 producer side
+//!   (`AudioUniformSnapshot`, `extract_uniform_snapshot`).
 //!
 //! Slice-2 dep-slot: `cpal 0.15` is authorised in `Cargo.toml` as
 //! a dep-slot only — no cpal type is imported and no cpal function
@@ -36,9 +65,11 @@
 //! cpal FFI-seam panic discipline` section.
 //!
 //! Produces evidence for `EV-AUDIO-TRACE` (Phase-2-exit conformance
-//! row). Slice-2 advances the T1 drift-pin coverage alongside the
-//! ingest state machine; see `drift_pins` below for the tiered
-//! claim.
+//! row). Phase-2 EV-AUDIO-TRACE slice-1 adds the producer-side T1
+//! drift-pin coverage (`uniforms::uniforms_drift_pins`) plus the T2
+//! corpus in `engine/audio/tests/uniforms.rs`; see the registry row
+//! 30 follow-up commit for the artifact-pointer transition from
+//! `pending:artifact`.
 //!
 //! Governing documents:
 //!
@@ -47,13 +78,22 @@
 //!   degraded modes).
 //! - `docs/28-implementation-contract-pack.md` CP-02a — audio
 //!   snapshot handoff contract.
+//! - `docs/36-reactive-symbol-catalog.md` v1.1.0 — `syn_BPM` /
+//!   `syn_InputLevel` / `syn_Spectrum` family vocabulary the
+//!   slice-1 uniforms map onto.
 //! - `docs/adr/ADR-011-rendering-backend.md` — audio / ingest
 //!   integration points.
+//!
+//! [`UniformValue`-shaped]: chromaticity-render's `UniformValue` enum,
+//! consumed by callers that elect the audio→render coupling.
 
 pub mod frame;
 pub mod ingest;
 pub mod observability;
 pub mod silent;
+pub mod uniforms;
+
+pub use uniforms::{AudioUniformSnapshot, extract_uniform_snapshot};
 
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
