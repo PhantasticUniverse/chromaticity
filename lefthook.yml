@@ -51,6 +51,10 @@ pre-commit:
 
     trailing-whitespace:
       glob: '*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json}'
+      # Vendored third-party source preserves upstream formatting per
+      # docs/29 Sec.Bundled GLSL Library Handling — never rewrite it.
+      exclude:
+        - 'third_party/**'
       run: |
         bad=$(grep -nE " +$" {staged_files} 2>/dev/null || true)
         if [ -n "$bad" ]; then
@@ -61,6 +65,8 @@ pre-commit:
 
     final-newline:
       glob: '*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json,sh}'
+      exclude:
+        - 'third_party/**'
       run: |
         for f in {staged_files}; do
           [ -s "$f" ] || continue
@@ -85,7 +91,7 @@ pre-commit:
         if [ -f eslint.config.js ] \
            && command -v npx >/dev/null 2>&1 \
            && npx --no-install eslint --version >/dev/null 2>&1; then
-          npx --no-install eslint --max-warnings 0 {staged_files}
+          npx --no-install eslint --max-warnings 0 --no-warn-ignored {staged_files}
         else
           echo "eslint not configured (eslint.config.js absent); skipping (CI will enforce)."
         fi

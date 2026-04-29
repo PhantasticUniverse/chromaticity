@@ -42,6 +42,9 @@ export default [
       'chromaticity-planning/**',
       // Canonical third-party license texts; preserve upstream.
       'LICENSES/**',
+      // Vendored third-party source — preserve upstream formatting per
+      // docs/29-cleanroom-legal-policy-baseline.md Sec.Bundled GLSL Library Handling.
+      'third_party/**',
       // Grandfathered planning prose (promoted normative docs).
       'docs/**',
     ],

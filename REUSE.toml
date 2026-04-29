@@ -145,8 +145,29 @@ SPDX-FileCopyrightText = "2026 Chromaticity"
 SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
 
 # -----------------------------------------------------------------------------
-# Third-party code (when present) lives under third_party/<origin>/ and
-# overrides here with an explicit license per ATTRIBUTION.md. This block is
-# reserved; it becomes active when the first vendored library lands.
-# See docs/43-development-standards.md Sec.10.3.
+# Third-party code lives under third_party/<origin>/ and overrides here with an
+# explicit license per the upstream LICENSE file at the pinned version. See
+# docs/43-development-standards.md Sec.10.3 and docs/29-cleanroom-legal-policy-baseline.md
+# Sec.Bundled GLSL Library Handling.
 # -----------------------------------------------------------------------------
+
+# Lygia v1.1.4 trial vendor snapshot. Prosperity-3.0.0 is not in the SPDX
+# license list (2026-04-29 snapshot), so the canonical SPDX identifier uses
+# the `LicenseRef-` prefix. The verbatim license text lives at
+# `LICENSES/LicenseRef-Prosperity-3.0.0.txt` and the per-version provenance
+# marker at `third_party/lygia/UPSTREAM-VERSION.md`. The `deny.toml`
+# `licenses.allow` entry uses the same identifier; final commercial-use
+# license election is deferred to Phase-5 `EV-LICENSE-AUDIT`.
+[[annotations]]
+path = "third_party/lygia/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Patricio Gonzalez Vivo and Lygia contributors"
+SPDX-License-Identifier = "LicenseRef-Prosperity-3.0.0"
+
+# License text file: surface the SPDX identifier on the canonical text so
+# `reuse lint` does not flag it as missing coverage.
+[[annotations]]
+path = "LICENSES/LicenseRef-Prosperity-3.0.0.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "Patricio Gonzalez Vivo and Lygia contributors"
+SPDX-License-Identifier = "LicenseRef-Prosperity-3.0.0"

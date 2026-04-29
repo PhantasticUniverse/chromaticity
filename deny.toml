@@ -82,6 +82,17 @@ allow = [
     "MIT",
     "MIT-0",
     "MPL-2.0",
+    # Prosperity-3.0.0 carries non-commercial defaults with a paid commercial
+    # carve-out. Permitted ONLY for the Lygia v1.1.4 trial vendor under
+    # `third_party/lygia/**` per docs/29 Sec.Bundled GLSL Library Handling.
+    # Final commercial-use license decision is deferred to Phase-5
+    # `EV-LICENSE-AUDIT`; the trial may resolve to election under MIT-equivalent
+    # carve-out, removal entirely (clean-room shim fallback per docs/29 line 106),
+    # or paid Prosperity commercial. The current entry is the trial-narrow allow
+    # slot; it is NOT a general-purpose Prosperity-3.0.0 acceptance. The string
+    # uses the `LicenseRef-` prefix because Prosperity-3.0.0 is not in the SPDX
+    # license list (2026-04-29 snapshot); REUSE.toml uses the same identifier.
+    "LicenseRef-Prosperity-3.0.0",
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "Zlib",

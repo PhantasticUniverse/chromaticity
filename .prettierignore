@@ -8,6 +8,10 @@ Contents/
 # Canonical third-party license texts: preserve upstream formatting.
 LICENSES/
 
+# Vendored third-party source — preserve upstream formatting (hands-off
+# per docs/29 Sec.Bundled GLSL Library Handling).
+third_party/
+
 # Normative planning docs promoted from the archive are grandfathered:
 # do not rewrap existing prose. Future docs are expected to be
 # Prettier-clean.
