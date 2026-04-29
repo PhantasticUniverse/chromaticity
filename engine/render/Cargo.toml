@@ -49,11 +49,29 @@ workspace = true
 # `policy`-scoped PR. License: Apache-2.0 OR MIT (allow-listed by
 # /deny.toml).
 # Default features bring std + the platform-native backends (dx12,
-# metal, gles, vulkan, wgsl, webgpu, parking_lot). slice-1 adds the
-# `glsl` GLSL frontend, the `spirv` SPIR-V passthrough, and the
-# `naga-ir` direct-IR shader source so the naga compile step is
-# observable from this crate (rather than re-parsed inside wgpu).
-wgpu = { version = "26", features = ["glsl", "spirv", "naga-ir"] }
+# metal, gles, vulkan, wgsl, webgpu, parking_lot). slice-1 disables
+# default features and explicitly enumerates the backends we ship:
+# Metal (macOS), Vulkan (Linux + Windows for now), and GLES (legacy
+# fallback). DX12 is deliberately deferred to a follow-up slice — wgpu
+# 26.0.6's wgpu-hal DX12 bindings hit a multi-version `windows-core`
+# resolution conflict against Tauri 2's transitive `windows` crates
+# (0.54 + 0.58 + 0.61 + 0.62 coexist in Cargo.lock), which surfaces
+# as wgpu-hal compile errors on `windows-latest` clippy. Vulkan on
+# Windows is a working backend (mesa-vulkan via WSL or DXVK on bare
+# metal); revisit DX12 when upstream wgpu / Tauri align their
+# windows-rs version pins. slice-1 also adds the `glsl` GLSL frontend,
+# `spirv` SPIR-V passthrough, and `naga-ir` direct-IR shader source so
+# the naga compile step is observable from this crate. License:
+# Apache-2.0 OR MIT (allow-listed by /deny.toml).
+wgpu = { version = "26", default-features = false, features = [
+    "metal",
+    "vulkan",
+    "gles",
+    "glsl",
+    "spirv",
+    "naga-ir",
+    "wgsl",
+] }
 
 # naga 26 matches wgpu 26's pinned reexport; the GLSL frontend produces
 # the IR that wgpu's SPIR-V passthrough consumes. License: Apache-2.0

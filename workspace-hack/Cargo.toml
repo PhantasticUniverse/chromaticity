@@ -34,12 +34,12 @@ percent-encoding = { version = "2" }
 phf_shared = { version = "0.11" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = { version = "1" }
+raw-window-handle = { version = "0.6", default-features = false, features = ["std"] }
 schemars = { version = "0.8", features = ["preserve_order", "url", "uuid1"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value", "unbounded_depth"] }
-smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 stable_deref_trait = { version = "1" }
 tauri = { version = "2", features = ["custom-protocol"] }
 tauri-utils = { version = "2", default-features = false, features = ["build", "compression", "resources"] }
@@ -59,7 +59,6 @@ semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value", "unbounded_depth"] }
-smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 stable_deref_trait = { version = "1" }
 syn = { version = "2", features = ["extra-traits", "fold", "full", "visit"] }
 tauri-build = { version = "2" }
@@ -86,6 +85,7 @@ nom = { version = "7", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
+smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
@@ -96,6 +96,7 @@ nom = { version = "7", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
+smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
@@ -110,6 +111,7 @@ nom = { version = "7", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
+smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-apple-darwin.build-dependencies]
@@ -120,17 +122,17 @@ nom = { version = "7", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
+smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-pc-windows-msvc.dependencies]
-smallvec = { version = "1", default-features = false, features = ["union"] }
-windows = { version = "0.54", features = ["Win32_Devices_Properties", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi_Common", "Win32_Media_Audio", "Win32_Media_KernelStreaming", "Win32_Media_Multimedia", "Win32_Security", "Win32_System_Com_StructuredStorage", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem"] }
+smallvec = { version = "1", default-features = false, features = ["const_generics", "union"] }
 windows-sys-73dcd821b1037cfd = { package = "windows-sys", version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Time", "Win32_UI_WindowsAndMessaging"] }
 windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.x86_64-pc-windows-msvc.build-dependencies]
-smallvec = { version = "1", default-features = false, features = ["union"] }
+smallvec = { version = "1", default-features = false, features = ["const_generics", "union"] }
 windows-sys-73dcd821b1037cfd = { package = "windows-sys", version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Time", "Win32_UI_WindowsAndMessaging"] }
 windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 

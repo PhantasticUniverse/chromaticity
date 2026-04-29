@@ -1476,18 +1476,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpu-allocator"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c151a2a5ef800297b4e79efa4f4bec035c5f51d5ae587287c9b952bdf734cacd"
-dependencies = [
- "log",
- "presser",
- "thiserror 1.0.69",
- "windows 0.54.0",
-]
-
-[[package]]
 name = "gpu-descriptor"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3021,12 +3009,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
-name = "presser"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
-
-[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3220,12 +3202,6 @@ checksum = "16abd0c1b639e9eb4d7c50c0b8100b0d0f849be2349829c740fe8e6eb4816429"
 dependencies = [
  "rand_core 0.5.1",
 ]
-
-[[package]]
-name = "range-alloc"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3d6831663a5098ea164f89cff59c6284e95f4e3c76ce9848d4529f5ccca9bde"
 
 [[package]]
 name = "raw-window-handle"
@@ -4965,18 +4941,13 @@ dependencies = [
  "cfg_aliases",
  "document-features",
  "hashbrown 0.15.5",
- "js-sys",
  "log",
  "naga",
- "parking_lot",
  "portable-atomic",
  "profiling",
  "raw-window-handle",
  "smallvec",
  "static_assertions",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
  "wgpu-core",
  "wgpu-hal",
  "wgpu-types",
@@ -5050,7 +5021,6 @@ dependencies = [
  "android_system_properties",
  "arrayvec",
  "ash",
- "bit-set",
  "bitflags 2.11.1",
  "block",
  "bytemuck",
@@ -5060,7 +5030,6 @@ dependencies = [
  "glow",
  "glutin_wgl_sys",
  "gpu-alloc",
- "gpu-allocator",
  "gpu-descriptor",
  "hashbrown 0.15.5",
  "js-sys",
@@ -5077,7 +5046,6 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "profiling",
- "range-alloc",
  "raw-window-handle",
  "renderdoc-sys",
  "smallvec",
@@ -5086,7 +5054,6 @@ dependencies = [
  "web-sys",
  "wgpu-types",
  "windows 0.58.0",
- "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -5099,7 +5066,6 @@ dependencies = [
  "bytemuck",
  "js-sys",
  "log",
- "thiserror 2.0.18",
  "web-sys",
 ]
 
@@ -5768,6 +5734,7 @@ dependencies = [
  "phf_shared 0.11.3",
  "proc-macro2",
  "quote",
+ "raw-window-handle",
  "regex",
  "regex-automata",
  "regex-syntax",
@@ -5785,7 +5752,6 @@ dependencies = [
  "tauri-utils",
  "time",
  "uuid",
- "windows 0.54.0",
  "windows-sys 0.59.0",
  "windows-sys 0.61.2",
  "zerocopy",
