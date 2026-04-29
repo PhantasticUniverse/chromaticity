@@ -1,8 +1,10 @@
-# Design Token Mapping - Bundle `ux-bundle-v0.1-alpha` -> ADR-018
+# Design Token Mapping — `ux-bundle-v0.1-alpha` → `v0.2-beta` Rename (Landed)
+
+**Status:** This document records the v0.1-alpha → v0.2-beta token rename, which landed at the v0.2-beta bundle stamp on 2026-04-23 (per `chromaticity-planning/ui-predev-bundle-v0.2-beta/BUNDLE-PROVENANCE-v0.2-beta.md §Landed in this pass`). The rename has been applied in the canonical bundle (`chromaticity-planning/ui-predev-bundle-v0.2-beta/`) and in `src/lib/` (which consumes the renamed tokens, e.g. `var(--surface-base)`, `var(--band-tint)`). §1.9 (Contrast-Pair Registry) and §12 (Evidence Closure) remain live evidence artifacts; §10 is retained as a forward-looking ADR-018-amendment proposal candidate (deferred per the bundle-intake note); §11 records the executed PR-scope ledger; other sections are historical procedural records of the rename directives.
 
 Normative reconciliation of the token surface in `ui-predev-bundle/DESIGN.md` against the locked structural token slots in `adr/ADR-018-non-scene-ui-toolkit.md` §"Design Tokens (normative; this ADR is the source of truth)".
 
-This document is the **single source of truth for the bundle-to-ADR-018 token rename**. Every row below is a normative directive the UX team must honour in bundle revision `v0.2-beta`. No ADR edit is required; the mapping itself is the artifact.
+This document is the authoritative **record of the bundle-to-ADR-018 token rename** that the UX team executed in bundle revision `v0.2-beta`. The directives below (§§1-9) were normative; they have been applied. §§10-11 remain for future amendment proposals and procedural closure. No ADR edit is required; the mapping itself is the artifact.
 
 ## Approach
 
