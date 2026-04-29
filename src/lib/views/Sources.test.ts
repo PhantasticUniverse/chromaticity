@@ -12,14 +12,13 @@
 // multi-render tests in this Vitest 4 + jsdom configuration collide on
 // global queries.
 //
-// Notes on fixture vs. behaviour mismatch (intentional, not a bug):
-// `DEFAULT_ASSET_ID = 'jellyfish_loop_04.mp4'` is bundle-canonical
-// inspector header copy, but the generated grid never produces that
-// exact filename (`i=0` → `jellyfish_loop_00.mp4`, `i=4` →
-// `glossy_triangles_04.mp4`). The component therefore renders the
-// inspector empty state at first paint until an asset is clicked. The
-// tests below cover both branches explicitly so a future fixture
-// re-alignment surfaces here.
+// Inspector default paint: `DEFAULT_ASSET_ID = 'jellyfish_loop_04.mp4'`
+// is bundle-canonical inspector header copy. The asset-rotation
+// generator special-cases `i=0` to emit `_04` (instead of the otherwise
+// natural `_00`) so the default selection resolves against
+// `MEDIA_ASSETS`; the inspector therefore renders the bundle-canonical
+// default asset header + static `INSPECTOR_META` body table on first
+// paint, NOT the empty state.
 //
 // Live-source platform gating: `currentPlatform` is a module-level
 // constant read once from `navigator.userAgent`. Under jsdom the UA is
@@ -130,40 +129,55 @@ describe('Sources view', () => {
     expect(getByText(/No assets match the current filters/)).toBeInTheDocument();
   });
 
-  it('inspector empty state renders before any asset is selected', () => {
-    // `DEFAULT_ASSET_ID = 'jellyfish_loop_04.mp4'` does not match any
-    // generated asset (the rotation produces `jellyfish_loop_00.mp4`,
-    // `jellyfish_loop_12.mp4`, `jellyfish_loop_24.mp4`). The component
-    // therefore renders the inspector's "Select an asset to inspect"
-    // copy at first paint — the asset stub becomes live on first click.
-    const { getByText } = render(Sources);
-    expect(getByText('Select an asset to inspect')).toBeInTheDocument();
-  });
-
-  it('clicking an asset populates the inspector with its filename + metadata', async () => {
+  it('inspector renders the bundle-canonical default asset on first paint', () => {
+    // The `i=0` rotation special-case in `buildAssets()` emits
+    // `jellyfish_loop_04.mp4`, which matches `DEFAULT_ASSET_ID`. The
+    // inspector therefore mounts on first paint with the default-asset
+    // filename in the header and the static `INSPECTOR_META` body
+    // table, not the "Select an asset to inspect" empty state.
     const { container, queryByText } = render(Sources);
-    const cells = container.querySelectorAll('.sources__asset');
-    const firstAsset = cells[0] as HTMLButtonElement | undefined;
-    expect(firstAsset).toBeDefined();
-    if (!firstAsset) return;
-    await fireEvent.click(firstAsset);
-    expect(firstAsset).toHaveAttribute('aria-pressed', 'true');
-    const firstFilename = MEDIA_ASSETS[0]?.filename;
-    expect(firstFilename).toBeDefined();
-    if (!firstFilename) return;
-    // Inspector heading echoes the filename — scope the assertion to
-    // the inspector aside since the filename also appears under the
-    // asset card in the grid.
     const inspector = container.querySelector('.sources__inspector') as HTMLElement;
     expect(inspector).not.toBeNull();
+    const header = inspector.querySelector('.sources__inspector-title');
+    expect(header?.textContent).toBe('jellyfish_loop_04.mp4');
+    // Static body table is mounted.
     const inInspector = within(inspector);
-    expect(inInspector.getByText(firstFilename)).toBeInTheDocument();
-    // Static inspector metadata (six-row table) is mounted now.
     expect(inInspector.getByText('1920 × 1080')).toBeInTheDocument();
     expect(inInspector.getByText('00:00:14')).toBeInTheDocument();
     expect(inInspector.getByText('H.264 · 30 fps')).toBeInTheDocument();
-    // Empty-state copy is gone.
+    expect(inInspector.getByText('seamless')).toBeInTheDocument();
+    // Empty-state copy is not present.
     expect(queryByText('Select an asset to inspect')).toBeNull();
+  });
+
+  it('clicking a non-default asset switches the inspector header to that asset', async () => {
+    // The default-paint asset (`MEDIA_ASSETS[0]`) is the bundle-
+    // canonical `jellyfish_loop_04.mp4`. Clicking the second cell
+    // (`MEDIA_ASSETS[1]` = `road_trip_01_01.mp4`) flips `aria-pressed`
+    // off on the default and on on the new selection, and the inspector
+    // header swaps to the new filename. The body table stays static
+    // (the bundle hardcodes `INSPECTOR_META` against the `_04`
+    // selection regardless of the row clicked).
+    const { container } = render(Sources);
+    const cells = container.querySelectorAll('.sources__asset');
+    const defaultAsset = cells[0] as HTMLButtonElement | undefined;
+    const secondAsset = cells[1] as HTMLButtonElement | undefined;
+    expect(defaultAsset).toBeDefined();
+    expect(secondAsset).toBeDefined();
+    if (!defaultAsset || !secondAsset) return;
+    // Pre-click: default asset is pressed.
+    expect(defaultAsset).toHaveAttribute('aria-pressed', 'true');
+    expect(secondAsset).toHaveAttribute('aria-pressed', 'false');
+    await fireEvent.click(secondAsset);
+    expect(defaultAsset).toHaveAttribute('aria-pressed', 'false');
+    expect(secondAsset).toHaveAttribute('aria-pressed', 'true');
+    const secondFilename = MEDIA_ASSETS[1]?.filename;
+    expect(secondFilename).toBeDefined();
+    if (!secondFilename) return;
+    const inspector = container.querySelector('.sources__inspector') as HTMLElement;
+    expect(inspector).not.toBeNull();
+    const header = inspector.querySelector('.sources__inspector-title');
+    expect(header?.textContent).toBe(secondFilename);
   });
 
   it('renders the Live Sources section with all five fixture rows', () => {
