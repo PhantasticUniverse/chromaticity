@@ -9,7 +9,7 @@
 //! `docs/43-development-standards.md` §15.5: corpus conformance
 //! over a fixture set with stable golden assertions.
 //!
-//! Slice-2 corpus (this file) per ADR-012 §2:
+//! Slice-2 corpus per ADR-012 §2:
 //!
 //! - `tight_cpu_loop_times_out` — a CPU-bound integer-bumping loop
 //!   must trip the 4 ms hard cap and surface as
@@ -25,6 +25,25 @@
 //!   on runtime A does NOT spuriously trip a watchdog-free runtime
 //!   B; each runtime owns its own interrupt-handler slot per
 //!   ADR-012 §6 isolate-per-runtime.
+//!
+//! Slice-3 corpus per ADR-012 §3:
+//!
+//! - `large_string_times_out_or_oom` — a 20 MiB `String.repeat`
+//!   under a 16 MiB cap must surface as
+//!   [`chromaticity_script::ScriptError::MemoryCapExceeded`].
+//!   No watchdog is mounted on the runtime so the only abort path
+//!   is the memory cap; surfacing `TimeoutExceeded` here would
+//!   indicate the cap is not taking effect.
+//! - `recursive_array_explosion_times_out_or_oom` — a doubling
+//!   array under a 16 MiB cap must reject (either MemoryCapExceeded
+//!   directly or as a Runtime variant carrying the OOM diagnostic
+//!   if QuickJS surfaces it through the un-mapped path on a slow
+//!   host); the contract is "the runtime does not return Ok".
+//! - `memory_cap_isolated_per_runtime` — two runtimes with
+//!   different caps execute the same string-allocation script:
+//!   the 16 MiB cap rejects, the 64 MiB cap accepts. Each runtime
+//!   owns its own `set_memory_limit` slot per ADR-012 §6
+//!   isolate-per-runtime.
 //!
 //! ## CI runner clock variance
 //!
@@ -214,4 +233,143 @@ fn multiple_runtimes_independent_watchdogs() {
         .execute("3 + 4")
         .expect("guarded runtime must succeed after a prior trip");
     assert_eq!(v2, ScriptValue::Number(7.0), "got {v2:?}");
+}
+
+// ----- Slice-3 memory-cap corpus -----
+
+/// ADR-012 §3 nominal: 16 MiB heap cap per scene.
+const MEMORY_CAP_BYTES: usize = 16 * 1024 * 1024;
+
+#[test]
+fn large_string_times_out_or_oom() {
+    // Evidence: EV-SANDBOX-SAFETY (T2) + EV-SCRIPT-CONTRACT (T2).
+    // `String.repeat` allocating 20 MiB worth of characters under
+    // a 16 MiB cap must be aborted by the QuickJS allocator. No
+    // watchdog is mounted: the only abort path is the memory cap.
+    // QuickJS strings are stored as either 8-bit or 16-bit
+    // arrays; even the 8-bit best case for "x".repeat(20 * 1024 *
+    // 1024) is 20 MiB, well above the 16 MiB cap.
+    let rt = ScriptRuntime::new()
+        .expect("runtime constructs")
+        .with_memory_limit(MEMORY_CAP_BYTES)
+        .expect("memory cap config valid");
+    let err = rt
+        .execute(r#"let s = "x".repeat(20 * 1024 * 1024); s.length"#)
+        .expect_err("20 MiB string under 16 MiB cap must reject");
+    match err {
+        ScriptError::MemoryCapExceeded {
+            limit_bytes,
+            observed_bytes: _,
+        } => {
+            assert_eq!(limit_bytes, MEMORY_CAP_BYTES, "limit echoed verbatim");
+        }
+        other => panic!("expected MemoryCapExceeded, got {other:?}"),
+    }
+    let snap = rt
+        .last_memory_snapshot()
+        .expect("memory cap records snapshot");
+    // The cap-hit path leaves the QuickJS bookkeeping at or near
+    // (but below) the configured limit because the failing
+    // allocation never accumulates. We pin only the strict
+    // upper-bound contract: the QuickJS-tracked usage at host-
+    // return must not exceed the cap by more than the QuickJS
+    // small-allocation slack. A grossly larger reading would
+    // indicate the cap is not enforcing.
+    assert!(
+        snap.at_uninstall_bytes <= (MEMORY_CAP_BYTES as u64) + (1024 * 1024),
+        "observed_bytes ({}) must be at or near the cap ({}); a wider gap indicates cap not enforcing",
+        snap.at_uninstall_bytes,
+        MEMORY_CAP_BYTES,
+    );
+}
+
+#[test]
+fn recursive_array_explosion_times_out_or_oom() {
+    // Evidence: EV-SANDBOX-SAFETY (T2).
+    // Doubling an array each iteration grows the heap
+    // exponentially; with a 16 MiB cap the loop must reject. The
+    // contract is "the runtime does not return Ok" — either
+    // MemoryCapExceeded (the typical path) or a Runtime variant
+    // carrying the OOM diagnostic (if the QuickJS allocator hits
+    // a different code path on the host) is acceptable.
+    let rt = ScriptRuntime::new()
+        .expect("runtime constructs")
+        .with_memory_limit(MEMORY_CAP_BYTES)
+        .expect("memory cap config valid");
+    let err = rt
+        .execute(
+            r"
+            let a = [0];
+            while (true) {
+                a = a.concat(a);
+            }
+        ",
+        )
+        .expect_err("doubling array under 16 MiB cap must reject");
+    match err {
+        ScriptError::MemoryCapExceeded { limit_bytes, .. } => {
+            assert_eq!(limit_bytes, MEMORY_CAP_BYTES, "limit echoed verbatim");
+        }
+        ScriptError::Runtime(msg) => {
+            // QuickJS path that surfaces the OOM through a
+            // different lowering; acceptable as long as the
+            // runtime did NOT return Ok and the diagnostic is
+            // non-empty.
+            assert!(
+                !msg.is_empty(),
+                "array explosion path must surface a non-empty diagnostic; got {msg:?}",
+            );
+        }
+        other => {
+            panic!("expected MemoryCapExceeded or Runtime OOM, got {other:?}",)
+        }
+    }
+}
+
+#[test]
+fn memory_cap_isolated_per_runtime() {
+    // Evidence: EV-SANDBOX-SAFETY (T2) + EV-SCRIPT-CONTRACT (T2).
+    // ADR-012 §6: "QuickJS runs in its own isolate per scene. No
+    // cross-scene memory access." Two runtimes with different
+    // caps must enforce them independently. The `tight_cap`
+    // runtime (16 MiB) rejects the 20 MiB allocation; the
+    // `generous_cap` runtime (64 MiB) accepts it (the script
+    // returns the string length).
+    let tight_cap_bytes = 16 * 1024 * 1024;
+    let generous_cap_bytes = 64 * 1024 * 1024;
+
+    let rt_tight = ScriptRuntime::new()
+        .expect("tight runtime constructs")
+        .with_memory_limit(tight_cap_bytes)
+        .expect("tight cap config valid");
+    let rt_generous = ScriptRuntime::new()
+        .expect("generous runtime constructs")
+        .with_memory_limit(generous_cap_bytes)
+        .expect("generous cap config valid");
+
+    // Same script run on both runtimes. The tight cap rejects;
+    // the generous cap accepts.
+    let script = r#"let s = "x".repeat(20 * 1024 * 1024); s.length"#;
+
+    let err = rt_tight
+        .execute(script)
+        .expect_err("tight cap must reject 20 MiB allocation");
+    match err {
+        ScriptError::MemoryCapExceeded { limit_bytes, .. } => {
+            assert_eq!(limit_bytes, tight_cap_bytes, "tight cap limit echoed");
+        }
+        other => panic!("expected MemoryCapExceeded on tight runtime, got {other:?}"),
+    }
+
+    let v = rt_generous
+        .execute(script)
+        .expect("generous cap must accept 20 MiB allocation");
+    // 20 * 1024 * 1024 = 20971520 characters in the result string;
+    // cast through f64 because the slice-1 numeric vocabulary is
+    // ScriptValue::Number(f64).
+    assert_eq!(
+        v,
+        ScriptValue::Number(20.0 * 1024.0 * 1024.0),
+        "generous runtime must return the script's length value; got {v:?}",
+    );
 }

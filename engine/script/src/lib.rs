@@ -34,9 +34,20 @@
 //!   evidence opens; `EV-SCRIPT-CONTRACT` widens with the watchdog
 //!   path. The slice-1 `ScriptRuntime::new()` constructor stays
 //!   watchdog-free for slice-1 callers' continuity.
-//! - **Slice 3** — memory cap (16 MiB heap per ADR-012 §3) via
-//!   `rquickjs::Runtime::set_memory_limit`. `EV-SANDBOX-SAFETY`
-//!   widens.
+//! - **Slice 3 (this PR)** — memory cap (16 MiB heap per ADR-012
+//!   §3) via `rquickjs::Runtime::set_memory_limit`. The
+//!   [`ScriptRuntime::with_memory_limit`] builder method mounts
+//!   the cap on every per-execute bracketed scope; allocations
+//!   that would cross the limit raise QuickJS's uncatchable
+//!   `InternalError: out of memory` and the caller receives
+//!   [`ScriptError::MemoryCapExceeded`] populated with the
+//!   limit-derived budget context. The post-execute
+//!   [`memory_cap::MemoryUsageSnapshot`] is exposed via
+//!   [`ScriptRuntime::last_memory_snapshot`] for in-process
+//!   inspection of `malloc_size` at install vs uninstall.
+//!   `EV-SANDBOX-SAFETY` widens with the memory-cap path; the
+//!   slice-2 watchdog continues to compose alongside the
+//!   memory cap on a single-runtime builder chain.
 //! - **Slice 4** — determinism shims: seeded `Math.random()`
 //!   (xoroshiro128+), frame-locked `Date.now()` and
 //!   `performance.now()` per ADR-012 §5. `EV-SCRIPT-CONTRACT`
@@ -58,7 +69,8 @@
 //!   `engine/script/tests/contract.rs` — function-purity, array /
 //!   object round-trip, and per-runtime isolation.
 //!
-//! Produces evidence for `EV-SANDBOX-SAFETY` (opened by slice 2):
+//! Produces evidence for `EV-SANDBOX-SAFETY` (opened by slice 2,
+//! widened by slice 3):
 //!
 //! - T1 deadline arithmetic + watchdog config validation pins in
 //!   [`watchdog::deadline_pins`] — wall-clock elapsed accounting,
@@ -66,9 +78,19 @@
 //! - T1 watchdog integration drift pins in
 //!   [`runtime::execute_drift_pins`] — interrupt-handler install /
 //!   detach behaviour against the live rquickjs runtime.
+//! - T1 memory-cap config validation + snapshot accounting pins
+//!   in [`memory_cap::cap_pins`] — phase-2 default acceptance,
+//!   zero-limit rejection, install / uninstall snapshot
+//!   advancement, OOM-error identifier match.
+//! - T1 memory-cap integration drift pins in
+//!   [`runtime::execute_drift_pins`] — `set_memory_limit` install
+//!   / uninstall, OOM → MemoryCapExceeded lowering, builder
+//!   chaining with the watchdog.
 //! - T2 timeout corpus in `engine/script/tests/sandbox.rs` —
 //!   tight-CPU loop, recursion explosion, busy `Date.now()`
-//!   polling, multi-runtime watchdog independence.
+//!   polling, multi-runtime watchdog independence (slice 2);
+//!   plus large-string + recursive-array allocation pressure and
+//!   per-runtime memory cap isolation (slice 3).
 //!
 //! Per `docs/26-evidence-artifact-registry.md` rows 29 / 42
 //! Phase-2-exit definitions, full conformance — host-API parity
@@ -88,11 +110,13 @@
 //!   (`docs/adr/ADR-012-script-sandbox-engine.md`).
 
 mod error;
+pub mod memory_cap;
 mod runtime;
 mod value;
 pub mod watchdog;
 
 pub use error::ScriptError;
+pub use memory_cap::{MemoryCapConfig, MemoryUsageSnapshot};
 pub use runtime::ScriptRuntime;
 pub use value::ScriptValue;
 pub use watchdog::{Deadline, WatchdogConfig, WatchdogConfigError, WatchdogObservation};
