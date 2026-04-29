@@ -24,6 +24,7 @@ members = [
     "engine/scene",
     "engine/audio",
     "engine/observability",
+    "engine/render",
     "integrations/osc-adapter",
 ]
 
