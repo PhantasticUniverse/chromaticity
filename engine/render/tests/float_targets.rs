@@ -226,8 +226,14 @@ fn rgba16float_byte_hash_is_stable() {
     const ACCEPTED: &[u64] = &[
         // Apple Silicon, Metal backend, wgpu 26.0.1 + naga 26.0.0.
         // 16-bit float bit patterns are stable on a single
-        // backend; cross-backend variance reserved for follow-up.
+        // backend; cross-backend variance is captured by adding
+        // the observed hash here.
         0xcf7d_53c0_0144_c805,
+        // Linux x86_64, Vulkan backend (Mesa llvmpipe), wgpu 26 +
+        // naga 26. Different rasterization fixed-function path
+        // produces a distinct bit-pattern for the same UV-gradient
+        // GLSL — both hashes are correct outputs of their backend.
+        0x970b_557b_e790_3805,
     ];
 
     if !ACCEPTED.contains(&observed) {
