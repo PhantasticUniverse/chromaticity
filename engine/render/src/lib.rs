@@ -33,26 +33,40 @@
 //!   variants (`EmptyPassList`, `PassInputOutOfRange`,
 //!   `UniformBindingFailed`, `PassRenderFailed`) under
 //!   `#[non_exhaustive]`.
-//! - **Slice 3** — feedback-texture sampling (a pass reading its
+//! - **Slice 3 (this PR)** — GLSL `#include` preprocessor for the Lygia
+//!   v1.1.4 trial vendor ([`glsl_includes::resolve_includes`]) consuming
+//!   `#include "lygia/<path>.glsl"` directives at line scope, recursively
+//!   inlining content under the caller-supplied vendor root with a depth
+//!   cap to catch cycles. The single-pass / multi-pass entry points do NOT
+//!   auto-call the preprocessor; callers explicitly invoke
+//!   [`glsl_includes::resolve_includes`] before passing source to those
+//!   entry points. Trial-period scope; the preprocessor stays as a
+//!   generic include-resolver if Phase-5 `EV-LICENSE-AUDIT` drops Lygia.
+//! - **Slice 4** — feedback-texture sampling (a pass reading its
 //!   own previous-frame output), `RGBA32F` / `RGBA16F` float-target
 //!   conformance per ADR-011 §Decision, and the
 //!   `engine/scene::PassSpec` → [`multipass::MultipassSpec`] adapter.
-//! - **Slice 4+** — transition orchestration (ADR-007 warm-switch),
+//! - **Slice 5+** — transition orchestration (ADR-007 warm-switch),
 //!   audio-uniform binding (`engine/audio` integration), Metal /
 //!   DX12 backend-matrix conformance.
-//!
-//! The Lygia GLSL trial decision (`feedback_lygia_trial_deferred_legal`
-//! auto-memory) does NOT apply to slice 1. Slice 1 ships hand-written
-//! minimal GLSL only; vendoring Lygia is a follow-up wave with its
-//! own REUSE.toml carve-out.
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
 //! - T1 entry-point drift pins in `single_pass::compile_drift_pins`
-//!   (slice 1) and `multipass::multipass_drift_pins` (slice 2).
+//!   (slice 1), `multipass::multipass_drift_pins` (slice 2), and
+//!   `glsl_includes::include_drift_pins` (slice 3).
 //! - T2 deterministic UV-gradient corpus in
-//!   `engine/render/tests/single_pass.rs` (slice 1) and per-pass
-//!   cascade corpus in `engine/render/tests/multipass.rs` (slice 2).
+//!   `engine/render/tests/single_pass.rs` (slice 1), per-pass cascade
+//!   corpus in `engine/render/tests/multipass.rs` (slice 2), and
+//!   Lygia-include end-to-end corpus in
+//!   `engine/render/tests/glsl_lygia.rs` (slice 3).
+//!
+//! The Lygia trial vendor row is tracked separately as
+//! `EV-LIBRARY-LICENSE-TRIAL` in
+//! `docs/26-evidence-artifact-registry.md`; final commercial-use
+//! license election is deferred to Phase-5 `EV-LICENSE-AUDIT` per
+//! `docs/29-cleanroom-legal-policy-baseline.md` Sec.Bundled GLSL
+//! Library Handling.
 //!
 //! Per `docs/26-evidence-artifact-registry.md` row 28's Phase-2-exit
 //! definition, full conformance — feedback, transition fixtures,
@@ -68,9 +82,11 @@
 //! - ADR-018 — non-scene UI toolkit
 //!   (`docs/adr/ADR-018-non-scene-ui-toolkit.md`).
 
+pub mod glsl_includes;
 pub mod multipass;
 pub mod single_pass;
 
+pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
     MultipassSpec, PassDef, PassInputBinding, UniformInput, UniformValue,
     compile_and_render_multipass,
