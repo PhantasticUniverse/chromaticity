@@ -48,10 +48,21 @@
 //!   `EV-SANDBOX-SAFETY` widens with the memory-cap path; the
 //!   slice-2 watchdog continues to compose alongside the
 //!   memory cap on a single-runtime builder chain.
-//! - **Slice 4** — determinism shims: seeded `Math.random()`
-//!   (xoroshiro128+), frame-locked `Date.now()` and
-//!   `performance.now()` per ADR-012 §5. `EV-SCRIPT-CONTRACT`
-//!   widens; `EV-DETERMINISM` opens for the script lane.
+//! - **Slice 4 (this PR)** — determinism shims: seeded
+//!   `Math.random()` (xoroshiro128+, expanded from a caller-supplied
+//!   `u64` seed via splitmix64) and frame-locked `Date.now()` (a
+//!   caller-injected [`determinism::Clock`] trait object,
+//!   defaulting to no shim — slice-1 / slice-2 / slice-3 callers
+//!   continue to see the QuickJS wall-clock built-ins). The
+//!   [`ScriptRuntime::with_random_seed`] and
+//!   [`ScriptRuntime::with_clock`] builder methods compose with
+//!   the slice-2 watchdog and slice-3 memory cap, install the
+//!   shims on the rquickjs [`rquickjs::Ctx::globals`] object once
+//!   at builder time, and surface install failures as
+//!   [`ScriptError::DeterminismInstall`]. `EV-SCRIPT-CONTRACT`
+//!   widens with the determinism path. `EV-DETERMINISM` opens
+//!   for the script lane in a later slice once the recorded-seed
+//!   replay corpus lands.
 //! - **Slice 5+** — command-bus integration (`engine/runtime`
 //!   mount), reactive-symbol-catalog binding (docs/36 v1.1.0),
 //!   scene-author surface (control bindings, event handlers,
@@ -64,10 +75,22 @@
 //!   posture, parse-error / runtime-error categorisation, plus
 //!   slice-2 watchdog drift pins (interrupt-handler install,
 //!   hard-cap → [`ScriptError::TimeoutExceeded`] lowering,
-//!   observation recording, builder-level config validation).
+//!   observation recording, builder-level config validation),
+//!   plus slice-4 determinism drift pins (default `Math.random`
+//!   without seed still works, default `Date.now` without clock
+//!   still works, seeded `Math.random` advances per call,
+//!   frame-locked `Date.now` returns the injected tick exactly).
+//! - T1 PRNG / clock data-shape pins in
+//!   [`determinism::determinism_pins`] — splitmix64 permutation
+//!   contract, xoroshiro128+ same-seed-same-sequence contract,
+//!   `[0,1)` projection contract, [`determinism::FixedClock`] /
+//!   [`determinism::MonotonicClock`] built-in surface.
 //! - T2 deterministic contract corpus in
 //!   `engine/script/tests/contract.rs` — function-purity, array /
-//!   object round-trip, and per-runtime isolation.
+//!   object round-trip, and per-runtime isolation; widened by
+//!   `engine/script/tests/determinism.rs` (slice 4) with the
+//!   cross-runtime seed-determinism, seed-isolation,
+//!   PRNG-state-isolation, and frame-locked-clock corpus.
 //!
 //! Produces evidence for `EV-SANDBOX-SAFETY` (opened by slice 2,
 //! widened by slice 3):
@@ -109,12 +132,14 @@
 //! - ADR-012 — script sandbox engine and budgets
 //!   (`docs/adr/ADR-012-script-sandbox-engine.md`).
 
+pub mod determinism;
 mod error;
 pub mod memory_cap;
 mod runtime;
 mod value;
 pub mod watchdog;
 
+pub use determinism::{Clock, FixedClock, MonotonicClock, RandomSeedConfig};
 pub use error::ScriptError;
 pub use memory_cap::{MemoryCapConfig, MemoryUsageSnapshot};
 pub use runtime::ScriptRuntime;

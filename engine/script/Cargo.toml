@@ -15,11 +15,12 @@
 #
 # Slices landed: 1 (sandbox-default scaffold), 2 (watchdog timeouts
 # via rquickjs `Runtime::set_interrupt_handler`), 3 (memory cap via
-# rquickjs `Runtime::set_memory_limit`).
+# rquickjs `Runtime::set_memory_limit`), 4 (determinism shims —
+# seeded `Math.random()` via xoroshiro128+ + frame-locked `Date.now()`
+# via the `Clock` trait, both installed on `Ctx::globals()` once at
+# builder time).
 #
 # Future slices on this crate:
-#   - determinism shims (slice 4; seeded RNG + frame-locked
-#     `Date.now()` per ADR-012 §5),
 #   - command-bus integration (slice 5; engine/runtime CommandBus
 #     mount),
 #   - script API surface for scenes (post-slice-5; ADR-012 +

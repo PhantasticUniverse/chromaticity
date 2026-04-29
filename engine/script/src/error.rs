@@ -19,7 +19,11 @@
 //! invalid p99 / hard pair). Slice 3 lands
 //! [`ScriptError::MemoryCapExceeded`] (QuickJS allocator hit the
 //! per-runtime heap cap) and [`ScriptError::MemoryCapConfig`]
-//! (caller passed an invalid heap-cap budget).
+//! (caller passed an invalid heap-cap budget). Slice 4 lands
+//! [`ScriptError::DeterminismConfig`] (caller passed an invalid
+//! seeded-PRNG / clock config) and [`ScriptError::DeterminismInstall`]
+//! (rquickjs failed wiring the `Math.random` / `Date.now` global
+//! shim during builder execution).
 
 use thiserror::Error;
 
@@ -151,5 +155,35 @@ pub enum ScriptError {
         limit_bytes: usize,
         /// Static rationale for the rejection.
         reason: &'static str,
+    },
+
+    /// The caller passed an invalid configuration to one of the
+    /// slice-4 determinism builders
+    /// ([`crate::ScriptRuntime::with_random_seed`] /
+    /// [`crate::ScriptRuntime::with_clock`]). The slice-4 contract
+    /// today accepts every `u64` seed (including `0`) and every
+    /// [`crate::determinism::Clock`] implementor, so this variant is
+    /// reserved for future configuration knobs (alternate PRNG
+    /// algorithms, alternate clock contracts) that need to reject
+    /// in the constructor.
+    #[error("determinism config invalid: {reason}")]
+    DeterminismConfig {
+        /// Free-form rationale for the rejection. Owned `String`
+        /// rather than `&'static str` because future config knobs
+        /// may want to embed user-supplied diagnostic context.
+        reason: String,
+    },
+
+    /// The slice-4 determinism shim install path failed during
+    /// [`crate::ScriptRuntime::with_random_seed`] /
+    /// [`crate::ScriptRuntime::with_clock`]. Surfaces an rquickjs
+    /// error wiring the `Math.random` / `Date.now` global override
+    /// onto the runtime's [`rquickjs::Ctx::globals`] object — e.g.
+    /// the [`Function::new`] call failed, the `Math` / `Date`
+    /// global was missing, or the property `set` raised.
+    #[error("determinism shim install failed: {reason}")]
+    DeterminismInstall {
+        /// Free-form diagnostic from the rquickjs install path.
+        reason: String,
     },
 }
