@@ -51,7 +51,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use chromaticity_observability::catalog::{AudioIngestFrameStatus, AudioIngestState};
 
-use crate::ingest::IngestStatus;
+use crate::ingest::{IngestMode, IngestStatus};
 
 /// Per-[`AudioIngestFrameStatus`] try_pull-outcome counters keying
 /// off `chromaticity_audio_ingest_frames_total`.
@@ -288,11 +288,132 @@ impl AudioIngestStateTracker {
     }
 }
 
+/// Slice-2 §7.11 [`IngestMode`] transition counters.
+///
+/// Distinct from [`TransitionCounts`]: that machine tracks the
+/// `Starting/Running/Draining/Closed` lifecycle synthesis, whereas
+/// this one tracks the `Normal/Degraded` §7.11 mode-flip directly.
+/// The two share the "two consecutive non-`Ready`" rule but report
+/// at different aggregation levels — slice-2 widens the
+/// observability surface so consumers can read either.
+///
+/// The counters are reachable under the slice-2 mapping the same way
+/// [`TransitionCounts`] is: `Normal -> Degraded` on the second
+/// consecutive non-`Ready`, `Degraded -> Normal` on the first
+/// `Ready` after Degraded. Self-loops (Normal->Normal,
+/// Degraded->Degraded) are not counted as transitions; the dwell
+/// counter
+/// ([`crate::observability::ingest_mode_frames_in_current_count`])
+/// covers within-mode accounting.
+#[derive(Debug, Default)]
+struct IngestModeTransitionCounts {
+    normal_to_degraded: u64,
+    degraded_to_normal: u64,
+}
+
+/// Slice-2 §7.11 [`IngestMode`] tracker — observability-side mirror
+/// of [`crate::ingest::IngestState`].
+///
+/// `IngestState` is the in-pipeline state machine the consumer
+/// drives synchronously with `try_pull` outcomes; this tracker is
+/// the process-wide observability mirror that records mode
+/// transitions for the slice-2 widening per the brief.
+///
+/// Slice-2 widening surface (per the brief):
+///
+/// - Mode-transition counter: `Normal -> Degraded` and
+///   `Degraded -> Normal` increments on each documented §7.11 flip.
+/// - Mode-dwell counter (frames-in-current-mode): `current_dwell`
+///   increments on every `try_pull` outcome that does NOT cause a
+///   transition; resets to 1 on every transition-bearing outcome.
+///   Reading the counter via
+///   [`crate::observability::ingest_mode_frames_in_current_count`]
+///   exposes the current-mode dwell length.
+#[derive(Debug)]
+struct IngestModeTracker {
+    mode: IngestMode,
+    consecutive_underruns: u32,
+    transitions: IngestModeTransitionCounts,
+    /// Number of `record_pull_outcome` calls observed in the current
+    /// mode (resets on every transition; counts the transition-
+    /// bearing outcome itself as the first dwell-1 frame in the new
+    /// mode).
+    current_dwell: u64,
+}
+
+impl IngestModeTracker {
+    fn new() -> Self {
+        Self {
+            mode: IngestMode::Normal,
+            consecutive_underruns: 0,
+            transitions: IngestModeTransitionCounts::default(),
+            current_dwell: 0,
+        }
+    }
+
+    /// Feed a `try_pull` outcome and return the post-transition
+    /// mode. Transition counters and the dwell counter are updated
+    /// in lockstep with [`crate::ingest::IngestState::next_state`].
+    fn observe(&mut self, status: AudioIngestFrameStatus) -> IngestMode {
+        let pre_mode = self.mode;
+        match status {
+            AudioIngestFrameStatus::Ready => {
+                self.consecutive_underruns = 0;
+                self.mode = IngestMode::Normal;
+            }
+            AudioIngestFrameStatus::WouldBlock | AudioIngestFrameStatus::Closed => {
+                self.consecutive_underruns = self.consecutive_underruns.saturating_add(1);
+                if self.consecutive_underruns >= 2 {
+                    self.mode = IngestMode::Degraded;
+                }
+            }
+            _ => {
+                // Future `#[non_exhaustive]` AudioIngestFrameStatus
+                // variant; slice-3 widens this arm explicitly.
+            }
+        }
+        if self.mode != pre_mode {
+            self.record_transition(pre_mode, self.mode);
+            self.current_dwell = 1;
+        } else {
+            self.current_dwell = self.current_dwell.saturating_add(1);
+        }
+        self.mode
+    }
+
+    fn record_transition(&mut self, from: IngestMode, to: IngestMode) {
+        match (from, to) {
+            (IngestMode::Normal, IngestMode::Degraded) => {
+                self.transitions.normal_to_degraded =
+                    self.transitions.normal_to_degraded.saturating_add(1);
+            }
+            (IngestMode::Degraded, IngestMode::Normal) => {
+                self.transitions.degraded_to_normal =
+                    self.transitions.degraded_to_normal.saturating_add(1);
+            }
+            _ => {
+                // Self-loops never reach here (caller gates on
+                // pre_mode != mode); future IngestMode variants
+                // fall through silently until slice-3 widens.
+            }
+        }
+    }
+
+    fn transition_count(&self, from: IngestMode, to: IngestMode) -> u64 {
+        match (from, to) {
+            (IngestMode::Normal, IngestMode::Degraded) => self.transitions.normal_to_degraded,
+            (IngestMode::Degraded, IngestMode::Normal) => self.transitions.degraded_to_normal,
+            _ => 0,
+        }
+    }
+}
+
 /// Process-wide audio observability state.
 struct AudioObservability {
     frames: FrameStatusCounts,
     samples: u64,
     tracker: AudioIngestStateTracker,
+    mode_tracker: IngestModeTracker,
 }
 
 static AUDIO_OBS: LazyLock<Mutex<AudioObservability>> = LazyLock::new(|| {
@@ -300,6 +421,7 @@ static AUDIO_OBS: LazyLock<Mutex<AudioObservability>> = LazyLock::new(|| {
         frames: FrameStatusCounts::default(),
         samples: 0,
         tracker: AudioIngestStateTracker::new(),
+        mode_tracker: IngestModeTracker::new(),
     })
 });
 
@@ -354,6 +476,11 @@ pub(crate) fn record_pull_outcome(status: &IngestStatus, samples_len: usize) {
         }
     }
     obs.tracker.observe(frame_status);
+    // Slice-2 widening: mirror the §7.11 IngestMode tracker on
+    // every outcome so the Normal/Degraded transition counter and
+    // the dwell counter stay observable-coherent with
+    // `frames_count` / `samples_count` from the same lock-hold.
+    obs.mode_tracker.observe(frame_status);
 }
 
 /// Current count of `try_pull` outcomes mapped to `status`.
@@ -397,6 +524,48 @@ pub fn samples_count() -> u64 {
 #[must_use]
 pub fn transition_count(from: AudioIngestState, to: AudioIngestState) -> u64 {
     lock_obs().tracker.transition_count(from, to)
+}
+
+/// Slice-2 widening: count of recorded `(from -> to)` §7.11
+/// [`IngestMode`] transitions on the process-wide tracker.
+///
+/// Distinct from [`transition_count`]: this surface tracks the
+/// `Normal/Degraded` mode-flip directly, whereas `transition_count`
+/// reports the `Starting/Running/Draining/Closed` lifecycle synthesis.
+/// Slice-3 may merge the two when the runtime-bus wiring lands.
+///
+/// Returns 0 for self-loops (`Normal -> Normal`, `Degraded ->
+/// Degraded`); the dwell counter
+/// ([`ingest_mode_frames_in_current_count`]) covers within-mode
+/// accounting.
+#[must_use]
+pub fn ingest_mode_transition_count(from: IngestMode, to: IngestMode) -> u64 {
+    lock_obs().mode_tracker.transition_count(from, to)
+}
+
+/// Slice-2 widening: number of `record_pull_outcome` calls observed
+/// in the current §7.11 [`IngestMode`].
+///
+/// Reads back the dwell counter the singleton tracker maintains.
+/// Resets to 1 on every transition (the transition-bearing outcome
+/// itself counts as the first dwell-1 frame in the new mode);
+/// increments on every subsequent outcome that doesn't trigger a
+/// transition. Counts the absolute number of frames since the most
+/// recent §7.11 transition; combined with
+/// [`ingest_mode_transition_count`] this gives consumers a "current
+/// dwell + total flips" pair the slice-3 runtime-bus emission can
+/// route directly into a `MetricEvent::AudioIngestStateTransition`
+/// counter increment.
+#[must_use]
+pub fn ingest_mode_frames_in_current_count() -> u64 {
+    lock_obs().mode_tracker.current_dwell
+}
+
+/// Slice-2 widening: current §7.11 [`IngestMode`] on the
+/// process-wide tracker, without consuming a new outcome.
+#[must_use]
+pub fn current_ingest_mode() -> IngestMode {
+    lock_obs().mode_tracker.mode
 }
 
 /// Test-only serialization lock.

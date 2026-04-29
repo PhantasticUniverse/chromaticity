@@ -189,8 +189,11 @@ mod observability_emission {
     use chromaticity_observability::catalog::{AudioIngestFrameStatus, AudioIngestState};
 
     use crate::frame::AudioFrame;
-    use crate::ingest::{IngestBoundary, IngestStatus};
-    use crate::observability::{self, AudioIngestStateTracker, frames_count, samples_count};
+    use crate::ingest::{IngestBoundary, IngestMode, IngestStatus};
+    use crate::observability::{
+        self, AudioIngestStateTracker, current_ingest_mode, frames_count,
+        ingest_mode_frames_in_current_count, ingest_mode_transition_count, samples_count,
+    };
     use crate::silent::SilentSource;
 
     #[test]
@@ -318,6 +321,134 @@ mod observability_emission {
         assert_eq!(
             tracker.transition_count(AudioIngestState::Starting, AudioIngestState::Closed),
             0,
+        );
+    }
+
+    // ---- Slice-2 IngestMode observability widening pins ----
+
+    #[test]
+    fn ingest_mode_dwell_increments_on_each_pull_outcome() {
+        let _serialize = observability::test_serialize_lock();
+        let before_dwell = ingest_mode_frames_in_current_count();
+
+        let mut source = SilentSource::new(1);
+        let mut frame = AudioFrame::default();
+        // One Ready outcome advances the dwell counter by 1 (or
+        // resets it to 1 if it caused a transition out of the
+        // initial Normal state — which it can't, since Ready
+        // always leaves us in Normal).
+        assert_eq!(source.try_pull(&mut frame), IngestStatus::Ready);
+
+        let after_dwell = ingest_mode_frames_in_current_count();
+        // Either the dwell increased by exactly 1 (no transition),
+        // or it reset to 1 (transition Degraded -> Normal). Both
+        // are valid post-transition states; the load-bearing pin
+        // is "the slice-2 widening makes the dwell counter
+        // mutate on every outcome".
+        assert!(
+            after_dwell == before_dwell + 1 || after_dwell == 1,
+            "dwell counter did not advance after Ready outcome (before={before_dwell}, after={after_dwell})",
+        );
+        assert_eq!(current_ingest_mode(), IngestMode::Normal);
+    }
+
+    #[test]
+    fn ingest_mode_transition_normal_to_degraded_increments_on_two_consecutive_nonready() {
+        let _serialize = observability::test_serialize_lock();
+        let before_normal_to_degraded =
+            ingest_mode_transition_count(IngestMode::Normal, IngestMode::Degraded);
+
+        // SilentSource::new(0) yields Closed on the very first
+        // try_pull. To trigger Normal -> Degraded we need two
+        // consecutive non-Ready outcomes; SilentSource gives us
+        // exactly that: hop=0 yields Closed (1st non-Ready) and
+        // every subsequent try_pull also yields Closed (2nd, 3rd,
+        // ...). Only need 2 calls total to cross the §7.11
+        // threshold; the global tracker may carry residual
+        // consecutive-underrun state from prior tests, so emit
+        // enough Closeds to guarantee a transition into Degraded.
+        let mut source = SilentSource::new(0);
+        let mut frame = AudioFrame::default();
+        for _ in 0..3 {
+            // 3 consecutive Closeds is enough to cross the §7.11
+            // threshold no matter the prior tracker state.
+            let _ = source.try_pull(&mut frame);
+        }
+
+        // After 3 consecutive non-Ready outcomes, the tracker MUST
+        // be in Degraded and at least one Normal -> Degraded
+        // transition MUST have been recorded since this test
+        // started (or earlier — counter is monotonic across the
+        // process; the pin is "delta is at least 1 if the test
+        // crossed the threshold").
+        assert_eq!(current_ingest_mode(), IngestMode::Degraded);
+        let after_normal_to_degraded =
+            ingest_mode_transition_count(IngestMode::Normal, IngestMode::Degraded);
+        assert!(
+            after_normal_to_degraded > before_normal_to_degraded,
+            "Normal->Degraded delta expected > 0, before={before_normal_to_degraded} after={after_normal_to_degraded}",
+        );
+    }
+
+    #[test]
+    fn ingest_mode_transition_degraded_to_normal_increments_on_first_ready() {
+        let _serialize = observability::test_serialize_lock();
+
+        // Drive the tracker to Degraded via two Closeds.
+        let mut closed_source = SilentSource::new(0);
+        let mut frame = AudioFrame::default();
+        for _ in 0..3 {
+            let _ = closed_source.try_pull(&mut frame);
+        }
+        assert_eq!(current_ingest_mode(), IngestMode::Degraded);
+
+        let before_degraded_to_normal =
+            ingest_mode_transition_count(IngestMode::Degraded, IngestMode::Normal);
+
+        // First Ready returns the tracker to Normal.
+        let mut ready_source = SilentSource::new(1);
+        assert_eq!(ready_source.try_pull(&mut frame), IngestStatus::Ready);
+
+        assert_eq!(current_ingest_mode(), IngestMode::Normal);
+        let after_degraded_to_normal =
+            ingest_mode_transition_count(IngestMode::Degraded, IngestMode::Normal);
+        assert_eq!(
+            after_degraded_to_normal - before_degraded_to_normal,
+            1,
+            "Degraded->Normal delta must be exactly 1 on first Ready",
+        );
+    }
+
+    #[test]
+    fn ingest_mode_self_loops_do_not_count_as_transitions() {
+        let _serialize = observability::test_serialize_lock();
+        // First, ensure we're in Normal.
+        let mut source = SilentSource::new(1);
+        let mut frame = AudioFrame::default();
+        assert_eq!(source.try_pull(&mut frame), IngestStatus::Ready);
+        assert_eq!(current_ingest_mode(), IngestMode::Normal);
+
+        let before = ingest_mode_transition_count(IngestMode::Normal, IngestMode::Degraded)
+            + ingest_mode_transition_count(IngestMode::Degraded, IngestMode::Normal);
+
+        // Second Ready (self-loop Normal -> Normal); SilentSource
+        // hop budget exhausted, but next call is Closed, not Ready.
+        // To stay in Normal across multiple outcomes we need
+        // multiple Ready outcomes. Use SilentSource::new(3) for
+        // three consecutive Readys.
+        let mut multi = SilentSource::new(3);
+        let _ = multi.try_pull(&mut frame); // Ready
+        let _ = multi.try_pull(&mut frame); // Ready
+        let _ = multi.try_pull(&mut frame); // Ready
+        assert_eq!(current_ingest_mode(), IngestMode::Normal);
+
+        let after = ingest_mode_transition_count(IngestMode::Normal, IngestMode::Degraded)
+            + ingest_mode_transition_count(IngestMode::Degraded, IngestMode::Normal);
+        // Three Ready outcomes from the multi source while already
+        // in Normal MUST NOT increment any transition counter.
+        assert_eq!(
+            after, before,
+            "Self-loops Normal->Normal must not bump transition counters",
         );
     }
 }

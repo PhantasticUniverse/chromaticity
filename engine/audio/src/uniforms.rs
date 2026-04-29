@@ -72,15 +72,20 @@
 //!   BPM at the frame's sample rate. If the frame is shorter than
 //!   the longest lag the search range needs (e.g. the 128-sample
 //!   silent fallback frame from [`crate::silent::SilentSource`]),
-//!   the function returns the slice-1 default of 120.0 BPM and
-//!   leaves a `TODO(slice-2)` constant pinned. Slice-2 widens the
-//!   BPM surface to a windowed history-based estimate; this slice
-//!   pins the single-frame algorithm so the function is pure.
+//!   the function returns the slice-1 default of 120.0 BPM. Slice-2
+//!   ships the [`crate::bpm::BpmEstimator`] history-window
+//!   median-smoother that rides the same per-frame autocorrelation;
+//!   this slice's [`extract_uniform_snapshot`] STAYS PURE
+//!   (single-frame, no history) so callers that don't want history
+//!   continue to use it directly.
 //!
 //! The single-frame autocorrelation BPM is intentionally low-quality
 //! for short frames: the slice-1 corpus exercises it on a synthetic
-//! 1-second 120 BPM click-track fixture only. Production-grade BPM
-//! detection over multi-second history is a slice-2/3 deliverable.
+//! 1-second 120 BPM click-track fixture only. The slice-2
+//! history-window estimator covers multi-second smoothing; full
+//! Phase-3 production-grade BPM detection (constant-Q chroma, beat-
+//! tracking onset detection) lands in a follow-up slice once the
+//! analyser scheduler is upstream.
 
 use std::f32::consts::TAU;
 use std::sync::Arc;
@@ -197,10 +202,11 @@ impl Default for AudioUniformSnapshot {
 /// Extract one [`AudioUniformSnapshot`] from `frame`.
 ///
 /// Pure function: same input frame -> same output snapshot. No
-/// state is carried across calls. Slice-2 will introduce a
-/// state-carrying [`UniformExtractor`]-style surface for
-/// history-based BPM; the slice-1 surface is intentionally pure so
-/// the producer side has no in-crate ordering hazards.
+/// state is carried across calls. Slice-2 ships the state-carrying
+/// [`crate::bpm::BpmEstimator`] for history-window-smoothed BPM as
+/// a separate surface; the slice-1 entry point STAYS PURE so the
+/// producer side has no in-crate ordering hazards and consumers
+/// that don't want history can keep using it.
 ///
 /// Empty / silent frames return the all-zero baseline (matching
 /// [`AudioUniformSnapshot::default`] except `bpm` which holds
@@ -231,6 +237,24 @@ pub fn extract_uniform_snapshot(frame: &AudioFrame) -> AudioUniformSnapshot {
         peak,
         fft_bands,
     }
+}
+
+/// Slice-2 reuse helper: compute the per-frame autocorrelation BPM
+/// for `frame` using the same algorithm
+/// [`extract_uniform_snapshot`] uses internally.
+///
+/// Crate-private so the slice-2 [`crate::bpm::BpmEstimator`] can
+/// share the algorithm without going through the full snapshot
+/// path (and without paying the FFT-band cost for a BPM-only
+/// observation). External callers continue to use
+/// [`extract_uniform_snapshot`].
+#[must_use]
+pub(crate) fn compute_bpm_autocorr_for_frame(frame: &AudioFrame) -> f32 {
+    let mono = mono_mix(frame);
+    if mono.is_empty() {
+        return BPM_DEFAULT;
+    }
+    compute_bpm_autocorr(&mono, frame.sample_rate_hz())
 }
 
 /// Mix an interleaved multi-channel frame down to mono by averaging
@@ -397,10 +421,10 @@ fn log_band_edges() -> [f32; FFT_BAND_COUNT + 1] {
 /// range or when no lag has positive autocorrelation (silent
 /// frames).
 ///
-/// Slice-1 deliberately does NOT carry history; production-grade
-/// BPM detection over a 5-10 second sliding window lands in slice-2
-/// behind a state-carrying extractor surface (see module-level prose
-/// `TODO(slice-2)`).
+/// Slice-1 deliberately does NOT carry history; the slice-2
+/// [`crate::bpm::BpmEstimator`] median-smoothes this same per-frame
+/// estimate over a configurable history window for callers that
+/// want stabilised tempo-following.
 fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
     if sample_rate_hz == 0 || mono.is_empty() {
         return BPM_DEFAULT;

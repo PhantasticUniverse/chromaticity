@@ -13,9 +13,9 @@
 //!   production fallback path, and stood up the
 //!   `EV-OBSERVABILITY` emission site (`chromaticity_audio_ingest_*`
 //!   counters in `observability`).
-//! - **Phase-2 EV-AUDIO-TRACE slice-1** (this slice): adds the
-//!   `uniforms` module, the producer side of the audio → render
-//!   uniform marshalling boundary. Pure-data
+//! - **Phase-2 EV-AUDIO-TRACE slice-1**: adds the `uniforms`
+//!   module, the producer side of the audio → render uniform
+//!   marshalling boundary. Pure-data
 //!   [`uniforms::AudioUniformSnapshot`] + the
 //!   [`uniforms::extract_uniform_snapshot`] entry point produce four
 //!   `docs/36-reactive-symbol-catalog.md` v1.1.0 features
@@ -27,8 +27,43 @@
 //!   [`UniformValue`-shaped] uniform-buffer marshalling, so
 //!   `engine/audio` does NOT take a `chromaticity-render` dep. See
 //!   the `uniforms` module-level prose for the algorithm /
-//!   normalisation choices and the slice-2 BPM history-window
-//!   widening TODO.
+//!   normalisation choices.
+//! - **Phase-2 EV-AUDIO-TRACE slice-2** (this slice): deepens the
+//!   BPM surface and widens audio observability:
+//!   - [`bpm::BpmEstimator`] history-window median-smoothed BPM
+//!     estimator over the last `N` per-frame autocorrelation
+//!     results (default 8 frames, configurable `1..=128` via
+//!     [`bpm::BpmEstimator::with_window`]). The slice-1 pure
+//!     [`uniforms::extract_uniform_snapshot`] entry point STAYS
+//!     UNCHANGED — callers that don't want history continue to use
+//!     it directly. The estimator reuses the same per-frame
+//!     autocorrelation algorithm via the `pub(crate)`
+//!     `uniforms::compute_bpm_autocorr_for_frame` helper; the
+//!     slice-1 single-frame path remains the deterministic anchor
+//!     that the slice-2 estimator builds on.
+//!   - [`error::AudioError`] structured error type
+//!     (`#[non_exhaustive]`) introduces the first failure surface
+//!     in the audio crate. Slice-2 contributes the
+//!     [`error::AudioError::WindowConfig`] variant for
+//!     window-validation rejection; slice-3+ extends as needed
+//!     (cpal callback bind failures, etc.).
+//!   - [`observability`] widening: the §7.11 [`ingest::IngestMode`]
+//!     transition counter ([`observability::ingest_mode_transition_count`])
+//!     and the in-current-mode dwell counter
+//!     ([`observability::ingest_mode_frames_in_current_count`]) ride
+//!     the existing `record_pull_outcome` lock-hold so every
+//!     [`ingest::IngestBoundary::try_pull`] outcome accumulates
+//!     mode-tracker state alongside the slice-1 frame / sample
+//!     counters. Distinct from the slice-1
+//!     [`observability::AudioIngestStateTracker`] which tracks the
+//!     `Starting/Running/Draining/Closed` lifecycle synthesis; the
+//!     two share the §7.11 "two consecutive non-`Ready`" rule and
+//!     route through the same emission site.
+//!
+//!   Deferred to follow-up slices: ingest-mode capability
+//!   negotiation (slice-3, paired with the cpal device-capture
+//!   integration), and the cross-crate audio→render adapter
+//!   (`engine/render` slice 5a, separate slice and separate PR).
 //!
 //! # Surface summary
 //!
@@ -54,6 +89,11 @@
 //!   Closed`) per the module-top TODO(slice-3) reconciliation.
 //! - [`uniforms`] — Phase-2 EV-AUDIO-TRACE slice-1 producer side
 //!   (`AudioUniformSnapshot`, `extract_uniform_snapshot`).
+//! - [`bpm`] — Phase-2 EV-AUDIO-TRACE slice-2 history-window
+//!   median-smoothed BPM estimator
+//!   ([`bpm::BpmEstimator`]).
+//! - [`error`] — slice-2 structured error type
+//!   ([`error::AudioError`]).
 //!
 //! Slice-2 dep-slot: `cpal 0.15` is authorised in `Cargo.toml` as
 //! a dep-slot only — no cpal type is imported and no cpal function
@@ -87,12 +127,16 @@
 //! [`UniformValue`-shaped]: chromaticity-render's `UniformValue` enum,
 //! consumed by callers that elect the audio→render coupling.
 
+pub mod bpm;
+pub mod error;
 pub mod frame;
 pub mod ingest;
 pub mod observability;
 pub mod silent;
 pub mod uniforms;
 
+pub use bpm::BpmEstimator;
+pub use error::AudioError;
 pub use uniforms::{AudioUniformSnapshot, extract_uniform_snapshot};
 
 #[cfg(test)]
