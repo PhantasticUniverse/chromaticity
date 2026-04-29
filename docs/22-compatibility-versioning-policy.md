@@ -113,3 +113,12 @@ Scenes declaring `DATA_SOURCES` per `28-implementation-contract-pack.md` CP-12 c
 - **Profile interaction**: data-pinned fixtures are orthogonal to `compat-syn-v1` / `native-chroma-v1`. A scene may run under either runtime profile with the same cassette; the profile governs coercion behavior, and the cassette governs input reproducibility.
 
 This reservation prevents MVP from either (a) silently excluding data-ingesting scenes from the determinism contract, or (b) inventing a non-forward-compatible reproducibility mechanism.
+
+## Catalog Ratification Log
+
+Per `36-reactive-symbol-catalog.md` Sec.8, every catalog version bump requires an entry in this document's release notes. This section is that ledger; entries are append-only.
+
+| Catalog version | Ratification date | Sign-off artifact | Summary |
+|---|---|---|---|
+| `1.0.0` | 2026-04-23 | merge commit `deefc7a` (`docs(policy): promote normative planning corpus into docs/ + docs/adr/`) | Original ratification target for `compat-syn-v1` and `native-chroma-v1` baseline. All Sec.1-7 symbols locked at this version. |
+| `1.1.0` | 2026-04-29 | `doc-path:docs/EV-SYMBOL-CATALOG-checklist.md` (per-section + cross-workcell + overall AO sign-off) | Added Sec.2.10 reference-surface uniforms (`syn_InputLevel`, `syn_RawLevel`, `syn_BassExpoCurve`, `syn_Threshold`, `syn_PrimeAndBang`) and Sec.2.1 non-parity per-band time-series/spectrum spelling disposition. Formulas locked in `06-audio-engine.md` Sec.7.12. `EV-*` fixture coverage (per Sec.8 (b)) deferred to Phase-2 evidence-row closure under `EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`, and `EV-AUDIO-TRACE`. |
