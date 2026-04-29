@@ -22,7 +22,12 @@ export type Platform = 'mac' | 'win';
 function detectPlatform(): Platform {
   if (typeof navigator === 'undefined') return 'mac';
   const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes('win')) return 'win';
+  // Word-boundary match: real Windows UAs carry `Windows NT ...` (the `\b`
+  // anchors the start of `windows`), and `Win64`-only UAs still match.
+  // The previous `ua.includes('win')` matched `darwin` substring, which
+  // misclassified jsdom (UA `darwin`) and Mac/Linux UAs containing the
+  // `darwin` token as Windows.
+  if (/\bwin/.test(ua)) return 'win';
   return 'mac';
 }
 
