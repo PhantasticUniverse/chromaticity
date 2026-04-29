@@ -16,10 +16,10 @@
 //! a major-version bump on the crate's error surface. Slice 2
 //! lands [`ScriptError::TimeoutExceeded`] (watchdog fired during
 //! execution) and [`ScriptError::WatchdogConfig`] (caller passed an
-//! invalid p99 / hard pair). Reserved future variants:
-//!
-//! - **Slice 3**: `MemoryCapExceeded { used, cap }` — the QuickJS
-//!   allocator hit the per-runtime heap cap.
+//! invalid p99 / hard pair). Slice 3 lands
+//! [`ScriptError::MemoryCapExceeded`] (QuickJS allocator hit the
+//! per-runtime heap cap) and [`ScriptError::MemoryCapConfig`]
+//! (caller passed an invalid heap-cap budget).
 
 use thiserror::Error;
 
@@ -109,6 +109,46 @@ pub enum ScriptError {
         p99_ms: u64,
         /// Offending hard cap value supplied by the caller.
         hard_ms: u64,
+        /// Static rationale for the rejection.
+        reason: &'static str,
+    },
+
+    /// The QuickJS allocator hit the configured per-runtime heap
+    /// cap during script execution. ADR-012 §3 mandates a 16 MiB
+    /// cap per scene; this variant fires once an allocation would
+    /// have crossed the limit and QuickJS raised the uncatchable
+    /// `InternalError: out of memory` exception. The runtime
+    /// caught the exception and lowered it to this variant.
+    /// `observed_bytes` is the QuickJS `memory_usage().malloc_size`
+    /// reading captured at host-return; it is necessarily a tight
+    /// upper bound on the script's peak allocation (the failing
+    /// allocation is not recorded in the bookkeeping). On the
+    /// happy path of "cap was exactly hit", `observed_bytes` is
+    /// usually within the cap by a small margin — QuickJS aborts
+    /// the allocation BEFORE updating the running total.
+    #[error(
+        "script execution exceeded memory cap: observed {observed_bytes} bytes (limit {limit_bytes} bytes)"
+    )]
+    MemoryCapExceeded {
+        /// Heap-cap budget configured for the call, in bytes.
+        limit_bytes: usize,
+        /// Observed QuickJS `malloc_size` at host-return, in bytes.
+        /// Saturating-converted from `JSMemoryUsage::malloc_size`
+        /// (`i64` upstream).
+        observed_bytes: u64,
+    },
+
+    /// The caller passed an invalid `limit_bytes` to
+    /// [`crate::ScriptRuntime::with_memory_limit`]. The constructor
+    /// validates `limit_bytes > 0` (a zero limit is QuickJS-native
+    /// for "unlimited", which contradicts the slice-3 contract that
+    /// a cap MUST be enforced once the builder returns `Ok`).
+    /// `reason` carries a static rationale string for ergonomic
+    /// rendering.
+    #[error("memory cap config invalid: limit {limit_bytes} bytes ({reason})")]
+    MemoryCapConfig {
+        /// Offending limit value supplied by the caller.
+        limit_bytes: usize,
         /// Static rationale for the rejection.
         reason: &'static str,
     },

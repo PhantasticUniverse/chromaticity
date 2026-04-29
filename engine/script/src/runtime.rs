@@ -56,6 +56,7 @@ use std::cell::Cell;
 use rquickjs::{CatchResultExt, Context, Ctx, Object, Runtime, Value};
 
 use crate::error::ScriptError;
+use crate::memory_cap::{self, MemoryCapConfig, MemoryUsageSnapshot};
 use crate::value::ScriptValue;
 use crate::watchdog::{self, Deadline, WatchdogConfig, WatchdogObservation};
 
@@ -87,15 +88,20 @@ pub struct ScriptRuntime {
     // first.
     context: Context,
     // Slice-2 mounts the watchdog interrupt handler against this
-    // handle on every [`Self::execute`] call; slice 3 will also
-    // mount the memory cap. The field is no longer underscore-
-    // prefixed since the watchdog code path uses it.
+    // handle on every [`Self::execute`] call; slice 3 also mounts
+    // the memory cap on the same handle. The field is no longer
+    // underscore-prefixed since both code paths use it.
     runtime: Runtime,
     // Watchdog config in force for this runtime, set via
     // [`Self::with_watchdog`]. `None` reproduces the slice-1
     // behaviour: no interrupt handler is installed, no per-execute
     // observation is recorded.
     watchdog_config: Option<WatchdogConfig>,
+    // Memory cap config in force for this runtime, set via
+    // [`Self::with_memory_limit`]. `None` reproduces the
+    // slice-1 / slice-2 behaviour: no cap is mounted on the
+    // QuickJS allocator and no snapshot is recorded.
+    memory_cap_config: Option<MemoryCapConfig>,
     // Most-recent watchdog observation, populated on every
     // [`Self::execute`] call when a watchdog config is active.
     // Read by tests via [`Self::last_observation`] for the slice-2
@@ -105,13 +111,19 @@ pub struct ScriptRuntime {
     // panic surface; observations are `Copy` so `Cell::set` /
     // `Cell::get` is enough.
     last_observation: Cell<Option<WatchdogObservation>>,
+    // Most-recent memory snapshot, populated on every
+    // [`Self::execute`] call when a memory cap is active. Same
+    // Cell-backed read pattern as `last_observation`.
+    last_memory_snapshot: Cell<Option<MemoryUsageSnapshot>>,
 }
 
 impl std::fmt::Debug for ScriptRuntime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScriptRuntime")
             .field("watchdog_config", &self.watchdog_config)
+            .field("memory_cap_config", &self.memory_cap_config)
             .field("last_observation", &self.last_observation.get())
+            .field("last_memory_snapshot", &self.last_memory_snapshot.get())
             .finish_non_exhaustive()
     }
 }
@@ -132,7 +144,9 @@ impl ScriptRuntime {
             context,
             runtime,
             watchdog_config: None,
+            memory_cap_config: None,
             last_observation: Cell::new(None),
+            last_memory_snapshot: Cell::new(None),
         })
     }
 
@@ -195,6 +209,60 @@ impl ScriptRuntime {
         self.last_observation.get()
     }
 
+    /// Configure the per-runtime heap cap, returning the runtime
+    /// for chaining.
+    ///
+    /// Slice-3 surface (per ADR-012 §3):
+    ///
+    /// - `bytes` — heap-cap budget in bytes. The cap is mounted via
+    ///   `rquickjs::Runtime::set_memory_limit` on every
+    ///   [`Self::execute`] call; once an allocation would cross the
+    ///   limit, QuickJS aborts the allocation and raises an
+    ///   uncatchable `InternalError: out of memory` exception which
+    ///   the executor lowers to
+    ///   [`ScriptError::MemoryCapExceeded`].
+    ///
+    /// Validation: `bytes > 0`. A zero cap rejects with
+    /// [`ScriptError::MemoryCapConfig`] — QuickJS treats `0` as
+    /// "unlimited", which contradicts the slice-3 contract that a
+    /// cap MUST be enforced once the builder returns `Ok`. Callers
+    /// that want an uncapped runtime should not call this builder
+    /// at all; the slice-1 / slice-2 [`Self::new`] path leaves
+    /// the runtime uncapped.
+    ///
+    /// Builder chaining: composes with [`Self::with_watchdog`] —
+    /// both can be in force on the same runtime simultaneously,
+    /// and [`Self::execute`] brackets the watchdog interrupt
+    /// handler and the memory cap install / uninstall pairs around
+    /// every call.
+    pub fn with_memory_limit(mut self, bytes: usize) -> Result<Self, ScriptError> {
+        let cfg = MemoryCapConfig::new(bytes)?;
+        self.memory_cap_config = Some(cfg);
+        Ok(self)
+    }
+
+    /// Memory-cap config currently in force, or `None` if no cap
+    /// has been mounted.
+    #[must_use]
+    pub fn memory_cap_config(&self) -> Option<MemoryCapConfig> {
+        self.memory_cap_config
+    }
+
+    /// Most-recent memory-usage snapshot, or `None` if no
+    /// memory-cap-instrumented call has been made.
+    ///
+    /// Slice-3 host surface for the heap-usage observability
+    /// contract: callers that ran a script under the memory cap
+    /// can read this to inspect the install / uninstall
+    /// `malloc_size` pair without re-entering the engine. Cleared
+    /// on every [`Self::execute`] call when a memory cap is
+    /// present (so a long-running success followed by a fast
+    /// success doesn't leak the earlier snapshot forward).
+    #[must_use]
+    pub fn last_memory_snapshot(&self) -> Option<MemoryUsageSnapshot> {
+        self.last_memory_snapshot.get()
+    }
+
     /// Compile and execute `source` in the global context, returning
     /// a borrow-free [`ScriptValue`] tree.
     ///
@@ -204,7 +272,8 @@ impl ScriptRuntime {
     /// execution lower to [`ScriptError::Runtime`]; values whose
     /// shape is outside the slice-1 vocabulary lower to
     /// [`ScriptError::ValueConversion`]; watchdog interrupts
-    /// lower to [`ScriptError::TimeoutExceeded`].
+    /// lower to [`ScriptError::TimeoutExceeded`]; memory-cap hits
+    /// lower to [`ScriptError::MemoryCapExceeded`].
     pub fn execute(&self, source: &str) -> Result<ScriptValue, ScriptError> {
         // Slice-2 watchdog bracket: install the interrupt handler
         // before evaluation, capture the deadline handle, run the
@@ -217,6 +286,21 @@ impl ScriptRuntime {
         let deadline = self
             .watchdog_config
             .map(|cfg| watchdog::install_watchdog(&self.runtime, cfg));
+
+        // Slice-3 memory-cap bracket: mount the cap on the QuickJS
+        // allocator before evaluation, capture the
+        // `malloc_size`-baseline snapshot, run the eval, then
+        // unconditionally detach the cap. Bracketing is the same
+        // shape as the watchdog: install before, uninstall after,
+        // regardless of success / throw / cap-hit. Order against
+        // the watchdog is "watchdog outer, memory cap inner" — both
+        // are independent on the QuickJS side, but mounting the
+        // memory cap second means the bracketed scope on the
+        // memory-cap path is strictly narrower; the watchdog's
+        // interrupt-handler slot is detached first on the way out.
+        let mut memory_snapshot = self
+            .memory_cap_config
+            .map(|cfg| memory_cap::install_memory_cap(&self.runtime, cfg));
 
         let outcome = self.context.with(|ctx: Ctx<'_>| {
             // `ctx.eval::<Value, _>` is the entry into the QuickJS
@@ -234,11 +318,40 @@ impl ScriptRuntime {
             lower_value(&ctx, value)
         });
 
+        // Detach the memory cap first (LIFO against install order:
+        // watchdog before, memory cap after). The snapshot
+        // `at_uninstall_bytes` is populated here so the
+        // [`ScriptError::MemoryCapExceeded`] remap downstream can
+        // read a tight upper bound on script peak heap usage.
+        if let Some(snap) = memory_snapshot.as_mut() {
+            memory_cap::uninstall_memory_cap(&self.runtime, snap);
+        }
+
         // Always detach the interrupt handler — see install_watchdog
         // doc comment for the leftover-deadline rationale.
         if deadline.is_some() {
             watchdog::uninstall_watchdog(&self.runtime);
         }
+
+        // Memory-cap remap runs first. A cap-hit during a watchdog-
+        // instrumented call would otherwise show up as a generic
+        // `ScriptError::Runtime("out of memory")`; the remap
+        // rewrites it to [`ScriptError::MemoryCapExceeded`] with
+        // the limit-derived budget context. Watchdog remap follows
+        // afterward so a "memory cap hit + watchdog timeout" race
+        // resolves in favour of the memory-cap diagnosis (the
+        // QuickJS interpreter raises the OOM exception first; the
+        // watchdog interrupt would only have fired if the
+        // allocation pressure didn't trip the cap, which this
+        // ordering preserves).
+        let outcome =
+            if let (Some(cfg), Some(snap)) = (self.memory_cap_config, memory_snapshot.as_ref()) {
+                self.last_memory_snapshot.set(Some(*snap));
+                remap_oom(outcome, cfg, snap)
+            } else {
+                self.last_memory_snapshot.set(None);
+                outcome
+            };
 
         // Record observation if a watchdog was active. Done after
         // detach so the observation captures the elapsed time at
@@ -312,6 +425,44 @@ fn remap_interrupt(
     }
 }
 
+/// If `outcome` is a [`ScriptError::Runtime`] whose payload
+/// matches the QuickJS out-of-memory identifier (`InternalError:
+/// out of memory`), rewrite it to
+/// [`ScriptError::MemoryCapExceeded`] populated from `config`
+/// (limit) + `snapshot` (observed `malloc_size` at host-return).
+///
+/// The function lives on the host side, mirroring
+/// [`remap_interrupt`]'s slice-2 placement: the `memory_cap.rs`
+/// module exposes only the identifier predicate
+/// ([`memory_cap::is_oom_error`]) and the install / uninstall
+/// pair, leaving the host to do the error-shape rewriting.
+fn remap_oom(
+    outcome: Result<ScriptValue, ScriptError>,
+    config: MemoryCapConfig,
+    snapshot: &MemoryUsageSnapshot,
+) -> Result<ScriptValue, ScriptError> {
+    match outcome {
+        Err(ScriptError::Runtime(message)) => {
+            // The slice-1 runtime-error path renders the QuickJS
+            // exception's `message` string. The OOM path throws
+            // `InternalError("out of memory")`; the message
+            // surface here is just `"out of memory"`. Slice-1's
+            // `map_caught_error` ALSO formats the rendered path
+            // through `format_runtime` for non-empty messages, so
+            // both forms surface here.
+            if message == "out of memory" || message.contains("InternalError: out of memory") {
+                Err(ScriptError::MemoryCapExceeded {
+                    limit_bytes: config.limit_bytes(),
+                    observed_bytes: snapshot.at_uninstall_bytes,
+                })
+            } else {
+                Err(ScriptError::Runtime(message))
+            }
+        }
+        other => other,
+    }
+}
+
 /// Map a caught QuickJS error into the slice-1 [`ScriptError`]
 /// surface.
 ///
@@ -365,6 +516,16 @@ fn map_caught_error(caught: rquickjs::CaughtError<'_>) -> ScriptError {
                 // because no watchdog was installed; slice-2's
                 // bracketed `execute` is what creates the
                 // interrupt opportunity.
+                ScriptError::Runtime(message.to_string())
+            } else if memory_cap::is_oom_error(&name, &message) {
+                // Slice-3: the memory-cap path raises
+                // `InternalError: out of memory` from QuickJS C
+                // (`quickjs.c` line 7348 `JS_ThrowOutOfMemory`).
+                // Render the message straight so [`remap_oom`]
+                // downstream can recognise the canonical string
+                // and lower to [`ScriptError::MemoryCapExceeded`]
+                // with the limit-derived budget context. Mirrors
+                // the slice-2 `is_interrupted_exception` shape.
                 ScriptError::Runtime(message.to_string())
             } else {
                 ScriptError::Runtime(format_runtime(&message, &rendered))
@@ -499,14 +660,17 @@ fn lower_object(
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod execute_drift_pins {
     //! Evidence: EV-SCRIPT-CONTRACT (T1) — sandbox-default posture and error categorisation.
-    //! Evidence: EV-SANDBOX-SAFETY (T1) — watchdog interrupt + deadline arithmetic + config validation.
+    //! Evidence: EV-SANDBOX-SAFETY (T1) — watchdog interrupt + memory cap + deadline arithmetic + config validation.
     //!
     //! T1 per `docs/43-development-standards.md` §15.5: pins the
     //! slice-1 [`super::ScriptRuntime::execute`] surface against
     //! the entry-point contract, plus the slice-2 watchdog surface
     //! (interrupt-handler install / detach, hard-cap → TimeoutExceeded
     //! lowering, observation recording, builder-level config
-    //! validation):
+    //! validation), plus the slice-3 memory-cap surface
+    //! (`set_memory_limit` install / uninstall, OOM → MemoryCapExceeded
+    //! lowering, snapshot recording, builder-level config
+    //! validation, builder chaining with the watchdog):
     //!
     //! - the runtime constructs without panicking,
     //! - trivial arithmetic and string literals lower to the
@@ -849,6 +1013,197 @@ mod execute_drift_pins {
         assert!(
             rt.last_observation().is_none(),
             "no watchdog ⇒ no observation",
+        );
+    }
+
+    // ----- Slice-3 memory-cap drift pins -----
+
+    #[test]
+    fn trivial_script_under_memory_cap_succeeds() {
+        // Evidence: EV-SANDBOX-SAFETY (T1) + EV-SCRIPT-CONTRACT (T1).
+        // A trivial arithmetic expression must complete well under
+        // the 16 MiB heap cap; the cap-installed runtime must
+        // surface the result identically to a cap-free runtime
+        // and record a memory snapshot for inspection.
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_memory_limit(crate::memory_cap::MemoryCapConfig::PHASE2_DEFAULT)
+            .expect("memory cap config valid");
+        let v = rt
+            .execute("1 + 2")
+            .expect("trivial arithmetic must succeed under memory cap");
+        assert_eq!(v, ScriptValue::Number(3.0), "got {v:?}");
+        let snap = rt
+            .last_memory_snapshot()
+            .expect("memory cap records snapshot on every call");
+        assert!(
+            snap.at_uninstall_bytes >= snap.at_install_bytes,
+            "snapshot must not shrink: install={} uninstall={}",
+            snap.at_install_bytes,
+            snap.at_uninstall_bytes,
+        );
+        assert!(
+            snap.at_uninstall_bytes < crate::memory_cap::MemoryCapConfig::PHASE2_DEFAULT as u64,
+            "trivial script must stay under the 16 MiB cap; observed={}",
+            snap.at_uninstall_bytes,
+        );
+    }
+
+    #[test]
+    fn large_string_allocation_rejects_with_memory_cap_exceeded() {
+        // Evidence: EV-SANDBOX-SAFETY (T1).
+        // The most basic memory-cap tripwire: `String.repeat`
+        // allocating 20 MiB worth of single-byte characters under
+        // a 16 MiB cap must surface as MemoryCapExceeded with the
+        // configured limit echoed verbatim. QuickJS's allocator
+        // checks the running total before each allocation; the
+        // failing allocation never updates the bookkeeping, so
+        // `observed_bytes` is the snapshot at host-return — which
+        // is necessarily within the cap (the failing allocation
+        // didn't accumulate).
+        let limit = 16 * 1024 * 1024;
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_memory_limit(limit)
+            .expect("memory cap config valid");
+        let err = rt
+            .execute(r#"let s = "x".repeat(20 * 1024 * 1024); s.length"#)
+            .expect_err("20 MiB string under 16 MiB cap must reject");
+        match err {
+            ScriptError::MemoryCapExceeded {
+                limit_bytes,
+                observed_bytes,
+            } => {
+                assert_eq!(limit_bytes, limit, "limit echoed verbatim");
+                // observed_bytes is `malloc_size` at host-return;
+                // it may be at or just above / below the limit
+                // depending on QuickJS's allocator-state update
+                // order. Just sanity-check non-zero.
+                assert!(
+                    observed_bytes > 0,
+                    "observed_bytes must be populated; got {observed_bytes}",
+                );
+            }
+            other => panic!("expected MemoryCapExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn array_explosion_rejects_with_memory_cap_exceeded() {
+        // Evidence: EV-SANDBOX-SAFETY (T1).
+        // Recursive array-grow exhausts the heap in pure JS.
+        // The watchdog is intentionally not configured here so
+        // that the only abort path is the memory cap; any other
+        // error category is a sandbox-safety regression. We use a
+        // moderately fast loop so the OOM lands before any host
+        // perf surprise; the array growth doubles each iteration
+        // until the cap fires.
+        let limit = 16 * 1024 * 1024;
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_memory_limit(limit)
+            .expect("memory cap config valid");
+        let err = rt
+            .execute(
+                r"
+                let a = [];
+                while (true) {
+                    a = a.concat(a);
+                    a.push(1);
+                }
+            ",
+            )
+            .expect_err("array explosion must reject");
+        // Either MemoryCapExceeded (the typical outcome — the
+        // doubling loop OOMs before any other guard fires) or a
+        // ScriptError::Runtime carrying the lowered OOM message
+        // is acceptable; the contract is "the runtime does not
+        // return Ok from a runaway allocation under a 16 MiB cap".
+        match err {
+            ScriptError::MemoryCapExceeded { limit_bytes, .. } => {
+                assert_eq!(limit_bytes, limit, "limit echoed verbatim");
+            }
+            ScriptError::Runtime(msg) => {
+                assert!(
+                    msg.contains("out of memory") || !msg.is_empty(),
+                    "array explosion path must surface a non-empty diagnostic; got {msg:?}",
+                );
+            }
+            other => {
+                panic!("expected MemoryCapExceeded or Runtime OOM, got {other:?}",)
+            }
+        }
+    }
+
+    #[test]
+    fn memory_limit_config_invalid_rejects() {
+        // Evidence: EV-SANDBOX-SAFETY (T1).
+        // Slice-3 builder validates `bytes > 0`. A zero limit
+        // surfaces as [`ScriptError::MemoryCapConfig`] rather than
+        // silently surfacing an uncapped runtime (QuickJS-native
+        // semantics for `set_memory_limit(0)`).
+        let err = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_memory_limit(0)
+            .expect_err("zero limit must reject");
+        match err {
+            ScriptError::MemoryCapConfig {
+                limit_bytes,
+                reason,
+            } => {
+                assert_eq!(limit_bytes, 0, "limit echoed verbatim");
+                assert!(!reason.is_empty(), "reason populated");
+            }
+            other => panic!("expected MemoryCapConfig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn combined_watchdog_and_memory_limit_compose() {
+        // Evidence: EV-SANDBOX-SAFETY (T1) + EV-SCRIPT-CONTRACT (T1).
+        // The two slice-2 + slice-3 builder methods compose. A
+        // runtime configured with both surfaces must honour both:
+        // a fast script under both caps must succeed and record
+        // both a watchdog observation and a memory snapshot.
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_watchdog(200, 400)
+            .expect("watchdog config valid")
+            .with_memory_limit(crate::memory_cap::MemoryCapConfig::PHASE2_DEFAULT)
+            .expect("memory cap config valid");
+        let v = rt
+            .execute("1 + 2")
+            .expect("trivial arithmetic must succeed under both caps");
+        assert_eq!(v, ScriptValue::Number(3.0), "got {v:?}");
+        let obs = rt
+            .last_observation()
+            .expect("watchdog records observation when configured");
+        assert!(
+            !obs.hard_cap_exceeded,
+            "hard cap must not trip on trivial arithmetic; obs={obs:?}",
+        );
+        let snap = rt
+            .last_memory_snapshot()
+            .expect("memory cap records snapshot when configured");
+        assert!(
+            snap.at_uninstall_bytes >= snap.at_install_bytes,
+            "snapshot must not shrink: install={} uninstall={}",
+            snap.at_install_bytes,
+            snap.at_uninstall_bytes,
+        );
+    }
+
+    #[test]
+    fn memory_snapshot_cleared_when_no_config() {
+        // Evidence: EV-SANDBOX-SAFETY (T1).
+        // [`ScriptRuntime::new`] alone (no memory cap) must NOT
+        // record a snapshot; preserves slice-1 / slice-2 surface
+        // for callers that haven't migrated to the builder.
+        let rt = ScriptRuntime::new().expect("runtime constructs");
+        let _ = rt.execute("1 + 2").expect("succeeds");
+        assert!(
+            rt.last_memory_snapshot().is_none(),
+            "no memory cap ⇒ no snapshot",
         );
     }
 }

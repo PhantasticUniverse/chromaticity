@@ -13,10 +13,11 @@
 # the textual rebase against docs/26 is carried by one PR rather
 # than spread across the slice fan-out.
 #
-# Slice 1 deliberately omits:
-#   - watchdog timeouts (slice 2; will use rquickjs
-#     `Runtime::set_interrupt_handler`),
-#   - memory cap (slice 3; rquickjs `Runtime::set_memory_limit`),
+# Slices landed: 1 (sandbox-default scaffold), 2 (watchdog timeouts
+# via rquickjs `Runtime::set_interrupt_handler`), 3 (memory cap via
+# rquickjs `Runtime::set_memory_limit`).
+#
+# Future slices on this crate:
 #   - determinism shims (slice 4; seeded RNG + frame-locked
 #     `Date.now()` per ADR-012 §5),
 #   - command-bus integration (slice 5; engine/runtime CommandBus
