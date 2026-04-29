@@ -12,7 +12,7 @@
 //!
 //! Slice progression:
 //!
-//! - **Slice 1 (this PR)** — sandbox-default toolchain (no I/O / FS /
+//! - **Slice 1** — sandbox-default toolchain (no I/O / FS /
 //!   native modules), [`ScriptRuntime::execute`] entry point, T1 / T2
 //!   contract evidence. The default sandbox posture comes for free
 //!   from the rquickjs default feature set: no `loader` feature
@@ -22,9 +22,18 @@
 //!   `globalThis.process`, `globalThis.window` are all `undefined`
 //!   by construction, and `import('foo')` rejects at parse time as
 //!   ECMAScript-module syntax outside an `eval`-mode script.
-//! - **Slice 2** — watchdog timeouts (1.75 ms p99 / 4 ms hard per
-//!   ADR-012 §2) via `rquickjs::Runtime::set_interrupt_handler`.
-//!   `EV-SANDBOX-SAFETY` evidence opens.
+//! - **Slice 2 (this PR)** — watchdog timeouts (1 ms p99 soft / 4 ms
+//!   hard per ADR-012 §2) via
+//!   `rquickjs::Runtime::set_interrupt_handler`. The
+//!   [`ScriptRuntime::with_watchdog`] builder method mounts a
+//!   per-execute interrupt handler against the shared rquickjs
+//!   runtime; the soft cap is observed via [`watchdog::WatchdogObservation`]
+//!   without aborting, the hard cap aborts the script and the
+//!   caller receives [`ScriptError::TimeoutExceeded`] populated
+//!   with the deadline-derived budget context. `EV-SANDBOX-SAFETY`
+//!   evidence opens; `EV-SCRIPT-CONTRACT` widens with the watchdog
+//!   path. The slice-1 `ScriptRuntime::new()` constructor stays
+//!   watchdog-free for slice-1 callers' continuity.
 //! - **Slice 3** — memory cap (16 MiB heap per ADR-012 §3) via
 //!   `rquickjs::Runtime::set_memory_limit`. `EV-SANDBOX-SAFETY`
 //!   widens.
@@ -41,19 +50,35 @@
 //!
 //! - T1 entry-point drift pins in
 //!   [`runtime::execute_drift_pins`] — slice-1 sandbox-default
-//!   posture and parse-error / runtime-error categorisation.
+//!   posture, parse-error / runtime-error categorisation, plus
+//!   slice-2 watchdog drift pins (interrupt-handler install,
+//!   hard-cap → [`ScriptError::TimeoutExceeded`] lowering,
+//!   observation recording, builder-level config validation).
 //! - T2 deterministic contract corpus in
 //!   `engine/script/tests/contract.rs` — function-purity, array /
 //!   object round-trip, and per-runtime isolation.
 //!
-//! Per `docs/26-evidence-artifact-registry.md` row 29's Phase-2-exit
-//! definition, full `EV-SCRIPT-CONTRACT` conformance — host-API
-//! parity matrix, `setup`/`update`/`transition` lifecycle hooks,
-//! event-handler ordering — requires successive slices; the row's
-//! status stays `Planned` while the harness path tightens. The
-//! registry update after slice 1 lands on a separate small
-//! follow-up commit (this PR is `engine/script` only and does not
-//! touch the registry).
+//! Produces evidence for `EV-SANDBOX-SAFETY` (opened by slice 2):
+//!
+//! - T1 deadline arithmetic + watchdog config validation pins in
+//!   [`watchdog::deadline_pins`] — wall-clock elapsed accounting,
+//!   inverted-pair / zero-hard rejection, soft-cap signal flag.
+//! - T1 watchdog integration drift pins in
+//!   [`runtime::execute_drift_pins`] — interrupt-handler install /
+//!   detach behaviour against the live rquickjs runtime.
+//! - T2 timeout corpus in `engine/script/tests/sandbox.rs` —
+//!   tight-CPU loop, recursion explosion, busy `Date.now()`
+//!   polling, multi-runtime watchdog independence.
+//!
+//! Per `docs/26-evidence-artifact-registry.md` rows 29 / 42
+//! Phase-2-exit definitions, full conformance — host-API parity
+//! matrix, lifecycle hooks, event ordering, full sandbox-isolation
+//! audit — requires successive slices. Both rows stay `Planned` /
+//! `pending:artifact` while the harness path tightens. Registry
+//! updates after slice 2 land on a separate small follow-up commit
+//! (this PR is `engine/script` only and does not touch
+//! `docs/26-evidence-artifact-registry.md` or
+//! `docs/13-risk-register.md`).
 //!
 //! Governing ADRs:
 //!
@@ -65,7 +90,9 @@
 mod error;
 mod runtime;
 mod value;
+pub mod watchdog;
 
 pub use error::ScriptError;
 pub use runtime::ScriptRuntime;
 pub use value::ScriptValue;
+pub use watchdog::{Deadline, WatchdogConfig, WatchdogConfigError, WatchdogObservation};
