@@ -230,6 +230,47 @@ fn snapshot_default_matches_silent_for_empty_buffer() {
     );
 }
 
+/// Slice-2 surface-stability pin.
+///
+/// The slice-2 [`chromaticity_audio::bpm::BpmEstimator`] addition
+/// rides the same `pub(crate)` per-frame autocorrelation helper
+/// that [`extract_uniform_snapshot`] uses; this test is a load-
+/// bearing regression pin that the slice-1 single-frame entry
+/// point produces the same shape it always has on a sine fixture
+/// regardless of the slice-2 history-window code paths.
+#[test]
+fn slice_2_compatibility_extract_uniform_snapshot_unchanged_on_440_hz() {
+    let frame = one_second_sine(440.0, 1.0);
+    let snap = extract_uniform_snapshot(&frame);
+
+    // RMS, peak, and band shape continuity (same anchors as the
+    // slice-1 `unit_sine_440_hz_drives_expected_band_to_dominance`
+    // test, repeated here so the slice-2 BpmEstimator addition
+    // can't silently drift the slice-1 surface).
+    let expected_rms = 1.0_f32 / 2.0_f32.sqrt();
+    assert!(
+        (snap.rms - expected_rms).abs() < 1e-2,
+        "slice-1 RMS regression: expected ~{expected_rms}, got {}",
+        snap.rms,
+    );
+    assert!(
+        (snap.peak - 1.0).abs() < 1e-3,
+        "slice-1 peak regression: expected ~1.0, got {}",
+        snap.peak,
+    );
+    let target_band = band_index_for_hz(440.0);
+    let target_value = snap.fft_bands[target_band];
+    for (i, band) in snap.fft_bands.iter().enumerate() {
+        if i == target_band {
+            continue;
+        }
+        assert!(
+            *band < target_value,
+            "slice-1 band-dominance regression: band {i} ({band}) >= target {target_band} ({target_value})",
+        );
+    }
+}
+
 #[test]
 fn multichannel_frame_mixes_to_mono_before_analysis() {
     // Stereo frame: L = +0.5 sine at 1 kHz, R = -0.5 same-phase
