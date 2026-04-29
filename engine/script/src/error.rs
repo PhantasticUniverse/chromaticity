@@ -13,11 +13,11 @@
 //!    ([`ScriptError::ValueConversion`]).
 //!
 //! `#[non_exhaustive]` keeps slice-2+ free to add variants without
-//! a major-version bump on the crate's error surface. Reserved
-//! future variants:
+//! a major-version bump on the crate's error surface. Slice 2
+//! lands [`ScriptError::TimeoutExceeded`] (watchdog fired during
+//! execution) and [`ScriptError::WatchdogConfig`] (caller passed an
+//! invalid p99 / hard pair). Reserved future variants:
 //!
-//! - **Slice 2**: `TimeoutExceeded { phase, budget_ms }` — the
-//!   watchdog fired during compilation or execution.
 //! - **Slice 3**: `MemoryCapExceeded { used, cap }` — the QuickJS
 //!   allocator hit the per-runtime heap cap.
 
@@ -71,4 +71,45 @@ pub enum ScriptError {
     /// vocabulary as the script-API surface lands.
     #[error("script result not representable as ScriptValue: {0}")]
     ValueConversion(String),
+
+    /// The watchdog hard cap fired during execution and QuickJS
+    /// raised the uncatchable `InternalError: interrupted`
+    /// exception. The runtime caught the exception and lowered it
+    /// to this variant. `observed_ms` is the wall-clock time the
+    /// script ran for before the interrupt handler returned `true`;
+    /// it is necessarily `>= hard_ms` modulo the runner clock
+    /// resolution. ADR-012 §2 mandates the 1.75 ms p99 / 4 ms hard
+    /// pair; slice-2 honours integer-millisecond budgets. The soft
+    /// cap (`p99_ms`) is instrumentation-only and does NOT trip
+    /// this variant.
+    #[error(
+        "script execution exceeded watchdog hard cap: observed {observed_ms} ms (p99 {p99_ms} ms / hard {hard_ms} ms)"
+    )]
+    TimeoutExceeded {
+        /// Soft cap (p99) configured for the call, in milliseconds.
+        p99_ms: u64,
+        /// Hard cap configured for the call, in milliseconds.
+        hard_ms: u64,
+        /// Observed wall-clock execution time at interrupt, in
+        /// milliseconds. Saturating-converted from
+        /// [`std::time::Duration::as_millis`].
+        observed_ms: u64,
+    },
+
+    /// The caller passed an invalid `(p99_ms, hard_ms)` pair to
+    /// [`crate::ScriptRuntime::with_watchdog`]. The constructor
+    /// validates `0 < p99_ms < hard_ms`; values outside that
+    /// envelope surface here with the offending pair attached.
+    /// `reason` carries a static rationale string from
+    /// [`crate::watchdog::WatchdogConfigError`] for ergonomic
+    /// rendering.
+    #[error("watchdog config invalid: p99 {p99_ms} ms / hard {hard_ms} ms ({reason})")]
+    WatchdogConfig {
+        /// Offending soft cap value supplied by the caller.
+        p99_ms: u64,
+        /// Offending hard cap value supplied by the caller.
+        hard_ms: u64,
+        /// Static rationale for the rejection.
+        reason: &'static str,
+    },
 }
