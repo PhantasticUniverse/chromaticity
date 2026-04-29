@@ -16,10 +16,10 @@ environment (macOS + Windows desktop). Toolkit: Tauri 2 + Svelte 5 + TypeScript 
 side; Rust 2024 edition on the engine side. `docs/adr/ADR-018-non-scene-ui-toolkit.md` is
 the normative toolkit decision. Phase 1 entered April 2026 and EXIT was achieved at
 W12 (commit `e818752`); engine and integration crates (runtime, scene, audio,
-observability, osc-adapter) continue receiving substantive implementation toward
-Phase 2 evidence-row closure, with parallel UI port waves against the v0.2-beta
-bundle closing all three Vitest test-coverage tracks (widgets, shell components,
-routed views).
+observability, render, script, osc-adapter) continue receiving substantive
+implementation toward Phase 2 evidence-row closure, with parallel UI port waves
+against the v0.2-beta bundle closing all three Vitest test-coverage tracks
+(widgets, shell components, routed views).
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
@@ -436,13 +436,12 @@ backbone; W10 Inputs Inspector; W11 ErrorMessage primitive + Vitest scaffold + T
 ship-time bundling; W12 app shell (AppShell + 12-icon SidebarRail + StatusBar +
 RouteStore + Perform / Library / Author / Settings views); W13 CueTransitionCurve widget
 
-- Playlist v2 view (first un-disabled bundle-port routed view in the W12 shell). High-
-  leverage W14+ candidates per the post-Phase-1 bundle audit: MIDI view (689 LoC source,
-  wireframe-05), OSC view (395 LoC source, wireframe-06), Audio view (281 LoC source +
-  canvas Spectrum / BpmRing / BeatDots visualizers), Author full port (414 LoC source,
-  requires CodeMirror integration), Adapter UI suite (AdapterPill + DegradedBanner +
-  OutputRoutingTile, entitlement-gated; needs ChromaCtx → Svelte stores migration as
-  prereq).
+- Playlist v2 view (first un-disabled bundle-port routed view in the W12 shell). W14-W34
+  waves shipped MIDI view, OSC view, Audio view + canvas Spectrum / BpmRing / BeatDots
+  visualizers, Author full port (with CodeMirror integration), and the Adapter UI suite
+  (AdapterPill + DegradedBanner + OutputRoutingTile + LockedRow + WatermarkOverlay +
+  CrashResumeBanner) entitlement-gated via the `capabilitiesStore` that replaced the
+  bundle's React `ChromaCtx`.
 
 ## Where authoritative answers live
 
