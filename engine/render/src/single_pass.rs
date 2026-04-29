@@ -112,6 +112,59 @@ pub enum RenderError {
     /// `BufferAsyncError` rendering.
     #[error("readback buffer map failed: {0}")]
     BufferMap(String),
+
+    // ----- Slice 2: multipass scheduler variants. -----
+    /// [`crate::multipass::compile_and_render_multipass`] was called
+    /// with an empty `passes` list. The scheduler refuses to allocate
+    /// a zero-pass spec rather than returning an empty readback.
+    #[error("multipass spec has no passes")]
+    EmptyPassList,
+
+    /// A multipass [`crate::multipass::PassDef`] referenced a source
+    /// pass index that is at or beyond the current pass's index.
+    /// Forward references and self-references are rejected to
+    /// prevent feedback-edge cycles in slice 2 (full feedback
+    /// support lands in slice 3).
+    #[error(
+        "multipass pass {pass_index} references source pass {source_pass_index} \
+         (must be < {pass_index}; spec has {num_passes} passes total)"
+    )]
+    PassInputOutOfRange {
+        /// Index of the pass declaring the offending input binding.
+        pass_index: usize,
+        /// Source pass index supplied in the binding (>= pass_index).
+        source_pass_index: usize,
+        /// Total number of passes in the spec, surfaced for triage.
+        num_passes: usize,
+    },
+
+    /// A uniform value supplied via
+    /// [`crate::multipass::UniformInput`] could not be marshalled
+    /// into the per-pass uniform buffer. Slice 2's surface fires
+    /// this on empty uniform names; slice 3 expands it to cover
+    /// audio uniform binding edge cases.
+    #[error("multipass uniform binding failed (pass={pass_label}, name={name}): {reason}")]
+    UniformBindingFailed {
+        /// Caller-supplied pass label for triage; `(unlabelled)`
+        /// when the [`crate::multipass::PassDef::label`] is `None`.
+        pass_label: String,
+        /// Name of the uniform that failed to marshal.
+        name: String,
+        /// Diagnostic explanation.
+        reason: String,
+    },
+
+    /// A per-pass render step inside the multipass scheduler failed.
+    /// Wraps the original [`RenderError`] from the inner pass with
+    /// the offending pass index for triage.
+    #[error("multipass pass {pass_index} render failed: {source}")]
+    PassRenderFailed {
+        /// Index of the pass that failed.
+        pass_index: usize,
+        /// Original error from the inner pass.
+        #[source]
+        source: Box<RenderError>,
+    },
 }
 
 /// GLSL source for the hardcoded full-screen triangle vertex shader.
@@ -139,7 +192,7 @@ pub enum RenderError {
 /// `copy_texture_to_buffer`). Without the flip, uv = (0, 0) lands
 /// at the lower-left and the corner-sentinel pin in the T2 corpus
 /// reads inverted.
-const FULLSCREEN_TRIANGLE_GLSL: &str = r#"
+pub(crate) const FULLSCREEN_TRIANGLE_GLSL: &str = r#"
 #version 450
 layout(location = 0) out vec2 uv;
 void main() {
@@ -230,7 +283,7 @@ pub fn compile_and_render_single_pass(
     let device = Arc::new(device);
 
     // 2. Compile the user's GLSL fragment shader through naga.
-    let fragment_module = compile_glsl(glsl_fragment_source, naga::ShaderStage::Fragment)?;
+    let fragment_module = compile_glsl_module(glsl_fragment_source, naga::ShaderStage::Fragment)?;
     let fragment_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("chromaticity-render fragment (user GLSL)"),
         source: wgpu::ShaderSource::Naga(Cow::Owned(fragment_module)),
@@ -238,7 +291,7 @@ pub fn compile_and_render_single_pass(
 
     // 3. Hardcoded GLSL vertex shader (see FULLSCREEN_TRIANGLE_GLSL
     // doc comment for the GLSL-vs-WGSL choice rationale).
-    let vertex_module = compile_glsl(FULLSCREEN_TRIANGLE_GLSL, naga::ShaderStage::Vertex)?;
+    let vertex_module = compile_glsl_module(FULLSCREEN_TRIANGLE_GLSL, naga::ShaderStage::Vertex)?;
     let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("chromaticity-render vertex (fullscreen triangle)"),
         source: wgpu::ShaderSource::Naga(Cow::Owned(vertex_module)),
@@ -438,7 +491,14 @@ pub fn compile_and_render_single_pass(
 /// error string with `(stage=Vertex)` prefix to aid triage. Slice 2
 /// adds a [`RenderError::VertexParse`] variant when user-supplied
 /// vertex shaders enter the surface.
-fn compile_glsl(source: &str, stage: naga::ShaderStage) -> Result<naga::Module, RenderError> {
+///
+/// Visibility is `pub(crate)` so the slice-2 multipass scheduler in
+/// `crate::multipass` can reuse the same compile path (uniform
+/// per-pass GLSL toolchain across slice-1 and slice-2 entry points).
+pub(crate) fn compile_glsl_module(
+    source: &str,
+    stage: naga::ShaderStage,
+) -> Result<naga::Module, RenderError> {
     let stage_label = match stage {
         naga::ShaderStage::Vertex => "Vertex",
         naga::ShaderStage::Fragment => "Fragment",
@@ -476,7 +536,7 @@ mod compile_drift_pins {
     //!
     //! T1 per `docs/43-development-standards.md` §15.5: pins the
     //! naga compile path against the slice-1 entry-point contract
-    //! ([`super::compile_glsl_fragment`]):
+    //! ([`super::compile_glsl_module`]):
     //!
     //! - a minimal valid 4.50 fragment shader compiles and validates,
     //! - a syntactically broken fragment shader rejects with
@@ -494,7 +554,7 @@ mod compile_drift_pins {
     //! the drift pin survives even on a runner without a usable wgpu
     //! adapter.
 
-    use super::{RenderError, compile_and_render_single_pass, compile_glsl};
+    use super::{RenderError, compile_and_render_single_pass, compile_glsl_module};
 
     const TRIVIAL_FRAGMENT: &str = r#"
 #version 450
@@ -515,7 +575,7 @@ void main() {
 
     #[test]
     fn trivial_fragment_compiles() {
-        let module = compile_glsl(TRIVIAL_FRAGMENT, naga::ShaderStage::Fragment)
+        let module = compile_glsl_module(TRIVIAL_FRAGMENT, naga::ShaderStage::Fragment)
             .expect("valid GLSL 4.50 UV-passthrough must compile");
         assert!(
             !module.entry_points.is_empty(),
@@ -525,7 +585,7 @@ void main() {
 
     #[test]
     fn broken_fragment_returns_parse_error() {
-        let err = compile_glsl(BROKEN_FRAGMENT, naga::ShaderStage::Fragment)
+        let err = compile_glsl_module(BROKEN_FRAGMENT, naga::ShaderStage::Fragment)
             .expect_err("undefined identifier must fail naga frontend");
         assert!(
             matches!(err, RenderError::FragmentParse(_)),
@@ -535,8 +595,9 @@ void main() {
 
     #[test]
     fn fullscreen_triangle_vertex_compiles() {
-        let module = compile_glsl(super::FULLSCREEN_TRIANGLE_GLSL, naga::ShaderStage::Vertex)
-            .expect("hardcoded fullscreen-triangle vertex must compile");
+        let module =
+            compile_glsl_module(super::FULLSCREEN_TRIANGLE_GLSL, naga::ShaderStage::Vertex)
+                .expect("hardcoded fullscreen-triangle vertex must compile");
         assert!(
             !module.entry_points.is_empty(),
             "vertex module should expose at least one entry point",
