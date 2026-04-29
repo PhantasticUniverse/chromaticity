@@ -62,6 +62,12 @@ ignore = [
     # proc-macro-error advisory chain in transitive dependencies.
     "RUSTSEC-2024-0370",
     "RUSTSEC-2026-0009",
+    # `paste` (RUSTSEC-2024-0436) is unmaintained but pulled in by
+    # `wgpu` -> `wgpu-hal` -> `metal` for the macOS Metal backend.
+    # No direct safe upgrade path; revisit when wgpu migrates off
+    # paste or when metal-rs vendors a maintained replacement. Trial
+    # period for the wgpu+naga toolchain (Phase-2 EV-RENDER-CONFORMANCE).
+    "RUSTSEC-2024-0436",
 ]
 
 [licenses]

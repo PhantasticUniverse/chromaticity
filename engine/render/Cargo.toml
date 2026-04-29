@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity engine render crate.
+#
+# Phase-2 slice 1 scaffold. Establishes the wgpu + naga + GLSL 4.50 →
+# SPIR-V toolchain mandated by docs/adr/ADR-011-rendering-backend.md
+# and produces the first evidence row toward `EV-RENDER-CONFORMANCE`
+# (docs/26-evidence-artifact-registry.md row 28). Slice 1 ships:
+#
+#   - a single-pass `compile_and_render_single_pass` entry point
+#     consuming hand-written GLSL fragment source (no Lygia trial in
+#     this slice; the AO trial-vendoring is a follow-up wave),
+#   - a hardcoded full-screen-triangle vertex shader,
+#   - RGBA8Unorm offscreen target + pixel readback (RGBA32F / RGBA16F
+#     coverage per ADR-011 §Decision is later-slice scope),
+#   - structured `RenderError` reporting for naga compile / wgpu
+#     adapter / device-loss failures.
+#
+# Slice 1 deliberately omits multi-pass scheduling, render-graph data
+# structures, `engine/scene::PassSpec` consumption, feedback texture
+# sampling, transition orchestration, audio uniform binding, and the
+# Metal / DX12 backend matrix — each is its own follow-up slice.
+#
+# Governing ADRs:
+#   ADR-011 — rendering backend (docs/adr/ADR-011-rendering-backend.md)
+#   ADR-018 — non-scene UI toolkit (docs/adr/ADR-018-non-scene-ui-toolkit.md)
+#
+# See also docs/43-development-standards.md §12.1. All workspace lints
+# (including unsafe_code = forbid, clippy::unwrap_used = deny,
+# clippy::expect_used = deny) are inherited; no local relaxation.
+
+[package]
+name = "chromaticity-render"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity render pipeline (wgpu + naga GLSL→SPIR-V single-pass scaffold)."
+
+[lints]
+workspace = true
+
+[dependencies]
+# wgpu 26 is the highest line whose published MSRV (1.84) is compatible
+# with the workspace MSRV (1.85.0). wgpu 27+ raises MSRV to 1.88; bumps
+# require a paired rust-toolchain.toml + Cargo.toml MSRV bump under a
+# `policy`-scoped PR. License: Apache-2.0 OR MIT (allow-listed by
+# /deny.toml).
+# Default features bring std + the platform-native backends (dx12,
+# metal, gles, vulkan, wgsl, webgpu, parking_lot). slice-1 disables
+# default features and explicitly enumerates the backends we ship:
+# Metal (macOS), Vulkan (Linux + Windows for now), and GLES (legacy
+# fallback). DX12 is deliberately deferred to a follow-up slice — wgpu
+# 26.0.6's wgpu-hal DX12 bindings hit a multi-version `windows-core`
+# resolution conflict against Tauri 2's transitive `windows` crates
+# (0.54 + 0.58 + 0.61 + 0.62 coexist in Cargo.lock), which surfaces
+# as wgpu-hal compile errors on `windows-latest` clippy. Vulkan on
+# Windows is a working backend (mesa-vulkan via WSL or DXVK on bare
+# metal); revisit DX12 when upstream wgpu / Tauri align their
+# windows-rs version pins. slice-1 also adds the `glsl` GLSL frontend,
+# `spirv` SPIR-V passthrough, and `naga-ir` direct-IR shader source so
+# the naga compile step is observable from this crate. License:
+# Apache-2.0 OR MIT (allow-listed by /deny.toml).
+wgpu = { version = "26", default-features = false, features = [
+    "metal",
+    "vulkan",
+    "gles",
+    "glsl",
+    "spirv",
+    "naga-ir",
+    "wgsl",
+] }
+
+# naga 26 matches wgpu 26's pinned reexport; the GLSL frontend produces
+# the IR that wgpu's SPIR-V passthrough consumes. License: Apache-2.0
+# OR MIT (allow-listed by /deny.toml).
+naga = { version = "26", default-features = false, features = ["glsl-in", "spv-out", "wgsl-out"] }
+
+# bytemuck zero-copy POD/Cast helpers for vertex / uniform buffer
+# layouts. License: Apache-2.0 OR MIT OR Zlib (allow-listed by
+# /deny.toml).
+bytemuck = { version = "1", features = ["derive"] }
+
+# pollster blocks on wgpu's async device / buffer-map futures from a
+# synchronous context. The slice-1 entry point is sync; later slices
+# that integrate with the runtime bus may switch to a real executor.
+# License: Apache-2.0 OR MIT (allow-listed by /deny.toml).
+pollster = "0.4"
+
+# thiserror generates the `RenderError` Display / Error impls. Already
+# pulled transitively by Tauri 2 / wgpu; adding the direct dep keeps
+# our error surface boundary explicit. License: Apache-2.0 OR MIT
+# (allow-listed by /deny.toml).
+thiserror = "2"
+
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }

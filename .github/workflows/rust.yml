@@ -206,11 +206,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tauri linux deps (cached)
+      - name: Install tauri + wgpu linux deps (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1
         with:
-          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libxdo-dev libasound2-dev build-essential
-          version: 1.0
+          # libvulkan1 + mesa-vulkan-drivers + libegl-mesa0 supply the
+          # headless Vulkan ICD that the engine/render
+          # `EV-RENDER-CONFORMANCE` corpus needs on Linux. Without
+          # them, wgpu's `Instance::request_adapter` returns no
+          # candidates and the corpus fails with
+          # `RenderError::AdapterUnavailable` (introduced with the
+          # Phase-2 slice-1 render scaffold). The version bump from
+          # 1.0 to 2.0 invalidates the apt-package cache entry so
+          # the new mesa packages land on the first run after merge.
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libxdo-dev libasound2-dev build-essential libvulkan1 mesa-vulkan-drivers libegl-mesa0
+          version: 2.0
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup show
@@ -225,7 +234,15 @@ jobs:
       - name: Verify frontend dist sentinel
         run: test -f dist/.gitkeep
 
+      # Pin the wgpu backend to Vulkan on Linux so the slice-1
+      # `EV-RENDER-CONFORMANCE` corpus uses the llvmpipe ICD installed
+      # above (rather than the GL backend which lacks features the
+      # slice will exercise in later passes). The variable is read
+      # only by the wgpu instance; no untrusted github.event.* input
+      # is consumed here.
       - name: Run unit + integration tests (nextest)
+        env:
+          WGPU_BACKEND: vulkan
         run: cargo nextest run --workspace --all-targets --no-fail-fast
 
       # nextest does not execute doctests. Keep a separate sweep so

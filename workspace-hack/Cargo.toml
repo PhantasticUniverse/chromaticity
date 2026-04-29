@@ -25,12 +25,16 @@ workspace = true
 
 ### BEGIN HAKARI SECTION
 [dependencies]
+bitflags = { version = "2", default-features = false, features = ["serde"] }
 byteorder = { version = "1" }
+indexmap = { version = "2" }
 memchr = { version = "2" }
+once_cell = { version = "1" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.11" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = { version = "1" }
+raw-window-handle = { version = "0.6", default-features = false, features = ["std"] }
 schemars = { version = "0.8", features = ["preserve_order", "url", "uuid1"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
@@ -40,9 +44,11 @@ stable_deref_trait = { version = "1" }
 tauri = { version = "2", features = ["custom-protocol"] }
 tauri-utils = { version = "2", default-features = false, features = ["build", "compression", "resources"] }
 uuid = { version = "1", features = ["serde", "v4"] }
+zerocopy = { version = "0.8", default-features = false, features = ["derive", "simd"] }
 
 [build-dependencies]
 byteorder = { version = "1" }
+indexmap = { version = "2" }
 memchr = { version = "2" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.11" }
@@ -59,23 +65,27 @@ tauri-build = { version = "2" }
 tauri-macros = { version = "2", default-features = false, features = ["compression", "custom-protocol"] }
 tauri-utils = { version = "2", default-features = false, features = ["build", "compression", "resources"] }
 uuid = { version = "1", features = ["serde", "v4"] }
+zerocopy = { version = "0.8", default-features = false, features = ["derive", "simd"] }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
-bitflags = { version = "2", default-features = false, features = ["serde"] }
 smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
 
 [target.x86_64-unknown-linux-gnu.build-dependencies]
+once_cell = { version = "1" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
 
 [target.aarch64-apple-darwin.dependencies]
-bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+bitflags = { version = "2", default-features = false, features = ["std"] }
+core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
+core-graphics-types = { version = "0.2" }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
+smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
@@ -86,18 +96,22 @@ nom = { version = "7", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
+smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-apple-darwin.dependencies]
-bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+bitflags = { version = "2", default-features = false, features = ["std"] }
+core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
+core-graphics-types = { version = "0.2" }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
+smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-apple-darwin.build-dependencies]
@@ -108,14 +122,17 @@ nom = { version = "7", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
+smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-pc-windows-msvc.dependencies]
+smallvec = { version = "1", default-features = false, features = ["const_generics", "union"] }
 windows-sys-73dcd821b1037cfd = { package = "windows-sys", version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Time", "Win32_UI_WindowsAndMessaging"] }
 windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.x86_64-pc-windows-msvc.build-dependencies]
+smallvec = { version = "1", default-features = false, features = ["const_generics", "union"] }
 windows-sys-73dcd821b1037cfd = { package = "windows-sys", version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Time", "Win32_UI_WindowsAndMessaging"] }
 windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
