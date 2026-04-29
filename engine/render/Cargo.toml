@@ -22,6 +22,16 @@
 # sampling, transition orchestration, audio uniform binding, and the
 # Metal / DX12 backend matrix — each is its own follow-up slice.
 #
+# Slice 4 (the current head) adds: feedback-texture sampling
+# (PassDef::feedback_self + ping-pong texture pair, multi-frame
+# execution via MultipassSpec::frame_count), RGBA32F / RGBA16F
+# float-target conformance per ADR-011 §Decision (TargetFormat
+# enum + per-pass target_format), and the
+# chromaticity_scene::Scene → MultipassSpec adapter (gated behind
+# the optional `scene-adapter` cargo feature). The slice-2
+# byte-hash corpus stays bit-identical for the trivial
+# (single-frame, Rgba8Unorm-only, no feedback) path.
+#
 # Governing ADRs:
 #   ADR-011 — rendering backend (docs/adr/ADR-011-rendering-backend.md)
 #   ADR-018 — non-scene UI toolkit (docs/adr/ADR-018-non-scene-ui-toolkit.md)
@@ -37,7 +47,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Chromaticity render pipeline (wgpu + naga GLSL→SPIR-V single-pass scaffold)."
+description = "Chromaticity render pipeline (wgpu + naga GLSL→SPIR-V multipass + feedback + float targets + scene adapter)."
 
 [lints]
 workspace = true
@@ -95,4 +105,29 @@ pollster = "0.4"
 # (allow-listed by /deny.toml).
 thiserror = "2"
 
+# chromaticity-scene is an OPTIONAL dependency, gated behind the
+# `scene-adapter` cargo feature. The render scheduler stays scene-
+# agnostic by default (see `multipass.rs` module-level doc); the
+# `scene_adapter` module bridges `engine/scene::PassSpec` →
+# `MultipassSpec` for callers that want the coupling. CI's workspace
+# test invocation enables `--all-features` on this crate so the
+# adapter is exercised; downstream binaries opt in explicitly.
+chromaticity-scene = { version = "0.0.0", path = "../scene", optional = true }
+
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+[features]
+default = []
+# Enables the `scene_adapter` module which produces a `MultipassSpec`
+# from a `chromaticity_scene::Scene`. Turning this on adds a
+# crate-level dep on `chromaticity-scene`. See `scene_adapter.rs`
+# module-level doc for the schema → runtime mapping rules.
+scene-adapter = ["dep:chromaticity-scene"]
+
+[dev-dependencies]
+# `serde_json` is needed by the slice-4 scene-adapter T1 / T2 tests
+# to construct `Scene` extension maps via the `json!()` macro. The
+# `chromaticity_scene::Scene` re-exports `serde_json::Map` /
+# `serde_json::Value` in its public API; the tests mirror that
+# vocabulary. License: Apache-2.0 OR MIT (allow-listed by /deny.toml).
+serde_json = "1"
