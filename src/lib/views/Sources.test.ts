@@ -23,12 +23,11 @@
 //
 // Live-source platform gating: `currentPlatform` is a module-level
 // constant read once from `navigator.userAgent`. Under jsdom the UA is
-// `"Mozilla/5.0 (darwin) AppleWebKit/... jsdom/29.0.2"` — note that
-// the substring `win` lives inside `darwin`, so the existing detector
-// (`ua.toLowerCase().includes('win')`) resolves to `'win'` under
-// jsdom, not `'mac'`. Spout rows are therefore platform-enabled when
-// `available: true`. The cross-platform / unavailable distinctions
-// still apply.
+// `"Mozilla/5.0 (darwin) AppleWebKit/... jsdom/29.0.2"`. The detector
+// uses a word-boundary regex (`/\bwin/.test(ua)`), so `darwin` no
+// longer matches and the platform resolves to `'mac'` under jsdom. Spout
+// rows (`kind === 'spout'`) are therefore platform-disabled with the
+// canonical Windows-only tooltip, mirroring real macOS runtime behaviour.
 
 import '@testing-library/jest-dom/vitest';
 import { within } from '@testing-library/dom';
@@ -177,11 +176,26 @@ describe('Sources view', () => {
     }
   });
 
+  it('Spout rows on macOS render the disabled state with the Windows-only tooltip', () => {
+    // Regression guard for the W22 PR2 platform detector: under jsdom
+    // (`darwin` UA) `currentPlatform === 'mac'`, so Spout rows must be
+    // disabled with the bundle-canonical tooltip even when their
+    // `available: true` fixture flag would otherwise enable them.
+    const { getByText } = render(Sources);
+    const spoutRow = getByText('Resolume Avenue · Out 1').closest('.sources__live-row');
+    expect(spoutRow).not.toBeNull();
+    if (spoutRow === null) return;
+    expect(spoutRow).toHaveClass('disabled');
+    expect(spoutRow).toHaveAttribute('title', 'Spout is Windows-only — use NDI on macOS.');
+    const action = within(spoutRow as HTMLElement).getByRole('button');
+    expect(action).toBeDisabled();
+  });
+
   it('cross-platform NDI rows render an enabled Connect button', () => {
-    // Under jsdom, `currentPlatform === 'win'` (the UA "darwin"
-    // substring matches `win`), so platform-availability gating does
-    // NOT disable Spout rows here. NDI cross-platform rows are
-    // unconditionally enabled when `available: true`.
+    // NDI cross-platform rows are unconditionally enabled when
+    // `available: true`, regardless of `currentPlatform`. Under jsdom the
+    // detector resolves to `'mac'` (see header comment), so this also
+    // exercises the macOS branch.
     const { getByText } = render(Sources);
     const ndiRow = getByText('Studio Camera 1').closest('.sources__live-row');
     expect(ndiRow).not.toBeNull();
