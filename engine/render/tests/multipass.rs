@@ -135,20 +135,20 @@ fn red_to_blue_two_pass_cascade() {
             PassDef {
                 label: Some("red-to-blue/pass-0/red".to_string()),
                 fragment_glsl: CONSTANT_RED_FRAGMENT.to_string(),
-                uniforms: vec![],
-                input_textures: vec![],
+                ..PassDef::default()
             },
             PassDef {
                 label: Some("red-to-blue/pass-1/swap-rb".to_string()),
                 fragment_glsl: SAMPLE_AND_SWAP_RB_FRAGMENT.to_string(),
-                uniforms: vec![],
                 input_textures: vec![PassInputBinding {
                     source_pass_index: 0,
                     sampler_uniform_name: "pass0".to_string(),
                 }],
+                ..PassDef::default()
             },
         ],
         target_size: (16, 16),
+        ..MultipassSpec::default()
     };
 
     let pixels = compile_and_render_multipass(&spec)
@@ -245,29 +245,29 @@ fn uv_attenuation_three_pass_cascade() {
             PassDef {
                 label: Some("uv-attenuation/pass-0/uv-gradient".to_string()),
                 fragment_glsl: UV_GRADIENT_FRAGMENT.to_string(),
-                uniforms: vec![],
-                input_textures: vec![],
+                ..PassDef::default()
             },
             PassDef {
                 label: Some("uv-attenuation/pass-1/halve".to_string()),
                 fragment_glsl: SAMPLE_AND_HALVE_FRAGMENT.to_string(),
-                uniforms: vec![],
                 input_textures: vec![PassInputBinding {
                     source_pass_index: 0,
                     sampler_uniform_name: "prev".to_string(),
                 }],
+                ..PassDef::default()
             },
             PassDef {
                 label: Some("uv-attenuation/pass-2/halve".to_string()),
                 fragment_glsl: SAMPLE_AND_HALVE_FRAGMENT.to_string(),
-                uniforms: vec![],
                 input_textures: vec![PassInputBinding {
                     source_pass_index: 1,
                     sampler_uniform_name: "prev".to_string(),
                 }],
+                ..PassDef::default()
             },
         ],
         target_size: (16, 16),
+        ..MultipassSpec::default()
     };
 
     let pixels = compile_and_render_multipass(&spec)
@@ -367,9 +367,10 @@ fn single_pass_uniform_binding() {
                 name: "u_brightness".to_string(),
                 value: UniformValue::Scalar(0.5),
             }],
-            input_textures: vec![],
+            ..PassDef::default()
         }],
         target_size: (16, 16),
+        ..MultipassSpec::default()
     };
 
     let pixels = compile_and_render_multipass(&spec)
@@ -441,10 +442,10 @@ fn single_pass_multipass_consistency_invariant() {
         passes: vec![PassDef {
             label: Some("consistency/pass-0/uv-gradient".to_string()),
             fragment_glsl: UV_GRADIENT_FRAGMENT.to_string(),
-            uniforms: vec![],
-            input_textures: vec![],
+            ..PassDef::default()
         }],
         target_size: (16, 16),
+        ..MultipassSpec::default()
     };
     let pixels =
         compile_and_render_multipass(&spec).expect("single-element multipass spec must succeed");

@@ -165,6 +165,43 @@ pub enum RenderError {
         #[source]
         source: Box<RenderError>,
     },
+
+    // ----- Slice 4: feedback / float targets / scene adapter. -----
+    /// A feedback pass declared via
+    /// [`crate::multipass::PassDef::feedback_self`] violated a
+    /// structural constraint (e.g. a feedback pass also listing
+    /// itself in [`crate::multipass::PassDef::input_textures`] —
+    /// the ping-pong texture is wired implicitly, not via a manual
+    /// binding).
+    #[error("multipass pass {pass_index} feedback alias error: {reason}")]
+    FeedbackAliasError {
+        /// Index of the pass declaring the offending feedback.
+        pass_index: usize,
+        /// Diagnostic explanation.
+        reason: String,
+    },
+
+    /// A pass requested a [`crate::multipass::TargetFormat`] that
+    /// the active wgpu adapter / backend cannot support. The
+    /// `format` string is a human-readable label
+    /// (`"Rgba16Float"` / `"Rgba32Float"`); `reason` carries the
+    /// upstream wgpu / adapter diagnostic.
+    #[error("multipass float target unsupported (format={format}): {reason}")]
+    FloatTargetUnsupported {
+        /// Human-readable target format label.
+        format: String,
+        /// Upstream diagnostic.
+        reason: String,
+    },
+
+    /// The optional `scene-adapter` feature's
+    /// [`crate::scene_adapter::AdapterError`] surfaced through the
+    /// `MultipassSpec::from_scene` boundary. Wrapped as a string
+    /// so the public error surface does not leak the
+    /// `chromaticity-scene` type into callers that compile
+    /// without the `scene-adapter` feature.
+    #[error("scene-adapter conversion failed: {0}")]
+    SceneAdapterError(String),
 }
 
 /// GLSL source for the hardcoded full-screen triangle vertex shader.

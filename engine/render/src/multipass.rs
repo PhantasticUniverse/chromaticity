@@ -87,20 +87,61 @@
 //!   bit-identical to slice 1's (same wgpu format, same row-padding
 //!   strip).
 //!
+//! # Slice-4 deltas (this PR)
+//!
+//! Slice 4 widens the slice-2 surface in three additive directions
+//! while preserving every slice-2 byte-hash:
+//!
+//! 1. **Feedback-texture sampling.** A pass with
+//!    [`PassDef::feedback_self`] = `true` samples its OWN previous-
+//!    frame output via implicitly-wired ping-pong textures. The
+//!    sampler binds at the LAST `1 + 2*i` slot in the pass's input
+//!    binding table, AFTER any explicit prior-pass bindings. Two
+//!    textures alternate per frame: on frame `K` the pass writes
+//!    target `K % 2` and reads texture `(K + 1) % 2`. Frame `0`'s
+//!    read sees a black-cleared texture (the `LoadOp::Clear` invoked
+//!    on first allocation), which is the well-defined "cold start"
+//!    state. Self-reference via [`PassInputBinding`] still rejects
+//!    with [`RenderError::PassInputOutOfRange`]; feedback wiring
+//!    goes through the dedicated `feedback_self` flag instead.
+//!
+//! 2. **Float targets.** [`PassDef::target_format`] selects the
+//!    per-pass color format from [`TargetFormat`]: the slice-2
+//!    default `Rgba8Unorm`, plus `Rgba16Float` and `Rgba32Float`
+//!    per `docs/adr/ADR-011-rendering-backend.md` §Decision. The
+//!    final-pass readback resolves to a stable byte representation
+//!    regardless of format; the byte-hash captures the precision
+//!    delta. Adapters lacking `RENDER_ATTACHMENT` for the requested
+//!    float format surface as
+//!    [`RenderError::FloatTargetUnsupported`].
+//!
+//! 3. **Multi-frame execution.** [`MultipassSpec::frame_count`]
+//!    drives the scheduler over N consecutive frames before
+//!    returning the final frame's readback. With `frame_count == 1`
+//!    (the slice-2 default) the behavior is bit-identical to the
+//!    slice-2 corpus. The multi-frame loop is the entry-point's
+//!    feedback driver; callers wanting per-frame inspection drive
+//!    [`compile_and_render_multipass`] manually with
+//!    `frame_count = 1` and external state (out of slice-4 scope).
+//!
+//! Plus the optional `scene-adapter` feature
+//! ([`crate::scene_adapter`]) producing a [`MultipassSpec`] from
+//! `chromaticity_scene::Scene`.
+//!
 //! # Still deferred (not in this slice)
 //!
-//! - Feedback-texture sampling (a pass reading its OWN previous-frame
-//!   output) — slice 3.
 //! - Transition orchestration (warm-switch between scene graphs) —
-//!   slice 4 (ADR-007).
+//!   ADR-007 follow-up slice.
 //! - Audio uniform binding (`syn_BPM`, `syn_LEVEL`, `audio[]` 1D
-//!   sampler) — slice 5 (`engine/audio` integration).
-//! - `RGBA32F` / `RGBA16F` float-target conformance — slice 3 (per
-//!   ADR-011 §Decision).
+//!   sampler) — `engine/audio` integration slice.
 //! - DX12 backend (Tauri 2 + windows-rs version conflict; tracked in
 //!   `engine/render/Cargo.toml`).
-//! - Adapter-driven `MultipassSpec` from `engine/scene::PassSpec` —
-//!   own slice with the crate-coupling decision.
+//! - Per-pass `WIDTH` / `HEIGHT` extension overrides — slice-4 keeps
+//!   one shared target size; the `scene_adapter` reads the per-pass
+//!   `WIDTH` / `HEIGHT` extensions but folds them into `target_size`
+//!   conservatively (see `scene_adapter.rs` doc).
+//! - Per-pass sampler `WRAP` / `FILTER` extension overrides —
+//!   slice-4 still uses the shared nearest / clamp sampler.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -113,22 +154,118 @@ use crate::single_pass::{FULLSCREEN_TRIANGLE_GLSL, RenderError, compile_glsl_mod
 
 /// Plain-data scheduler input.
 ///
-/// Constructed by callers (or, in a follow-up slice, by an adapter
-/// over `engine/scene::PassSpec`). Slice-2 keeps this surface free of
-/// a `PassSpec` dependency on purpose — see module-level doc.
+/// Constructed by callers (or, with the `scene-adapter` feature
+/// enabled, by [`crate::scene_adapter`] over
+/// `chromaticity_scene::Scene`). Slice-2 kept this surface free of
+/// a `PassSpec` dependency; slice-4 preserves that invariant — the
+/// adapter is in a separate module gated behind a cargo feature.
 #[derive(Debug, Clone)]
 pub struct MultipassSpec {
-    /// Ordered pass list. Pass `i` may sample any pass at index `< i`.
+    /// Ordered pass list. Pass `i` may sample any pass at index `< i`
+    /// via [`PassInputBinding`], and may additionally sample its OWN
+    /// previous-frame output via [`PassDef::feedback_self`].
     pub passes: Vec<PassDef>,
     /// Final-pass render target dimensions (width, height). All
-    /// intermediate passes also use this size in slice 2; per-pass
-    /// `WIDTH` / `HEIGHT` extension overrides land with slice 3's
-    /// `PassSpec` adapter.
+    /// intermediate passes also use this size in slice 4; per-pass
+    /// `WIDTH` / `HEIGHT` extension overrides remain deferred (see
+    /// module-level "Still deferred" list).
     pub target_size: (u32, u32),
+    /// Number of consecutive frames to execute before returning the
+    /// FINAL frame's readback. `0` rejects with
+    /// [`RenderError::EmptyPassList`] (treated as a structural error
+    /// — there is nothing to render). `1` reproduces the slice-2
+    /// single-frame behavior bit-identically. Higher values drive
+    /// feedback passes; their ping-pong textures alternate per
+    /// frame so frame `K` reads texture `(K + 1) % 2` and writes
+    /// texture `K % 2`.
+    pub frame_count: u32,
+}
+
+impl Default for MultipassSpec {
+    /// Slice-4 default mirrors the slice-2 expectations: empty pass
+    /// list, zero target size (which the scheduler rejects), and
+    /// `frame_count = 1` so a default-constructed-then-populated
+    /// spec behaves like the slice-2 single-frame semantics until
+    /// the caller explicitly opts into multi-frame feedback.
+    fn default() -> Self {
+        Self {
+            passes: Vec::new(),
+            target_size: (0, 0),
+            frame_count: 1,
+        }
+    }
+}
+
+/// Per-pass color-attachment format for the multipass scheduler.
+///
+/// Slice-4 widens the slice-2 hardcoded `Rgba8Unorm` to cover the
+/// ADR-011 §Decision float targets. The slice-2 corpus continuity
+/// invariant is preserved by keeping `Rgba8Unorm` as the
+/// [`PassDef::target_format`] default — every existing slice-2
+/// fixture renders against the same backend bytes it always did.
+///
+/// The float variants require the wgpu adapter to advertise the
+/// `RENDER_ATTACHMENT` flag for the chosen format; on adapters that
+/// don't, [`compile_and_render_multipass`] returns
+/// [`RenderError::FloatTargetUnsupported`] without ever entering the
+/// pipeline-build stage.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub enum TargetFormat {
+    /// 8-bit unsigned-normalized per channel. Default, matches the
+    /// slice-1 and slice-2 corpus byte-format.
+    #[default]
+    Rgba8Unorm,
+    /// 16-bit half-float per channel. Quad memory of `Rgba8Unorm`,
+    /// extended dynamic range, byte-deterministic across runs of
+    /// the same backend (16-bit float bit patterns are stable).
+    Rgba16Float,
+    /// 32-bit float per channel. Highest precision; corpus tests
+    /// using `Rgba32Float` MUST quantize floats before hashing OR
+    /// rely on corner-sentinel-only invariants — adapter rounding
+    /// of f32 trailing bits is not bit-stable across backends.
+    Rgba32Float,
+}
+
+impl TargetFormat {
+    /// Map to the wgpu enum.
+    pub(crate) fn to_wgpu(self) -> wgpu::TextureFormat {
+        match self {
+            TargetFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+            TargetFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
+            TargetFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+        }
+    }
+
+    /// Bytes per pixel for the readback row stride. RGBA at 1 / 2 / 4
+    /// bytes per channel.
+    pub(crate) fn bytes_per_pixel(self) -> u32 {
+        match self {
+            TargetFormat::Rgba8Unorm => 4,
+            TargetFormat::Rgba16Float => 8,
+            TargetFormat::Rgba32Float => 16,
+        }
+    }
+
+    /// Human-readable label for diagnostics.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            TargetFormat::Rgba8Unorm => "Rgba8Unorm",
+            TargetFormat::Rgba16Float => "Rgba16Float",
+            TargetFormat::Rgba32Float => "Rgba32Float",
+        }
+    }
+
+    /// `true` if a `TextureSampleType::Float { filterable: true }`
+    /// is acceptable for sampling. `Rgba32Float` is non-filterable
+    /// on most adapters by default; we always use the non-filterable
+    /// sample type for safety.
+    pub(crate) fn _is_float(self) -> bool {
+        matches!(self, TargetFormat::Rgba16Float | TargetFormat::Rgba32Float)
+    }
 }
 
 /// Single-pass definition inside a [`MultipassSpec`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct PassDef {
     /// Optional debug label propagated into wgpu object labels.
     pub label: Option<String>,
@@ -137,6 +274,11 @@ pub struct PassDef {
     /// per-pass scheme described in the module-level doc (uniforms
     /// at `set = 0, binding = 0`, input textures at `1 + 2*i`,
     /// input samplers at `1 + 2*i + 1`).
+    ///
+    /// When [`Self::feedback_self`] is `true`, the previous-frame
+    /// self-feedback texture binds at the slot AFTER the explicit
+    /// `input_textures`, i.e. at `1 + 2 * input_textures.len()` /
+    /// `1 + 2 * input_textures.len() + 1`.
     pub fragment_glsl: String,
     /// Scalar / vector uniforms packed into the pass's uniform buffer
     /// in declaration order. Skip if the pass has no uniforms.
@@ -145,6 +287,20 @@ pub struct PassDef {
     /// index`) whose output texture should be exposed to the
     /// fragment shader as a `texture2D` + `sampler` pair.
     pub input_textures: Vec<PassInputBinding>,
+    /// Color-attachment format for this pass's render target. Default
+    /// is [`TargetFormat::Rgba8Unorm`] for slice-2 corpus continuity.
+    /// See [`TargetFormat`] for the float-target options.
+    pub target_format: TargetFormat,
+    /// `true` if this pass samples its OWN previous-frame output
+    /// (the "feedback" pattern for live-visuals trails / decay /
+    /// recursive convolution). Slice-4 wires the ping-pong texture
+    /// implicitly: callers do NOT add a [`PassInputBinding`] for
+    /// self-reference (which would still reject as
+    /// [`RenderError::PassInputOutOfRange`]); they set this flag
+    /// instead. Frame 0 reads a black-cleared texture; subsequent
+    /// frames read the texture this pass wrote on the previous
+    /// frame.
+    pub feedback_self: bool,
 }
 
 /// One named uniform value.
@@ -199,22 +355,33 @@ struct UniformSlot {
     bytes: [u8; 16],
 }
 
-/// Compile every pass in `spec` and render them sequentially, returning
-/// the FINAL pass's readback bytes (4 bytes per pixel, row-major,
-/// padding stripped — same shape as
-/// [`crate::compile_and_render_single_pass`]).
+/// Compile every pass in `spec` and render them sequentially across
+/// `spec.frame_count` frames, returning the FINAL frame's FINAL
+/// pass readback bytes (`target_format.bytes_per_pixel()` per pixel,
+/// row-major, padding stripped — same shape as
+/// [`crate::compile_and_render_single_pass`] for `Rgba8Unorm`).
+///
+/// Single-frame `frame_count = 1` plus all-`Rgba8Unorm` passes plus
+/// no `feedback_self` passes is bit-identical to slice-2 behavior.
 ///
 /// # Errors
 ///
-/// - [`RenderError::EmptyPassList`] — `spec.passes` is empty.
+/// - [`RenderError::EmptyPassList`] — `spec.passes` is empty OR
+///   `spec.frame_count == 0`.
 /// - [`RenderError::TargetSizeInvalid`] — width or height is zero.
 /// - [`RenderError::PassInputOutOfRange`] — a pass references a
-///   later or self pass index.
+///   later or self pass index via [`PassInputBinding`].
+/// - [`RenderError::FeedbackAliasError`] — a pass with
+///   [`PassDef::feedback_self`] = `true` ALSO listed itself via a
+///   manual [`PassInputBinding`] (the feedback ping-pong texture is
+///   wired implicitly).
+/// - [`RenderError::FloatTargetUnsupported`] — a pass requested a
+///   float [`TargetFormat`] that the active wgpu adapter cannot
+///   render to.
 /// - [`RenderError::FragmentParse`] / [`RenderError::FragmentValidate`] —
 ///   any pass's GLSL fails the naga frontend.
 /// - [`RenderError::UniformBindingFailed`] — uniform marshalling
-///   error (currently never fires on valid input; reserved for
-///   slice-3 audio uniform plumbing).
+///   error.
 /// - [`RenderError::PassRenderFailed`] — any per-pass wgpu submission
 ///   / readback failure, wrapping the original [`RenderError`] from
 ///   the inner pass with the offending pass index for triage.
@@ -230,6 +397,9 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
     if spec.passes.is_empty() {
         return Err(RenderError::EmptyPassList);
     }
+    if spec.frame_count == 0 {
+        return Err(RenderError::EmptyPassList);
+    }
     if spec.target_size.0 == 0 || spec.target_size.1 == 0 {
         return Err(RenderError::TargetSizeInvalid(spec.target_size));
     }
@@ -241,6 +411,18 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
                     pass_index,
                     source_pass_index: binding.source_pass_index,
                     num_passes,
+                });
+            }
+            if pass.feedback_self && binding.source_pass_index == pass_index {
+                // Defense-in-depth: source_pass_index == pass_index
+                // is already rejected by the previous check (>=);
+                // this branch is unreachable but keeps the feedback
+                // alias contract explicit at read-time.
+                return Err(RenderError::FeedbackAliasError {
+                    pass_index,
+                    reason: "feedback pass must not also list self in input_textures \
+                             (self-feedback is wired implicitly via the feedback_self flag)"
+                        .to_string(),
                 });
             }
         }
@@ -281,49 +463,134 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
         source: wgpu::ShaderSource::Naga(Cow::Owned(vertex_module)),
     });
 
-    // 4. Allocate one render target per pass. Each pass's target is
-    // also `COPY_SRC` so the FINAL pass can be read back via
-    // `copy_texture_to_buffer`; intermediate targets are
-    // `TEXTURE_BINDING` so later passes can sample them.
-    let color_format = wgpu::TextureFormat::Rgba8Unorm;
-    let bytes_per_pixel: u32 = 4;
-    let mut pass_targets: Vec<wgpu::Texture> = Vec::with_capacity(num_passes);
-    let mut pass_views: Vec<wgpu::TextureView> = Vec::with_capacity(num_passes);
-    for pass_index in 0..num_passes {
-        let is_final = pass_index + 1 == num_passes;
-        let usage = if is_final {
-            // Final pass: render to + read back.
-            wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::TEXTURE_BINDING
-        } else {
-            // Intermediate pass: render to + later passes sample it.
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING
-        };
-        let target = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("chromaticity-render multipass target"),
-            size: wgpu::Extent3d {
-                width: spec.target_size.0,
-                height: spec.target_size.1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: color_format,
-            usage,
-            view_formats: &[],
-        });
-        let view = target.create_view(&wgpu::TextureViewDescriptor::default());
-        pass_targets.push(target);
-        pass_views.push(view);
+    // 4. Float-target adapter capability check. Run BEFORE texture
+    // allocation so an unsupported format surfaces as
+    // `FloatTargetUnsupported` rather than as a downstream wgpu
+    // `TextureFormat unsupported` panic. We require
+    // `TextureUsages::RENDER_ATTACHMENT` because every pass renders
+    // to its target; sampling capability is checked implicitly when
+    // the bind group is created against a `TextureSampleType::Float
+    // { filterable: false }` layout entry.
+    let adapter_features = adapter.features();
+    let _ = adapter_features; // kept for future feature gating
+    for (pass_index, pass) in spec.passes.iter().enumerate() {
+        if matches!(
+            pass.target_format,
+            TargetFormat::Rgba16Float | TargetFormat::Rgba32Float
+        ) {
+            let format = pass.target_format.to_wgpu();
+            let features = adapter.get_texture_format_features(format);
+            if !features
+                .allowed_usages
+                .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+            {
+                return Err(RenderError::FloatTargetUnsupported {
+                    format: pass.target_format.label().to_string(),
+                    reason: format!(
+                        "adapter does not advertise RENDER_ATTACHMENT for {format:?} \
+                         (pass {pass_index})"
+                    ),
+                });
+            }
+        }
     }
 
-    // 5. A single shared sampler for ALL inter-pass texture lookups.
+    // 5. Allocate render targets per pass. The slice-2 pattern was
+    // ONE texture per pass; slice-4 widens to TWO textures for
+    // feedback passes (ping-pong) so a pass can sample its own
+    // previous-frame output.
+    //
+    // Storage shape: a flat `Vec<wgpu::Texture>` indexed by a
+    // `pass_texture_layout: Vec<PassTextureSlots>` indirection that
+    // records, per pass, the index range covering that pass's
+    // textures. Non-feedback passes occupy 1 slot; feedback passes
+    // occupy 2 (slot 0 is the "frame K%2 == 0" buffer, slot 1 the
+    // "K%2 == 1" buffer). The ordering of the flat vec matches the
+    // index range so per-pass-frame view selection is just an
+    // arithmetic index.
+    //
+    // The FINAL pass also needs `COPY_SRC` because we read back from
+    // it (whether or not it is a feedback pass).
+    struct PassTextureSlots {
+        first: usize,
+        feedback: bool,
+    }
+    let mut pass_textures: Vec<wgpu::Texture> = Vec::with_capacity(num_passes + 2);
+    let mut pass_views: Vec<wgpu::TextureView> = Vec::with_capacity(num_passes + 2);
+    let mut pass_texture_layout: Vec<PassTextureSlots> = Vec::with_capacity(num_passes);
+    for (pass_index, pass) in spec.passes.iter().enumerate() {
+        let is_final = pass_index + 1 == num_passes;
+        let mut usage =
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        if is_final {
+            usage |= wgpu::TextureUsages::COPY_SRC;
+        }
+        let format = pass.target_format.to_wgpu();
+        let slot_count = if pass.feedback_self { 2 } else { 1 };
+        let first = pass_textures.len();
+        for slot in 0..slot_count {
+            let label = if pass.feedback_self {
+                format!(
+                    "chromaticity-render multipass target (pass {pass_index}, ping-pong slot {slot})"
+                )
+            } else {
+                format!("chromaticity-render multipass target (pass {pass_index})")
+            };
+            let target = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(&label),
+                size: wgpu::Extent3d {
+                    width: spec.target_size.0,
+                    height: spec.target_size.1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            });
+            let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+            pass_textures.push(target);
+            pass_views.push(view);
+        }
+        pass_texture_layout.push(PassTextureSlots {
+            first,
+            feedback: pass.feedback_self,
+        });
+    }
+
+    /// Index into `pass_views` / `pass_textures` for the texture
+    /// that pass `pass_index` WROTE on frame `frame`.
+    fn write_slot(layout: &[PassTextureSlots], pass_index: usize, frame: u32) -> usize {
+        let slots = &layout[pass_index];
+        if slots.feedback {
+            slots.first + (frame as usize % 2)
+        } else {
+            slots.first
+        }
+    }
+
+    /// Index into `pass_views` for the texture that pass
+    /// `pass_index` READS on frame `frame` for its self-feedback
+    /// binding (only meaningful when `slots.feedback == true`).
+    fn feedback_read_slot(layout: &[PassTextureSlots], pass_index: usize, frame: u32) -> usize {
+        let slots = &layout[pass_index];
+        // Reads texture (frame + 1) % 2; on frame 0 reads slot 1
+        // (the texture not yet written this run, which is black-
+        // cleared on first allocation per wgpu's
+        // `mapped_at_creation: false` default). Subsequent frames
+        // read the texture this pass wrote on the previous frame.
+        slots.first + ((frame as usize + 1) % 2)
+    }
+
+    // 6. A single shared sampler for ALL inter-pass texture lookups.
     // Slice-2's sampler is nearest / clamp-to-edge — the deterministic
-    // choice that makes the readback hash bit-stable. Slice-3's
-    // adapter over `PassSpec::extensions["WRAP"]` /
-    // `extensions["FILTER"]` will widen this surface.
+    // choice that makes the readback hash bit-stable. Slice-4 widens
+    // the sampler-binding-type to `NonFiltering` (already the slice-2
+    // default), which is also the only sample type compatible with
+    // `Rgba32Float` on most adapters without enabling extra wgpu
+    // features.
     let shared_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         label: Some("chromaticity-render multipass shared sampler (nearest/clamp)"),
         address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -339,35 +606,33 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
         border_color: None,
     });
 
-    // 6. Encode all passes into one command buffer; submit at the end.
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("chromaticity-render multipass encoder"),
-    });
-
-    // The pipeline / bind-group / uniform-buffer state for each pass
-    // must outlive `begin_render_pass` (the borrow reaches into them
-    // through the bind groups) and must not be dropped before
-    // `encoder.finish()`. We collect them into a `Vec` keyed by pass
-    // index and let the loop borrow into it.
-    struct PassResources {
-        _uniform_buffer: Option<wgpu::Buffer>,
-        _bind_group_layout: wgpu::BindGroupLayout,
-        bind_group: wgpu::BindGroup,
-        _pipeline_layout: wgpu::PipelineLayout,
+    // 7. Build per-pass STATIC resources (layout, pipeline, uniform
+    // buffer, vertex buffer, fragment shader). Bind groups are NOT
+    // built here because feedback passes need a per-frame bind
+    // group (the read texture flips with frame parity). Non-feedback
+    // passes get a stable bind group, but we rebuild them per-frame
+    // anyway for code simplicity — the cost is negligible at the
+    // frame counts the corpus uses (≤ 16 frames).
+    struct PassStatics {
+        bind_group_layout: wgpu::BindGroupLayout,
         pipeline: wgpu::RenderPipeline,
+        uniform_buffer: Option<wgpu::Buffer>,
+        _pipeline_layout: wgpu::PipelineLayout,
         _vertex_buffer: wgpu::Buffer,
     }
-    let mut pass_resources: Vec<PassResources> = Vec::with_capacity(num_passes);
+    let mut pass_statics: Vec<PassStatics> = Vec::with_capacity(num_passes);
 
     for (pass_index, pass) in spec.passes.iter().enumerate() {
         let pass_label = pass.label.as_deref().unwrap_or("(unlabelled)");
 
-        // 6a. Build bind group layout entries.
+        // 7a. Bind group LAYOUT — uniform block at binding 0 (if any),
+        // explicit input textures at `1 + 2*i`, then (if feedback) a
+        // self-feedback texture at the slot AFTER the explicit
+        // bindings.
         let mut bgl_entries: Vec<wgpu::BindGroupLayoutEntry> = Vec::new();
         let uniform_buffer = if pass.uniforms.is_empty() {
             None
         } else {
-            // Pack uniforms into 16-byte slots (see UniformSlot doc).
             let slots = encode_uniform_slots(&pass.uniforms, pass_label)?;
             let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("chromaticity-render multipass uniform buffer"),
@@ -387,10 +652,8 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
             Some(buffer)
         };
 
-        for (i, _binding) in pass.input_textures.iter().enumerate() {
-            // Texture at 1 + 2*i, sampler at 1 + 2*i + 1.
-            // u32 cast: i is bounded by per-pass input count, well
-            // below u32::MAX in any realistic scene.
+        let total_input_count = pass.input_textures.len() + if pass.feedback_self { 1 } else { 0 };
+        for i in 0..total_input_count {
             let tex_binding: u32 = 1 + 2 * (i as u32);
             let smp_binding: u32 = tex_binding + 1;
             bgl_entries.push(wgpu::BindGroupLayoutEntry {
@@ -416,45 +679,7 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
             entries: &bgl_entries,
         });
 
-        // 6b. Build bind group entries — must mirror the layout's
-        // bindings exactly. The texture / sampler refs borrow into
-        // `pass_views` and `shared_sampler`.
-        let mut bg_entries: Vec<wgpu::BindGroupEntry> = Vec::new();
-        if let Some(buffer) = uniform_buffer.as_ref() {
-            bg_entries.push(wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            });
-        }
-        for (i, binding) in pass.input_textures.iter().enumerate() {
-            let tex_binding: u32 = 1 + 2 * (i as u32);
-            let smp_binding: u32 = tex_binding + 1;
-            // Validation already ensured source_pass_index < pass_index.
-            // Defense-in-depth: would only fire if validation was
-            // bypassed; not reachable on valid input.
-            let view = pass_views.get(binding.source_pass_index).ok_or(
-                RenderError::PassInputOutOfRange {
-                    pass_index,
-                    source_pass_index: binding.source_pass_index,
-                    num_passes,
-                },
-            )?;
-            bg_entries.push(wgpu::BindGroupEntry {
-                binding: tex_binding,
-                resource: wgpu::BindingResource::TextureView(view),
-            });
-            bg_entries.push(wgpu::BindGroupEntry {
-                binding: smp_binding,
-                resource: wgpu::BindingResource::Sampler(&shared_sampler),
-            });
-        }
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("chromaticity-render multipass bind group"),
-            layout: &bgl,
-            entries: &bg_entries,
-        });
-
-        // 6c. Compile the pass's fragment shader.
+        // 7b. Compile fragment shader.
         let fragment_module = compile_glsl_module(&pass.fragment_glsl, naga::ShaderStage::Fragment)
             .map_err(|e| RenderError::PassRenderFailed {
                 pass_index,
@@ -465,7 +690,7 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
             source: wgpu::ShaderSource::Naga(Cow::Owned(fragment_module)),
         });
 
-        // 6d. Pipeline layout + pipeline.
+        // 7c. Pipeline layout + pipeline.
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("chromaticity-render multipass pipeline layout"),
             bind_group_layouts: &[&bgl],
@@ -496,7 +721,7 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
                 entry_point: Some("main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
+                    format: pass.target_format.to_wgpu(),
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -505,56 +730,143 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
             cache: None,
         });
 
-        // 6e. Reserved vertex buffer to keep the bytemuck pipeline
-        // observable from this slice's binary; mirrors slice-1.
+        // 7d. Reserved vertex buffer (slice-1 inheritance).
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("chromaticity-render multipass reserved vertex buffer"),
             contents: bytemuck::cast_slice(&[UniformSlot::default(); 3]),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        pass_resources.push(PassResources {
-            _uniform_buffer: uniform_buffer,
-            _bind_group_layout: bgl,
-            bind_group,
-            _pipeline_layout: pipeline_layout,
+        pass_statics.push(PassStatics {
+            bind_group_layout: bgl,
             pipeline,
+            uniform_buffer,
+            _pipeline_layout: pipeline_layout,
             _vertex_buffer: vertex_buffer,
         });
     }
 
-    // 7. Record one render pass per spec pass. Each writes into its
-    // own target view (`pass_views[pass_index]`) and binds the
-    // bind group built above.
-    for (pass_index, resources) in pass_resources.iter().enumerate() {
-        let view = pass_views
-            .get(pass_index)
-            .ok_or(RenderError::PassRenderFailed {
-                pass_index,
-                // Defense-in-depth; not reachable on valid input.
-                source: Box::new(RenderError::EmptyPassList),
-            })?;
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("chromaticity-render multipass pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
+    // 8. Frame loop. Each frame builds per-pass bind groups (texture
+    // views may flip on feedback passes), records all passes into
+    // a single command encoder, and submits.
+    let final_index = num_passes - 1;
+    let final_format = spec.passes[final_index].target_format;
+    for frame in 0..spec.frame_count {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("chromaticity-render multipass encoder"),
         });
-        rpass.set_pipeline(&resources.pipeline);
-        rpass.set_bind_group(0, &resources.bind_group, &[]);
-        rpass.draw(0..3, 0..1);
+
+        // 8a. Per-pass bind groups for THIS frame.
+        let mut frame_bind_groups: Vec<wgpu::BindGroup> = Vec::with_capacity(num_passes);
+        for (pass_index, pass) in spec.passes.iter().enumerate() {
+            let statics = &pass_statics[pass_index];
+            let mut bg_entries: Vec<wgpu::BindGroupEntry> = Vec::new();
+            if let Some(buffer) = statics.uniform_buffer.as_ref() {
+                bg_entries.push(wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                });
+            }
+            // Explicit prior-pass bindings: read each prior pass's
+            // CURRENT-frame write target. (Earlier passes already
+            // wrote it earlier in this frame's loop, so the texture
+            // contents are this frame's pass output.)
+            for (i, binding) in pass.input_textures.iter().enumerate() {
+                let tex_binding: u32 = 1 + 2 * (i as u32);
+                let smp_binding: u32 = tex_binding + 1;
+                let view_idx = write_slot(&pass_texture_layout, binding.source_pass_index, frame);
+                let view =
+                    pass_views
+                        .get(view_idx)
+                        .ok_or_else(|| RenderError::PassRenderFailed {
+                            pass_index,
+                            source: Box::new(RenderError::PassInputOutOfRange {
+                                pass_index,
+                                source_pass_index: binding.source_pass_index,
+                                num_passes,
+                            }),
+                        })?;
+                bg_entries.push(wgpu::BindGroupEntry {
+                    binding: tex_binding,
+                    resource: wgpu::BindingResource::TextureView(view),
+                });
+                bg_entries.push(wgpu::BindGroupEntry {
+                    binding: smp_binding,
+                    resource: wgpu::BindingResource::Sampler(&shared_sampler),
+                });
+            }
+            // Self-feedback binding (after the explicit bindings).
+            if pass.feedback_self {
+                let i = pass.input_textures.len();
+                let tex_binding: u32 = 1 + 2 * (i as u32);
+                let smp_binding: u32 = tex_binding + 1;
+                let view_idx = feedback_read_slot(&pass_texture_layout, pass_index, frame);
+                let view =
+                    pass_views
+                        .get(view_idx)
+                        .ok_or_else(|| RenderError::FeedbackAliasError {
+                            pass_index,
+                            reason: format!(
+                                "feedback read slot {view_idx} out of range \
+                                 (pass_views.len() = {})",
+                                pass_views.len()
+                            ),
+                        })?;
+                bg_entries.push(wgpu::BindGroupEntry {
+                    binding: tex_binding,
+                    resource: wgpu::BindingResource::TextureView(view),
+                });
+                bg_entries.push(wgpu::BindGroupEntry {
+                    binding: smp_binding,
+                    resource: wgpu::BindingResource::Sampler(&shared_sampler),
+                });
+            }
+
+            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("chromaticity-render multipass bind group"),
+                layout: &statics.bind_group_layout,
+                entries: &bg_entries,
+            });
+            frame_bind_groups.push(bg);
+        }
+
+        // 8b. Record all passes for this frame. Each writes to its
+        // current write-slot view.
+        for (pass_index, statics) in pass_statics.iter().enumerate() {
+            let view_idx = write_slot(&pass_texture_layout, pass_index, frame);
+            let view = pass_views
+                .get(view_idx)
+                .ok_or(RenderError::PassRenderFailed {
+                    pass_index,
+                    source: Box::new(RenderError::EmptyPassList),
+                })?;
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("chromaticity-render multipass pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            rpass.set_pipeline(&statics.pipeline);
+            rpass.set_bind_group(0, &frame_bind_groups[pass_index], &[]);
+            rpass.draw(0..3, 0..1);
+        }
+
+        queue.submit(Some(encoder.finish()));
     }
 
-    // 8. Allocate the readback buffer for the FINAL pass and copy.
+    // 9. Allocate the readback buffer for the FINAL pass's FINAL
+    // frame and copy. Bytes-per-pixel comes from the final pass's
+    // target_format so the readback shape matches the chosen format.
+    let bytes_per_pixel = final_format.bytes_per_pixel();
     let unpadded_bytes_per_row = spec.target_size.0 * bytes_per_pixel;
     let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
     let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
@@ -566,14 +878,21 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
         mapped_at_creation: false,
     });
 
-    let final_index = num_passes - 1;
-    let final_target = pass_targets
-        .get(final_index)
+    // The final-frame index is `frame_count - 1`. The texture the
+    // final pass wrote on that frame is `write_slot(layout,
+    // final_index, frame_count - 1)`.
+    let final_frame = spec.frame_count - 1;
+    let final_view_idx = write_slot(&pass_texture_layout, final_index, final_frame);
+    let final_target = pass_textures
+        .get(final_view_idx)
         .ok_or(RenderError::PassRenderFailed {
             pass_index: final_index,
             source: Box::new(RenderError::EmptyPassList),
         })?;
-    encoder.copy_texture_to_buffer(
+    let mut copy_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("chromaticity-render multipass copy encoder"),
+    });
+    copy_encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
             texture: final_target,
             mip_level: 0,
@@ -595,9 +914,9 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
         },
     );
 
-    queue.submit(Some(encoder.finish()));
+    queue.submit(Some(copy_encoder.finish()));
 
-    // 9. Map readback buffer and strip row padding. Identical to
+    // 10. Map readback buffer and strip row padding. Identical to
     // single_pass.rs's readback path.
     let buffer_slice = readback.slice(..);
     let (sender, receiver) = channel();
@@ -713,10 +1032,17 @@ mod multipass_drift_pins {
     //! - Uniform marshalling produces the expected byte layout for
     //!   each [`UniformValue`] variant (drift pin against future
     //!   std140 widening).
+    //! - Slice-4 additions:
+    //!   - `frame_count == 0` rejects with
+    //!     [`RenderError::EmptyPassList`].
+    //!   - [`TargetFormat`] enum maps to the expected wgpu format
+    //!     and bytes-per-pixel pair.
+    //!   - [`PassDef`] / [`MultipassSpec`] `Default` produce the
+    //!     slice-2-compatible single-frame `Rgba8Unorm` shape.
 
     use super::{
-        MultipassSpec, PassDef, PassInputBinding, RenderError, UniformInput, UniformValue,
-        compile_and_render_multipass, encode_uniform_slots,
+        MultipassSpec, PassDef, PassInputBinding, RenderError, TargetFormat, UniformInput,
+        UniformValue, compile_and_render_multipass, encode_uniform_slots,
     };
 
     #[test]
@@ -724,12 +1050,81 @@ mod multipass_drift_pins {
         let spec = MultipassSpec {
             passes: vec![],
             target_size: (16, 16),
+            ..MultipassSpec::default()
         };
         let err = compile_and_render_multipass(&spec)
             .expect_err("empty pass list must reject before adapter acquisition");
         assert!(
             matches!(err, RenderError::EmptyPassList),
             "expected EmptyPassList, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn zero_frame_count_returns_empty_pass_list_error() {
+        // Drift pin: `frame_count == 0` is a structural error
+        // (no rendering can happen) and surfaces as
+        // `EmptyPassList`. Slice-4 addition.
+        let trivial = r#"
+#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+void main() { fragColor = vec4(uv, 0.0, 1.0); }
+"#
+        .to_string();
+        let spec = MultipassSpec {
+            passes: vec![PassDef {
+                fragment_glsl: trivial,
+                ..PassDef::default()
+            }],
+            target_size: (16, 16),
+            frame_count: 0,
+        };
+        let err = compile_and_render_multipass(&spec)
+            .expect_err("frame_count == 0 must reject before adapter acquisition");
+        assert!(
+            matches!(err, RenderError::EmptyPassList),
+            "expected EmptyPassList for frame_count=0, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn target_format_default_is_rgba8unorm() {
+        // Drift pin: the slice-4 default for `PassDef::target_format`
+        // MUST remain `Rgba8Unorm` to preserve the slice-1 / slice-2
+        // corpus continuity. Any future widening of the default
+        // must accompany a regeneration of every existing T2 hash.
+        assert_eq!(TargetFormat::default(), TargetFormat::Rgba8Unorm);
+        assert_eq!(PassDef::default().target_format, TargetFormat::Rgba8Unorm);
+        assert!(!PassDef::default().feedback_self);
+        assert_eq!(MultipassSpec::default().frame_count, 1);
+    }
+
+    #[test]
+    fn target_format_bytes_per_pixel_layout() {
+        // Drift pin: the bytes-per-pixel mapping is what the
+        // readback path uses to compute the row stride. RGBA = 4
+        // channels at 1 / 2 / 4 bytes per channel.
+        assert_eq!(TargetFormat::Rgba8Unorm.bytes_per_pixel(), 4);
+        assert_eq!(TargetFormat::Rgba16Float.bytes_per_pixel(), 8);
+        assert_eq!(TargetFormat::Rgba32Float.bytes_per_pixel(), 16);
+    }
+
+    #[test]
+    fn target_format_to_wgpu_mapping() {
+        // Drift pin: wgpu enum mapping. If wgpu renames /
+        // reorganizes its TextureFormat enum, this surfaces.
+        assert_eq!(
+            TargetFormat::Rgba8Unorm.to_wgpu(),
+            wgpu::TextureFormat::Rgba8Unorm
+        );
+        assert_eq!(
+            TargetFormat::Rgba16Float.to_wgpu(),
+            wgpu::TextureFormat::Rgba16Float
+        );
+        assert_eq!(
+            TargetFormat::Rgba32Float.to_wgpu(),
+            wgpu::TextureFormat::Rgba32Float
         );
     }
 
@@ -748,20 +1143,20 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
                 PassDef {
                     label: Some("forward-ref-pass-0".to_string()),
                     fragment_glsl: trivial.clone(),
-                    uniforms: vec![],
                     input_textures: vec![PassInputBinding {
                         source_pass_index: 1,
                         sampler_uniform_name: "pass1".to_string(),
                     }],
+                    ..PassDef::default()
                 },
                 PassDef {
                     label: Some("forward-ref-pass-1".to_string()),
                     fragment_glsl: trivial,
-                    uniforms: vec![],
-                    input_textures: vec![],
+                    ..PassDef::default()
                 },
             ],
             target_size: (16, 16),
+            ..MultipassSpec::default()
         };
         let err = compile_and_render_multipass(&spec)
             .expect_err("forward reference must reject before adapter acquisition");
@@ -793,13 +1188,14 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
             passes: vec![PassDef {
                 label: Some("self-ref-pass-0".to_string()),
                 fragment_glsl: trivial,
-                uniforms: vec![],
                 input_textures: vec![PassInputBinding {
                     source_pass_index: 0,
                     sampler_uniform_name: "self".to_string(),
                 }],
+                ..PassDef::default()
             }],
             target_size: (16, 16),
+            ..MultipassSpec::default()
         };
         let err = compile_and_render_multipass(&spec)
             .expect_err("self reference must reject before adapter acquisition");
@@ -828,12 +1224,11 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
         .to_string();
         let spec = MultipassSpec {
             passes: vec![PassDef {
-                label: None,
                 fragment_glsl: trivial,
-                uniforms: vec![],
-                input_textures: vec![],
+                ..PassDef::default()
             }],
             target_size: (0, 16),
+            ..MultipassSpec::default()
         };
         let err = compile_and_render_multipass(&spec).expect_err("zero target width must reject");
         assert!(

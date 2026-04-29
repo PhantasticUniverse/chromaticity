@@ -443,8 +443,10 @@ name = "chromaticity-render"
 version = "0.0.0"
 dependencies = [
  "bytemuck",
+ "chromaticity-scene",
  "naga",
  "pollster",
+ "serde_json",
  "thiserror 2.0.18",
  "wgpu",
  "workspace-hack",
