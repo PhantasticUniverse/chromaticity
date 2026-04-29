@@ -68,8 +68,9 @@ chromaticity/
 ├── app/
 │   ├── shell/            # Tauri 2 binary (chromaticity-app crate)
 │   └── ui-bridge/        # ts-rs IPC type generator (Rust → TypeScript bindings)
-├── engine/               # runtime/, scene/, audio/, observability/
+├── engine/               # runtime/, scene/, audio/, observability/, render/, script/
 ├── integrations/         # osc-adapter/ (more adapter crates to follow)
+├── third_party/          # vendored snapshots — currently lygia/ (Lygia v1.1.4 trial vendor)
 ├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
 ├── .config/hakari.toml   # cargo-hakari config; platforms mirror deny.toml graph.targets
 ├── src/                  # Svelte web root; may migrate under app/ui/ later
