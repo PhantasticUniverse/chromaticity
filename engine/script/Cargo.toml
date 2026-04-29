@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity engine script crate — Phase-2 slice 1 scaffold.
+#
+# Slice 1 mounts the rquickjs Rust binding to QuickJS (per ADR-012)
+# and stands up a sandboxed `ScriptRuntime` with no I/O / FS / native
+# module access by default, exposing a sync `execute(source)` entry
+# point returning a structured `ScriptValue`. T1 / T2 evidence
+# accumulates under `EV-SCRIPT-CONTRACT` (docs/26 row 29). The
+# registry row update is a follow-up small commit landing after this
+# slice + the parallel Lygia trial vendoring both reach `main`, so
+# the textual rebase against docs/26 is carried by one PR rather
+# than spread across the slice fan-out.
+#
+# Slice 1 deliberately omits:
+#   - watchdog timeouts (slice 2; will use rquickjs
+#     `Runtime::set_interrupt_handler`),
+#   - memory cap (slice 3; rquickjs `Runtime::set_memory_limit`),
+#   - determinism shims (slice 4; seeded RNG + frame-locked
+#     `Date.now()` per ADR-012 §5),
+#   - command-bus integration (slice 5; engine/runtime CommandBus
+#     mount),
+#   - script API surface for scenes (post-slice-5; ADR-012 +
+#     docs/36 v1.1.0 reactive symbol catalog binding).
+#
+# Governing ADRs:
+#   ADR-003 — script runtime sandbox
+#             (docs/adr/ADR-003-script-runtime-sandbox.md)
+#   ADR-012 — script sandbox engine and budgets
+#             (docs/adr/ADR-012-script-sandbox-engine.md)
+#
+# All workspace lints inherited (unsafe_code = forbid,
+# clippy::unwrap_used = deny, clippy::expect_used = deny). No local
+# relaxation.
+
+[package]
+name = "chromaticity-script"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity script runtime (rquickjs + QuickJS sandboxed scaffold)."
+
+[lints]
+workspace = true
+
+[dependencies]
+# rquickjs 0.11 is the high-level Rust binding for QuickJS chosen
+# in ADR-012. Default features bring `std` only; QuickJS itself is
+# vendored under `rquickjs-sys` and built from the bundled C source
+# (no system libquickjs dep). The crate's MSRV (1.85) matches the
+# workspace pin in `rust-toolchain.toml`. License: MIT (Rust binding)
+# over QuickJS upstream MIT (originally BSD-2-Clause; relicensed to
+# MIT in 2023). Both are allow-listed by `/deny.toml`.
+#
+# Slice-1 keeps the feature set to the implicit `std` default. Slice
+# 2 will enable nothing extra — `Runtime::set_interrupt_handler` is
+# part of the core surface, not gated behind a feature. Slice 3
+# similarly: `Runtime::set_memory_limit` is core. Slice 4 may opt
+# into `loader` if seeded-RNG / Date shimming benefits from a custom
+# module loader, but slice 1 explicitly does NOT pull async, futures,
+# parallel, or loader features — every additional feature widens
+# the audit surface and slice 1 is foundational only.
+rquickjs = { version = "0.11" }
+
+# thiserror generates the `ScriptError` Display / Error impls.
+# Already pulled transitively by Tauri 2 and `engine/render`; adding
+# the direct dep keeps our error surface boundary explicit. License:
+# Apache-2.0 OR MIT (allow-listed by `/deny.toml`).
+thiserror = "2"
+
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
