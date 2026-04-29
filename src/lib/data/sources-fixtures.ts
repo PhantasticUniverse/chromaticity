@@ -142,7 +142,13 @@ function buildAssets(): readonly MediaAsset[] {
     // Bundle JSX: tiles where `i % 3 === 0` carry an inline duration
     // overlay `0:{(12 + i).padStart(2, "0")}`. Other tiles render no
     // duration chip in the grid; the inspector renders its own value.
-    const padded = String(i).padStart(2, '0');
+    //
+    // Special-case i=0 → `_04` so the bundle-canonical inspector
+    // default `jellyfish_loop_04.mp4` resolves against `MEDIA_ASSETS`
+    // (the rotation otherwise emits `_00`/`_12`/`_24` for the
+    // `jellyfish_loop` root and the inspector falls through to its
+    // empty state on first paint).
+    const padded = i === 0 ? '04' : String(i).padStart(2, '0');
     const filename = `${root}_${padded}.mp4`;
     const asset: MediaAsset = {
       id: filename,
