@@ -3,7 +3,7 @@
 ## Objective
 Sequence implementation work so high-risk/high-leverage foundations are delivered first.
 
-## Phase 0: Planning Finalization (Current)
+## Phase 0: Planning Finalization
 - Complete charter, contracts, requirements, ADRs, blueprints, budgets, risks.
 - Complete legal policy baseline and UX pre-build gates before runtime implementation kickoff.
 - Exit criteria:
