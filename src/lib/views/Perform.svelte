@@ -67,7 +67,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     SETLIST_OPTIONS,
     type MediaTab,
     type PerformControlGroup,
-    type PerformMediaCard,
   } from '../data/perform-fixtures';
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
@@ -77,11 +76,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     Fader,
     AudioReactivity,
     Knob,
+    MediaCard,
+    SceneRow,
     Swatch,
     TestCard,
     Toggle,
     VuStereo,
   } from '../widgets';
+  import type { SceneKind } from '../widgets/scene-renderers';
+  import { SCENE_KINDS } from '../widgets/scene-renderers';
+
+  /** Best-effort SceneKind coercion for the setlist fixture's `kind`
+   * field (a free-form string). Falls back to `rings` when the fixture
+   * names a kind the bundle's `RENDERERS` map does not declare. */
+  function asSceneKind(k: string): SceneKind {
+    return (SCENE_KINDS as readonly string[]).includes(k) ? (k as SceneKind) : 'rings';
+  }
+
+  /** SceneKind for a media card — bundle parity is `rings` when the
+   * fixture does not declare one. */
+  const MEDIA_DEFAULT_SCENE_KIND: SceneKind = 'rings';
 
   let activeScene = $state<number>(SETLIST_ACTIVE_INDEX);
   let activeMedia = $state<number>(MEDIA_DEFAULT_ACTIVE_INDEX);
@@ -103,13 +117,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // frozen-frame contract, switching tiles dispatches no IPC; the hero
   // simply re-renders the alternate placeholder surface.
   const testCardActive = $derived(MEDIA_CARDS[activeMedia]?.kind === 'test');
-
-  /** Deterministic hue from the per-card seed — mirrors the bundle's
-   * `<SceneStill seed={…}>` per-tile variation without depending on the
-   * unported renderer. Same formula as W17 PR1 `Sources.svelte#tintAngle`. */
-  function tintAngle(seed: number): number {
-    return (seed * 37) % 360;
-  }
 
   function selectScene(idx: number): void {
     activeScene = idx;
@@ -201,7 +208,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </header>
       <div class="panel__body media-grid">
         {#each MEDIA_CARDS as card, i (card.id)}
-          {@render mediaCardBlock(card, i)}
+          <!-- Shared-primitive backfill — `MediaCard` widget closes the
+               W18 PR1 inline `mediaCardBlock` snippet placeholder. The
+               widget composes the W36 `SceneStill` canvas thumbnail
+               for `video` tiles in place of the previous hue-rotating
+               gradient surrogate; `none` / `webcam` / `test` surface
+               treatments stay bundle-faithful. -->
+          <MediaCard
+            label={card.label}
+            kind={card.kind}
+            seed={card.seed}
+            sceneKind={MEDIA_DEFAULT_SCENE_KIND}
+            active={i === activeMedia}
+            onClick={() => selectMedia(i)}
+          />
         {/each}
       </div>
     </section>
@@ -352,31 +372,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <ol class="scene-panel__list">
         {#each SETLIST_FIXTURE as scene (scene.idx)}
           <li>
-            <button
-              type="button"
-              class="scene-row"
-              class:scene-row--active={scene.idx === activeScene}
-              data-tag={scene.tag}
-              aria-current={scene.idx === activeScene ? 'true' : 'false'}
-              onclick={() => selectScene(scene.idx)}
-            >
-              <span class="scene-row__idx mono">{String(scene.idx + 1).padStart(2, '0')}</span>
-              <span
-                class="scene-row__thumb"
-                aria-hidden="true"
-                style="--thumb-hue: {tintAngle(scene.seed)}deg;"
-              ></span>
-              <span class="scene-row__body">
-                <span class="scene-row__name">{scene.name}</span>
-                <span class="scene-row__meta mono">
-                  <span class="scene-row__tag" data-tag={scene.tag}>{scene.tag}</span>
-                  <span>{scene.duration}</span>
-                </span>
-              </span>
-              {#if scene.idx === activeScene}
-                <span class="scene-row__pulse" aria-hidden="true"></span>
-              {/if}
-            </button>
+            <!-- Shared-primitive backfill — `SceneRow` widget closes the
+                 W18 PR1 inline placeholder. The widget composes the W36
+                 `SceneStill` canvas thumbnail in place of the previous
+                 hue-rotating gradient surrogate. Kind is coerced from
+                 the fixture's free-form string against the bundle's
+                 16-name SceneKind family; unknown values fall back to
+                 `rings`. -->
+            <SceneRow
+              idx={scene.idx + 1}
+              name={scene.name}
+              tag={scene.tag}
+              dur={scene.duration}
+              kind={asSceneKind(scene.kind)}
+              seed={scene.seed}
+              active={scene.idx === activeScene}
+              onClick={() => selectScene(scene.idx)}
+            />
           </li>
         {/each}
       </ol>
@@ -400,45 +412,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       {/each}
     </ControlGroup>
   </div>
-{/snippet}
-
-{#snippet mediaCardBlock(card: PerformMediaCard, i: number)}
-  <button
-    type="button"
-    class="media-card"
-    class:media-card--active={i === activeMedia}
-    aria-pressed={i === activeMedia ? 'true' : 'false'}
-    title={card.label}
-    onclick={() => selectMedia(i)}
-  >
-    {#if card.kind === 'none'}
-      <span class="media-card__none-glyph" aria-hidden="true">⊘</span>
-    {:else if card.kind === 'webcam'}
-      <span class="media-card__webcam" aria-hidden="true">
-        <span class="media-card__webcam-glyph">◉</span>
-      </span>
-    {:else if card.kind === 'test'}
-      <span class="media-card__test" aria-hidden="true">
-        <span class="media-card__test-bar" style="background:#ffffff"></span>
-        <span class="media-card__test-bar" style="background:#ffff00"></span>
-        <span class="media-card__test-bar" style="background:#00ffff"></span>
-        <span class="media-card__test-bar" style="background:#00ff00"></span>
-        <span class="media-card__test-bar" style="background:#ff00ff"></span>
-        <span class="media-card__test-bar" style="background:#ff0000"></span>
-        <span class="media-card__test-bar" style="background:#0000ff"></span>
-        <span class="media-card__test-bar" style="background:#000000"></span>
-      </span>
-      <span class="media-card__kind" aria-hidden="true"><Icon name="grid" size={14} /></span>
-    {:else}
-      <span
-        class="media-card__thumb"
-        aria-hidden="true"
-        style="--thumb-hue: {tintAngle(card.seed)}deg;"
-      ></span>
-      <span class="media-card__kind" aria-hidden="true"><Icon name="play" size={14} /></span>
-    {/if}
-    <span class="media-card__label">{card.label}</span>
-  </button>
 {/snippet}
 
 <style>
@@ -681,110 +654,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   /* ---------------- Media grid -------------------------------------------- */
+  /* Per-tile chrome lives inside `MediaCard.svelte` (the widget owns
+   * its own scoped styles after the shared-primitive backfill). The
+   * grid-container layout stays here. */
   .media-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
     gap: var(--space-md);
-  }
-  .media-card {
-    aspect-ratio: 16 / 10;
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    background: var(--color-bg-3);
-    border: 1px solid var(--color-line-2);
-    position: relative;
-    cursor: pointer;
-    padding: 0;
-    transition:
-      border-color 120ms ease,
-      box-shadow 120ms ease;
-  }
-  .media-card:hover {
-    border-color: var(--color-primary);
-  }
-  .media-card--active {
-    border-color: var(--color-primary);
-    box-shadow:
-      0 0 0 1px var(--color-primary),
-      0 0 calc(12px * var(--glow, 1)) var(--color-primary);
-  }
-  .media-card:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-  }
-  .media-card__none-glyph {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    color: var(--color-text-4);
-    font-size: 24px;
-    font-family: var(--font-family-mono);
-  }
-  .media-card__webcam {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    background: linear-gradient(135deg, var(--color-bg-1), var(--color-bg-0));
-    color: var(--color-text-2);
-  }
-  .media-card__webcam-glyph {
-    font-size: 20px;
-    font-family: var(--font-family-mono);
-  }
-  .media-card__test {
-    position: absolute;
-    inset: 0;
-    display: flex;
-  }
-  .media-card__test-bar {
-    flex: 1 1 0;
-    height: 100%;
-  }
-  .media-card__thumb {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(
-        circle at 30% 35%,
-        hsl(var(--thumb-hue, 200deg) 70% 55% / 0.75),
-        transparent 55%
-      ),
-      radial-gradient(
-        circle at 70% 65%,
-        hsl(calc(var(--thumb-hue, 200deg) + 60deg) 70% 45% / 0.7),
-        transparent 60%
-      ),
-      linear-gradient(135deg, var(--color-bg-3), var(--color-bg-1));
-  }
-  .media-card__kind {
-    position: absolute;
-    left: 4px;
-    top: 4px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 1px 4px;
-    border-radius: var(--radius-xs);
-    color: #fff;
-    font-family: var(--font-family-mono);
-    font-size: 9px;
-    line-height: 1;
-  }
-  .media-card__label {
-    position: absolute;
-    left: 4px;
-    bottom: 4px;
-    right: 4px;
-    background: rgba(0, 0, 0, 0.7);
-    color: #fff;
-    font-family: var(--font-family-mono);
-    font-size: 9px;
-    padding: 1px 4px;
-    border-radius: var(--radius-xs);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
   }
 
   /* ---------------- Preview hero ------------------------------------------ */
@@ -976,119 +852,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     min-height: 0;
   }
 
-  .scene-row {
-    display: grid;
-    grid-template-columns: 24px 60px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-xs) var(--space-md);
-    width: 100%;
-    background: transparent;
-    border: 0;
-    border-bottom: 1px solid var(--color-line-1);
-    color: var(--color-text-1);
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-body-sm);
-    cursor: pointer;
-    text-align: left;
-    position: relative;
-    transition: background-color 120ms ease;
-  }
-  .scene-row:hover {
-    background: var(--color-bg-3);
-  }
-  .scene-row:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: -2px;
-  }
-  .scene-row--active {
-    background: linear-gradient(
-      90deg,
-      color-mix(in oklab, var(--color-primary) 18%, var(--color-bg-2)),
-      var(--color-bg-2)
-    );
-  }
-  .scene-row--active::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: var(--color-primary);
-    box-shadow: 0 0 calc(6px * var(--glow, 1)) var(--color-primary);
-  }
-  .scene-row--active .scene-row__name {
-    color: var(--color-primary);
-  }
-  .scene-row__idx {
-    color: var(--color-text-3);
-    font-size: var(--font-size-mono-sm);
-    text-align: right;
-  }
-  .scene-row__thumb {
-    width: 60px;
-    height: 34px;
-    border-radius: var(--radius-xs);
-    border: 1px solid var(--color-line-2);
-    background:
-      radial-gradient(
-        circle at 30% 35%,
-        hsl(var(--thumb-hue, 200deg) 70% 55% / 0.75),
-        transparent 55%
-      ),
-      radial-gradient(
-        circle at 70% 65%,
-        hsl(calc(var(--thumb-hue, 200deg) + 60deg) 70% 45% / 0.7),
-        transparent 60%
-      ),
-      linear-gradient(135deg, var(--color-bg-3), var(--color-bg-1));
-  }
-  .scene-row__body {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    overflow: hidden;
-  }
-  .scene-row__name {
-    color: var(--color-text-0);
-    font-weight: var(--font-weight-label);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .scene-row__meta {
-    display: flex;
-    gap: var(--space-sm);
-    align-items: center;
-    color: var(--color-text-3);
-    font-size: var(--font-size-caps-sm);
-  }
-  .scene-row__tag {
-    padding: 1px 4px;
-    border-radius: var(--radius-xs);
-    background: var(--color-bg-3);
-    color: var(--color-text-2);
-    text-transform: uppercase;
-    letter-spacing: var(--letter-spacing-caps-sm);
-  }
-  .scene-row__tag[data-tag='hot'] {
-    color: var(--color-signal-orange);
-    background: color-mix(in oklab, var(--color-signal-orange) 18%, transparent);
-  }
-  .scene-row__tag[data-tag='caution'] {
-    color: var(--color-signal-amber);
-    background: color-mix(in oklab, var(--color-signal-amber) 18%, transparent);
-  }
-  .scene-row__pulse {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--color-primary);
-    box-shadow: 0 0 calc(6px * var(--glow, 1)) var(--color-primary);
-    justify-self: end;
-  }
+  /* Per-row chrome lives inside `SceneRow.svelte` (the widget owns its
+   * own scoped styles after the shared-primitive backfill). */
 
   /* ---------------- Utility ----------------------------------------------- */
   .mono {

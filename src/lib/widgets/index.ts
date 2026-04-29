@@ -142,6 +142,22 @@ export {
   type CommandPaletteAction,
 } from './command-palette.fixtures';
 
+// Shared-primitive backfill — the bundle's small/tiny shared
+// primitives (`RailIcon`, `SceneRow`, `MediaCard`, `Timecode`, plus
+// the live-animated `SceneCanvas` sibling to W36's `SceneStill`)
+// closing the R-37 residual port slip. Bundle source files:
+// `components.jsx` lines 68-78, 232-249, 251-264, 371-388 and
+// `shaders.jsx` lines 278-310. `SceneCanvas` shares `RENDERERS` with
+// `SceneStill` via `./scene-renderers.ts`, so adding the live variant
+// is a thin rAF + ResizeObserver wrapper rather than a renderer-set
+// duplication.
+export { default as RailIcon } from './RailIcon.svelte';
+export { default as SceneRow } from './SceneRow.svelte';
+export { default as MediaCard } from './MediaCard.svelte';
+export { default as Timecode } from './Timecode.svelte';
+export { default as SceneCanvas } from './SceneCanvas.svelte';
+export { default as SceneStill } from './SceneStill.svelte';
+
 // Per-cell shape for `CuePad`. Lifted into the barrel so consumers can
 // type their `cells` arrays without reaching into the component file
 // (Svelte's `*.svelte` module shim only re-exports the default).

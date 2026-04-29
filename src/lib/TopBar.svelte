@@ -48,7 +48,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Per-adapter live wiring remains `EV-INTEGRATION-MATRIX` scope.
   import Icon from './Icon.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
-  import { AdapterPill, type AdapterPillState } from './widgets';
+  import { AdapterPill, Timecode, type AdapterPillState } from './widgets';
+
+  // Shared-primitive backfill — bundle's session-HUD `<Timecode />`
+  // (`Chromaticity.html` line 204) only mounts on performance-adjacent
+  // views per the bundle's `PERF_VIEWS` set (`perform`, `scene`,
+  // `audio`). The production-side route names map cleanly: `perform`,
+  // `author` (the bundle calls it "scene"), and `audio-uniforms`
+  // (the bundle calls it "audio"). The widget is a 18-LoC primitive
+  // that owns its own rAF lifecycle; this gate keeps the HUD chrome
+  // out of non-performance views per the bundle.
+  const PERF_HUD_ROUTES: ReadonlySet<RouteName> = new Set(['perform', 'author', 'audio-uniforms']);
 
   // Per-route subtitle. Hardcoded for W15; future enhancement could
   // accept a per-view dynamic count via route-store metadata (e.g.
@@ -144,6 +154,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         />
       {/each}
     </div>
+    {#if PERF_HUD_ROUTES.has(routeStore.current)}
+      <!-- Shared-primitive backfill — bundle session-HUD Timecode mount,
+           gated on performance-adjacent routes per the bundle's
+           `PERF_VIEWS` set. Frozen-frame contract (see Timecode.svelte
+           header): synthetic counter, no IPC, no engine-pacing
+           dependency. -->
+      <span class="top-bar__timecode" title="Session timecode (synthetic)">
+        <Timecode />
+      </span>
+    {/if}
     <span class="top-bar__metric" title="Frames per second (W15+: real telemetry)">
       <span class="top-bar__metric-unit">fps</span>
       <span class="top-bar__metric-value">—</span>
@@ -320,6 +340,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .top-bar__pills {
     display: flex;
     gap: var(--space-xs);
+  }
+
+  /* Shared-primitive backfill — bundle session-HUD Timecode wrapper.
+   * Sized to match the adjacent fps / cpu metric chips so the HUD row
+   * keeps a consistent vertical rhythm. The Timecode widget owns its
+   * own font / color tokens. */
+  .top-bar__timecode {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--space-xs);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
   }
 
   .top-bar__rec {

@@ -12,15 +12,46 @@
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render } from '@testing-library/svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { routeStore } from './stores/route.svelte';
 import TopBar from './TopBar.svelte';
 
+// Shared-primitive backfill — TopBar now mounts the `Timecode` widget
+// when the active route is performance-adjacent (perform / author /
+// audio-uniforms). `Timecode` reads `prefers-reduced-motion` via
+// `window.matchMedia` in a mount-time `$effect`; jsdom does not pre-
+// expose `matchMedia`, so the test harness needs the
+// `vi.stubGlobal('matchMedia', ...)` shim per the user-memory
+// `feedback_vitest_matchmedia_stubglobal.md`.
+function stubMatchMedia(reduce = false): void {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: reduce && query.includes('prefers-reduced-motion: reduce'),
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+}
+
 describe('TopBar shell component', () => {
+  beforeEach(() => {
+    stubMatchMedia();
+  });
+
   afterEach(() => {
-    routeStore.set('perform');
+    // Cleanup BEFORE unstubbing globals — `cleanup()` unmounts the
+    // mounted components, which fires the `Timecode` $effect teardown
+    // (`removeEventListener` against the cached MediaQueryList from the
+    // stubbed matchMedia). Unstubbing globals first would invalidate
+    // that listener handle and surface a "matchMedia is not a function"
+    // error during the unmount phase.
     cleanup();
+    routeStore.set('perform');
+    vi.unstubAllGlobals();
   });
 
   it('renders the Chromaticity wordmark', () => {
