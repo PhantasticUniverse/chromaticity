@@ -167,7 +167,10 @@ describe('Perform view', () => {
     const activeCard = cards[MEDIA_DEFAULT_ACTIVE_INDEX];
     expect(activeCard).toBeDefined();
     expect(activeCard).toHaveAttribute('aria-pressed', 'true');
-    expect(activeCard).toHaveClass('media-card--active');
+    // Shared-primitive backfill — `MediaCard` widget uses `.active`
+    // (the bundle's class shape) instead of the W18 PR1 inline
+    // `media-card--active` BEM modifier.
+    expect(activeCard).toHaveClass('active');
     // First (none) tile is not active by default.
     expect(cards[0]).toHaveAttribute('aria-pressed', 'false');
   });
@@ -208,7 +211,11 @@ describe('Perform view', () => {
     if (!target) return;
     await fireEvent.click(target);
     expect(target).toHaveAttribute('aria-current', 'true');
-    expect(defaultActive).toHaveAttribute('aria-current', 'false');
+    // Shared-primitive backfill — `SceneRow` widget elides aria-current
+    // when inactive (per the bundle's `aria-current={active || undefined}`
+    // idiom), so the previously-active row clears the attribute entirely
+    // rather than flipping to "false".
+    expect(defaultActive?.hasAttribute('aria-current')).toBe(false);
     // Pulse marker follows the active row.
     expect(target.querySelector('.scene-row__pulse')).not.toBeNull();
     expect(defaultActive?.querySelector('.scene-row__pulse')).toBeNull();
