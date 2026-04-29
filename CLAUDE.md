@@ -14,9 +14,12 @@ context that a code-reader cannot derive from the tree. Read it on turn one; kee
 Chromaticity is a deterministic, audio-reactive live-visuals runtime and authoring
 environment (macOS + Windows desktop). Toolkit: Tauri 2 + Svelte 5 + TypeScript on the UI
 side; Rust 2024 edition on the engine side. `docs/adr/ADR-018-non-scene-ui-toolkit.md` is
-the normative toolkit decision. Phase 1 entered April 2026; engine and integration crates
-(runtime, scene, audio, observability, osc-adapter) are scaffolded and receiving
-substantive implementation in successive slices.
+the normative toolkit decision. Phase 1 entered April 2026 and EXIT was achieved at
+W12 (commit `e818752`); engine and integration crates (runtime, scene, audio,
+observability, osc-adapter) continue receiving substantive implementation toward
+Phase 2 evidence-row closure, with parallel UI port waves against the v0.2-beta
+bundle closing all three Vitest test-coverage tracks (widgets, shell components,
+routed views).
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
