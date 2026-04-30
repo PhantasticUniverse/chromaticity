@@ -27,6 +27,7 @@ workspace = true
 [dependencies]
 bitflags = { version = "2", default-features = false, features = ["serde"] }
 byteorder = { version = "1" }
+half = { version = "2", default-features = false, features = ["num-traits"] }
 indexmap = { version = "2" }
 memchr = { version = "2" }
 num-traits = { version = "0.2", features = ["i128", "libm"] }

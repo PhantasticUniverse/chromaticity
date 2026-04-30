@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity engine entitlement crate — Phase-0 EV-ENTITLEMENT-TOKEN-FORMAT
+# fixture pack.
+#
+# Realizes the locked `entitlement-v2` token schema from
+# `docs/adr/ADR-009-activation-and-entitlements.md` as Rust types with
+# round-trip serialization fixtures over JSON and canonical CBOR. Closes
+# `docs/26-evidence-artifact-registry.md` row 88 (`EV-ENTITLEMENT-TOKEN-FORMAT`,
+# Phase-0 exit gate member, currently `Planned`/`pending:artifact`).
+#
+# Scope (Phase 0):
+#
+#   - Token schema struct + serde derive matching ADR-009 verbatim.
+#   - Canonical CBOR encode/decode helpers (deterministic byte-identity
+#     re-encode round-trip — the gate test).
+#   - MVP capability namespace constants per ADR-009 §Capability namespace.
+#   - JSON + CBOR fixture pack covering the four flag combos
+#     (paid / trial / beta / enterprise), `machine_binding` present /
+#     absent, `kid` rotation, and unknown-claim forward-compat preservation.
+#
+# Out of scope (deferred to Phase 4a per docs/26 rows 85 / 86 / 87):
+#
+#   - Signature verification (`EV-ENTITLEMENT-ENFORCEMENT`).
+#   - Offline 14-day expiry drill (`EV-ENTITLEMENT-OFFLINE`).
+#   - Deny-list and session-revocation behaviour (`EV-ENTITLEMENT-REVOCATION`).
+#   - Capability bitmask runtime evaluation; the namespace strings here
+#     are a parsing target only, not a `chromaticity.entitled(cap)`
+#     enforcement surface.
+#
+# Governing ADR:
+#
+#   ADR-009 — activation and entitlements
+#             (`docs/adr/ADR-009-activation-and-entitlements.md`).
+#
+# All workspace lints inherited (unsafe_code = forbid,
+# clippy::unwrap_used = deny, clippy::expect_used = deny). No local
+# relaxation.
+
+[package]
+name = "chromaticity-entitlement"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity entitlement-v2 token format fixture pack (ADR-009 schema, JSON + canonical CBOR round-trip)."
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# serde 1 with the `derive` feature powers the `entitlement-v2` Token
+# struct's Serialize / Deserialize impls. License: Apache-2.0 OR MIT
+# (allow-listed by /deny.toml). Already in the workspace-hack unified
+# dep set; this is the third member crate to take a direct dep on
+# serde (mirrors `engine/scene/Cargo.toml` + `app/ui-bridge/Cargo.toml`).
+serde = { version = "1", features = ["derive"] }
+
+# serde_json 1 powers the JSON-side round-trip leg of the fixture pack.
+# `serde_json::Value` carries unknown-claim preservation through the
+# `#[serde(flatten)]` bag on `Token::extra`. License: Apache-2.0 OR MIT
+# (allow-listed by /deny.toml). Already in the workspace-hack unified
+# dep set.
+serde_json = "1"
+
+# ciborium 0.2 powers the canonical-CBOR-side round-trip leg of the
+# fixture pack. Selected per ADR-009 §Decision: signature verification
+# (Phase 4a) will sign over the canonical CBOR encoding of the payload
+# excluding `signature`; the same ciborium encode path the fixture
+# pack pins here is the path the future verifier will exercise.
+# License: Apache-2.0 (allow-listed by /deny.toml). New direct dep
+# at this crate; transitive crates (ciborium-io, ciborium-ll, half)
+# all carry Apache-2.0 OR MIT and need no allowlist additions.
+#
+# Determinism note: ciborium emits CBOR with sorted-by-name struct
+# fields when the source is a serde-derived struct, which gives the
+# byte-identity re-encode property the canonical CBOR determinism
+# fixture pins. Maps with non-string keys would require explicit
+# canonicalisation; the entitlement-v2 schema has no such maps, so
+# ciborium's default emission is canonical for this surface.
+ciborium = "0.2"
