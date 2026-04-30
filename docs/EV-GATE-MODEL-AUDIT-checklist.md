@@ -189,7 +189,7 @@ Walking the 19-member Phase-0 exit bullet against current row state:
 | `EV-ENTITLEMENT-DESIGN` | Pass | Per-section ADR-009 sign-off + threat-model addendum recorded 2026-04-29. |
 | `EV-ENTITLEMENT-TOKEN-FORMAT` | Pass | engine/entitlement crate scaffolded 2026-04-30 (PR 270, merge `107552f`); `entitlement-v2` schema realized as Rust types with 17 round-trip T2 fixtures + 8 capability T1 drift pins; canonical CBOR byte-identity verified. |
 | `EV-OBSERVABILITY-INVENTORY` | InProgress | Phase-0-deferrable; full closure waits on first-release `OBSERVABILITY-INVENTORY.md`. |
-| `EV-DOCS-PHASE0-SEED` | Planned | Docs seed audit checklist pending. |
+| `EV-DOCS-PHASE0-SEED` | Pass | docs/onboarding/ cluster scaffolded 2026-04-30 (PR 277, merge `b785e91`); 4 user-facing onboarding stub pages + cluster index, clean-room compliant per docs/29. |
 | `EV-GATE-MODEL-AUDIT` | Pass (this row) | Audit performed 2026-04-29; this checklist is the artifact. |
 | `EV-COMMIT-CONVENTION-LINT` | Pass | `policy.yml` green on `45ec2a0`. |
 | `EV-LICENSE-HEADERS` | Pass | `reuse-lint` green on `54c34d2`. |
@@ -198,20 +198,25 @@ Walking the 19-member Phase-0 exit bullet against current row state:
 **Phase-0 EXIT criterion (per `docs/26` Rules line 6): "all required
 evidence IDs for that gate are present and marked Pass".**
 
-- Met: 10 of 19 (`EV-ARCH-CONTRACT-BASELINE`, `EV-CLEANROOM-POLICY-BASELINE`,
+- Met: 11 of 19 (`EV-ARCH-CONTRACT-BASELINE`, `EV-CLEANROOM-POLICY-BASELINE`,
   `EV-SYMBOL-CATALOG`, `EV-ENTITLEMENT-DESIGN`, `EV-ENTITLEMENT-TOKEN-FORMAT`
-  — closed 2026-04-30 via PR 270 merge `107552f` — `EV-GATE-MODEL-AUDIT`,
+  — closed 2026-04-30 via PR 270 merge `107552f` — `EV-DOCS-PHASE0-SEED`
+  — closed 2026-04-30 via PR 277 merge `b785e91` — `EV-GATE-MODEL-AUDIT`,
   `EV-COMMIT-CONVENTION-LINT`, `EV-LICENSE-HEADERS`, `EV-ADR-LINT`, plus
   the present row).
-- Not met: 9 of 19 — the seven UX-bundle rows + `EV-HOTKEY-PARITY-DESIGN`
+- Not met: 8 of 19 — the seven UX-bundle rows + `EV-HOTKEY-PARITY-DESIGN`
   (eight rows AO-blocked on dev-team-queue clearance);
   `EV-OBSERVABILITY-INVENTORY` (Phase-0-deferrable on first-release
-  artifact); `EV-DOCS-PHASE0-SEED` (Planned, pending docs seed audit).
+  artifact). With `EV-DOCS-PHASE0-SEED` closure, the Phase-0 gap is now
+  entirely external-blocked: every remaining gap is either AO-held on
+  dev-team-queue clearance or implementation-gated on a first-release
+  artifact. There are no `Planned` rows left in the Phase-0 set.
 
 **Phase-0 gate decision under the simulation:** Phase-0 EXIT is NOT
 yet met. The audit-itself row (`EV-GATE-MODEL-AUDIT`, this row)
-closes; Phase-0 EXIT remains AO-held pending the nine remaining
-members above. This is the correct, honest reading of the gate model
+closes; Phase-0 EXIT remains AO-held pending the eight remaining
+members above (all external-blocked, no internal-actionable rows
+left). This is the correct, honest reading of the gate model
 and is consistent with the registry's design — `docs/26` Status
 Model defines `Pass` per row, never per phase, and the Phase-X EXIT
 event is a separate AO-held milestone that this audit does not
@@ -229,11 +234,13 @@ pre-empt.
 - **Eight UX-bundle rows are AO-blocked on dev-team-queue clearance.**
   This is the largest known Phase-0 gap and is by-design per `docs/43`
   §18.1 (AO-local UX bundle); not a gate-model audit failure.
-- **One Phase-0 row remains on `pending:artifact`**
-  (`EV-DOCS-PHASE0-SEED`); `EV-ENTITLEMENT-TOKEN-FORMAT` closed
-  2026-04-30 via PR 270 merge `107552f`. The remaining row has a
-  clearly-described deliverable and concrete `Generation Source`
-  value; it simply has not yet had artifact-producing work landed.
+- **No Phase-0 rows remain on `pending:artifact`.**
+  `EV-ENTITLEMENT-TOKEN-FORMAT` closed 2026-04-30 via PR 270 merge
+  `107552f`; `EV-DOCS-PHASE0-SEED` closed 2026-04-30 via PR 277
+  merge `b785e91`. The Phase-0 closure tail is now reduced to the
+  eight external-blocked rows enumerated above (UX-bundle on
+  dev-team-queue + observability on first-release artifact); no
+  internal-actionable rows remain.
 - **One Phase-0 row is structurally Phase-0-deferrable**
   (`EV-OBSERVABILITY-INVENTORY`). The row's `Gate Usage` cites
   Phase-0 exit but the in-flight artifact is first-release-scoped
@@ -257,4 +264,18 @@ pre-empt.
       `EV-OBSERVABILITY-INVENTORY` Phase-0-deferrable, `EV-DOCS-PHASE0-SEED`
       still `Planned`). Phase-0 EXIT itself remains AO-held; the gate-model
       integrity finding is unchanged.
+      Recorded by AO `@PhantasticUniverse` on 2026-04-30.
+- [x] Forward-roll: `EV-DOCS-PHASE0-SEED` (row 66) closed 2026-04-30 via
+      PR 277 merge `b785e91` (docs/onboarding/ cluster scaffolded — 5
+      files / ~35 KB / ~750 lines covering Intro, Scene JSON ref,
+      Standard Uniforms, First-Scene tutorial; clean-room compliant per
+      docs/29; canonical compat-syn-v1 / chromaticity-native chroma_*
+      separation honoured). The Phase-0 EXIT simulation advances to
+      11-of-19 members met. The remaining 8 gaps are now ALL
+      external-blocked: 8 UX-bundle rows AO-held on dev-team-queue
+      clearance per docs/43 §18.1, plus `EV-OBSERVABILITY-INVENTORY`
+      implementation-gated on first-release artifact. There are no
+      `Planned` Phase-0 rows left; the Phase-0 closure tail is reduced
+      to external-blocked work only. Phase-0 EXIT itself remains
+      AO-held; the gate-model integrity finding is unchanged.
       Recorded by AO `@PhantasticUniverse` on 2026-04-30.
