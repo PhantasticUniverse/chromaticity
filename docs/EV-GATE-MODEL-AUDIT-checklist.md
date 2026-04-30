@@ -187,7 +187,7 @@ Walking the 19-member Phase-0 exit bullet against current row state:
 | `EV-SYMBOL-CATALOG` | Pass | Catalog v1.1.0 ratified 2026-04-29. |
 | `EV-HOTKEY-PARITY-DESIGN` | InProgress | AO-blocked on dev-team-queue (5 items); shares the UX-bundle gate. |
 | `EV-ENTITLEMENT-DESIGN` | Pass | Per-section ADR-009 sign-off + threat-model addendum recorded 2026-04-29. |
-| `EV-ENTITLEMENT-TOKEN-FORMAT` | Planned | Token-format fixture pack pending; placeholder artifact. |
+| `EV-ENTITLEMENT-TOKEN-FORMAT` | Pass | engine/entitlement crate scaffolded 2026-04-30 (PR 270, merge `107552f`); `entitlement-v2` schema realized as Rust types with 17 round-trip T2 fixtures + 8 capability T1 drift pins; canonical CBOR byte-identity verified. |
 | `EV-OBSERVABILITY-INVENTORY` | InProgress | Phase-0-deferrable; full closure waits on first-release `OBSERVABILITY-INVENTORY.md`. |
 | `EV-DOCS-PHASE0-SEED` | Planned | Docs seed audit checklist pending. |
 | `EV-GATE-MODEL-AUDIT` | Pass (this row) | Audit performed 2026-04-29; this checklist is the artifact. |
@@ -198,20 +198,19 @@ Walking the 19-member Phase-0 exit bullet against current row state:
 **Phase-0 EXIT criterion (per `docs/26` Rules line 6): "all required
 evidence IDs for that gate are present and marked Pass".**
 
-- Met: 9 of 19 (`EV-ARCH-CONTRACT-BASELINE`, `EV-CLEANROOM-POLICY-BASELINE`,
-  `EV-SYMBOL-CATALOG`, `EV-ENTITLEMENT-DESIGN`, `EV-GATE-MODEL-AUDIT` —
-  closing with this PR — `EV-COMMIT-CONVENTION-LINT`, `EV-LICENSE-HEADERS`,
-  `EV-ADR-LINT`, plus the present row).
-- Not met: 10 of 19 — the seven UX-bundle rows + `EV-HOTKEY-PARITY-DESIGN`
+- Met: 10 of 19 (`EV-ARCH-CONTRACT-BASELINE`, `EV-CLEANROOM-POLICY-BASELINE`,
+  `EV-SYMBOL-CATALOG`, `EV-ENTITLEMENT-DESIGN`, `EV-ENTITLEMENT-TOKEN-FORMAT`
+  — closed 2026-04-30 via PR 270 merge `107552f` — `EV-GATE-MODEL-AUDIT`,
+  `EV-COMMIT-CONVENTION-LINT`, `EV-LICENSE-HEADERS`, `EV-ADR-LINT`, plus
+  the present row).
+- Not met: 9 of 19 — the seven UX-bundle rows + `EV-HOTKEY-PARITY-DESIGN`
   (eight rows AO-blocked on dev-team-queue clearance);
   `EV-OBSERVABILITY-INVENTORY` (Phase-0-deferrable on first-release
-  artifact); `EV-DOCS-PHASE0-SEED` (Planned, pending docs seed audit);
-  `EV-ENTITLEMENT-TOKEN-FORMAT` (Planned, pending token-format fixture
-  pack).
+  artifact); `EV-DOCS-PHASE0-SEED` (Planned, pending docs seed audit).
 
 **Phase-0 gate decision under the simulation:** Phase-0 EXIT is NOT
 yet met. The audit-itself row (`EV-GATE-MODEL-AUDIT`, this row)
-closes; Phase-0 EXIT remains AO-held pending the ten remaining
+closes; Phase-0 EXIT remains AO-held pending the nine remaining
 members above. This is the correct, honest reading of the gate model
 and is consistent with the registry's design — `docs/26` Status
 Model defines `Pass` per row, never per phase, and the Phase-X EXIT
@@ -230,10 +229,11 @@ pre-empt.
 - **Eight UX-bundle rows are AO-blocked on dev-team-queue clearance.**
   This is the largest known Phase-0 gap and is by-design per `docs/43`
   §18.1 (AO-local UX bundle); not a gate-model audit failure.
-- **Two Phase-0 rows remain on `pending:artifact`**
-  (`EV-DOCS-PHASE0-SEED`, `EV-ENTITLEMENT-TOKEN-FORMAT`). Both have
-  clearly-described deliverables and concrete `Generation Source`
-  values; they simply have not yet had artifact-producing work landed.
+- **One Phase-0 row remains on `pending:artifact`**
+  (`EV-DOCS-PHASE0-SEED`); `EV-ENTITLEMENT-TOKEN-FORMAT` closed
+  2026-04-30 via PR 270 merge `107552f`. The remaining row has a
+  clearly-described deliverable and concrete `Generation Source`
+  value; it simply has not yet had artifact-producing work landed.
 - **One Phase-0 row is structurally Phase-0-deferrable**
   (`EV-OBSERVABILITY-INVENTORY`). The row's `Gate Usage` cites
   Phase-0 exit but the in-flight artifact is first-release-scoped
@@ -249,3 +249,12 @@ pre-empt.
       `EV-GATE-MODEL-AUDIT` Phase 0 exit gate is closed at the row level;
       Phase-0 EXIT itself remains AO-held pending the enumerated gap closures.
       Signed by AO `@PhantasticUniverse` on 2026-04-29.
+- [x] Forward-roll: `EV-ENTITLEMENT-TOKEN-FORMAT` (row 88) closed 2026-04-30
+      via PR 270 merge `107552f` (engine/entitlement crate scaffolded; 25
+      tests pass; canonical CBOR byte-identity verified). The Phase-0 EXIT
+      simulation advances to 10-of-19 members met; the remaining 9 gaps
+      remain enumerated honestly above (8 UX-bundle rows AO-blocked,
+      `EV-OBSERVABILITY-INVENTORY` Phase-0-deferrable, `EV-DOCS-PHASE0-SEED`
+      still `Planned`). Phase-0 EXIT itself remains AO-held; the gate-model
+      integrity finding is unchanged.
+      Recorded by AO `@PhantasticUniverse` on 2026-04-30.
