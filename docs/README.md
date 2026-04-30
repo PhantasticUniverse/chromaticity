@@ -18,7 +18,10 @@ are archive-only and live outside the repo history per the root
 ```
 docs/
 ├── README.md                     # you are here
-├── 01-*.md … 51-*.md             # numbered planning and policy docs
+├── 01-*.md … 52-*.md             # numbered planning and policy docs
+├── onboarding/                   # user-facing onboarding seed (Phase-0 tutorial cluster)
+│   ├── README.md
+│   └── 01-intro.md … 04-first-scene-tutorial.md
 └── adr/                          # Architecture Decision Records (MADR 4.0.0)
     ├── TEMPLATE.md
     └── ADR-001-*.md … ADR-018-*.md
@@ -95,6 +98,17 @@ docs/
   (Conventional Commits, per-axis SemVer, Keep a Changelog, trunk-based
   branching, Diátaxis docs mapping, MADR ADRs, SPDX/REUSE/SBOM, signed
   commits + DCO, release attestation, evidence-tagged tests).
+
+### User-Facing Onboarding (Phase-0 Seed)
+- `onboarding/01-intro.md` — overview of Chromaticity, target audience,
+  what is shipped today versus deferred to Phase 2.
+- `onboarding/02-scene-format.md` — `.chroma` scene-package layout and
+  `scene.json` manifest reference (slice-3a wire surface).
+- `onboarding/03-standard-uniforms.md` — first-author rendering of
+  `36-reactive-symbol-catalog.md` v1.1.0; the slice-3a representative
+  subset and forward-pointers to the full catalog.
+- `onboarding/04-first-scene-tutorial.md` — hands-on walkthrough that
+  builds a single-pass audio-reactive scene end-to-end.
 
 ### UX Contracts and Design Tokens
 - `45-design-token-mapping.md` — reconciliation of UX bundle tokens to the
