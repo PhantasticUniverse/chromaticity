@@ -83,23 +83,39 @@
 //!   failure modes lifted from the JS-side throw via the runtime's
 //!   post-execute remap). `EV-SCRIPT-CONTRACT` widens with the
 //!   command-bus path.
-//! - **Slice 5.2 (deferred)** — typed reactive-symbol-catalog
-//!   binding: map `docs/36` v1.1.0 `syn_*` retentions (e.g.
-//!   `syn_BPM`, `syn_Level`, `syn_Spectrum`) and the slice-5a
-//!   chromaticity-native `chroma_AudioRMS` / `chroma_AudioPeak` /
-//!   `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` primitives to typed
-//!   [`ScriptCommand`] variants alongside the slice-5.1 catch-all
-//!   [`ScriptCommand::ReactiveWrite`]. Will likely also install a
-//!   script-author-facing accessor surface (Proxy or property
-//!   getter / setter) so authors write `syn_BPM = 120` instead of
-//!   `__chromaticityEmit('syn_BPM', 120)`. Lands separately so the
-//!   slice-5.1 cross-crate plumbing settles first; the split axis
-//!   is clean (5.1 establishes the seam without committing to a
-//!   symbol set; 5.2 binds names).
+//! - **Slice 5.2 (this PR)** — typed reactive-symbol-catalog
+//!   binding: maps `docs/36` v1.1.0 retentions (e.g. `syn_BPM`,
+//!   `syn_Level`, `syn_Spectrum`) and the slice-5a chromaticity-
+//!   native `chroma_AudioRMS` / `chroma_AudioPeak` / `chroma_AudioFFTLow`
+//!   / `chroma_AudioFFTHigh` primitives, plus the full level / hit /
+//!   time / presence / beat / BPM / large-feature / PrimeBang /
+//!   reference-surface audio families and the script-host-visible §1
+//!   frame/timing + mouse uniforms, to a typed [`ReactiveSymbol`]
+//!   enum. New module [`reactive_symbol`] exposes [`ReactiveSymbol`]
+//!   `#[non_exhaustive]` (53 variants), [`ReactiveValueKind`]
+//!   (Scalar / Vec2 / Vec3 / Vec4) dimensionality slots, and the
+//!   [`ReactiveSymbol::from_name`] / [`ReactiveSymbol::name`] /
+//!   [`ReactiveSymbol::expected_kind`] surface. The slice-5.1
+//!   catch-all [`ScriptCommand::ReactiveWrite { name, value }`]
+//!   variant stays for forward compat; slice-5.2 widens
+//!   [`ScriptCommand`] with the typed
+//!   [`ScriptCommand::TypedReactiveWrite { symbol, value }`]
+//!   variant alongside, and adds a producer-side
+//!   [`ScriptCommand::route`] conversion that resolves catalog
+//!   names + validates carrier shape. Two new [`ScriptError`]
+//!   variants under `#[non_exhaustive]`:
+//!   [`ScriptError::ReactiveSymbolUnknown { name }`] (catalog miss)
+//!   and [`ScriptError::ReactiveValueKindMismatch { symbol_name,
+//!   expected, detail }`] (shape mismatch). The catalog lives on
+//!   the engine/script side (NOT engine/runtime, NOT a shared
+//!   crate) so the dep direction stays clean — engine/script does
+//!   not take a `chromaticity-runtime` dep. `EV-SCRIPT-CONTRACT`
+//!   widens with the catalog-binding path.
 //! - **Slice 5.3+** — scene-author surface (control bindings,
 //!   event handlers, preset-recall hooks per ADR-003), engine/runtime
 //!   adapter that bridges [`ScriptCommandSender`] onto
-//!   `chromaticity_runtime::CommandBus`.
+//!   `chromaticity_runtime::CommandBus`. The slice-5.2 catalog is
+//!   the typed contract that adapter consumes.
 //!
 //! Produces evidence for `EV-SCRIPT-CONTRACT`:
 //!
@@ -174,6 +190,7 @@ pub mod command_bus;
 pub mod determinism;
 mod error;
 pub mod memory_cap;
+pub mod reactive_symbol;
 mod runtime;
 mod value;
 pub mod watchdog;
@@ -182,6 +199,7 @@ pub use command_bus::{ScriptCommand, ScriptCommandError, ScriptCommandSender};
 pub use determinism::{Clock, FixedClock, MonotonicClock, RandomSeedConfig};
 pub use error::ScriptError;
 pub use memory_cap::{MemoryCapConfig, MemoryUsageSnapshot};
+pub use reactive_symbol::{ReactiveSymbol, ReactiveValueKind, ReactiveValueKindMismatchDetail};
 pub use runtime::ScriptRuntime;
 pub use value::ScriptValue;
 pub use watchdog::{Deadline, WatchdogConfig, WatchdogConfigError, WatchdogObservation};

@@ -30,9 +30,18 @@
 //! (the host-side [`crate::command_bus::ScriptCommandSender`] reported
 //! the receive end has been dropped), and
 //! [`ScriptError::CommandBusBackpressure`] (the sender shed the
-//! command without enqueuing it).
+//! command without enqueuing it). Slice 5.2 lands
+//! [`ScriptError::ReactiveSymbolUnknown`] (the
+//! [`crate::ScriptCommand::route`] caller passed a name that did
+//! not resolve against the
+//! `docs/36-reactive-symbol-catalog.md` v1.1.0 catalog) and
+//! [`ScriptError::ReactiveValueKindMismatch`] (the carrier value's
+//! [`crate::ScriptValue`] shape did not conform to the resolved
+//! symbol's [`crate::ReactiveValueKind`] dimensionality slot).
 
 use thiserror::Error;
+
+use crate::reactive_symbol::{ReactiveValueKind, ReactiveValueKindMismatchDetail};
 
 /// Errors returned by [`crate::ScriptRuntime::execute`].
 ///
@@ -224,4 +233,43 @@ pub enum ScriptError {
     /// [`ScriptError::CommandBusDisconnected`].
     #[error("script command bus backpressure")]
     CommandBusBackpressure,
+
+    /// [`crate::ScriptCommand::route`] received a string-keyed
+    /// [`crate::ScriptCommand::ReactiveWrite`] whose `name` did not
+    /// resolve against the `docs/36-reactive-symbol-catalog.md`
+    /// v1.1.0 catalog (slice 5.2). The caller decides the policy:
+    /// drop the write, escalate as an error to the script author,
+    /// or fall back to the catch-all
+    /// [`crate::ScriptCommand::ReactiveWrite`] variant. The
+    /// catch-all variant is preserved on the
+    /// [`crate::ScriptCommand`] enum precisely so a host can route
+    /// unresolved writes through it without needing to mutate the
+    /// JS-side surface.
+    #[error("reactive symbol unknown: {name}")]
+    ReactiveSymbolUnknown {
+        /// Verbatim name string the script supplied.
+        name: String,
+    },
+
+    /// [`crate::ScriptCommand::route`] resolved the name against
+    /// the `docs/36` catalog but the carrier
+    /// [`crate::ScriptValue`]'s shape did not conform to the
+    /// resolved symbol's [`ReactiveValueKind`] dimensionality slot
+    /// (slice 5.2). The diagnostic carries the symbol's canonical
+    /// name (allocation-free `&'static str` from
+    /// [`crate::ReactiveSymbol::name`]), the expected
+    /// [`ReactiveValueKind`], and a structured
+    /// [`ReactiveValueKindMismatchDetail`] describing the actual
+    /// observed shape.
+    #[error(
+        "reactive value kind mismatch: symbol {symbol_name} expected {expected:?} ({detail:?})"
+    )]
+    ReactiveValueKindMismatch {
+        /// Canonical catalog name of the resolved symbol.
+        symbol_name: &'static str,
+        /// Expected dimensionality slot.
+        expected: ReactiveValueKind,
+        /// Structured observed-shape diagnostic.
+        detail: ReactiveValueKindMismatchDetail,
+    },
 }

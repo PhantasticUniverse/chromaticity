@@ -1684,6 +1684,15 @@ mod execute_drift_pins {
                 assert_eq!(name, "syn_BPM");
                 assert_eq!(value, &ScriptValue::Number(120.0));
             }
+            // Slice 5.2 widened `ScriptCommand` with a typed
+            // variant; the slice-5.1 install path (un-routed) still
+            // produces the catch-all variant verbatim — routing is
+            // an explicit `ScriptCommand::route` step the host
+            // performs after sender drain. This pin asserts the
+            // un-routed shape, so a typed variant here would mean
+            // the install path silently routed, which slice 5.2
+            // explicitly does NOT do.
+            other => panic!("expected ReactiveWrite, got {other:?}"),
         }
     }
 
@@ -1822,6 +1831,11 @@ mod execute_drift_pins {
                 assert_eq!(name, "chroma_AudioRMS");
                 assert_eq!(value, &ScriptValue::Number(0.5));
             }
+            // See `command_sender_emits_on_js_call` for the
+            // slice-5.2 `ScriptCommand::TypedReactiveWrite`
+            // variant rationale; install-path emits the
+            // un-routed catch-all verbatim.
+            other => panic!("expected ReactiveWrite, got {other:?}"),
         }
         // All four sibling diagnostic surfaces must still report.
         assert!(rt.last_observation().is_some());
