@@ -30,6 +30,19 @@ description = "Chromaticity engine runtime (state core, command bus, render grap
 [lints]
 workspace = true
 
+[features]
+# Slice-5.3 — engine/script command-bus adapter. Off by default;
+# opt-in only. Enabling pulls the optional `chromaticity-script`
+# dep + activates the [`script_bridge`] module that bridges
+# `ScriptCommand` values from the engine/script producer-side
+# [`chromaticity_script::ScriptCommandSender`] trait onto a
+# host-side `crossbeam-channel` consumer the runtime can drain.
+# The dep direction is engine/runtime → engine/script (consumer
+# imports producer types); engine/script does NOT take a
+# `chromaticity-runtime` dep — slice-5.1's
+# `ScriptCommandSender` trait remains the cross-crate seam.
+script-bridge = ["dep:chromaticity-script"]
+
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
@@ -45,9 +58,23 @@ workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 # engine/observability/src/lib.rs lines 26-27.
 chromaticity-observability = { version = "0.0.0", path = "../observability" }
 
+# Slice-5.3 — chromaticity-script optional dep behind the
+# `script-bridge` feature. The runtime adapter implements the
+# slice-5.1 `chromaticity_script::ScriptCommandSender` trait so a
+# `ScriptRuntime` configured via `with_command_sender` routes
+# script-emitted reactive writes onto a runtime-owned consumer
+# channel. Off by default to keep the runtime crate dep-free for
+# call sites that don't link the script lane. The dep direction
+# is engine/runtime → engine/script (consumer imports producer
+# types) so engine/script stays independent of runtime types,
+# preserving slice-5.1's cross-crate seam.
+chromaticity-script = { version = "0.0.0", path = "../script", optional = true }
+
 # crossbeam-channel 0.5 backs the Phase-1 in-memory CommandChannel
 # implementation. Wrapped behind the crate-local `CommandChannel`
 # trait so slice-3 persistence work can substitute a disk-backed or
 # reconciliation-layer implementation without touching producer call
 # sites. License: MIT OR Apache-2.0 (allow-listed by deny.toml).
+# Slice-5.3 also reuses crossbeam-channel for the script-bridge
+# bounded MPMC consumer queue.
 crossbeam-channel = "0.5"
