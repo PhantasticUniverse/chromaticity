@@ -105,11 +105,11 @@
 //!   ahead of the crossfade — holds an output texture, sampler, and
 //!   progress-uniform buffer pre-sized to the cued spec),
 //!   [`composition::compose_transition_frame`] (the crossfade entry
-//!   point — renders the orchestrator's two specs via
-//!   [`compile_and_render_multipass`] and composites the byte
-//!   streams via per-channel alpha blend at the supplied `progress`
-//!   parameter; endpoints `progress = 0.0` and `progress = 1.0` are
-//!   bit-identical to a direct multipass render of either side),
+//!   point; the slice-5b.2 implementation rendered the two specs via
+//!   [`compile_and_render_multipass`] and composited the byte streams
+//!   on the CPU — slice 5b.3 below replaces the body with a GPU
+//!   compositing pipeline while preserving the entry-point signature
+//!   and endpoint short-circuit byte-identity contract),
 //!   [`transitions::TransitionClock`] (a local trait abstraction
 //!   for the timeout-tracking wall-clock — separate from
 //!   `engine/script::Clock` which has different semantics for the
@@ -124,10 +124,7 @@
 //!   (`TimeoutExceeded`, `GpuAllocationFailed`, `CompositionFailed`).
 //!   New T1 pins in `transitions::transitions_pins` cover timeout
 //!   firing, within-budget happy path, hard-cut from each phase,
-//!   clock monotonicity, and elapsed accessor; new T1 pins in
-//!   `composition::composition_pins` cover per-format blend identity
-//!   at endpoints, midpoint blends, mismatched-input rejection, and
-//!   half-float round-trip. The T2 GPU corpus in
+//!   clock monotonicity, and elapsed accessor. The T2 GPU corpus in
 //!   `engine/render/tests/transition_composition.rs` exercises the
 //!   orchestrator + composition end-to-end.
 //! - **Slice 5b.2+ refactor (this PR)** —
@@ -156,27 +153,64 @@
 //!   need zero changes. The refactor is purely a device-ownership
 //!   widening; slice 5b.3 (a separate follow-up PR that USES this
 //!   refactor) will pull the CPU-side blend onto the GPU.
-//! - **Slice 5b.3 (deferred)** — full GPU-side composition pass
-//!   (uses [`multipass::MultipassRenderer`]'s long-lived device +
-//!   queue accessors, replacing the slice-5b.2 CPU-side blend),
-//!   the future `audio[]` array uniform variant that consolidates
-//!   `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` into a single
-//!   `chroma_AudioFFT[8]` binding (out of scope for slice-5a —
-//!   scheduler-shaped decision), DX12 backend re-enablement,
-//!   Windows Vulkan accept-set expansion, Metal backend-matrix
-//!   conformance.
+//! - **Slice 5b.3 (this PR)** — GPU-side compositing pipeline. The
+//!   slice-5b.2 [`composition::compose_transition_frame`] CPU-side
+//!   per-byte alpha lerp is retired in favor of a third blend-pass
+//!   render pipeline that samples the current and next render
+//!   outputs and blends them via `mix()` in the fragment shader.
+//!   Tier-9 [`multipass::MultipassRenderer`]'s long-lived
+//!   `Arc<wgpu::Device>` + `wgpu::Queue` accessors are the
+//!   architectural prerequisite that slice 5b.3 spends —
+//!   pre-Tier-9 the multipass scheduler acquired a fresh device
+//!   per call, which is what forced slice-5b.2 to read back two
+//!   byte streams and blend on the CPU. Adds
+//!   [`multipass::MultipassRenderer::render_to_texture`] (renders a
+//!   spec to a GPU texture without the readback round-trip;
+//!   [`multipass::MultipassRenderer::render`] becomes a wrapper
+//!   that calls `render_to_texture` and reads back the bytes) and
+//!   [`composition::compose_transition_frame_gpu`] (the long-lived-
+//!   renderer composition entry point that callers already holding
+//!   a renderer should prefer; the original
+//!   [`composition::compose_transition_frame`] keeps its public
+//!   signature and now wraps `compose_transition_frame_gpu` with a
+//!   per-call renderer). Endpoint short-circuit byte-identity
+//!   (`progress = 0.0` and `progress = 1.0`) is preserved — the
+//!   short-circuit short-paths to a direct
+//!   [`multipass::MultipassRenderer::render`] call without entering
+//!   the third pass. Mid-range `progress` byte hashes are
+//!   regenerated against the GPU-blended output (Apple Silicon
+//!   Metal seed; the slice-5b.2 CPU-blended hashes are retired in
+//!   the same PR). T1 GPU pins in
+//!   `composition::composition_gpu_pins` cover endpoint identity,
+//!   midpoint per-pixel bounds, `render_to_texture` format /
+//!   dimensions, and progress clamping. The slice-5b.2
+//!   `composition::composition_pins` CPU-helper pins (formerly
+//!   covering `compose_byte_streams` and the half-float helpers)
+//!   are removed — those helpers no longer exist; structural
+//!   validation pins (size / format / empty-pass-list mismatch
+//!   rejection) remain.
+//! - **Slice 5b.4+ (deferred)** — the future `audio[]` array
+//!   uniform variant that consolidates `chroma_AudioFFTLow` /
+//!   `chroma_AudioFFTHigh` into a single `chroma_AudioFFT[8]`
+//!   binding (out of scope for slice-5a — scheduler-shaped
+//!   decision), DX12 backend re-enablement, Windows Vulkan
+//!   accept-set expansion, Metal backend-matrix conformance.
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
 //! - T1 entry-point drift pins in `single_pass::compile_drift_pins`
-//!   (slice 1), `multipass::multipass_drift_pins` (slices 2 + 4),
+//!   (slice 1), `multipass::multipass_drift_pins` (slices 2 + 4 +
+//!   5b.2-refactor + 5b.3 `render_to_texture`),
 //!   `glsl_includes::include_drift_pins` (slice 3),
 //!   `scene_adapter::adapter_drift_pins` (slice 4, gated behind
 //!   the `scene-adapter` feature),
 //!   `audio_adapter::audio_adapter_drift_pins` (slice 5a, gated
 //!   behind the `audio-binding` feature; dual-tagged
-//!   `EV-AUDIO-TRACE`), and `transitions::transitions_pins`
-//!   (slice 5b.1, the warm-switch lifecycle state machine).
+//!   `EV-AUDIO-TRACE`), `transitions::transitions_pins` (slice
+//!   5b.1, the warm-switch lifecycle state machine), and
+//!   `composition::composition_pins` + `composition::composition_gpu_pins`
+//!   (slice 5b.3 GPU compositing — structural rejection without an
+//!   adapter and end-to-end GPU compose with one).
 //! - T2 deterministic UV-gradient corpus in
 //!   `engine/render/tests/single_pass.rs` (slice 1), per-pass cascade
 //!   corpus in `engine/render/tests/multipass.rs` (slice 2),
@@ -228,7 +262,7 @@ pub use audio_adapter::{
     UNIFORM_NAME_BPM, UNIFORM_NAME_FFT_HIGH, UNIFORM_NAME_FFT_LOW, UNIFORM_NAME_PEAK,
     UNIFORM_NAME_RMS, uniform_input_from_audio_snapshot,
 };
-pub use composition::{PreparedScene, compose_transition_frame};
+pub use composition::{PreparedScene, compose_transition_frame, compose_transition_frame_gpu};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
     MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat, UniformInput,
