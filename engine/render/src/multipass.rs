@@ -355,6 +355,194 @@ struct UniformSlot {
     bytes: [u8; 16],
 }
 
+/// Long-lived render context owning the wgpu Instance / Adapter /
+/// Device / Queue plus the cached fullscreen-triangle vertex shader
+/// module.
+///
+/// The slice-5b.2+ refactor (this struct) extracts the device-
+/// acquisition block from the prior per-call entry point so callers
+/// that render multiple frames can amortize Instance / Adapter /
+/// Device creation across calls. The companion shim
+/// [`compile_and_render_multipass`] keeps the prior free-function
+/// signature working for callers (e.g.
+/// [`crate::composition::compose_transition_frame`]) that have not
+/// yet migrated to the long-lived shape; that shim builds a fresh
+/// `MultipassRenderer` per call so its behavior is bit-identical to
+/// the pre-refactor function.
+///
+/// # Why this exists
+///
+/// The slice-5b.2 [`crate::composition`] module documents the
+/// "renderer is its own GPU lifetime" invariant — the orchestrator
+/// could not share a device with the multipass scheduler because the
+/// scheduler acquired one per call. Slice 5b.3 (a separate follow-up
+/// PR that USES this refactor) lifts the CPU-side composition byte
+/// blend onto the GPU; that requires a long-lived device that both
+/// the current-spec render and the next-spec render can submit work
+/// to without re-acquisition. This struct is the architectural
+/// prerequisite — it widens the device-ownership model the slice-5b.2
+/// caveat described.
+///
+/// # Bit-identity invariant
+///
+/// Calling [`MultipassRenderer::new`] then [`MultipassRenderer::render`]
+/// produces the exact same bytes as the prior per-call entry point
+/// for any [`MultipassSpec`]. Two consecutive `render` calls with the
+/// same spec produce byte-identical outputs (the device is reused;
+/// per-spec textures, bind groups, pipelines, and the readback buffer
+/// are rebuilt each call). All slice-1 / slice-2 / slice-4 / slice-5
+/// `T2` byte-hash corpora pass without modification.
+///
+/// # Resource caching policy
+///
+/// - **Cached for the renderer's lifetime**: the wgpu Instance,
+///   Adapter, Device, Queue, and the compiled fullscreen-triangle
+///   vertex shader module (the `FULLSCREEN_TRIANGLE_GLSL` constant
+///   never changes — recompiling it per render was waste).
+/// - **Rebuilt per render() call**: every per-spec resource — render
+///   targets, samplers, bind group layouts, fragment shaders, pipeline
+///   layouts, render pipelines, uniform buffers, bind groups,
+///   readback buffer. This keeps the slice-2 byte-identity invariant
+///   (the pipeline order is unchanged) and avoids carrying a per-spec
+///   cache that would need invalidation logic; pipeline-cache
+///   amortization is its own future slice.
+pub struct MultipassRenderer {
+    /// wgpu Instance owning the backend dispatch table. Held for the
+    /// renderer's lifetime so the Adapter remains valid.
+    _instance: wgpu::Instance,
+    /// wgpu Adapter for capability queries (float-target
+    /// `RENDER_ATTACHMENT` checks per render).
+    adapter: wgpu::Adapter,
+    /// Long-lived `wgpu::Device`. Slice 5b.3 will share this with the
+    /// composition pass via [`MultipassRenderer::device`].
+    device: Arc<wgpu::Device>,
+    /// Long-lived `wgpu::Queue`. Slice 5b.3 will submit composition
+    /// command encoders against this queue rather than the per-call
+    /// queue the shim builds.
+    queue: wgpu::Queue,
+    /// Cached fullscreen-triangle vertex shader module. Compiled
+    /// once at `new()` time from `FULLSCREEN_TRIANGLE_GLSL`; reused
+    /// across every `render()` call. The GLSL source is a runtime
+    /// constant so the compiled module is always equivalent — no
+    /// invalidation needed.
+    vertex_shader: wgpu::ShaderModule,
+}
+
+impl MultipassRenderer {
+    /// Build a renderer with the chromaticity-default Instance /
+    /// Adapter / Device. Mirrors the wgpu descriptors the prior
+    /// per-call entry point used so rendered output is bit-identical
+    /// across the refactor.
+    ///
+    /// # Errors
+    ///
+    /// - [`RenderError::AdapterUnavailable`] — no usable wgpu adapter
+    ///   was found (headless CI without a backend, missing GPU
+    ///   driver, etc.).
+    /// - [`RenderError::DeviceRequest`] — the adapter rejected the
+    ///   device descriptor.
+    /// - [`RenderError::FragmentParse`] / [`RenderError::FragmentValidate`] —
+    ///   the `FULLSCREEN_TRIANGLE_GLSL` vertex shader (a runtime
+    ///   constant) failed the naga frontend; surfaces as an
+    ///   in-source-only failure if a future workspace upgrade breaks
+    ///   the shader. Not reachable on the current source.
+    pub fn new() -> Result<Self, RenderError> {
+        // Adapter + device acquisition. See `single_pass.rs` lines
+        // 193-205 for the in-source explanation of why each leaf
+        // future is wrapped with `pollster::block_on` rather than the
+        // body being declared `async`.
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
+            flags: wgpu::InstanceFlags::default(),
+            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+            backend_options: wgpu::BackendOptions::default(),
+        });
+
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            force_fallback_adapter: false,
+            compatible_surface: None,
+        }))
+        .map_err(|_| RenderError::AdapterUnavailable)?;
+
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("chromaticity-render multipass device"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
+            memory_hints: wgpu::MemoryHints::default(),
+            trace: wgpu::Trace::default(),
+        }))
+        .map_err(|e| RenderError::DeviceRequest(format!("{e}")))?;
+        let device = Arc::new(device);
+
+        // Compile the shared full-screen-triangle vertex shader once
+        // at construction. The GLSL source is a runtime constant so
+        // the resulting module is reusable across every `render()`
+        // call — caching it here is a pure performance win with no
+        // bit-identity cost (the same naga IR / wgpu module is what
+        // the per-call form would have produced).
+        let vertex_module =
+            compile_glsl_module(FULLSCREEN_TRIANGLE_GLSL, naga::ShaderStage::Vertex)?;
+        let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("chromaticity-render multipass vertex (shared fullscreen triangle)"),
+            source: wgpu::ShaderSource::Naga(Cow::Owned(vertex_module)),
+        });
+
+        Ok(Self {
+            _instance: instance,
+            adapter,
+            device,
+            queue,
+            vertex_shader,
+        })
+    }
+
+    /// Long-lived `Arc<wgpu::Device>` shared by every
+    /// [`MultipassRenderer::render`] call this renderer makes.
+    /// Slice 5b.3 will use this accessor to submit a GPU-side
+    /// composition pass against the same device that just rendered
+    /// the source frames, eliminating the slice-5b.2 CPU-side blend.
+    pub fn device(&self) -> &Arc<wgpu::Device> {
+        &self.device
+    }
+
+    /// Long-lived `wgpu::Queue` shared by every
+    /// [`MultipassRenderer::render`] call this renderer makes.
+    /// Slice 5b.3 will submit composition command encoders against
+    /// this queue rather than building a fresh one per composition
+    /// call.
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
+
+    /// Compile every pass in `spec` and render them sequentially
+    /// across `spec.frame_count` frames, returning the FINAL frame's
+    /// FINAL pass readback bytes
+    /// (`target_format.bytes_per_pixel()` per pixel, row-major,
+    /// padding stripped — same shape as
+    /// [`crate::compile_and_render_single_pass`] for `Rgba8Unorm`).
+    ///
+    /// Single-frame `frame_count = 1` plus all-`Rgba8Unorm` passes
+    /// plus no `feedback_self` passes is bit-identical to slice-2
+    /// behavior. Calling `render` twice with the same spec produces
+    /// byte-identical outputs (the device is reused; only per-spec
+    /// resources are rebuilt).
+    ///
+    /// # Errors
+    ///
+    /// Same error variants as the prior per-call entry point — see
+    /// [`compile_and_render_multipass`] for the exhaustive list.
+    pub fn render(&self, spec: &MultipassSpec) -> Result<Vec<u8>, RenderError> {
+        render_multipass_with(
+            &self.adapter,
+            &self.device,
+            &self.queue,
+            &self.vertex_shader,
+            spec,
+        )
+    }
+}
+
 /// Compile every pass in `spec` and render them sequentially across
 /// `spec.frame_count` frames, returning the FINAL frame's FINAL
 /// pass readback bytes (`target_format.bytes_per_pixel()` per pixel,
@@ -363,6 +551,16 @@ struct UniformSlot {
 ///
 /// Single-frame `frame_count = 1` plus all-`Rgba8Unorm` passes plus
 /// no `feedback_self` passes is bit-identical to slice-2 behavior.
+///
+/// # Refactor compatibility shim
+///
+/// This free function builds a fresh [`MultipassRenderer`] per call
+/// and immediately runs [`MultipassRenderer::render`], reproducing
+/// the pre-refactor "device acquired per render" behavior
+/// bit-identically. Callers that benefit from amortized device
+/// creation across multiple renders (in particular slice 5b.3's GPU-
+/// side composition path) should construct a [`MultipassRenderer`]
+/// once and reuse it across `render` calls.
 ///
 /// # Errors
 ///
@@ -389,11 +587,22 @@ struct UniformSlot {
 ///   [`RenderError::DeviceLoss`] / [`RenderError::BufferMap`] — wgpu
 ///   device acquisition or readback failure.
 pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, RenderError> {
-    // 1. Up-front structural validation. These checks intentionally
-    // run BEFORE wgpu adapter acquisition so a structural error on a
-    // headless CI runner without a usable adapter still returns the
-    // expected variant rather than masking it with
-    // `AdapterUnavailable`.
+    // 1. Up-front structural validation BEFORE building the renderer
+    // so a structural error on a headless CI runner without a usable
+    // adapter still returns the expected variant rather than masking
+    // it with `AdapterUnavailable` from `MultipassRenderer::new`.
+    validate_spec_shape(spec)?;
+    let renderer = MultipassRenderer::new()?;
+    renderer.render(spec)
+}
+
+/// Up-front structural validation extracted so the shim can run it
+/// before adapter acquisition. The shim path needs this for the
+/// "structural error fires on adapter-less CI" invariant from the
+/// slice-2 drift pins; `MultipassRenderer::render` re-runs the same
+/// checks because callers that build their own renderer still expect
+/// structural rejection to take priority over GPU-state errors.
+fn validate_spec_shape(spec: &MultipassSpec) -> Result<(), RenderError> {
     if spec.passes.is_empty() {
         return Err(RenderError::EmptyPassList);
     }
@@ -427,41 +636,33 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
             }
         }
     }
+    Ok(())
+}
 
-    // 2. Adapter + device acquisition. See `single_pass.rs` lines
-    // 193-205 for the in-source explanation of why each leaf future
-    // is wrapped with `pollster::block_on` rather than the body
-    // being declared `async`.
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::PRIMARY,
-        flags: wgpu::InstanceFlags::default(),
-        memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
-        backend_options: wgpu::BackendOptions::default(),
-    });
-
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        force_fallback_adapter: false,
-        compatible_surface: None,
-    }))
-    .map_err(|_| RenderError::AdapterUnavailable)?;
-
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("chromaticity-render multipass device"),
-        required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
-        memory_hints: wgpu::MemoryHints::default(),
-        trace: wgpu::Trace::default(),
-    }))
-    .map_err(|e| RenderError::DeviceRequest(format!("{e}")))?;
-    let device = Arc::new(device);
-
-    // 3. Compile the shared full-screen-triangle vertex shader once.
-    let vertex_module = compile_glsl_module(FULLSCREEN_TRIANGLE_GLSL, naga::ShaderStage::Vertex)?;
-    let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("chromaticity-render multipass vertex (shared fullscreen triangle)"),
-        source: wgpu::ShaderSource::Naga(Cow::Owned(vertex_module)),
-    });
+/// Inner render driver shared by [`MultipassRenderer::render`] and
+/// (transitively, via the shim) [`compile_and_render_multipass`].
+/// Takes the long-lived adapter / device / queue / cached vertex
+/// shader by reference so the renderer's resources are reused across
+/// calls. The body is the original per-call function from step 4
+/// onward — texture allocation through readback — verbatim, with
+/// `device` / `queue` / `vertex_shader` substituted for the
+/// previously locally-built handles.
+fn render_multipass_with(
+    adapter: &wgpu::Adapter,
+    device: &Arc<wgpu::Device>,
+    queue: &wgpu::Queue,
+    vertex_shader: &wgpu::ShaderModule,
+    spec: &MultipassSpec,
+) -> Result<Vec<u8>, RenderError> {
+    // 1. Up-front structural validation. These checks intentionally
+    // run BEFORE any GPU work so a structural error returns the
+    // expected variant rather than masking it with a downstream
+    // wgpu failure. The shim path (`compile_and_render_multipass`)
+    // already runs this BEFORE adapter acquisition; running it again
+    // here is cheap and keeps the invariant intact for callers that
+    // build their own renderer.
+    validate_spec_shape(spec)?;
+    let num_passes = spec.passes.len();
 
     // 4. Float-target adapter capability check. Run BEFORE texture
     // allocation so an unsupported format surfaces as
@@ -700,7 +901,7 @@ pub fn compile_and_render_multipass(spec: &MultipassSpec) -> Result<Vec<u8>, Ren
             label: Some("chromaticity-render multipass pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &vertex_shader,
+                module: vertex_shader,
                 entry_point: Some("main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[],
@@ -1039,10 +1240,27 @@ mod multipass_drift_pins {
     //!     and bytes-per-pixel pair.
     //!   - [`PassDef`] / [`MultipassSpec`] `Default` produce the
     //!     slice-2-compatible single-frame `Rgba8Unorm` shape.
+    //! - Slice-5b.2+ refactor additions:
+    //!   - [`MultipassRenderer::new`] succeeds on a working wgpu
+    //!     adapter and returns accessor-reachable device + queue
+    //!     handles.
+    //!   - [`MultipassRenderer::render`] is byte-identical across
+    //!     two consecutive calls with the same spec (long-lived
+    //!     device reuse does not perturb output).
+    //!   - [`compile_and_render_multipass`] (the shim) is
+    //!     byte-identical to
+    //!     [`MultipassRenderer::new`] + [`MultipassRenderer::render`]
+    //!     for the same spec (shim equivalence).
+    //!   - [`MultipassRenderer::device`] returns the SAME
+    //!     `Arc<wgpu::Device>` across calls
+    //!     (`Arc::ptr_eq` identity), proving the device is owned by
+    //!     the renderer rather than rebuilt per `render`.
+
+    use std::sync::Arc;
 
     use super::{
-        MultipassSpec, PassDef, PassInputBinding, RenderError, TargetFormat, UniformInput,
-        UniformValue, compile_and_render_multipass, encode_uniform_slots,
+        MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, RenderError, TargetFormat,
+        UniformInput, UniformValue, compile_and_render_multipass, encode_uniform_slots,
     };
 
     #[test]
@@ -1324,5 +1542,117 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
             }
             other => panic!("expected UniformBindingFailed, got {other:?}"),
         }
+    }
+
+    /// Trivial single-pass spec helper for the `MultipassRenderer`
+    /// drift pins. Renders a UV-gradient at 16x16 — enough to exercise
+    /// the full pipeline (vertex + fragment + readback) without
+    /// pulling in a corpus dependency.
+    fn trivial_uv_spec() -> MultipassSpec {
+        let trivial = r#"
+#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+void main() { fragColor = vec4(uv, 0.0, 1.0); }
+"#
+        .to_string();
+        MultipassSpec {
+            passes: vec![PassDef {
+                label: Some("drift-pin-trivial".to_string()),
+                fragment_glsl: trivial,
+                ..PassDef::default()
+            }],
+            target_size: (16, 16),
+            ..MultipassSpec::default()
+        }
+    }
+
+    #[test]
+    fn renderer_new_returns_reachable_device_and_queue() {
+        // Drift pin: `MultipassRenderer::new` succeeds on a working
+        // wgpu adapter and the device + queue accessors return
+        // non-null handles. Slice-5b.2+ refactor addition.
+        let renderer = MultipassRenderer::new()
+            .expect("MultipassRenderer::new must succeed on a working wgpu adapter");
+        // `device()` returns `&Arc<wgpu::Device>` — dereferencing
+        // the Arc proves the inner pointer is reachable.
+        let device: &Arc<wgpu::Device> = renderer.device();
+        // wgpu::Device has no observable getter we can call without
+        // GPU work; the existence of an Arc<Device> with refcount
+        // >= 1 is the reachability proof.
+        assert!(Arc::strong_count(device) >= 1);
+        // `queue()` returns `&wgpu::Queue`; the address is valid
+        // (no segfault on access) — the test passes if construction
+        // completed.
+        let _queue: &wgpu::Queue = renderer.queue();
+    }
+
+    #[test]
+    fn renderer_render_byte_identical_across_two_calls() {
+        // Drift pin: two consecutive `render` calls with the same
+        // spec produce byte-identical output. The renderer reuses
+        // its device + cached vertex shader; per-spec resources are
+        // rebuilt each call. Slice-5b.2+ refactor addition —
+        // protects against a future regression where per-call state
+        // leaks across `render` invocations.
+        let renderer = MultipassRenderer::new()
+            .expect("MultipassRenderer::new must succeed on a working wgpu adapter");
+        let spec = trivial_uv_spec();
+        let first = renderer
+            .render(&spec)
+            .expect("first render must succeed on a working wgpu adapter");
+        let second = renderer
+            .render(&spec)
+            .expect("second render must succeed on a working wgpu adapter");
+        assert_eq!(
+            first, second,
+            "two consecutive renders with the same spec must produce byte-identical output",
+        );
+    }
+
+    #[test]
+    fn shim_byte_identical_to_renderer_new_then_render() {
+        // Drift pin: the backwards-compat shim
+        // (`compile_and_render_multipass`) is byte-identical to the
+        // explicit `MultipassRenderer::new()?.render(...)` form. The
+        // shim is the migration bridge for callers that have not
+        // moved to the long-lived shape; this pin guards that the
+        // bridge stays semantically transparent. Slice-5b.2+ refactor
+        // addition.
+        let spec = trivial_uv_spec();
+        let shim = compile_and_render_multipass(&spec)
+            .expect("shim path must succeed on a working wgpu adapter");
+        let renderer = MultipassRenderer::new()
+            .expect("MultipassRenderer::new must succeed on a working wgpu adapter");
+        let direct = renderer
+            .render(&spec)
+            .expect("direct render must succeed on a working wgpu adapter");
+        assert_eq!(
+            shim, direct,
+            "shim output must equal direct MultipassRenderer::new()?.render() output",
+        );
+    }
+
+    #[test]
+    fn renderer_device_arc_stable_across_render_calls() {
+        // Drift pin: `MultipassRenderer::device()` returns the SAME
+        // `Arc<wgpu::Device>` reference across multiple `render`
+        // calls, proving the device is owned by the renderer rather
+        // than rebuilt per call. `Arc::ptr_eq` is the strict
+        // identity check — Arc clones share the inner allocation, so
+        // ptr_eq is true iff the underlying allocation is the same.
+        // Slice-5b.2+ refactor addition.
+        let renderer = MultipassRenderer::new()
+            .expect("MultipassRenderer::new must succeed on a working wgpu adapter");
+        let device_before: Arc<wgpu::Device> = Arc::clone(renderer.device());
+        let spec = trivial_uv_spec();
+        let _ = renderer
+            .render(&spec)
+            .expect("render must succeed on a working wgpu adapter");
+        let device_after: Arc<wgpu::Device> = Arc::clone(renderer.device());
+        assert!(
+            Arc::ptr_eq(&device_before, &device_after),
+            "renderer.device() must return the same Arc<Device> allocation across render calls",
+        );
     }
 }
