@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Phase-2 EV-RENDER-CONFORMANCE slice-5b.1 transition-orchestration
-//! lifecycle (ADR-007 warm-switch policy first half).
+//! Phase-2 EV-RENDER-CONFORMANCE slice-5b transition-orchestration
+//! (ADR-007 warm-switch policy).
+//!
+//! Slice-5b.1 (already merged) landed the lifecycle state machine.
+//! Slice-5b.2 (this slice) extends the orchestrator with GPU resource
+//! preallocation, the crossfade composition entry point, and the
+//! 500 ms timeout-degrades-to-hard-cut fallback path. The slice-5b.1
+//! `TransitionOrchestrator` API surface (`cue_next` / `mark_primed` /
+//! `begin_crossfade` / `commit_next` / `abort` / accessors) STAYS
+//! UNCHANGED; the slice-5b.2 additions are GPU-aware methods alongside
+//! the existing GPU-FREE state machine plus a separate composition
+//! entry point in [`crate::composition`].
 //!
 //! # ADR-007 four-phase warm-switch
 //!
@@ -123,10 +133,121 @@
 //!   correctness.
 
 use std::fmt;
+use std::time::Instant;
 
 use thiserror::Error;
 
 use crate::multipass::MultipassSpec;
+
+/// ADR-007 default timeout: a transition that does not reach
+/// `PrimeNext` within 500 ms degrades to a hard-cut. Exposed as a
+/// `pub const` so callers and tests share one source of truth.
+pub const DEFAULT_TIMEOUT_MS: u64 = 500;
+
+/// Wall-clock abstraction the orchestrator uses to enforce ADR-007's
+/// 500 ms preparation timeout. Local to this module — the audio /
+/// script crates have their own [`Clock`] traits with different
+/// signatures (millisecond reading, `i64`); the transition-side
+/// abstraction returns elapsed-time-since-start in `u64` ms because
+/// negative values are not meaningful for an elapsed-budget reading
+/// and saturating-add semantics on `u64` keep the timeout-firing
+/// branch monotonically conservative.
+///
+/// `Send + Sync` so callers may share a clock instance across the
+/// orchestrator's lifetime; the default [`MonotonicTransitionClock`]
+/// is `Clone` for the same reason.
+///
+/// # Slice-5b.2 vs cross-crate `Clock` trait
+///
+/// `engine/script/src/determinism.rs::Clock` exists for the JS
+/// `Date.now()` shim and returns `i64` (mirroring the JS spec).
+/// Transitions need `Instant`-based monotonic elapsed time, not
+/// wall-clock millis, and their callers don't drive a per-frame
+/// fixed-tick replay primitive — a separate trait keeps the surface
+/// crisp (no negative-elapsed handling, no per-frame override
+/// pattern). The `engine/audio/observability` ingest tracker also
+/// reaches for `Instant` directly without a trait abstraction; the
+/// trait abstraction here exists specifically because the timeout-
+/// firing branch needs a deterministic test path
+/// ([`FixedTransitionClock`]).
+pub trait TransitionClock: Send + Sync {
+    /// Elapsed milliseconds since some implementation-internal
+    /// anchor (typically construction). Monotonic — calls observe a
+    /// non-decreasing sequence. The orchestrator records the value
+    /// at `cue_next` time and computes elapsed as
+    /// `now_elapsed_ms() - start_ms`.
+    fn now_elapsed_ms(&self) -> u64;
+}
+
+/// Default [`TransitionClock`] implementor backed by [`Instant`].
+///
+/// Constructed at orchestrator-build time; subsequent
+/// [`TransitionClock::now_elapsed_ms`] reads use the wall-clock
+/// delta against the captured `start` instant, so the value advances
+/// monotonically and is not subject to system-clock adjustments.
+#[derive(Debug, Clone, Copy)]
+pub struct MonotonicTransitionClock {
+    start: Instant,
+}
+
+impl MonotonicTransitionClock {
+    /// Construct a monotonic clock anchored at `Instant::now()`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+        }
+    }
+
+    /// Anchor instant the elapsed delta is computed against.
+    #[must_use]
+    pub fn start(&self) -> Instant {
+        self.start
+    }
+}
+
+impl Default for MonotonicTransitionClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TransitionClock for MonotonicTransitionClock {
+    fn now_elapsed_ms(&self) -> u64 {
+        u64::try_from(self.start.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+}
+
+/// Fixed-tick [`TransitionClock`] for tests. Every call to
+/// [`TransitionClock::now_elapsed_ms`] returns the configured value.
+///
+/// The slice-5b.2 timeout-firing T1 pin uses this to deterministically
+/// drive the orchestrator into the `TimeoutExceeded` branch without a
+/// real `sleep`.
+#[derive(Debug, Clone, Copy)]
+pub struct FixedTransitionClock {
+    elapsed_ms: u64,
+}
+
+impl FixedTransitionClock {
+    /// Construct a fixed-tick clock that always returns `elapsed_ms`.
+    #[must_use]
+    pub fn new(elapsed_ms: u64) -> Self {
+        Self { elapsed_ms }
+    }
+
+    /// The elapsed millisecond reading this clock returns.
+    #[must_use]
+    pub fn elapsed_ms(&self) -> u64 {
+        self.elapsed_ms
+    }
+}
+
+impl TransitionClock for FixedTransitionClock {
+    fn now_elapsed_ms(&self) -> u64 {
+        self.elapsed_ms
+    }
+}
 
 /// Warm-switch lifecycle state per ADR-007.
 ///
@@ -224,14 +345,63 @@ pub enum TransitionError {
         reason: String,
     },
 
-    /// Slice-5b.1 reserves this variant for the slice-5b.2
+    /// Slice-5b.1 reserved this variant for the slice-5b.2
     /// resource-preallocation step (GPU texture / pipeline cache
-    /// allocation). The variant is declared in slice-5b.1 so the
-    /// public error surface does not break-change when slice-5b.2
-    /// wires it. No code path returns this variant in slice-5b.1.
+    /// allocation). Slice-5b.2 wires it: a wgpu `create_*` failure
+    /// surfaces here. The variant is kept verbatim from slice-5b.1
+    /// so the public error surface does not break-change between
+    /// slices.
     #[error("transition resource preallocation failed: {reason}")]
     ResourcePreallocFailed {
         /// Diagnostic explanation from the GPU side.
+        reason: String,
+    },
+
+    /// ADR-007 §Decision: "Default warm-switch timeout is 500 ms;
+    /// timeout degrades to hard-cut fallback with warning." Slice-5b.2
+    /// fires this variant when [`TransitionOrchestrator::mark_primed`]
+    /// is called and the elapsed time since `cue_next` exceeds
+    /// [`DEFAULT_TIMEOUT_MS`]. The caller's response is to invoke
+    /// [`TransitionOrchestrator::abort`] (returning to `Idle`
+    /// preserving the current scene) and then re-cue with hard-cut
+    /// semantics, OR to call [`TransitionOrchestrator::commit_hard_cut`]
+    /// which performs the swap immediately without a crossfade.
+    #[error(
+        "transition preparation timeout: {elapsed_ms} ms elapsed since cue_next \
+         (limit {limit_ms} ms per ADR-007 §Decision; degrade to hard-cut)"
+    )]
+    TimeoutExceeded {
+        /// Observed elapsed milliseconds since `cue_next`.
+        elapsed_ms: u64,
+        /// Configured timeout limit, surfaced for triage.
+        limit_ms: u64,
+    },
+
+    /// A wgpu device.create_*() call failed during
+    /// [`TransitionOrchestrator::prepare_resources`]. Slice-5b.2
+    /// surfaces this distinctly from
+    /// [`TransitionError::ResourcePreallocFailed`]: this variant
+    /// covers GPU-side allocation failures (out-of-memory, descriptor
+    /// rejection, format-unsupported); `ResourcePreallocFailed`
+    /// covers higher-level preallocation logic (e.g. orchestrator
+    /// state-machine violation observed during preallocation).
+    #[error("transition GPU allocation failed: {reason}")]
+    GpuAllocationFailed {
+        /// Diagnostic explanation from the wgpu side.
+        reason: String,
+    },
+
+    /// The composition pass itself failed —
+    /// [`crate::composition::compose_transition_frame`] could not
+    /// render the crossfade output. Slice-5b.2 wraps the inner
+    /// [`crate::single_pass::RenderError`] / wgpu diagnostic into
+    /// `reason` because the public error surface intentionally does
+    /// NOT widen with a `RenderError` variant — the orchestrator's
+    /// composition path is its own concern, structurally distinct
+    /// from the multipass renderer's error surface.
+    #[error("transition composition pass failed: {reason}")]
+    CompositionFailed {
+        /// Diagnostic explanation from the composition side.
         reason: String,
     },
 }
@@ -275,22 +445,85 @@ pub enum TransitionError {
 /// `begin_crossfade` and `commit_next` advance methods accept the
 /// state transition but do NOT call the renderer; that is
 /// slice-5b.2 scope.
-#[derive(Debug)]
 pub struct TransitionOrchestrator {
     state: TransitionState,
     current: MultipassSpec,
     next: Option<MultipassSpec>,
+    // Slice-5b.2 timeout-tracking fields.
+    //
+    // `clock` is a boxed trait object so callers may inject a
+    // `FixedTransitionClock` for deterministic timeout-firing tests
+    // without exposing the orchestrator's internal generic surface.
+    // The default is `MonotonicTransitionClock::new()`.
+    clock: Box<dyn TransitionClock>,
+    timeout_ms: u64,
+    // Elapsed reading at `cue_next` time, recorded for the
+    // mark_primed-side budget check. `None` outside the
+    // `PrepareNext` / `PrimeNext` window.
+    cue_start_elapsed_ms: Option<u64>,
+}
+
+impl fmt::Debug for TransitionOrchestrator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TransitionOrchestrator")
+            .field("state", &self.state)
+            .field("current", &self.current)
+            .field("next", &self.next)
+            .field("timeout_ms", &self.timeout_ms)
+            .field("cue_start_elapsed_ms", &self.cue_start_elapsed_ms)
+            // `clock` is a trait object without `Debug`; surface a
+            // sentinel rather than widen the trait's super-trait
+            // bound.
+            .field("clock", &"<TransitionClock>")
+            .finish()
+    }
 }
 
 impl TransitionOrchestrator {
     /// Construct an orchestrator with `initial` as the live scene.
-    /// Initial state is [`TransitionState::Idle`].
+    /// Initial state is [`TransitionState::Idle`]. Uses a default
+    /// [`MonotonicTransitionClock`] and the ADR-007 default timeout
+    /// of [`DEFAULT_TIMEOUT_MS`] (500 ms).
     pub fn new(initial: MultipassSpec) -> Self {
         Self {
             state: TransitionState::Idle,
             current: initial,
             next: None,
+            clock: Box::new(MonotonicTransitionClock::new()),
+            timeout_ms: DEFAULT_TIMEOUT_MS,
+            cue_start_elapsed_ms: None,
         }
+    }
+
+    /// Construct an orchestrator with a caller-supplied
+    /// [`TransitionClock`] and explicit timeout budget. Used by tests
+    /// to drive the timeout-firing path deterministically and by
+    /// callers that want to extend / tighten the ADR-007 default
+    /// 500 ms budget.
+    ///
+    /// Setting `timeout_ms = 0` is legal but pathological: every
+    /// `mark_primed` call will fire `TimeoutExceeded` (the elapsed
+    /// reading is `>= 0` by construction). Callers using `0` should
+    /// treat the orchestrator as a hard-cut-only state machine.
+    pub fn with_clock_and_timeout(
+        initial: MultipassSpec,
+        clock: Box<dyn TransitionClock>,
+        timeout_ms: u64,
+    ) -> Self {
+        Self {
+            state: TransitionState::Idle,
+            current: initial,
+            next: None,
+            clock,
+            timeout_ms,
+            cue_start_elapsed_ms: None,
+        }
+    }
+
+    /// Configured timeout budget in milliseconds. Defaults to
+    /// [`DEFAULT_TIMEOUT_MS`] (the ADR-007 §Decision 500 ms).
+    pub fn timeout_ms(&self) -> u64 {
+        self.timeout_ms
     }
 
     /// Current state.
@@ -332,16 +565,31 @@ impl TransitionOrchestrator {
         Self::validate_cued_spec(&next)?;
         self.next = Some(next);
         self.state = TransitionState::PrepareNext;
+        // Record start-tick for the slice-5b.2 timeout budget.
+        self.cue_start_elapsed_ms = Some(self.clock.now_elapsed_ms());
         Ok(())
     }
 
     /// Advance `PrepareNext → PrimeNext` (preparation has completed
     /// and resources are primed).
     ///
+    /// Slice-5b.2 wires the ADR-007 §Decision 500 ms timeout here: if
+    /// the elapsed time since [`Self::cue_next`] exceeds
+    /// [`Self::timeout_ms`] this method returns
+    /// [`TransitionError::TimeoutExceeded`] and the state STAYS in
+    /// `PrepareNext` (per the orchestrator's "on any error from a
+    /// phase-advance method the state remains unchanged" invariant).
+    /// The caller's response is to invoke [`Self::abort`] (which
+    /// returns to `Idle` preserving the current scene) and re-cue, OR
+    /// to call [`Self::commit_hard_cut`] which performs the swap
+    /// immediately without a crossfade.
+    ///
     /// # Errors
     ///
     /// - [`TransitionError::InvalidStateTransition`] if not in
     ///   `PrepareNext`.
+    /// - [`TransitionError::TimeoutExceeded`] if the elapsed time
+    ///   since `cue_next` exceeds the configured timeout budget.
     pub fn mark_primed(&mut self) -> Result<(), TransitionError> {
         if self.state != TransitionState::PrepareNext {
             return Err(TransitionError::InvalidStateTransition {
@@ -349,8 +597,61 @@ impl TransitionOrchestrator {
                 attempted: "mark_primed",
             });
         }
+        // ADR-007 timeout enforcement: compare elapsed against budget.
+        // We use saturating subtract on `u64` because the clock is
+        // monotonic and the start reading is captured on `cue_next`,
+        // but defending against a non-monotonic implementor (which
+        // would violate the trait contract) keeps the timeout-firing
+        // branch conservative — a bad clock can never cause us to
+        // claim "negative elapsed" and skip the budget check.
+        if let Some(start) = self.cue_start_elapsed_ms {
+            let elapsed = self.clock.now_elapsed_ms().saturating_sub(start);
+            if elapsed > self.timeout_ms {
+                return Err(TransitionError::TimeoutExceeded {
+                    elapsed_ms: elapsed,
+                    limit_ms: self.timeout_ms,
+                });
+            }
+        }
         self.state = TransitionState::PrimeNext;
         Ok(())
+    }
+
+    /// Hard-cut commit path for the ADR-007 timeout fallback. Skips
+    /// the crossfade composition entirely and swaps the cued next
+    /// scene to current immediately. Legal from `PrepareNext`,
+    /// `PrimeNext`, or `CrossfadeOrHardCut` — the three in-flight
+    /// states where a cued spec is present.
+    ///
+    /// # Errors
+    ///
+    /// - [`TransitionError::InvalidStateTransition`] if called from
+    ///   `Idle` (no cue in flight) or `CommitNext` (already settling).
+    /// - [`TransitionError::SpecMismatch`] if no cued spec is present
+    ///   despite being in an in-flight state (orchestrator invariant
+    ///   violated; defense-in-depth).
+    pub fn commit_hard_cut(&mut self) -> Result<(), TransitionError> {
+        match self.state {
+            TransitionState::PrepareNext
+            | TransitionState::PrimeNext
+            | TransitionState::CrossfadeOrHardCut => {
+                let next = self.next.take().ok_or(TransitionError::SpecMismatch {
+                    reason: "commit_hard_cut reached without a cued next spec \
+                         (orchestrator invariant violated)"
+                        .to_string(),
+                })?;
+                self.current = next;
+                self.state = TransitionState::Idle;
+                self.cue_start_elapsed_ms = None;
+                Ok(())
+            }
+            TransitionState::Idle | TransitionState::CommitNext => {
+                Err(TransitionError::InvalidStateTransition {
+                    from: self.state,
+                    attempted: "commit_hard_cut",
+                })
+            }
+        }
     }
 
     /// Advance `PrimeNext → CrossfadeOrHardCut`.
@@ -400,6 +701,7 @@ impl TransitionOrchestrator {
         })?;
         self.current = next;
         self.state = TransitionState::Idle;
+        self.cue_start_elapsed_ms = None;
         Ok(())
     }
 
@@ -426,6 +728,7 @@ impl TransitionOrchestrator {
             | TransitionState::CrossfadeOrHardCut => {
                 self.next = None;
                 self.state = TransitionState::Idle;
+                self.cue_start_elapsed_ms = None;
                 Ok(())
             }
             // CommitNext is unreachable as a resting state (see
@@ -438,6 +741,66 @@ impl TransitionOrchestrator {
                 attempted: "abort",
             }),
         }
+    }
+
+    /// Elapsed milliseconds since the most recent `cue_next`. Returns
+    /// `None` outside the `PrepareNext` / `PrimeNext` /
+    /// `CrossfadeOrHardCut` window. Surfaced for diagnostic reads
+    /// (e.g. a UI overlay that wants to show "preparing scene…
+    /// 240 ms"); the value is computed against the orchestrator's
+    /// internal [`TransitionClock`] so it is monotonic with the
+    /// timeout-firing branch in [`Self::mark_primed`].
+    pub fn elapsed_since_cue_ms(&self) -> Option<u64> {
+        self.cue_start_elapsed_ms
+            .map(|start| self.clock.now_elapsed_ms().saturating_sub(start))
+    }
+
+    /// Slice-5b.2 GPU resource preallocation. Call from the
+    /// `PrepareNext` or `PrimeNext` phase to allocate textures,
+    /// pipelines, and uniform buffers for the cued spec ahead of the
+    /// crossfade composition.
+    ///
+    /// In slice-5b.2 the actual GPU allocation is delegated to
+    /// [`crate::composition::PreparedScene::allocate`]; this method
+    /// is the orchestrator-side wrapper that drives that allocation
+    /// behind the orchestrator's state-machine guards. The method is
+    /// idempotent — calling it twice in the same phase is safe; the
+    /// second call observes the same cued spec and returns a new
+    /// [`crate::composition::PreparedScene`] (callers typically own
+    /// the returned handle directly rather than cache it inside the
+    /// orchestrator, which keeps the orchestrator itself GPU-handle-
+    /// free per the slice-5b.1 "pure-data state machine" invariant).
+    ///
+    /// # Errors
+    ///
+    /// - [`TransitionError::InvalidStateTransition`] if not in
+    ///   `PrepareNext` or `PrimeNext`.
+    /// - [`TransitionError::ResourcePreallocFailed`] if no cued spec
+    ///   is present (orchestrator invariant violated).
+    /// - [`TransitionError::GpuAllocationFailed`] if the wgpu
+    ///   `create_*()` allocation failed.
+    pub fn prepare_resources(
+        &self,
+        device: &wgpu::Device,
+    ) -> Result<crate::composition::PreparedScene, TransitionError> {
+        match self.state {
+            TransitionState::PrepareNext | TransitionState::PrimeNext => {}
+            other => {
+                return Err(TransitionError::InvalidStateTransition {
+                    from: other,
+                    attempted: "prepare_resources",
+                });
+            }
+        }
+        let next = self
+            .next
+            .as_ref()
+            .ok_or_else(|| TransitionError::ResourcePreallocFailed {
+                reason: "prepare_resources called without a cued next spec \
+                         (orchestrator invariant violated)"
+                    .to_string(),
+            })?;
+        crate::composition::PreparedScene::allocate(device, next)
     }
 
     /// Spec-level shape gate. Catches obviously-bad cued specs
@@ -499,8 +862,29 @@ mod transitions_pins {
     //! - `abort()` is a no-op from `Idle`, and from in-flight
     //!   phases it returns to `Idle` and clears the cued spec.
     //! - `TransitionState::label()` is stable for diagnostics.
+    //!
+    //! Slice-5b.2 additions:
+    //!
+    //! - The default timeout is `DEFAULT_TIMEOUT_MS = 500` ms per
+    //!   ADR-007 §Decision; `with_clock_and_timeout()` honors a
+    //!   caller-supplied budget.
+    //! - `mark_primed` enforces the timeout via the orchestrator's
+    //!   [`TransitionClock`]: elapsed > limit returns
+    //!   [`TransitionError::TimeoutExceeded`] without advancing state.
+    //! - The timeout budget is tracked from `cue_next` time; `abort`
+    //!   and `commit_next` clear the start tick.
+    //! - `commit_hard_cut` is the timeout-fallback path: legal from
+    //!   any in-flight state, swaps current/next without crossfade.
+    //! - The [`MonotonicTransitionClock`] / [`FixedTransitionClock`]
+    //!   pair lets tests drive the timeout-firing branch
+    //!   deterministically.
+    //! - `elapsed_since_cue_ms()` accessor surfaces the in-flight
+    //!   elapsed reading; returns `None` outside the in-flight states.
 
-    use super::{TransitionError, TransitionOrchestrator, TransitionState};
+    use super::{
+        DEFAULT_TIMEOUT_MS, FixedTransitionClock, MonotonicTransitionClock, TransitionClock,
+        TransitionError, TransitionOrchestrator, TransitionState,
+    };
     use crate::multipass::{MultipassSpec, PassDef};
 
     /// Smallest valid spec the orchestrator's shape gate accepts.
@@ -750,5 +1134,173 @@ mod transitions_pins {
             "CrossfadeOrHardCut"
         );
         assert_eq!(TransitionState::CommitNext.label(), "CommitNext");
+    }
+
+    // ===== Slice-5b.2 timeout / clock / hard-cut T1 pins =====
+
+    #[test]
+    fn default_timeout_matches_adr007_500ms() {
+        // Slice-5b.2 drift pin: ADR-007 §Decision pins the default
+        // warm-switch timeout at 500 ms. A future bump must be
+        // accompanied by an ADR amendment.
+        assert_eq!(DEFAULT_TIMEOUT_MS, 500);
+        let orch = TransitionOrchestrator::new(trivial_spec("initial"));
+        assert_eq!(orch.timeout_ms(), 500);
+    }
+
+    #[test]
+    fn monotonic_clock_advances_non_negative() {
+        // Drift pin: MonotonicTransitionClock returns a non-negative
+        // u64 — the API contract is "elapsed since anchor", which
+        // can never be negative. A second read must be >= the first.
+        let clock = MonotonicTransitionClock::new();
+        let a = clock.now_elapsed_ms();
+        let b = clock.now_elapsed_ms();
+        assert!(b >= a, "monotonic clock must not regress: a={a} b={b}");
+    }
+
+    #[test]
+    fn fixed_clock_returns_configured_value() {
+        // Drift pin: FixedTransitionClock is the test primitive; a
+        // single configured value must be returned verbatim from
+        // every read.
+        let clock = FixedTransitionClock::new(123);
+        assert_eq!(clock.now_elapsed_ms(), 123);
+        assert_eq!(clock.now_elapsed_ms(), 123);
+        assert_eq!(clock.elapsed_ms(), 123);
+    }
+
+    #[test]
+    fn timeout_fires_on_mark_primed_when_elapsed_exceeds_budget() {
+        // Slice-5b.2 drift pin: the ADR-007 timeout-firing branch.
+        // We need a clock whose read advances on every call so that
+        // cue_next captures `start` and mark_primed reads `start +
+        // step > limit`. FixedTransitionClock always returns the
+        // same value (elapsed = 0), so we use a tiny stepping mock.
+        struct StepClock {
+            value: std::sync::atomic::AtomicU64,
+        }
+        impl TransitionClock for StepClock {
+            fn now_elapsed_ms(&self) -> u64 {
+                self.value
+                    .fetch_add(100, std::sync::atomic::Ordering::SeqCst)
+            }
+        }
+        let mut orch = TransitionOrchestrator::with_clock_and_timeout(
+            trivial_spec("initial"),
+            Box::new(StepClock {
+                value: std::sync::atomic::AtomicU64::new(0),
+            }),
+            50,
+        );
+        // First read (cue_next): start = 0, then advances to 100.
+        orch.cue_next(trivial_spec("next")).unwrap();
+        // Second read (mark_primed): now = 100, elapsed = 100, > 50.
+        let err = orch
+            .mark_primed()
+            .expect_err("mark_primed must fire TimeoutExceeded when elapsed > limit");
+        match err {
+            TransitionError::TimeoutExceeded {
+                elapsed_ms,
+                limit_ms,
+            } => {
+                assert!(
+                    elapsed_ms > limit_ms,
+                    "elapsed {elapsed_ms} must exceed limit {limit_ms}",
+                );
+                assert_eq!(limit_ms, 50);
+            }
+            other => panic!("expected TimeoutExceeded, got {other:?}"),
+        }
+        // State remains in PrepareNext per the "on error, state
+        // unchanged" invariant.
+        assert_eq!(orch.current_state(), TransitionState::PrepareNext);
+    }
+
+    #[test]
+    fn timeout_does_not_fire_within_budget() {
+        // Drift pin: when elapsed <= budget, mark_primed advances to
+        // PrimeNext normally. Pins the within-budget happy path
+        // against the timeout addition.
+        let mut orch = TransitionOrchestrator::with_clock_and_timeout(
+            trivial_spec("initial"),
+            Box::new(FixedTransitionClock::new(0)),
+            500,
+        );
+        orch.cue_next(trivial_spec("next")).unwrap();
+        // Fixed clock means elapsed == 0, well under the 500ms budget.
+        orch.mark_primed()
+            .expect("within-budget mark_primed must succeed");
+        assert_eq!(orch.current_state(), TransitionState::PrimeNext);
+    }
+
+    #[test]
+    fn commit_hard_cut_swaps_current_from_any_in_flight_phase() {
+        // Slice-5b.2 drift pin: hard-cut from each in-flight phase
+        // must succeed and swap the current scene to the cued next,
+        // returning to Idle. This is the ADR-007 timeout fallback
+        // path.
+        for advance_to in [
+            TransitionState::PrepareNext,
+            TransitionState::PrimeNext,
+            TransitionState::CrossfadeOrHardCut,
+        ] {
+            let mut orch = TransitionOrchestrator::new(trivial_spec("from"));
+            orch.cue_next(trivial_spec("to")).unwrap();
+            if advance_to == TransitionState::PrimeNext
+                || advance_to == TransitionState::CrossfadeOrHardCut
+            {
+                orch.mark_primed().unwrap();
+            }
+            if advance_to == TransitionState::CrossfadeOrHardCut {
+                orch.begin_crossfade().unwrap();
+            }
+            orch.commit_hard_cut()
+                .expect("hard-cut from in-flight succeeds");
+            assert_eq!(orch.current_state(), TransitionState::Idle);
+            assert_eq!(orch.current_spec().passes[0].label.as_deref(), Some("to"));
+            assert!(orch.next_spec().is_none());
+            assert_eq!(orch.elapsed_since_cue_ms(), None);
+        }
+    }
+
+    #[test]
+    fn commit_hard_cut_rejects_from_idle_or_committed() {
+        // Drift pin: hard-cut from Idle (no cue) is illegal, and
+        // CommitNext is reachable only mid-commit_next so it's also
+        // rejected for the public API surface.
+        let mut orch = TransitionOrchestrator::new(trivial_spec("initial"));
+        let err = orch
+            .commit_hard_cut()
+            .expect_err("hard-cut from Idle must reject");
+        match err {
+            TransitionError::InvalidStateTransition { from, attempted } => {
+                assert_eq!(from, TransitionState::Idle);
+                assert_eq!(attempted, "commit_hard_cut");
+            }
+            other => panic!("expected InvalidStateTransition, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn elapsed_since_cue_is_some_during_in_flight_phases_only() {
+        // Drift pin: the elapsed accessor returns Some during
+        // in-flight phases, None at Idle (before cue and after
+        // commit / abort).
+        let mut orch = TransitionOrchestrator::new(trivial_spec("initial"));
+        assert!(
+            orch.elapsed_since_cue_ms().is_none(),
+            "Idle (pre-cue) hides elapsed"
+        );
+        orch.cue_next(trivial_spec("next")).unwrap();
+        assert!(
+            orch.elapsed_since_cue_ms().is_some(),
+            "PrepareNext exposes elapsed"
+        );
+        orch.abort().unwrap();
+        assert!(
+            orch.elapsed_since_cue_ms().is_none(),
+            "post-abort hides elapsed"
+        );
     }
 }
