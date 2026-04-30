@@ -111,11 +111,29 @@
 //!   crate) so the dep direction stays clean — engine/script does
 //!   not take a `chromaticity-runtime` dep. `EV-SCRIPT-CONTRACT`
 //!   widens with the catalog-binding path.
-//! - **Slice 5.3+** — scene-author surface (control bindings,
-//!   event handlers, preset-recall hooks per ADR-003), engine/runtime
-//!   adapter that bridges [`ScriptCommandSender`] onto
-//!   `chromaticity_runtime::CommandBus`. The slice-5.2 catalog is
-//!   the typed contract that adapter consumes.
+//! - **Slice 5.3 (this PR)** — engine/runtime consumer-side adapter:
+//!   the `chromaticity_runtime::script_bridge` module (gated behind
+//!   the runtime-side `script-bridge` Cargo feature) implements
+//!   [`ScriptCommandSender`] over a runtime-owned bounded
+//!   `crossbeam-channel`, paired with a runtime-side
+//!   `ScriptBridgeReceiver` the host drains. The runtime
+//!   `Command` enum is NOT widened — reactive writes are
+//!   high-frequency frame data with per-symbol `docs/36` semantics
+//!   that don't fit the user-action shape `Command` carries; the
+//!   bridge keeps reactive-write traffic on a sibling consumer
+//!   channel so translation policy stays at the host call site.
+//!   Engine/script gains NO new surface in this slice (the slice-5.1
+//!   [`ScriptCommandSender`] trait + slice-5.2 typed catalog stay
+//!   the producer-side contract). `EV-SCRIPT-CONTRACT` widens with
+//!   the consumer-side adapter path; `docs/26` row 29 widens with
+//!   the engine/runtime evidence anchors in a follow-up
+//!   `docs(repo)` PR.
+//! - **Slice 5.4+** — scene-author surface (control bindings,
+//!   event handlers, preset-recall hooks per ADR-003) remains
+//!   later-slice scope. Slice 5 has reached EXIT-quality core with
+//!   slice 5.3 — the producer / consumer / catalog / adapter quad
+//!   covers the cross-crate contract; further widening is feature
+//!   work, not foundational.
 //!
 //! Produces evidence for `EV-SCRIPT-CONTRACT`:
 //!

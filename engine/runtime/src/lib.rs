@@ -21,6 +21,23 @@
 //! only the public command / event / trait surface is exported for
 //! sibling crates to consume in later slices.
 //!
+//! Slice-5.3 (Phase-2, behind the `script-bridge` Cargo feature) adds
+//! the [`script_bridge`] module: an adapter that implements the
+//! slice-5.1 `chromaticity_script::ScriptCommandSender` trait against
+//! a host-owned bounded `crossbeam-channel` consumer queue. The
+//! adapter forwards [`chromaticity_script::ScriptCommand`] values
+//! the script emits (post slice-5.2 catalog routing) onto a host
+//! drain the runtime owns. The runtime [`Command`] enum is NOT
+//! widened by slice 5.3 — typed reactive writes are not part of the
+//! Phase-1 [`Command`] vocabulary, and slice 5.3 keeps that vocabulary
+//! frozen by routing the script-emitted values onto a sibling
+//! consumer channel rather than into the runtime command bus
+//! directly. The host integration that decides whether to translate
+//! a `ScriptCommand::TypedReactiveWrite` into a runtime state
+//! mutation lives at the call site (typically the script tick loop
+//! or a per-frame drain on the commit thread); slice 5.3 keeps the
+//! seam minimal so that translation policy stays out-of-crate.
+//!
 //! Governing ADRs:
 //!
 //! - ADR-001 — runtime model (`docs/adr/ADR-001-runtime-model.md`).
@@ -38,5 +55,12 @@ pub use command_bus::{
     PresetId, SnapSlotId,
 };
 
+#[cfg(feature = "script-bridge")]
+pub use script_bridge::{
+    ScriptBridgeError, ScriptBridgeReceiver, ScriptCommandRouter, script_bridge,
+};
+
 pub mod command_bus;
+#[cfg(feature = "script-bridge")]
+pub mod script_bridge;
 pub mod state;
