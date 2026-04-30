@@ -236,6 +236,7 @@ mod bpm_drift_pins {
                     "WindowConfig reason should mention the lower bound; got {reason}",
                 );
             }
+            other => panic!("expected WindowConfig, got {other:?}"),
         }
     }
 
@@ -249,6 +250,7 @@ mod bpm_drift_pins {
                     "WindowConfig reason should mention the ceiling; got {reason}",
                 );
             }
+            other => panic!("expected WindowConfig, got {other:?}"),
         }
     }
 
