@@ -444,6 +444,7 @@ name = "chromaticity-render"
 version = "0.0.0"
 dependencies = [
  "bytemuck",
+ "chromaticity-audio",
  "chromaticity-scene",
  "naga",
  "pollster",
