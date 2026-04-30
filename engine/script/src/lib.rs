@@ -63,10 +63,41 @@
 //!   widens with the determinism path. `EV-DETERMINISM` opens
 //!   for the script lane in a later slice once the recorded-seed
 //!   replay corpus lands.
-//! - **Slice 5+** — command-bus integration (`engine/runtime`
-//!   mount), reactive-symbol-catalog binding (docs/36 v1.1.0),
-//!   scene-author surface (control bindings, event handlers,
-//!   preset-recall hooks per ADR-003).
+//! - **Slice 5.1 (this PR)** — command-bus integration foundational
+//!   mount: producer-side bridge from a JS-side
+//!   `__chromaticityEmit(name, value)` global to a host-supplied
+//!   [`command_bus::ScriptCommandSender`] trait object. Engine/script
+//!   does NOT take a `chromaticity-runtime` dep; the trait is the
+//!   cross-crate seam, and slice 5.2 will land the typed adapter
+//!   that bridges this surface onto `chromaticity_runtime::CommandBus`.
+//!   New module [`command_bus`] exposes the [`ScriptCommand`]
+//!   `#[non_exhaustive]` enum (slice-5.1 variant
+//!   [`ScriptCommand::ReactiveWrite { name, value }`]), the
+//!   [`ScriptCommandError`] / [`ScriptCommandSender`] surface, and
+//!   the crate-private `install_command_emit_shim` install path the
+//!   [`ScriptRuntime::with_command_sender`] builder mounts. Three
+//!   new [`ScriptError`] variants under `#[non_exhaustive]`:
+//!   [`ScriptError::CommandBusInstall`] (rquickjs install-path
+//!   failure), [`ScriptError::CommandBusDisconnected`] /
+//!   [`ScriptError::CommandBusBackpressure`] (sender-reported
+//!   failure modes lifted from the JS-side throw via the runtime's
+//!   post-execute remap). `EV-SCRIPT-CONTRACT` widens with the
+//!   command-bus path.
+//! - **Slice 5.2 (deferred)** — typed reactive-symbol-catalog
+//!   binding: map `docs/36` v1.1.0 `syn_*` names (e.g. `syn_BPM`,
+//!   `syn_RMS`, `syn_PEAK`, `syn_FFT`) to typed
+//!   [`ScriptCommand`] variants alongside the slice-5.1 catch-all
+//!   [`ScriptCommand::ReactiveWrite`]. Will likely also install a
+//!   script-author-facing accessor surface (Proxy or property
+//!   getter / setter) so authors write `syn_BPM = 120` instead of
+//!   `__chromaticityEmit('syn_BPM', 120)`. Lands separately so the
+//!   slice-5.1 cross-crate plumbing settles first; the split axis
+//!   is clean (5.1 establishes the seam without committing to a
+//!   symbol set; 5.2 binds names).
+//! - **Slice 5.3+** — scene-author surface (control bindings,
+//!   event handlers, preset-recall hooks per ADR-003), engine/runtime
+//!   adapter that bridges [`ScriptCommandSender`] onto
+//!   `chromaticity_runtime::CommandBus`.
 //!
 //! Produces evidence for `EV-SCRIPT-CONTRACT`:
 //!
@@ -90,7 +121,12 @@
 //!   object round-trip, and per-runtime isolation; widened by
 //!   `engine/script/tests/determinism.rs` (slice 4) with the
 //!   cross-runtime seed-determinism, seed-isolation,
-//!   PRNG-state-isolation, and frame-locked-clock corpus.
+//!   PRNG-state-isolation, and frame-locked-clock corpus; widened
+//!   again by `engine/script/tests/command_bus.rs` (slice 5.1)
+//!   with the JS-side `__chromaticityEmit` round-trip,
+//!   value-vocabulary coverage, multi-emit ordering, sender error
+//!   propagation through both the script-uncaught and
+//!   script-caught surfaces, and per-runtime sender isolation.
 //!
 //! Produces evidence for `EV-SANDBOX-SAFETY` (opened by slice 2,
 //! widened by slice 3):
@@ -132,6 +168,7 @@
 //! - ADR-012 — script sandbox engine and budgets
 //!   (`docs/adr/ADR-012-script-sandbox-engine.md`).
 
+pub mod command_bus;
 pub mod determinism;
 mod error;
 pub mod memory_cap;
@@ -139,6 +176,7 @@ mod runtime;
 mod value;
 pub mod watchdog;
 
+pub use command_bus::{ScriptCommand, ScriptCommandError, ScriptCommandSender};
 pub use determinism::{Clock, FixedClock, MonotonicClock, RandomSeedConfig};
 pub use error::ScriptError;
 pub use memory_cap::{MemoryCapConfig, MemoryUsageSnapshot};

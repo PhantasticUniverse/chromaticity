@@ -23,7 +23,14 @@
 //! [`ScriptError::DeterminismConfig`] (caller passed an invalid
 //! seeded-PRNG / clock config) and [`ScriptError::DeterminismInstall`]
 //! (rquickjs failed wiring the `Math.random` / `Date.now` global
-//! shim during builder execution).
+//! shim during builder execution). Slice 5.1 lands
+//! [`ScriptError::CommandBusInstall`] (rquickjs failed wiring the
+//! script-side `__chromaticityEmit` global onto
+//! [`rquickjs::Ctx::globals`]), [`ScriptError::CommandBusDisconnected`]
+//! (the host-side [`crate::command_bus::ScriptCommandSender`] reported
+//! the receive end has been dropped), and
+//! [`ScriptError::CommandBusBackpressure`] (the sender shed the
+//! command without enqueuing it).
 
 use thiserror::Error;
 
@@ -186,4 +193,35 @@ pub enum ScriptError {
         /// Free-form diagnostic from the rquickjs install path.
         reason: String,
     },
+
+    /// The slice-5.1 command-bus shim install path failed during
+    /// [`crate::ScriptRuntime::with_command_sender`]. Surfaces an
+    /// rquickjs error wiring the `__chromaticityEmit` global function
+    /// onto the runtime's [`rquickjs::Ctx::globals`] object — e.g.
+    /// the [`rquickjs::Function::new`] call failed or the property
+    /// `set` raised. Distinct from
+    /// [`ScriptError::DeterminismInstall`] so callers can distinguish
+    /// shim categories without parsing the `reason` string.
+    #[error("command-bus shim install failed: {reason}")]
+    CommandBusInstall {
+        /// Free-form diagnostic from the rquickjs install path.
+        reason: String,
+    },
+
+    /// The host-side [`crate::command_bus::ScriptCommandSender`]
+    /// reported that the receive end has been dropped. The script's
+    /// emit call surfaces this synchronously on the JS side as a
+    /// caught Rust-throw; in slice-5.1 the QuickJS-side handler
+    /// renders this category through the slice-1 `Error` path so a
+    /// `try { __chromaticityEmit(...) } catch (e) { ... }` block
+    /// observes the disconnection.
+    #[error("script command bus disconnected")]
+    CommandBusDisconnected,
+
+    /// The host-side [`crate::command_bus::ScriptCommandSender`] is
+    /// at capacity and shed the command without enqueuing it. Same
+    /// JS-side surfacing rationale as
+    /// [`ScriptError::CommandBusDisconnected`].
+    #[error("script command bus backpressure")]
+    CommandBusBackpressure,
 }

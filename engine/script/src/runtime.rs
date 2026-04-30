@@ -52,9 +52,11 @@
 //!   throw `SyntaxError` synchronously from the eval call).
 
 use std::cell::Cell;
+use std::sync::Arc;
 
 use rquickjs::{CatchResultExt, Context, Ctx, Object, Runtime, Value};
 
+use crate::command_bus::{self, BACKPRESSURE_MESSAGE, DISCONNECTED_MESSAGE, ScriptCommandSender};
 use crate::determinism::{self, Clock, DeterminismState, RandomSeedConfig};
 use crate::error::ScriptError;
 use crate::memory_cap::{self, MemoryCapConfig, MemoryUsageSnapshot};
@@ -126,6 +128,17 @@ pub struct ScriptRuntime {
     // / slice-2 / slice-3 behaviour: no shim installed, the QuickJS
     // built-in `Math.random` and `Date.now` are unchanged.
     determinism_state: Option<DeterminismState>,
+    // Slice-5.1 command-bus producer-side bridge. The host-supplied
+    // sender is closed over by the JS-side `__chromaticityEmit`
+    // closure installed on `Ctx::globals()`; the runtime keeps its
+    // own `Arc` clone for `Self::command_sender()` diagnostics. The
+    // shim install pattern matches the slice-4 determinism shims:
+    // installed once at builder time via [`Self::with_command_sender`],
+    // survives across [`Context::with`] boundaries, no per-call
+    // install / uninstall bracket. `None` reproduces the slice-1 ..
+    // slice-4 behaviour: the JS-side global is undefined and any
+    // call to it raises a `ReferenceError` from QuickJS itself.
+    command_sender: Option<Arc<dyn ScriptCommandSender>>,
 }
 
 impl std::fmt::Debug for ScriptRuntime {
@@ -136,6 +149,7 @@ impl std::fmt::Debug for ScriptRuntime {
             .field("last_observation", &self.last_observation.get())
             .field("last_memory_snapshot", &self.last_memory_snapshot.get())
             .field("determinism_state", &self.determinism_state)
+            .field("command_sender", &self.command_sender.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -160,6 +174,7 @@ impl ScriptRuntime {
             last_observation: Cell::new(None),
             last_memory_snapshot: Cell::new(None),
             determinism_state: None,
+            command_sender: None,
         })
     }
 
@@ -358,6 +373,82 @@ impl ScriptRuntime {
         self.determinism_state.as_ref()
     }
 
+    /// Configure the slice-5.1 command-bus producer-side bridge,
+    /// returning the runtime for chaining.
+    ///
+    /// Slice-5.1 surface (per ADR-001 + ADR-006):
+    ///
+    /// - `sender` — host-supplied
+    ///   [`crate::command_bus::ScriptCommandSender`] trait object
+    ///   wrapped in `Arc`. The sender is closed over by the JS-side
+    ///   `__chromaticityEmit(name, value)` global function the
+    ///   builder installs on [`rquickjs::Ctx::globals`]; the
+    ///   runtime keeps its own `Arc` clone for diagnostics
+    ///   ([`Self::command_sender`]). `Send + Sync` trait bounds let
+    ///   the host clone the `Arc` across threads (e.g. one clone for
+    ///   the JS-side closure on the runtime thread, one clone for
+    ///   the engine/runtime commit thread that drains the sink).
+    ///
+    /// JS-side surface installed: `__chromaticityEmit(name: string,
+    /// value: any) -> undefined`. The underscore prefix marks it as
+    /// a host-private bridge — slice-5.2 will install the
+    /// script-author-facing `syn_*` Proxy / accessor surface that
+    /// calls into this private bridge under the hood. See
+    /// [`crate::command_bus`] module docs for the JS-side argument
+    /// shape, the value-vocabulary lowering through
+    /// [`crate::ScriptValue`], and the
+    /// [`crate::command_bus::ScriptCommandError`] → JS-side `Error`
+    /// throw mapping.
+    ///
+    /// Effect on [`Self::execute`]: when a script calls
+    /// `__chromaticityEmit('name', value)` and the host sender
+    /// returns [`crate::command_bus::ScriptCommandError`], the
+    /// JS-side closure throws an `Error` carrying the canonical
+    /// category message. If the script does NOT swallow the throw,
+    /// it propagates up through the QuickJS exception path and the
+    /// runtime's post-execute remap re-lifts the canonical strings
+    /// to the typed
+    /// [`ScriptError::CommandBusDisconnected`] /
+    /// [`ScriptError::CommandBusBackpressure`] variants. If the
+    /// script DOES swallow the throw with `try`/`catch`, the
+    /// canonical message is observable via `e.message` on the JS
+    /// side and the Rust-side caller of [`Self::execute`] sees the
+    /// expression's actual return value (not an error).
+    ///
+    /// Failure modes: this builder fails with
+    /// [`ScriptError::CommandBusInstall`] iff rquickjs returns an
+    /// error wiring the global override
+    /// ([`rquickjs::Function::new`] failed or the property `set`
+    /// raised).
+    ///
+    /// Builder chaining: composes with [`Self::with_watchdog`] +
+    /// [`Self::with_memory_limit`] + [`Self::with_random_seed`] +
+    /// [`Self::with_clock`]; any order is valid (each builder is
+    /// independent).
+    pub fn with_command_sender(
+        mut self,
+        sender: Arc<dyn ScriptCommandSender>,
+    ) -> Result<Self, ScriptError> {
+        let sender_for_install = Arc::clone(&sender);
+        let install = self
+            .context
+            .with(|ctx: Ctx<'_>| command_bus::install_command_emit_shim(&ctx, sender_for_install));
+        install?;
+        self.command_sender = Some(sender);
+        Ok(self)
+    }
+
+    /// Command sender currently in force, or `None` if no sender
+    /// has been mounted via [`Self::with_command_sender`]. Read-only
+    /// diagnostic surface (returns the `Arc` so the caller can
+    /// observe `Arc::strong_count` for sanity checks against
+    /// `command_sender_present` test pins, but the underlying
+    /// `dyn ScriptCommandSender` is opaque post-install).
+    #[must_use]
+    pub fn command_sender(&self) -> Option<&Arc<dyn ScriptCommandSender>> {
+        self.command_sender.as_ref()
+    }
+
     /// Most-recent memory-usage snapshot, or `None` if no
     /// memory-cap-instrumented call has been made.
     ///
@@ -383,7 +474,10 @@ impl ScriptRuntime {
     /// shape is outside the slice-1 vocabulary lower to
     /// [`ScriptError::ValueConversion`]; watchdog interrupts
     /// lower to [`ScriptError::TimeoutExceeded`]; memory-cap hits
-    /// lower to [`ScriptError::MemoryCapExceeded`].
+    /// lower to [`ScriptError::MemoryCapExceeded`]; uncaught
+    /// command-bus throws (slice 5.1) lift the canonical message
+    /// strings to [`ScriptError::CommandBusDisconnected`] /
+    /// [`ScriptError::CommandBusBackpressure`].
     pub fn execute(&self, source: &str) -> Result<ScriptValue, ScriptError> {
         // Slice-2 watchdog bracket: install the interrupt handler
         // before evaluation, capture the deadline handle, run the
@@ -462,6 +556,24 @@ impl ScriptRuntime {
                 self.last_memory_snapshot.set(None);
                 outcome
             };
+
+        // Slice-5.1 command-bus remap: the JS-side
+        // `__chromaticityEmit` closure throws an `Error` carrying
+        // the canonical `ScriptCommandError` message string when the
+        // host sender reports `Disconnected` / `Backpressure`. If
+        // the script does not swallow the throw with `try`/`catch`,
+        // the slice-1 catch path lowers it to
+        // [`ScriptError::Runtime`] with the canonical message
+        // verbatim. This remap re-lifts the canonical strings to
+        // typed [`ScriptError::CommandBusDisconnected`] /
+        // [`ScriptError::CommandBusBackpressure`] variants so the
+        // host caller of [`Self::execute`] sees a typed error
+        // without parsing free-form prose. The remap runs after the
+        // memory-cap remap (independent: command-bus messages are
+        // user-thrown `Error`s, not QuickJS-thrown `InternalError`s,
+        // so the two never collide) and before the watchdog remap
+        // (same independence argument).
+        let outcome = remap_command_bus_error(outcome);
 
         // Record observation if a watchdog was active. Done after
         // detach so the observation captures the elapsed time at
@@ -571,6 +683,61 @@ fn remap_oom(
         }
         other => other,
     }
+}
+
+/// If `outcome` is a [`ScriptError::Runtime`] whose payload matches
+/// one of the slice-5.1 canonical command-bus error strings
+/// (`"chromaticity command bus disconnected"` /
+/// `"chromaticity command bus backpressure"`), rewrite it to the
+/// matching [`ScriptError::CommandBusDisconnected`] /
+/// [`ScriptError::CommandBusBackpressure`] variant.
+///
+/// Lives on the host side, mirroring [`remap_interrupt`] /
+/// [`remap_oom`]. The [`crate::command_bus`] module exposes the
+/// canonical strings via `pub(crate) const` so this remap and the
+/// install-path closure stay in lock-step (a future edit to either
+/// canonical string only needs one source-of-truth update).
+///
+/// The slice-1 catch path's `format_runtime` rendering preserves
+/// the message verbatim when it is non-empty, so substring-equality
+/// against the canonical strings is a robust match. We use full
+/// equality (not `contains`) because the canonical strings have
+/// been chosen to be unmistakable — any future variant lifting
+/// must use distinct, non-overlapping canonical prose.
+fn remap_command_bus_error(
+    outcome: Result<ScriptValue, ScriptError>,
+) -> Result<ScriptValue, ScriptError> {
+    match outcome {
+        Err(ScriptError::Runtime(message)) => {
+            if message == DISCONNECTED_MESSAGE {
+                Err(ScriptError::CommandBusDisconnected)
+            } else if message == BACKPRESSURE_MESSAGE {
+                Err(ScriptError::CommandBusBackpressure)
+            } else {
+                Err(ScriptError::Runtime(message))
+            }
+        }
+        other => other,
+    }
+}
+
+/// Crate-private re-export of the slice-1 [`lower_value`] helper
+/// for use by the slice-5.1 [`crate::command_bus`] install path.
+///
+/// The install path's JS-side closure receives an
+/// [`rquickjs::Value`] argument and must lower it to a borrow-free
+/// [`ScriptValue`] before handing the [`crate::ScriptCommand`] to
+/// the host sender. Routing through this helper means the slice-1
+/// value-conversion contract corpus governs the lowering shape —
+/// the command-bus surface honours the same Null / Bool / Number /
+/// String / Array / Object vocabulary and the same rejection
+/// surface for unsupported value categories (Symbol, BigInt,
+/// Function, Promise, etc.).
+pub(crate) fn lower_value_for_command_bus(
+    ctx: &Ctx<'_>,
+    value: Value<'_>,
+) -> Result<ScriptValue, ScriptError> {
+    lower_value(ctx, value)
 }
 
 /// Map a caught QuickJS error into the slice-1 [`ScriptError`]
@@ -1446,5 +1613,221 @@ mod execute_drift_pins {
             expected.to_bits(),
             "frame-locked Date.now must return tick verbatim; got {n}",
         );
+    }
+
+    // ----- Slice-5.1 command-bus drift pins -----
+
+    #[test]
+    fn command_sender_absent_by_default() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // [`ScriptRuntime::new`] alone (no command sender) must NOT
+        // mount the `__chromaticityEmit` global; preserves the slice-1
+        // .. slice-4 surface for callers that haven't migrated to the
+        // command-bus builder.
+        let rt = ScriptRuntime::new().expect("runtime constructs");
+        assert!(
+            rt.command_sender().is_none(),
+            "no command sender ⇒ accessor returns None",
+        );
+        // Without the shim installed, the JS-side global is
+        // undefined; calling it raises a ReferenceError.
+        let v = rt
+            .execute("typeof __chromaticityEmit === 'undefined'")
+            .expect("typeof check must succeed");
+        assert_eq!(
+            v,
+            ScriptValue::Bool(true),
+            "no sender ⇒ __chromaticityEmit must be undefined; got {v:?}",
+        );
+    }
+
+    #[test]
+    fn with_command_sender_records_handle() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // The builder must round-trip the sender Arc through the
+        // host-side accessor so callers / tests can confirm the shim
+        // is in force.
+        use crate::command_bus::BufferingSender;
+        let sender = std::sync::Arc::new(BufferingSender::new());
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_command_sender(sender.clone())
+            .expect("sender installs");
+        assert!(
+            rt.command_sender().is_some(),
+            "sender installed ⇒ accessor returns Some",
+        );
+    }
+
+    #[test]
+    fn command_sender_emits_on_js_call() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // Integration drift pin: a JS-side call to
+        // `__chromaticityEmit('name', value)` must hand the lowered
+        // ScriptCommand to the host sender. The buffering sender
+        // captures one ReactiveWrite; the test asserts both the
+        // name (verbatim) and the lowered ScriptValue (slice-1
+        // vocabulary).
+        use crate::command_bus::{BufferingSender, ScriptCommand};
+        let sender = std::sync::Arc::new(BufferingSender::new());
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_command_sender(sender.clone())
+            .expect("sender installs");
+        let _ = rt
+            .execute("__chromaticityEmit('syn_BPM', 120)")
+            .expect("emit must succeed");
+        let drained = sender.drain();
+        assert_eq!(drained.len(), 1, "exactly one emit; got {drained:?}");
+        match &drained[0] {
+            ScriptCommand::ReactiveWrite { name, value } => {
+                assert_eq!(name, "syn_BPM");
+                assert_eq!(value, &ScriptValue::Number(120.0));
+            }
+        }
+    }
+
+    #[test]
+    fn command_sender_disconnected_lifts_to_typed_error() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // Integration drift pin for the canonical-message remap
+        // path: a sender returning `Disconnected` causes the
+        // JS-side closure to throw. If the script does not catch,
+        // the throw propagates up and the post-execute remap lifts
+        // the canonical message string to
+        // `ScriptError::CommandBusDisconnected`.
+        use crate::command_bus::DisconnectedSender;
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_command_sender(std::sync::Arc::new(DisconnectedSender))
+            .expect("sender installs");
+        let err = rt
+            .execute("__chromaticityEmit('x', 1)")
+            .expect_err("disconnected sender must reject");
+        assert!(
+            matches!(err, ScriptError::CommandBusDisconnected),
+            "expected CommandBusDisconnected, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn command_sender_backpressure_lifts_to_typed_error() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // Mirror of `command_sender_disconnected_lifts_to_typed_error`
+        // for the Backpressure variant.
+        use crate::command_bus::BackpressureSender;
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_command_sender(std::sync::Arc::new(BackpressureSender))
+            .expect("sender installs");
+        let err = rt
+            .execute("__chromaticityEmit('x', 1)")
+            .expect_err("backpressure sender must reject");
+        assert!(
+            matches!(err, ScriptError::CommandBusBackpressure),
+            "expected CommandBusBackpressure, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn command_sender_disconnected_observable_via_try_catch() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // When the script swallows the JS-side throw with
+        // `try`/`catch`, the canonical message is observable via
+        // `e.message` on the JS side and the Rust-side caller of
+        // `execute` sees the expression's actual return value. This
+        // pins the no-leak property of the post-execute remap: a
+        // caught throw stays caught.
+        use crate::command_bus::DisconnectedSender;
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_command_sender(std::sync::Arc::new(DisconnectedSender))
+            .expect("sender installs");
+        let v = rt
+            .execute(
+                r"
+                let caught = '';
+                try { __chromaticityEmit('x', 1); }
+                catch (e) { caught = e.message; }
+                caught
+            ",
+            )
+            .expect("script with caught throw must succeed");
+        assert_eq!(
+            v,
+            ScriptValue::String("chromaticity command bus disconnected".to_string()),
+            "caught throw must surface canonical message; got {v:?}",
+        );
+    }
+
+    #[test]
+    fn command_sender_rejects_non_string_name() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // Argument-validation pin: a non-string `name` argument
+        // must raise a JS-side TypeError that propagates to a
+        // ScriptError::Runtime (not a successful emit). Confirms
+        // the install-path closure's argument decoding goes through
+        // `Exception::throw_type` rather than an rquickjs auto-
+        // convert that might silently coerce numbers to strings.
+        use crate::command_bus::BufferingSender;
+        let sender = std::sync::Arc::new(BufferingSender::new());
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_command_sender(sender.clone())
+            .expect("sender installs");
+        let err = rt
+            .execute("__chromaticityEmit(42, 'value')")
+            .expect_err("non-string name must reject");
+        assert!(
+            matches!(err, ScriptError::Runtime(_)),
+            "expected Runtime (TypeError), got {err:?}",
+        );
+        assert!(
+            sender.drain().is_empty(),
+            "rejected emit must not enqueue a command",
+        );
+    }
+
+    #[test]
+    fn command_sender_composes_with_other_builders() {
+        // Evidence: EV-SCRIPT-CONTRACT (T1).
+        // Slice-5.1 builder MUST chain with the slice-2 watchdog,
+        // slice-3 memory cap, and slice-4 determinism builders. A
+        // runtime configured with all four surfaces must honour all
+        // four: a fast script under both caps that calls
+        // `__chromaticityEmit` succeeds, records observation +
+        // snapshot, and the sender captures the emitted command.
+        use crate::command_bus::{BufferingSender, ScriptCommand};
+        use crate::determinism::FixedClock;
+        let sender = std::sync::Arc::new(BufferingSender::new());
+        let rt = ScriptRuntime::new()
+            .expect("runtime constructs")
+            .with_watchdog(200, 400)
+            .expect("watchdog config valid")
+            .with_memory_limit(crate::memory_cap::MemoryCapConfig::PHASE2_DEFAULT)
+            .expect("memory cap config valid")
+            .with_random_seed(7)
+            .expect("seed installs")
+            .with_clock(Box::new(FixedClock::new(1_000)))
+            .expect("clock installs")
+            .with_command_sender(sender.clone())
+            .expect("sender installs");
+        let _ = rt
+            .execute("__chromaticityEmit('syn_RMS', 0.5)")
+            .expect("emit under all caps must succeed");
+        let drained = sender.drain();
+        assert_eq!(drained.len(), 1);
+        match &drained[0] {
+            ScriptCommand::ReactiveWrite { name, value } => {
+                assert_eq!(name, "syn_RMS");
+                assert_eq!(value, &ScriptValue::Number(0.5));
+            }
+        }
+        // All four sibling diagnostic surfaces must still report.
+        assert!(rt.last_observation().is_some());
+        assert!(rt.last_memory_snapshot().is_some());
+        let det = rt.determinism_state().expect("determinism state present");
+        assert_eq!(det.seed(), Some(7));
+        assert!(det.clock_installed());
     }
 }

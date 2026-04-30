@@ -18,13 +18,19 @@
 # rquickjs `Runtime::set_memory_limit`), 4 (determinism shims —
 # seeded `Math.random()` via xoroshiro128+ + frame-locked `Date.now()`
 # via the `Clock` trait, both installed on `Ctx::globals()` once at
-# builder time).
+# builder time), 5.1 (command-bus producer-side bridge — JS-side
+# `__chromaticityEmit(name, value)` global closes over a host-supplied
+# `ScriptCommandSender` trait object; engine/script does NOT take a
+# `chromaticity-runtime` dep; the trait is the cross-crate seam slice
+# 5.2 will land the typed adapter against).
 #
 # Future slices on this crate:
-#   - command-bus integration (slice 5; engine/runtime CommandBus
-#     mount),
-#   - script API surface for scenes (post-slice-5; ADR-012 +
-#     docs/36 v1.1.0 reactive symbol catalog binding).
+#   - command-bus integration slice 5.2 (typed reactive-symbol
+#     catalog binding per docs/36 v1.1.0; engine/runtime adapter
+#     bridging `ScriptCommandSender` onto
+#     `chromaticity_runtime::CommandBus`),
+#   - script API surface for scenes (post-slice-5.2; ADR-012
+#     control bindings + event handlers + preset-recall hooks).
 #
 # Governing ADRs:
 #   ADR-003 — script runtime sandbox
