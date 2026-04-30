@@ -103,18 +103,28 @@
 //!   construction-time failure modes (device-not-found, unsupported
 //!   sample format, stream-build / stream-play failure).
 //!
-//!   Slice-3b is `f32`-only at the device side; non-`f32` configs
-//!   surface as `CpalDeviceCapture` rather than being silently
-//!   transcoded. Multi-format support (i16 / u16 dispatch + per-
-//!   format transcoding) is future widening, NOT a named deferred
-//!   slice — the Phase-2 named-deferred-slice list for
-//!   `EV-AUDIO-TRACE` closes here.
+//!   Slice-3b shipped `f32`-only at the device side. The follow-up
+//!   multi-format widening (this PR) lifts the `f32`-only restriction
+//!   by dispatching over `cpal::SampleFormat` at stream-build time
+//!   and supporting `f32` (passthrough), `i16`, and `u16` device
+//!   formats with per-format conversion to `f32` inside the cpal
+//!   callback before the frame is pushed into the bounded channel.
+//!   Other cpal-reported sample formats (`i8` / `u8` / `i32` /
+//!   `u32` / `i64` / `u64` / `f64`, plus any future additions)
+//!   continue to surface as
+//!   [`error::AudioError::CpalDeviceCapture`]. Multi-format support
+//!   is strictly additive cross-platform robustness (Linux ALSA
+//!   often defaults to `i16`, Windows WASAPI delivers `i16` / `u16`
+//!   on some hardware) and does NOT flip the state of any
+//!   `EV-AUDIO-TRACE` row in `docs/26`; it remains "future widening,
+//!   NOT a named deferred slice" per the R-37 Tier-8 framing.
 //!
 //!   No remaining named deferred slices for `EV-AUDIO-TRACE` in this
-//!   Phase-2 surface; further widening (multi-format sample dispatch,
-//!   device-enumeration UI, host-thread-bound stream owner for the
-//!   macOS `!Send` cpal::Stream platform variant) is feature work
-//!   tracked outside the slice-progression list.
+//!   Phase-2 surface; further widening (device-enumeration UI,
+//!   host-thread-bound stream owner for the macOS `!Send`
+//!   cpal::Stream platform variant, multi-channel handling
+//!   improvements, sample-rate resampling) is feature work tracked
+//!   outside the slice-progression list.
 //!
 //! # Surface summary
 //!

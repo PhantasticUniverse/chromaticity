@@ -39,17 +39,42 @@
 //! [`crate::ingest_negotiation::IngestNegotiator`] (slice-3a) then
 //! demotes the host to the silent fallback if the under-runs persist.
 //!
-//! # Format scope (slice-3b)
+//! # Format scope
 //!
-//! Slice-3b lands `f32` device support only. cpal can deliver
-//! `f32`/`i16`/`u16` (and platform-specific extras) depending on the
-//! default-input config the host returns. Non-`f32` configs surface
-//! at construction time as
-//! [`crate::error::AudioError::CpalDeviceCapture`] with a reason
-//! string; the slice intentionally does NOT silently transcode. Multi-
-//! format support is a future widening — the cpal sample-format
-//! dispatch and any required transcoding live in slice-3c+ and do
-//! not block any Phase-2 evidence row this slice closes.
+//! [`try_default_input`] dispatches over `cpal::SampleFormat` at
+//! stream-build time and supports the three formats cpal commonly
+//! delivers across the supported hosts: `f32` (CoreAudio default on
+//! macOS, often WASAPI on Windows), `i16` (frequent ALSA default on
+//! Linux), and `u16` (occasional WASAPI default on Windows). All
+//! three formats are converted to `f32` inside the cpal callback
+//! before the frame is pushed into the bounded channel; the
+//! analyser-side [`crate::ingest::IngestBoundary`] surface stays
+//! `f32` regardless of the device-side format. Other cpal-reported
+//! sample formats (`i8` / `u8` / `i32` / `u32` / `i64` / `u64` /
+//! `f64`, plus any future additions) surface at construction time
+//! as [`crate::error::AudioError::CpalDeviceCapture`] with a reason
+//! string; the dispatch intentionally does NOT silently transcode
+//! formats outside the supported set.
+//!
+//! Slice-3b shipped `f32`-only support; the multi-format widening is
+//! strictly additive cross-platform robustness and does not flip the
+//! state of any `EV-AUDIO-TRACE` row in `docs/26`. The R-37 Tier-8
+//! narrative explicitly frames multi-format support as "future
+//! widening, NOT a named deferred slice".
+//!
+//! # Conversion math
+//!
+//! - `f32` is passthrough (no allocation beyond the eventual
+//!   `Vec<f32>` copy into the channel-published frame).
+//! - `i16` -> `f32`: `(s as f32) / (i16::MAX as f32)`. Yields `+1.0`
+//!   at `i16::MAX` and `-1.00003...` at `i16::MIN` — the asymmetry
+//!   of two's complement spans one extra integer step on the
+//!   negative side; the analyser tolerates the `< -1.0` minority
+//!   case via §7.4 clamp.
+//! - `u16` -> `f32`: `((s as f32) - 32768.0) / 32768.0`. Yields
+//!   `-1.0` at `0`, `0.0` at `32768`, and `+0.99997...` at
+//!   `u16::MAX = 65535`. The asymmetry mirrors the `i16` case (one
+//!   extra integer step on the negative side).
 //!
 //! # Production vs test construction
 //!
@@ -70,7 +95,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
-use cpal::SampleFormat;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
 
@@ -239,18 +263,23 @@ impl IngestBoundary for CpalSource {
 /// The construction sequence:
 ///
 /// 1. Resolve the host default input device.
-/// 2. Resolve its default input config; reject non-`f32` formats with
+/// 2. Resolve its default input config; dispatch over
+///    `cpal::SampleFormat` to build a per-format input stream
+///    (`f32` passthrough, `i16` -> `f32` normalisation, `u16` ->
+///    `f32` normalisation). Other formats are rejected with
 ///    [`AudioError::CpalDeviceCapture`].
 /// 3. Build the bounded channel + closed flag the callback shares
 ///    with the consumer.
 /// 4. Construct the data callback and the error callback under the
 ///    FFI-seam `catch_unwind` discipline (see module-level prose).
+///    The discipline is preserved at every per-format closure seam.
 /// 5. Build the cpal stream and start playback.
 ///
 /// Returns [`AudioError::CpalDeviceCapture`] with a human-readable
 /// reason on every fallible cpal operation: device-not-found,
-/// default-input-config-not-found, unsupported sample format, stream-
-/// build-failure, stream-play-failure.
+/// default-input-config-not-found, unsupported sample format
+/// (anything other than `f32` / `i16` / `u16`), stream-build-failure,
+/// stream-play-failure.
 ///
 /// # Platform note
 ///
@@ -366,8 +395,9 @@ fn run_stream_owner(
 }
 
 /// Resolve the host default input device + config and build the
-/// `f32` input stream, applying the FFI-seam `catch_unwind`
-/// discipline to both the data and error callbacks.
+/// per-format input stream, applying the FFI-seam `catch_unwind`
+/// discipline to both the data and error callbacks at every
+/// format-arm closure seam.
 fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream, AudioError> {
     let host = cpal::default_host();
     let device = host
@@ -382,13 +412,6 @@ fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream
                 reason: format!("default_input_config failed: {e}"),
             })?;
     let sample_format = supported_config.sample_format();
-    if sample_format != SampleFormat::F32 {
-        return Err(AudioError::CpalDeviceCapture {
-            reason: format!(
-                "unsupported sample format {sample_format:?}; slice-3b is f32-only (multi-format support is slice-3c+ scope)"
-            ),
-        });
-    }
     let config = supported_config.config();
     let sample_rate_hz = config.sample_rate.0;
     let channels = config.channels;
@@ -396,23 +419,7 @@ fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream
         guard.sample_rate_hz = sample_rate_hz;
         guard.channels = channels;
     }
-    let state_for_data = state.clone();
     let state_for_err = state.clone();
-    let data_cb = move |data: &[f32], _info: &cpal::InputCallbackInfo| {
-        // FFI-seam panic discipline: a panic crossing this closure
-        // boundary into cpal's C audio thread is undefined
-        // behaviour. catch_unwind coerces a panic to a `Closed`
-        // signal via the shared atomic, after which `try_pull`
-        // surfaces `Closed` to the analyser. The source goes
-        // permanently degraded per docs/06 Reliability/Fallback
-        // Policy and never re-enters the device API.
-        let result = catch_unwind(AssertUnwindSafe(|| {
-            handle_data_f32(&state_for_data, data);
-        }));
-        if result.is_err() {
-            state_for_data.closed.store(true, Ordering::Release);
-        }
-    };
     let err_cb = move |_e: cpal::StreamError| {
         // Mirror the data-callback discipline: any cpal-reported
         // stream error coerces to `Closed`, the analyser sees it
@@ -420,20 +427,96 @@ fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream
         // enter the device API.
         state_for_err.closed.store(true, Ordering::Release);
     };
-    device
-        .build_input_stream(&config, data_cb, err_cb, None)
-        .map_err(|e| AudioError::CpalDeviceCapture {
-            reason: format!("build_input_stream failed: {e}"),
-        })
+    // Per-format dispatch. Every arm wraps its conversion + frame-
+    // publish work in catch_unwind at the FFI seam — a panic in any
+    // arm flips the AtomicBool closed flag and the source stops
+    // re-entering the device API. Conversion math lives in pure
+    // helpers (`convert_i16_sample` / `convert_u16_sample`) so the
+    // T1 drift pins can exercise it without a real cpal stream.
+    let stream = match sample_format {
+        cpal::SampleFormat::F32 => {
+            let state_for_data = state.clone();
+            let data_cb = move |data: &[f32], _info: &cpal::InputCallbackInfo| {
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    publish_f32_frame(&state_for_data, data);
+                }));
+                if result.is_err() {
+                    state_for_data.closed.store(true, Ordering::Release);
+                }
+            };
+            device.build_input_stream(&config, data_cb, err_cb, None)
+        }
+        cpal::SampleFormat::I16 => {
+            let state_for_data = state.clone();
+            let data_cb = move |data: &[i16], _info: &cpal::InputCallbackInfo| {
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    // Per-callback Vec allocation; small (typically
+                    // 128-1024 samples) and acceptable on the audio
+                    // thread for first-cut multi-format support.
+                    // Future widening could reuse a thread-local
+                    // scratch buffer if profiling shows pressure.
+                    let f32_samples: Vec<f32> =
+                        data.iter().copied().map(convert_i16_sample).collect();
+                    publish_f32_frame(&state_for_data, &f32_samples);
+                }));
+                if result.is_err() {
+                    state_for_data.closed.store(true, Ordering::Release);
+                }
+            };
+            device.build_input_stream(&config, data_cb, err_cb, None)
+        }
+        cpal::SampleFormat::U16 => {
+            let state_for_data = state.clone();
+            let data_cb = move |data: &[u16], _info: &cpal::InputCallbackInfo| {
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    let f32_samples: Vec<f32> =
+                        data.iter().copied().map(convert_u16_sample).collect();
+                    publish_f32_frame(&state_for_data, &f32_samples);
+                }));
+                if result.is_err() {
+                    state_for_data.closed.store(true, Ordering::Release);
+                }
+            };
+            device.build_input_stream(&config, data_cb, err_cb, None)
+        }
+        other => {
+            return Err(AudioError::CpalDeviceCapture {
+                reason: format!("unsupported sample format {other:?}; supported: f32, i16, u16"),
+            });
+        }
+    };
+    stream.map_err(|e| AudioError::CpalDeviceCapture {
+        reason: format!("build_input_stream failed: {e}"),
+    })
 }
 
-/// Convert a slice of interleaved `f32` samples handed up by cpal
+/// Convert a single `i16` PCM sample to `f32` in the nominal
+/// `[-1.0, 1.0]` range. `i16::MAX` maps to exactly `+1.0`;
+/// `i16::MIN` maps to slightly below `-1.0` (`-1.00003...`) per the
+/// asymmetry of two's complement. The analyser tolerates the
+/// `< -1.0` minority case via the §7.4 clamp.
+#[inline]
+pub(crate) fn convert_i16_sample(s: i16) -> f32 {
+    f32::from(s) / f32::from(i16::MAX)
+}
+
+/// Convert a single `u16` PCM sample to `f32` in the nominal
+/// `[-1.0, 1.0]` range. `0` maps to `-1.0`, `32768` maps to `0.0`,
+/// `u16::MAX = 65535` maps to `+0.99997...`. The asymmetry mirrors
+/// the `i16` case (one extra integer step on the negative side).
+#[inline]
+pub(crate) fn convert_u16_sample(s: u16) -> f32 {
+    (f32::from(s) - 32768.0) / 32768.0
+}
+
+/// Convert a slice of interleaved `f32` samples (already-converted
+/// by the per-format closure if the device delivered `i16` / `u16`)
 /// into an [`AudioFrame`] and try to send it down the bounded
 /// channel. Drops the frame on `TrySendError::Full` (analyser is
 /// behind; backpressure surfaces as `WouldBlock` on the consumer
 /// side) and flips the closed flag on `TrySendError::Disconnected`
 /// (consumer dropped).
-fn handle_data_f32(state: &CallbackState, data: &[f32]) {
+fn publish_f32_frame(state: &CallbackState, data: &[f32]) {
     if data.is_empty() {
         return;
     }
@@ -611,5 +694,120 @@ mod cpal_source_pins {
         let s = format!("{err}");
         assert!(s.contains("cpal device-capture"));
         assert!(s.contains("no default input device"));
+    }
+
+    // ---- Multi-format dispatch widening pins ----
+    //
+    // T1 per docs/43 §15.5: each pin asserts a documented invariant
+    // of the per-format conversion math (i16 / u16 -> f32). The
+    // module-level `# Conversion math` prose is the contract these
+    // pins protect.
+
+    /// Tolerance for f32 conversion-math pins. The conversions are
+    /// exact-rational divisions by integer constants; this gives
+    /// margin for the inherent rounding of f32 multiply / divide.
+    const CONVERSION_TOLERANCE: f32 = 1.0e-6;
+
+    #[test]
+    fn i16_to_f32_conversion_at_max_yields_unit_amplitude() {
+        // Documented invariant: i16::MAX maps to exactly +1.0.
+        let v = convert_i16_sample(i16::MAX);
+        assert!(
+            (v - 1.0).abs() < CONVERSION_TOLERANCE,
+            "i16::MAX -> {v}, expected +1.0",
+        );
+    }
+
+    #[test]
+    fn i16_to_f32_conversion_at_min_yields_negative_unit() {
+        // Documented invariant: i16::MIN maps to slightly below -1.0
+        // (-32768 / 32767 = -1.00003...). The asymmetry of two's
+        // complement gives one extra integer step on the negative
+        // side; the analyser tolerates the `< -1.0` minority case
+        // via the §7.4 clamp.
+        let v = convert_i16_sample(i16::MIN);
+        let expected: f32 = -32768.0 / 32767.0;
+        assert!(
+            (v - expected).abs() < CONVERSION_TOLERANCE,
+            "i16::MIN -> {v}, expected {expected}",
+        );
+        // Pin the < -1.0 invariant explicitly so a future "shift
+        // + scale" rewrite that lands at exactly -1.0 surfaces here.
+        assert!(v < -1.0, "i16::MIN -> {v}, must be < -1.0");
+    }
+
+    #[test]
+    fn i16_to_f32_conversion_at_zero_yields_zero() {
+        // Documented invariant: 0 maps to exactly 0.0.
+        let v = convert_i16_sample(0);
+        assert!(
+            v.abs() < CONVERSION_TOLERANCE,
+            "i16::0 -> {v}, expected 0.0",
+        );
+    }
+
+    #[test]
+    fn u16_to_f32_conversion_at_zero_yields_negative_one() {
+        // Documented invariant: 0 maps to exactly -1.0 (offset-binary
+        // origin).
+        let v = convert_u16_sample(0);
+        assert!(
+            (v - (-1.0)).abs() < CONVERSION_TOLERANCE,
+            "u16::0 -> {v}, expected -1.0",
+        );
+    }
+
+    #[test]
+    fn u16_to_f32_conversion_at_max_yields_unit_amplitude() {
+        // Documented invariant: u16::MAX = 65535 maps to slightly
+        // below +1.0 (32767 / 32768 = +0.99997...). Mirrors the i16
+        // asymmetry on the positive side.
+        let v = convert_u16_sample(u16::MAX);
+        let expected: f32 = 32767.0 / 32768.0;
+        assert!(
+            (v - expected).abs() < CONVERSION_TOLERANCE,
+            "u16::MAX -> {v}, expected {expected}",
+        );
+        assert!(v < 1.0, "u16::MAX -> {v}, must be < 1.0");
+        assert!(v > 0.0, "u16::MAX -> {v}, must be > 0.0");
+    }
+
+    #[test]
+    fn u16_to_f32_conversion_at_center_yields_zero() {
+        // Documented invariant: 32768 (offset-binary origin) maps to
+        // exactly 0.0.
+        let v = convert_u16_sample(32768);
+        assert!(
+            v.abs() < CONVERSION_TOLERANCE,
+            "u16::32768 -> {v}, expected 0.0",
+        );
+    }
+
+    #[test]
+    fn i16_slice_conversion_round_trips_through_publish_helper_shape() {
+        // Pin: a slice of i16 samples converted via `convert_i16_sample`
+        // produces a Vec<f32> the publish helper would accept (length
+        // preserved, values in the documented range modulo the i16::MIN
+        // negative overshoot).
+        let raw: [i16; 5] = [i16::MIN, -16384, 0, 16384, i16::MAX];
+        let f: Vec<f32> = raw.iter().copied().map(convert_i16_sample).collect();
+        assert_eq!(f.len(), raw.len());
+        // -16384 / 32767 ≈ -0.5
+        assert!((f[1] - (-16384.0 / 32767.0)).abs() < CONVERSION_TOLERANCE);
+        assert!(f[2].abs() < CONVERSION_TOLERANCE);
+        // 16384 / 32767 ≈ +0.5
+        assert!((f[3] - (16384.0 / 32767.0)).abs() < CONVERSION_TOLERANCE);
+    }
+
+    #[test]
+    fn u16_slice_conversion_round_trips_through_publish_helper_shape() {
+        let raw: [u16; 5] = [0, 16384, 32768, 49152, u16::MAX];
+        let f: Vec<f32> = raw.iter().copied().map(convert_u16_sample).collect();
+        assert_eq!(f.len(), raw.len());
+        // 16384 -> (16384 - 32768) / 32768 = -0.5
+        assert!((f[1] - (-0.5)).abs() < CONVERSION_TOLERANCE);
+        assert!(f[2].abs() < CONVERSION_TOLERANCE);
+        // 49152 -> (49152 - 32768) / 32768 = +0.5
+        assert!((f[3] - 0.5).abs() < CONVERSION_TOLERANCE);
     }
 }

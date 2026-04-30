@@ -225,6 +225,44 @@ fn observability_routing_accumulates_across_pipeline_frames() {
 }
 
 #[test]
+fn pipeline_accepts_post_conversion_f32_frame_as_if_from_i16_or_u16_arm() {
+    // Multi-format dispatch widening: the cpal callback for the
+    // i16 / u16 sample-format arms converts each sample to f32
+    // before pushing into the bounded channel. The consumer-side
+    // surface (CpalSource::try_pull -> AudioFrame) sees an f32
+    // payload regardless of the device-side format. This T2 pin
+    // exercises that invariant by feeding a Vec<f32> shaped like
+    // the i16 / u16 callback output (values in `[-1.0, 1.0]` after
+    // the documented per-format conversion) and confirming the
+    // pipeline preserves the buffer verbatim with the AudioFrame
+    // shape contract intact.
+    let (tx, rx) = bounded::<AudioFrame>(CHANNEL_CAPACITY);
+    let closed = Arc::new(AtomicBool::new(false));
+    let mut source = CpalSource::from_parts(rx, closed, Box::new(NoopGuard));
+
+    // Synthesise two post-conversion buffers: one shaped like the
+    // i16 arm output (full positive / negative excursions, zero,
+    // half-amplitude) and one shaped like the u16 arm output
+    // (offset-binary post-conversion values around 0).
+    let i16_post: Vec<f32> = vec![1.0, 0.5, 0.0, -0.5, -1.0];
+    let u16_post: Vec<f32> = vec![-1.0, -0.5, 0.0, 0.5, 0.999_969_5];
+    tx.try_send(AudioFrame::new(48_000, 1, i16_post.clone()))
+        .unwrap();
+    tx.try_send(AudioFrame::new(44_100, 2, u16_post.clone()))
+        .unwrap();
+
+    let mut out = AudioFrame::default();
+    assert_eq!(source.try_pull(&mut out), IngestStatus::Ready);
+    assert_eq!(out.sample_rate_hz(), 48_000);
+    assert_eq!(out.samples(), i16_post.as_slice());
+
+    assert_eq!(source.try_pull(&mut out), IngestStatus::Ready);
+    assert_eq!(out.sample_rate_hz(), 44_100);
+    assert_eq!(out.channels(), 2);
+    assert_eq!(out.samples(), u16_post.as_slice());
+}
+
+#[test]
 #[ignore = "smoke-only: requires a host audio device; tolerates either Ok or CpalDeviceCapture"]
 fn try_default_input_smoke() {
     // Smoke test: confirm the production constructor runs end-to-end
