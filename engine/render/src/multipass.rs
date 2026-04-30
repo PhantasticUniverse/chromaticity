@@ -238,6 +238,15 @@ impl TargetFormat {
 
     /// Bytes per pixel for the readback row stride. RGBA at 1 / 2 / 4
     /// bytes per channel.
+    ///
+    /// Slice-5b.3 retired the production callers (the readback path
+    /// now derives the row stride from `wgpu::TextureFormat::block_copy_size`
+    /// directly, which keeps the readback shape locked to the
+    /// returned texture rather than the slice). The accessor is kept
+    /// for the T1 drift pin
+    /// [`multipass_drift_pins::target_format_bytes_per_pixel_layout`]
+    /// which guards the slice-5b.2 byte-shape contract.
+    #[allow(dead_code)]
     pub(crate) fn bytes_per_pixel(self) -> u32 {
         match self {
             TargetFormat::Rgba8Unorm => 4,
@@ -533,7 +542,42 @@ impl MultipassRenderer {
     /// Same error variants as the prior per-call entry point — see
     /// [`compile_and_render_multipass`] for the exhaustive list.
     pub fn render(&self, spec: &MultipassSpec) -> Result<Vec<u8>, RenderError> {
-        render_multipass_with(
+        let final_target = render_multipass_to_texture_with(
+            &self.adapter,
+            &self.device,
+            &self.queue,
+            &self.vertex_shader,
+            spec,
+        )?;
+        readback_texture(&self.device, &self.queue, &final_target)
+    }
+
+    /// Compile every pass in `spec` and render them sequentially
+    /// across `spec.frame_count` frames, returning the FINAL frame's
+    /// FINAL-pass GPU texture WITHOUT a CPU readback. The returned
+    /// texture is owned by the caller, sized to `spec.target_size`,
+    /// formatted to the final pass's `target_format`, with usage flags
+    /// `RENDER_ATTACHMENT | TEXTURE_BINDING | COPY_SRC` so the caller
+    /// may sample it in a downstream pipeline (slice-5b.3 GPU-side
+    /// composition) or copy it back to a buffer.
+    ///
+    /// `render_to_texture` plus a caller-side readback round-trip is
+    /// byte-identical to [`MultipassRenderer::render`]. Slice-5b.3's
+    /// composition path uses `render_to_texture` for current + next
+    /// scenes and samples both textures in a third blend pass without
+    /// the per-spec readback round-trip the slice-5b.2 CPU path
+    /// required.
+    ///
+    /// # Errors
+    ///
+    /// Same error variants as [`MultipassRenderer::render`] except
+    /// the readback failures — see [`compile_and_render_multipass`]
+    /// for the exhaustive list. Readback-stage variants
+    /// ([`RenderError::DeviceLoss`], [`RenderError::BufferMap`])
+    /// cannot fire on this entry point; they live in the
+    /// caller-side readback (or in [`MultipassRenderer::render`]).
+    pub fn render_to_texture(&self, spec: &MultipassSpec) -> Result<wgpu::Texture, RenderError> {
+        render_multipass_to_texture_with(
             &self.adapter,
             &self.device,
             &self.queue,
@@ -639,21 +683,29 @@ fn validate_spec_shape(spec: &MultipassSpec) -> Result<(), RenderError> {
     Ok(())
 }
 
-/// Inner render driver shared by [`MultipassRenderer::render`] and
-/// (transitively, via the shim) [`compile_and_render_multipass`].
-/// Takes the long-lived adapter / device / queue / cached vertex
-/// shader by reference so the renderer's resources are reused across
-/// calls. The body is the original per-call function from step 4
-/// onward — texture allocation through readback — verbatim, with
-/// `device` / `queue` / `vertex_shader` substituted for the
-/// previously locally-built handles.
-fn render_multipass_with(
+/// Inner render driver shared by [`MultipassRenderer::render`],
+/// [`MultipassRenderer::render_to_texture`], and (transitively, via
+/// the shim) [`compile_and_render_multipass`]. Takes the long-lived
+/// adapter / device / queue / cached vertex shader by reference so
+/// the renderer's resources are reused across calls. Returns the
+/// FINAL frame's FINAL-pass GPU texture without performing the CPU
+/// readback; the callers that need bytes (`render`,
+/// `compile_and_render_multipass`) layer [`readback_texture`] on
+/// top.
+///
+/// Slice-5b.3 split: the slice-5b.2+ refactor's
+/// `render_multipass_with` body went render → copy → map → bytes in
+/// one function. The split moves the copy + map into
+/// [`readback_texture`] so the GPU composition path
+/// ([`crate::composition::compose_transition_frame_gpu`]) can sample
+/// the returned texture directly without round-tripping bytes.
+fn render_multipass_to_texture_with(
     adapter: &wgpu::Adapter,
     device: &Arc<wgpu::Device>,
     queue: &wgpu::Queue,
     vertex_shader: &wgpu::ShaderModule,
     spec: &MultipassSpec,
-) -> Result<Vec<u8>, RenderError> {
+) -> Result<wgpu::Texture, RenderError> {
     // 1. Up-front structural validation. These checks intentionally
     // run BEFORE any GPU work so a structural error returns the
     // expected variant rather than masking it with a downstream
@@ -1064,14 +1116,69 @@ fn render_multipass_with(
         queue.submit(Some(encoder.finish()));
     }
 
-    // 9. Allocate the readback buffer for the FINAL pass's FINAL
-    // frame and copy. Bytes-per-pixel comes from the final pass's
-    // target_format so the readback shape matches the chosen format.
-    let bytes_per_pixel = final_format.bytes_per_pixel();
-    let unpadded_bytes_per_row = spec.target_size.0 * bytes_per_pixel;
+    // 9. Extract the FINAL pass's FINAL-frame texture by removing it
+    // from `pass_textures` so we own it for return. The
+    // `pass_textures` Vec is dropped on function exit, releasing the
+    // intermediate textures; the FINAL-pass texture's wgpu RAII
+    // handle stays alive in the returned value.
+    //
+    // The final-frame index is `frame_count - 1`. The texture the
+    // final pass wrote on that frame is `write_slot(layout,
+    // final_index, frame_count - 1)`.
+    let final_frame = spec.frame_count - 1;
+    let final_view_idx = write_slot(&pass_texture_layout, final_index, final_frame);
+    if final_view_idx >= pass_textures.len() {
+        return Err(RenderError::PassRenderFailed {
+            pass_index: final_index,
+            source: Box::new(RenderError::EmptyPassList),
+        });
+    }
+    // `swap_remove` is O(1) and avoids a clone of the wgpu::Texture
+    // handle; we want unique ownership of the final target so the
+    // caller (read-back path or composition pass) can rely on RAII.
+    let final_target = pass_textures.swap_remove(final_view_idx);
+    let _ = final_format;
+    Ok(final_target)
+}
+
+/// Read back a wgpu texture into a `Vec<u8>` matching the
+/// [`MultipassRenderer::render`] byte format (row-major, padding
+/// stripped, `bytes_per_pixel * width * height` bytes total).
+///
+/// Slice-5b.3 split this out of `render_multipass_to_texture_with`
+/// so [`MultipassRenderer::render_to_texture`] can return the GPU
+/// texture without paying for the readback round-trip; the
+/// composition pass needs the texture, not the bytes.
+///
+/// `texture` MUST be 2D, single mip, single array layer, with usage
+/// `COPY_SRC` set on the descriptor (every texture this crate
+/// produces via [`render_multipass_to_texture_with`] satisfies these
+/// invariants — the function builds them with
+/// `RENDER_ATTACHMENT | TEXTURE_BINDING | COPY_SRC` for the final
+/// pass).
+///
+/// # Errors
+///
+/// - [`RenderError::DeviceLoss`] — wgpu device lost mid-poll.
+/// - [`RenderError::BufferMap`] — `map_async` returned an error or
+///   the completion channel was dropped before the future resolved.
+fn readback_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+) -> Result<Vec<u8>, RenderError> {
+    let format = texture.format();
+    let bytes_per_pixel = format.block_copy_size(None).ok_or_else(|| {
+        RenderError::BufferMap(format!(
+            "texture format {format:?} has no fixed block size for readback"
+        ))
+    })?;
+    let width = texture.width();
+    let height = texture.height();
+    let unpadded_bytes_per_row = width * bytes_per_pixel;
     let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
     let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
-    let readback_size = u64::from(padded_bytes_per_row) * u64::from(spec.target_size.1);
+    let readback_size = u64::from(padded_bytes_per_row) * u64::from(height);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("chromaticity-render multipass readback"),
         size: readback_size,
@@ -1079,23 +1186,12 @@ fn render_multipass_with(
         mapped_at_creation: false,
     });
 
-    // The final-frame index is `frame_count - 1`. The texture the
-    // final pass wrote on that frame is `write_slot(layout,
-    // final_index, frame_count - 1)`.
-    let final_frame = spec.frame_count - 1;
-    let final_view_idx = write_slot(&pass_texture_layout, final_index, final_frame);
-    let final_target = pass_textures
-        .get(final_view_idx)
-        .ok_or(RenderError::PassRenderFailed {
-            pass_index: final_index,
-            source: Box::new(RenderError::EmptyPassList),
-        })?;
     let mut copy_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("chromaticity-render multipass copy encoder"),
     });
     copy_encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
-            texture: final_target,
+            texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
@@ -1105,19 +1201,18 @@ fn render_multipass_with(
             layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(padded_bytes_per_row),
-                rows_per_image: Some(spec.target_size.1),
+                rows_per_image: Some(height),
             },
         },
         wgpu::Extent3d {
-            width: spec.target_size.0,
-            height: spec.target_size.1,
+            width,
+            height,
             depth_or_array_layers: 1,
         },
     );
-
     queue.submit(Some(copy_encoder.finish()));
 
-    // 10. Map readback buffer and strip row padding. Identical to
+    // Map readback buffer and strip row padding. Identical to
     // single_pass.rs's readback path.
     let buffer_slice = readback.slice(..);
     let (sender, receiver) = channel();
@@ -1143,9 +1238,8 @@ fn render_multipass_with(
     }
 
     let mapped = buffer_slice.get_mapped_range();
-    let mut pixels =
-        Vec::with_capacity((unpadded_bytes_per_row as usize) * (spec.target_size.1 as usize));
-    for row in 0..spec.target_size.1 {
+    let mut pixels = Vec::with_capacity((unpadded_bytes_per_row as usize) * (height as usize));
+    for row in 0..height {
         let start = (row * padded_bytes_per_row) as usize;
         let end = start + unpadded_bytes_per_row as usize;
         pixels.extend_from_slice(&mapped[start..end]);
@@ -1154,6 +1248,17 @@ fn render_multipass_with(
     readback.unmap();
 
     Ok(pixels)
+}
+
+/// Crate-internal accessor for [`readback_texture`] so
+/// [`crate::composition`] can map a composition output texture back
+/// to bytes without re-implementing the row-padding strip.
+pub(crate) fn readback_texture_to_bytes(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+) -> Result<Vec<u8>, RenderError> {
+    readback_texture(device, queue, texture)
 }
 
 /// Encode a slice of [`UniformInput`] into vec4-aligned 16-byte

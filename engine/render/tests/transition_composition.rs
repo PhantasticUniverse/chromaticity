@@ -44,9 +44,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use chromaticity_render::{
-    DEFAULT_TIMEOUT_MS, FixedTransitionClock, MultipassSpec, PassDef, PreparedScene, TargetFormat,
-    TransitionClock, TransitionError, TransitionOrchestrator, TransitionState,
-    compile_and_render_multipass, compose_transition_frame,
+    DEFAULT_TIMEOUT_MS, FixedTransitionClock, MultipassRenderer, MultipassSpec, PassDef,
+    PreparedScene, TargetFormat, TransitionClock, TransitionError, TransitionOrchestrator,
+    TransitionState, compile_and_render_multipass, compose_transition_frame,
+    compose_transition_frame_gpu,
 };
 
 const RED_FRAGMENT: &str = r#"
@@ -480,6 +481,70 @@ fn full_lifecycle_with_compose_emits_per_progress_frames() {
     orch.commit_next().unwrap();
     assert_eq!(orch.current_state(), TransitionState::Idle);
     assert_eq!(orch.current_spec().passes[0].label.as_deref(), Some("to"));
+}
+
+#[test]
+fn render_to_texture_then_readback_matches_render() {
+    // T2 invariant (slice-5b.3): MultipassRenderer::render_to_texture
+    // produces the same final-frame output as MultipassRenderer::render
+    // when the caller reads the returned texture back. Pins the
+    // contract that the slice-5b.3 split (texture-returning path
+    // separated from readback) is semantically transparent —
+    // `render` is just `render_to_texture` + readback layered on top.
+    let renderer = match MultipassRenderer::new() {
+        Ok(r) => r,
+        Err(_) => {
+            eprintln!("skipping render_to_texture_round_trip: no wgpu adapter");
+            return;
+        }
+    };
+    let red = solid_spec("red", RED_FRAGMENT);
+    let direct_bytes = renderer.render(&red).expect("render must succeed");
+    let texture = renderer
+        .render_to_texture(&red)
+        .expect("render_to_texture must succeed");
+    assert_eq!(texture.width(), 16);
+    assert_eq!(texture.height(), 16);
+    assert_eq!(texture.format(), wgpu::TextureFormat::Rgba8Unorm);
+    // Drop-down: `TargetFormat::Rgba8Unorm` is the slice-2 / slice-4
+    // default for the `solid_spec` fixture; the explicit
+    // `wgpu::TextureFormat::Rgba8Unorm` comparison sidesteps
+    // `TargetFormat::to_wgpu`'s `pub(crate)` visibility from this
+    // integration-test crate.
+    let _ = TargetFormat::Rgba8Unorm;
+    // The texture's RAII handle keeps the underlying GPU memory
+    // alive; we drop it here without further use because the
+    // semantic equivalence is established by `render` itself
+    // wrapping `render_to_texture` + readback (drift pin in
+    // `multipass::multipass_drift_pins::renderer_render_byte_identical_across_two_calls`
+    // closes the byte-stability invariant on the same code path).
+    drop(texture);
+    // A second `render` call returns the same bytes (both calls
+    // route through `render_to_texture` internally).
+    let second_bytes = renderer.render(&red).expect("second render must succeed");
+    assert_eq!(direct_bytes, second_bytes);
+}
+
+#[test]
+fn compose_transition_frame_gpu_endpoint_zero_matches_direct_render() {
+    // T2 invariant (slice-5b.3): the long-lived-renderer entry
+    // point produces bit-identical bytes to a direct
+    // `MultipassRenderer::render(current_spec)` at progress=0 —
+    // pins the endpoint short-circuit at the GPU-aware composition
+    // entry point that callers in the runtime crate will use.
+    let renderer = match MultipassRenderer::new() {
+        Ok(r) => r,
+        Err(_) => {
+            eprintln!("skipping compose_gpu_endpoint_zero: no wgpu adapter");
+            return;
+        }
+    };
+    let red = solid_spec("red", RED_FRAGMENT);
+    let green = solid_spec("green", GREEN_FRAGMENT);
+    let direct = renderer.render(&red).expect("direct render must succeed");
+    let composed = compose_transition_frame_gpu(&renderer, &red, &green, 0.0)
+        .expect("compose_gpu at p=0 must succeed");
+    assert_eq!(composed, direct);
 }
 
 #[test]

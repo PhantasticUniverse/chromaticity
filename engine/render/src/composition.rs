@@ -1,70 +1,89 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Phase-2 EV-RENDER-CONFORMANCE slice-5b.2 transition composition.
+//! Phase-2 EV-RENDER-CONFORMANCE slice-5b.3 transition composition.
 //!
 //! The crossfade-composition entry point + GPU resource preallocation
 //! companion to [`crate::transitions::TransitionOrchestrator`] for the
 //! ADR-007 warm-switch policy's third phase
 //! ([`crate::transitions::TransitionState::CrossfadeOrHardCut`]).
 //!
-//! # What slice-5b.2 ships
+//! # Slice-5b.3 GPU-side blending design
 //!
-//! - [`PreparedScene`] — a handle owning the GPU resources allocated
-//!   ahead of the crossfade so the visual transition does not block
-//!   on texture / sampler / buffer creation. Populated by
-//!   [`crate::transitions::TransitionOrchestrator::prepare_resources`]
-//!   during `PrepareNext` / `PrimeNext`.
-//! - [`compose_transition_frame`] — the crossfade composition entry
-//!   point. Renders the orchestrator's `current_spec` and `next_spec`
-//!   via [`crate::compile_and_render_multipass`] and composites the
-//!   two readbacks via per-channel alpha blend at the supplied
-//!   `progress` parameter.
-//! - Hard-cut path: when `progress == 0.0` the composition returns
-//!   the current-scene readback unmodified; when `progress == 1.0`
-//!   it returns the next-scene readback unmodified. The interior
-//!   range linearly blends.
+//! Slice-5b.3 (this slice) replaces the slice-5b.2 CPU-side per-byte
+//! alpha lerp with a GPU compositing pipeline that samples the
+//! current and next render outputs and blends them via a `mix()`
+//! fragment-shader call against a third intermediate texture. The
+//! Tier-9 [`crate::multipass::MultipassRenderer`] refactor (PR #289)
+//! is the architectural prerequisite — its long-lived
+//! `Arc<wgpu::Device>` and `wgpu::Queue` accessors are what let the
+//! third compositing pass bind against the same GPU context that
+//! just rendered the source frames. Before Tier-9 the multipass
+//! scheduler acquired a fresh Instance / Adapter / Device per call,
+//! which is why slice-5b.2 shipped with the CPU readback blend
+//! documented at length on the retired module-level prose.
 //!
-//! # Why CPU-side blending (slice-5b.2 scope decision)
+//! ## Three-pass composition pipeline
 //!
-//! Slice-5b.1's [`crate::transitions::TransitionOrchestrator`] is a
-//! pure-data state machine: it does NOT own a `wgpu::Device`, and
-//! [`crate::compile_and_render_multipass`] acquires its own device
-//! per call (see `multipass.rs` lines 431-456). Slice-5b.2 honors
-//! that "renderer is its own GPU lifetime" invariant by performing
-//! the alpha blend over the readback byte streams rather than
-//! adding a third wgpu render-pass that would need to share the
-//! multipass renderer's transient textures.
+//! 1. **Current render**: [`MultipassRenderer::render_to_texture`]
+//!    is called with `current_spec`; returns a `wgpu::Texture` of
+//!    the spec's final-pass output (no CPU readback round-trip).
+//! 2. **Next render**: same, with `next_spec`. The two specs MUST
+//!    agree on `target_size` AND on the final-pass `target_format`;
+//!    the format-coherence gate is unchanged from slice-5b.2 (and
+//!    surfaces the same [`TransitionError::CompositionFailed`]
+//!    diagnostic before any GPU work runs).
+//! 3. **Blend pass**: a third render pipeline samples the two
+//!    output textures via a `texture2D` + `sampler` pair (each) and
+//!    a single `f32 progress` uniform, writes the blended result to
+//!    a fresh intermediate texture (created at composition time and
+//!    dropped on return). The output texture is then read back via
+//!    [`crate::multipass::readback_texture_to_bytes`] using the
+//!    same row-padding strip that
+//!    [`MultipassRenderer::render`] uses, so the slice-5b.2 byte-
+//!    stream shape contract is preserved verbatim.
 //!
-//! Consequences:
+//! ## Endpoint short-circuits (byte-identity invariant)
 //!
-//! - **Determinism is preserved at the slice-5b.2 byte-stream
-//!   level**: the composition output for `progress == 0.0` is
-//!   bit-identical to the slice-2 single-multipass byte stream for
-//!   `current_spec`, and for `progress == 1.0` bit-identical for
-//!   `next_spec`. The slice-2 / slice-4 corpus byte hashes are
-//!   preserved under composition with the trivial endpoints.
-//! - **Linear blend in `Rgba8Unorm` color space.** The two
-//!   readbacks are interpreted as `[R0, G0, B0, A0, R1, …]` byte
-//!   streams; per-byte the composition is
-//!   `out[i] = round(c[i] * (1 - p) + n[i] * p)`. This is a
-//!   sRGB-space linear interpolation; for true linear-light
-//!   blending the caller should render to `Rgba16Float` or
-//!   `Rgba32Float` first, decode to linear, blend, and re-encode
-//!   — out of slice-5b.2 scope.
-//! - **Float targets are supported** via per-format byte-level
-//!   blending tracks: `Rgba8Unorm` u8-lerp, `Rgba16Float` half-bit-
-//!   reinterpret + linear-lerp, `Rgba32Float` f32-lerp. See
-//!   [`compose_byte_streams`] for the per-format dispatch.
-//! - **The slice-5b.2 [`PreparedScene`] still allocates real GPU
-//!   resources** (an output texture pre-sized to the cued spec, a
-//!   shared sampler, and a transition-progress uniform buffer);
-//!   they exist as a "the orchestrator did the GPU pre-allocation
-//!   work" marker for downstream slices that may pull the
-//!   composition fully onto the GPU once the renderer's device-
-//!   ownership model widens. Slice-5b.2 does not READ from those
-//!   handles in the composition path; the composition entry point
-//!   takes the orchestrator's spec pair directly.
+//! - `progress = 0.0` short-circuits to a direct
+//!   [`MultipassRenderer::render`] call against `current_spec`,
+//!   producing bytes bit-identical to a slice-2 / slice-4
+//!   single-multipass byte stream.
+//! - `progress = 1.0` short-circuits to a direct
+//!   [`MultipassRenderer::render`] call against `next_spec`,
+//!   producing bytes bit-identical to a slice-2 / slice-4
+//!   single-multipass byte stream.
+//!
+//! The endpoint short-circuit was the slice-5b.2 contract that the
+//! T2 corpus
+//! (`engine/render/tests/transition_composition.rs::compose_at_progress_zero_*`
+//! / `compose_at_progress_one_*`) pinned by hash equivalence; the
+//! same hashes survive the slice-5b.3 GPU pull because the endpoint
+//! path does not enter the third compositing pass.
+//!
+//! ## Mid-range hashes
+//!
+//! Mid-range `progress` values (0 < p < 1) produce GPU-blended
+//! output via the third pass's `mix(current, next, progress)` call.
+//! The byte stream differs from the slice-5b.2 CPU u8-lerp by at
+//! most a rounding bit (GPU float-intermediate vs CPU u8-arithmetic
+//! divergence). The slice-5b.3 corpus replaces the slice-5b.2
+//! mid-range ACCEPTED hash entries with values harvested from
+//! Apple-Silicon Metal; backend-aware extension follows the
+//! existing per-backend ACCEPTED-set pattern from
+//! `engine/render/tests/float_targets.rs`.
+//!
+//! # GPU-FREE-orchestrator invariant (slice-5b.1, preserved)
+//!
+//! [`crate::transitions::TransitionOrchestrator`] still does NOT
+//! own a `wgpu::Device`. Slice-5b.3 callers that already hold a
+//! [`MultipassRenderer`] (e.g. the runtime crate's frame loop) call
+//! [`compose_transition_frame_gpu`] directly with their renderer;
+//! callers that want a one-shot composition (e.g. the slice-5b.2
+//! T2 corpus) call [`compose_transition_frame`] which builds a
+//! fresh [`MultipassRenderer`] per call (matches the
+//! [`crate::compile_and_render_multipass`] shim's per-call device
+//! posture for byte-identity continuity).
 //!
 //! # Hard-cut path
 //!
@@ -72,11 +91,10 @@
 //! [`crate::transitions::TransitionOrchestrator::commit_hard_cut`]
 //! is called (the ADR-007 timeout fallback), the composition entry
 //! point is bypassed entirely — the runtime simply renders
-//! `next_spec` via [`crate::compile_and_render_multipass`] directly.
-//! [`compose_transition_frame`] is for the in-flight `progress` ∈
-//! `[0.0, 1.0]` window only; callers that observe `progress >= 1.0`
-//! may either call this with `progress = 1.0` (returns next-scene
-//! readback) or skip it entirely.
+//! `next_spec` via [`crate::compile_and_render_multipass`] (or
+//! [`MultipassRenderer::render`]) directly.
+//! [`compose_transition_frame`] / [`compose_transition_frame_gpu`]
+//! are for the in-flight `progress` ∈ `[0.0, 1.0]` window only.
 //!
 //! # Anchors
 //!
@@ -85,7 +103,10 @@
 //! - `docs/26-evidence-artifact-registry.md` row 28 —
 //!   `EV-RENDER-CONFORMANCE`.
 
-use crate::multipass::{MultipassSpec, TargetFormat, compile_and_render_multipass};
+use std::borrow::Cow;
+
+use crate::multipass::{MultipassRenderer, MultipassSpec, TargetFormat, readback_texture_to_bytes};
+use crate::single_pass::{FULLSCREEN_TRIANGLE_GLSL, RenderError, compile_glsl_module};
 use crate::transitions::TransitionError;
 
 /// GPU resources preallocated by
@@ -94,10 +115,14 @@ use crate::transitions::TransitionError;
 /// [`MultipassSpec`].
 ///
 /// The handle holds the output texture, sampler, and uniform buffer
-/// that a future widening of slice-5b.2 (full GPU-side composition)
-/// will use. Slice-5b.2 itself takes the CPU-blend path in
-/// [`compose_transition_frame`] for the determinism + scope reasons
-/// documented at the module level.
+/// that a slice-5b.3 GPU-side composition pass MAY use as its
+/// canonical bind targets when running against the orchestrator's
+/// preallocated handles. The simpler [`compose_transition_frame_gpu`]
+/// entry point allocates its own intermediates per call (matching
+/// the `MultipassRenderer::render` per-call resource policy); the
+/// preallocated handle is the lever for a future slice that wants
+/// to amortize composition allocation across the
+/// `CrossfadeOrHardCut` window.
 ///
 /// Constructed via [`PreparedScene::allocate`]; not meant to be
 /// hand-constructed from outside the crate.
@@ -257,42 +282,101 @@ impl std::fmt::Debug for PreparedScene {
     }
 }
 
-/// Crossfade composition entry point.
+/// GLSL fragment shader for the slice-5b.3 third compositing pass.
 ///
-/// Renders `current_spec` and `next_spec` via
-/// [`crate::compile_and_render_multipass`] and composites the two
-/// readbacks via per-channel alpha blend at the supplied `progress`
-/// parameter. The two specs MUST agree on `target_size` AND on the
-/// final-pass `target_format` — composition across mismatched
-/// dimensions or formats is rejected with
-/// [`TransitionError::CompositionFailed`].
+/// Samples `current` and `next` via separable `texture2D` +
+/// `sampler` bindings (Vulkan-GLSL form per the multipass scheduler
+/// convention) and `mix()`-blends them by the `progress` uniform
+/// supplied at `binding = 0`. Writes the blended pixel to
+/// `fragColor`. The `uv.y` flip is omitted intentionally — both
+/// source textures already carry the `single_pass.rs::FULLSCREEN_TRIANGLE_GLSL`
+/// flip from their own render passes; the compositing pass needs to
+/// preserve that orientation, so the sample uses `uv` directly.
+const COMPOSITE_FRAGMENT_GLSL: &str = r#"
+#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0) uniform Uniforms { vec4 u_progress_pad; };
+layout(set = 0, binding = 1) uniform texture2D u_current;
+layout(set = 0, binding = 2) uniform sampler u_current_sampler;
+layout(set = 0, binding = 3) uniform texture2D u_next;
+layout(set = 0, binding = 4) uniform sampler u_next_sampler;
+void main() {
+    float p = u_progress_pad.x;
+    vec4 c = texture(sampler2D(u_current, u_current_sampler), uv);
+    vec4 n = texture(sampler2D(u_next, u_next_sampler), uv);
+    fragColor = mix(c, n, p);
+}
+"#;
+
+/// Crossfade composition entry point (slice-5b.3 GPU-side blending).
+///
+/// Builds a fresh [`MultipassRenderer`] per call (matching the
+/// [`crate::compile_and_render_multipass`] shim posture), renders
+/// `current_spec` and `next_spec` via
+/// [`MultipassRenderer::render_to_texture`], and composites the two
+/// GPU textures via a third blend pass that runs against the
+/// renderer's long-lived device + queue. Callers that already own
+/// a [`MultipassRenderer`] (e.g. the runtime's frame loop) should
+/// call [`compose_transition_frame_gpu`] directly to amortize
+/// device acquisition.
+///
+/// The two specs MUST agree on `target_size` AND on the final-pass
+/// `target_format` — composition across mismatched dimensions or
+/// formats is rejected with [`TransitionError::CompositionFailed`].
 ///
 /// `progress` is clamped to `[0.0, 1.0]` before blending; values
-/// outside that range produce the nearest endpoint (the slice-5b.2
-/// monotonic-progress contract).
+/// outside that range produce the nearest endpoint.
 ///
-/// Hard-cut endpoints:
+/// # Endpoint short-circuit (byte-identity preserved)
 ///
 /// - `progress == 0.0` returns the `current_spec` readback
-///   unmodified (bit-identical to a direct
-///   [`crate::compile_and_render_multipass`] call on `current_spec`).
+///   bit-identical to a direct
+///   [`crate::compile_and_render_multipass`] call on `current_spec`.
 /// - `progress == 1.0` returns the `next_spec` readback
-///   unmodified (bit-identical to a direct
-///   [`crate::compile_and_render_multipass`] call on `next_spec`).
+///   bit-identical to a direct
+///   [`crate::compile_and_render_multipass`] call on `next_spec`.
 ///
 /// # Errors
 ///
 /// - [`TransitionError::CompositionFailed`] if either underlying
 ///   render call fails, OR if the two specs disagree on
-///   `target_size` / final-pass format.
+///   `target_size` / final-pass format, OR if the third
+///   compositing pass fails to compile / submit / readback.
 pub fn compose_transition_frame(
     current_spec: &MultipassSpec,
     next_spec: &MultipassSpec,
     progress: f32,
 ) -> Result<Vec<u8>, TransitionError> {
-    // Endpoint dimension / format coherence. The composition is
-    // CPU-side, so the two readbacks must have the same shape and
-    // bytes-per-pixel.
+    let renderer = MultipassRenderer::new().map_err(|e| TransitionError::CompositionFailed {
+        reason: format!("renderer construction failed: {e}"),
+    })?;
+    compose_transition_frame_gpu(&renderer, current_spec, next_spec, progress)
+}
+
+/// Long-lived-renderer crossfade composition entry point.
+///
+/// Same contract as [`compose_transition_frame`] but takes a
+/// caller-owned [`MultipassRenderer`] rather than building one per
+/// call. Use this when the call site already holds a renderer and
+/// wants to amortize device + cached vertex shader across
+/// composition calls (typical for the runtime's per-frame loop
+/// driving a `CrossfadeOrHardCut` window).
+///
+/// # Errors
+///
+/// Same as [`compose_transition_frame`].
+pub fn compose_transition_frame_gpu(
+    renderer: &MultipassRenderer,
+    current_spec: &MultipassSpec,
+    next_spec: &MultipassSpec,
+    progress: f32,
+) -> Result<Vec<u8>, TransitionError> {
+    // Endpoint dimension / format coherence. The composition's third
+    // pass binds two textures of the same size + format, so the two
+    // specs must produce a matching shape. The check fires before
+    // any GPU work so adapter-less CI surfaces structural rejection
+    // via the slice-5b.2 T1 pin path.
     if current_spec.target_size != next_spec.target_size {
         return Err(TransitionError::CompositionFailed {
             reason: format!(
@@ -320,235 +404,313 @@ pub fn compose_transition_frame(
 
     let p = progress.clamp(0.0, 1.0);
 
-    // Hard-cut endpoints short-circuit the second render to keep
-    // the composition path bit-identical to a direct
-    // `compile_and_render_multipass` call at p=0 / p=1. This is the
-    // determinism contract documented at the module level.
+    // Endpoint short-circuit. `progress = 0.0` returns a direct
+    // current render; `progress = 1.0` returns a direct next render.
+    // Both paths skip the third compositing pass entirely so the
+    // returned bytes are bit-identical to a slice-2 / slice-4
+    // single-multipass call (the slice-5b.2 endpoint contract).
     if p <= 0.0 {
-        return compile_and_render_multipass(current_spec).map_err(|e| {
-            TransitionError::CompositionFailed {
+        return renderer
+            .render(current_spec)
+            .map_err(|e| TransitionError::CompositionFailed {
                 reason: format!("current-scene render at progress=0 failed: {e}"),
-            }
-        });
+            });
     }
     if p >= 1.0 {
-        return compile_and_render_multipass(next_spec).map_err(|e| {
-            TransitionError::CompositionFailed {
+        return renderer
+            .render(next_spec)
+            .map_err(|e| TransitionError::CompositionFailed {
                 reason: format!("next-scene render at progress=1 failed: {e}"),
-            }
-        });
+            });
     }
 
-    let current_pixels = compile_and_render_multipass(current_spec).map_err(|e| {
+    // Mid-range: render both source specs to GPU textures, then run
+    // the third compositing pass against the renderer's device.
+    let current_texture = renderer.render_to_texture(current_spec).map_err(|e| {
         TransitionError::CompositionFailed {
-            reason: format!("current-scene render failed: {e}"),
+            reason: format!("current-scene render_to_texture failed: {e}"),
         }
     })?;
-    let next_pixels = compile_and_render_multipass(next_spec).map_err(|e| {
-        TransitionError::CompositionFailed {
-            reason: format!("next-scene render failed: {e}"),
-        }
-    })?;
+    let next_texture =
+        renderer
+            .render_to_texture(next_spec)
+            .map_err(|e| TransitionError::CompositionFailed {
+                reason: format!("next-scene render_to_texture failed: {e}"),
+            })?;
 
-    if current_pixels.len() != next_pixels.len() {
-        return Err(TransitionError::CompositionFailed {
-            reason: format!(
-                "current readback {} bytes != next readback {} bytes \
-                 (specs claim same size+format but renderer disagreed)",
-                current_pixels.len(),
-                next_pixels.len(),
-            ),
-        });
-    }
-
-    compose_byte_streams(&current_pixels, &next_pixels, current_format, p)
+    composite_textures(
+        renderer,
+        &current_texture,
+        &next_texture,
+        current_format,
+        current_spec.target_size,
+        p,
+    )
 }
 
-/// Per-format alpha blend over readback byte streams.
+/// Build the third compositing pipeline, run it against the two
+/// source textures and the supplied progress uniform, and read back
+/// the blended output to a `Vec<u8>` in the slice-5b.2 byte-stream
+/// shape.
 ///
-/// The dispatch picks the integer / half-float / f32 lerp based on
-/// the format. For `Rgba8Unorm` the blend is straight u8 lerp; for
-/// the float formats the bytes are reinterpreted to / from the
-/// canonical IEEE 754 representation, lerped in float space, and
-/// re-encoded to bytes.
-///
-/// `current` and `next` must have equal length; the caller's
-/// dimension / format check has already gated this. `progress` is
-/// pre-clamped to `(0.0, 1.0)` (open at endpoints because the
-/// endpoint cases short-circuit upstream).
-pub(crate) fn compose_byte_streams(
-    current: &[u8],
-    next: &[u8],
+/// `target_size` and `format` describe the SHARED dimensions /
+/// format of the two source textures — the compositing pass
+/// allocates its intermediate render target with the same shape so
+/// the readback is bit-shape-compatible with a direct
+/// `MultipassRenderer::render` of either source.
+fn composite_textures(
+    renderer: &MultipassRenderer,
+    current_texture: &wgpu::Texture,
+    next_texture: &wgpu::Texture,
     format: TargetFormat,
+    target_size: (u32, u32),
     progress: f32,
 ) -> Result<Vec<u8>, TransitionError> {
-    let bytes_per_pixel = format.bytes_per_pixel() as usize;
-    if current.len() % bytes_per_pixel != 0 {
-        return Err(TransitionError::CompositionFailed {
-            reason: format!(
-                "current readback length {} is not a multiple of \
-                 bytes_per_pixel {} for format {}",
-                current.len(),
-                bytes_per_pixel,
-                format.label(),
-            ),
+    let device = renderer.device();
+    let queue = renderer.queue();
+
+    // 1. Compile the compositing fragment shader. The vertex shader
+    // is reused via the renderer's own pipeline — but its module is
+    // private, so the third pass compiles its own instance from the
+    // same `FULLSCREEN_TRIANGLE_GLSL` constant. This stays consistent
+    // with the slice-5b.2+ refactor's "vertex shader is a runtime
+    // constant" invariant.
+    let vertex_module = compile_glsl_module(FULLSCREEN_TRIANGLE_GLSL, naga::ShaderStage::Vertex)
+        .map_err(|e| TransitionError::CompositionFailed {
+            reason: format!("composite vertex compile failed: {e}"),
+        })?;
+    let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("chromaticity-render composite vertex (shared fullscreen triangle)"),
+        source: wgpu::ShaderSource::Naga(Cow::Owned(vertex_module)),
+    });
+
+    let fragment_module = compile_glsl_module(COMPOSITE_FRAGMENT_GLSL, naga::ShaderStage::Fragment)
+        .map_err(|e| TransitionError::CompositionFailed {
+            reason: format!("composite fragment compile failed: {e}"),
+        })?;
+    let fragment_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("chromaticity-render composite fragment (mix blend)"),
+        source: wgpu::ShaderSource::Naga(Cow::Owned(fragment_module)),
+    });
+
+    // 2. Texture views for the two source textures.
+    let current_view = current_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let next_view = next_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    // 3. Sampler for both source textures. Nearest / clamp matches
+    // the multipass scheduler's shared sampler so the bind layout
+    // (NonFiltering) accepts every TargetFormat (Rgba8Unorm,
+    // Rgba16Float, Rgba32Float) without enabling extra wgpu
+    // features.
+    let composite_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("chromaticity-render composite sampler (nearest/clamp)"),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        lod_min_clamp: 0.0,
+        lod_max_clamp: 0.0,
+        compare: None,
+        anisotropy_clamp: 1,
+        border_color: None,
+    });
+
+    // 4. Progress uniform buffer: 16 bytes (vec4-aligned slot
+    // matching the multipass scheduler's std140-friendly packing).
+    // Fragment shader reads the `progress` value from `.x` of the
+    // packed vec4.
+    let mut progress_bytes = [0_u8; 16];
+    progress_bytes[0..4].copy_from_slice(&progress.to_le_bytes());
+    let progress_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("chromaticity-render composite progress uniform"),
+        size: 16,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(&progress_buffer, 0, &progress_bytes);
+
+    // 5. Bind group layout matching the COMPOSITE_FRAGMENT_GLSL
+    // declaration: uniform at 0, current_tex at 1, current_sampler
+    // at 2, next_tex at 3, next_sampler at 4.
+    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("chromaticity-render composite bind group layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                count: None,
+            },
+        ],
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("chromaticity-render composite bind group"),
+        layout: &bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: progress_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&current_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&composite_sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::TextureView(&next_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: wgpu::BindingResource::Sampler(&composite_sampler),
+            },
+        ],
+    });
+
+    // 6. Output texture for the third pass. Format matches the
+    // source textures so the readback shape is identical to a
+    // direct multipass render of either source.
+    let output_texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("chromaticity-render composite output texture"),
+        size: wgpu::Extent3d {
+            width: target_size.0,
+            height: target_size.1,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: format.to_wgpu(),
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    // 7. Pipeline layout + render pipeline.
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("chromaticity-render composite pipeline layout"),
+        bind_group_layouts: &[&bgl],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("chromaticity-render composite pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &vertex_shader,
+            entry_point: Some("main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            buffers: &[],
+        },
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: &fragment_shader,
+            entry_point: Some("main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: format.to_wgpu(),
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview: None,
+        cache: None,
+    });
+
+    // 8. Encode + submit the third pass.
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("chromaticity-render composite encoder"),
+    });
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("chromaticity-render composite pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &output_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
+        rpass.set_pipeline(&pipeline);
+        rpass.set_bind_group(0, &bind_group, &[]);
+        rpass.draw(0..3, 0..1);
     }
+    queue.submit(Some(encoder.finish()));
 
-    let one_minus_p = 1.0 - progress;
-
-    match format {
-        TargetFormat::Rgba8Unorm => {
-            // u8 lerp: blend each byte with rounding. Bytes are
-            // sRGB-encoded; the slice-5b.2 contract says this is
-            // sRGB-space linear interpolation (see module-level
-            // doc). Float-space (linear-light) blending requires
-            // the float-target track and is documented as
-            // out-of-scope for slice-5b.2.
-            let mut out = Vec::with_capacity(current.len());
-            for (c, n) in current.iter().zip(next.iter()) {
-                let blended = (f32::from(*c) * one_minus_p) + (f32::from(*n) * progress);
-                // Round-half-to-even is what `as u8` does; we want
-                // round-half-up to match the GPU's typical filter
-                // rounding. `+ 0.5` then truncate gives that, with
-                // a clamp for safety.
-                let rounded = blended + 0.5;
-                let clamped = rounded.clamp(0.0, 255.0);
-                out.push(clamped as u8);
-            }
-            Ok(out)
+    // 9. Read back the output texture into the slice-5b.2 byte-stream
+    // shape. Reuses the multipass readback helper so the row-padding
+    // strip is identical.
+    readback_texture_to_bytes(device, queue, &output_texture).map_err(|e: RenderError| {
+        TransitionError::CompositionFailed {
+            reason: format!("composite readback failed: {e}"),
         }
-        TargetFormat::Rgba16Float => {
-            // Half-float lerp: reinterpret each pair of bytes as a
-            // u16, decode to f32, lerp, re-encode to half-float
-            // bits. The encode / decode helpers live in this module
-            // so the composition path is self-contained (we don't
-            // reach for a half-float crate to keep the
-            // dep-allowlist surface tight).
-            if current.len() % 2 != 0 {
-                return Err(TransitionError::CompositionFailed {
-                    reason: format!("Rgba16Float readback length {} is not even", current.len()),
-                });
-            }
-            let mut out = Vec::with_capacity(current.len());
-            for i in (0..current.len()).step_by(2) {
-                let c_bits = u16::from_le_bytes([current[i], current[i + 1]]);
-                let n_bits = u16::from_le_bytes([next[i], next[i + 1]]);
-                let c_f = half_to_f32(c_bits);
-                let n_f = half_to_f32(n_bits);
-                let blended_f = c_f * one_minus_p + n_f * progress;
-                let blended_bits = f32_to_half(blended_f);
-                let bytes = blended_bits.to_le_bytes();
-                out.push(bytes[0]);
-                out.push(bytes[1]);
-            }
-            Ok(out)
-        }
-        TargetFormat::Rgba32Float => {
-            // f32 lerp: per-4-bytes reinterpret, lerp, re-encode.
-            if current.len() % 4 != 0 {
-                return Err(TransitionError::CompositionFailed {
-                    reason: format!(
-                        "Rgba32Float readback length {} is not a multiple of 4",
-                        current.len()
-                    ),
-                });
-            }
-            let mut out = Vec::with_capacity(current.len());
-            for i in (0..current.len()).step_by(4) {
-                let c_f = f32::from_le_bytes([
-                    current[i],
-                    current[i + 1],
-                    current[i + 2],
-                    current[i + 3],
-                ]);
-                let n_f = f32::from_le_bytes([next[i], next[i + 1], next[i + 2], next[i + 3]]);
-                let blended_f = c_f * one_minus_p + n_f * progress;
-                let bytes = blended_f.to_le_bytes();
-                out.extend_from_slice(&bytes);
-            }
-            Ok(out)
-        }
-    }
-}
-
-/// Decode a 16-bit half-float bit pattern to f32. Local copy of the
-/// helper in `engine/render/tests/float_targets.rs` so the
-/// composition path is self-contained without re-exporting test
-/// utilities.
-fn half_to_f32(bits: u16) -> f32 {
-    let sign = u32::from((bits >> 15) & 0x0001);
-    let exponent = u32::from((bits >> 10) & 0x001f);
-    let mantissa = u32::from(bits & 0x03ff);
-    let f32_bits = if exponent == 0 {
-        if mantissa == 0 {
-            sign << 31
-        } else {
-            // Denormalized half ⇒ normalized f32.
-            let mut e = 1_u32;
-            let mut m = mantissa;
-            while m & 0x0400 == 0 {
-                m <<= 1;
-                e = e.wrapping_sub(1);
-            }
-            (sign << 31) | ((e + 127 - 15) << 23) | ((m & 0x03ff) << 13)
-        }
-    } else if exponent == 31 {
-        (sign << 31) | (0xff << 23) | (mantissa << 13)
-    } else {
-        (sign << 31) | ((exponent + 127 - 15) << 23) | (mantissa << 13)
-    };
-    f32::from_bits(f32_bits)
-}
-
-/// Encode an f32 as a 16-bit half-float bit pattern. Round-to-zero
-/// for the trailing 13 mantissa bits (matches naga / SPIR-V's
-/// `OpFConvert` lowering on most targets). NaN / Inf are preserved
-/// via the exponent==0xff branch.
-fn f32_to_half(value: f32) -> u16 {
-    let bits = value.to_bits();
-    let sign = ((bits >> 31) & 0x1) as u16;
-    let exp = ((bits >> 23) & 0xff) as i32;
-    let mantissa = bits & 0x007f_ffff;
-
-    if exp == 0xff {
-        // NaN / Inf.
-        let half_mantissa = (mantissa >> 13) as u16;
-        // Preserve NaN payload signal; flush to 0 if all bits drop.
-        let half_mantissa = if mantissa != 0 && half_mantissa == 0 {
-            1
-        } else {
-            half_mantissa
-        };
-        return (sign << 15) | (0x1f << 10) | half_mantissa;
-    }
-
-    let new_exp = exp - 127 + 15;
-
-    if new_exp >= 0x1f {
-        // Overflow → ±Inf.
-        return (sign << 15) | (0x1f << 10);
-    }
-    if new_exp <= 0 {
-        // Subnormal half or underflow to zero.
-        if new_exp < -10 {
-            return sign << 15;
-        }
-        // Denormalised: shift mantissa with the implicit leading 1.
-        let m = (mantissa | 0x0080_0000) >> (14 - new_exp);
-        return (sign << 15) | (m as u16);
-    }
-
-    let half_exp = (new_exp as u16) << 10;
-    let half_mantissa = (mantissa >> 13) as u16;
-    (sign << 15) | half_exp | half_mantissa
+    })
 }
 
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod composition_pins {
-    //! Evidence: EV-RENDER-CONFORMANCE (T1) — slice-5b.2 composition
-    //! drift pins.
+    //! Evidence: EV-RENDER-CONFORMANCE (T1) — slice-5b.3 GPU
+    //! composition drift pins.
     //!
     //! T1 per `docs/43-development-standards.md` §15.5: composition-
     //! algorithm invariant pins that fire WITHOUT a usable wgpu
@@ -558,21 +720,21 @@ mod composition_pins {
     //!
     //! Pinned invariants:
     //!
-    //! - `compose_byte_streams` at `progress=0.0` returns the
-    //!   current bytes unchanged (modulo rounding identity).
-    //! - `compose_byte_streams` at `progress=1.0` returns the next
-    //!   bytes unchanged.
-    //! - Mid-progress blend is per-byte linear with rounding.
-    //! - Length / format mismatches surface as
-    //!   `TransitionError::CompositionFailed`.
-    //! - Half-float / f32 round-trip lerp preserves zero / one
-    //!   sentinels.
-    //! - `compose_transition_frame` at endpoints is bit-identical
-    //!   to a direct `compile_and_render_multipass` (validated by
-    //!   the T2 corpus; this T1 file only checks structural input
-    //!   gating that fires before the renderer is reached).
+    //! - `compose_transition_frame` rejects size-mismatched specs
+    //!   with `CompositionFailed` BEFORE adapter acquisition.
+    //! - `compose_transition_frame` rejects format-mismatched specs
+    //!   with `CompositionFailed` BEFORE adapter acquisition.
+    //! - `compose_transition_frame` rejects empty-pass-list specs
+    //!   with `CompositionFailed` BEFORE adapter acquisition.
+    //!
+    //! GPU-bound pins (renderer construction succeeds) live in the
+    //! T2 corpus and the new `composition_gpu_pins` module below.
+    //!
+    //! Slice-5b.3 retired the slice-5b.2 CPU-side `compose_byte_streams`
+    //! / `half_to_f32` / `f32_to_half` helpers and their associated
+    //! T1 pins; those tests exercised a now-removed code path.
 
-    use super::{compose_byte_streams, compose_transition_frame, f32_to_half, half_to_f32};
+    use super::compose_transition_frame;
     use crate::multipass::{MultipassSpec, PassDef, TargetFormat};
     use crate::transitions::TransitionError;
 
@@ -586,111 +748,6 @@ mod composition_pins {
             }],
             target_size: size,
             frame_count: 1,
-        }
-    }
-
-    #[test]
-    fn rgba8unorm_blend_at_zero_returns_current() {
-        let current = vec![10_u8, 20, 30, 255, 100, 110, 120, 255];
-        let next = vec![200_u8, 210, 220, 255, 50, 60, 70, 255];
-        let out = compose_byte_streams(&current, &next, TargetFormat::Rgba8Unorm, 0.0).unwrap();
-        // p=0 with `+ 0.5` round means each byte is c + 0.5 → c,
-        // since c is an integer.
-        assert_eq!(out, current);
-    }
-
-    #[test]
-    fn rgba8unorm_blend_at_one_returns_next() {
-        let current = vec![10_u8, 20, 30, 255, 100, 110, 120, 255];
-        let next = vec![200_u8, 210, 220, 255, 50, 60, 70, 255];
-        let out = compose_byte_streams(&current, &next, TargetFormat::Rgba8Unorm, 1.0).unwrap();
-        assert_eq!(out, next);
-    }
-
-    #[test]
-    fn rgba8unorm_blend_at_half_is_per_byte_average() {
-        let current = vec![100_u8, 0, 200, 255];
-        let next = vec![200_u8, 100, 0, 255];
-        let out = compose_byte_streams(&current, &next, TargetFormat::Rgba8Unorm, 0.5).unwrap();
-        // Per byte: (c + n) / 2 with round-half-up. (100+200)/2=150;
-        // (0+100)/2=50; (200+0)/2=100; (255+255)/2=255.
-        assert_eq!(out, vec![150, 50, 100, 255]);
-    }
-
-    #[test]
-    fn rgba8unorm_length_mismatch_against_format_rejects() {
-        // Length not a multiple of bytes_per_pixel (4) for Rgba8Unorm.
-        let current = vec![1_u8, 2, 3]; // 3 bytes, not 4-aligned.
-        let next = vec![1_u8, 2, 3];
-        let err = compose_byte_streams(&current, &next, TargetFormat::Rgba8Unorm, 0.5)
-            .expect_err("non-aligned length must reject");
-        match err {
-            TransitionError::CompositionFailed { reason } => {
-                assert!(reason.contains("not a multiple"), "reason: {reason}");
-            }
-            other => panic!("expected CompositionFailed, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn rgba16float_round_trip_preserves_zero_and_one() {
-        // The half-float helpers must round-trip 0.0 and 1.0
-        // exactly. Drift pin: a regression in either direction
-        // would surface here before the GPU corpus runs.
-        let zero_bits = f32_to_half(0.0);
-        let one_bits = f32_to_half(1.0);
-        assert_eq!(half_to_f32(zero_bits), 0.0);
-        assert_eq!(half_to_f32(one_bits), 1.0);
-        // Half-float 0.0 is bit-pattern 0x0000; 1.0 is 0x3c00.
-        assert_eq!(zero_bits, 0x0000);
-        assert_eq!(one_bits, 0x3c00);
-    }
-
-    #[test]
-    fn rgba16float_blend_at_half_lerps_in_float_space() {
-        // Encode 0.0 (0x0000) and 1.0 (0x3c00) per-channel for one
-        // pixel, blend at p=0.5, expect ~0.5 (0x3800).
-        let current_bytes: Vec<u8> = [0x0000_u16, 0x0000, 0x0000, 0x0000]
-            .iter()
-            .flat_map(|h| h.to_le_bytes())
-            .collect();
-        let next_bytes: Vec<u8> = [0x3c00_u16, 0x3c00, 0x3c00, 0x3c00]
-            .iter()
-            .flat_map(|h| h.to_le_bytes())
-            .collect();
-        let out = compose_byte_streams(&current_bytes, &next_bytes, TargetFormat::Rgba16Float, 0.5)
-            .unwrap();
-        // The result should round-trip to ~0.5.
-        for chunk in out.chunks_exact(2) {
-            let bits = u16::from_le_bytes([chunk[0], chunk[1]]);
-            let f = half_to_f32(bits);
-            assert!(
-                (f - 0.5).abs() < 0.01,
-                "rgba16f blend at p=0.5 must be ~0.5, got {f}",
-            );
-        }
-    }
-
-    #[test]
-    fn rgba32float_blend_at_half_is_exact_average() {
-        // f32 has enough precision that 0 / 1 / 0.5 round-trip
-        // exactly.
-        let current_bytes: Vec<u8> = [0.0_f32, 0.0, 0.0, 0.0]
-            .iter()
-            .flat_map(|f| f.to_le_bytes())
-            .collect();
-        let next_bytes: Vec<u8> = [1.0_f32, 1.0, 1.0, 1.0]
-            .iter()
-            .flat_map(|f| f.to_le_bytes())
-            .collect();
-        let out = compose_byte_streams(&current_bytes, &next_bytes, TargetFormat::Rgba32Float, 0.5)
-            .unwrap();
-        for chunk in out.chunks_exact(4) {
-            let f = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-            assert!(
-                (f - 0.5).abs() < 1e-6,
-                "rgba32f blend at p=0.5 must be 0.5, got {f}",
-            );
         }
     }
 
@@ -741,24 +798,187 @@ mod composition_pins {
             other => panic!("expected CompositionFailed, got {other:?}"),
         }
     }
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod composition_gpu_pins {
+    //! Evidence: EV-RENDER-CONFORMANCE (T1) — slice-5b.3 GPU
+    //! composition pipeline drift pins.
+    //!
+    //! T1 invariants that DO require a working wgpu adapter (skip on
+    //! adapter-less runners). Pinned:
+    //!
+    //! - GPU compose at `progress=0.0` is bit-identical to a direct
+    //!   `MultipassRenderer::render(current_spec)` byte stream
+    //!   (endpoint short-circuit invariant).
+    //! - GPU compose at `progress=1.0` is bit-identical to a direct
+    //!   `MultipassRenderer::render(next_spec)` byte stream.
+    //! - GPU compose at midpoint produces per-pixel output where
+    //!   each byte is between the corresponding current and next
+    //!   bytes (inclusive, modulo wgpu rounding) — the "blend stays
+    //!   bounded" sanity invariant.
+    //! - `MultipassRenderer::render_to_texture` returns a texture
+    //!   matching the spec's final-pass `target_format` and dimensions.
+    //! - `compose_transition_frame_gpu` clamps progress < 0 to the
+    //!   current-side endpoint and progress > 1 to the next-side
+    //!   endpoint (bit-identical to direct renders of either side).
+
+    use super::{compose_transition_frame, compose_transition_frame_gpu};
+    use crate::multipass::{MultipassRenderer, MultipassSpec, PassDef, TargetFormat};
+
+    const RED_FRAGMENT: &str = r#"
+#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+void main() { fragColor = vec4(1.0, 0.0, 0.0, 1.0); }
+"#;
+
+    const GREEN_FRAGMENT: &str = r#"
+#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+void main() { fragColor = vec4(0.0, 1.0, 0.0, 1.0); }
+"#;
+
+    fn solid_spec(label: &str, fragment: &str) -> MultipassSpec {
+        MultipassSpec {
+            passes: vec![PassDef {
+                label: Some(label.to_string()),
+                fragment_glsl: fragment.to_string(),
+                ..PassDef::default()
+            }],
+            target_size: (16, 16),
+            frame_count: 1,
+        }
+    }
+
+    fn try_renderer() -> Option<MultipassRenderer> {
+        MultipassRenderer::new().ok()
+    }
 
     #[test]
-    fn progress_clamps_to_unit_interval() {
-        // Drift pin: progress is clamped to [0, 1] before blending.
-        // Negative progress falls to the current-side endpoint;
-        // > 1 falls to the next-side endpoint. We verify via the
-        // pure CPU-side helper because the GPU path is T2.
-        let current = vec![10_u8, 20, 30, 255];
-        let next = vec![200_u8, 210, 220, 255];
-        let out_neg = compose_byte_streams(&current, &next, TargetFormat::Rgba8Unorm, -0.5);
-        // -0.5 isn't endpoint-short-circuited by compose_byte_streams
-        // (the endpoint short-circuit lives in compose_transition_frame
-        // not here); but by the lerp formula the result is
-        // c*(1-(-0.5)) + n*(-0.5) = c*1.5 - n*0.5; that's not what
-        // we want for the public API. The clamp fires upstream in
-        // compose_transition_frame; for this T1 we just check that
-        // compose_byte_streams accepts the call (the upstream
-        // contract is what clamps).
-        assert!(out_neg.is_ok(), "compose_byte_streams accepts any progress");
+    fn endpoint_zero_is_bit_identical_to_current_render() {
+        let Some(renderer) = try_renderer() else {
+            eprintln!("skipping endpoint_zero_pin: no wgpu adapter");
+            return;
+        };
+        let red = solid_spec("red", RED_FRAGMENT);
+        let green = solid_spec("green", GREEN_FRAGMENT);
+        let direct = renderer.render(&red).expect("render must succeed");
+        let composed = compose_transition_frame_gpu(&renderer, &red, &green, 0.0)
+            .expect("compose at p=0 must succeed");
+        assert_eq!(composed, direct);
+    }
+
+    #[test]
+    fn endpoint_one_is_bit_identical_to_next_render() {
+        let Some(renderer) = try_renderer() else {
+            eprintln!("skipping endpoint_one_pin: no wgpu adapter");
+            return;
+        };
+        let red = solid_spec("red", RED_FRAGMENT);
+        let green = solid_spec("green", GREEN_FRAGMENT);
+        let direct = renderer.render(&green).expect("render must succeed");
+        let composed = compose_transition_frame_gpu(&renderer, &red, &green, 1.0)
+            .expect("compose at p=1 must succeed");
+        assert_eq!(composed, direct);
+    }
+
+    #[test]
+    fn midpoint_blend_stays_within_per_pixel_bounds() {
+        // GPU compose at p=0.5 between pure red and pure green —
+        // every byte must lie between the current's byte and the
+        // next's byte (inclusive, ±1 for rounding).
+        let Some(renderer) = try_renderer() else {
+            eprintln!("skipping midpoint_bounds_pin: no wgpu adapter");
+            return;
+        };
+        let red = solid_spec("red", RED_FRAGMENT);
+        let green = solid_spec("green", GREEN_FRAGMENT);
+        let red_bytes = renderer.render(&red).expect("render must succeed");
+        let green_bytes = renderer.render(&green).expect("render must succeed");
+        let blended = compose_transition_frame_gpu(&renderer, &red, &green, 0.5)
+            .expect("compose at p=0.5 must succeed");
+        assert_eq!(blended.len(), red_bytes.len());
+        for i in 0..blended.len() {
+            let lo = red_bytes[i].min(green_bytes[i]);
+            let hi = red_bytes[i].max(green_bytes[i]);
+            // Allow ±1 for GPU rounding intermediates vs strict u8
+            // inclusive bounds.
+            let lo = lo.saturating_sub(1);
+            let hi = hi.saturating_add(1);
+            assert!(
+                blended[i] >= lo && blended[i] <= hi,
+                "byte {i} = {} not in [{lo}, {hi}] (red={}, green={})",
+                blended[i],
+                red_bytes[i],
+                green_bytes[i],
+            );
+        }
+    }
+
+    #[test]
+    fn render_to_texture_matches_spec_format_and_size() {
+        let Some(renderer) = try_renderer() else {
+            eprintln!("skipping render_to_texture_format_pin: no wgpu adapter");
+            return;
+        };
+        let red = solid_spec("red", RED_FRAGMENT);
+        let texture = renderer
+            .render_to_texture(&red)
+            .expect("render_to_texture must succeed");
+        assert_eq!(texture.width(), 16);
+        assert_eq!(texture.height(), 16);
+        assert_eq!(texture.format(), TargetFormat::Rgba8Unorm.to_wgpu());
+    }
+
+    #[test]
+    fn progress_below_zero_clamps_to_current_endpoint() {
+        let Some(renderer) = try_renderer() else {
+            eprintln!("skipping clamp_below_zero_pin: no wgpu adapter");
+            return;
+        };
+        let red = solid_spec("red", RED_FRAGMENT);
+        let green = solid_spec("green", GREEN_FRAGMENT);
+        let direct_red = renderer.render(&red).expect("render must succeed");
+        let composed = compose_transition_frame_gpu(&renderer, &red, &green, -0.5)
+            .expect("p=-0.5 must clamp to current");
+        assert_eq!(composed, direct_red);
+    }
+
+    #[test]
+    fn progress_above_one_clamps_to_next_endpoint() {
+        let Some(renderer) = try_renderer() else {
+            eprintln!("skipping clamp_above_one_pin: no wgpu adapter");
+            return;
+        };
+        let red = solid_spec("red", RED_FRAGMENT);
+        let green = solid_spec("green", GREEN_FRAGMENT);
+        let direct_green = renderer.render(&green).expect("render must succeed");
+        let composed = compose_transition_frame_gpu(&renderer, &red, &green, 1.5)
+            .expect("p=1.5 must clamp to next");
+        assert_eq!(composed, direct_green);
+    }
+
+    #[test]
+    fn shim_compose_transition_frame_matches_long_lived_renderer_path() {
+        // Drift pin: `compose_transition_frame` (which builds a
+        // fresh renderer per call) is byte-identical to
+        // `compose_transition_frame_gpu` with a caller-owned
+        // renderer for the same inputs. The shim is the migration
+        // bridge for callers that have not moved to the long-lived
+        // renderer; this pin guards that the bridge stays
+        // semantically transparent.
+        let Some(renderer) = try_renderer() else {
+            eprintln!("skipping shim_equivalence_pin: no wgpu adapter");
+            return;
+        };
+        let red = solid_spec("red", RED_FRAGMENT);
+        let green = solid_spec("green", GREEN_FRAGMENT);
+        let shim = compose_transition_frame(&red, &green, 0.5).expect("shim compose must succeed");
+        let direct = compose_transition_frame_gpu(&renderer, &red, &green, 0.5)
+            .expect("direct compose must succeed");
+        assert_eq!(shim, direct);
     }
 }
