@@ -14,7 +14,7 @@
 //! The slice-2 production call path is deliberately narrow: the
 //! `SilentSource` serves as the fallback source the analyser selects
 //! when the real device ingest (cpal-backed, slice-3) is unavailable
-//! or has entered the §7.11 degraded mode. Because the buffer the
+//! or has entered the Reliability/Fallback Policy degraded mode. Because the buffer the
 //! source yields is a single 128-sample silent block at
 //! [`crate::frame::DEFAULT_SAMPLE_RATE_HZ`], no allocation happens
 //! beyond the initial frame construction.

@@ -8,7 +8,7 @@
 //! - **Phase-1 slice-1** (historic): seeded `frame` and the test-double
 //!   silent ingest source.
 //! - **Phase-1 slice-2** (historic): promoted `IngestBoundary` to first
-//!   non-stub status, added the `IngestMode` / `IngestState` §7.11
+//!   non-stub status, added the `IngestMode` / `IngestState` Reliability/Fallback Policy
 //!   degraded-mode accounting, graduated `SilentSource` to the
 //!   production fallback path, and stood up the
 //!   `EV-OBSERVABILITY` emission site (`chromaticity_audio_ingest_*`
@@ -47,7 +47,7 @@
 //!     [`error::AudioError::WindowConfig`] variant for
 //!     window-validation rejection; slice-3+ extends as needed
 //!     (cpal callback bind failures, etc.).
-//!   - [`observability`] widening: the §7.11 [`ingest::IngestMode`]
+//!   - [`observability`] widening: the Reliability/Fallback Policy [`ingest::IngestMode`]
 //!     transition counter ([`observability::ingest_mode_transition_count`])
 //!     and the in-current-mode dwell counter
 //!     ([`observability::ingest_mode_frames_in_current_count`]) ride
@@ -57,7 +57,7 @@
 //!     counters. Distinct from the slice-1
 //!     [`observability::AudioIngestStateTracker`] which tracks the
 //!     `Starting/Running/Draining/Closed` lifecycle synthesis; the
-//!     two share the §7.11 "two consecutive non-`Ready`" rule and
+//!     two share the Reliability/Fallback Policy "two consecutive non-`Ready`" rule and
 //!     route through the same emission site.
 //!
 //!   Deferred to follow-up slices: ingest-mode capability
@@ -73,7 +73,7 @@
 //!   [`ingest_negotiation::IngestModeCriteria`] policy: when the
 //!   primary's consecutive-failure count crosses
 //!   [`ingest_negotiation::IngestModeCriteria::degraded_after`]
-//!   (default 2, matching the §7.11 baseline) the negotiator flips
+//!   (default 2, matching the Reliability/Fallback Policy baseline) the negotiator flips
 //!   to the fallback and serves silent frames; when the primary
 //!   recovers (consecutive-success threshold
 //!   [`ingest_negotiation::IngestModeCriteria::normal_after`],
@@ -98,7 +98,7 @@
 //! - [`frame::AudioFrame`] and the `DEFAULT_SAMPLE_RATE_HZ` baseline.
 //! - [`ingest::IngestBoundary`] trait plus the slice-2 degraded-mode
 //!   state machine ([`ingest::IngestMode`] / [`ingest::IngestState`])
-//!   that implements the `docs/06-audio-engine.md` §7.11 "two
+//!   that implements the `docs/06-audio-engine.md` Reliability/Fallback Policy "two
 //!   consecutive non-Ready outcomes" rule.
 //! - [`silent::SilentSource`] — the Phase-1 production-path silent
 //!   ingest that graduated from its slice-1 test-double incarnation.
@@ -142,8 +142,9 @@
 //! Governing documents:
 //!
 //! - `docs/06-audio-engine.md` — audio engine contract, especially
-//!   §7.1 (ingest and framing) and §7.11 (snapshot handoff and
-//!   degraded modes).
+//!   §7.1 (ingest and framing), §7.11 (cadence, snapshot handoff, and
+//!   staleness bound), and the Reliability/Fallback Policy section
+//!   (degraded-mode fall-back).
 //! - `docs/28-implementation-contract-pack.md` CP-02a — audio
 //!   snapshot handoff contract.
 //! - `docs/36-reactive-symbol-catalog.md` v1.1.0 — `syn_BPM` /
@@ -175,11 +176,11 @@ mod drift_pins {
     //! Evidence: EV-AUDIO-TRACE (T1) — drift pins on the default-frame
     //! baseline, the `SilentSource` production-path hop budget, the
     //! `IngestBoundary` Ready → Closed transition, and the
-    //! `IngestState` §7.11 Normal ↔ Degraded rule.
+    //! `IngestState` Reliability/Fallback Policy Normal ↔ Degraded rule.
     //!
     //! T1 per docs/43 §15.5: every test pins either an external-spec
     //! constant (`docs/06-audio-engine.md` §7.1 default-frame baseline)
-    //! or a documented state-machine invariant (§7.11 two-consecutive
+    //! or a documented state-machine invariant (Reliability/Fallback Policy two-consecutive
     //! non-Ready → Degraded, first Ready → Normal) under the
     //! slice-2 minimal implementation. Any pin fires the moment the
     //! canonical baseline or the documented state transition drifts.
@@ -238,7 +239,7 @@ mod drift_pins {
             state.next_state(IngestStatus::WouldBlock),
             IngestMode::Normal
         );
-        // Second consecutive non-Ready crosses the §7.11 threshold.
+        // Second consecutive non-Ready crosses the Reliability/Fallback Policy threshold.
         assert_eq!(
             state.next_state(IngestStatus::WouldBlock),
             IngestMode::Degraded
@@ -261,7 +262,7 @@ mod drift_pins {
     fn ingest_state_treats_closed_as_degrading_input() {
         let mut state = IngestState::default();
 
-        // `Closed` is a non-Ready outcome under §7.11; it counts
+        // `Closed` is a non-Ready outcome under Reliability/Fallback Policy; it counts
         // toward the consecutive-underrun threshold the same way
         // `WouldBlock` does.
         assert_eq!(state.next_state(IngestStatus::Closed), IngestMode::Normal);
