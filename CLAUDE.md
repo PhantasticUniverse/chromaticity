@@ -16,7 +16,7 @@ environment (macOS + Windows desktop). Toolkit: Tauri 2 + Svelte 5 + TypeScript 
 side; Rust 2024 edition on the engine side. `docs/adr/ADR-018-non-scene-ui-toolkit.md` is
 the normative toolkit decision. Phase 1 entered April 2026 and EXIT was achieved at
 W12 (commit `e818752`); engine and integration crates (runtime, scene, audio,
-observability, render, script, osc-adapter) continue receiving substantive
+observability, render, script, entitlement, osc-adapter) continue receiving substantive
 implementation toward Phase 2 evidence-row closure, with parallel UI port waves
 against the v0.2-beta bundle closing all three Vitest test-coverage tracks
 (widgets, shell components, routed views).
@@ -68,7 +68,7 @@ chromaticity/
 ├── app/
 │   ├── shell/            # Tauri 2 binary (chromaticity-app crate)
 │   └── ui-bridge/        # ts-rs IPC type generator (Rust → TypeScript bindings)
-├── engine/               # runtime/, scene/, audio/, observability/, render/, script/
+├── engine/               # runtime/, scene/, audio/, observability/, render/, script/, entitlement/
 ├── integrations/         # osc-adapter/ (more adapter crates to follow)
 ├── third_party/          # vendored snapshots — currently lygia/ (Lygia v1.1.4 trial vendor)
 ├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
