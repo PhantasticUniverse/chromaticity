@@ -63,11 +63,12 @@
 //!   gated behind the optional `audio-binding` cargo feature).
 //!   Marshals a `chromaticity_audio::AudioUniformSnapshot` (slice-1
 //!   producer-side, plain data) into a `Vec<UniformInput>` keyed by
-//!   the `docs/36-reactive-symbol-catalog.md` v1.1.0 vocabulary —
-//!   `syn_BPM` / `syn_RMS` / `syn_PEAK` scalars plus the 8-band FFT
-//!   array split into a low-half and high-half `vec4` (`syn_FFT_LO`
-//!   / `syn_FFT_HI`) because the slice-2 [`multipass::UniformValue`]
-//!   enum has no array variant. The split spelling is documented at
+//!   the `syn_BPM` compat-syn-v1 retention (docs/36 line 117) plus
+//!   four chromaticity-native `chroma_*` audio primitives introduced
+//!   by this slice (`chroma_AudioRMS`, `chroma_AudioPeak`, plus the
+//!   8-band FFT array split into a low-half and high-half `vec4`:
+//!   `chroma_AudioFFTLow` / `chroma_AudioFFTHigh`) because the
+//!   slice-2 [`multipass::UniformValue`] enum has no array variant. The split spelling is documented at
 //!   the module level so a scene author can read what GLSL shape
 //!   they receive. Crate coupling stays consumer-side: `engine/audio`
 //!   does NOT depend on `engine/render` (see `engine/audio/src/lib.rs`
@@ -100,8 +101,8 @@
 //!   timeout fallback per ADR-007 + GPU resource preallocation
 //!   wiring on the orchestrator's `PrepareNext` / `PrimeNext`
 //!   advance, the future `audio[]` array uniform variant that
-//!   consolidates `syn_FFT_LO` / `syn_FFT_HI` into a single
-//!   `syn_FFT[8]` binding (out of scope for slice-5a —
+//!   consolidates `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` into
+//!   a single `chroma_AudioFFT[8]` binding (out of scope for slice-5a —
 //!   scheduler-shaped decision), DX12 backend re-enablement,
 //!   Windows Vulkan accept-set expansion, Metal backend-matrix
 //!   conformance.

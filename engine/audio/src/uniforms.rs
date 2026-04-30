@@ -96,7 +96,7 @@ use crate::frame::AudioFrame;
 
 /// Number of FFT bands the slice-1 snapshot exposes.
 ///
-/// Pinned at 8 to match the `syn_FFT[8]` brief vocabulary; the array
+/// Pinned at 8 to match the `chroma_AudioFFT[8]` brief vocabulary; the array
 /// arity is encoded in the [`AudioUniformSnapshot::fft_bands`] type
 /// signature so consumers can rely on it without a runtime length
 /// check.
@@ -169,14 +169,24 @@ pub const BPM_CLAMP_MAX: f32 = 220.0;
 ///   `[FFT_BAND_MIN_HZ, FFT_BAND_MAX_HZ]`, each in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AudioUniformSnapshot {
-    /// `syn_BPM` — estimated BPM, clamped `[50, 220]`.
+    /// Estimated BPM, clamped `[50, 220]`. Maps to the
+    /// `syn_BPM` compat-syn-v1 retention via the engine/render
+    /// slice-5a adapter (docs/36 line 117).
     pub bpm: f32,
-    /// `syn_RMS` — root-mean-square instantaneous energy, `[0, 1]`.
+    /// Root-mean-square instantaneous energy, `[0, 1]`. Maps to
+    /// the `chroma_AudioRMS` chromaticity-native binding via the
+    /// engine/render slice-5a adapter.
     pub rms: f32,
-    /// `syn_PEAK` — instantaneous peak magnitude, `[0, 1]`.
+    /// Instantaneous peak magnitude, `[0, 1]`. Maps to the
+    /// `chroma_AudioPeak` chromaticity-native binding via the
+    /// engine/render slice-5a adapter.
     pub peak: f32,
-    /// `syn_FFT[8]` — 8 log-spaced FFT band magnitudes, each in
-    /// `[0, 1]`, ordered ascending in frequency.
+    /// 8 log-spaced FFT band magnitudes, each in `[0, 1]`, ordered
+    /// ascending in frequency. Maps to the `chroma_AudioFFTLow`
+    /// (bands [0..3]) and `chroma_AudioFFTHigh` (bands [4..7])
+    /// chromaticity-native bindings via the engine/render slice-5a
+    /// adapter (split-vec4 spelling pending the future `audio[]`
+    /// array uniform variant).
     pub fft_bands: [f32; FFT_BAND_COUNT],
 }
 
