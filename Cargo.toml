@@ -23,6 +23,7 @@ members = [
     "engine/runtime",
     "engine/scene",
     "engine/audio",
+    "engine/entitlement",
     "engine/observability",
     "engine/render",
     "engine/script",
