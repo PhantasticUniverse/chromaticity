@@ -72,12 +72,39 @@
 //!   they receive. Crate coupling stays consumer-side: `engine/audio`
 //!   does NOT depend on `engine/render` (see `engine/audio/src/lib.rs`
 //!   lines 16-31).
-//! - **Slice 5b+** — transition orchestration (ADR-007 warm-switch),
-//!   the future `audio[]` array uniform variant that consolidates
-//!   `syn_FFT_LO` / `syn_FFT_HI` into a single `syn_FFT[8]` binding
-//!   (out of scope for slice-5a — scheduler-shaped decision),
-//!   DX12 backend re-enablement, Windows Vulkan accept-set
-//!   expansion, Metal backend-matrix conformance.
+//! - **Slice 5b.1 (this PR)** — transition-orchestration LIFECYCLE
+//!   per `docs/adr/ADR-007-scene-warm-switch-policy.md` Accepted
+//!   four-phase warm-switch (`PrepareNext` / `PrimeNext` /
+//!   `CrossfadeOrHardCut` / `CommitNext`) plus an `Idle`
+//!   "no-transition-pending" state. The
+//!   [`transitions::TransitionOrchestrator`] is a pure-data state
+//!   machine: it owns the current and (optionally) next
+//!   [`multipass::MultipassSpec`] and exposes explicit
+//!   phase-advance methods (`cue_next` / `mark_primed` /
+//!   `begin_crossfade` / `commit_next` / `abort`). Invalid
+//!   advances surface as
+//!   [`transitions::TransitionError::InvalidStateTransition`]; the
+//!   cued-spec shape gate (empty pass list / zero `frame_count` /
+//!   zero target size) surfaces as
+//!   [`transitions::TransitionError::SpecMismatch`]. The orchestrator
+//!   is GPU-device-FREE — every method is sync and runs without
+//!   touching wgpu, mirroring the "render scheduler stays scene-
+//!   agnostic" invariant from `multipass.rs`. T1 algorithm-drift
+//!   pins live in `transitions::transitions_pins`; T2 lifecycle
+//!   corpus lives in `engine/render/tests/transitions.rs`. Slice
+//!   5b.2 will add the actual crossfade composition + 500 ms
+//!   timeout-degrades-to-hard-cut path + GPU resource preallocation
+//!   wiring.
+//! - **Slice 5b.2+** — crossfade frame composition (the actual
+//!   visual transition during `CrossfadeOrHardCut`) + 500 ms
+//!   timeout fallback per ADR-007 + GPU resource preallocation
+//!   wiring on the orchestrator's `PrepareNext` / `PrimeNext`
+//!   advance, the future `audio[]` array uniform variant that
+//!   consolidates `syn_FFT_LO` / `syn_FFT_HI` into a single
+//!   `syn_FFT[8]` binding (out of scope for slice-5a —
+//!   scheduler-shaped decision), DX12 backend re-enablement,
+//!   Windows Vulkan accept-set expansion, Metal backend-matrix
+//!   conformance.
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
@@ -85,10 +112,11 @@
 //!   (slice 1), `multipass::multipass_drift_pins` (slices 2 + 4),
 //!   `glsl_includes::include_drift_pins` (slice 3),
 //!   `scene_adapter::adapter_drift_pins` (slice 4, gated behind
-//!   the `scene-adapter` feature), and
+//!   the `scene-adapter` feature),
 //!   `audio_adapter::audio_adapter_drift_pins` (slice 5a, gated
 //!   behind the `audio-binding` feature; dual-tagged
-//!   `EV-AUDIO-TRACE`).
+//!   `EV-AUDIO-TRACE`), and `transitions::transitions_pins`
+//!   (slice 5b.1, the warm-switch lifecycle state machine).
 //! - T2 deterministic UV-gradient corpus in
 //!   `engine/render/tests/single_pass.rs` (slice 1), per-pass cascade
 //!   corpus in `engine/render/tests/multipass.rs` (slice 2),
@@ -97,10 +125,11 @@
 //!   float-target / scene-adapter corpora in
 //!   `engine/render/tests/feedback.rs`,
 //!   `engine/render/tests/float_targets.rs`, and
-//!   `engine/render/tests/scene_adapter.rs` (slice 4), and the
+//!   `engine/render/tests/scene_adapter.rs` (slice 4), the
 //!   audio-uniform GPU-roundtrip corpus in
 //!   `engine/render/tests/audio_adapter.rs` (slice 5a, dual-tagged
-//!   `EV-AUDIO-TRACE`).
+//!   `EV-AUDIO-TRACE`), and the warm-switch lifecycle corpus in
+//!   `engine/render/tests/transitions.rs` (slice 5b.1).
 //!
 //! The Lygia trial vendor row is tracked separately as
 //! `EV-LIBRARY-LICENSE-TRIAL` in
@@ -131,6 +160,7 @@ pub mod multipass;
 #[cfg(feature = "scene-adapter")]
 pub mod scene_adapter;
 pub mod single_pass;
+pub mod transitions;
 
 #[cfg(feature = "audio-binding")]
 pub use audio_adapter::{
@@ -145,3 +175,4 @@ pub use multipass::{
 #[cfg(feature = "scene-adapter")]
 pub use scene_adapter::{AdapterError, SceneAdapterOptions};
 pub use single_pass::{RenderError, compile_and_render_single_pass};
+pub use transitions::{TransitionError, TransitionOrchestrator, TransitionState};
