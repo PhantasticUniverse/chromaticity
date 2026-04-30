@@ -44,20 +44,24 @@ workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 # pattern seeded by `integrations/osc-adapter/Cargo.toml`.
 chromaticity-observability = { version = "0.0.0", path = "../observability" }
 
-# cpal 0.15 is the Phase-2 device-capture path, authorised as a
-# dep-slot under the slice-2 brief. No cpal types are imported or
-# invoked in slice-2 Rust code; the slot exists so slice-3 can land
-# the first real device-callback integration without a separate
-# dep-authorisation cycle. Default features (license: Apache-2.0 per
-# crate metadata; transitive platform shims — coreaudio-rs/sys on
+# cpal 0.15 is the Phase-2 device-capture path. Slice-2 authorised
+# the dep-slot; slice-3b (engine/audio/src/cpal_source.rs) activates
+# it by landing the first real `cpal::Stream` callback under the
+# FFI-seam `catch_unwind` discipline pinned at the top of
+# `engine/audio/src/ingest.rs`. Default features (license: Apache-2.0
+# per crate metadata; transitive platform shims — coreaudio-rs/sys on
 # macOS, alsa-sys on Linux, wasapi on Windows — are license-audited
 # via cargo deny check licenses in the preflight).
-#
-# The catch_unwind FFI-seam discipline that every slice-3 cpal
-# callback MUST honour is pinned as a standing-constraint doc
-# comment at engine/audio/src/ingest.rs top-of-module (the natural
-# integration site for the real callback when it lands).
 cpal = "0.15"
+
+# crossbeam-channel 0.5 backs the bounded SPSC channel between the
+# cpal data callback (audio thread) and the analyser-side
+# `CpalSource::try_pull`. Bounded capacity + drop-on-full is the
+# §7.11 degraded-mode contract: under-runs surface as `WouldBlock` to
+# the analyser, never as a stalled audio thread. Already in the
+# workspace via engine/runtime (license: MIT OR Apache-2.0; both
+# allow-listed by /deny.toml).
+crossbeam-channel = "0.5"
 
 # rustfft 6 powers the slice-1 8-band log-spaced FFT magnitude
 # decomposition behind `uniforms::extract_uniform_snapshot`. Default

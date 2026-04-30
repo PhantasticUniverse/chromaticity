@@ -67,7 +67,7 @@
 //!   integration (slice-3b, future scope), and the cross-crate
 //!   audio→render adapter (`engine/render` slice 5a, landed
 //!   separately in PR number 269).
-//! - **Phase-2 EV-AUDIO-TRACE slice-3a** (this slice): adds the
+//! - **Phase-2 EV-AUDIO-TRACE slice-3a**: adds the
 //!   [`ingest_negotiation`] capability-negotiation surface. The
 //!   [`ingest_negotiation::IngestNegotiator`] wraps a primary
 //!   [`ingest::IngestBoundary`] plus an internal
@@ -89,11 +89,32 @@
 //!   to the cpal integration in this slice. `AudioError` widens with
 //!   the `IngestNegotiation` variant for builder validation.
 //!
-//!   Deferred to follow-up slices: cpal device-capture integration
-//!   (slice-3b — the cpal `dep-slot` authorised in slice-2 stays
-//!   unused in slice-3a; the slice-3b PR will land the first real
-//!   `cpal::Stream` callback under the FFI-seam `catch_unwind`
-//!   discipline pinned at the top of [`ingest`]).
+//! - **Phase-2 EV-AUDIO-TRACE slice-3b** (this slice): activates the
+//!   slice-2 cpal `dep-slot` and lands the first real `cpal::Stream`
+//!   callback under the FFI-seam `catch_unwind` discipline pinned at
+//!   the top of [`ingest`]. The new [`cpal_source::CpalSource`]
+//!   implements [`ingest::IngestBoundary`]: the cpal-owned audio
+//!   thread pushes [`frame::AudioFrame`] values into a bounded
+//!   `crossbeam-channel`, the analyser-side `try_pull` consumes from
+//!   the receiver end, and a shared `AtomicBool` closed flag
+//!   coerces caught panics / cpal `StreamError`s to
+//!   [`ingest::IngestStatus::Closed`]. [`AudioError`] widens with
+//!   [`error::AudioError::CpalDeviceCapture`] for the
+//!   construction-time failure modes (device-not-found, unsupported
+//!   sample format, stream-build / stream-play failure).
+//!
+//!   Slice-3b is `f32`-only at the device side; non-`f32` configs
+//!   surface as `CpalDeviceCapture` rather than being silently
+//!   transcoded. Multi-format support (i16 / u16 dispatch + per-
+//!   format transcoding) is future widening, NOT a named deferred
+//!   slice — the Phase-2 named-deferred-slice list for
+//!   `EV-AUDIO-TRACE` closes here.
+//!
+//!   No remaining named deferred slices for `EV-AUDIO-TRACE` in this
+//!   Phase-2 surface; further widening (multi-format sample dispatch,
+//!   device-enumeration UI, host-thread-bound stream owner for the
+//!   macOS `!Send` cpal::Stream platform variant) is feature work
+//!   tracked outside the slice-progression list.
 //!
 //! # Surface summary
 //!
@@ -125,14 +146,13 @@
 //! - [`error`] — slice-2 structured error type
 //!   ([`error::AudioError`]).
 //!
-//! Slice-2 dep-slot: `cpal 0.15` is authorised in `Cargo.toml` as
-//! a dep-slot only — no cpal type is imported and no cpal function
-//! is invoked from any file in this crate. The slice-3 author who
-//! lands the first real `cpal::Stream` callback MUST honour the
-//! FFI-seam `catch_unwind` discipline pinned as a standing
-//! constraint at the top of [`ingest`]; reviewers treat omission as
-//! a merge blocker. See that module's `# Standing constraint —
-//! cpal FFI-seam panic discipline` section.
+//! Slice-3b activates the slice-2 `cpal 0.15` dep-slot. The
+//! [`cpal_source`] module imports cpal types and constructs
+//! `cpal::Stream` callbacks under the FFI-seam `catch_unwind`
+//! discipline pinned as a standing constraint at the top of
+//! [`ingest`]; reviewers treat omission as a merge blocker. See that
+//! module's `# Standing constraint — cpal FFI-seam panic discipline`
+//! section.
 //!
 //! Produces evidence for `EV-AUDIO-TRACE` (Phase-2-exit conformance
 //! row). Phase-2 EV-AUDIO-TRACE slice-1 adds the producer-side T1
@@ -159,6 +179,7 @@
 //! consumed by callers that elect the audio→render coupling.
 
 pub mod bpm;
+pub mod cpal_source;
 pub mod error;
 pub mod frame;
 pub mod ingest;
