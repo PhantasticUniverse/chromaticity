@@ -114,6 +114,20 @@ thiserror = "2"
 # adapter is exercised; downstream binaries opt in explicitly.
 chromaticity-scene = { version = "0.0.0", path = "../scene", optional = true }
 
+# chromaticity-audio is an OPTIONAL dependency, gated behind the
+# `audio-binding` cargo feature. The render scheduler stays audio-
+# agnostic by default — engine/audio publishes a plain-data
+# `AudioUniformSnapshot` (per its module-level prose) and the
+# slice-5a `audio_adapter` module on the engine/render side maps
+# that snapshot into a `Vec<UniformInput>` bound by the
+# `docs/36-reactive-symbol-catalog.md` v1.1.0 vocabulary
+# (`syn_BPM`, `syn_RMS`, `syn_PEAK`, `syn_FFT[8]`). Crate coupling
+# stays consumer-side: engine/audio does NOT depend on
+# engine/render. CI's workspace test invocation enables
+# `--all-features` on this crate so the adapter is exercised;
+# downstream binaries opt in explicitly.
+chromaticity-audio = { version = "0.0.0", path = "../audio", optional = true }
+
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
 [features]
@@ -123,6 +137,13 @@ default = []
 # crate-level dep on `chromaticity-scene`. See `scene_adapter.rs`
 # module-level doc for the schema → runtime mapping rules.
 scene-adapter = ["dep:chromaticity-scene"]
+# Enables the `audio_adapter` module which marshals an
+# `AudioUniformSnapshot` (slice-1 producer-side, plain data) into a
+# `Vec<UniformInput>` keyed by the `docs/36` v1.1.0 reactive-symbol
+# vocabulary. Turning this on adds a crate-level dep on
+# `chromaticity-audio`. See `audio_adapter.rs` module-level doc for
+# the symbol → UniformValue mapping table.
+audio-binding = ["dep:chromaticity-audio"]
 
 [dev-dependencies]
 # `serde_json` is needed by the slice-4 scene-adapter T1 / T2 tests

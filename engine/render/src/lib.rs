@@ -58,17 +58,37 @@
 //!   slice-2 corpus byte-hashes remain bit-identical (single-
 //!   frame, `Rgba8Unorm`-only, no feedback paths preserve the
 //!   slice-2 byte stream).
-//! - **Slice 5+** — transition orchestration (ADR-007 warm-switch),
-//!   audio-uniform binding (`engine/audio` integration), Metal /
-//!   DX12 backend-matrix conformance.
+//! - **Slice 5a (this PR)** — cross-crate audio → render uniform-
+//!   binding adapter ([`audio_adapter::uniform_input_from_audio_snapshot`],
+//!   gated behind the optional `audio-binding` cargo feature).
+//!   Marshals a `chromaticity_audio::AudioUniformSnapshot` (slice-1
+//!   producer-side, plain data) into a `Vec<UniformInput>` keyed by
+//!   the `docs/36-reactive-symbol-catalog.md` v1.1.0 vocabulary —
+//!   `syn_BPM` / `syn_RMS` / `syn_PEAK` scalars plus the 8-band FFT
+//!   array split into a low-half and high-half `vec4` (`syn_FFT_LO`
+//!   / `syn_FFT_HI`) because the slice-2 [`multipass::UniformValue`]
+//!   enum has no array variant. The split spelling is documented at
+//!   the module level so a scene author can read what GLSL shape
+//!   they receive. Crate coupling stays consumer-side: `engine/audio`
+//!   does NOT depend on `engine/render` (see `engine/audio/src/lib.rs`
+//!   lines 16-31).
+//! - **Slice 5b+** — transition orchestration (ADR-007 warm-switch),
+//!   the future `audio[]` array uniform variant that consolidates
+//!   `syn_FFT_LO` / `syn_FFT_HI` into a single `syn_FFT[8]` binding
+//!   (out of scope for slice-5a — scheduler-shaped decision),
+//!   DX12 backend re-enablement, Windows Vulkan accept-set
+//!   expansion, Metal backend-matrix conformance.
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
 //! - T1 entry-point drift pins in `single_pass::compile_drift_pins`
 //!   (slice 1), `multipass::multipass_drift_pins` (slices 2 + 4),
-//!   `glsl_includes::include_drift_pins` (slice 3), and
+//!   `glsl_includes::include_drift_pins` (slice 3),
 //!   `scene_adapter::adapter_drift_pins` (slice 4, gated behind
-//!   the `scene-adapter` feature).
+//!   the `scene-adapter` feature), and
+//!   `audio_adapter::audio_adapter_drift_pins` (slice 5a, gated
+//!   behind the `audio-binding` feature; dual-tagged
+//!   `EV-AUDIO-TRACE`).
 //! - T2 deterministic UV-gradient corpus in
 //!   `engine/render/tests/single_pass.rs` (slice 1), per-pass cascade
 //!   corpus in `engine/render/tests/multipass.rs` (slice 2),
@@ -77,7 +97,10 @@
 //!   float-target / scene-adapter corpora in
 //!   `engine/render/tests/feedback.rs`,
 //!   `engine/render/tests/float_targets.rs`, and
-//!   `engine/render/tests/scene_adapter.rs` (slice 4).
+//!   `engine/render/tests/scene_adapter.rs` (slice 4), and the
+//!   audio-uniform GPU-roundtrip corpus in
+//!   `engine/render/tests/audio_adapter.rs` (slice 5a, dual-tagged
+//!   `EV-AUDIO-TRACE`).
 //!
 //! The Lygia trial vendor row is tracked separately as
 //! `EV-LIBRARY-LICENSE-TRIAL` in
@@ -101,12 +124,19 @@
 //! - ADR-018 — non-scene UI toolkit
 //!   (`docs/adr/ADR-018-non-scene-ui-toolkit.md`).
 
+#[cfg(feature = "audio-binding")]
+pub mod audio_adapter;
 pub mod glsl_includes;
 pub mod multipass;
 #[cfg(feature = "scene-adapter")]
 pub mod scene_adapter;
 pub mod single_pass;
 
+#[cfg(feature = "audio-binding")]
+pub use audio_adapter::{
+    UNIFORM_NAME_BPM, UNIFORM_NAME_FFT_HIGH, UNIFORM_NAME_FFT_LOW, UNIFORM_NAME_PEAK,
+    UNIFORM_NAME_RMS, uniform_input_from_audio_snapshot,
+};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
     MultipassSpec, PassDef, PassInputBinding, TargetFormat, UniformInput, UniformValue,
