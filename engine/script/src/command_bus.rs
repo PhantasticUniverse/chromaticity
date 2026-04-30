@@ -92,6 +92,7 @@ use std::sync::Arc;
 use rquickjs::{Ctx, Function, Value};
 
 use crate::error::ScriptError;
+use crate::reactive_symbol::ReactiveSymbol;
 use crate::value::ScriptValue;
 
 /// Canonical message string surfaced through the JS-side `Error`
@@ -109,29 +110,101 @@ pub(crate) const DISCONNECTED_MESSAGE: &str = "chromaticity command bus disconne
 /// for the locality rationale.
 pub(crate) const BACKPRESSURE_MESSAGE: &str = "chromaticity command bus backpressure";
 
-/// Typed message a script emits via the slice-5.1 producer-side
-/// bridge.
+/// Typed message a script emits via the producer-side bridge.
 ///
-/// Slice-5.1 shape: a single variant carrying a free-form `name` +
-/// borrow-free [`ScriptValue`]. The name string is accepted
-/// verbatim — slice-5.1 does NOT validate it against the
-/// `docs/36` v1.1.0 reactive-symbol catalog. Slice-5.2 will add
-/// typed variants for the catalog'd `syn_*` names (e.g.
-/// `Bpm { value: f32 }`) and lower unknown names through this
-/// catch-all variant; the `#[non_exhaustive]` attribute keeps that
-/// widening additive on the public surface.
+/// Slice-5.1 shipped the foundational [`Self::ReactiveWrite`]
+/// variant carrying a free-form `name` + borrow-free
+/// [`ScriptValue`]. Slice-5.2 widens with the typed
+/// [`Self::TypedReactiveWrite`] variant carrying a
+/// [`ReactiveSymbol`] resolved against the
+/// `docs/36-reactive-symbol-catalog.md` v1.1.0 catalog; the
+/// catch-all [`Self::ReactiveWrite`] variant stays for forward
+/// compat — a host may keep accepting unknown names (a script
+/// emits `__chromaticityEmit('experimental_name', v)`) and a
+/// host that wants to drop them just discards the routed
+/// rejection.
+///
+/// `#[non_exhaustive]` keeps slice-5.3+ widening additive on the
+/// public surface (e.g. `BeatTick`, `PresetRecall`, etc.).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ScriptCommand {
     /// Free-form reactive-symbol write. `name` is the JS-side
     /// argument verbatim; `value` is the lowered [`ScriptValue`]
-    /// (Null / Bool / Number / String / Array / Object).
+    /// (Null / Bool / Number / String / Array / Object). The
+    /// slice-5.1 variant; slice-5.2 routes resolvable names into
+    /// [`Self::TypedReactiveWrite`] via [`Self::route`], leaving
+    /// this variant as the catch-all for unresolved names.
     ReactiveWrite {
         /// Symbol name supplied by the script.
         name: String,
         /// Lowered [`ScriptValue`] payload.
         value: ScriptValue,
     },
+    /// Typed reactive-symbol write. `symbol` is the catalog-
+    /// resolved [`ReactiveSymbol`]; `value` has been validated
+    /// against [`ReactiveSymbol::expected_kind`] at construction
+    /// time. Produced by [`Self::route`] when the slice-5.1
+    /// string-keyed variant resolves and validates against the
+    /// `docs/36` v1.1.0 catalog.
+    TypedReactiveWrite {
+        /// Catalog-resolved typed symbol.
+        symbol: ReactiveSymbol,
+        /// Lowered [`ScriptValue`] payload, conforming to
+        /// [`ReactiveSymbol::expected_kind`].
+        value: ScriptValue,
+    },
+}
+
+impl ScriptCommand {
+    /// Convert the slice-5.1 string-keyed
+    /// [`Self::ReactiveWrite { name, value }`] variant into the
+    /// slice-5.2 typed [`Self::TypedReactiveWrite { symbol, value
+    /// }`] variant when the name resolves against the
+    /// `docs/36-reactive-symbol-catalog.md` v1.1.0 catalog AND
+    /// the carrier value's shape conforms to the symbol's
+    /// [`ReactiveValueKind`].
+    ///
+    /// Behaviour matrix:
+    ///
+    /// - Self is [`Self::ReactiveWrite { name, value }`] AND
+    ///   [`ReactiveSymbol::from_name`] returns `Some(sym)` AND
+    ///   [`ReactiveValueKind::validate`] passes:
+    ///   `Ok(Self::TypedReactiveWrite { symbol: sym, value })`.
+    /// - Self is [`Self::ReactiveWrite { name, value }`] AND
+    ///   [`ReactiveSymbol::from_name`] returns `None`:
+    ///   `Err(ScriptError::ReactiveSymbolUnknown { name })`. The
+    ///   caller decides the policy — drop the write, escalate as
+    ///   an error, or fall back to the catch-all
+    ///   [`Self::ReactiveWrite`] by reconstructing it (the
+    ///   slice-5.2 routing path is opt-in).
+    /// - Self is [`Self::ReactiveWrite { name, value }`] AND the
+    ///   name resolves but the value's shape mismatches:
+    ///   `Err(ScriptError::ReactiveValueKindMismatch { ... })`.
+    /// - Self is already [`Self::TypedReactiveWrite { .. }`]:
+    ///   passed through unchanged. Idempotent on the typed
+    ///   variant; routing is producer-side and runs once.
+    ///
+    /// The function consumes `self` so the routed variant's
+    /// `value` payload is moved into the result without an extra
+    /// clone — slice 5.1 corpus assumes the `Vec<ScriptCommand>`
+    /// receiver clones once at sink-time.
+    pub fn route(self) -> Result<Self, ScriptError> {
+        match self {
+            Self::ReactiveWrite { name, value } => match ReactiveSymbol::from_name(&name) {
+                Some(symbol) => match symbol.expected_kind().validate(&value) {
+                    Ok(()) => Ok(Self::TypedReactiveWrite { symbol, value }),
+                    Err(detail) => Err(ScriptError::ReactiveValueKindMismatch {
+                        symbol_name: symbol.name(),
+                        expected: symbol.expected_kind(),
+                        detail,
+                    }),
+                },
+                None => Err(ScriptError::ReactiveSymbolUnknown { name }),
+            },
+            already @ Self::TypedReactiveWrite { .. } => Ok(already),
+        }
+    }
 }
 
 /// Errors a [`ScriptCommandSender::send`] call may report.
