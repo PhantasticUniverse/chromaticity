@@ -61,9 +61,37 @@
 //!     route through the same emission site.
 //!
 //!   Deferred to follow-up slices: ingest-mode capability
-//!   negotiation (slice-3, paired with the cpal device-capture
-//!   integration), and the cross-crate audio→render adapter
-//!   (`engine/render` slice 5a, separate slice and separate PR).
+//!   negotiation (slice-3a, this slice), cpal device-capture
+//!   integration (slice-3b, future scope), and the cross-crate
+//!   audio→render adapter (`engine/render` slice 5a, landed
+//!   separately in PR number 269).
+//! - **Phase-2 EV-AUDIO-TRACE slice-3a** (this slice): adds the
+//!   [`ingest_negotiation`] capability-negotiation surface. The
+//!   [`ingest_negotiation::IngestNegotiator`] wraps a primary
+//!   [`ingest::IngestBoundary`] plus an internal
+//!   [`silent::SilentSource`] fallback and applies a configurable
+//!   [`ingest_negotiation::IngestModeCriteria`] policy: when the
+//!   primary's consecutive-failure count crosses
+//!   [`ingest_negotiation::IngestModeCriteria::degraded_after`]
+//!   (default 2, matching the §7.11 baseline) the negotiator flips
+//!   to the fallback and serves silent frames; when the primary
+//!   recovers (consecutive-success threshold
+//!   [`ingest_negotiation::IngestModeCriteria::normal_after`],
+//!   default 1) the negotiator returns to the primary. Slice-3a
+//!   keeps slice-2 process-wide counter semantics unchanged: each
+//!   underlying source's `try_pull` still calls
+//!   `record_pull_outcome`, so the `chromaticity_audio_ingest_*`
+//!   totals continue to accumulate verbatim. The
+//!   [`ingest_negotiation::IngestSource`] enum reserves a
+//!   `#[non_exhaustive]` `Cpal` slot for slice-3b without committing
+//!   to the cpal integration in this slice. `AudioError` widens with
+//!   the `IngestNegotiation` variant for builder validation.
+//!
+//!   Deferred to follow-up slices: cpal device-capture integration
+//!   (slice-3b — the cpal `dep-slot` authorised in slice-2 stays
+//!   unused in slice-3a; the slice-3b PR will land the first real
+//!   `cpal::Stream` callback under the FFI-seam `catch_unwind`
+//!   discipline pinned at the top of [`ingest`]).
 //!
 //! # Surface summary
 //!
@@ -131,12 +159,14 @@ pub mod bpm;
 pub mod error;
 pub mod frame;
 pub mod ingest;
+pub mod ingest_negotiation;
 pub mod observability;
 pub mod silent;
 pub mod uniforms;
 
 pub use bpm::BpmEstimator;
 pub use error::AudioError;
+pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource};
 pub use uniforms::{AudioUniformSnapshot, extract_uniform_snapshot};
 
 #[cfg(test)]
