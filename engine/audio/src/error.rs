@@ -13,11 +13,14 @@
 //! input had to surface as a `Result`. Slice-3a adds the
 //! [`AudioError::IngestNegotiation`] variant for the
 //! [`crate::ingest_negotiation::IngestModeCriteria`] builder
-//! validation surface (zero / above-ceiling thresholds).
+//! validation surface (zero / above-ceiling thresholds). Slice-3b
+//! adds the [`AudioError::CpalDeviceCapture`] variant covering every
+//! fallible step of the cpal device-capture construction path
+//! (device-not-found, default-input-config-not-found, unsupported
+//! sample format, stream-build / stream-play failure).
 //!
 //! The enum is `#[non_exhaustive]` so future slices can add variants
-//! (e.g. cpal callback bind failures when the slice-3b device-capture
-//! integration lands) without breaking downstream callers.
+//! without breaking downstream callers.
 
 use std::fmt;
 
@@ -27,8 +30,9 @@ use std::fmt;
 /// [`crate::bpm::BpmEstimator::with_window`] argument validation.
 /// Slice-3a adds [`AudioError::IngestNegotiation`] for
 /// [`crate::ingest_negotiation::IngestModeCriteria`] validation.
-/// `#[non_exhaustive]` reserves room for slice-3b+ failure modes
-/// (e.g. cpal callback bind failures when device-capture lands).
+/// Slice-3b adds [`AudioError::CpalDeviceCapture`] for the
+/// [`crate::cpal_source::try_default_input`] construction surface.
+/// `#[non_exhaustive]` reserves room for further failure modes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AudioError {
@@ -52,6 +56,19 @@ pub enum AudioError {
         /// Human-readable rationale for inclusion in error logs.
         reason: String,
     },
+    /// [`crate::cpal_source::try_default_input`] failed to bring up a
+    /// cpal-backed device-capture stream. The `reason` field carries
+    /// a human-readable summary of which step failed (no default
+    /// input device, default-input-config retrieval failed,
+    /// unsupported sample format, stream-build failure, stream-play
+    /// failure). `#[non_exhaustive]` on the enum allows slice-3c+ to
+    /// split this into more granular variants (e.g. distinct
+    /// `DeviceNotFound` / `UnsupportedFormat` variants) without
+    /// breaking callers.
+    CpalDeviceCapture {
+        /// Human-readable rationale for inclusion in error logs.
+        reason: String,
+    },
 }
 
 impl fmt::Display for AudioError {
@@ -62,6 +79,9 @@ impl fmt::Display for AudioError {
             }
             Self::IngestNegotiation { reason } => {
                 write!(f, "invalid ingest-negotiation criteria: {reason}")
+            }
+            Self::CpalDeviceCapture { reason } => {
+                write!(f, "cpal device-capture failed: {reason}")
             }
         }
     }

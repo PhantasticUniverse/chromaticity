@@ -419,6 +419,7 @@ version = "0.0.0"
 dependencies = [
  "chromaticity-observability",
  "cpal",
+ "crossbeam-channel",
  "rustfft",
  "workspace-hack",
 ]
