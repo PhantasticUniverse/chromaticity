@@ -74,9 +74,9 @@ struct FrameStatusCounts {
 /// Slice-2 reachable set under the brief's transition mapping:
 ///
 /// - `Starting -> Running` (first `Ready`).
-/// - `Running -> Draining` (two consecutive non-`Ready`; §7.11
+/// - `Running -> Draining` (two consecutive non-`Ready`; Reliability/Fallback Policy
 ///   rule in lockstep with `IngestState::Normal -> Degraded`).
-/// - `Draining -> Running` (first `Ready` while Draining; §7.11
+/// - `Draining -> Running` (first `Ready` while Draining; Reliability/Fallback Policy
 ///   rule in lockstep with `IngestState::Degraded -> Normal`).
 /// - `Draining -> Closed` (explicit `Closed` while Draining;
 ///   terminal).
@@ -101,12 +101,12 @@ struct TransitionCounts {
 /// Slice-2 state-transition tracker for the audio ingest boundary.
 ///
 /// Distinct from [`crate::ingest::IngestState`]: `IngestState` is
-/// the two-mode (`Normal`/`Degraded`) §7.11 degraded-mode accounting
+/// the two-mode (`Normal`/`Degraded`) Reliability/Fallback Policy degraded-mode accounting
 /// machine; this tracker is the four-state
 /// `Starting -> Running -> Draining -> Closed` lifecycle the
 /// `docs/31` §Phase-1 baseline catalog
 /// `chromaticity_audio_ingest_state_transitions_total` counter
-/// keys off. The two machines share the §7.11 "two consecutive
+/// keys off. The two machines share the Reliability/Fallback Policy "two consecutive
 /// non-`Ready`" rule: that rule drives `Normal -> Degraded` in
 /// [`crate::ingest::IngestState`] and `Running -> Draining` here.
 ///
@@ -115,7 +115,7 @@ struct TransitionCounts {
 /// - Tracker starts in [`AudioIngestState::Starting`].
 /// - First `Ready` -> transition `Starting -> Running`.
 /// - Two consecutive non-`Ready` -> transition `Running ->
-///   Draining` (§7.11 rule).
+///   Draining` (Reliability/Fallback Policy rule).
 /// - First `Ready` while `Draining` -> transition `Draining ->
 ///   Running` (matches `IngestState`'s `Degraded -> Normal`
 ///   recovery).
@@ -127,7 +127,7 @@ struct TransitionCounts {
 ///
 /// Pre-first-`Ready` non-`Ready` outcomes (`WouldBlock` / `Closed`
 /// received while the tracker is still in `Starting`) do NOT count
-/// toward the §7.11 threshold; `Starting` models the "not yet
+/// toward the Reliability/Fallback Policy threshold; `Starting` models the "not yet
 /// producing" baseline, and the two-consecutive rule only fires
 /// once the source has produced at least one `Ready`.
 ///
@@ -205,7 +205,7 @@ impl AudioIngestStateTracker {
                     self.consecutive_underruns = 0;
                 }
                 // Pre-first-`Ready` non-`Ready` outcomes do not
-                // count toward §7.11 — see the module-level prose.
+                // count toward Reliability/Fallback Policy — see the module-level prose.
             }
             AudioIngestState::Running => match status {
                 AudioIngestFrameStatus::Ready => {
@@ -288,11 +288,11 @@ impl AudioIngestStateTracker {
     }
 }
 
-/// Slice-2 §7.11 [`IngestMode`] transition counters.
+/// Slice-2 Reliability/Fallback Policy [`IngestMode`] transition counters.
 ///
 /// Distinct from [`TransitionCounts`]: that machine tracks the
 /// `Starting/Running/Draining/Closed` lifecycle synthesis, whereas
-/// this one tracks the `Normal/Degraded` §7.11 mode-flip directly.
+/// this one tracks the `Normal/Degraded` Reliability/Fallback Policy mode-flip directly.
 /// The two share the "two consecutive non-`Ready`" rule but report
 /// at different aggregation levels — slice-2 widens the
 /// observability surface so consumers can read either.
@@ -311,7 +311,7 @@ struct IngestModeTransitionCounts {
     degraded_to_normal: u64,
 }
 
-/// Slice-2 §7.11 [`IngestMode`] tracker — observability-side mirror
+/// Slice-2 Reliability/Fallback Policy [`IngestMode`] tracker — observability-side mirror
 /// of [`crate::ingest::IngestState`].
 ///
 /// `IngestState` is the in-pipeline state machine the consumer
@@ -322,7 +322,7 @@ struct IngestModeTransitionCounts {
 /// Slice-2 widening surface (per the brief):
 ///
 /// - Mode-transition counter: `Normal -> Degraded` and
-///   `Degraded -> Normal` increments on each documented §7.11 flip.
+///   `Degraded -> Normal` increments on each documented Reliability/Fallback Policy flip.
 /// - Mode-dwell counter (frames-in-current-mode): `current_dwell`
 ///   increments on every `try_pull` outcome that does NOT cause a
 ///   transition; resets to 1 on every transition-bearing outcome.
@@ -476,7 +476,7 @@ pub(crate) fn record_pull_outcome(status: &IngestStatus, samples_len: usize) {
         }
     }
     obs.tracker.observe(frame_status);
-    // Slice-2 widening: mirror the §7.11 IngestMode tracker on
+    // Slice-2 widening: mirror the Reliability/Fallback Policy IngestMode tracker on
     // every outcome so the Normal/Degraded transition counter and
     // the dwell counter stay observable-coherent with
     // `frames_count` / `samples_count` from the same lock-hold.
@@ -526,7 +526,7 @@ pub fn transition_count(from: AudioIngestState, to: AudioIngestState) -> u64 {
     lock_obs().tracker.transition_count(from, to)
 }
 
-/// Slice-2 widening: count of recorded `(from -> to)` §7.11
+/// Slice-2 widening: count of recorded `(from -> to)` Reliability/Fallback Policy
 /// [`IngestMode`] transitions on the process-wide tracker.
 ///
 /// Distinct from [`transition_count`]: this surface tracks the
@@ -544,14 +544,14 @@ pub fn ingest_mode_transition_count(from: IngestMode, to: IngestMode) -> u64 {
 }
 
 /// Slice-2 widening: number of `record_pull_outcome` calls observed
-/// in the current §7.11 [`IngestMode`].
+/// in the current Reliability/Fallback Policy [`IngestMode`].
 ///
 /// Reads back the dwell counter the singleton tracker maintains.
 /// Resets to 1 on every transition (the transition-bearing outcome
 /// itself counts as the first dwell-1 frame in the new mode);
 /// increments on every subsequent outcome that doesn't trigger a
 /// transition. Counts the absolute number of frames since the most
-/// recent §7.11 transition; combined with
+/// recent Reliability/Fallback Policy transition; combined with
 /// [`ingest_mode_transition_count`] this gives consumers a "current
 /// dwell + total flips" pair the slice-3 runtime-bus emission can
 /// route directly into a `MetricEvent::AudioIngestStateTransition`
@@ -561,7 +561,7 @@ pub fn ingest_mode_frames_in_current_count() -> u64 {
     lock_obs().mode_tracker.current_dwell
 }
 
-/// Slice-2 widening: current §7.11 [`IngestMode`] on the
+/// Slice-2 widening: current Reliability/Fallback Policy [`IngestMode`] on the
 /// process-wide tracker, without consuming a new outcome.
 #[must_use]
 pub fn current_ingest_mode() -> IngestMode {

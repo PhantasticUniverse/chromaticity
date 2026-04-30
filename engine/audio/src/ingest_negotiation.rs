@@ -43,12 +43,12 @@ use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::silent::SilentSource;
 
 /// Default consecutive-failure threshold before the negotiator flips
-/// to the fallback. Matches the §7.11 "two consecutive non-Ready"
+/// to the fallback. Matches the Reliability/Fallback Policy "two consecutive non-Ready"
 /// baseline that [`crate::ingest::IngestState`] pins.
 pub const DEFAULT_DEGRADED_AFTER_FAILURES: u32 = 2;
 
 /// Default consecutive-success threshold before the negotiator flips
-/// back to the primary. Matches the §7.11 "first Ready returns to
+/// back to the primary. Matches the Reliability/Fallback Policy "first Ready returns to
 /// Normal" baseline.
 pub const DEFAULT_NORMAL_AFTER_SUCCESSES: u32 = 1;
 
@@ -341,7 +341,7 @@ mod negotiation_pins {
     //! T1 per `docs/43 §15.5`: each test pins either a builder-
     //! validation invariant ([`IngestModeCriteria::validate`] reject
     //! paths) or a documented state-machine invariant on
-    //! [`IngestNegotiator`] (default criteria match §7.11 baseline,
+    //! [`IngestNegotiator`] (default criteria match Reliability/Fallback Policy baseline,
     //! demotion threshold, promotion threshold, fallback serves a
     //! frame on demotion, criteria getters round-trip).
 
