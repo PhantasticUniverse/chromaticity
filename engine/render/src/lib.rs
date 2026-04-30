@@ -130,14 +130,41 @@
 //!   half-float round-trip. The T2 GPU corpus in
 //!   `engine/render/tests/transition_composition.rs` exercises the
 //!   orchestrator + composition end-to-end.
-//! - **Slice 5b.2+ (deferred)** — full GPU-side composition pass
-//!   (re-pulling the CPU-side blend onto the GPU once the renderer
-//!   widens its device-ownership model), the future `audio[]`
-//!   array uniform variant that consolidates `chroma_AudioFFTLow`
-//!   / `chroma_AudioFFTHigh` into a single `chroma_AudioFFT[8]`
-//!   binding (out of scope for slice-5a — scheduler-shaped
-//!   decision), DX12 backend re-enablement, Windows Vulkan
-//!   accept-set expansion, Metal backend-matrix conformance.
+//! - **Slice 5b.2+ refactor (this PR)** —
+//!   [`multipass::MultipassRenderer`] long-lived-device entry
+//!   point. The pre-refactor `compile_and_render_multipass` free
+//!   function acquired a fresh wgpu Instance / Adapter / Device per
+//!   call, which forced slice-5b.2's
+//!   [`composition::compose_transition_frame`] to perform the
+//!   crossfade as a CPU-side byte blend (the slice-5b.2 module-
+//!   level prose documents this constraint). The refactor
+//!   introduces [`multipass::MultipassRenderer`] which owns the
+//!   wgpu Instance / Adapter / Device / Queue plus the cached
+//!   fullscreen-triangle vertex shader module across `render`
+//!   calls; the device is exposed via
+//!   [`multipass::MultipassRenderer::device`] and
+//!   [`multipass::MultipassRenderer::queue`] accessors so a future
+//!   slice can submit a GPU composition pass against the same
+//!   device that just rendered the source frames. The free
+//!   function `compile_and_render_multipass` remains as a thin
+//!   backwards-compat shim that builds a fresh
+//!   [`multipass::MultipassRenderer`] per call so every existing
+//!   slice-1 / slice-2 / slice-4 / slice-5 corpus byte-hash stays
+//!   bit-identical and existing callers
+//!   ([`composition::compose_transition_frame`],
+//!   [`transitions::TransitionOrchestrator::prepare_resources`])
+//!   need zero changes. The refactor is purely a device-ownership
+//!   widening; slice 5b.3 (a separate follow-up PR that USES this
+//!   refactor) will pull the CPU-side blend onto the GPU.
+//! - **Slice 5b.3 (deferred)** — full GPU-side composition pass
+//!   (uses [`multipass::MultipassRenderer`]'s long-lived device +
+//!   queue accessors, replacing the slice-5b.2 CPU-side blend),
+//!   the future `audio[]` array uniform variant that consolidates
+//!   `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` into a single
+//!   `chroma_AudioFFT[8]` binding (out of scope for slice-5a —
+//!   scheduler-shaped decision), DX12 backend re-enablement,
+//!   Windows Vulkan accept-set expansion, Metal backend-matrix
+//!   conformance.
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
@@ -204,8 +231,8 @@ pub use audio_adapter::{
 pub use composition::{PreparedScene, compose_transition_frame};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
-    MultipassSpec, PassDef, PassInputBinding, TargetFormat, UniformInput, UniformValue,
-    compile_and_render_multipass,
+    MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat, UniformInput,
+    UniformValue, compile_and_render_multipass,
 };
 #[cfg(feature = "scene-adapter")]
 pub use scene_adapter::{AdapterError, SceneAdapterOptions};
