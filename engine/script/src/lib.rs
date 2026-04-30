@@ -84,8 +84,10 @@
 //!   post-execute remap). `EV-SCRIPT-CONTRACT` widens with the
 //!   command-bus path.
 //! - **Slice 5.2 (deferred)** — typed reactive-symbol-catalog
-//!   binding: map `docs/36` v1.1.0 `syn_*` names (e.g. `syn_BPM`,
-//!   `syn_RMS`, `syn_PEAK`, `syn_FFT`) to typed
+//!   binding: map `docs/36` v1.1.0 `syn_*` retentions (e.g.
+//!   `syn_BPM`, `syn_Level`, `syn_Spectrum`) and the slice-5a
+//!   chromaticity-native `chroma_AudioRMS` / `chroma_AudioPeak` /
+//!   `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` primitives to typed
 //!   [`ScriptCommand`] variants alongside the slice-5.1 catch-all
 //!   [`ScriptCommand::ReactiveWrite`]. Will likely also install a
 //!   script-author-facing accessor surface (Proxy or property

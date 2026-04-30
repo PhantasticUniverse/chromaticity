@@ -1813,13 +1813,13 @@ mod execute_drift_pins {
             .with_command_sender(sender.clone())
             .expect("sender installs");
         let _ = rt
-            .execute("__chromaticityEmit('syn_RMS', 0.5)")
+            .execute("__chromaticityEmit('chroma_AudioRMS', 0.5)")
             .expect("emit under all caps must succeed");
         let drained = sender.drain();
         assert_eq!(drained.len(), 1);
         match &drained[0] {
             ScriptCommand::ReactiveWrite { name, value } => {
-                assert_eq!(name, "syn_RMS");
+                assert_eq!(name, "chroma_AudioRMS");
                 assert_eq!(value, &ScriptValue::Number(0.5));
             }
         }

@@ -6,9 +6,12 @@
 //!
 //! Advances `docs/26-evidence-artifact-registry.md` row 30
 //! (`EV-AUDIO-TRACE`) past the slice-1 producer-side T1 drift pins
-//! by exercising the four `docs/36-reactive-symbol-catalog.md`
-//! v1.1.0 features (`syn_BPM`, `syn_RMS`-style energy, `syn_PEAK`-
-//! style magnitude, 8-band `syn_FFT[8]`) over four synthesised
+//! by exercising the four audio analysis primitives (BPM clamped
+//! `[50, 220]` mapped to `syn_BPM` compat-syn-v1 retention; raw
+//! RMS instantaneous energy mapped to `chroma_AudioRMS`; peak
+//! magnitude mapped to `chroma_AudioPeak`; 8-band log-spaced FFT
+//! magnitudes mapped to `chroma_AudioFFTLow` / `chroma_AudioFFTHigh`
+//! by the engine/render slice-5a adapter) over four synthesised
 //! fixtures: silent baseline, 440 Hz tone, deterministic white
 //! noise, 1 kHz tone. T2 per `docs/43-development-standards.md`
 //! §15.5: corpus conformance over a fixture set with bounded

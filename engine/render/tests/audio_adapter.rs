@@ -102,8 +102,8 @@ const SAMPLES_ONE_SECOND: usize = 48_000;
 /// # Output encoding
 ///
 /// - `R` = `syn_BPM.x / 220.0` (max BPM clamp value, normalised to [0, 1])
-/// - `G` = `syn_RMS.x`
-/// - `B` = `syn_PEAK.x`
+/// - `G` = `chroma_AudioRMS.x`
+/// - `B` = `chroma_AudioPeak.x`
 /// - `A` = `(sum(FFT_LO) + sum(FFT_HI)) / 8.0` (mean over 8 bands)
 ///
 /// Every output channel touches every uniform, so a marshalling
@@ -116,18 +116,18 @@ layout(location = 0) out vec4 fragColor;
 
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 syn_BPM;
-    vec4 syn_RMS;
-    vec4 syn_PEAK;
-    vec4 syn_FFT_LO;
-    vec4 syn_FFT_HI;
+    vec4 chroma_AudioRMS;
+    vec4 chroma_AudioPeak;
+    vec4 chroma_AudioFFTLow;
+    vec4 chroma_AudioFFTHigh;
 };
 
 void main() {
     float r = syn_BPM.x / 220.0;
-    float g = syn_RMS.x;
-    float b = syn_PEAK.x;
-    float fft_sum = syn_FFT_LO.x + syn_FFT_LO.y + syn_FFT_LO.z + syn_FFT_LO.w
-                  + syn_FFT_HI.x + syn_FFT_HI.y + syn_FFT_HI.z + syn_FFT_HI.w;
+    float g = chroma_AudioRMS.x;
+    float b = chroma_AudioPeak.x;
+    float fft_sum = chroma_AudioFFTLow.x + chroma_AudioFFTLow.y + chroma_AudioFFTLow.z + chroma_AudioFFTLow.w
+                  + chroma_AudioFFTHigh.x + chroma_AudioFFTHigh.y + chroma_AudioFFTHigh.z + chroma_AudioFFTHigh.w;
     float a = fft_sum / 8.0;
     fragColor = vec4(clamp(r, 0.0, 1.0),
                      clamp(g, 0.0, 1.0),

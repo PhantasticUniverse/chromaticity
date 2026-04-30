@@ -18,10 +18,12 @@
 //!   marshalling boundary. Pure-data
 //!   [`uniforms::AudioUniformSnapshot`] + the
 //!   [`uniforms::extract_uniform_snapshot`] entry point produce four
-//!   `docs/36-reactive-symbol-catalog.md` v1.1.0 features
-//!   (`syn_BPM`, `syn_RMS`-style instantaneous energy, `syn_PEAK`-
-//!   style instantaneous magnitude, 8-band `syn_FFT[8]` log-spaced
-//!   magnitudes) per single [`frame::AudioFrame`]. Cross-crate
+//!   audio analysis primitives (BPM clamped `[50, 220]`, raw RMS
+//!   instantaneous energy, instantaneous peak magnitude, 8-band
+//!   log-spaced FFT magnitudes) per single [`frame::AudioFrame`].
+//!   The cross-crate adapter (engine/render slice-5a) maps these
+//!   onto the `syn_BPM` compat-syn-v1 retention plus
+//!   chromaticity-native `chroma_*` audio bindings. Cross-crate
 //!   coupling stays consumer-side: `engine/render` (or any other
 //!   consumer) lifts the snapshot into its own
 //!   [`UniformValue`-shaped] uniform-buffer marshalling, so

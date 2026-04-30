@@ -17,18 +17,28 @@
 //! boundary"). This module is the consumer-side marshalling step
 //! that satisfies that boundary.
 //!
-//! # `docs/36-reactive-symbol-catalog.md` v1.1.0 binding contract
+//! # Binding namespace
 //!
-//! Slice-5a maps the four primary `AudioUniformSnapshot` fields
-//! onto the v1.1.0 reactive-symbol vocabulary:
+//! Slice-5a binds the four primary `AudioUniformSnapshot` fields
+//! across two namespaces per `docs/36-reactive-symbol-catalog.md`
+//! Sec.Namespace governance: `syn_BPM` is a canonical compat-syn-v1
+//! retention (docs/36 line 117) and stays under that name for
+//! reference-scene parity continuity; the raw-RMS / peak /
+//! split-vec4-FFT outputs are net-new chromaticity-native primitives
+//! introduced by this slice under the `chroma_*` namespace, since
+//! docs/36 has no native equivalents at this abstraction level
+//! (docs/36's `syn_Level` is normalised + smoothed per `docs/06`
+//! §7.4; `syn_Spectrum` is a sampler1D with packed Raw/Juiced/Smooth/
+//! Waveform channels — slice-5a's outputs are raw scalar/array
+//! analysis primitives, a complementary surface).
 //!
-//! | snapshot field        | uniform name | docs/36 anchor          | `UniformValue` variant            |
-//! |-----------------------|--------------|-------------------------|-----------------------------------|
-//! | [`bpm`]               | `syn_BPM`    | §2.7 (clamped `[50, 220]`) | [`UniformValue::Scalar`]       |
-//! | [`rms`]               | `syn_RMS`    | §2.10 (`syn_InputLevel` family raw RMS) | [`UniformValue::Scalar`] |
-//! | [`peak`]              | `syn_PEAK`   | §2.10 (`syn_Level*` family normaliser) | [`UniformValue::Scalar`]  |
-//! | [`fft_bands[0..3]`]   | `syn_FFT_LO` | §2.6 `syn_Spectrum` (low-band aggregate) | [`UniformValue::Vec4`]  |
-//! | [`fft_bands[4..7]`]   | `syn_FFT_HI` | §2.6 `syn_Spectrum` (high-band aggregate) | [`UniformValue::Vec4`] |
+//! | snapshot field        | uniform name           | namespace               | `UniformValue` variant            |
+//! |-----------------------|------------------------|-------------------------|-----------------------------------|
+//! | [`bpm`]               | `syn_BPM`              | compat-syn-v1 (docs/36 line 117 retention) | [`UniformValue::Scalar`] |
+//! | [`rms`]               | `chroma_AudioRMS`      | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Scalar`] |
+//! | [`peak`]              | `chroma_AudioPeak`     | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Scalar`] |
+//! | [`fft_bands[0..3]`]   | `chroma_AudioFFTLow`   | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Vec4`]   |
+//! | [`fft_bands[4..7]`]   | `chroma_AudioFFTHigh`  | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Vec4`]   |
 //!
 //! Note on the FFT mapping: the slice-1 snapshot exposes 8
 //! log-spaced FFT bands as a `[f32; 8]` array. The slice-2
@@ -42,17 +52,17 @@
 //! widen [`UniformValue`] — that's a scheduler-shaped decision out
 //! of scope for the cross-crate adapter slice. Instead, the 8-band
 //! FFT array is split into two `vec4`s (low-bands [0..3], high-bands
-//! [4..7]) under stable names (`syn_FFT_LO` / `syn_FFT_HI`).
+//! [4..7]) under stable names (`chroma_AudioFFTLow` / `chroma_AudioFFTHigh`).
 //! Authors who need single-band access can index the `vec4`
-//! components directly from GLSL (`syn_FFT_LO.x` is the lowest
-//! band, `syn_FFT_HI.w` is the highest).
+//! components directly from GLSL (`chroma_AudioFFTLow.x` is the lowest
+//! band, `chroma_AudioFFTHigh.w` is the highest).
 //!
 //! When the future array-uniform variant lands, the adapter can
-//! widen to a single `syn_FFT[8]` binding without breaking the
-//! four primary `syn_BPM` / `syn_RMS` / `syn_PEAK` scalar names
-//! (which match docs/36 verbatim). The split-vec4 spelling is
-//! documented in this module so a scene author who hand-writes
-//! the binding name can read what shape they get.
+//! widen to a single `chroma_AudioFFT[8]` binding without breaking
+//! the four primary `syn_BPM` / `chroma_AudioRMS` / `chroma_AudioPeak`
+//! scalar names. The split-vec4 spelling is documented in this
+//! module so a scene author who hand-writes the binding name can
+//! read what shape they get.
 //!
 //! # Stability and ordering
 //!
@@ -96,19 +106,19 @@ pub const UNIFORM_NAME_BPM: &str = "syn_BPM";
 
 /// Symbol name for the RMS instantaneous-energy scalar uniform per
 /// `docs/36` §2.10 (`syn_InputLevel` raw RMS).
-pub const UNIFORM_NAME_RMS: &str = "syn_RMS";
+pub const UNIFORM_NAME_RMS: &str = "chroma_AudioRMS";
 
 /// Symbol name for the peak instantaneous-magnitude scalar uniform
 /// per `docs/36` §2.10 (`syn_Level*` family normaliser).
-pub const UNIFORM_NAME_PEAK: &str = "syn_PEAK";
+pub const UNIFORM_NAME_PEAK: &str = "chroma_AudioPeak";
 
 /// Symbol name for the low-band FFT vec4 uniform (band indices
 /// 0..=3, log-spaced per `chromaticity_audio::FFT_BAND_MIN_HZ`).
-pub const UNIFORM_NAME_FFT_LOW: &str = "syn_FFT_LO";
+pub const UNIFORM_NAME_FFT_LOW: &str = "chroma_AudioFFTLow";
 
 /// Symbol name for the high-band FFT vec4 uniform (band indices
 /// 4..=7).
-pub const UNIFORM_NAME_FFT_HIGH: &str = "syn_FFT_HI";
+pub const UNIFORM_NAME_FFT_HIGH: &str = "chroma_AudioFFTHigh";
 
 /// Marshal an [`AudioUniformSnapshot`] into a stable-ordered
 /// [`Vec<UniformInput>`] keyed by the `docs/36` v1.1.0 reactive-
@@ -191,13 +201,13 @@ mod audio_adapter_drift_pins {
         // that renames any of these surfaces here at the next test
         // run.
         assert_eq!(UNIFORM_NAME_BPM, "syn_BPM");
-        assert_eq!(UNIFORM_NAME_RMS, "syn_RMS");
-        assert_eq!(UNIFORM_NAME_PEAK, "syn_PEAK");
+        assert_eq!(UNIFORM_NAME_RMS, "chroma_AudioRMS");
+        assert_eq!(UNIFORM_NAME_PEAK, "chroma_AudioPeak");
         // The split-vec4 FFT spelling is module-level documented;
         // the constants pin the chosen names so a downstream
         // refactor doesn't silently shift them.
-        assert_eq!(UNIFORM_NAME_FFT_LOW, "syn_FFT_LO");
-        assert_eq!(UNIFORM_NAME_FFT_HIGH, "syn_FFT_HI");
+        assert_eq!(UNIFORM_NAME_FFT_LOW, "chroma_AudioFFTLow");
+        assert_eq!(UNIFORM_NAME_FFT_HIGH, "chroma_AudioFFTHigh");
     }
 
     #[test]

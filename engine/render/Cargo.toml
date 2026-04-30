@@ -119,9 +119,11 @@ chromaticity-scene = { version = "0.0.0", path = "../scene", optional = true }
 # agnostic by default — engine/audio publishes a plain-data
 # `AudioUniformSnapshot` (per its module-level prose) and the
 # slice-5a `audio_adapter` module on the engine/render side maps
-# that snapshot into a `Vec<UniformInput>` bound by the
-# `docs/36-reactive-symbol-catalog.md` v1.1.0 vocabulary
-# (`syn_BPM`, `syn_RMS`, `syn_PEAK`, `syn_FFT[8]`). Crate coupling
+# that snapshot into a `Vec<UniformInput>` bound under the
+# `syn_BPM` compat-syn-v1 retention (docs/36 line 117) plus four
+# chromaticity-native `chroma_*` audio primitives introduced by
+# slice-5a (`chroma_AudioRMS`, `chroma_AudioPeak`,
+# `chroma_AudioFFTLow`, `chroma_AudioFFTHigh`). Crate coupling
 # stays consumer-side: engine/audio does NOT depend on
 # engine/render. CI's workspace test invocation enables
 # `--all-features` on this crate so the adapter is exercised;
