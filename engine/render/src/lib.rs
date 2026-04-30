@@ -96,16 +96,48 @@
 //!   5b.2 will add the actual crossfade composition + 500 ms
 //!   timeout-degrades-to-hard-cut path + GPU resource preallocation
 //!   wiring.
-//! - **Slice 5b.2+** — crossfade frame composition (the actual
-//!   visual transition during `CrossfadeOrHardCut`) + 500 ms
-//!   timeout fallback per ADR-007 + GPU resource preallocation
-//!   wiring on the orchestrator's `PrepareNext` / `PrimeNext`
-//!   advance, the future `audio[]` array uniform variant that
-//!   consolidates `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` into
-//!   a single `chroma_AudioFFT[8]` binding (out of scope for slice-5a —
-//!   scheduler-shaped decision), DX12 backend re-enablement,
-//!   Windows Vulkan accept-set expansion, Metal backend-matrix
-//!   conformance.
+//! - **Slice 5b.2 (this PR)** — crossfade frame composition with the
+//!   ADR-007 §Decision 500 ms timeout-degrades-to-hard-cut fallback
+//!   plus GPU resource preallocation wiring on the orchestrator's
+//!   `PrepareNext` and `PrimeNext` advance. Adds
+//!   [`composition::PreparedScene`] (a GPU resource handle allocated
+//!   by [`transitions::TransitionOrchestrator::prepare_resources`]
+//!   ahead of the crossfade — holds an output texture, sampler, and
+//!   progress-uniform buffer pre-sized to the cued spec),
+//!   [`composition::compose_transition_frame`] (the crossfade entry
+//!   point — renders the orchestrator's two specs via
+//!   [`compile_and_render_multipass`] and composites the byte
+//!   streams via per-channel alpha blend at the supplied `progress`
+//!   parameter; endpoints `progress = 0.0` and `progress = 1.0` are
+//!   bit-identical to a direct multipass render of either side),
+//!   [`transitions::TransitionClock`] (a local trait abstraction
+//!   for the timeout-tracking wall-clock — separate from
+//!   `engine/script::Clock` which has different semantics for the
+//!   JS `Date.now()` shim — with default
+//!   [`transitions::MonotonicTransitionClock`] backed by `Instant`
+//!   and [`transitions::FixedTransitionClock`] as the test
+//!   primitive), and
+//!   [`transitions::TransitionOrchestrator::commit_hard_cut`] (the
+//!   ADR-007 timeout-fallback path, swaps current/next immediately
+//!   without crossfade — legal from any in-flight phase). Plus three
+//!   new `TransitionError` variants under existing `#[non_exhaustive]`
+//!   (`TimeoutExceeded`, `GpuAllocationFailed`, `CompositionFailed`).
+//!   New T1 pins in `transitions::transitions_pins` cover timeout
+//!   firing, within-budget happy path, hard-cut from each phase,
+//!   clock monotonicity, and elapsed accessor; new T1 pins in
+//!   `composition::composition_pins` cover per-format blend identity
+//!   at endpoints, midpoint blends, mismatched-input rejection, and
+//!   half-float round-trip. The T2 GPU corpus in
+//!   `engine/render/tests/transition_composition.rs` exercises the
+//!   orchestrator + composition end-to-end.
+//! - **Slice 5b.2+ (deferred)** — full GPU-side composition pass
+//!   (re-pulling the CPU-side blend onto the GPU once the renderer
+//!   widens its device-ownership model), the future `audio[]`
+//!   array uniform variant that consolidates `chroma_AudioFFTLow`
+//!   / `chroma_AudioFFTHigh` into a single `chroma_AudioFFT[8]`
+//!   binding (out of scope for slice-5a — scheduler-shaped
+//!   decision), DX12 backend re-enablement, Windows Vulkan
+//!   accept-set expansion, Metal backend-matrix conformance.
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
@@ -156,6 +188,7 @@
 
 #[cfg(feature = "audio-binding")]
 pub mod audio_adapter;
+pub mod composition;
 pub mod glsl_includes;
 pub mod multipass;
 #[cfg(feature = "scene-adapter")]
@@ -168,6 +201,7 @@ pub use audio_adapter::{
     UNIFORM_NAME_BPM, UNIFORM_NAME_FFT_HIGH, UNIFORM_NAME_FFT_LOW, UNIFORM_NAME_PEAK,
     UNIFORM_NAME_RMS, uniform_input_from_audio_snapshot,
 };
+pub use composition::{PreparedScene, compose_transition_frame};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
     MultipassSpec, PassDef, PassInputBinding, TargetFormat, UniformInput, UniformValue,
@@ -176,4 +210,7 @@ pub use multipass::{
 #[cfg(feature = "scene-adapter")]
 pub use scene_adapter::{AdapterError, SceneAdapterOptions};
 pub use single_pass::{RenderError, compile_and_render_single_pass};
-pub use transitions::{TransitionError, TransitionOrchestrator, TransitionState};
+pub use transitions::{
+    DEFAULT_TIMEOUT_MS, FixedTransitionClock, MonotonicTransitionClock, TransitionClock,
+    TransitionError, TransitionOrchestrator, TransitionState,
+};
