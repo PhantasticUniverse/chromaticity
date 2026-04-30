@@ -11,21 +11,30 @@
 #                    summary job always reports — required for branch
 #                    protection when no rust-affecting files change.
 #   fmt            - cargo fmt --all -- --check
-#   clippy         - PR on Linux: cargo clippy --workspace --all-targets
-#                    -- -D warnings (authoritative lint surface). PR on
-#                    macOS + Windows: cargo check --workspace
-#                    --all-targets (catches platform-conditional
-#                    compile errors at ~50% of clippy wall-clock; lint
-#                    rules are OS-independent so running clippy on one
-#                    OS suffices at PR time). push-to-main: full clippy
-#                    matrix across all three OSes so any platform-
-#                    specific clippy findings land on `main` and
-#                    surface in the next PR rebase, not at release.
-#   test           - cargo nextest run --workspace --all-targets
-#                    (Linux only at Phase 1; multi-OS lands when the
-#                    first GPU-boundary integration test arrives). A
-#                    separate `cargo test --doc` step covers doctests
-#                    which nextest does not execute.
+#   clippy         - PR on Linux: cargo clippy --workspace --all-features
+#                    --all-targets -- -D warnings (authoritative lint
+#                    surface). PR on macOS + Windows: cargo check
+#                    --workspace --all-features --all-targets (catches
+#                    platform-conditional compile errors at ~50% of
+#                    clippy wall-clock; lint rules are OS-independent so
+#                    running clippy on one OS suffices at PR time).
+#                    push-to-main: full clippy matrix across all three
+#                    OSes so any platform-specific clippy findings land
+#                    on `main` and surface in the next PR rebase, not at
+#                    release. `--all-features` activates the optional
+#                    cross-crate seam features (`scene-adapter`,
+#                    `audio-binding`, `script-bridge`) so the slice-4 /
+#                    slice-5a / slice-5.3 adapters are linted.
+#   test           - cargo nextest run --workspace --all-features
+#                    --all-targets (Linux only at Phase 1; multi-OS
+#                    lands when the first GPU-boundary integration test
+#                    arrives). A separate `cargo test --doc` step covers
+#                    doctests which nextest does not execute.
+#                    `--all-features` activates the optional feature-
+#                    gated cross-crate seam tests
+#                    (`engine/render/tests/{audio,scene}_adapter.rs`,
+#                    `engine/runtime/tests/script_bridge.rs`) which are
+#                    silently skipped under default-features only.
 #   deny           - cargo deny check {advisories, licenses, bans,
 #                    sources} matrix (the four subsystems enumerated in
 #                    §10.4).
@@ -187,7 +196,7 @@ jobs:
       - name: Lint (cargo clippy)
         if: github.event_name != 'pull_request' || runner.os == 'Linux'
         shell: bash
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
       # PR on macOS or Windows: cargo check only. Catches platform-
       # conditional compile errors; skips the clippy lint pass
@@ -196,7 +205,7 @@ jobs:
       - name: Cross-platform compile check (cargo check)
         if: github.event_name == 'pull_request' && runner.os != 'Linux'
         shell: bash
-        run: cargo check --workspace --all-targets
+        run: cargo check --workspace --all-features --all-targets
 
   test:
     name: test
@@ -240,10 +249,24 @@ jobs:
       # slice will exercise in later passes). The variable is read
       # only by the wgpu instance; no untrusted github.event.* input
       # is consumed here.
+      #
+      # `--all-features` activates the optional feature-gated
+      # cross-crate seams that `engine/render/Cargo.toml` lines 113 +
+      # 129 promise CI exercises: the slice-4 `scene-adapter`
+      # (engine/scene -> MultipassSpec adapter), the slice-5a
+      # `audio-binding` (engine/audio AudioUniformSnapshot ->
+      # UniformInput adapter), and the slice-5.3 `script-bridge`
+      # (engine/script ScriptCommandSender -> engine/runtime
+      # crossbeam-channel router). Without `--all-features` the
+      # `engine/render/tests/{audio_adapter,scene_adapter}.rs` and
+      # `engine/runtime/tests/script_bridge.rs` test files are
+      # silently skipped because their `#![cfg(feature = ...)]` gates
+      # mark them out -- closing this Phase-2 EXIT-quality coverage
+      # gap is the motivation for the activation here.
       - name: Run unit + integration tests (nextest)
         env:
           WGPU_BACKEND: vulkan
-        run: cargo nextest run --workspace --all-targets --no-fail-fast
+        run: cargo nextest run --workspace --all-features --all-targets --no-fail-fast
 
       # nextest does not execute doctests. Keep a separate sweep so
       # doctest regressions still fail CI. Phase-1 tree has zero
