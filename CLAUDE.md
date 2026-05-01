@@ -318,6 +318,27 @@ tree.
   followed by `git push --force-with-lease=<branch>:<old-sha>`; never the GitHub web
   button, never `gh pr update-branch`. Applies equally to the "Update branch" button
   in the PR UI.
+- **Architecture-labeled PRs require `ADR:` + `Evidence:` trailers; solo-merge PRs
+  require `Succession-Waiver: T1`/`T2`.** Two required branch-protection contexts on
+  `main` enforce this: `architecture-trailer-check` (gated on the `architecture`
+  label, validates the trailers exist plus reference real
+  `docs/adr/ADR-NNN-*.md` files plus valid registry EV-IDs) and
+  `succession-waiver-check` (validates `Succession-Waiver: T1`/`T2` format
+  whenever the trailer is present). The PR_TITLE plus PR_BODY are reconstructed
+  by the workflow into the synthesized squash-merge body and piped to
+  `scripts/architecture-trailer-check.sh` / `scripts/succession-waiver-check.sh` —
+  meaning the trailers must live in the **PR body**, not just on individual
+  branch commits, since GitHub's squash-merge composes the merge commit from the
+  PR title plus body. If your architecture PR fails the architecture-trailer-check
+  required context, append the missing trailers to the PR body (via
+  `gh pr edit --body-file` or the REST PATCH fallback per the `gh pr edit --title`
+  gotcha above) — do NOT add them as a separate commit on the branch. Both
+  checks are no-ops on PRs without the matching label / trailer, so
+  non-architecture / non-solo-merge PRs are unaffected. Rollback path: a
+  misbehaving context can be removed with
+  `gh api -X DELETE repos/PhantasticUniverse/chromaticity/branches/main/protection/required_status_checks/contexts/<context-name>`,
+  which reverts the check to advisory non-required without touching the
+  workflow file.
 
 ## Agent parallelism playbook
 
