@@ -63,6 +63,7 @@ jobs:
               - 'eslint.config.js'
               - 'svelte.config.js'
               - 'vite.config.ts'
+              - 'vitest.config.ts'
               - 'src/**'
               - 'index.html'
               - 'app/shell/capabilities/**'
