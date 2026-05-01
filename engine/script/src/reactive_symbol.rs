@@ -46,11 +46,12 @@
 //! # Catalog scope
 //!
 //! Slice 5.2 covers the script-host-visible subset of `docs/36`
-//! v1.1.0 §1 (Standard Uniforms — frame/timing + mouse) and §2
+//! v1.3.0 §1 (Standard Uniforms — frame/timing + mouse) and §2
 //! (Audio Uniforms — full level/hit/time/presence/beat/BPM
 //! families + large features + PrimeBang + reference-surface
-//! uniforms + the slice-5a render-adapter split FFT spelling
-//! `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` + `chroma_AudioRMS` / `chroma_AudioPeak`). Pass-only
+//! uniforms + the slice-5a render-adapter scalar primitives
+//! `chroma_AudioRMS` / `chroma_AudioPeak`; the FFT array surface
+//! is producer-only on the script side post catalog v1.3.0). Pass-only
 //! and fragment-only symbols (`_uv`, `_uvc`, `_xy`, `RENDERSIZE`,
 //! `PASSINDEX`) are excluded per `docs/36` §5 (the catalog's own
 //! Script Host Mirror Rules). Sampler symbols (`syn_FinalPass`,
@@ -80,8 +81,13 @@
 //! - [`ReactiveValueKind::Vec3`] — same shape with 3 components,
 //!   keys `x`/`y`/`z` or `r`/`g`/`b`.
 //! - [`ReactiveValueKind::Vec4`] — same shape with 4 components,
-//!   keys `x`/`y`/`z`/`w` or `r`/`g`/`b`/`a`. The slice-5a
-//!   render-adapter `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` split lands here.
+//!   keys `x`/`y`/`z`/`w` or `r`/`g`/`b`/`a`. `_mouse` (`x, y,
+//!   x_prev_click, y_prev_click`) is the canonical Vec4 in the
+//!   script-side catalog. (The slice-5a v1.2.0 transitional
+//!   `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` Vec4 spellings
+//!   were retired alongside the catalog v1.3.0 single-array
+//!   `chroma_AudioFFT[8]` consolidation; see the variant retirement
+//!   note inside the `ReactiveSymbol` enum body.)
 //!
 //! Validation against the kind is done by
 //! [`ReactiveValueKind::validate`] — it does NOT decode the vector
@@ -280,12 +286,25 @@ pub enum ReactiveSymbol {
     /// render-adapter spelling per
     /// `engine/render/src/audio_adapter.rs`).
     Peak,
-    /// `chroma_AudioFFTLow` — low-band FFT vec4 `[0..=3]` (slice-5a
-    /// render-adapter spelling).
-    FftLow,
-    /// `chroma_AudioFFTHigh` — high-band FFT vec4 `[4..=7]` (slice-5a
-    /// render-adapter spelling).
-    FftHigh,
+    // Note: the slice-5a v1.2.0 transitional split-vec4 FFT
+    // variants (`FftLow` / `FftHigh` mapping to `chroma_AudioFFTLow`
+    // / `chroma_AudioFFTHigh`) were retired alongside the catalog
+    // v1.3.0 consolidation that collapsed those bindings into a
+    // single 8-element float array (`chroma_AudioFFT[8]`, backed
+    // by `engine/render::UniformValue::FloatArray`). The script-
+    // side carrier vocabulary
+    // (`ReactiveValueKind::{Scalar, Vec2, Vec3, Vec4}`) does not
+    // yet support 8-element float-array writes, so the FFT array
+    // is producer-only at this slice — script writes against
+    // `"chroma_AudioFFT"` resolve to `None` from `from_name` and
+    // surface as `ScriptError::ReactiveSymbolUnknown`. Adding an
+    // array-carrier variant to `ReactiveValueKind` is a future-
+    // slice scope; until then, scripts that need to mock the FFT
+    // surface should write the producer-side `AudioUniformSnapshot`
+    // directly rather than going through the typed-reactive-write
+    // pathway. No scenes shipped against the v1.2.0 split-vec4
+    // surface (see `docs/22` Catalog Ratification Log v1.3.0
+    // entry), so retiring the variants is non-breaking.
 }
 
 /// Dimensionality slot a [`ReactiveSymbol`] write must satisfy.
@@ -314,8 +333,11 @@ pub enum ReactiveValueKind {
     /// `x`/`y`/`z` or `r`/`g`/`b` key sets.
     Vec3,
     /// 4-component vector. Accepted carriers as `Vec2` with
-    /// `x`/`y`/`z`/`w` or `r`/`g`/`b`/`a` key sets. The slice-5a
-    /// render-adapter `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` split lands here.
+    /// `x`/`y`/`z`/`w` or `r`/`g`/`b`/`a` key sets. `_mouse` is the
+    /// canonical Vec4 in the script-side catalog. (The slice-5a
+    /// v1.2.0 transitional FFT split-vec4 spellings were retired
+    /// alongside the catalog v1.3.0 single-array consolidation;
+    /// see the `ReactiveSymbol` enum body for the retirement note.)
     Vec4,
 }
 
@@ -555,11 +577,13 @@ impl ReactiveSymbol {
             "syn_RawLevel" => Self::RawLevel,
             "syn_BassExpoCurve" => Self::BassExpoCurve,
             "syn_Threshold" => Self::Threshold,
-            // Slice-5a render-adapter aggregates
+            // Slice-5a render-adapter aggregates (post catalog
+            // v1.3.0: only the scalar primitives remain here; the
+            // FFT array surface is producer-only on the script side
+            // until a future array-carrier variant lands in
+            // `ReactiveValueKind`).
             "chroma_AudioRMS" => Self::Rms,
             "chroma_AudioPeak" => Self::Peak,
-            "chroma_AudioFFTLow" => Self::FftLow,
-            "chroma_AudioFFTHigh" => Self::FftHigh,
             _ => return None,
         })
     }
@@ -637,8 +661,6 @@ impl ReactiveSymbol {
             // Slice-5a render-adapter aggregates
             Self::Rms => "chroma_AudioRMS",
             Self::Peak => "chroma_AudioPeak",
-            Self::FftLow => "chroma_AudioFFTLow",
-            Self::FftHigh => "chroma_AudioFFTHigh",
         }
     }
 
@@ -654,9 +676,12 @@ impl ReactiveSymbol {
     /// - Mouse symbols (§1.3) follow the catalog's typed shape:
     ///   `_mouse` is `Vec4`, `_click` is `Vec3`, `_muv` / `_muvc`
     ///   are `Vec2`.
-    /// - Slice-5a render-adapter aggregates: `chroma_AudioRMS` /
-    ///   `chroma_AudioPeak` are `Scalar`; `chroma_AudioFFTLow` / `chroma_AudioFFTHigh` are
-    ///   `Vec4`.
+    /// - Slice-5a render-adapter aggregates (post catalog v1.3.0):
+    ///   `chroma_AudioRMS` / `chroma_AudioPeak` are `Scalar`. The
+    ///   v1.2.0 split-vec4 FFT spellings were retired alongside the
+    ///   v1.3.0 single-array consolidation; the FFT array surface
+    ///   is producer-only on the script side until an array-carrier
+    ///   variant lands in `ReactiveValueKind`.
     #[must_use]
     pub fn expected_kind(&self) -> ReactiveValueKind {
         match self {
@@ -713,7 +738,6 @@ impl ReactiveSymbol {
             }
             // Slice-5a render-adapter aggregates
             Self::Rms | Self::Peak => ReactiveValueKind::Scalar,
-            Self::FftLow | Self::FftHigh => ReactiveValueKind::Vec4,
         }
     }
 }
@@ -807,11 +831,14 @@ mod reactive_symbol_pins {
         ReactiveSymbol::RawLevel,
         ReactiveSymbol::BassExpoCurve,
         ReactiveSymbol::Threshold,
-        // Slice-5a render-adapter aggregates
+        // Slice-5a render-adapter aggregates (post catalog v1.3.0:
+        // only the scalar primitives remain; the FFT array surface
+        // was retired from the script-side catalog when the v1.2.0
+        // split-vec4 spelling consolidated into `chroma_AudioFFT[8]`,
+        // because `ReactiveValueKind` does not yet carry an
+        // 8-element-float-array variant).
         ReactiveSymbol::Rms,
         ReactiveSymbol::Peak,
-        ReactiveSymbol::FftLow,
-        ReactiveSymbol::FftHigh,
     ];
 
     #[test]
@@ -842,36 +869,49 @@ mod reactive_symbol_pins {
     #[test]
     fn slice_5a_render_adapter_names_match_audio_adapter_constants() {
         // Drift pin: the slice-5a render-adapter chose the
-        // names `syn_BPM`, `chroma_AudioRMS`, `chroma_AudioPeak`, `chroma_AudioFFTLow`,
-        // `chroma_AudioFFTHigh` for cross-crate audio uniforms (see
+        // names `syn_BPM`, `chroma_AudioRMS`, `chroma_AudioPeak`
+        // for cross-crate audio uniforms (see
         // `engine/render/src/audio_adapter.rs`). The slice-5.2
         // catalog MUST surface the same spellings so a script
         // emitting against these names lands at a typed variant
-        // matching the render-side binding contract.
+        // matching the render-side binding contract. The catalog
+        // v1.3.0 consolidation retired the v1.2.0 split-vec4 FFT
+        // spellings (`chroma_AudioFFTLow` / `chroma_AudioFFTHigh`)
+        // alongside the engine-side widening; the FFT array
+        // surface is producer-only on the script side until an
+        // 8-element-float-array `ReactiveValueKind` variant lands
+        // in a future slice.
         assert_eq!(ReactiveSymbol::Bpm.name(), "syn_BPM");
         assert_eq!(ReactiveSymbol::Rms.name(), "chroma_AudioRMS");
         assert_eq!(ReactiveSymbol::Peak.name(), "chroma_AudioPeak");
-        assert_eq!(ReactiveSymbol::FftLow.name(), "chroma_AudioFFTLow");
-        assert_eq!(ReactiveSymbol::FftHigh.name(), "chroma_AudioFFTHigh");
+        assert!(
+            ReactiveSymbol::from_name("chroma_AudioFFT").is_none(),
+            "v1.3.0 single-array FFT binding is producer-only on \
+             the script side; from_name MUST resolve to None until \
+             an array-carrier variant lands",
+        );
+        assert!(
+            ReactiveSymbol::from_name("chroma_AudioFFTLow").is_none(),
+            "v1.2.0 split-vec4 FFT binding was retired alongside \
+             the v1.3.0 consolidation",
+        );
+        assert!(
+            ReactiveSymbol::from_name("chroma_AudioFFTHigh").is_none(),
+            "v1.2.0 split-vec4 FFT binding was retired alongside \
+             the v1.3.0 consolidation",
+        );
     }
 
     #[test]
     fn dimensionality_assignment_matches_catalog_typed_shape() {
         // Drift pin: per-symbol dimensionality matches the
-        // `docs/36` v1.1.0 catalog's typed-shape column. Spot
-        // checks across the four dimensionality slots; full
-        // coverage by the `every_variant_has_known_kind` pin.
+        // `docs/36` v1.3.0 catalog's typed-shape column. Spot
+        // checks across the dimensionality slots that the script-
+        // side carrier vocabulary supports; full coverage by the
+        // `every_variant_has_known_kind` pin.
         assert_eq!(
             ReactiveSymbol::Bpm.expected_kind(),
             ReactiveValueKind::Scalar
-        );
-        assert_eq!(
-            ReactiveSymbol::FftLow.expected_kind(),
-            ReactiveValueKind::Vec4
-        );
-        assert_eq!(
-            ReactiveSymbol::FftHigh.expected_kind(),
-            ReactiveValueKind::Vec4
         );
         assert_eq!(
             ReactiveSymbol::MouseUv.expected_kind(),
