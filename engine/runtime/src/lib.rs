@@ -25,6 +25,20 @@
 //! only the public command / event / trait surface is exported for
 //! sibling crates to consume.
 //!
+//! Slice-3 part 1 (post-Phase-3) adds the [`scheduler`] module: the
+//! foundational scheduler-tick path per ADR-001 §Decision and ADR-006
+//! §Decision. [`scheduler::Scheduler::tick`] composes
+//! [`command_bus::CommandBus::commit_all_into`] with an explicit
+//! [`state::State::frame`] increment so the canonical frame counter
+//! advances on the state-commit thread alongside the command-bus
+//! drain. The scheduler is purely additive: existing callers that
+//! drive state mutation through `commit_all_into` directly continue
+//! to observe `frame == 0` (the EV-STATE-REPLAY row 32 +
+//! EV-PRESET-PLAYLIST row 34 T2 corpora pin this invariant). Audio
+//! uniform pull, render dispatch, and observability emission wire
+//! into the tick across slice-3 PRs 2-5; this PR lands the module
+//! surface + T1 drift pins only.
+//!
 //! Slice-5.3 (Phase-2, behind the `script-bridge` Cargo feature) adds
 //! the [`script_bridge`] module: an adapter that implements the
 //! slice-5.1 `chromaticity_script::ScriptCommandSender` trait against
@@ -65,6 +79,7 @@ pub use script_bridge::{
 };
 
 pub mod command_bus;
+pub mod scheduler;
 #[cfg(feature = "script-bridge")]
 pub mod script_bridge;
 pub mod state;

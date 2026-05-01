@@ -31,12 +31,13 @@ use std::collections::{HashMap, HashSet};
 pub struct State {
     /// Monotonic frame counter advanced by the scheduler tick
     /// (ADR-001 §Decision). Crate-private to keep mutation inside the
-    /// state commit thread per ADR-006. The scheduler-tick path that
-    /// would advance this counter lands once ADR-001/ADR-006 slice-3
-    /// scheduler work arrives; until then the field is read by the
-    /// canonical-binary encoder ([`crate::state_replay`]) and written
-    /// by the V1↔V2 envelope decoder ([`crate::state_migration`]),
-    /// so the dead_code lint is satisfied.
+    /// state commit thread per ADR-006. Slice-3 part 1 (post-Phase-3)
+    /// introduced [`crate::scheduler::Scheduler::tick`] as the
+    /// canonical advancement path; the field stays `pub(crate)` so
+    /// only [`crate::scheduler`], [`crate::state_replay`]
+    /// (canonical-binary encoder reads), and [`crate::state_migration`]
+    /// (V1↔V2 envelope decoder writes) can touch it. The public
+    /// read surface is [`State::frame`].
     pub(crate) frame: u64,
     /// Control-value store. Mutated by [`State::apply_event`]; read
     /// by [`crate::state_replay`] and [`crate::state_migration`].
@@ -103,6 +104,24 @@ impl State {
                 self.mapping_store.bindings.insert(id, source);
             }
         }
+    }
+
+    /// Read the current monotonic frame counter advanced by the
+    /// [`crate::scheduler::Scheduler`] tick (ADR-001 §Decision;
+    /// ADR-006 single-writer invariant).
+    ///
+    /// Pre-slice-3 the counter remains at `0` for callers that drive
+    /// state mutation via [`crate::command_bus::InMemoryBus::commit_all_into`]
+    /// directly; slice-3 part 1 introduced
+    /// [`crate::scheduler::Scheduler::tick`] as the canonical
+    /// advancement path. The EV-STATE-REPLAY (row 32) and
+    /// EV-PRESET-PLAYLIST (row 34) T2 corpora drive mutation through
+    /// the commit-all-into path without scheduler involvement, so
+    /// their goldens — which encode `frame == 0` — are preserved
+    /// verbatim by the slice-3 wave.
+    #[must_use]
+    pub fn frame(&self) -> u64 {
+        self.frame
     }
 
     /// Read the current value for a control.
