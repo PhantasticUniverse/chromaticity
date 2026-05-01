@@ -542,29 +542,32 @@ rows. Row-by-row verification at HEAD `f86895b`:
 
 ### Verdict
 
-Six of the eight Phase-3 EXIT evidence IDs satisfy the Per-Type
-Minimums at HEAD `f86895b`: rows 30, 31, 32, 33, 34, 35 are at `Pass`
-in `docs/26-evidence-artifact-registry.md`. Row 36 is empirically
-green at the corpus + harness level (Phase-3 wave PR 6 merged at
-`85f869e`); the registry transition awaits the first green
-macos-nightly run anchor (~24h post-merge) and lands in the wave PR
-6.1 docs flip. Row 38 is explicitly deferred per AO direction
-(`EV-COLOR-MANAGEMENT-SRGB` sequenced behind a future render-HUD-
-diagnostics PR; Phase-4+ scope).
+Seven of the eight Phase-3 EXIT evidence IDs satisfy the Per-Type
+Minimums at HEAD `953fd74`: rows 30, 31, 32, 33, 34, 35, and 36 are
+at `Pass` in `docs/26-evidence-artifact-registry.md`. The eighth
+row, 38 `EV-COLOR-MANAGEMENT-SRGB`, is explicitly deferred per AO
+direction — sequenced behind a separate render-HUD-diagnostics PR
+exposing the active color pipeline (sRGB encode/decode points, gamma
+handling, output transfer function); the deferral note + re-evaluation
+criteria are recorded in row 38's Description column update by this
+PR.
 
-Per `docs/26` §Rules line 194 the Phase-3 EXIT gate becomes passable
-once row 36's Pass transition lands and row 38's deferral is recorded
-in its Description column. **Phase-3 EXIT achievement is therefore
-two follow-up `docs(repo)` PRs away from declaration**: wave PR 6.1
-(row 36 + row 38, anchored against the first green macos-nightly run
-after `#309` merge), then this audit checklist gets its closing
-sign-off line below appended in a final amendment.
+Per `docs/26` §Rules line 194 the Phase-3 EXIT gate is therefore
+passable. **Phase-3 EXIT achieved 2026-05-01 at commit `953fd74`**.
+Row 36 (`EV-PERF-BUDGETS`) was anchored against macos-nightly run
+id `25208934213`, manually dispatched via `workflow_dispatch` to
+avoid the natural 04:19 UTC cadence wait — same hardware (macOS-
+latest Apple-Silicon Metal), same workflow body, same green
+outcome. The wave PR 6 follow-on `chore(release-eng)` budget-
+tightening pass (~7 nightly runs post-this-PR) converts
+`scripts/budget-check.sh` from the loose-floor record-don't-fail
+posture to true budget assertions per `docs/10`.
 
 The Phase-3 wave narrative is recorded in `docs/13-risk-register.md`
-R-37 across wave-PR-1, wave-PR-2, wave-PR-3, wave-PR-4, wave-PR-5
-paragraphs (one per merged wave). Phase-4+ entry remains a separate
-AO-held milestone with its own gate set per `docs/11-roadmap-phases.md`;
-this audit does not pre-empt the Phase-4 gate decision.
+R-37 across wave-PR-1 through wave-PR-6 paragraphs (one per merged
+wave). Phase-4+ entry remains a separate AO-held milestone with its
+own gate set per `docs/11-roadmap-phases.md`; this audit does not
+pre-empt the Phase-4 gate decision.
 
 ### Deferred axes recorded for Phase-4+ homes
 
@@ -598,18 +601,27 @@ verified out-of-scope or scheduled to later phases:
 
 ### Sign-off
 
-- [ ] Phase-3 EXIT simulation pre-pass at HEAD `f86895b`. Six of the
-      eight Phase-3 EXIT evidence IDs (`EV-AUDIO-TRACE`,
-      `EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`,
-      `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`,
-      `EV-SHOW-BUNDLE-RECOVERY`) satisfy the Per-Type Minimums and are
-      at `Pass`. Row 36 (`EV-PERF-BUDGETS`) corpus + harness landed
-      at `85f869e`; registry transition pending the first green
-      macos-nightly run anchor. Row 38 (`EV-COLOR-MANAGEMENT-SRGB`)
-      explicitly deferred per AO direction. Final Phase-3 EXIT
-      sign-off lands in a follow-up `docs(repo)` amendment after wave
-      PR 6.1 closes the row 36 + row 38 transitions. Phase-3 narrowing
-      decisions for rows 33 / 34 / 35 / 36 are recorded in their
-      Description column updates; the deferred-axes list above
-      records each item's proper Phase-4+ home. Pending AO sign-off
-      `@PhantasticUniverse` for the closing checkbox.
+- [x] Phase-3 EXIT simulation ran to completion at HEAD `953fd74`.
+      Seven of the eight Phase-3 EXIT evidence IDs satisfy the
+      Per-Type Minimums and are at `Pass`: `EV-AUDIO-TRACE` (row 30,
+      Phase-2 cross-tag), `EV-AUDIO-ROUTING-MATRIX` (row 31, run id
+      25204946481), `EV-STATE-REPLAY` (row 32, run id 25203436497),
+      `EV-STATE-MIGRATION` (row 33, run id 25207466995, narrowed to
+      forward-migration only), `EV-PRESET-PLAYLIST` (row 34, run id
+      25205805621, narrowed to existing PresetStore + PlaylistStore
+      semantics), `EV-SHOW-BUNDLE-RECOVERY` (row 35, run id
+      25208208038, narrowed to bundle-format spec only), and
+      `EV-PERF-BUDGETS` (row 36, macos-nightly run id 25208934213
+      manually dispatched against `main` HEAD `953fd74`, narrowed to
+      observable-subsystem proxy benchmarks). The eighth row,
+      `EV-COLOR-MANAGEMENT-SRGB` (row 38), is explicitly deferred per
+      AO direction — sequenced behind a separate render-HUD-
+      diagnostics PR exposing the active color pipeline; Phase-3 EXIT
+      achieved without row 38 closure via the AO-approved deferral
+      with the row's Description column carrying the deferral note +
+      re-evaluation criteria. Phase-3 narrowing decisions for rows
+      33 / 34 / 35 / 36 are recorded in their Description column
+      updates; the deferred-axes list above records each item's
+      proper Phase-4+ home. **Phase-3 EXIT achieved 2026-05-01 at
+      commit `953fd74`**. Signed by AO `@PhantasticUniverse` on
+      2026-05-01.
