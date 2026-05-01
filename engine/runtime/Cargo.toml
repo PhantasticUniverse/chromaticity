@@ -58,6 +58,16 @@ workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 # engine/observability/src/lib.rs lines 26-27.
 chromaticity-observability = { version = "0.0.0", path = "../observability" }
 
+# chromaticity-audio carries the canonical
+# `AudioUniformSnapshot` producer surface (slice-1 entry point plus
+# slice-3a/b extractors) the slice-3 PR 3 scheduler-tick audio-pull
+# seam wraps. The runtime imports the snapshot type only — the
+# analyser is owned on a separate audio analysis thread per ADR-006,
+# and the slice-3 PR 3 `AudioPull` trait abstracts over how the
+# scheduler obtains the latest snapshot at the start of each tick.
+# License: inherited first-party (LicenseRef-Chromaticity-Proprietary).
+chromaticity-audio = { version = "0.0.0", path = "../audio" }
+
 # Slice-5.3 — chromaticity-script optional dep behind the
 # `script-bridge` feature. The runtime adapter implements the
 # slice-5.1 `chromaticity_script::ScriptCommandSender` trait so a

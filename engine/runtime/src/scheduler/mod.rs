@@ -26,11 +26,11 @@
 //!   scheduler-tick invariants the slice-3 wave's downstream PRs
 //!   build on.
 //!
-//! ## Slice-3 part 5 scope (this PR — observability emit wiring)
+//! ## Slice-3 part 5 scope (predecessor PR — observability emit wiring)
 //!
-//! This PR is the FIRST of slice-3 PRs 3 / 4 / 5 (audio snapshot
-//! pull, render dispatch, observability emit) to land. It
-//! establishes the sub-module + builder + tick-step extension
+//! Slice-3 PR 5 was the FIRST of slice-3 PRs 3 / 4 / 5 (audio
+//! snapshot pull, render dispatch, observability emit) to land. It
+//! established the sub-module + builder + tick-step extension
 //! pattern that PRs 3 and 4 mirror, by:
 //!
 //! - Migrating the single-file `scheduler.rs` module into a module
@@ -54,13 +54,32 @@
 //! invariants unchanged; new observability-specific T1 pins live
 //! co-located with the adapter under [`observability`].
 //!
-//! Subsequent slice-3 PRs wire the tick into:
+//! ## Slice-3 part 3 scope (this PR — audio snapshot pull wiring)
 //!
-//! - [`chromaticity_audio::AudioUniformSnapshot`] pull (PR 3),
+//! This PR mirrors the slice-3 PR 5 pattern for audio:
+//!
+//! - Adds the [`audio`] sub-module with the [`audio::AudioPull`]
+//!   trait + the default [`audio::MutexAudioPull`] adapter wrapping
+//!   any `Arc<Mutex<chromaticity_audio::AudioUniformSnapshot>>`.
+//! - Widens the [`Scheduler`] struct with an
+//!   `audio_handler: Option<Box<dyn audio::AudioPull>>` field plus
+//!   the [`Scheduler::with_audio_pull`] builder.
+//! - Inserts a per-tick pull step into [`Scheduler::tick`] BEFORE
+//!   the command-bus drain AND BEFORE the frame counter
+//!   advancement, so the snapshot represents the audio state
+//!   observed at the START of the tick.
+//!
+//! When no handler is configured the tick path leaves
+//! [`crate::state::State::latest_audio_snapshot`] unchanged — the
+//! slice-3 PR 1 invariants hold verbatim, and the EV-STATE-REPLAY
+//! (row 32) / EV-PRESET-PLAYLIST (row 34) T2 corpora preserve their
+//! goldens because the canonical-binary encoder does not observe
+//! the new field. Audio-specific T1 pins live co-located with the
+//! adapter under [`audio`].
+//!
+//! Subsequent slice-3 PR wires the tick into:
+//!
 //! - render dispatch (PR 4).
-//!
-//! Both follow the sub-module + builder + tick-step pattern this
-//! PR establishes.
 //!
 //! Per-PR scope is intentionally narrow: a single foundational
 //! module landing per PR keeps the integration surface reviewable,
@@ -113,6 +132,7 @@ use crate::command_bus::InMemoryBus;
 use crate::state::State;
 use std::fmt;
 
+pub mod audio;
 pub mod observability;
 
 /// Scheduler ownership of the canonical frame tick per ADR-001
@@ -141,6 +161,18 @@ pub struct Scheduler {
     /// [`Scheduler::with_metric_emitter`]; absent by default — the
     /// tick path is a no-op for observability when `None`.
     observability_handler: Option<Box<dyn observability::TickEmitter>>,
+    /// Optional audio-snapshot pull handler invoked at the START of
+    /// every tick (BEFORE the command-bus drain and frame counter
+    /// advancement). Phase-1 stub wraps an
+    /// `Arc<Mutex<chromaticity_audio::AudioUniformSnapshot>>` shared
+    /// with the audio analysis thread per ADR-006; Phase-3+ may
+    /// surface freshness guards or replay strategies through the
+    /// same [`audio::AudioPull`] seam. Set via
+    /// [`Scheduler::with_audio_pull`]; absent by default — the tick
+    /// path leaves [`crate::state::State::latest_audio_snapshot`]
+    /// unchanged when `None` and the slice-3 PR 1 invariants hold
+    /// verbatim.
+    audio_handler: Option<Box<dyn audio::AudioPull>>,
 }
 
 impl fmt::Debug for Scheduler {
@@ -154,6 +186,7 @@ impl fmt::Debug for Scheduler {
                 "observability_handler",
                 &self.observability_handler.is_some(),
             )
+            .field("audio_handler", &self.audio_handler.is_some())
             .finish()
     }
 }
@@ -185,6 +218,32 @@ impl Scheduler {
     #[must_use]
     pub fn with_metric_emitter(mut self, emitter: Box<dyn observability::TickEmitter>) -> Self {
         self.observability_handler = Some(emitter);
+        self
+    }
+
+    /// Configure the scheduler to pull a
+    /// [`chromaticity_audio::AudioUniformSnapshot`] at the START of
+    /// every tick (BEFORE the command-bus drain and frame counter
+    /// advancement) via the provided [`audio::AudioPull`] handler.
+    ///
+    /// Typical Phase-1 usage wraps an
+    /// `Arc<Mutex<AudioUniformSnapshot>>` shared with the audio
+    /// analysis thread in the default [`audio::MutexAudioPull`];
+    /// Phase-3+ may swap in freshness-guarded or replay-aware
+    /// implementations. When no handler is configured, the tick
+    /// path leaves [`crate::state::State::latest_audio_snapshot`]
+    /// unchanged — slice-3 PR 1 invariants hold verbatim and the
+    /// EV-STATE-REPLAY (row 32) / EV-PRESET-PLAYLIST (row 34) T2
+    /// corpora preserve their goldens because the canonical-binary
+    /// encoder does not observe the audio snapshot field.
+    ///
+    /// Mirrors the builder pattern slice-3 PR 5
+    /// ([`Scheduler::with_metric_emitter`]) established; slice-3 PR 4
+    /// (render dispatch) will reuse the same shape for its own
+    /// per-tick subsystem handler.
+    #[must_use]
+    pub fn with_audio_pull(mut self, handler: Box<dyn audio::AudioPull>) -> Self {
+        self.audio_handler = Some(handler);
         self
     }
 
@@ -234,6 +293,21 @@ impl Scheduler {
             return Err(SchedulerError::FrameOverflow {
                 current: state.frame,
             });
+        }
+
+        // Slice-3 PR 3: pull the latest audio uniform snapshot if a
+        // handler is configured. Ordering is load-bearing — the pull
+        // happens BEFORE the command-bus drain AND BEFORE the frame
+        // counter advancement, so the snapshot represents the audio
+        // state observed at the START of this tick. Commands
+        // committed during the drain may reference the snapshot
+        // (e.g. audio-reactive control writes routed through script
+        // in slice-5+); the scheduler does not reorder. When the
+        // handler is `None` the tick path leaves
+        // `state.latest_audio_snapshot` unchanged and the slice-3
+        // PR 1 invariants hold verbatim.
+        if let Some(handler) = &self.audio_handler {
+            state.latest_audio_snapshot = Some(handler.pull_snapshot());
         }
 
         let events = bus.commit_all_into(state);

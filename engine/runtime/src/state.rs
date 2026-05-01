@@ -62,6 +62,25 @@ pub struct State {
     /// buffers carry an explicit `V2SchemaMetadata { schema_version
     /// = 2 }` after the canonical-binary segment.
     pub(crate) snapshot_metadata: Option<V2SchemaMetadata>,
+    /// Latest audio uniform snapshot pulled by [`crate::scheduler::Scheduler`]
+    /// at the start of each tick (slice-3 PR 3). Read by downstream
+    /// subsystems (render-graph dispatch in slice-3 PR 4; script
+    /// reactive resolution in slice-5+).
+    ///
+    /// `None` when the scheduler has not been configured with an
+    /// audio pull handler (see
+    /// [`crate::scheduler::Scheduler::with_audio_pull`]); the
+    /// default Phase-1 [`crate::scheduler::Scheduler::new`] leaves
+    /// this unset and the field stays `None` across ticks.
+    ///
+    /// The EV-STATE-REPLAY (row 32) and EV-PRESET-PLAYLIST (row 34)
+    /// T2 corpora drive mutation through
+    /// [`crate::command_bus::InMemoryBus::commit_all_into`] directly
+    /// without scheduler involvement, so the field is `None` along
+    /// those code paths and the canonical-binary encoder
+    /// ([`crate::state_replay::encode_state_canonical`]) does not
+    /// observe it — golden hashes are preserved verbatim by this PR.
+    pub(crate) latest_audio_snapshot: Option<chromaticity_audio::AudioUniformSnapshot>,
 }
 
 impl State {
@@ -158,6 +177,24 @@ impl State {
     #[must_use]
     pub fn mapping_source(&self, id: MappingId) -> Option<MappingSource> {
         self.mapping_store.bindings.get(&id).copied()
+    }
+
+    /// Read the latest audio uniform snapshot pulled by
+    /// [`crate::scheduler::Scheduler`] at the start of the most
+    /// recent tick (slice-3 PR 3). `None` when the scheduler was
+    /// not configured with an audio pull handler — see
+    /// [`crate::scheduler::Scheduler::with_audio_pull`].
+    ///
+    /// Downstream subsystems (render-graph dispatch in slice-3 PR 4;
+    /// script reactive resolution in slice-5+) read through this
+    /// accessor. The canonical-binary encoder
+    /// ([`crate::state_replay::encode_state_canonical`]) does NOT
+    /// observe this field, so EV-STATE-REPLAY (row 32) and
+    /// EV-PRESET-PLAYLIST (row 34) goldens are preserved verbatim
+    /// by this PR.
+    #[must_use]
+    pub fn latest_audio_snapshot(&self) -> Option<&chromaticity_audio::AudioUniformSnapshot> {
+        self.latest_audio_snapshot.as_ref()
     }
 
     /// Read the snapshot envelope metadata, if a snapshot has been
