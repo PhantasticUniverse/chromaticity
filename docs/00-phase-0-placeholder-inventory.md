@@ -106,6 +106,18 @@ resolved value.
 | `app.chromaticity.desktop` bundle identifier | `app/shell/tauri.conf.json` | Trademark clearance in live-visuals, audio, and color-science classes per `docs/29-cleanroom-legal-policy-baseline.md`. Changing the bundle identifier after first signed release is a breaking change for auto-update (ADR-014 Sparkle appcast) and macOS notarization; this row MUST be resolved before the first `app/v0.N.M` preview build. |
 | `app.security.csp: null` | `app/shell/tauri.conf.json` | Tauri 2 scaffold ships `csp: null` to unblock initial Svelte bundle load. The concrete CSP (script-src, style-src, connect-src consistent with ADR-013 networking defaults + ADR-016 Sentry opt-in) lands with a dedicated `build(ui)` PR owned by the security-review work package. Until then, the `csp: null` posture is documented here as a known-deferred item. |
 
+## Phase-3+ known limitations
+
+Phase-0 closure produced the placeholder rows above. The rows in this
+section are post-Phase-0 product asymmetries surfaced during
+implementation that are tracked here for cross-document visibility but
+do not block any phase gate; activation is feature work scheduled
+behind a later AO-held milestone.
+
+| Limitation | Surfaced in | Activation dependency |
+|---|---|---|
+| Script-side `chroma_AudioFFT[8]` write path | `engine/script/src/reactive_symbol.rs` lines 289-307 (inline retirement note); `docs/36-reactive-symbol-catalog.md` §5 (Script Host Mirror Rules, Known limitations) | The script-side carrier vocabulary `ReactiveValueKind::{Scalar, Vec2, Vec3, Vec4}` does not yet support 8-element float-array writes, so script writes against `"chroma_AudioFFT"` resolve to `None` from `from_name` and surface as `ScriptError::ReactiveSymbolUnknown`. The audio→render path is wired (`engine/render/src/audio_adapter.rs` slice-5a Tier-11 consolidation, `UniformValue::FloatArray` plus catalog v1.3.0 `chroma_AudioFFT[8]`). Closing the script→runtime asymmetry requires a `ReactiveValueKind::FloatArray<N>` carrier variant + carrier-shape extension on the typed-reactive-write pathway. Tracked as Phase-3+ feature work; scripts that need to mock the FFT surface today write the producer-side `AudioUniformSnapshot` directly. Cross-referenced from `docs/13-risk-register.md` R-37 Deferred axes. |
+
 ## Resolution workflow
 
 1. A Phase-0 work package claims a row.
