@@ -78,3 +78,23 @@ chromaticity-script = { version = "0.0.0", path = "../script", optional = true }
 # Slice-5.3 also reuses crossbeam-channel for the script-bridge
 # bounded MPMC consumer queue.
 crossbeam-channel = "0.5"
+
+[dev-dependencies]
+# criterion 0.5 backs the Phase-3 wave PR 6 EV-PERF-BUDGETS proxy
+# benches under `benches/budgets.rs`. Path B nightly-only posture: the
+# harness runs once per day on Apple Silicon Metal via the existing
+# `.github/workflows/macos-nightly.yml` workflow rather than per-PR.
+# `default-features = false` drops the `rayon` + `plotters` defaults
+# the AO doesn't consume locally; `cargo_bench_support` keeps the
+# harness usable from `cargo bench`. License: Apache-2.0 OR MIT
+# (allow-listed by deny.toml). MSRV 1.74 (workspace MSRV is 1.85.0,
+# so no friction).
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+# Path B nightly-only criterion harness; see `benches/budgets.rs`
+# module-prose for the observable-subsystem proxy framing and the
+# scheduler-tick frame-loop deferral that motivates measuring through
+# the public command-bus / state-replay / preset / playlist surface.
+name = "budgets"
+harness = false

@@ -116,3 +116,29 @@ jobs:
 
       - name: Run doc tests
         run: cargo test --workspace --doc
+
+      # Phase-3 wave PR 6 EV-PERF-BUDGETS Path B nightly proxy.
+      # Runs the criterion harness in `engine/runtime/benches/budgets.rs`
+      # against the canonical command-bus / state-replay / preset /
+      # playlist apply paths once per nightly cycle. See the bench
+      # file's module-prose for the observable-subsystem proxy framing
+      # and the scheduler-tick frame-loop deferral that motivates
+      # measuring through public surface only.
+      - name: Run criterion benchmarks (Path B nightly proxy)
+        run: cargo bench --workspace --benches
+
+      # Reads `target/criterion/<group>/<bench>/new/estimates.json` and
+      # compares against the docs/10 hard-budget * 10x loose floor.
+      # First-run posture is record-don't-fail; see
+      # `scripts/budget-check.sh` module-prose for the tightening-pass
+      # plan after ~7 nightly runs.
+      - name: Check budget assertions (record-don't-fail first 7 runs)
+        run: bash scripts/budget-check.sh target/criterion
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-budgets-report-${{ github.run_id }}
+          path: target/criterion/
+          retention-days: 30

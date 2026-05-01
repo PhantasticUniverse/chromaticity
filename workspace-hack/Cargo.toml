@@ -37,6 +37,9 @@ phf_shared = { version = "0.11" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = { version = "1" }
 raw-window-handle = { version = "0.6", default-features = false, features = ["std"] }
+regex = { version = "1" }
+regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
+regex-syntax = { version = "0.8" }
 schemars = { version = "0.8", features = ["preserve_order", "url", "uuid1"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
@@ -56,6 +59,9 @@ percent-encoding = { version = "2" }
 phf_shared = { version = "0.11" }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = { version = "1" }
+regex = { version = "1" }
+regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
+regex-syntax = { version = "0.8" }
 schemars = { version = "0.8", features = ["preserve_order", "url", "uuid1"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
@@ -81,23 +87,19 @@ bitflags = { version = "2", default-features = false, features = ["std"] }
 core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics-types = { version = "0.2" }
+either = { version = "1", default-features = false, features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
-regex = { version = "1" }
-regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
-regex-syntax = { version = "0.8" }
 smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
 bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+either = { version = "1", default-features = false, features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
-regex = { version = "1" }
-regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
-regex-syntax = { version = "0.8" }
 smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
@@ -107,23 +109,19 @@ bitflags = { version = "2", default-features = false, features = ["std"] }
 core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics-types = { version = "0.2" }
+either = { version = "1", default-features = false, features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
-regex = { version = "1" }
-regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
-regex-syntax = { version = "0.8" }
 smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-apple-darwin.build-dependencies]
 bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+either = { version = "1", default-features = false, features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
-regex = { version = "1" }
-regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
-regex-syntax = { version = "0.8" }
 smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
