@@ -75,7 +75,7 @@ Chromaticity uses its own scene-package extension. Chromaticity does **not** cla
 |---|---|---|---|---|
 | `.chroma` | directory package | Native Chromaticity scene package. Contains `scene.json`, `main.glsl`, optional `script.js`, optional `images/`, optional `glsl/`, optional `data/` (V2+). | `com.chromaticity.scene` conforming to `com.apple.package` + `public.composite-content` | `Chromaticity.Scene.1` (HKCU-scoped) |
 | `.chromaPack` | zip archive | Transport/archive form of a `.chroma` package. Single-file double-clickable bundle for distribution, email, and showfile-handoff. | `com.chromaticity.scene-pack` conforming to `public.zip-archive` | `Chromaticity.ScenePack.1` (HKCU-scoped) |
-| `.chromaShow` | zip archive | Show bundle: one or more `.chroma` scenes plus playlists, preset banks, Snap slots, OSC/MIDI bindings, and operator settings. Reserved for the show-export feature planned in `32-state-preset-playlist-migration-policy.md`. | `com.chromaticity.show` conforming to `public.zip-archive` | `Chromaticity.Show.1` (HKCU-scoped) |
+| `.chromaShow` | tar archive | Show bundle: one or more `.chroma` scenes plus playlists, preset banks, Snap slots, OSC/MIDI bindings, and operator settings. JSON manifest at archive root `manifest.json` with per-file SHA-256 + manifest checksum (no bundle-level signature — that's `EV-ENTITLEMENT-*` scope). Phase-3 EXIT scope (`EV-SHOW-BUNDLE-RECOVERY` row 35) covers the bundle-format spec only; recovery / rollback semantics deferred to Phase-4+. | `com.chromaticity.show` conforming to `public.tar-archive` | `Chromaticity.Show.1` (HKCU-scoped) |
 
 ### Reference-app extension handling (import-only)
 
