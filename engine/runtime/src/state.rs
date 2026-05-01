@@ -18,6 +18,7 @@
 use crate::command_bus::{
     ControlId, ControlValue, Event, EventPayload, MappingId, MappingSource, PresetId, SnapSlotId,
 };
+use crate::state_migration::V2SchemaMetadata;
 use std::collections::{HashMap, HashSet};
 
 /// Canonical runtime state.
@@ -49,6 +50,19 @@ pub struct State {
     /// Integration-mapping store.
     #[allow(dead_code)]
     pub(crate) mapping_store: MappingStore,
+    /// Phase-3 EV-STATE-MIGRATION envelope metadata.
+    ///
+    /// Synthetic V1→V2 schema-version scalar carried by the
+    /// [`crate::state_migration::encode_snapshot`] envelope only;
+    /// the EV-STATE-REPLAY canonical-binary path
+    /// ([`crate::state_replay::encode_state_canonical`]) IGNORES
+    /// this field, so row 32 / row 34 goldens do not drift when
+    /// snapshot_metadata is set. V1 buffers omit the extension
+    /// section entirely; decoded V1 → defaults to `None`. V2
+    /// buffers carry an explicit `V2SchemaMetadata { schema_version
+    /// = 2 }` after the canonical-binary segment.
+    #[allow(dead_code)]
+    pub(crate) snapshot_metadata: Option<V2SchemaMetadata>,
 }
 
 impl State {
@@ -127,6 +141,18 @@ impl State {
     #[must_use]
     pub fn mapping_source(&self, id: MappingId) -> Option<MappingSource> {
         self.mapping_store.bindings.get(&id).copied()
+    }
+
+    /// Read the snapshot envelope metadata, if a snapshot has been
+    /// decoded into this state. Phase-3 EV-STATE-MIGRATION envelope
+    /// surface; production hosts treat this as opaque versioning
+    /// metadata. Hashing path
+    /// ([`crate::state_replay::canonical_state_hash`]) IGNORES this
+    /// field so row 32 / row 34 goldens are not affected by its
+    /// presence or value.
+    #[must_use]
+    pub fn snapshot_metadata(&self) -> Option<V2SchemaMetadata> {
+        self.snapshot_metadata
     }
 }
 
