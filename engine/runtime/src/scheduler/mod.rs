@@ -54,9 +54,9 @@
 //! invariants unchanged; new observability-specific T1 pins live
 //! co-located with the adapter under [`observability`].
 //!
-//! ## Slice-3 part 3 scope (this PR — audio snapshot pull wiring)
+//! ## Slice-3 part 3 scope (predecessor PR — audio snapshot pull wiring)
 //!
-//! This PR mirrors the slice-3 PR 5 pattern for audio:
+//! Slice-3 PR 3 mirrored the slice-3 PR 5 pattern for audio:
 //!
 //! - Adds the [`audio`] sub-module with the [`audio::AudioPull`]
 //!   trait + the default [`audio::MutexAudioPull`] adapter wrapping
@@ -77,9 +77,33 @@
 //! the new field. Audio-specific T1 pins live co-located with the
 //! adapter under [`audio`].
 //!
-//! Subsequent slice-3 PR wires the tick into:
+//! ## Slice-3 part 4 scope (this PR — render dispatch wiring)
 //!
-//! - render dispatch (PR 4).
+//! This PR mirrors the same sub-module + builder + tick-step
+//! pattern for render dispatch:
+//!
+//! - Adds the [`render`] sub-module with the [`render::RenderDispatch`]
+//!   trait + the [`render::RenderDispatchOutcome`] enum
+//!   (`Queued` / `Skipped` / `Errored`).
+//! - Widens the [`Scheduler`] struct with a
+//!   `render_handler: Option<Box<dyn render::RenderDispatch>>` field
+//!   plus the [`Scheduler::with_render_dispatch`] builder.
+//! - Inserts a per-tick dispatch step into [`Scheduler::tick`] AFTER
+//!   the command-bus drain AND AFTER the frame counter advancement
+//!   (so the handler observes the post-tick state — the frame the
+//!   scheduler is now entering, plus the audio snapshot pulled at
+//!   the START of the tick) but BEFORE the slice-3 PR 5
+//!   observability emit.
+//!
+//! Per ADR-001 §Decision the render thread samples the immutable
+//! state snapshot; per ADR-006 the render thread is separate from
+//! the state-commit thread. The slice-3 PR 4 surface is intentionally
+//! the scheduler-side trait only — a production handler that bridges
+//! [`crate::state::State`] → `chromaticity_render::MultipassSpec`
+//! depends on the post-Phase-3 scene-adapter slice and plugs in
+//! through the [`render::RenderDispatch`] seam without touching the
+//! scheduler. When no handler is configured the tick path is a no-op
+//! for render dispatch — the slice-3 PR 1 invariants hold verbatim.
 //!
 //! Per-PR scope is intentionally narrow: a single foundational
 //! module landing per PR keeps the integration surface reviewable,
@@ -134,6 +158,7 @@ use std::fmt;
 
 pub mod audio;
 pub mod observability;
+pub mod render;
 
 /// Scheduler ownership of the canonical frame tick per ADR-001
 /// §Decision and ADR-006 §Decision.
@@ -173,6 +198,22 @@ pub struct Scheduler {
     /// unchanged when `None` and the slice-3 PR 1 invariants hold
     /// verbatim.
     audio_handler: Option<Box<dyn audio::AudioPull>>,
+    /// Optional render-dispatch handler invoked AFTER the command-bus
+    /// drain and frame counter advancement (so the handler observes
+    /// the post-tick state — the frame the scheduler is now entering,
+    /// plus the audio snapshot pulled at the START of the tick) but
+    /// BEFORE the slice-3 PR 5 observability emit. Per ADR-001
+    /// §Decision the render thread samples the immutable state
+    /// snapshot; per ADR-006 the render thread is separate from the
+    /// state-commit thread. Set via
+    /// [`Scheduler::with_render_dispatch`]; absent by default — the
+    /// tick path is a no-op for render dispatch when `None` and the
+    /// slice-3 PR 1 invariants hold verbatim. The slice-3 PR 4
+    /// surface is the scheduler-side trait only; a production handler
+    /// bridging [`crate::state::State`] →
+    /// `chromaticity_render::MultipassSpec` is post-Phase-3
+    /// scene-adapter scope.
+    render_handler: Option<Box<dyn render::RenderDispatch>>,
 }
 
 impl fmt::Debug for Scheduler {
@@ -187,6 +228,7 @@ impl fmt::Debug for Scheduler {
                 &self.observability_handler.is_some(),
             )
             .field("audio_handler", &self.audio_handler.is_some())
+            .field("render_handler", &self.render_handler.is_some())
             .finish()
     }
 }
@@ -239,11 +281,35 @@ impl Scheduler {
     ///
     /// Mirrors the builder pattern slice-3 PR 5
     /// ([`Scheduler::with_metric_emitter`]) established; slice-3 PR 4
-    /// (render dispatch) will reuse the same shape for its own
-    /// per-tick subsystem handler.
+    /// ([`Scheduler::with_render_dispatch`]) reuses the same shape.
     #[must_use]
     pub fn with_audio_pull(mut self, handler: Box<dyn audio::AudioPull>) -> Self {
         self.audio_handler = Some(handler);
+        self
+    }
+
+    /// Configure the scheduler to dispatch a render frame AFTER every
+    /// tick has advanced the canonical state via the provided
+    /// [`render::RenderDispatch`] handler.
+    ///
+    /// Per ADR-001 §Decision the render thread samples the immutable
+    /// state snapshot; per ADR-006 the render thread is separate from
+    /// the state-commit thread. The slice-3 PR 4 surface is the
+    /// scheduler-side trait only — a production handler that bridges
+    /// [`crate::state::State`] → `chromaticity_render::MultipassSpec`
+    /// and invokes `chromaticity_render::compile_and_render_multipass`
+    /// is post-Phase-3 scene-adapter scope and plugs in through this
+    /// seam without touching the scheduler.
+    ///
+    /// When no handler is configured the tick path is a no-op for
+    /// render dispatch — slice-3 PR 1 invariants hold verbatim.
+    ///
+    /// Mirrors the builder pattern slice-3 PR 5
+    /// ([`Scheduler::with_metric_emitter`]) established and slice-3
+    /// PR 3 ([`Scheduler::with_audio_pull`]) reused.
+    #[must_use]
+    pub fn with_render_dispatch(mut self, handler: Box<dyn render::RenderDispatch>) -> Self {
+        self.render_handler = Some(handler);
         self
     }
 
@@ -314,15 +380,34 @@ impl Scheduler {
         let events_committed = events.len();
         state.frame += 1;
 
+        // Slice-3 PR 4: dispatch a render frame when a render handler
+        // is configured. Ordering is load-bearing — the dispatch
+        // happens AFTER `commit_all_into` returned AND AFTER the
+        // frame counter increment AND AFTER (transitively) the
+        // slice-3 PR 3 audio snapshot pull, so the handler observes
+        // the post-tick state (the frame the scheduler is now
+        // entering, plus the audio snapshot pulled at the START of
+        // this tick). The dispatch runs BEFORE the slice-3 PR 5
+        // observability emit so observability — when both seams are
+        // configured — closes the tick after every per-tick
+        // subsystem has fired. The outcome is currently swallowed;
+        // a future T1 widening may emit it via observability or
+        // surface it on `TickReport` without changing this seam.
+        if let Some(handler) = &self.render_handler {
+            let _outcome = handler.dispatch_frame(state);
+        }
+
         // Slice-3 PR 5: emit a per-tick MetricEvent when an
         // observability handler is configured. Ordering is load-
         // bearing — the emit happens AFTER `commit_all_into`
         // returned the events AND AFTER the frame counter
-        // increment, so the emitter observes the post-tick state
-        // (the frame the scheduler is now entering, plus the count
-        // of events drained during this tick). When the handler is
-        // `None` the tick path is a no-op for observability and
-        // the slice-3 PR 1 invariants hold verbatim.
+        // increment AND AFTER the slice-3 PR 4 render dispatch, so
+        // the emitter observes the post-tick state (the frame the
+        // scheduler is now entering, plus the count of events
+        // drained during this tick) once every other per-tick
+        // subsystem has fired. When the handler is `None` the tick
+        // path is a no-op for observability and the slice-3 PR 1
+        // invariants hold verbatim.
         if let Some(handler) = &self.observability_handler {
             handler.emit_tick_event(state.frame, events_committed);
         }
