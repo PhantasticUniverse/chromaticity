@@ -81,8 +81,17 @@ if [ ! -f "$registry" ]; then
     exit 1
 fi
 
+# Anchor on registry-table row prefix so the valid-ID set is built
+# from authoritative row keys only. Loose prose mentions of EV-IDs
+# (e.g. inside Evidence-column descriptions, where dash-trailing
+# fragments like `EV-ARCH-CONTRACT-BASELINE-checklist.md` would
+# otherwise be picked up as bogus IDs) do NOT contribute. A typo in
+# a row's ID column still surfaces — the typo would either not match
+# any cited tag or it would mismatch the canonical spelling — but a
+# typo in pure prose can no longer silently mint a "valid" ID.
 valid_ids="$(
-    grep -oE 'EV-[A-Z][A-Z0-9_-]+' "$registry" \
+    grep -oE '^\| `EV-[A-Z][A-Z0-9_-]+`' "$registry" \
+    | grep -oE 'EV-[A-Z][A-Z0-9_-]+' \
     | LC_ALL=C sort -u
 )"
 
@@ -91,12 +100,20 @@ valid_ids="$(
 # Both file-level and test-module-level Evidence tags are validated
 # for tier-token presence and EV-ID validity. Output format:
 # <path>:<line-no>:<line>.
+#
+# `-print0` / `xargs -0` defends against any future filename with
+# whitespace; the prior `-print | xargs grep ... || true` form would
+# have silently mishandled such a path. `|| :` here is acceptable —
+# grep exits 1 when no `//! Evidence:` lines are present anywhere
+# under $repo, which is a legitimate empty-input state and not a
+# tooling failure. Real failures (find's exit, xargs quoting) now
+# propagate via `set -e -o pipefail`.
 evidence_lines="$(
     find "$repo" \
         -type d \( -name target -o -name node_modules -o -name dist -o -name .git -o -name Contents -o -name chromaticity-planning \) -prune \
-        -o -type f -name '*.rs' -print 2>/dev/null \
-    | xargs grep -nHE '^[[:space:]]*//! Evidence:' 2>/dev/null \
-    || true
+        -o -type f -name '*.rs' -print0 \
+    | xargs -0 grep -nHE '^[[:space:]]*//! Evidence:' \
+    || :
 )"
 
 # --- Tier-marker parsing (strict, per §15.5 line 590) ---
@@ -177,19 +194,25 @@ fi
 # root list MUST be updated in the same PR that touches docs/12.
 # Drift here silently gaps coverage. Driving this list from
 # docs/12 at runtime is a tracked follow-up.
+# `-print0` / `read -d ''` defends against any future filename with
+# whitespace; the prior `-print 2>/dev/null` form would have split
+# such a path across the loop. The per-file grep retains
+# `2>/dev/null` so a transient permission error on one file does
+# not collapse the lint run, but the previous blanket suppression
+# on `find` itself is removed so directory-traversal failures
+# (which would indicate a corrupted checkout) propagate via
+# `set -e`.
 uncovered=""
-while IFS= read -r file; do
+while IFS= read -r -d '' file; do
     [ -z "$file" ] && continue
     if grep -qE '^[[:space:]]*#\[(tokio::)?test\]' "$file" 2>/dev/null; then
         if ! grep -qE '^[[:space:]]*//! Evidence:' "$file" 2>/dev/null; then
             uncovered="$(printf '%s\n  %s\n' "$uncovered" "$file")"
         fi
     fi
-done <<EOF
-$(find "$repo/engine" "$repo/integrations" \
+done < <(find "$repo/engine" "$repo/integrations" \
     -type d \( -name target -o -name node_modules -o -name dist -o -name .git -o -name Contents -o -name chromaticity-planning \) -prune \
-    -o -type f -name '*.rs' -print 2>/dev/null)
-EOF
+    -o -type f -name '*.rs' -print0)
 
 if [ -n "$uncovered" ]; then
     printf '[evidence-tag-lint] FAIL: test file(s) without any //! Evidence: tag:\n'
