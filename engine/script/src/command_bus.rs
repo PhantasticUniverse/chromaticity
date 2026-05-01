@@ -11,7 +11,7 @@
 //! transport can be plugged in without engine/script taking a
 //! direct dep on `chromaticity-runtime` — the trait is the seam.
 //! Slice 5.2 will land the typed reactive-symbol-catalog binding
-//! (`docs/36` v1.1.0 `syn_*` names → typed runtime command
+//! (`docs/36` v1.3.0 `syn_*` names → typed runtime command
 //! variants); slice 5.1 keeps the JS-visible surface deliberately
 //! narrow so the cross-crate plumbing can settle first.
 //!
@@ -117,7 +117,7 @@ pub(crate) const BACKPRESSURE_MESSAGE: &str = "chromaticity command bus backpres
 /// [`ScriptValue`]. Slice-5.2 widens with the typed
 /// [`Self::TypedReactiveWrite`] variant carrying a
 /// [`ReactiveSymbol`] resolved against the
-/// `docs/36-reactive-symbol-catalog.md` v1.1.0 catalog; the
+/// `docs/36-reactive-symbol-catalog.md` v1.3.0 catalog; the
 /// catch-all [`Self::ReactiveWrite`] variant stays for forward
 /// compat — a host may keep accepting unknown names (a script
 /// emits `__chromaticityEmit('experimental_name', v)`) and a
@@ -146,7 +146,7 @@ pub enum ScriptCommand {
     /// against [`ReactiveSymbol::expected_kind`] at construction
     /// time. Produced by [`Self::route`] when the slice-5.1
     /// string-keyed variant resolves and validates against the
-    /// `docs/36` v1.1.0 catalog.
+    /// `docs/36` v1.3.0 catalog.
     TypedReactiveWrite {
         /// Catalog-resolved typed symbol.
         symbol: ReactiveSymbol,
@@ -161,7 +161,7 @@ impl ScriptCommand {
     /// [`Self::ReactiveWrite { name, value }`] variant into the
     /// slice-5.2 typed [`Self::TypedReactiveWrite { symbol, value
     /// }`] variant when the name resolves against the
-    /// `docs/36-reactive-symbol-catalog.md` v1.1.0 catalog AND
+    /// `docs/36-reactive-symbol-catalog.md` v1.3.0 catalog AND
     /// the carrier value's shape conforms to the symbol's
     /// [`ReactiveValueKind`].
     ///

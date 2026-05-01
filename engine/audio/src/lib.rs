@@ -179,7 +179,7 @@
 //!   (degraded-mode fall-back).
 //! - `docs/28-implementation-contract-pack.md` CP-02a — audio
 //!   snapshot handoff contract.
-//! - `docs/36-reactive-symbol-catalog.md` v1.1.0 — `syn_BPM` /
+//! - `docs/36-reactive-symbol-catalog.md` v1.3.0 — `syn_BPM` /
 //!   `syn_InputLevel` / `syn_Spectrum` family vocabulary the
 //!   slice-1 uniforms map onto.
 //! - `docs/adr/ADR-011-rendering-backend.md` — audio / ingest
