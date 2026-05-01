@@ -12,18 +12,22 @@ scheduled no earlier than Phase 4c and requires AO-signed approval.
 
 ## Status
 
-**Phase 1 EXIT achieved; Phase 0 evidence not fully closed.** The repository
-contains active application and engine code (Tauri 2 + Svelte 5 + TypeScript +
-Rust 2024), with policy, evidence, and CI gates running continuously on `main`.
-All six Phase 1 exit-gate evidence rows are `Pass` per
-`docs/26-evidence-artifact-registry.md` (`EV-DETERMINISM`,
+**Phase 1 EXIT achieved; Phase 2 evidence deepening in flight.** The
+repository contains active application and engine code (Tauri 2 + Svelte 5 +
+TypeScript + Rust 2024), with policy, evidence, and CI gates running
+continuously on `main`. All six Phase 1 exit-gate evidence rows are `Pass`
+per `docs/26-evidence-artifact-registry.md` (`EV-DETERMINISM`,
 `EV-OBSERVABILITY`, `EV-EVIDENCE-TAG-COVERAGE`, `EV-COMPAT-FIXTURE-COVERAGE`,
 `EV-SCENE-IMPORT`, `EV-SCHEMA-LINT` — sixth gate closed at commit `e818752`,
 W12 close at `0d83fb5`). Phase 0 governance and clean-room baseline ADRs are
-established, but several Phase 0 evidence rows remain Planned (notably
-`EV-OBSERVABILITY-INVENTORY`). Current work advances Phase 1+ implementation
-(UI port waves, runtime expansion) in parallel with closing the remaining
-Phase 0 evidence artifacts toward release-cumulative readiness.
+established; the late-April Phase-0 closure tail landed
+`EV-DOCS-PHASE0-SEED`, `EV-ENTITLEMENT-TOKEN-FORMAT`, and
+`EV-GATE-MODEL-AUDIT`, with `EV-OBSERVABILITY-INVENTORY` remaining
+implementation-gated on the first release artifact and the UX-bundle and
+hotkey-parity rows remaining AO-gated on the dev-team queue. Current work
+advances Phase 2 evidence-row deepening across the four foundational rows
+(`EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`, `EV-AUDIO-TRACE`,
+`EV-SANDBOX-SAFETY`) toward EXIT-quality coverage.
 
 ## Repository Layout
 
@@ -46,7 +50,7 @@ chromaticity/
 ├── .gitignore
 ├── .github/                   # PR/issue templates, labels, workflows
 ├── app/                       # Tauri app shell + app-facing modules
-├── engine/                    # runtime, scene, audio, observability crates
+├── engine/                    # runtime, scene, audio, observability, render, script, entitlement crates
 ├── integrations/              # external protocol adapters (OSC, etc.)
 ├── scripts/                   # policy/evidence automation helpers
 ├── docs/                      # normative planning corpus (promoted)
