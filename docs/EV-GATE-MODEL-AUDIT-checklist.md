@@ -281,3 +281,134 @@ pre-empt.
       to external-blocked work only. Phase-0 EXIT itself remains
       AO-held; the gate-model integrity finding is unchanged.
       Recorded by AO `@PhantasticUniverse` on 2026-04-30.
+
+## Phase-2 EXIT simulation
+
+The Phase-2 EXIT gate set per `docs/26-evidence-artifact-registry.md`
+§Phase Gate Evidence Sets line 124 enumerates four required evidence
+IDs: `EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`, `EV-SANDBOX-SAFETY`,
+`EV-AUDIO-TRACE`. Per `docs/26` §Rules line 194 ("A phase is complete
+only when all required evidence IDs for that phase are `Pass` in
+`26-evidence-artifact-registry.md`"), Phase-2 EXIT requires all four
+rows to transition from `Planned` to `Pass`.
+
+This section runs the Phase-2 EXIT simulation against HEAD `d8e92db`
+(post `#298` merge) — the freshest green workspace test job on `main`,
+run id `25201608223`, completed 2026-05-01T04:01:22Z, conclusion
+`success`. The run executed `cargo nextest run --workspace
+--all-features --all-targets --no-fail-fast` covering every Phase-2
+evidence corpus across the 578 tests on Linux Vulkan / Mesa llvmpipe.
+
+### Per-Type Minimums verification (Automated suite rows)
+
+`docs/26` line 159 specifies the Per-Type Minimums for Automated suite
+rows (the type all four Phase-2 rows fall under): "(a) `ci-run-url` or
+`repo-path` to test report artifact; (b) CI run identifier with green
+status for pinned corpus version; (c) corpus/fixture version recorded;
+(d) drift thresholds from `10-performance-latency-budgets.md`
+applied." Row-by-row:
+
+- **Row 28 `EV-RENDER-CONFORMANCE`** — (a) `ci-run-url:25201608223`
+  prefixed to the existing T1+T2 corpus repo-path chain. (b) green
+  workspace test job on `main` HEAD `d8e92db`. (c) corpus version
+  pinned by the merged-on-main slice chain (slices 1+2+3+4+5a+5b.1+
+  5b.2+5b.3 + Tier-9 multipass-renderer refactor + Tier-11
+  UniformValue::FloatArray + chroma_AudioFFT[8] consolidation; the
+  workspace-hack lockfile pins wgpu 26.0.1 + naga 26.0.0; the Apple
+  Silicon Metal seed values + Linux Vulkan / Mesa llvmpipe harvest
+  values are encoded into the per-fixture ACCEPTED arrays). (d)
+  drift thresholds applied via the per-backend ACCEPTED-set
+  discipline; the Tier-11 wave introduced the first cross-backend
+  dual entry on the audio_adapter sine-tone fixture
+  (`0xe95a153320450d25` Apple Metal / `0x7ab4cc966bba0d25` Linux
+  Vulkan / Mesa llvmpipe) and the silent-frame hash
+  `0x80131e415c3cfb25` is preserved verbatim across both backends and
+  the consolidation.
+- **Row 29 `EV-SCRIPT-CONTRACT`** — (a) `ci-run-url:25201608223`
+  prefixed to the existing T1+T2 corpus repo-path chain. (b) green
+  workspace test job. (c) corpus version pinned by slices 1+2+3+4+
+  5.1+5.2+5.3 + the Tier-11 catalog v1.3.0 mirror retirement of
+  FftLow/FftHigh; rquickjs 0.11.0 + crossbeam-channel pinned by the
+  lockfile. (d) drift thresholds applied via the watchdog p99/hard-
+  cap discipline + memory-cap T2 corpus + determinism shim T1+T2
+  pins + the `slice_5a_v1_2_0_split_fft_names_no_longer_route`
+  inverted retirement pin asserting the v1.3.0 catalog narrowing.
+  **Phase-2 EXIT scope explicitly narrows row 29 to slices 1-5.3**
+  per the Description column update in this PR; slice 5.4+
+  (scene-author surface — control bindings, event handlers,
+  preset-recall hooks per ADR-003) is post-Phase-2 feature work
+  tracked separately, consistent with the AO direction recorded in
+  `engine/script/src/lib.rs` lines 133-136 ("Slice 5 has reached
+  EXIT-quality core with slice 5.3 — the producer / consumer /
+  catalog / adapter quad covers the cross-crate contract; further
+  widening is feature work, not foundational").
+- **Row 30 `EV-AUDIO-TRACE`** — (a) `ci-run-url:25201608223`
+  prefixed to the existing T1+T2 corpus repo-path chain. (b) green
+  workspace test job. (c) corpus version pinned by slices 1+2+3a+3b
+  + slice-5a cross-tag from EV-RENDER-CONFORMANCE + Tier-9 cpal
+  multi-format dispatch + Tier-11 chroma_AudioFFT[8] cross-tag;
+  cpal 0.15 + crossbeam-channel pinned by the lockfile. (d) drift
+  thresholds applied via the LVL/HIT/TIM/PRS/BEAT/BPM/LRG family-
+  tolerance discipline + the per-backend ACCEPTED-set framework
+  carrying its first dual-backend entry post Tier-11 (see row 28).
+  The slice-3b CpalSource owner-thread pattern + FFI-seam
+  `catch_unwind` discipline + Tier-9 multi-format conversion math
+  T1 pins all green on the workspace test run.
+- **Row 42 `EV-SANDBOX-SAFETY`** — (a) `ci-run-url:25201608223`
+  prefixed to the existing T1+T2 corpus repo-path chain. (b) green
+  workspace test job. (c) corpus version pinned by slice-2 watchdog
+  + slice-3 memory-cap surfaces; rquickjs 0.11.0 pinned by the
+  lockfile (the no-`rust-alloc` `rust-alloc`-disabled config means
+  `set_memory_limit` is honored via the QuickJS-bundled libc
+  allocator per the slice-3 module-prose caveat). (d) drift
+  thresholds applied via the watchdog p99/hard-cap CI-tolerance-
+  window discipline (`[hard_ms, hard_ms + 200]` window per the
+  T2 corpus) and the OOM-identifier `name`+`message` pinning per
+  the slice-3 `is_oom_error` predicate.
+
+### Verdict
+
+All four Phase-2 EXIT evidence IDs satisfy the Per-Type Minimums at
+HEAD `d8e92db`. Status transitions to `Pass` are recorded in
+`docs/26-evidence-artifact-registry.md` rows 28, 29, 30, 42 by this
+PR. Per `docs/26` §Rules line 194, the Phase-2 EXIT gate is therefore
+passable. **Phase-2 EXIT achieved 2026-05-01 at commit `d8e92db`**.
+
+The Phase-2 EXIT achievement is recorded in `docs/13-risk-register.md`
+R-37 closing paragraph and CLAUDE.md Status section. Phase-3 entry
+remains a separate AO-held milestone with its own eight-row gate set
+per `docs/26` §Phase Gate Evidence Sets line 130; this audit does not
+pre-empt the Phase-3 gate decision.
+
+### Deferred axes recorded for Phase-3+/4a homes
+
+These items were considered as candidates for Phase-2 EXIT but
+verified out-of-scope or scheduled to later phases:
+
+- **`EV-INTEGRATION-MATRIX` (row 37)** — Phase-4a-bound per the
+  registry's Phase Gate Evidence Sets section. Out of scope for
+  Phase-2 EXIT. Covers OSC/MIDI/media route conformance + the
+  Tauri-IPC bridge framework that downstream UI features depend on.
+- **engine/script slice 5.4+ scene-author surface** — feature work
+  per AO framing; explicitly narrowed out of row 29's Phase-2
+  EXIT scope above. Schedule depends on AO direction for the
+  Phase-3+ feature-development cadence.
+- **device-enum UI** — has a hard dependency on the
+  EV-INTEGRATION-MATRIX IPC bridge framework (Phase 4a); shipping
+  pre-Phase-4a forces rework. Sequenced behind that bridge.
+- **macOS-in-CI matrix expansion** — recommended as a Phase-4d
+  release-validation nightly gate (~$20/month) rather than per-PR
+  matrix expansion (~$70-80/month at current cadence). Defers to
+  the release-validation pipeline.
+
+### Sign-off
+
+- [x] Phase-2 EXIT simulation ran to completion at HEAD `d8e92db`.
+      All four Phase-2 EXIT evidence IDs satisfy the Per-Type
+      Minimums; the gate is passable; the four row Status
+      transitions are recorded by this PR. Slice 5.4+ scene-author
+      surface narrowing on row 29 is recorded in the Description
+      column. The deferred axes (`EV-INTEGRATION-MATRIX`, slice
+      5.4+, device-enum UI, macOS-in-CI) are recorded with their
+      proper Phase-3+/4a homes. Signed by AO `@PhantasticUniverse`
+      on 2026-05-01.
