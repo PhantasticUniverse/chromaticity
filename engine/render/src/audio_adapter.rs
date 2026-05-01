@@ -59,9 +59,10 @@
 //! # Stability and ordering
 //!
 //! [`uniform_input_from_audio_snapshot`] returns the uniforms in a
-//! stable, documented order (BPM, RMS, PEAK, FFT) — four entries
-//! after the catalog v1.3.0 consolidation collapsed the v1.2.0
-//! transitional split-vec4 spelling (FFT_LO, FFT_HI) into a single
+//! stable, documented order — BPM, RMS, PEAK, and the consolidated
+//! `chroma_AudioFFT[8]` `FloatArray` — four entries after the
+//! catalog v1.3.0 consolidation collapsed the v1.2.0 transitional
+//! split-vec4 spelling (FFT_LO, FFT_HI) into a single
 //! `chroma_AudioFFT[8]` array. The [`MultipassSpec`] scheduler
 //! binds uniforms in declaration order
 //! (per `multipass.rs::PassDef::uniforms` doc comment), so this
@@ -89,8 +90,7 @@
 //! [`bpm`]: chromaticity_audio::AudioUniformSnapshot::bpm
 //! [`rms`]: chromaticity_audio::AudioUniformSnapshot::rms
 //! [`peak`]: chromaticity_audio::AudioUniformSnapshot::peak
-//! [`fft_bands[0..3]`]: chromaticity_audio::AudioUniformSnapshot::fft_bands
-//! [`fft_bands[4..7]`]: chromaticity_audio::AudioUniformSnapshot::fft_bands
+//! [`fft_bands[0..7]`]: chromaticity_audio::AudioUniformSnapshot::fft_bands
 
 use chromaticity_audio::AudioUniformSnapshot;
 

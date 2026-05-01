@@ -26,6 +26,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let reduceMotion = $state(false);
 
   $effect(() => {
+    if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     reduceMotion = mq.matches;
     const onChange = (e: MediaQueryListEvent): void => {

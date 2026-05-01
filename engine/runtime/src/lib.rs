@@ -3,15 +3,19 @@
 
 //! Chromaticity engine runtime.
 //!
-//! Phase-1 slice-3a. Exposes the canonical state core
-//! ([`state`]) with minimal ADR-004 §Decision sub-stores and
-//! the command-bus surface ([`command_bus`]): typed [`Command`] and
-//! [`Event`] envelopes, the [`CommandChannel`] pluggable transport
-//! trait, a crossbeam-channel-backed [`CrossbeamChannel`]
-//! implementation, and the [`InMemoryBus`] `CommandBus` that composes
-//! a channel with a monotonic [`EventSeq`] counter. Persistent
-//! reconciliation, validation, migration, and a cross-process channel
-//! implementation land in later slices. The
+//! Exposes the canonical state core ([`state`]) with the ADR-004
+//! §Decision sub-stores and the command-bus surface ([`command_bus`]):
+//! typed [`Command`] and [`Event`] envelopes, the [`CommandChannel`]
+//! pluggable transport trait, a crossbeam-channel-backed
+//! [`CrossbeamChannel`] implementation, and the [`InMemoryBus`]
+//! `CommandBus` that composes a channel with a monotonic [`EventSeq`]
+//! counter. Post-Phase-3 (`ec10ee7`) the crate also carries the
+//! deterministic state-replay path ([`state_replay`], Phase-3 wave PR 1
+//! / `EV-STATE-REPLAY`), the V1↔V2 forward-migration envelope
+//! ([`state_migration`], Phase-3 wave PR 4 / `EV-STATE-MIGRATION`),
+//! and the observable-subsystem proxy benchmarks under
+//! `engine/runtime/benches/budgets.rs` (Phase-3 wave PR 6 /
+//! `EV-PERF-BUDGETS` Path B nightly criterion harness). The
 //! render-graph implementation remains reserved as a future module in
 //! this crate, to be extracted only when incremental-compile savings
 //! or license-boundary concerns justify.
@@ -19,7 +23,7 @@
 //! Internal state fields and sub-stores remain crate-private
 //! (`pub(crate)`) so downstream crates cannot bypass the command bus;
 //! only the public command / event / trait surface is exported for
-//! sibling crates to consume in later slices.
+//! sibling crates to consume.
 //!
 //! Slice-5.3 (Phase-2, behind the `script-bridge` Cargo feature) adds
 //! the [`script_bridge`] module: an adapter that implements the

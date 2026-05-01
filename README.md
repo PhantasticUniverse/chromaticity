@@ -12,22 +12,23 @@ scheduled no earlier than Phase 4c and requires AO-signed approval.
 
 ## Status
 
-**Phase 1 EXIT achieved; Phase 2 evidence deepening in flight.** The
-repository contains active application and engine code (Tauri 2 + Svelte 5 +
-TypeScript + Rust 2024), with policy, evidence, and CI gates running
-continuously on `main`. All six Phase 1 exit-gate evidence rows are `Pass`
-per `docs/26-evidence-artifact-registry.md` (`EV-DETERMINISM`,
-`EV-OBSERVABILITY`, `EV-EVIDENCE-TAG-COVERAGE`, `EV-COMPAT-FIXTURE-COVERAGE`,
-`EV-SCENE-IMPORT`, `EV-SCHEMA-LINT` — sixth gate closed at commit `e818752`,
-W12 close at `0d83fb5`). Phase 0 governance and clean-room baseline ADRs are
-established; the late-April Phase-0 closure tail landed
-`EV-DOCS-PHASE0-SEED`, `EV-ENTITLEMENT-TOKEN-FORMAT`, and
-`EV-GATE-MODEL-AUDIT`, with `EV-OBSERVABILITY-INVENTORY` remaining
-implementation-gated on the first release artifact and the UX-bundle and
-hotkey-parity rows remaining AO-gated on the dev-team queue. Current work
-advances Phase 2 evidence-row deepening across the four foundational rows
-(`EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`, `EV-AUDIO-TRACE`,
-`EV-SANDBOX-SAFETY`) toward EXIT-quality coverage.
+**Phase 1, Phase 2, and Phase 3 EXIT all achieved.** The repository carries
+active application and engine code (Tauri 2 + Svelte 5 + TypeScript +
+Rust 2024) with policy, evidence, and CI gates running continuously on
+`main`. Phase 1 EXIT closed at commit `e818752` (W12) with all six Phase 1
+gate evidence rows `Pass` per `docs/26-evidence-artifact-registry.md`.
+Phase 2 EXIT closed 2026-05-01 at commit `d8e92db` with the four
+foundational rows (`EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`,
+`EV-AUDIO-TRACE`, `EV-SANDBOX-SAFETY`) `Pass` against a green workspace
+nextest run. Phase 3 EXIT closed 2026-05-01 at commit `ec10ee7` with
+seven of the eight Phase-3 gate rows `Pass` (`EV-AUDIO-TRACE`
+re-validated, `EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`,
+`EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`, `EV-SHOW-BUNDLE-RECOVERY`,
+`EV-PERF-BUDGETS`); the eighth row `EV-COLOR-MANAGEMENT-SRGB` (row 38)
+is explicitly deferred per AO direction sequenced behind a future
+render-HUD-diagnostics PR. Phase 0 governance and clean-room baseline
+ADRs remain established; Phase 4+ entry is a separate AO-held milestone
+per `docs/11-roadmap-phases.md`.
 
 ## Repository Layout
 
@@ -57,7 +58,7 @@ chromaticity/
 │   ├── README.md              # document map
 │   └── adr/                   # Architecture Decision Records (MADR 4.0.0)
 ├── src/                       # Svelte UI source
-└── tests/                     # cross-cutting test harnesses
+└── tests/                     # workspace-level policy fixtures (e.g. trailer-check inputs)
 ```
 
 ### AO-local partitions (not in version control)
@@ -121,10 +122,13 @@ Chromaticity source code is proprietary: **All Rights Reserved** under
 [`LICENSES/LicenseRef-Chromaticity-Proprietary.txt`](LICENSES/LicenseRef-Chromaticity-Proprietary.txt)).
 
 Planning and documentation under `docs/` is licensed `CC-BY-4.0` unless a
-file's SPDX header states otherwise. Bundled third-party material (if and
-when it ships) is governed by its own license, captured under
-`/third_party/<origin>/` with an `ATTRIBUTION.md` and reflected in
-`REUSE.toml`.
+file's SPDX header states otherwise. Bundled third-party material is
+governed by its own license, captured under `/third_party/<origin>/` with
+an `UPSTREAM-VERSION.md` (origin URL + version stamp + drop date), the
+upstream license file (e.g. `LICENSE.md`), and any upstream `README` —
+all reflected in `REUSE.toml`. The current vendor drop is
+`third_party/lygia/` (Lygia v1.1.4 trial, license election deferred per
+`docs/13-risk-register.md` R-37).
 
 REUSE 3.2 compliance is enforced in CI (`reuse lint`). See
 `docs/43-development-standards.md` §10 for the full license/SPDX/SBOM policy.

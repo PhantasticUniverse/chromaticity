@@ -62,7 +62,7 @@
 //! - `docs/adr/ADR-006-thread-and-process-model.md` — thread + process model.
 //! - `docs/adr/ADR-012-script-sandbox-engine.md` — engine choice + budgets.
 //! - `docs/26-evidence-artifact-registry.md` row 29 — `EV-SCRIPT-CONTRACT`.
-//! - `docs/36-reactive-symbol-catalog.md` v1.1.0 — symbol vocabulary.
+//! - `docs/36-reactive-symbol-catalog.md` v1.3.0 — symbol vocabulary.
 //! - `docs/43-development-standards.md` §15.5 — T-tier definitions.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]

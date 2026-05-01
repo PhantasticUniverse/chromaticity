@@ -505,7 +505,7 @@ impl ReactiveSymbol {
     /// Look up a [`ReactiveSymbol`] by canonical catalog name.
     ///
     /// Returns `Some` when `name` matches one of the documented
-    /// `docs/36` v1.1.0 spellings the slice-5.2 catalog covers;
+    /// `docs/36` v1.3.0 spellings the slice-5.2 catalog covers;
     /// returns `None` otherwise. Case-sensitive — `docs/36` §6
     /// CR-01 declares case-mismatch a strict-reject (compat
     /// warn-and-coerce); the slice-5.2 catalog is the strict
@@ -668,7 +668,7 @@ impl ReactiveSymbol {
     /// [`ScriptValue`] in a typed write must satisfy
     /// [`ReactiveValueKind::validate`] against this slot.
     ///
-    /// Per `docs/36` v1.1.0:
+    /// Per `docs/36` v1.3.0:
     /// - All audio-uniform scalars (§2.2 / §2.3 / §2.4 / §2.5 /
     ///   §2.6 / §2.7 / §2.8 / §2.9 / §2.10) are `Scalar`.
     /// - Frame/timing (§1.1) values exposed to the script host
@@ -759,7 +759,7 @@ mod reactive_symbol_pins {
     //! Anchors:
     //! - `docs/26-evidence-artifact-registry.md` row 29 —
     //!   `EV-SCRIPT-CONTRACT`.
-    //! - `docs/36-reactive-symbol-catalog.md` v1.1.0.
+    //! - `docs/36-reactive-symbol-catalog.md` v1.3.0.
 
     use super::{ReactiveSymbol, ReactiveValueKind, ReactiveValueKindMismatchDetail};
     use crate::value::ScriptValue;

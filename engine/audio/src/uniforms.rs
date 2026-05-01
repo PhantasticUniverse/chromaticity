@@ -25,7 +25,7 @@
 //! # Symbol vocabulary
 //!
 //! The four primary slice-1 fields map onto the
-//! `docs/36-reactive-symbol-catalog.md` v1.1.0 vocabulary as
+//! `docs/36-reactive-symbol-catalog.md` v1.3.0 vocabulary as
 //! follows:
 //!
 //! - [`AudioUniformSnapshot::bpm`] -> `syn_BPM` (catalog §2.7,

@@ -52,7 +52,7 @@
 //!   slice-1 unsupported set the same way `execute` itself does.
 //!
 //! The slice-5.2 typed reactive-symbol-catalog binding (`docs/36`
-//! v1.1.0 `syn_*` names → typed [`ScriptCommand`] variants) is
+//! v1.3.0 `syn_*` names → typed [`ScriptCommand`] variants) is
 //! deferred. The slice-5.1 surface intentionally accepts every
 //! `name` string verbatim; slice-5.2 will widen
 //! [`ScriptCommand`] with typed variants alongside the catch-all

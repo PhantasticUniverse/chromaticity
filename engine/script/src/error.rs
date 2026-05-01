@@ -34,7 +34,7 @@
 //! [`ScriptError::ReactiveSymbolUnknown`] (the
 //! [`crate::ScriptCommand::route`] caller passed a name that did
 //! not resolve against the
-//! `docs/36-reactive-symbol-catalog.md` v1.1.0 catalog) and
+//! `docs/36-reactive-symbol-catalog.md` v1.3.0 catalog) and
 //! [`ScriptError::ReactiveValueKindMismatch`] (the carrier value's
 //! [`crate::ScriptValue`] shape did not conform to the resolved
 //! symbol's [`crate::ReactiveValueKind`] dimensionality slot).
@@ -237,7 +237,7 @@ pub enum ScriptError {
     /// [`crate::ScriptCommand::route`] received a string-keyed
     /// [`crate::ScriptCommand::ReactiveWrite`] whose `name` did not
     /// resolve against the `docs/36-reactive-symbol-catalog.md`
-    /// v1.1.0 catalog (slice 5.2). The caller decides the policy:
+    /// v1.3.0 catalog (slice 5.2). The caller decides the policy:
     /// drop the write, escalate as an error to the script author,
     /// or fall back to the catch-all
     /// [`crate::ScriptCommand::ReactiveWrite`] variant. The

@@ -141,7 +141,7 @@ default = []
 scene-adapter = ["dep:chromaticity-scene"]
 # Enables the `audio_adapter` module which marshals an
 # `AudioUniformSnapshot` (slice-1 producer-side, plain data) into a
-# `Vec<UniformInput>` keyed by the `docs/36` v1.1.0 reactive-symbol
+# `Vec<UniformInput>` keyed by the `docs/36` v1.3.0 reactive-symbol
 # vocabulary. Turning this on adds a crate-level dep on
 # `chromaticity-audio`. See `audio_adapter.rs` module-level doc for
 # the symbol → UniformValue mapping table.
