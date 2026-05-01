@@ -133,32 +133,36 @@ impl State {
 /// Control-value store.
 #[derive(Debug, Default)]
 pub(crate) struct ControlStore {
-    values: HashMap<ControlId, ControlValue>,
+    /// Crate-private; sibling [`crate::state_replay`] reads this for
+    /// canonical-binary encoding (sorted by `ControlId.0` for
+    /// deterministic FNV-1a-64 hashing per the EV-STATE-REPLAY T2
+    /// corpus). Mutation flows through [`State::apply_event`] only.
+    pub(crate) values: HashMap<ControlId, ControlValue>,
 }
 
 /// Preset store. See [`ControlStore`].
 #[derive(Debug, Default)]
 pub(crate) struct PresetStore {
-    active: Option<PresetId>,
+    pub(crate) active: Option<PresetId>,
 }
 
 /// Playlist store. See [`ControlStore`].
 #[derive(Debug, Default)]
 pub(crate) struct PlaylistStore {
-    position: i64,
+    pub(crate) position: i64,
 }
 
 /// Snap / favslot store. See [`ControlStore`].
 #[derive(Debug, Default)]
 pub(crate) struct SnapStore {
-    active: Option<SnapSlotId>,
-    saved: HashSet<SnapSlotId>,
+    pub(crate) active: Option<SnapSlotId>,
+    pub(crate) saved: HashSet<SnapSlotId>,
 }
 
 /// Integration-mapping store. See [`ControlStore`].
 #[derive(Debug, Default)]
 pub(crate) struct MappingStore {
-    bindings: HashMap<MappingId, MappingSource>,
+    pub(crate) bindings: HashMap<MappingId, MappingSource>,
 }
 
 #[cfg(test)]
