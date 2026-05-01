@@ -217,3 +217,57 @@ review per the governance posture established for the v1.1.0 ratification.
 
 **Sign-off.** AO `@PhantasticUniverse` ratifies the v1.2.0 catalog addition on
 2026-05-01.
+
+### Catalog version `1.3.0` — 2026-05-01
+
+**Scope.** Consolidated the v1.2.0 split-vec4 FFT spelling
+(`chroma_AudioFFTLow` for bands `[0..=3]` + `chroma_AudioFFTHigh` for bands
+`[4..=7]`) into a single `chroma_AudioFFT[8]` array binding. Foundational
+widening: added `UniformValue::FloatArray(Vec<f32>)` to
+`engine/render/src/multipass.rs` with std140-friendly packing (each element
+vec4-aligned to 16 bytes, matching `uniform float arr[N]`), unlocking
+single-name array uniforms across the renderer surface (the
+`syn_RES`-style vec2-batched widening previously co-listed in the
+`multipass.rs` doc-comment remains deferred until a concrete consumer
+surfaces it). Authoring-surface migration is mechanical:
+`chroma_AudioFFTLow.x` becomes `chroma_AudioFFT[0]`,
+`chroma_AudioFFTHigh.w` becomes `chroma_AudioFFT[7]`, and intermediate
+indices shift the same way. No scenes shipped against the v1.2.0
+split-vec4 surface (it was native-only with no scene-author exposure
+yet), so no `compat-syn-v1` aliases are required.
+
+**Sec.8 change-control compliance.**
+
+- (a) **Catalog version bumped** to `1.3.0` in `docs/36` Sec.8
+      (`Catalog version \`1.3.0\`: consolidated ...` line).
+- (b) **`EV-*` fixture coverage updated in place.** Slice-5a's T1 drift
+      pins in `engine/render/src/audio_adapter.rs::audio_adapter_drift_pins`
+      were rewritten to assert the new shape:
+      `adapter_returns_four_uniforms_in_documented_order` (was: `_five_`),
+      `adapter_packs_fft_bands_into_float_array_in_band_order` (replacing
+      `adapter_splits_fft_bands_into_two_vec4s_low_then_high`), and the
+      `adapter_default_snapshot_yields_zeros_in_every_slot` pin's match
+      arm widened to handle `UniformValue::FloatArray`. A new T1 pin
+      `multipass::multipass_drift_pins::uniform_marshalling_float_array_layout`
+      asserts the std140 packing invariant (FloatArray(N) emits N
+      consecutive 16-byte slots with the f32 in the first 4 bytes of
+      each, 12 bytes of zero pad). The T2 GPU-roundtrip corpus
+      (`engine/render/tests/audio_adapter.rs`) updates the sine-tone
+      ACCEPTED hash from `0x7ab4cc966bba0d25` to `0xe95a153320450d25`;
+      the silent-frame ACCEPTED hash (`0x8013_1e41_5c3c_fb25`) is
+      preserved verbatim because zero FFT bands sum identically under
+      any summation order, so the GLSL `arr[K]` summation reorder
+      under SPIR-V compilation produces no rounding delta on that
+      fixture. Coverage remains under `EV-RENDER-CONFORMANCE` (row 28)
+      and `EV-AUDIO-TRACE` (row 30).
+- (c) **Release-notes entry appended** to
+      `docs/22-compatibility-versioning-policy.md` Catalog Ratification
+      Log (v1.3.0 row, 2026-05-01) by this PR.
+
+**Cross-workcell coverage.** Same posture as v1.2.0: the Sec.2.11
+surface lives entirely within the AI Runtime Workcell's audio-uniform
+exposure boundary; no AI Scene Workcell-owned surface is touched. AO
+sign-off proxies for cross-workcell review.
+
+**Sign-off.** AO `@PhantasticUniverse` ratifies the v1.3.0 catalog
+consolidation on 2026-05-01.

@@ -23,46 +23,38 @@
 //! across two namespaces per `docs/36-reactive-symbol-catalog.md`
 //! Sec.Namespace governance: `syn_BPM` is a canonical compat-syn-v1
 //! retention (docs/36 line 117) and stays under that name for
-//! reference-scene parity continuity; the raw-RMS / peak /
-//! split-vec4-FFT outputs are net-new chromaticity-native primitives
-//! introduced by this slice under the `chroma_*` namespace, since
-//! docs/36 has no native equivalents at this abstraction level
-//! (docs/36's `syn_Level` is normalised + smoothed per `docs/06`
-//! §7.4; `syn_Spectrum` is a sampler1D with packed Raw/Juiced/Smooth/
-//! Waveform channels — slice-5a's outputs are raw scalar/array
-//! analysis primitives, a complementary surface).
+//! reference-scene parity continuity; the raw-RMS / peak / 8-band
+//! FFT outputs are net-new chromaticity-native primitives under the
+//! `chroma_*` namespace, since docs/36 has no native equivalents at
+//! this abstraction level (docs/36's `syn_Level` is normalised +
+//! smoothed per `docs/06` §7.4; `syn_Spectrum` is a sampler1D with
+//! packed Raw/Juiced/Smooth/Waveform channels — slice-5a's outputs
+//! are raw scalar / array analysis primitives, a complementary
+//! surface).
 //!
-//! | snapshot field        | uniform name           | namespace               | `UniformValue` variant            |
-//! |-----------------------|------------------------|-------------------------|-----------------------------------|
-//! | [`bpm`]               | `syn_BPM`              | compat-syn-v1 (docs/36 line 117 retention) | [`UniformValue::Scalar`] |
-//! | [`rms`]               | `chroma_AudioRMS`      | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Scalar`] |
-//! | [`peak`]              | `chroma_AudioPeak`     | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Scalar`] |
-//! | [`fft_bands[0..3]`]   | `chroma_AudioFFTLow`   | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Vec4`]   |
-//! | [`fft_bands[4..7]`]   | `chroma_AudioFFTHigh`  | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Vec4`]   |
+//! | snapshot field   | uniform name        | namespace                                  | `UniformValue` variant            |
+//! |------------------|---------------------|--------------------------------------------|-----------------------------------|
+//! | [`bpm`]          | `syn_BPM`           | compat-syn-v1 (docs/36 line 117 retention) | [`UniformValue::Scalar`]          |
+//! | [`rms`]          | `chroma_AudioRMS`   | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Scalar`]          |
+//! | [`peak`]         | `chroma_AudioPeak`  | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Scalar`]          |
+//! | [`fft_bands`]    | `chroma_AudioFFT`   | chromaticity-native (slice-5a-introduced)  | [`UniformValue::FloatArray`] (8 elements) |
 //!
 //! Note on the FFT mapping: the slice-1 snapshot exposes 8
-//! log-spaced FFT bands as a `[f32; 8]` array. The slice-2
-//! [`UniformValue`] enum's widest scalar/vector variant is
-//! [`UniformValue::Vec4`]; there is NO 8-element array variant.
-//! Per slice-4's `multipass.rs` line 50-53 (the std140 packing doc
-//! comment: "Slice 3 will revisit packing when audio uniforms (an
-//! `audio[]` block) and `syn_RES` style vec2 batched uniforms enter
-//! the surface"), the production scheduler will eventually grow an
-//! `audio[]` block / array uniform variant. Slice-5a does NOT
-//! widen [`UniformValue`] — that's a scheduler-shaped decision out
-//! of scope for the cross-crate adapter slice. Instead, the 8-band
-//! FFT array is split into two `vec4`s (low-bands [0..3], high-bands
-//! [4..7]) under stable names (`chroma_AudioFFTLow` / `chroma_AudioFFTHigh`).
-//! Authors who need single-band access can index the `vec4`
-//! components directly from GLSL (`chroma_AudioFFTLow.x` is the lowest
-//! band, `chroma_AudioFFTHigh.w` is the highest).
-//!
-//! When the future array-uniform variant lands, the adapter can
-//! widen to a single `chroma_AudioFFT[8]` binding without breaking
-//! the four primary `syn_BPM` / `chroma_AudioRMS` / `chroma_AudioPeak`
-//! scalar names. The split-vec4 spelling is documented in this
-//! module so a scene author who hand-writes the binding name can
-//! read what shape they get.
+//! log-spaced FFT bands as a `[f32; 8]` array. The slice-5a initial
+//! release (catalog v1.2.0) used a transitional split-vec4 spelling
+//! (`chroma_AudioFFTLow` for bands `[0..=3]` + `chroma_AudioFFTHigh`
+//! for bands `[4..=7]`) because [`UniformValue`] had no array variant.
+//! The slice-5 follow-up landed [`UniformValue::FloatArray`] in
+//! `multipass.rs` and consolidated the FFT into a single
+//! `chroma_AudioFFT[8]` array binding (catalog v1.3.0). The two
+//! `syn_BPM` / `chroma_AudioRMS` / `chroma_AudioPeak` scalar names
+//! are unchanged across the consolidation; only the FFT shape moved.
+//! GLSL authors index the array directly (`chroma_AudioFFT[0]` is
+//! the lowest band, `chroma_AudioFFT[7]` is the highest). The
+//! `FloatArray` packing is std140-friendly per the `multipass.rs`
+//! module-level doc — each element occupies one 16-byte slot
+//! (vec4-aligned), so the per-pass uniform buffer grows by 8 slots
+//! for each `FloatArray(8)` binding.
 //!
 //! # Stability and ordering
 //!
@@ -105,23 +97,25 @@ use crate::multipass::{UniformInput, UniformValue};
 pub const UNIFORM_NAME_BPM: &str = "syn_BPM";
 
 /// Symbol name for the RMS instantaneous-energy scalar uniform per
-/// `docs/36` §2.10 (`syn_InputLevel` raw RMS).
+/// `docs/36` §2.11.
 pub const UNIFORM_NAME_RMS: &str = "chroma_AudioRMS";
 
 /// Symbol name for the peak instantaneous-magnitude scalar uniform
-/// per `docs/36` §2.10 (`syn_Level*` family normaliser).
+/// per `docs/36` §2.11.
 pub const UNIFORM_NAME_PEAK: &str = "chroma_AudioPeak";
 
-/// Symbol name for the low-band FFT vec4 uniform (band indices
-/// 0..=3, log-spaced per `chromaticity_audio::FFT_BAND_MIN_HZ`).
-pub const UNIFORM_NAME_FFT_LOW: &str = "chroma_AudioFFTLow";
-
-/// Symbol name for the high-band FFT vec4 uniform (band indices
-/// 4..=7).
-pub const UNIFORM_NAME_FFT_HIGH: &str = "chroma_AudioFFTHigh";
+/// Symbol name for the 8-band log-spaced FFT array uniform per
+/// `docs/36` §2.11. Authors declare `uniform float chroma_AudioFFT[8];`
+/// in their GLSL block; element K (0..=7) is the K-th log-spaced
+/// band per `chromaticity_audio::FFT_BAND_MIN_HZ`. The slice-5
+/// follow-up to slice-5a consolidated the transitional split-vec4
+/// spelling (`chroma_AudioFFTLow` + `chroma_AudioFFTHigh`) into this
+/// single array binding via [`UniformValue::FloatArray`] (catalog
+/// v1.2.0 → v1.3.0 transition).
+pub const UNIFORM_NAME_FFT: &str = "chroma_AudioFFT";
 
 /// Marshal an [`AudioUniformSnapshot`] into a stable-ordered
-/// [`Vec<UniformInput>`] keyed by the `docs/36` v1.1.0 reactive-
+/// [`Vec<UniformInput>`] keyed by the `docs/36` v1.3.0 reactive-
 /// symbol vocabulary.
 ///
 /// Output order (same as the binding-slot order in the per-pass
@@ -130,14 +124,11 @@ pub const UNIFORM_NAME_FFT_HIGH: &str = "chroma_AudioFFTHigh";
 /// 1. [`UNIFORM_NAME_BPM`] = [`UniformValue::Scalar`] (snapshot.bpm)
 /// 2. [`UNIFORM_NAME_RMS`] = [`UniformValue::Scalar`] (snapshot.rms)
 /// 3. [`UNIFORM_NAME_PEAK`] = [`UniformValue::Scalar`] (snapshot.peak)
-/// 4. [`UNIFORM_NAME_FFT_LOW`] = [`UniformValue::Vec4`] (bands [0..=3])
-/// 5. [`UNIFORM_NAME_FFT_HIGH`] = [`UniformValue::Vec4`] (bands [4..=7])
-///
-/// See module-level prose for the FFT-split rationale (no
-/// 8-element variant on slice-2 [`UniformValue`]).
+/// 4. [`UNIFORM_NAME_FFT`] = [`UniformValue::FloatArray`] (8 elements,
+///    bands `[0..=7]`; expands into 8 consecutive 16-byte slots in
+///    the uniform buffer per the std140 layout for `float arr[N]`).
 #[must_use]
 pub fn uniform_input_from_audio_snapshot(snapshot: &AudioUniformSnapshot) -> Vec<UniformInput> {
-    let bands = snapshot.fft_bands;
     vec![
         UniformInput {
             name: UNIFORM_NAME_BPM.to_string(),
@@ -152,12 +143,8 @@ pub fn uniform_input_from_audio_snapshot(snapshot: &AudioUniformSnapshot) -> Vec
             value: UniformValue::Scalar(snapshot.peak),
         },
         UniformInput {
-            name: UNIFORM_NAME_FFT_LOW.to_string(),
-            value: UniformValue::Vec4([bands[0], bands[1], bands[2], bands[3]]),
-        },
-        UniformInput {
-            name: UNIFORM_NAME_FFT_HIGH.to_string(),
-            value: UniformValue::Vec4([bands[4], bands[5], bands[6], bands[7]]),
+            name: UNIFORM_NAME_FFT.to_string(),
+            value: UniformValue::FloatArray(snapshot.fft_bands.to_vec()),
         },
     ]
 }
@@ -183,31 +170,29 @@ mod audio_adapter_drift_pins {
     //! Anchors:
     //! - `docs/26-evidence-artifact-registry.md` row 28 — `EV-RENDER-CONFORMANCE`.
     //! - `docs/26-evidence-artifact-registry.md` row 30 — `EV-AUDIO-TRACE`.
-    //! - `docs/36-reactive-symbol-catalog.md` §2.6, §2.7, §2.10.
+    //! - `docs/36-reactive-symbol-catalog.md` §2.7, §2.11.
 
     use chromaticity_audio::AudioUniformSnapshot;
     use chromaticity_audio::uniforms::FFT_BAND_COUNT;
 
     use super::{
-        UNIFORM_NAME_BPM, UNIFORM_NAME_FFT_HIGH, UNIFORM_NAME_FFT_LOW, UNIFORM_NAME_PEAK,
-        UNIFORM_NAME_RMS, uniform_input_from_audio_snapshot,
+        UNIFORM_NAME_BPM, UNIFORM_NAME_FFT, UNIFORM_NAME_PEAK, UNIFORM_NAME_RMS,
+        uniform_input_from_audio_snapshot,
     };
     use crate::multipass::UniformValue;
 
     #[test]
     fn symbol_names_match_docs_36_vocabulary() {
-        // Drift pin: the four primary `syn_*` names match the
-        // `docs/36` v1.1.0 catalog spelling verbatim. A catalog edit
-        // that renames any of these surfaces here at the next test
-        // run.
+        // Drift pin: the four binding names match the `docs/36`
+        // v1.3.0 catalog spelling verbatim. A catalog edit that
+        // renames any of these surfaces here at the next test run.
         assert_eq!(UNIFORM_NAME_BPM, "syn_BPM");
         assert_eq!(UNIFORM_NAME_RMS, "chroma_AudioRMS");
         assert_eq!(UNIFORM_NAME_PEAK, "chroma_AudioPeak");
-        // The split-vec4 FFT spelling is module-level documented;
-        // the constants pin the chosen names so a downstream
-        // refactor doesn't silently shift them.
-        assert_eq!(UNIFORM_NAME_FFT_LOW, "chroma_AudioFFTLow");
-        assert_eq!(UNIFORM_NAME_FFT_HIGH, "chroma_AudioFFTHigh");
+        // FFT array binding (catalog v1.3.0 consolidation of the
+        // v1.2.0 split-vec4 `chroma_AudioFFTLow` + `chroma_AudioFFTHigh`
+        // shape into a single `chroma_AudioFFT[8]` array uniform).
+        assert_eq!(UNIFORM_NAME_FFT, "chroma_AudioFFT");
     }
 
     #[test]
@@ -222,19 +207,21 @@ mod audio_adapter_drift_pins {
     }
 
     #[test]
-    fn adapter_returns_five_uniforms_in_documented_order() {
+    fn adapter_returns_four_uniforms_in_documented_order() {
         // Drift pin: the binding-slot order is the contract per
         // module prose — std140 buffer slots are positional, so
         // any reordering would silently shuffle which scalar lives
-        // at which slot.
+        // at which slot. The catalog v1.3.0 consolidation reduced
+        // the binding count from 5 (BPM + RMS + PEAK + FFTLow +
+        // FFTHigh) to 4 (BPM + RMS + PEAK + FFT[8]); the FFT array
+        // expands into 8 consecutive slots in the uniform buffer.
         let snapshot = AudioUniformSnapshot::default();
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
-        assert_eq!(uniforms.len(), 5, "adapter MUST return 5 uniforms");
+        assert_eq!(uniforms.len(), 4, "adapter MUST return 4 uniforms");
         assert_eq!(uniforms[0].name, UNIFORM_NAME_BPM);
         assert_eq!(uniforms[1].name, UNIFORM_NAME_RMS);
         assert_eq!(uniforms[2].name, UNIFORM_NAME_PEAK);
-        assert_eq!(uniforms[3].name, UNIFORM_NAME_FFT_LOW);
-        assert_eq!(uniforms[4].name, UNIFORM_NAME_FFT_HIGH);
+        assert_eq!(uniforms[3].name, UNIFORM_NAME_FFT);
     }
 
     #[test]
@@ -250,21 +237,21 @@ mod audio_adapter_drift_pins {
             fft_bands: [0.0; 8],
         };
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
-        match uniforms[0].value {
+        match &uniforms[0].value {
             UniformValue::Scalar(v) => assert!(
                 (v - 128.0_f32).abs() < 1e-6,
                 "BPM scalar must equal 128.0, got {v}",
             ),
             other => panic!("BPM must be Scalar, got {other:?}"),
         }
-        match uniforms[1].value {
+        match &uniforms[1].value {
             UniformValue::Scalar(v) => assert!(
                 (v - 0.6_f32).abs() < 1e-6,
-                "RMS scalar must equal 0.6, got {v}"
+                "RMS scalar must equal 0.6, got {v}",
             ),
             other => panic!("RMS must be Scalar, got {other:?}"),
         }
-        match uniforms[2].value {
+        match &uniforms[2].value {
             UniformValue::Scalar(v) => assert!(
                 (v - 0.95_f32).abs() < 1e-6,
                 "PEAK scalar must equal 0.95, got {v}",
@@ -274,38 +261,35 @@ mod audio_adapter_drift_pins {
     }
 
     #[test]
-    fn adapter_splits_fft_bands_into_two_vec4s_low_then_high() {
-        // Drift pin: the band index split is `[0..=3]` -> low,
-        // `[4..=7]` -> high (ascending in frequency, lowest band
-        // at `.x`, highest at `.w`). A reversed split or a swap
-        // of low/high uniform names would land the wrong band at
-        // the wrong GLSL component.
+    fn adapter_packs_fft_bands_into_float_array_in_band_order() {
+        // Drift pin: the 8-band FFT lands in `UniformValue::FloatArray`
+        // ascending from band 0 (lowest log-spaced bin) at index 0
+        // to band 7 (highest) at index 7. A reversed iteration or a
+        // wrong slice would land the wrong band at the wrong array
+        // element index. The catalog v1.3.0 consolidation replaces
+        // the v1.2.0 split-vec4 `(FFTLow.xyzw, FFTHigh.xyzw)` shape
+        // with a single 8-element float array.
         let snapshot = AudioUniformSnapshot {
             bpm: 0.0,
             rms: 0.0,
             peak: 0.0,
-            // Distinct values per band so the split + ordering is
-            // observable.
+            // Distinct values per band so the ordering is observable.
             fft_bands: [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80],
         };
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
-        match uniforms[3].value {
-            UniformValue::Vec4(v) => {
-                assert!((v[0] - 0.10).abs() < 1e-6, "FFT_LO[0] must be band 0");
-                assert!((v[1] - 0.20).abs() < 1e-6, "FFT_LO[1] must be band 1");
-                assert!((v[2] - 0.30).abs() < 1e-6, "FFT_LO[2] must be band 2");
-                assert!((v[3] - 0.40).abs() < 1e-6, "FFT_LO[3] must be band 3");
+        match &uniforms[3].value {
+            UniformValue::FloatArray(arr) => {
+                assert_eq!(arr.len(), 8, "FFT array must be 8 elements");
+                let expected = [0.10_f32, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80];
+                for (i, exp) in expected.iter().enumerate() {
+                    assert!(
+                        (arr[i] - exp).abs() < 1e-6,
+                        "FFT band {i} must be {exp}, got {}",
+                        arr[i],
+                    );
+                }
             }
-            other => panic!("FFT_LO must be Vec4, got {other:?}"),
-        }
-        match uniforms[4].value {
-            UniformValue::Vec4(v) => {
-                assert!((v[0] - 0.50).abs() < 1e-6, "FFT_HI[0] must be band 4");
-                assert!((v[1] - 0.60).abs() < 1e-6, "FFT_HI[1] must be band 5");
-                assert!((v[2] - 0.70).abs() < 1e-6, "FFT_HI[2] must be band 6");
-                assert!((v[3] - 0.80).abs() < 1e-6, "FFT_HI[3] must be band 7");
-            }
-            other => panic!("FFT_HI must be Vec4, got {other:?}"),
+            other => panic!("FFT must be FloatArray, got {other:?}"),
         }
     }
 
@@ -325,10 +309,11 @@ mod audio_adapter_drift_pins {
         assert_eq!(a.len(), b.len());
         for (x, y) in a.iter().zip(b.iter()) {
             assert_eq!(x.name, y.name);
-            // `UniformValue` is `Copy + Debug`; compare the debug
-            // strings as a structural equality proxy (the enum
-            // does not derive PartialEq because its variants carry
-            // float arrays).
+            // `UniformValue` is `Clone + Debug` (the catalog v1.3.0
+            // FloatArray addition dropped the prior `Copy`); compare
+            // the debug strings as a structural equality proxy (the
+            // enum does not derive PartialEq because its variants
+            // carry float arrays / vecs).
             assert_eq!(format!("{:?}", x.value), format!("{:?}", y.value));
         }
     }
@@ -336,16 +321,16 @@ mod audio_adapter_drift_pins {
     #[test]
     fn adapter_default_snapshot_yields_zeros_in_every_slot() {
         // Drift pin: the default-constructed snapshot (all zeros)
-        // marshals to all-zero scalars and all-zero vec4s. This
-        // is the silence baseline; downstream T2 GPU corpora rely
-        // on it.
+        // marshals to all-zero scalars and all-zero array elements.
+        // This is the silence baseline; downstream T2 GPU corpora
+        // rely on it.
         let uniforms = uniform_input_from_audio_snapshot(&AudioUniformSnapshot::default());
         for u in &uniforms {
-            match u.value {
-                UniformValue::Scalar(v) => assert_eq!(v, 0.0, "{} scalar must be 0", u.name),
-                UniformValue::Vec4(v) => {
-                    for c in v {
-                        assert_eq!(c, 0.0, "{} vec4 component must be 0", u.name);
+            match &u.value {
+                UniformValue::Scalar(v) => assert_eq!(*v, 0.0, "{} scalar must be 0", u.name),
+                UniformValue::FloatArray(arr) => {
+                    for (i, v) in arr.iter().enumerate() {
+                        assert_eq!(*v, 0.0, "{} float-array element {i} must be 0", u.name);
                     }
                 }
                 other => panic!("default snapshot variant unexpected: {other:?}"),
