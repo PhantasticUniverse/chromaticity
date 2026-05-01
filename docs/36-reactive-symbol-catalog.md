@@ -310,6 +310,10 @@ Vector values are JS objects: `vec2 = {x, y}`, `vec3 = {x, y, z}` or `{r, g, b}`
 
 Controls appear as globals named exactly as their `NAME`. For a scene with `NAME: "rate"`, the script global `rate` is the current value. The deprecated `inputs[name]` and `uniforms[name]` shims mirror these under `compat-syn-v1` only.
 
+### 5.1 Known limitations (script-write surface)
+
+- **`chroma_AudioFFT[8]` is producer-only on the script-write side.** The audio→render path is wired end-to-end (`engine/audio::AudioUniformSnapshot::fft_bands` → `engine/render::audio_adapter::uniform_input_from_audio_snapshot` → `UniformValue::FloatArray(8)` GPU binding under catalog v1.3.0), but the script→runtime path does not yet support 8-element float-array reactive writes: `engine/script::ReactiveValueKind::{Scalar, Vec2, Vec3, Vec4}` carries no array variant, so `"chroma_AudioFFT"` resolves to `None` from `ReactiveSymbol::from_name` and surfaces to script as `ScriptError::ReactiveSymbolUnknown` if a scene attempts a `__chromaticityEmit("chroma_AudioFFT", …)` write. Workaround for scripted scenes that need to synthesize / mock the FFT surface today: write the producer-side `AudioUniformSnapshot` directly (test-harness path), or fall back to the per-band scalar primitives `chroma_AudioRMS` / `chroma_AudioPeak` for coarse level-driven reactivity. Closing the asymmetry requires a `ReactiveValueKind::FloatArray<N>` variant plus matching carrier-shape extension on the typed-reactive-write pathway. Tracked as Phase-3+ feature work alongside the deferred axes in `docs/00-phase-0-placeholder-inventory.md` Phase-3+ known limitations and `docs/13-risk-register.md` R-37 Deferred axes; will reopen the script-write surface for `chroma_AudioFFT[8]` when it lands.
+
 ## 6) Coercion Classes (Script and GLSL)
 Canonical names live in this catalog. Coercion classes `CR-01..CR-04` (see `28-implementation-contract-pack.md`) apply to:
 - Case mismatch on control `NAME` -> strict reject, compat warn-and-coerce to canonical case.
