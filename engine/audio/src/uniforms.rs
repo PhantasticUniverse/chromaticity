@@ -491,9 +491,13 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod uniforms_drift_pins {
-    //! Evidence: EV-AUDIO-TRACE (T1) — drift pins on the slice-1
-    //! uniform-extraction algorithm constants and the
-    //! `AudioUniformSnapshot` default-shape baseline.
+    //! Evidence: EV-AUDIO-TRACE (T1) + EV-AUDIO-ROUTING-MATRIX (T1) —
+    //! drift pins on the slice-1 uniform-extraction algorithm
+    //! constants, the `AudioUniformSnapshot` default-shape baseline,
+    //! AND the channel-routing invariants the routing-matrix corpus
+    //! relies on (mono-mix `1/N` aggregation per `docs/06-audio-engine.md`
+    //! §7.1, the RMS/peak/band-edge formulas the matrix corpus pins
+    //! end-to-end through `extract_uniform_snapshot`).
     //!
     //! T1 per `docs/43-development-standards.md` §15.5: each test pins
     //! either a documented algorithm invariant (RMS / peak / band-edge
@@ -502,14 +506,27 @@ mod uniforms_drift_pins {
     //! range). Any drift in the pinned constants or the math fires
     //! the moment `cargo test` runs, before the wider T2 corpus would
     //! catch the same regression as a noisier multi-test failure.
-    //! T1 counts toward `EV-EVIDENCE-TAG-COVERAGE`; T2 corpus lives
-    //! in `engine/audio/tests/uniforms.rs`.
+    //! T1 counts toward `EV-EVIDENCE-TAG-COVERAGE`; T2 corpora live
+    //! in `engine/audio/tests/uniforms.rs` (EV-AUDIO-TRACE) and
+    //! `engine/audio/tests/routing_matrix_corpus/main.rs`
+    //! (EV-AUDIO-ROUTING-MATRIX).
+    //!
+    //! Dual-tag rationale: the routing-matrix evidence row 31's
+    //! validation method ("validate system-audio and channel routing
+    //! coverage") rests on the same in-source algorithm invariants
+    //! that EV-AUDIO-TRACE row 30 already T1-pinned for the slice-1
+    //! uniform extractor. The mono-aggregation `1/N` policy, the RMS
+    //! `sqrt(mean(s^2))` formula, the peak `max(abs)` invariant, and
+    //! the `[20 Hz, 20 kHz]` log-spaced FFT band edges are all
+    //! routing-matrix invariants too; dual-tagging captures that
+    //! without duplicating tests.
     //!
     //! Anchors:
     //! - `docs/26-evidence-artifact-registry.md` row 30 — `EV-AUDIO-TRACE`.
+    //! - `docs/26-evidence-artifact-registry.md` row 31 — `EV-AUDIO-ROUTING-MATRIX`.
     //! - `docs/36-reactive-symbol-catalog.md` §2.7, §2.10, §2.6.
     //! - `docs/43-development-standards.md` §15.5 — T-tier definitions.
-    //! - `docs/06-audio-engine.md` §7.1 — sample-rate / framing baseline.
+    //! - `docs/06-audio-engine.md` §7.1 — sample-rate / framing / channel policy baseline.
 
     use super::{
         AudioUniformSnapshot, BPM_CLAMP_MAX, BPM_CLAMP_MIN, BPM_DEFAULT, FFT_BAND_COUNT,
