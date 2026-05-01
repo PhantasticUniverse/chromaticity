@@ -11,9 +11,9 @@
 //! [`crate::state::State`]; the scheduler runs on that thread and is
 //! the canonical entity that advances [`crate::state::State::frame`].
 //!
-//! ## Slice-3 part 1 scope (this PR)
+//! ## Slice-3 part 1 scope (predecessor PR)
 //!
-//! This PR lands the foundational module surface only:
+//! Slice-3 PR 1 landed the foundational module surface only:
 //!
 //! - The [`Scheduler`] type plus a [`Scheduler::tick`] method that
 //!   drains pending commands via [`CommandBus::commit_all_into`] and
@@ -26,13 +26,41 @@
 //!   scheduler-tick invariants the slice-3 wave's downstream PRs
 //!   build on.
 //!
+//! ## Slice-3 part 5 scope (this PR — observability emit wiring)
+//!
+//! This PR is the FIRST of slice-3 PRs 3 / 4 / 5 (audio snapshot
+//! pull, render dispatch, observability emit) to land. It
+//! establishes the sub-module + builder + tick-step extension
+//! pattern that PRs 3 and 4 mirror, by:
+//!
+//! - Migrating the single-file `scheduler.rs` module into a module
+//!   directory (`scheduler/mod.rs` for the foundational surface +
+//!   `scheduler/observability.rs` for the per-tick metric-emit
+//!   adapter).
+//! - Introducing the [`observability::TickEmitter`] trait + the
+//!   default [`observability::MetricEmitterAdapter`] wrapping any
+//!   `Box<dyn chromaticity_observability::emit::EmitMetric>`.
+//! - Widening the [`Scheduler`] struct with an
+//!   `observability_handler:
+//!   Option<Box<dyn observability::TickEmitter>>` field plus the
+//!   [`Scheduler::with_metric_emitter`] builder.
+//! - Inserting a per-tick emit step into [`Scheduler::tick`] AFTER
+//!   the command-bus drain and frame advancement so the emitter
+//!   observes the post-tick state.
+//!
+//! When no emitter is configured the tick path is a no-op for
+//! observability; the slice-3 PR 1 invariants hold verbatim. The
+//! [`scheduler_pins`] T1 module preserves all four pre-existing
+//! invariants unchanged; new observability-specific T1 pins live
+//! co-located with the adapter under [`observability`].
+//!
 //! Subsequent slice-3 PRs wire the tick into:
 //!
-//! - command-bus commit path observability (PR 2),
 //! - [`chromaticity_audio::AudioUniformSnapshot`] pull (PR 3),
-//! - render dispatch (PR 4),
-//! - observability emission of the `RuntimeFrameAdvanced`
-//!   metric and friends (PR 5).
+//! - render dispatch (PR 4).
+//!
+//! Both follow the sub-module + builder + tick-step pattern this
+//! PR establishes.
 //!
 //! Per-PR scope is intentionally narrow: a single foundational
 //! module landing per PR keeps the integration surface reviewable,
@@ -85,6 +113,8 @@ use crate::command_bus::InMemoryBus;
 use crate::state::State;
 use std::fmt;
 
+pub mod observability;
+
 /// Scheduler ownership of the canonical frame tick per ADR-001
 /// §Decision and ADR-006 §Decision.
 ///
@@ -95,16 +125,37 @@ use std::fmt;
 /// the tick into command-bus observability, audio snapshot
 /// extraction, render dispatch, and observability emission per
 /// the module-level prose above.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Scheduler {
-    // Crate-private internal state to be expanded by slice-3 PRs
-    // 2-5 (audio snapshot pull cadence, render dispatch handle,
-    // observability emitter handle). Slice-3 PR 1 establishes the
-    // type + tick API surface only; carrying a single private
-    // unit-typed field reserves the shape so later widening is a
-    // non-breaking field addition rather than a struct-shape
-    // change at the public API boundary.
+    // Crate-private internal state expanded incrementally across
+    // slice-3 PRs. PR 1 reserved the shape via a single unit-typed
+    // private field; PR 5 adds the optional observability handler
+    // (this field). PRs 3 and 4 will mirror the same
+    // `Option<Box<dyn ...Trait>>` shape for the audio-snapshot pull
+    // and render-dispatch seams respectively.
     _private: (),
+    /// Optional metric-emit handler invoked after every tick.
+    /// Phase-1 stub uses the
+    /// [`chromaticity_observability::emit::InMemoryEmitter`];
+    /// Phase-3+ wires a real metric sink. Set via
+    /// [`Scheduler::with_metric_emitter`]; absent by default — the
+    /// tick path is a no-op for observability when `None`.
+    observability_handler: Option<Box<dyn observability::TickEmitter>>,
+}
+
+impl fmt::Debug for Scheduler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The trait object inside `observability_handler` is not
+        // `Debug`; render only whether a handler is configured, not
+        // its inner state. Mirrors the pattern PRs 3 / 4 will reuse
+        // for their own non-`Debug` trait-object fields.
+        f.debug_struct("Scheduler")
+            .field(
+                "observability_handler",
+                &self.observability_handler.is_some(),
+            )
+            .finish()
+    }
 }
 
 impl Scheduler {
@@ -116,6 +167,25 @@ impl Scheduler {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Configure the scheduler to emit a [`chromaticity_observability::catalog::MetricEvent`]
+    /// after every tick to the provided emitter.
+    ///
+    /// Typical Phase-1 usage wraps a
+    /// [`chromaticity_observability::emit::InMemoryEmitter`] in the
+    /// default [`observability::MetricEmitterAdapter`]; Phase-3+
+    /// usage will swap in a runtime-bus emitter implementation. When
+    /// no emitter is configured, the tick path is a no-op for
+    /// observability — slice-3 PR 1 invariants hold verbatim.
+    ///
+    /// Mirrors the builder pattern slice-3 PRs 3 (audio snapshot
+    /// pull) and 4 (render dispatch) will reuse for their own
+    /// per-tick subsystem handlers.
+    #[must_use]
+    pub fn with_metric_emitter(mut self, emitter: Box<dyn observability::TickEmitter>) -> Self {
+        self.observability_handler = Some(emitter);
+        self
     }
 
     /// Advance the frame by one tick.
@@ -169,6 +239,19 @@ impl Scheduler {
         let events = bus.commit_all_into(state);
         let events_committed = events.len();
         state.frame += 1;
+
+        // Slice-3 PR 5: emit a per-tick MetricEvent when an
+        // observability handler is configured. Ordering is load-
+        // bearing — the emit happens AFTER `commit_all_into`
+        // returned the events AND AFTER the frame counter
+        // increment, so the emitter observes the post-tick state
+        // (the frame the scheduler is now entering, plus the count
+        // of events drained during this tick). When the handler is
+        // `None` the tick path is a no-op for observability and
+        // the slice-3 PR 1 invariants hold verbatim.
+        if let Some(handler) = &self.observability_handler {
+            handler.emit_tick_event(state.frame, events_committed);
+        }
 
         Ok(TickReport {
             frame: state.frame,
