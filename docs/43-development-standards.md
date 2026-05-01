@@ -145,7 +145,7 @@ Risk: R-<NN>
 - `commitlint` validates the PR squash-merge title against Sec.4.1–4.4. Per-commit lint is advisory on feature branches (friendly for WIP), mandatory for the squash-merge commit that lands on `main`.
 - `Signed-off-by` is enforced by a required-status check (`dco`) on every commit in the PR, not only the merge commit.
 - `Profile-Impact` trailer is enforced by a custom check; absence blocks merge.
-- `ADR:` and `Evidence:` trailers are enforced only when the PR labels include `architecture` (Sec.16).
+- `ADR:` and `Evidence:` trailers are required-by-policy on architecture-labeled PRs (Sec.16) and reviewed manually at AO sign-off. **CI enforcement of these trailers is advisory until the label-gated workflow step lands** — `scripts/trailer-check.sh` (lines 15-20) explicitly disclaims this enforcement; it validates `Signed-off-by` and `Profile-Impact` only. The architecture-label-gated workflow step that would read PR labels and grep the synthesised squash body for `^ADR: ADR-` / `^Evidence: EV-` is a deferred CI build-out item; architecture PRs must still attach the trailers per Sec.16, the AO checks them at review time, and `EV-COMMIT-CONVENTION-LINT` (`docs/26` row 100) tracks the residual coverage gap.
 
 The `trailer-check` required context fires at three distinct points:
 

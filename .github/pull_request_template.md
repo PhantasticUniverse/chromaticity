@@ -76,8 +76,12 @@ materially changes. -->
 - [ ] The squash-merge commit will carry a valid `Profile-Impact:` trailer.
 - [ ] Every new source file carries an SPDX header.
 - [ ] `reuse lint` passes locally (or CI).
-- [ ] Tests contributing to an evidence row carry `#[evidence(...)]` tags
-      (or the PR is outside an evidence-producing subtree).
+- [ ] Tests contributing to an evidence row carry the Phase-1 transitional
+      module-level prose tag `//! Evidence: EV-<ID> (T<n>) — explanation` per
+      `docs/43-development-standards.md` §15.2 (the `#[evidence(...)]`
+      attribute macro is reserved for the end-state per §15.2 but not yet
+      implemented; `scripts/evidence-tag-lint.sh` enforces the prose form
+      today). PRs outside an evidence-producing subtree may skip this item.
 - [ ] Migration note is attached if this PR bumps a Sec.5 versioned axis
       in a breaking way.
 - [ ] `adr-lint` passes if `docs/adr/` was touched.

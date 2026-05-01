@@ -445,7 +445,17 @@ RouteStore + Perform / Library / Author / Settings views); W13 CueTransitionCurv
   `LICENSE_FIXTURE`'s capability matrix per `src/lib/stores/capabilities.svelte.ts`
   lines 19-28; the live `EntitlementBitmask` IPC swap-in is Phase-3+/4a
   `EV-ENTITLEMENT-ENFORCEMENT` scope, so chrome elements render as if a fully-
-  activated license were installed until that lands.
+  activated license were installed until that lands. **Wireframe-faithful chrome
+  ported, not engine-wired.** The Spectrum / BpmRing / BeatDots / AudioReactivity
+  widgets run rAF against synthetic time-domain functions per their in-source
+  "Frozen frame contract: synthetic, no IPC dispatch" comments. The producer-side
+  `engine/audio::AudioUniformSnapshot` is real (slice-1 + slice-2 + slice-3a/b
+  - Tier-9 + Tier-11 cross-tag landed), and `engine/render::audio_adapter`
+    marshals it to GPU uniforms feature-gated under `audio-binding`, but the IPC
+    bridge that would carry that producer data through Tauri to the Svelte
+    visualizer surface is Phase-3+/4a `EV-INTEGRATION-MATRIX` scope. The
+    `AudioReactivity` widget is similarly stubbed (band-tile values, BPM, peer-
+    count, tap button — visual stubs; no IPC dispatch).
 
 ## Where authoritative answers live
 

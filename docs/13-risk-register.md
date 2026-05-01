@@ -72,7 +72,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - adapter conformance tests,
  - health state machine,
  - bounded retry and clear diagnostics.
-- Residual: Low. `EV-INTEGRATION-MATRIX` + 100/250/500/1000/2000 reconnect cadence + per-adapter isolation hold SLO-04 comfortably; the OSC adapter additionally realises bounded retry (5 attempts, exponential 100/200/400/800/1600 ms — landed across W4 OSC adapter slice work) and an adapter-internal health state machine (`OscHealthState::{Healthy, Recovering, Degraded}` in PR 100, with `simulate_recv_failure_for_test` seam added W7 PR2 to cover the `Degraded` transition). Route-mismatch diagnostics remain a slice-3 TODO. Residual is dominated by vendor-specific driver behaviour.
+- Residual: **Pre-evidence Medium / Post-evidence Low**. `EV-INTEGRATION-MATRIX` is `Planned` per `docs/26` row 37 (no `ci-run-url` yet), so the Low residual is the post-evidence target rather than empirical confirmation; the Medium pre-evidence residual reflects the substantive design + scaffolding (100/250/500/1000/2000 reconnect cadence + per-adapter isolation) that is expected to drive SLO-04 comfortably once the row transitions. Re-rating to Low on the Residual line is gated on `EV-INTEGRATION-MATRIX` transitioning to `Pass`. The OSC adapter additionally realises bounded retry (5 attempts, exponential 100/200/400/800/1600 ms — landed across W4 OSC adapter slice work) and an adapter-internal health state machine (`OscHealthState::{Healthy, Recovering, Degraded}` in PR 100, with `simulate_recv_failure_for_test` seam added W7 PR2 to cover the `Degraded` transition). Route-mismatch diagnostics remain a slice-3 TODO. Residual is dominated by vendor-specific driver behaviour.
 - Owner: Integration lead.
 
 ### R-06 State Race Conditions Across Input Sources
@@ -83,7 +83,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - command bus ordering rules,
  - single canonical commit path,
  - replay-based state validation tests.
-- Residual: Low. Single canonical commit path plus `EV-STATE-REPLAY` deterministic replay effectively eliminate races in bounded tests; residual covers pathological burst patterns beyond fuzz coverage.
+- Residual: **Pre-evidence Medium / Post-evidence Low**. `EV-STATE-REPLAY` is `Planned` per `docs/26` row 32 (no `ci-run-url` yet), so the Low residual is the post-evidence target rather than empirical confirmation. Single canonical commit path plus `EV-STATE-REPLAY` deterministic replay are designed to eliminate races in bounded tests; the Medium pre-evidence residual reflects that the empirical confirmation is pending. Re-rating to Low is gated on the row transitioning to `Pass`; residual covers pathological burst patterns beyond fuzz coverage.
 - Owner: State model lead.
 
 ### R-07 Memory Growth During Long Sessions
@@ -94,7 +94,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - soak tests,
  - resource lifetime audits,
  - allocator telemetry.
-- Residual: Low / Medium. `EV-SOAK-CHAOS` 24 h soak is sufficient for typical tour lengths; residual covers multi-day residency-club installations above soak coverage.
+- Residual: **Pre-evidence Medium / Post-evidence Low / Medium**. `EV-SOAK-CHAOS` is `Planned` per `docs/26` row 38 (no `ci-run-url` yet), so the Low / Medium residual is the post-evidence target. The 24 h soak is designed to be sufficient for typical tour lengths; residual covers multi-day residency-club installations above soak coverage. Re-rating to Low / Medium on the Residual line is gated on `EV-SOAK-CHAOS` transitioning to `Pass`.
 - Owner: Runtime/platform lead.
 
 ### R-08 Under-scoped Test Harness

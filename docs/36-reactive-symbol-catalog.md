@@ -306,6 +306,8 @@ The Script Host (`script.js`) sees every symbol in Sec.1-3 as a JS global with m
 
 Vector values are JS objects: `vec2 = {x, y}`, `vec3 = {x, y, z}` or `{r, g, b}`, `vec4 = {x, y, z, w}` or `{r, g, b, a}`.
 
+**Array-shaped uniforms are producer-only on the script-write side.** Symbols whose underlying GLSL type is `float[N]` (or any future `vec2[N]` / `vec4[N]` batched array) — currently `chroma_AudioFFT[8]` from §2.11, and reserved future `syn_RES`-style vec2-batched uniforms cited in `engine/render/src/multipass.rs` module prose — are exposed to the script host as JS arrays for read access via the producer pipeline, but cannot be the target of `__chromaticityEmit(name, value)` reactive writes from script. The `engine/script` carrier vocabulary (`ReactiveValueKind::{Scalar, Vec2, Vec3, Vec4}`) does not yet support 8-element float-array writes; see the inline retirement note in `engine/script/src/reactive_symbol.rs` for the canonical reasoning. Catalog v1.3.0 retired the v1.2.0 transitional split-vec4 spelling (`chroma_AudioFFTLow` / `chroma_AudioFFTHigh`) on the script-write side alongside the engine-side consolidation; an array-carrier `ReactiveValueKind` variant is future-slice scope and will reopen the script-write surface for `chroma_AudioFFT[8]` when it lands.
+
 Controls appear as globals named exactly as their `NAME`. For a scene with `NAME: "rate"`, the script global `rate` is the current value. The deprecated `inputs[name]` and `uniforms[name]` shims mirror these under `compat-syn-v1` only.
 
 ## 6) Coercion Classes (Script and GLSL)
