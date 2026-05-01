@@ -75,8 +75,13 @@
 //!   (`docs/adr/ADR-009-activation-and-entitlements.md`).
 
 pub mod capability;
+pub mod enforcement;
 pub mod token;
 
+pub use enforcement::{
+    Clock, FREE_CAPABILITIES, FixedClock, HONORED_TOKEN_CAPABILITIES, SystemClock, entitled,
+    is_valid_at,
+};
 pub use token::{
     CanonicalCborError, Flags, MachineBinding, Session, Signature, Token, canonical_cbor_decode,
     canonical_cbor_encode,
