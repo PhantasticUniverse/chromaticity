@@ -625,3 +625,221 @@ verified out-of-scope or scheduled to later phases:
       proper Phase-4+ home. **Phase-3 EXIT achieved 2026-05-01 at
       commit `953fd74`**. Signed by AO `@PhantasticUniverse` on
       2026-05-01.
+
+## Phase-4a Wave 1a simulation pre-pass
+
+The Phase-4a EXIT gate set per `docs/26-evidence-artifact-registry.md`
+§Phase Gate Evidence Sets line 128 enumerates eleven required evidence
+IDs: `EV-INTEGRATION-MATRIX`, `EV-HOTKEY-PARITY-CONFORMANCE`,
+`EV-HOTKEY-COMPLETENESS`, `EV-HOTKEY-CONFLICT`, `EV-MIDI-EXTENDED`,
+`EV-NET-HARDENING`, `EV-ENTITLEMENT-ENFORCEMENT`,
+`EV-ENTITLEMENT-OFFLINE`, `EV-ENTITLEMENT-REVOCATION`,
+`EV-ENTITLEMENT-FREE-FEATURES`, and `EV-HEALTH-METRICS-LOOPBACK-ONLY`.
+Per `docs/26` §Rules line 194, Phase-4a EXIT requires all eleven rows
+at `Pass` — except where the AO has explicitly recorded a deferral with
+proper-home notation in `docs/13-risk-register.md` R-37.
+
+This section runs the Phase-4a Wave 1a **pre-pass** simulation against
+HEAD `b335939` (post wave-PR `#325` merge) — the freshest green
+workspace test job on `main` covering the Phase-4a Wave 1a feat PR
+quartet (`#322` `#323` `#324` `#325`) plus slice-3 PR 1 (`#321`). The
+wave landed across four feat PRs (hotkey parity + completeness +
+conflict corpus, OSC integration-matrix + net-hardening corpus,
+observability catalog-conformance + no-network-egress corpus,
+entitlement enforcement + offline + revocation + free-features corpus
+bundle) plus this `docs(repo)` flip PR transitioning rows 37, 73, 74,
+75, 82, 87, 88, 89, 91, 95 from `Planned` to `Pass`.
+
+### Per-Type Minimums verification (Automated suite rows)
+
+`docs/26` line 159 specifies the Per-Type Minimums for Automated suite
+rows (a) `ci-run-url` or `repo-path` to test report artifact, (b) CI
+run identifier with green status for pinned corpus version, (c)
+corpus/fixture version recorded, (d) drift thresholds applied. Row-by-
+row verification at HEAD `b335939`:
+
+- **Row 37 `EV-INTEGRATION-MATRIX`** — (a) `ci-run-url:25213038199`
+  + repo-path chain. (b) green workspace nextest job on `main` HEAD
+  `77f174c` post-`#323` merge. (c) corpus version pinned by Phase-4a
+  Wave 1a-A wave-PR (`integrations/osc-adapter/tests/
+  integration_matrix_corpus/main.rs` — 15 fixtures × 100 trials
+  covering 4 route prefixes + path-traversal + adapter state machine
+  + UDP loopback bind + packet validation). (d) drift thresholds
+  applied via cross-trial identity assertion + per-fixture rejection-
+  path assertion + dual-tagged `defaults.rs` pins shared with row 82
+  EV-NET-HARDENING. **Phase-4a Wave 1a scope row 37 narrowed to OSC
+  routing-matrix conformance only** per AO direction; MIDI / camera
+  / Syphon / audio-uniform-IPC arms deferred to Wave 1b.
+- **Row 73 `EV-HOTKEY-PARITY-CONFORMANCE`** — (a) `ci-run-url:
+  25212775046` + repo-path chain. (b) green workspace Vitest job on
+  `main` HEAD `a665d72` post-`#322` merge. (c) corpus version pinned
+  by Phase-4a Wave 1a-B wave-PR (`src/lib/__tests__/
+  hotkeys-parity.test.ts` — 6 fixtures pinning D/R/P/L → IPC
+  contract via `vi.hoisted` invoke mock). (d) drift thresholds
+  applied via direct invoke-mock-call assertion per fixture against
+  the `docs/42` Sec.1 D/R/P/L parity contract.
+- **Row 74 `EV-HOTKEY-COMPLETENESS`** — (a) `ci-run-url:25212775046`
+  + repo-path chain. (b) green workspace Vitest job on `main` HEAD
+  `a665d72` post-`#322` merge. (c) corpus version pinned by Phase-4a
+  Wave 1a-B wave-PR (`src/lib/__tests__/
+  hotkeys-completeness.test.ts` — 8 fixtures validating the 57-row
+  vocabulary in `src/lib/data/hotkeys.ts`: 10 groups, non-empty
+  keys + action, capability namespace ⊂ ALL ∪ {'free'}, no verbatim
+  duplicates). (d) drift thresholds applied via direct equality
+  assertion per fixture against the `docs/42` Sec.1-10 contract.
+- **Row 75 `EV-HOTKEY-CONFLICT`** — (a) `ci-run-url:25212775046` +
+  repo-path chain. (b) green workspace Vitest job on `main` HEAD
+  `a665d72` post-`#322` merge. (c) corpus version pinned by Phase-4a
+  Wave 1a-B wave-PR (`src/lib/__tests__/hotkeys-conflict.test.ts` —
+  8 fixtures encoding 6-context taxonomy + Cmd↔Ctrl + Opt↔Alt
+  cross-platform alias normalization + rules 1-5 from `docs/42`
+  Sec.Conflict-and-priority-rules). (d) drift thresholds applied via
+  direct equality assertion per fixture against the conflict-and-
+  priority-rules contract.
+- **Row 82 `EV-NET-HARDENING`** — (a) `ci-run-url:25213038199` +
+  repo-path chain. (b) green workspace nextest job on `main` HEAD
+  `77f174c` post-`#323` merge. (c) corpus version pinned by Phase-4a
+  Wave 1a-A wave-PR (`integrations/osc-adapter/tests/
+  network_hardening_corpus/main.rs` — 10 fixtures validating ADR-013
+  defaults + rate-limit precedence + allowlist boundary + oversized-
+  packet outcome counter). (d) drift thresholds applied via direct
+  equality assertion per fixture against ADR-013 §1/3/5 constants
+  and dual-tagged `defaults.rs` pins shared with row 37
+  EV-INTEGRATION-MATRIX.
+- **Row 87 `EV-ENTITLEMENT-ENFORCEMENT`** — (a) `ci-run-url:
+  25213475549` + repo-path chain. (b) green workspace nextest +
+  Vitest jobs on `main` HEAD `b335939` post-`#325` merge. (c) corpus
+  version pinned by Phase-4a Wave 1a-D wave-PR
+  (`engine/entitlement/src/enforcement.rs` 377 LoC enforcement
+  module + `engine/entitlement/tests/enforcement_corpus/main.rs`
+  8 fixtures + `src/lib/stores/__tests__/
+  capabilities-conformance.test.ts` 6 fixtures). (d) drift thresholds
+  applied via direct boolean assertion per fixture + <1µs latency
+  assertion + `Send + Sync` trait check. **Phase-4a Wave 1a scope
+  row 87 narrowed to MVP watermark-on/off only** per AO direction;
+  tier capability gating beyond the watermark deferred to post-MVP.
+- **Row 88 `EV-ENTITLEMENT-OFFLINE`** — (a) `ci-run-url:25213475549`
+  + repo-path chain. (b) green workspace nextest job on `main` HEAD
+  `b335939` post-`#325` merge. (c) corpus version pinned by Phase-4a
+  Wave 1a-D wave-PR (`engine/entitlement/tests/
+  offline_revocation_corpus/main.rs` — 8 fixtures dual-tagged with
+  row 89, covering 14-day offline window honor + post-expiry deny +
+  boundary at `expires_at` + injected-clock determinism). (d) drift
+  thresholds applied via cross-trial identity assertion per fixture
+  against the 14-day window contract.
+- **Row 89 `EV-ENTITLEMENT-REVOCATION`** — (a) `ci-run-url:
+  25213475549` + repo-path chain. (b) green workspace nextest job
+  on `main` HEAD `b335939` post-`#325` merge. (c) corpus version
+  pinned by Phase-4a Wave 1a-D wave-PR (same dual-tagged
+  `engine/entitlement/tests/offline_revocation_corpus/main.rs`
+  8 fixtures as row 88; expiry-based revocation only). (d) drift
+  thresholds applied via cross-trial identity assertion per fixture.
+  **Phase-4a Wave 1a scope row 89 narrowed to expiry-based
+  revocation only** per AO direction; deny-list activation behavior
+  is post-MVP optional and out-of-scope for this row.
+- **Row 91 `EV-ENTITLEMENT-FREE-FEATURES`** — (a) `ci-run-url:
+  25213475549` + repo-path chain. (b) green workspace nextest job
+  on `main` HEAD `b335939` post-`#325` merge. (c) corpus version
+  pinned by Phase-4a Wave 1a-D wave-PR (`engine/entitlement/tests/
+  free_features_corpus/main.rs` — 12 fixtures pinning the ADR-009
+  §Explicitly-free namespace: pause + transitions-off + playlist-next
+  + playlist-previous + preset-recall + snap-recall + snap-save +
+  scene-export + 4 token-absent-still-grants paths). (d) drift
+  thresholds applied via direct boolean assertion per fixture
+  against the `FREE_CAPABILITIES` array.
+- **Row 95 `EV-HEALTH-METRICS-LOOPBACK-ONLY`** — (a) `ci-run-url:
+  25213270708` + repo-path chain. (b) green workspace nextest job
+  on `main` HEAD `e8917c3` post-`#324` merge. (c) corpus version
+  pinned by Phase-4a Wave 1a-C wave-PR
+  (`engine/observability/tests/catalog_conformance/main.rs` —
+  12 fixtures validating Phase-1 baseline catalog per `docs/31`;
+  `engine/observability/tests/no_network_egress/main.rs` —
+  4 fixtures verifying no-network-egress invariants). (d) drift
+  thresholds applied via direct equality + structural-pin assertion
+  per fixture against the `docs/31` Phase-1 baseline contract.
+
+### Verdict
+
+Five of the eleven Phase-4a EXIT evidence IDs satisfy the Per-Type
+Minimums at HEAD `b335939` (counting hotkey rows 73-75 as a single
+group, entitlement rows 87-89 + 91 as a single group, and rows 37 +
+82 + 95 individually): five row groups covering ten registry rows are
+at `Pass` in `docs/26-evidence-artifact-registry.md`. Six Phase-4a
+EXIT rows remain `Planned` for Wave 1b: row 80 `EV-MIDI-EXTENDED`,
+the four deferred arms behind row 37 `EV-INTEGRATION-MATRIX` (MIDI
+conformance, camera conformance, Syphon conformance, audio-uniform-
+IPC arm), and entitlement tier-gating beyond the MVP watermark
+surface (which extends rows 87 and the post-MVP capability matrix).
+
+This is a **Wave 1a pre-pass simulation**, not a full Phase-4a EXIT
+sign-off. Per `docs/26` §Rules line 194, Phase-4a EXIT requires all
+eleven rows at `Pass`; Wave 1b closure remains a prerequisite. Wave
+1a partial closure is recorded in `docs/13-risk-register.md` R-37
+across the wave-PR `#321` `#322` `#323` `#324` `#325` paragraph
+appended at the bottom of R-37. Phase-4 EXIT itself remains AO-held
+until all four sub-phases (4a / 4b / 4c / 4d) close per `docs/11-
+roadmap-phases.md`; this audit pre-pass does not pre-empt the
+Phase-4a EXIT closure decision (which remains AO-held until Wave 1b
+lands the remaining six rows).
+
+### Deferred axes recorded for Wave 1b homes
+
+These items were considered as candidates for Phase-4a Wave 1a closure
+but verified out-of-scope per AO narrowing direction or scheduled to
+later waves:
+
+- **Row 80 `EV-MIDI-EXTENDED`** — Wave 1b scope. The hotkey corpus
+  (rows 73-75) covers control-focused parity + 57-row vocabulary
+  completeness + 6-context conflict resolution but does not exercise
+  the extended MIDI surface (CC + NRPN + program change + sysex
+  routing) — that is row 80's surface and lands in Wave 1b.
+- **Row 37 `EV-INTEGRATION-MATRIX` MIDI / camera / Syphon / audio-
+  uniform-IPC arms** — Wave 1b scope. Wave 1a narrowed to OSC
+  routing-matrix conformance only per AO direction. The four
+  deferred arms each follow the same fixture-corpus pattern against
+  the relevant integration crate when those crates exist (MIDI
+  adapter crate, camera-input integration, Syphon publisher, Tauri
+  audio-uniform IPC bridge).
+- **Entitlement tier-gating beyond MVP watermark (rows 87 + post-MVP
+  surface)** — Wave 1b scope. Wave 1a closure is narrowed to the
+  watermark-on/off MVP per AO direction (`docs/11` line ~125). Tier
+  capability gating beyond the watermark surface is post-MVP and
+  lands in a Wave 1b expansion of row 87 + the deferred ADR-009 tier
+  matrix.
+- **`EV-SCHEDULER-TICK` (row 38) Pass-anchor** — slice-3 PR 1
+  (`#321`, merge `5c1aeb3`) introduced the foundational `Scheduler`
+  + `Scheduler::tick` API per ADR-001/006 with the new evidence ID
+  added in `Planned` state; the Pass transition lands in the
+  slice-3 closing docs PR after PRs 2-6 of the slice-3 wave land.
+  Not part of the Phase-4a EXIT gate set per `docs/26` line 128;
+  tracked separately under the Phase-4+ release cumulative gate.
+
+### Sign-off
+
+- [ ] Phase-4a Wave 1a pre-pass simulation ran to completion at HEAD
+      `b335939`. Five of the eleven Phase-4a EXIT evidence IDs
+      satisfy the Per-Type Minimums and are at `Pass`:
+      `EV-INTEGRATION-MATRIX` (row 37, run id 25213038199, narrowed
+      to OSC routing-matrix conformance only),
+      `EV-HOTKEY-PARITY-CONFORMANCE` (row 73, run id 25212775046),
+      `EV-HOTKEY-COMPLETENESS` (row 74, run id 25212775046),
+      `EV-HOTKEY-CONFLICT` (row 75, run id 25212775046),
+      `EV-NET-HARDENING` (row 82, run id 25213038199),
+      `EV-ENTITLEMENT-ENFORCEMENT` (row 87, run id 25213475549,
+      narrowed to MVP watermark-on/off only),
+      `EV-ENTITLEMENT-OFFLINE` (row 88, run id 25213475549),
+      `EV-ENTITLEMENT-REVOCATION` (row 89, run id 25213475549,
+      narrowed to expiry-based revocation only),
+      `EV-ENTITLEMENT-FREE-FEATURES` (row 91, run id 25213475549),
+      and `EV-HEALTH-METRICS-LOOPBACK-ONLY` (row 95, run id
+      25213270708). Six Phase-4a EXIT rows remain `Planned` for
+      Wave 1b: row 80 `EV-MIDI-EXTENDED`, the four deferred arms
+      behind row 37 `EV-INTEGRATION-MATRIX` (MIDI conformance,
+      camera conformance, Syphon conformance, audio-uniform-IPC
+      arm), and entitlement tier-gating beyond the MVP watermark
+      surface. Phase-4a Wave 1a narrowing decisions for rows 37 +
+      87 + 89 are recorded in their Description column updates;
+      the deferred-axes list above records each item's proper
+      Wave 1b home. **Pre-pass only — full Phase-4a EXIT requires
+      all 11 rows at `Pass`, contingent on Wave 1b closure.**
+      Sign-off pending the Wave 1b closing docs PR.
