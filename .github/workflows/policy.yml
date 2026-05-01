@@ -223,6 +223,93 @@ jobs:
       - name: Run trailer-check regression harness
         run: bash scripts/test-trailer-check.sh
 
+  # ---------------------------------------------------------------
+  # architecture-trailer-check : enforce docs/43 Sec.4.6 ADR + Evidence
+  # trailers on PRs carrying the `architecture` label.
+  #
+  # Two-step rollout: this job ships as ADVISORY (non-required) so the
+  # AO can validate behavior against 1-2 architecture-labeled PRs
+  # before promoting it to a required branch-protection context via
+  # Settings -> Branches. The script's label gate keeps the cost at
+  # one `gh api` round trip on non-architecture PRs (the 99% path).
+  # The canonical label is `architecture` per .github/labels.yml line
+  # 106; there is no `solo-merge` label (succession-waiver uses a
+  # different trailer-presence gate handled by the sibling job below).
+  #
+  # Untrusted-payload handling matches the trailer-check job above:
+  # PR_TITLE + PR_BODY are bound to step-level env: entries and
+  # consumed only via `printf '%s'`, never interpolated into command
+  # text. See policy.yml's header prose.
+  # ---------------------------------------------------------------
+  architecture-trailer-check:
+    name: architecture-trailer-check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Synthesise the would-be squash-merge body from PR_TITLE +
+      # PR_BODY exactly like the trailer-check job's
+      # `Validate synthesised squash-merge body` step does. The repo's
+      # squash template = "Default to pull request title and
+      # description", so this is what will land on main verbatim.
+      - name: Validate architecture trailers on synthesised PR body
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" \
+            | bash scripts/architecture-trailer-check.sh --stdin
+
+  # ---------------------------------------------------------------
+  # succession-waiver-check : enforce docs/43 Sec.7.6 on solo-merge
+  # events. The `Succession-Waiver: T1 | T2` trailer presence is itself
+  # the gate signal — there is no GitHub label for solo-merge. Runs
+  # unconditionally on every PR + merge_group event; on the 99% of PRs
+  # without a Succession-Waiver trailer, the script is a no-op.
+  #
+  # Two-step rollout: ships as ADVISORY (non-required); the AO promotes
+  # to required after validation against 1-2 architecture-labeled PRs
+  # (which double-validate the trailer-extraction codepath shared by
+  # both new jobs) via Settings -> Branches.
+  #
+  # Untrusted-payload handling: same env-binding convention as the
+  # trailer-check job; see policy.yml header.
+  # ---------------------------------------------------------------
+  succession-waiver-check:
+    name: succession-waiver-check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate succession-waiver trailer on synthesised PR body
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -eu
+          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" \
+            | bash scripts/succession-waiver-check.sh --stdin
+
+      # On merge_group events, no PR title/body is available; the
+      # queue-side commit message is what will land on main, so
+      # validate it directly via HEAD.
+      - name: Validate succession-waiver trailer on queue-side HEAD
+        if: github.event_name == 'merge_group'
+        run: bash scripts/succession-waiver-check.sh HEAD
+
   codeowners-location:
     name: codeowners-location
     runs-on: ubuntu-latest
