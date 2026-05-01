@@ -6,7 +6,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 # Standard Uniforms — A First-Author's Guide
 
 This page is a first-time-author rendering of
-`36-reactive-symbol-catalog.md` v1.1.0. It introduces the small set of
+`36-reactive-symbol-catalog.md` v1.2.0. It introduces the small set of
 uniforms you need to make your first audio-reactive scene work and points
 at the catalog for the full picture.
 
@@ -118,6 +118,27 @@ is documented in `06-audio-engine.md` §7.8 – §7.9.
   Useful for "song is happening" gating.
 - **`syn_Intensity`** — slow accumulator following overall song intensity.
 
+### Native audio analysis primitives (catalog §2.11)
+
+Slice-5a introduced four chromaticity-native uniforms exposing raw analysis
+values from the audio hop, complementing the smoothed/normalised `syn_Level*`
+and `syn_Spectrum` parity surfaces:
+
+- **`chroma_AudioRMS`** (`float`) — instantaneous RMS energy of the current
+  hop. Non-normalised.
+- **`chroma_AudioPeak`** (`float`) — instantaneous peak magnitude of the
+  current hop. Non-normalised.
+- **`chroma_AudioFFTLow`** (`vec4`) — log-spaced FFT bands `[0..=3]` (lowest
+  band at `.x`, band 3 at `.w`).
+- **`chroma_AudioFFTHigh`** (`vec4`) — log-spaced FFT bands `[4..=7]` (band 4
+  at `.x`, highest band at `.w`).
+
+Use these when you want raw inputs for your own envelope or smoothing logic;
+reach for the `syn_Level*` family when you want behaviour matched to reference
+scenes. The split-`vec4` FFT spelling is transitional — the catalog notes the
+planned consolidation to a single `chroma_AudioFFT[8]` array uniform once
+the render-side `UniformValue` enum grows an array variant.
+
 ## What the values do when audio is silent or unavailable
 
 - **Silence detection** triggers when whole-band level stays below `0.05`
@@ -150,7 +171,7 @@ is documented in `06-audio-engine.md` §7.8 – §7.9.
 
 - **Build something with these symbols:** `04-first-scene-tutorial.md`.
 - **Scene manifest reference:** `02-scene-format.md`.
-- **The full normative catalog:** `36-reactive-symbol-catalog.md` v1.1.0.
+- **The full normative catalog:** `36-reactive-symbol-catalog.md` v1.2.0.
 - **Audio analysis spec (numeric contract):** `06-audio-engine.md` §7.
 - **Drift tolerance families:** `10-performance-latency-budgets.md`
   (`LVL`, `HIT`, `TIM`, `PRS`, `BEAT`, `BPM`, `LRG`).

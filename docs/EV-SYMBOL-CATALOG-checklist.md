@@ -171,3 +171,49 @@ For the `1.1.0` ratification covered by this checklist:
       appended to `docs/22`; `EV-*` fixture coverage scheduled into Phase-2
       evidence-row closure). The `EV-SYMBOL-CATALOG` Phase 0 exit gate is closed.
       Signed by AO `@PhantasticUniverse` on 2026-04-29.
+
+## Subsequent ratification log
+
+The Phase-0 exit gate was closed on 2026-04-29 with catalog version `1.1.0`.
+Subsequent catalog version bumps record their AO sign-off below; they remain
+governed by `docs/36` Sec.8 change-control criteria but do not re-open the
+Phase-0 gate.
+
+### Catalog version `1.2.0` — 2026-05-01
+
+**Scope.** Added Sec.2.11 native audio analysis primitives
+(`chroma_AudioRMS`, `chroma_AudioPeak`, `chroma_AudioFFTLow`,
+`chroma_AudioFFTHigh`) introduced by the slice-5a `engine/render` ↔
+`engine/audio` cross-crate adapter (`engine/render/src/audio_adapter.rs`). The
+split-`vec4` FFT spelling is documented as transitional; the planned
+consolidation to a single `chroma_AudioFFT[8]` array uniform — pending an array
+variant on `engine/render/src/multipass.rs::UniformValue` — is noted in
+Sec.2.11 and Sec.8 so authoring surface remains stable across the transition.
+
+**Sec.8 change-control compliance.**
+
+- (a) **Catalog version bumped** to `1.2.0` in `docs/36` Sec.8 (`Catalog version
+      \`1.2.0\`: added Sec.2.11 ...` line).
+- (b) **`EV-*` fixture coverage satisfied without new authoring.** Slice-5a's
+      existing T1 drift pins
+      (`engine/render/src/audio_adapter.rs::audio_adapter_drift_pins`, six
+      pinned tests covering symbol-name vocabulary, FFT-band-count invariant,
+      five-uniform documented order, scalar-variant mapping, vec4 FFT split,
+      adapter purity, and default-snapshot zero baseline) and T2 GPU-roundtrip
+      corpus (`engine/render/tests/audio_adapter.rs`, silent-frame and 440 Hz
+      sine byte-hash fixtures) already exercise every binding in Sec.2.11. The
+      v1.1.0 ratification deferred fixture coverage to Phase-2 evidence-row
+      closure, which has since landed under `EV-RENDER-CONFORMANCE` (row 28)
+      and `EV-AUDIO-TRACE` (row 30).
+- (c) **Release-notes entry appended** to
+      `docs/22-compatibility-versioning-policy.md` Catalog Ratification Log
+      (v1.2.0 row, 2026-05-01) by this PR.
+
+**Cross-workcell coverage.** The Sec.2.11 surface lives entirely within the
+AI Runtime Workcell's audio-uniform exposure boundary (`engine/render` consumes
+`engine/audio` plain-data shape via the slice-5a adapter); no AI Scene
+Workcell-owned surface is touched. AO sign-off proxies for cross-workcell
+review per the governance posture established for the v1.1.0 ratification.
+
+**Sign-off.** AO `@PhantasticUniverse` ratifies the v1.2.0 catalog addition on
+2026-05-01.

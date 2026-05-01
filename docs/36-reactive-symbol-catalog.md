@@ -148,6 +148,23 @@ These symbols appear in `SynesthesiaEngine.framework` and/or bundled reference s
 
 Rationale for promoting these to Profile C: `syn_InputLevel` appears in a shipped reference scene, so any parity scene loader that rejects it breaks out-of-the-box. `syn_RawLevel` is the reference's documented name for the same value; shipping only one of the two spellings leaves authors who followed the docs stranded. `syn_BassExpoCurve` likewise breaks exactly one shipped scene if omitted but the formula is trivial.
 
+### 2.11 Native audio analysis primitives (`chroma_*`; slice-5a-introduced)
+
+These four uniforms are net-new chromaticity-native primitives introduced by the slice-5a `engine/render` ↔ `engine/audio` cross-crate adapter (`engine/render/src/audio_adapter.rs`). They expose raw analysis values from the slice-1 `AudioUniformSnapshot` producer, complementing the normalised / smoothed `syn_Level*` (Sec.2.2) and `syn_Spectrum` (Sec.2.1) parity surfaces with lower-level inputs that scenes can post-process to taste. They are a chromaticity-first surface — the catalog has no native equivalents at this abstraction level — so the namespace governance rule (Sec.Namespace governance) requires the `chroma_*` prefix for the new symbols.
+
+| Symbol | GLSL type | Profile | Cadence | Semantics |
+|---|---|---|---|---|
+| `chroma_AudioRMS` | `float` | D | per-frame | Instantaneous root-mean-square energy of the current audio hop, sourced from `chromaticity_audio::extract_uniform_snapshot`. Non-normalised (range `[0, inf)`); for normalised band-level reactivity use the `syn_Level*` family. |
+| `chroma_AudioPeak` | `float` | D | per-frame | Instantaneous peak absolute magnitude of the current audio hop. Non-normalised; pairs with `chroma_AudioRMS` for envelope-shaped reactivity. |
+| `chroma_AudioFFTLow` | `vec4` | D | per-frame | Log-spaced FFT bands `[0..=3]` from `AudioUniformSnapshot::fft_bands`. Component `.x` is the lowest band; `.w` is band 3. Band-edge contract is the producer-side FFT analyser (`06-audio-engine.md` Sec.7.4). |
+| `chroma_AudioFFTHigh` | `vec4` | D | per-frame | Log-spaced FFT bands `[4..=7]` from the same 8-band array. Component `.x` is band 4; `.w` is the highest band. |
+
+Notes:
+
+- `syn_BPM` (Sec.2.7) is the fifth uniform the slice-5a adapter binds and is unchanged here. It stays under `compat-syn-v1` canonical retention per Sec.Namespace governance line 18; the adapter marshals it from `AudioUniformSnapshot::bpm` (the slice-2 history-window estimator).
+- The split-`vec4` FFT spelling is a transitional shape. `engine/render/src/multipass.rs::UniformValue` does not yet carry an array variant; when it does, the four primary names above stay stable while the FFT split can collapse into a single `chroma_AudioFFT[8]` array uniform without breaking authoring surface. See Sec.8.
+- Evidence anchors: `docs/26-evidence-artifact-registry.md` row 28 (`EV-RENDER-CONFORMANCE`) and row 30 (`EV-AUDIO-TRACE`) both cite the slice-5a adapter, its T1 drift pins (`engine/render/src/audio_adapter.rs::audio_adapter_drift_pins`), and its T2 GPU-roundtrip corpus (`engine/render/tests/audio_adapter.rs`).
+
 ## 3) Meta Controls
 
 Meta controls are global runtime state, published as GLSL uniforms with a leading underscore naming convention (`_Foo`) and helper functions that apply them (`_applyFoo`). They are owned by `StateCore` (see `28-implementation-contract-pack.md` CP-04). They persist across scene switches unless the operator resets them.
@@ -318,3 +335,4 @@ Meta-control visual drift is tested by the meta-pipeline fixture set (see `34-go
 - Any new `syn_*` symbol proposal requires explicit compatibility-only justification and an accompanying `chroma_*` canonical proposal (or a written exception citing unavoidable parity lock-in).
 - Catalog version at ratification: `1.0.0` (targets Chromaticity `compat-syn-v1` and `native-chroma-v1` baseline).
 - Catalog version `1.1.0`: added Sec.2.10 reference-surface uniforms (`syn_InputLevel`, `syn_RawLevel`, `syn_BassExpoCurve`, `syn_Threshold`, `syn_PrimeAndBang`) and Sec.2.1 non-parity per-band time-series/spectrum spelling disposition. Formulas in `06-audio-engine.md` Sec.7.12.
+- Catalog version `1.2.0`: added Sec.2.11 native audio analysis primitives (`chroma_AudioRMS`, `chroma_AudioPeak`, `chroma_AudioFFTLow`, `chroma_AudioFFTHigh`) introduced by the slice-5a `engine/render` ↔ `engine/audio` cross-crate adapter. Sec.8 (b) `EV-*` fixture coverage is satisfied by slice-5a's pre-existing T1 drift pins (`engine/render/src/audio_adapter.rs::audio_adapter_drift_pins`) and T2 GPU-roundtrip corpus (`engine/render/tests/audio_adapter.rs`) under `EV-RENDER-CONFORMANCE` (row 28) and `EV-AUDIO-TRACE` (row 30); release-notes entry appended to `docs/22-compatibility-versioning-policy.md`. The split-`vec4` FFT spelling (`chroma_AudioFFTLow` + `chroma_AudioFFTHigh`) is a transitional shape pending an array variant on `engine/render/src/multipass.rs::UniformValue`; when that lands the four primary names stay stable while the FFT can collapse into a single `chroma_AudioFFT[8]` array uniform.
