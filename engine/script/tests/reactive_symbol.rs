@@ -171,21 +171,24 @@ fn route_resolves_every_documented_audio_scalar() {
 
 #[test]
 fn route_resolves_vec4_via_array_carrier() {
-    // Slice-5a render-adapter `chroma_AudioFFTLow` is the canonical
-    // Vec4-shape audio uniform. JS `[a,b,c,d]` array maps to
-    // ScriptValue::Array via the slice-1 lowering.
+    // `_mouse` is the canonical Vec4-shape symbol on the script-
+    // side catalog (`x, y, x_prev_click, y_prev_click` per docs/36
+    // §1.3). JS `[a,b,c,d]` array maps to ScriptValue::Array via
+    // the slice-1 lowering. (The slice-5a v1.2.0 transitional
+    // `chroma_AudioFFTLow` Vec4 spelling was retired alongside the
+    // catalog v1.3.0 single-array consolidation.)
     let rt = ScriptRuntime::new().expect("runtime new");
     let sender = Arc::new(BufferingSender::new());
     let rt = rt
         .with_command_sender(sender.clone())
         .expect("with_command_sender");
-    rt.execute("__chromaticityEmit('chroma_AudioFFTLow', [0.1, 0.2, 0.3, 0.4])")
+    rt.execute("__chromaticityEmit('_mouse', [0.1, 0.2, 0.3, 0.4])")
         .expect("emit succeeds");
     let drained = sender.drain();
     let routed = drained[0].clone().route().expect("route resolves");
     match routed {
         ScriptCommand::TypedReactiveWrite { symbol, value } => {
-            assert_eq!(symbol, ReactiveSymbol::FftLow);
+            assert_eq!(symbol, ReactiveSymbol::Mouse);
             assert_eq!(symbol.expected_kind(), ReactiveValueKind::Vec4);
             match value {
                 ScriptValue::Array(items) => {
@@ -204,19 +207,22 @@ fn route_resolves_vec4_via_array_carrier() {
 fn route_resolves_vec4_via_object_carrier() {
     // `docs/36` §5: vec4 may be `{x,y,z,w}` or `{r,g,b,a}`. Both
     // shapes route. JS `{x:1,y:2,z:3,w:4}` lowers to
-    // ScriptValue::Object preserving insertion order.
+    // ScriptValue::Object preserving insertion order. (Same Vec4
+    // canonical-symbol substitution rationale as the array-carrier
+    // pin above; the v1.2.0 split-vec4 FFT spellings were retired
+    // post catalog v1.3.0.)
     let rt = ScriptRuntime::new().expect("runtime new");
     let sender = Arc::new(BufferingSender::new());
     let rt = rt
         .with_command_sender(sender.clone())
         .expect("with_command_sender");
-    rt.execute("__chromaticityEmit('chroma_AudioFFTHigh', { x: 0.5, y: 0.6, z: 0.7, w: 0.8 })")
+    rt.execute("__chromaticityEmit('_mouse', { x: 0.5, y: 0.6, z: 0.7, w: 0.8 })")
         .expect("emit succeeds");
     let drained = sender.drain();
     let routed = drained[0].clone().route().expect("route resolves");
     match routed {
         ScriptCommand::TypedReactiveWrite { symbol, value } => {
-            assert_eq!(symbol, ReactiveSymbol::FftHigh);
+            assert_eq!(symbol, ReactiveSymbol::Mouse);
             assert_eq!(symbol.expected_kind(), ReactiveValueKind::Vec4);
             match value {
                 ScriptValue::Object(entries) => {
@@ -281,21 +287,28 @@ fn route_passes_typed_variant_through_unchanged() {
 }
 
 #[test]
-fn slice_5a_render_adapter_split_fft_names_resolve() {
-    // `engine/render/src/audio_adapter.rs` chose the spellings
-    // `chroma_AudioFFTLow` and `chroma_AudioFFTHigh` for the cross-crate split-
-    // vec4 FFT uniforms. The slice-5.2 catalog MUST surface the
-    // same names so a script that emits against either name
-    // routes to the dedicated typed variant — otherwise the
-    // render-side binding contract and the script-side typed
-    // surface would speak different vocabularies.
-    let cases: &[(&str, ReactiveSymbol)] = &[
-        ("chroma_AudioFFTLow", ReactiveSymbol::FftLow),
-        ("chroma_AudioFFTHigh", ReactiveSymbol::FftHigh),
+fn slice_5a_v1_2_0_split_fft_names_no_longer_route() {
+    // The slice-5a v1.2.0 transitional split-vec4 FFT spellings
+    // (`chroma_AudioFFTLow` / `chroma_AudioFFTHigh`) were retired
+    // alongside the catalog v1.3.0 single-array consolidation
+    // (`chroma_AudioFFT[8]` backed by
+    // `engine/render::UniformValue::FloatArray`). The script-side
+    // carrier vocabulary (`ReactiveValueKind`) does not yet support
+    // 8-element float-array writes, so the FFT array surface is
+    // producer-only on the script side until a future array-
+    // carrier slice. Per `docs/22` Catalog Ratification Log v1.3.0
+    // entry, no scenes shipped against the v1.2.0 split-vec4
+    // surface, so retiring the script-side mirror is non-breaking.
+    // Both retired names + the consolidated `chroma_AudioFFT` name
+    // MUST resolve to `ReactiveSymbolUnknown` at the route surface.
+    let retired_names = [
+        "chroma_AudioFFTLow",
+        "chroma_AudioFFTHigh",
+        "chroma_AudioFFT",
     ];
-    for (name, expected_symbol) in cases {
+    for retired in retired_names {
         let cmd = ScriptCommand::ReactiveWrite {
-            name: (*name).to_string(),
+            name: retired.to_string(),
             value: ScriptValue::Array(vec![
                 ScriptValue::Number(0.0),
                 ScriptValue::Number(0.0),
@@ -303,13 +316,12 @@ fn slice_5a_render_adapter_split_fft_names_resolve() {
                 ScriptValue::Number(0.0),
             ]),
         };
-        let routed = cmd.route().expect("split-fft routes");
-        match routed {
-            ScriptCommand::TypedReactiveWrite { symbol, .. } => {
-                assert_eq!(symbol, *expected_symbol, "name {name}");
-                assert_eq!(symbol.expected_kind(), ReactiveValueKind::Vec4);
+        let err = cmd.route().expect_err("retired FFT names must reject");
+        match err {
+            ScriptError::ReactiveSymbolUnknown { name: observed } => {
+                assert_eq!(observed, retired, "echo-back catalog-miss name");
             }
-            other => panic!("expected TypedReactiveWrite for '{name}', got {other:?}"),
+            other => panic!("expected ReactiveSymbolUnknown for '{retired}', got {other:?}"),
         }
     }
 }
