@@ -3,15 +3,22 @@
 
 //! Chromaticity UI ↔ engine type bridge.
 //!
-//! Phase-1 D1 scaffold. Hosts the typed-IPC surface that crosses the
-//! Tauri command boundary: serde + ts-rs newtype wrappers around the
-//! engine-side [`chromaticity_runtime::ControlId`] and
-//! [`chromaticity_runtime::ControlValue`], with `From` impls in both
-//! directions so the Tauri handler converts at the boundary and engine
-//! types stay free of IPC concerns.
+//! Hosts the typed-IPC surface that crosses the Tauri command boundary:
+//! serde + ts-rs newtype wrappers around the engine-side
+//! [`chromaticity_runtime::ControlId`] / [`chromaticity_runtime::ControlValue`]
+//! / [`chromaticity_runtime::SnapSlotId`] / [`chromaticity_runtime::PresetId`]
+//! plus the [`SceneCard`] / [`SceneSource`] library-card shape and the
+//! [`OscHealthSnapshot`] / [`OscHealthState`] adapter mirror, with `From`
+//! impls in both directions so the Tauri handler converts at the boundary
+//! and engine types stay free of IPC concerns.
 //!
-//! Subsequent slices add `Command`, `Event`, `SnapshotPayload`, and
-//! other bridge-facing surfaces as the IPC contract grows.
+//! Post-Phase-3 status (`ec10ee7`): the bridge surface above is the
+//! current ts-rs binding-generation source consumed by
+//! `app/shell/tests/export_bindings.rs` and re-exported under
+//! `src/lib/ipc/bindings/`. The next surface to land here is the W34+
+//! adapter-pill IPC mirror; subsequent slices may add `Command` /
+//! `Event` / `SnapshotPayload` shapes if the IPC contract grows beyond
+//! the typed-newtype + scene-card + osc-health set.
 //!
 //! See `docs/47-ui-port-plan.md` §7.2 for the bridge-crate role.
 

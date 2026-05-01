@@ -417,7 +417,8 @@ them, but `Read` and review are the entire point of the bundle):
   the bundle's `scene.jsx` is the full Author port source) plus shared primitives —
   `chroma_inspector.jsx` (input controls palette, the W10 port source), `cue_curve.jsx`
   (cubic bezier transition curve, the W13 PR2 port source), `hotkeys_data.jsx`
-  (canonical 29-row hotkey vocabulary with the `cap` entitlement field),
+  (canonical 57-row hotkey vocabulary with the `cap` entitlement field, mirrored in
+  `src/lib/data/hotkeys.ts` for the `?`-toggle overlay),
   `empty_states.jsx` (per-view copy), `v02_supplement.jsx` (ChromaCtx + AdapterPill /
   DegradedBanner / OutputRoutingTile / WatermarkOverlay / LockedRow / CrashResumeBanner
   chrome), `extras.jsx` (ThemeSwitcher / FavslotsBar / SnapBar / ControlHotkeysHint),

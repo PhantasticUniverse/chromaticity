@@ -12,26 +12,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // MIDI / OSC / Import / Patch / Settings / License / Welcome in the
   // top section, Account / Help at the bottom.
   //
-  // Wired routes after this PR (10 of 13 nav entries): perform / library
-  // / author / audio-uniforms / playlist / sources / osc / settings /
-  // license / welcome. The four routed-but-stub views (welcome /
-  // sources / audio-uniforms / license) render an `EmptyState` until
-  // their respective W17+ ports replace each stub with full content.
-  //
-  // Disabled entries (3): Patch (full node-graph port is W17+ scope per
-  // brief), MIDI (W14+ candidate, view-port pending), Import (W14+
-  // candidate, view-port pending). Bottom section (Account / Help)
-  // remains disabled per W12 — both gate on entitlement / support-
-  // bundle infrastructure that lands later.
-  //
-  // Wave-18 PR3 promotes the MIDI entry from disabled stub to routed
-  // view, leaving Patch and Import as the only disabled top-section
-  // entries. The full bundle port lives in `views/MIDI.svelte`.
-  //
-  // Wave-19 PR1 promotes the Patch entry from disabled stub to routed
-  // view; the full bundle port lives in `views/Patch.svelte`. Import
-  // remains disabled in this PR (W19 PR2 sub-agent owns that port in
-  // parallel).
+  // Post-W19 status: every top-section sidebar entry (all 13) is now a
+  // routed view with a full bundle port — Welcome, Sources, Audio
+  // Uniforms, and License each carry their own "Locked deviations from
+  // the bundle" sections in their respective `views/*.svelte` files.
+  // The W18 PR3 / W19 PR1 / W19 PR2 sub-agents promoted MIDI / Patch /
+  // Import from disabled stubs to routed views. The only disabled
+  // entries that remain are the bottom-section Account / Help, both
+  // gated on entitlement / support-bundle infrastructure that lands
+  // later.
   //
   // Wave-19 PR3 swapped the Unicode glyph column for the vendored
   // `Icon.svelte` SVG primitive. Icon-name mapping follows the bundle's
@@ -41,13 +30,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Each name resolves to a 24×24 viewBox stroke icon that inherits
   // `currentColor` from the existing button color cascade, so the
   // Pulse / Atelier / Console theme cycle keeps working unchanged.
-  //
-  // Wave-19 PR2 promotes the Import entry from disabled stub to routed
-  // view; the full bundle port lives in `views/Import.svelte`. After
-  // this PR, every top-section sidebar entry is routed — the only
-  // remaining disabled entries are the bottom-section Account / Help,
-  // both gated on entitlement / support-bundle infrastructure that
-  // lands later.
   import Icon, { type IconName } from './Icon.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
 

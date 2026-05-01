@@ -31,24 +31,23 @@ use std::collections::{HashMap, HashSet};
 pub struct State {
     /// Monotonic frame counter advanced by the scheduler tick
     /// (ADR-001 §Decision). Crate-private to keep mutation inside the
-    /// state commit thread per ADR-006. The scheduler-tick path lands in
-    /// a later slice.
-    #[allow(dead_code)]
+    /// state commit thread per ADR-006. The scheduler-tick path that
+    /// would advance this counter lands once ADR-001/ADR-006 slice-3
+    /// scheduler work arrives; until then the field is read by the
+    /// canonical-binary encoder ([`crate::state_replay`]) and written
+    /// by the V1↔V2 envelope decoder ([`crate::state_migration`]),
+    /// so the dead_code lint is satisfied.
     pub(crate) frame: u64,
-    /// Control-value store.
-    #[allow(dead_code)]
+    /// Control-value store. Mutated by [`State::apply_event`]; read
+    /// by [`crate::state_replay`] and [`crate::state_migration`].
     pub(crate) control_store: ControlStore,
-    /// Preset store.
-    #[allow(dead_code)]
+    /// Preset store. See [`Self::control_store`].
     pub(crate) preset_store: PresetStore,
-    /// Playlist store.
-    #[allow(dead_code)]
+    /// Playlist store. See [`Self::control_store`].
     pub(crate) playlist_store: PlaylistStore,
-    /// Snap / favslot store.
-    #[allow(dead_code)]
+    /// Snap / favslot store. See [`Self::control_store`].
     pub(crate) snap_store: SnapStore,
-    /// Integration-mapping store.
-    #[allow(dead_code)]
+    /// Integration-mapping store. See [`Self::control_store`].
     pub(crate) mapping_store: MappingStore,
     /// Phase-3 EV-STATE-MIGRATION envelope metadata.
     ///
@@ -61,7 +60,6 @@ pub struct State {
     /// section entirely; decoded V1 → defaults to `None`. V2
     /// buffers carry an explicit `V2SchemaMetadata { schema_version
     /// = 2 }` after the canonical-binary segment.
-    #[allow(dead_code)]
     pub(crate) snapshot_metadata: Option<V2SchemaMetadata>,
 }
 

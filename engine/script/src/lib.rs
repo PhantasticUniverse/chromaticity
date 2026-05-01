@@ -84,10 +84,12 @@
 //!   post-execute remap). `EV-SCRIPT-CONTRACT` widens with the
 //!   command-bus path.
 //! - **Slice 5.2 (this PR)** — typed reactive-symbol-catalog
-//!   binding: maps `docs/36` v1.1.0 retentions (e.g. `syn_BPM`,
+//!   binding: maps `docs/36` v1.3.0 retentions (e.g. `syn_BPM`,
 //!   `syn_Level`, `syn_Spectrum`) and the slice-5a chromaticity-
-//!   native `chroma_AudioRMS` / `chroma_AudioPeak` / `chroma_AudioFFTLow`
-//!   / `chroma_AudioFFTHigh` primitives, plus the full level / hit /
+//!   native `chroma_AudioRMS` / `chroma_AudioPeak` primitives (the
+//!   v1.2.0 split-vec4 `chroma_AudioFFTLow` / `chroma_AudioFFTHigh`
+//!   spellings retired in the v1.3.0 single-array consolidation),
+//!   plus the full level / hit /
 //!   time / presence / beat / BPM / large-feature / PrimeBang /
 //!   reference-surface audio families and the script-host-visible §1
 //!   frame/timing + mouse uniforms, to a typed [`ReactiveSymbol`]
