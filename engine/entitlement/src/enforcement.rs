@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Phase-4a entitlement-enforcement evaluator (MVP watermark scope).
+//! Phase-4a entitlement-enforcement evaluator (tier-gated scope).
 //!
 //! Realizes the runtime `entitled(capability) -> bool` surface that
 //! [`super::token::Token`] declared as Phase-0-out-of-scope (per the
 //! [`crate`] crate prose and `engine/entitlement/Cargo.toml` line 25).
-//! Phase-4a Wave 1a narrows the surface to **watermark-on / watermark-
-//! off** only — no tier gating of NDI / OSC / Syphon / custom-resolution
-//! at MVP per `docs/11-roadmap-phases.md` line 125 and the AO Wave-1a
-//! direction. Tier gating reuses the same evaluator surface in a future
-//! wave; the only change required is widening the
-//! [`HONORED_TOKEN_CAPABILITIES`] set.
+//! Phase-4a Wave 1a originally narrowed the surface to **watermark-on /
+//! watermark-off** only; Wave 1b-B widens [`HONORED_TOKEN_CAPABILITIES`]
+//! to the full ADR-009 §Decision tier matrix (I/O adapters, authoring,
+//! custom-resolution, meta) per `docs/adr/ADR-009-activation-and-
+//! entitlements.md` §Capability namespace. The widening is a **data
+//! change only** — the `entitled` decision tree, fail-closed semantics,
+//! and offline / revocation behavior are unchanged. `IO_CAMERA` is
+//! intentionally still excluded: ADR-009 declares camera ingestion free
+//! at MVP; lifting it into either [`FREE_CAPABILITIES`] or
+//! [`HONORED_TOKEN_CAPABILITIES`] is a follow-up PR when post-MVP
+//! camera-tier-gating activates.
 //!
 //! # Surface
 //!
@@ -21,11 +26,14 @@
 //!   in [`crate::capability`] because ADR-009 line 81 mandates that
 //!   no `free.*` placeholders ship in the v2 namespace; the strings
 //!   are instead pinned here as the evaluator's free-set.
-//! - [`HONORED_TOKEN_CAPABILITIES`] — paid capabilities the MVP
-//!   evaluator actually checks against the token. At Wave-1a this is
-//!   `{render.watermark.off}` per the AO narrowing. Other paid
-//!   capabilities are neither free nor MVP-honored — the evaluator
-//!   returns `false` for them even when present in `Token::capabilities`.
+//! - [`HONORED_TOKEN_CAPABILITIES`] — paid capabilities the evaluator
+//!   actually checks against the token. Wave 1b-B widens the set to
+//!   the ADR-009 §Decision tier matrix (watermark + I/O adapters +
+//!   authoring + custom-resolution + meta). `IO_CAMERA` is excluded
+//!   (free at MVP per ADR-009); the `data.ingest.*` reserved family
+//!   stays excluded as well (post-MVP per ADR-009 §External data
+//!   ingestion). Capabilities that are neither free nor honored
+//!   collapse to `false` even when present in `Token::capabilities`.
 //! - [`Clock`] — clock injection trait, exists for CI determinism
 //!   under hosts where `std::time` cannot be moved. [`SystemClock`]
 //!   wraps `SystemTime::now()`; [`FixedClock`] returns a constant
@@ -81,7 +89,12 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::capability::RENDER_WATERMARK_OFF;
+use crate::capability::{
+    AUTHORING_BUILTIN_SCENES, AUTHORING_EDIT, AUTHORING_IDE, AUTHORING_IMPORT, IO_NDI_INPUT,
+    IO_NDI_OUTPUT, IO_OSC_INPUT, IO_OSC_OUTPUT, IO_SPOUT_INPUT, IO_SPOUT_OUTPUT, IO_SYPHON_INPUT,
+    IO_SYPHON_OUTPUT, META_AUDIO_SPEED, META_REACTIVITY, RENDER_CUSTOM_RESOLUTION,
+    RENDER_WATERMARK_OFF,
+};
 use crate::token::Token;
 
 /// Capabilities that are unconditionally available regardless of
@@ -110,16 +123,53 @@ pub const FREE_CAPABILITIES: &[&str] = &[
     "scene.export",
 ];
 
-/// Capabilities the MVP evaluator honors from a valid token. At
-/// Wave-1a this is the watermark-off bit only — every other paid
-/// capability stays denied at MVP per the
-/// `docs/11-roadmap-phases.md` line 125 narrowing
-/// ("Entitlement substrate integrated at adapter boundaries; MVP
-/// watermark-on/off only; tier gating hooks wired but dormant").
-/// Post-MVP wave widens this set to include OSC / Syphon / Spout /
-/// NDI / camera / authoring / custom-resolution / meta-* — no
-/// evaluator change is required at that point.
-pub const HONORED_TOKEN_CAPABILITIES: &[&str] = &[RENDER_WATERMARK_OFF];
+/// Capabilities the evaluator honors from a valid token. Wave 1b-B
+/// widens this from the Wave-1a watermark-only narrowing
+/// (`docs/11-roadmap-phases.md` line 125 originally pinned "MVP
+/// watermark-on/off only; tier gating hooks wired but dormant") to
+/// the full ADR-009 §Decision tier matrix — every paid capability
+/// declared in [`crate::capability`] except [`crate::capability::IO_CAMERA`]
+/// and the `data.ingest.*` reserved family.
+///
+/// `IO_CAMERA` is intentionally NOT in this set — ADR-009 declares
+/// camera ingestion free at MVP. When post-MVP camera-tier-gating
+/// activates, lift `IO_CAMERA` either into [`FREE_CAPABILITIES`]
+/// (free with watermark) or into this set (paid) via a follow-up PR.
+///
+/// The `data.ingest.*` reserved family
+/// ([`crate::capability::DATA_INGEST_NETWORK`],
+/// [`crate::capability::DATA_INGEST_GEOSPATIAL`],
+/// [`crate::capability::DATA_INGEST_SDR`]) is also excluded per
+/// ADR-009 §External data ingestion: an MVP-era token MAY carry these
+/// capability strings, but the evaluator's response is `false` until
+/// the data-ingest subsystem ships in V2 / V3.
+///
+/// The widening is data-only: the [`entitled`] decision tree is
+/// unchanged from Wave-1a.
+pub const HONORED_TOKEN_CAPABILITIES: &[&str] = &[
+    RENDER_WATERMARK_OFF,
+    // I/O adapters (per ADR-009 §Decision; independently licensable).
+    IO_OSC_INPUT,
+    IO_OSC_OUTPUT,
+    IO_SYPHON_INPUT,
+    IO_SYPHON_OUTPUT,
+    IO_SPOUT_INPUT,
+    IO_SPOUT_OUTPUT,
+    IO_NDI_INPUT,
+    IO_NDI_OUTPUT,
+    // IO_CAMERA intentionally omitted — free at MVP per ADR-009;
+    // post-MVP camera-tier-gating lifts it via follow-up PR.
+    // Authoring (per ADR-009 §Decision).
+    AUTHORING_IDE,
+    AUTHORING_IMPORT,
+    AUTHORING_EDIT,
+    AUTHORING_BUILTIN_SCENES,
+    // Rendering (per ADR-009 §Decision).
+    RENDER_CUSTOM_RESOLUTION,
+    // Meta / audio (per ADR-009 §Decision + docs/36 §3.6).
+    META_REACTIVITY,
+    META_AUDIO_SPEED,
+];
 
 /// Clock injection surface. The evaluator reads `now` through this
 /// trait so the offline / revocation corpus can drive a fixed
@@ -228,8 +278,9 @@ pub fn is_valid_at(token: &Token, now: SystemTime) -> bool {
 ///    `false` (expired or malformed-expiry fail-closed; this is the
 ///    `EV-ENTITLEMENT-REVOCATION` MVP path).
 /// 4. If `capability` is NOT in [`HONORED_TOKEN_CAPABILITIES`],
-///    return `false` (Wave-1a narrowing — every non-watermark paid
-///    capability stays denied at MVP).
+///    return `false` (Wave 1b-B set: watermark + I/O adapters +
+///    authoring + custom-resolution + meta; `IO_CAMERA` and the
+///    `data.ingest.*` reserved family stay denied per ADR-009).
 /// 5. If the token's `capabilities` vec contains `capability`,
 ///    return `true`; otherwise return `false`.
 ///
