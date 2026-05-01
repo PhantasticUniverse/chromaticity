@@ -51,7 +51,7 @@
 //! - `engine/audio/src/uniforms.rs` — `AudioUniformSnapshot` producer.
 //! - `docs/26-evidence-artifact-registry.md` row 28 — `EV-RENDER-CONFORMANCE`.
 //! - `docs/26-evidence-artifact-registry.md` row 30 — `EV-AUDIO-TRACE`.
-//! - `docs/36-reactive-symbol-catalog.md` v1.1.0 — symbol vocabulary.
+//! - `docs/36-reactive-symbol-catalog.md` v1.3.0 — symbol vocabulary.
 
 #![cfg(feature = "audio-binding")]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -71,43 +71,39 @@ use chromaticity_render::{
 /// `engine/audio/tests/uniforms.rs`.
 const SAMPLES_ONE_SECOND: usize = 48_000;
 
-/// Fragment shader that consumes all five slice-5a `syn_*`
-/// uniforms.
+/// Fragment shader that consumes all four slice-5a uniforms after
+/// the catalog v1.3.0 consolidation (BPM + RMS + PEAK + FFT[8]).
 ///
-/// # Why each scalar is declared `vec4` here
+/// # Why scalars are declared `vec4` while the FFT array is `float[8]`
 ///
-/// The slice-2 [`MultipassSpec`] uniform-buffer packing places
-/// every [`chromaticity_render::UniformValue`] entry into its own
-/// 16-byte slot regardless of the underlying width
-/// (`engine/render/src/multipass.rs` lines 41-53 / 343-356:
-/// "All scalar / vector uniforms supplied via `UniformInput` for
-/// a single pass are packed into ONE uniform buffer at group 0,
-/// binding 0. Each value occupies a 16-byte slot regardless of
-/// underlying width"). This is std140-friendly for vec4 entries
-/// but means a sequence of scalar uniforms cannot be declared as
-/// adjacent `float`s in GLSL — std140 would pack `float` at 4-byte
-/// alignment and read scalar K from offset `K*4`, but the actual
-/// buffer puts scalar K at offset `K*16` (with 12 bytes of zero
-/// pad after each). Until the slice-3 packing widening described
-/// in `multipass.rs` lines 50-53 lands, the consumer-side
-/// idiom is to declare each scalar as `vec4` and read the `.x`
-/// component.
+/// The [`MultipassSpec`] uniform-buffer packing places every
+/// scalar / vector [`chromaticity_render::UniformValue`] entry into
+/// its own 16-byte slot regardless of underlying width
+/// (`engine/render/src/multipass.rs` module-level doc, "One uniform
+/// buffer per pass, std140-friendly"). This means scalars cannot be
+/// declared as adjacent `float`s in GLSL — std140 packs `float` at
+/// 4-byte alignment and would read scalar K from offset `K*4`, but
+/// the actual buffer puts scalar K at offset `K*16` (with 12 bytes
+/// of zero pad after each). The consumer-side idiom is therefore to
+/// declare each scalar as `vec4` and read the `.x` component.
 ///
-/// The corresponding fix on the producer side
-/// (`uniform_input_from_audio_snapshot`) is NOT to pad the
-/// `Vec<UniformInput>` with synthetic vec4s — the per-uniform
-/// 16-byte slot packing is already the slot-aware shape. The
-/// adapter returns scalars; the shader reads them as `vec4.x`.
+/// [`UniformValue::FloatArray`] (slice-5 follow-up addition; catalog
+/// v1.3.0) is the exception: it expands into N consecutive 16-byte
+/// slots matching the std140 layout of `uniform float arr[N]` (each
+/// element vec4-aligned). The shader declares the binding directly
+/// as `float chroma_AudioFFT[8]` and indexes elements with
+/// `chroma_AudioFFT[K]`; std140 reads element K from offset `K*16`,
+/// which matches the engine's slot emission for FloatArray.
 ///
 /// # Output encoding
 ///
 /// - `R` = `syn_BPM.x / 220.0` (max BPM clamp value, normalised to [0, 1])
 /// - `G` = `chroma_AudioRMS.x`
 /// - `B` = `chroma_AudioPeak.x`
-/// - `A` = `(sum(FFT_LO) + sum(FFT_HI)) / 8.0` (mean over 8 bands)
+/// - `A` = `mean(chroma_AudioFFT[0..=7])`
 ///
 /// Every output channel touches every uniform, so a marshalling
-/// drift (wrong slot, wrong vec4 component, swapped low/high)
+/// drift (wrong slot, swapped order, wrong array element index)
 /// surfaces as a visible byte change.
 const AUDIO_AWARE_FRAGMENT: &str = r#"
 #version 450
@@ -118,16 +114,15 @@ layout(set = 0, binding = 0) uniform Uniforms {
     vec4 syn_BPM;
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
-    vec4 chroma_AudioFFTLow;
-    vec4 chroma_AudioFFTHigh;
+    float chroma_AudioFFT[8];
 };
 
 void main() {
     float r = syn_BPM.x / 220.0;
     float g = chroma_AudioRMS.x;
     float b = chroma_AudioPeak.x;
-    float fft_sum = chroma_AudioFFTLow.x + chroma_AudioFFTLow.y + chroma_AudioFFTLow.z + chroma_AudioFFTLow.w
-                  + chroma_AudioFFTHigh.x + chroma_AudioFFTHigh.y + chroma_AudioFFTHigh.z + chroma_AudioFFTHigh.w;
+    float fft_sum = chroma_AudioFFT[0] + chroma_AudioFFT[1] + chroma_AudioFFT[2] + chroma_AudioFFT[3]
+                  + chroma_AudioFFT[4] + chroma_AudioFFT[5] + chroma_AudioFFT[6] + chroma_AudioFFT[7];
     float a = fft_sum / 8.0;
     fragColor = vec4(clamp(r, 0.0, 1.0),
                      clamp(g, 0.0, 1.0),
@@ -168,8 +163,8 @@ fn render_with_snapshot(frame: &AudioFrame) -> Vec<u8> {
     let uniforms = uniform_input_from_audio_snapshot(&snapshot);
     assert_eq!(
         uniforms.len(),
-        5,
-        "adapter must produce exactly 5 uniforms (3 scalars + 2 vec4s)",
+        4,
+        "adapter must produce exactly 4 uniforms (3 scalars + 1 FloatArray[8])",
     );
 
     let spec = MultipassSpec {
@@ -262,8 +257,17 @@ fn sine_tone_byte_hash_is_stable() {
     let observed = fnv1a_64(&pixels);
 
     const ACCEPTED: &[u64] = &[
-        // Apple Silicon, Metal backend, wgpu 26.0.1 + naga 26.0.0.
-        0x7ab4_cc96_6bba_0d25,
+        // Apple Silicon, Metal backend, wgpu 26.0.1 + naga 26.0.0,
+        // catalog v1.3.0 (single-array `chroma_AudioFFT[8]` binding).
+        // The slice-5a v1.2.0 split-vec4 hash (0x7ab4cc966bba0d25) was
+        // displaced by this consolidation: identical mathematical
+        // semantics but the GLSL `arr[0]+...+arr[7]` summation
+        // compiles to a different SPIR-V instruction order than the
+        // prior `Low.xyzw + High.xyzw` form, and FP non-associativity
+        // produces a tiny but deterministic alpha-channel rounding
+        // delta. The silent-frame hash is preserved across the
+        // consolidation because its FFT bands sum to bitwise 0.
+        0xe95a_1533_2045_0d25,
     ];
 
     if !ACCEPTED.contains(&observed) {

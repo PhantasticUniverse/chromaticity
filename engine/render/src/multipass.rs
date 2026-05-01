@@ -42,15 +42,21 @@
 //! - **One uniform buffer per pass, std140-friendly.** All scalar /
 //!   vector uniforms supplied via [`UniformInput`] for a single pass
 //!   are packed into ONE uniform buffer at group 0, binding 0. Each
-//!   value occupies a 16-byte slot regardless of underlying width
-//!   (a `f32` lives in the first 4 bytes of its slot, the remaining
-//!   12 bytes are pad). This keeps std140 vec4-alignment satisfied
-//!   without a per-type packing rulebook; the cost is at most 12
-//!   bytes of pad per scalar uniform, which is negligible at the
-//!   uniform-count we expect (single-digit per pass for slice 2's
-//!   evidence corpus). Slice 3 will revisit packing when audio
-//!   uniforms (an `audio[]` block) and `syn_RES` style vec2 batched
-//!   uniforms enter the surface.
+//!   scalar / vector value occupies a 16-byte slot regardless of
+//!   underlying width (a `f32` lives in the first 4 bytes of its
+//!   slot, the remaining 12 bytes are pad). [`UniformValue::FloatArray`]
+//!   expands into N consecutive 16-byte slots (one per element),
+//!   matching std140's `uniform float arr[N]` layout where every
+//!   array element is vec4-aligned. This keeps std140 vec4-alignment
+//!   satisfied without a per-type packing rulebook; the cost is at
+//!   most 12 bytes of pad per scalar / per array element, which is
+//!   negligible at the uniform counts we expect. The slice-5
+//!   follow-up to slice-5a added [`UniformValue::FloatArray`] to
+//!   close the slice-5a transitional `chroma_AudioFFTLow` +
+//!   `chroma_AudioFFTHigh` split-vec4 spelling into a single
+//!   `chroma_AudioFFT[8]` array binding (`docs/36` Sec.2.11; catalog
+//!   v1.3.0); the `syn_RES`-style vec2-batched widening remains
+//!   deferred until a concrete consumer surfaces it.
 //!
 //! - **Texture / sampler bind layout is naga-GLSL-compliant Vulkan
 //!   shape.** naga's GLSL frontend rejects combined `uniform sampler2D`
@@ -321,12 +327,15 @@ pub struct UniformInput {
     pub value: UniformValue,
 }
 
-/// Scalar / vector uniform value.
+/// Scalar / vector / array uniform value.
 ///
-/// Each variant occupies one 16-byte slot in the per-pass uniform
+/// Most variants occupy one 16-byte slot in the per-pass uniform
 /// buffer regardless of the underlying width (see module-level doc
-/// for the std140-friendly packing choice).
-#[derive(Debug, Clone, Copy)]
+/// for the std140-friendly packing choice). The [`UniformValue::FloatArray`]
+/// variant is an exception: it expands into N consecutive 16-byte
+/// slots (one per element), matching the std140 layout of
+/// `uniform float arr[N]` where every array element is vec4-aligned.
+#[derive(Debug, Clone)]
 pub enum UniformValue {
     Scalar(f32),
     Vec2([f32; 2]),
@@ -334,6 +343,16 @@ pub enum UniformValue {
     Vec4([f32; 4]),
     Int(i32),
     UInt(u32),
+    /// std140-packed float array. Each element occupies one 16-byte
+    /// slot in the per-pass uniform buffer (the first 4 bytes hold
+    /// the f32, the remaining 12 bytes are zero pad). Authors declare
+    /// the binding in GLSL as `uniform float arr[N]`; the per-pass
+    /// uniform buffer's slot count grows by `N` per FloatArray
+    /// binding. Introduced by the slice-5 follow-up to slice-5a to
+    /// consolidate the transitional `chroma_AudioFFTLow` +
+    /// `chroma_AudioFFTHigh` split-vec4 binding into a single
+    /// `chroma_AudioFFT[8]` array uniform per `docs/36` Sec.2.11.
+    FloatArray(Vec<f32>),
 }
 
 /// Reference into [`MultipassSpec::passes`] for a prior pass whose
@@ -1271,39 +1290,6 @@ fn encode_uniform_slots(
 ) -> Result<Vec<UniformSlot>, RenderError> {
     let mut slots = Vec::with_capacity(uniforms.len());
     for input in uniforms {
-        let mut slot = UniformSlot::default();
-        match input.value {
-            UniformValue::Scalar(v) => {
-                let bytes = v.to_le_bytes();
-                slot.bytes[0..4].copy_from_slice(&bytes);
-            }
-            UniformValue::Vec2(v) => {
-                slot.bytes[0..4].copy_from_slice(&v[0].to_le_bytes());
-                slot.bytes[4..8].copy_from_slice(&v[1].to_le_bytes());
-            }
-            UniformValue::Vec3(v) => {
-                slot.bytes[0..4].copy_from_slice(&v[0].to_le_bytes());
-                slot.bytes[4..8].copy_from_slice(&v[1].to_le_bytes());
-                slot.bytes[8..12].copy_from_slice(&v[2].to_le_bytes());
-            }
-            UniformValue::Vec4(v) => {
-                slot.bytes[0..4].copy_from_slice(&v[0].to_le_bytes());
-                slot.bytes[4..8].copy_from_slice(&v[1].to_le_bytes());
-                slot.bytes[8..12].copy_from_slice(&v[2].to_le_bytes());
-                slot.bytes[12..16].copy_from_slice(&v[3].to_le_bytes());
-            }
-            UniformValue::Int(v) => {
-                slot.bytes[0..4].copy_from_slice(&v.to_le_bytes());
-            }
-            UniformValue::UInt(v) => {
-                slot.bytes[0..4].copy_from_slice(&v.to_le_bytes());
-            }
-        }
-        // Sanity hook for slice-3 audio uniforms — not reachable on
-        // the slice-2 enum's variants but keeps the marshalling
-        // surface explicit so a future widening of `UniformValue`
-        // can return a structured error rather than producing a
-        // silent garbage value.
         if input.name.is_empty() {
             return Err(RenderError::UniformBindingFailed {
                 pass_label: pass_label.to_string(),
@@ -1311,7 +1297,56 @@ fn encode_uniform_slots(
                 reason: "uniform name must not be empty".to_string(),
             });
         }
-        slots.push(slot);
+        match &input.value {
+            UniformValue::Scalar(v) => {
+                let mut slot = UniformSlot::default();
+                slot.bytes[0..4].copy_from_slice(&v.to_le_bytes());
+                slots.push(slot);
+            }
+            UniformValue::Vec2(v) => {
+                let mut slot = UniformSlot::default();
+                slot.bytes[0..4].copy_from_slice(&v[0].to_le_bytes());
+                slot.bytes[4..8].copy_from_slice(&v[1].to_le_bytes());
+                slots.push(slot);
+            }
+            UniformValue::Vec3(v) => {
+                let mut slot = UniformSlot::default();
+                slot.bytes[0..4].copy_from_slice(&v[0].to_le_bytes());
+                slot.bytes[4..8].copy_from_slice(&v[1].to_le_bytes());
+                slot.bytes[8..12].copy_from_slice(&v[2].to_le_bytes());
+                slots.push(slot);
+            }
+            UniformValue::Vec4(v) => {
+                let mut slot = UniformSlot::default();
+                slot.bytes[0..4].copy_from_slice(&v[0].to_le_bytes());
+                slot.bytes[4..8].copy_from_slice(&v[1].to_le_bytes());
+                slot.bytes[8..12].copy_from_slice(&v[2].to_le_bytes());
+                slot.bytes[12..16].copy_from_slice(&v[3].to_le_bytes());
+                slots.push(slot);
+            }
+            UniformValue::Int(v) => {
+                let mut slot = UniformSlot::default();
+                slot.bytes[0..4].copy_from_slice(&v.to_le_bytes());
+                slots.push(slot);
+            }
+            UniformValue::UInt(v) => {
+                let mut slot = UniformSlot::default();
+                slot.bytes[0..4].copy_from_slice(&v.to_le_bytes());
+                slots.push(slot);
+            }
+            UniformValue::FloatArray(arr) => {
+                // std140 array-of-float: each element is vec4-aligned
+                // to 16 bytes with the f32 in the first 4 bytes of
+                // its slot. Emit `arr.len()` consecutive slots; the
+                // shader-side `uniform float chroma_AudioFFT[N]`
+                // declaration reads element K from offset `K * 16`.
+                for v in arr {
+                    let mut slot = UniformSlot::default();
+                    slot.bytes[0..4].copy_from_slice(&v.to_le_bytes());
+                    slots.push(slot);
+                }
+            }
+        }
     }
     Ok(slots)
 }
@@ -1600,6 +1635,41 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
             bytes[12..16].iter().all(|b| *b == 0),
             "trailing pad must be zero"
         );
+    }
+
+    #[test]
+    fn uniform_marshalling_float_array_layout() {
+        // Drift pin: `UniformValue::FloatArray(N)` emits N consecutive
+        // 16-byte slots, each holding the f32 in its first 4 bytes
+        // with 12 bytes of zero pad. Matches std140's `uniform float
+        // arr[N]` layout where every array element is vec4-aligned.
+        // Slice-5 follow-up addition unlocking single-name array
+        // bindings (`chroma_AudioFFT[8]` per docs/36 Sec.2.11).
+        let inputs = vec![UniformInput {
+            name: "u_array".to_string(),
+            value: UniformValue::FloatArray(vec![0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80]),
+        }];
+        let slots = encode_uniform_slots(&inputs, "drift-pin")
+            .expect("float-array marshalling must succeed");
+        assert_eq!(
+            slots.len(),
+            8,
+            "FloatArray(N) must emit N slots (one per element)",
+        );
+        let expected = [
+            0.10_f32, 0.20_f32, 0.30_f32, 0.40_f32, 0.50_f32, 0.60_f32, 0.70_f32, 0.80_f32,
+        ];
+        for (i, exp) in expected.iter().enumerate() {
+            assert_eq!(
+                &slots[i].bytes[0..4],
+                &exp.to_le_bytes(),
+                "FloatArray slot {i} f32 mismatch",
+            );
+            assert!(
+                slots[i].bytes[4..16].iter().all(|b| *b == 0),
+                "FloatArray slot {i} trailing pad must be zero",
+            );
+        }
     }
 
     #[test]

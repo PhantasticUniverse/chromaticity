@@ -64,14 +64,16 @@
 //!   Marshals a `chromaticity_audio::AudioUniformSnapshot` (slice-1
 //!   producer-side, plain data) into a `Vec<UniformInput>` keyed by
 //!   the `syn_BPM` compat-syn-v1 retention (docs/36 line 117) plus
-//!   four chromaticity-native `chroma_*` audio primitives introduced
-//!   by this slice (`chroma_AudioRMS`, `chroma_AudioPeak`, plus the
-//!   8-band FFT array split into a low-half and high-half `vec4`:
-//!   `chroma_AudioFFTLow` / `chroma_AudioFFTHigh`) because the
-//!   slice-2 [`multipass::UniformValue`] enum has no array variant. The split spelling is documented at
-//!   the module level so a scene author can read what GLSL shape
-//!   they receive. Crate coupling stays consumer-side: `engine/audio`
-//!   does NOT depend on `engine/render` (see `engine/audio/src/lib.rs`
+//!   three chromaticity-native `chroma_*` audio primitives
+//!   (`chroma_AudioRMS`, `chroma_AudioPeak`, `chroma_AudioFFT[8]`).
+//!   Slice-5a's initial release (catalog v1.2.0) used a transitional
+//!   split-vec4 spelling for the FFT (`chroma_AudioFFTLow` +
+//!   `chroma_AudioFFTHigh`) because [`multipass::UniformValue`] had
+//!   no array variant; the slice-5 follow-up landed
+//!   [`multipass::UniformValue::FloatArray`] and consolidated the
+//!   FFT into a single 8-element array binding (catalog v1.3.0).
+//!   Crate coupling stays consumer-side: `engine/audio` does NOT
+//!   depend on `engine/render` (see `engine/audio/src/lib.rs`
 //!   lines 16-31).
 //! - **Slice 5b.1 (this PR)** — transition-orchestration LIFECYCLE
 //!   per `docs/adr/ADR-007-scene-warm-switch-policy.md` Accepted
@@ -189,12 +191,12 @@
 //!   are removed — those helpers no longer exist; structural
 //!   validation pins (size / format / empty-pass-list mismatch
 //!   rejection) remain.
-//! - **Slice 5b.4+ (deferred)** — the future `audio[]` array
-//!   uniform variant that consolidates `chroma_AudioFFTLow` /
-//!   `chroma_AudioFFTHigh` into a single `chroma_AudioFFT[8]`
-//!   binding (out of scope for slice-5a — scheduler-shaped
-//!   decision), DX12 backend re-enablement, Windows Vulkan
-//!   accept-set expansion, Metal backend-matrix conformance.
+//! - **Slice 5b.4+ (deferred)** — DX12 backend re-enablement,
+//!   Windows Vulkan accept-set expansion, Metal backend-matrix
+//!   conformance, `syn_RES`-style vec2-batched uniform widening of
+//!   [`multipass::UniformValue`] (the FFT array consolidation that
+//!   was previously listed here landed in the slice-5a follow-up
+//!   that opened catalog v1.3.0).
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
@@ -259,8 +261,8 @@ pub mod transitions;
 
 #[cfg(feature = "audio-binding")]
 pub use audio_adapter::{
-    UNIFORM_NAME_BPM, UNIFORM_NAME_FFT_HIGH, UNIFORM_NAME_FFT_LOW, UNIFORM_NAME_PEAK,
-    UNIFORM_NAME_RMS, uniform_input_from_audio_snapshot,
+    UNIFORM_NAME_BPM, UNIFORM_NAME_FFT, UNIFORM_NAME_PEAK, UNIFORM_NAME_RMS,
+    uniform_input_from_audio_snapshot,
 };
 pub use composition::{PreparedScene, compose_transition_frame, compose_transition_frame_gpu};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
