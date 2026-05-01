@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity MIDI adapter crate.
+#
+# Phase-4a Wave 1b-A scaffold: second integration adapter under
+# `integrations/`. The MIDI adapter gates `EV-MIDI-EXTENDED`
+# (extended-MIDI conformance — pitch-bend, program change, MIDI Clock,
+# 14-bit CC pairs, NRPN/RPN, MTC, learn persistence) and widens the
+# MIDI arm of `EV-INTEGRATION-MATRIX` (row 37) that Wave 1a narrowed
+# to the OSC slice only.
+#
+# Mirrors the OSC adapter shape per ADR-005 (integration adapter
+# boundary) — bind/unbind/poll trait, defaults pinned via T1 drift
+# pins, route-namespace types in a sibling module — without
+# protocol-specific logic in core. ADR-013 networking defaults are
+# inherited verbatim where applicable (queue-depth cap, per-route
+# rate-limit floor, SysEx payload cap mirror the §3 / §5 posture).
+#
+# Governing ADRs:
+#   ADR-005 — integration adapter boundary
+#             (docs/adr/ADR-005-integration-adapter-boundary.md)
+#   ADR-013 — networking defaults and security
+#             (docs/adr/ADR-013-networking-defaults-and-security.md)
+#
+# See also docs/43-development-standards.md §12.1. All workspace lints
+# (including unsafe_code = forbid, clippy::unwrap_used = deny,
+# clippy::expect_used = deny) are inherited; no local relaxation.
+
+[package]
+name = "chromaticity-midi-adapter"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity MIDI integration adapter (ADR-005 boundary; ADR-013 defaults)."
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# chromaticity-observability owns the canonical adapter-state and
+# packet-outcome label enums the OSC adapter mirrors. The Phase-4a
+# Wave 1b-A MIDI adapter reuses the existing `OscAdapterState` /
+# `OscBindErrorReason` taxonomy as a placeholder for the parallel
+# MIDI lifecycle counters until the runtime catalog grows
+# protocol-specific MIDI label enums (slice-3+ scope tracked alongside
+# `MetricEvent::OscInboundPackets`). The slice-2 OSC pattern is
+# explicit about this catalog-coupling deferral, and the Wave 1b-A
+# MIDI adapter inherits the same posture.
+chromaticity-observability = { version = "0.0.0", path = "../../engine/observability" }
+
+# midir 0.10 is the cross-platform MIDI input/output library backing
+# the Phase-4a Wave 1b-A MIDI adapter. License MIT (allow-listed in
+# deny.toml line 82). Wraps CoreMIDI on macOS, WinMM on Windows, and
+# ALSA on Linux behind a uniform `MidiInput` / `MidiInputConnection`
+# surface. midir is callback-based: connection installs a closure
+# that fires on each inbound message; the Wave 1b-A adapter wraps
+# that callback in a `Mutex<VecDeque<MidiMessage>>` queue so the
+# trait surface stays non-blocking poll() per ADR-005, matching the
+# OSC adapter's recv-loop shape.
+midir = "0.10"
