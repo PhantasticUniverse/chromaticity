@@ -15,19 +15,27 @@ Chromaticity is a deterministic, audio-reactive live-visuals runtime and authori
 environment (macOS + Windows desktop). Toolkit: Tauri 2 + Svelte 5 + TypeScript on the UI
 side; Rust 2024 edition on the engine side. `docs/adr/ADR-018-non-scene-ui-toolkit.md` is
 the normative toolkit decision. Phase 1 entered April 2026 and EXIT was achieved at
-W12 (commit `e818752`); **Phase 2 EXIT was achieved 2026-05-01 at commit `d8e92db`** per
-the simulation in `docs/EV-GATE-MODEL-AUDIT-checklist.md` — all four Phase-2 EXIT evidence
-IDs (`EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`, `EV-AUDIO-TRACE`, `EV-SANDBOX-SAFETY`)
-transitioned `Planned` → `Pass` against the green workspace nextest run id `25201608223`,
-with row 29's scope explicitly narrowed to slices 1-5.3 and slice 5.4+ scene-author surface
-deferred to Phase-3+ feature-development cadence per AO framing. Phase 3 entry remains a
-separate AO-held milestone with its own eight-row gate set per `docs/11-roadmap-phases.md`;
-deferred axes (`EV-INTEGRATION-MATRIX` Phase-4a, slice 5.4+, device-enum UI, macOS-in-CI
-nightly) are recorded in `docs/13` R-37 and the Phase-2 EXIT simulation appendix. Engine
-and integration crates (runtime, scene, audio, observability, render, script, entitlement,
-osc-adapter) carry foundational evidence at EXIT quality; parallel UI port waves against
-the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets, shell
-components, routed views).
+W12 (commit `e818752`); Phase 2 EXIT was achieved 2026-05-01 at commit `d8e92db`;
+**Phase 3 EXIT was achieved 2026-05-01 at commit `953fd74`** per the Phase-3 EXIT
+simulation closing sign-off in `docs/EV-GATE-MODEL-AUDIT-checklist.md` — seven of the eight
+Phase-3 EXIT evidence IDs (`EV-AUDIO-TRACE` re-validated cross-tag, `EV-AUDIO-ROUTING-MATRIX`,
+`EV-STATE-REPLAY`, `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`, `EV-SHOW-BUNDLE-RECOVERY`,
+`EV-PERF-BUDGETS`) transitioned `Planned` → `Pass` against six per-row anchor run ids
+(25204946481, 25203436497, 25207466995, 25205805621, 25208208038, 25208934213) plus the
+Phase-2 cross-tag for row 30; the eighth row `EV-COLOR-MANAGEMENT-SRGB` (row 38) is
+explicitly deferred per AO direction sequenced behind a future render-HUD-diagnostics PR.
+Phase-3 narrowing decisions: row 33 forward-migration only (rollback Phase-4+); row 34
+existing PresetStore + PlaylistStore semantics (preset-bank durability + scene-author
+preset capture + playlist reordering Phase-4+); row 35 bundle-format spec only (recovery /
+rollback semantics Phase-4+); row 36 observable-subsystem proxy benchmarks (true frame-loop
+budget surface deferred until ADR-001/ADR-006 slice-3 lands the scheduler-tick path; Path B
+nightly-only criterion harness in `engine/runtime/benches/budgets.rs` per the
+~$20/month-vs-~$70-80/month AO-approved cost posture). Phase 4+ entry remains a separate
+AO-held milestone with its own gate set per `docs/11-roadmap-phases.md`; Phase-3 EXIT
+achievement does not pre-empt the Phase-4 gate decision. Engine and integration crates
+(runtime, scene, audio, observability, render, script, entitlement, osc-adapter) carry
+foundational evidence at EXIT quality; parallel UI port waves against the v0.2-beta bundle
+closed all three Vitest test-coverage tracks (widgets, shell components, routed views).
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
