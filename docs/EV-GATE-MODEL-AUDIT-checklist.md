@@ -412,3 +412,204 @@ verified out-of-scope or scheduled to later phases:
       5.4+, device-enum UI, macOS-in-CI) are recorded with their
       proper Phase-3+/4a homes. Signed by AO `@PhantasticUniverse`
       on 2026-05-01.
+
+## Phase-3 EXIT simulation
+
+The Phase-3 EXIT gate set per `docs/26-evidence-artifact-registry.md`
+§Phase Gate Evidence Sets line 125 enumerates eight required evidence
+IDs: `EV-PRESET-PLAYLIST`, `EV-PERF-BUDGETS`, `EV-STATE-REPLAY`,
+`EV-STATE-MIGRATION`, `EV-SHOW-BUNDLE-RECOVERY`,
+`EV-AUDIO-ROUTING-MATRIX`, `EV-AUDIO-TRACE` (re-validated against the
+full corpus), and `EV-COLOR-MANAGEMENT-SRGB`. Per `docs/26` §Rules
+line 194, Phase-3 EXIT requires all eight rows at `Pass` — except
+where the AO has explicitly recorded a deferral with proper-home
+notation in `docs/13-risk-register.md` R-37.
+
+This section runs the Phase-3 EXIT simulation against HEAD `f86895b`
+(post `#311` merge) — the freshest green workspace test job on
+`main` covering the full Phase-3 directed engineering wave (PRs `#301`,
+`#302`, `#303`, `#304`, `#305`, `#306`, `#307`, `#308`, `#309`, `#310`,
+`#311`). The wave landed across six feat PRs (state-replay corpus,
+audio-routing-matrix corpus, preset-playlist corpus, state-migration
+envelope corpus, show-bundle format harness, perf-budgets nightly
+proxy benches) and five `docs(repo)` flip PRs transitioning rows 31,
+32, 33, 34, 35 from `Planned` to `Pass`.
+
+### Per-Type Minimums verification (Automated suite rows)
+
+`docs/26` line 159 specifies the Per-Type Minimums for Automated suite
+rows. Row-by-row verification at HEAD `f86895b`:
+
+- **Row 30 `EV-AUDIO-TRACE`** — re-validated against the full corpus
+  per the Phase-3 cumulative gate. Already `Pass` from Phase-2 EXIT
+  cross-tag (run id `25201608223` at `d8e92db`); no Phase-3 widening
+  required. The slice-1 `extract_uniform_snapshot` routing path is
+  cross-tagged with `EV-AUDIO-ROUTING-MATRIX` row 31's T1 invariants
+  in `engine/audio/src/uniforms.rs::uniforms_drift_pins` (`Evidence:
+  EV-AUDIO-TRACE (T1) + EV-AUDIO-ROUTING-MATRIX (T1)`).
+- **Row 31 `EV-AUDIO-ROUTING-MATRIX`** — (a) `ci-run-url:25204946481`
+  + repo-path chain. (b) green workspace test job on `main` HEAD
+  `f14c3d3` post-`#303` merge. (c) corpus version pinned by Phase-3
+  wave PR 2 (`engine/audio/tests/routing_matrix_corpus/main.rs` —
+  13 fixtures × 100 trials covering format conversion, channel
+  aggregation, clamp-boundary edges). (d) drift thresholds applied
+  via per-fixture tolerance assertion (1e-5 for direct conversions,
+  0.0 exact for baselines) + dual-tagged uniforms_drift_pins module
+  sharing T1 invariants with row 30.
+- **Row 32 `EV-STATE-REPLAY`** — (a) `ci-run-url:25203436497` +
+  repo-path chain. (b) green workspace test job on `main` HEAD
+  `0ddcb9c` post-`#301` merge. (c) corpus version pinned by Phase-3
+  wave PR 1 (`engine/runtime/src/state_replay.rs` canonical-binary
+  encoder + FNV-1a-64 hashing path; `engine/runtime/tests/
+  state_replay_corpus/main.rs` 6 fixtures × 100 trials). (d) drift
+  thresholds applied via cross-trial identity + golden-hash
+  assertion per fixture. Pure-Rust FNV-1a-64; empirically backend-
+  invariant on Linux Vulkan / Mesa llvmpipe (no per-backend ACCEPTED-
+  set widening required).
+- **Row 33 `EV-STATE-MIGRATION`** — (a) `ci-run-url:25207466995` +
+  repo-path chain. (b) green workspace test job on `main` HEAD
+  `ef45bd0` post-`#307` merge. (c) corpus version pinned by Phase-3
+  wave PR 4 (`engine/runtime/src/state_migration.rs` envelope
+  encoder/decoder + V1→V2 forward migration; `engine/runtime/
+  tests/state_migration_corpus/main.rs` 8 fixtures × 100 trials).
+  (d) drift thresholds applied via cross-trial identity + golden-
+  buffer assertion + decoder-rejection-path assertion per fixture.
+  **Phase-3 EXIT scope explicitly narrows row 33 to forward-
+  migration only** per the Description column update; rollback
+  semantics deferred to Phase-4+ per AO direction. The dual-encoder
+  envelope design preserves row 32 + row 34 goldens verbatim
+  (existing `encode_state_canonical` hashing path UNCHANGED; new
+  `encode_snapshot` envelope wraps it with a 4-byte BE version-tag
+  prefix at the State level).
+- **Row 34 `EV-PRESET-PLAYLIST`** — (a) `ci-run-url:25205805621` +
+  repo-path chain. (b) green workspace test job on `main` HEAD
+  `c33913a` post-`#305` merge. (c) corpus version pinned by Phase-3
+  wave PR 3 (`engine/runtime/tests/preset_playlist_corpus/main.rs`
+  8 fixtures × 100 trials). (d) drift thresholds applied via cross-
+  trial identity + direct semantic invariants over public State
+  accessors (`active_preset` / `playlist_position` / `control_value`)
+  + canonical_state_hash composition pin on the combined fixture.
+  **Phase-3 EXIT scope explicitly narrows row 34 to validation of
+  existing PresetStore + PlaylistStore semantics** per the Description
+  column update; preset-bank durability + scene-author preset capture
+  + playlist reordering deferred to Phase-4+ per AO feature-work
+  direction.
+- **Row 35 `EV-SHOW-BUNDLE-RECOVERY`** — (a) `ci-run-url:25208208038`
+  + repo-path chain. (b) green workspace test job on `main` HEAD
+  `92d50d0` post-`#308` merge. (c) corpus version pinned by Phase-3
+  wave PR 5 (`engine/scene/src/show_bundle.rs` manifest types + tar
+  reader/writer + SHA-256 verification; `engine/scene/tests/
+  show_bundle_corpus/main.rs` 6 fixtures × 100 trials). (d) drift
+  thresholds applied via cross-trial identity + canonical-JSON byte-
+  stability assertion + per-fixture rejection-path assertion (file-
+  checksum mismatch, manifest-checksum tamper, path-traversal
+  defense). **Phase-3 EXIT scope explicitly narrows row 35 to
+  bundle-format spec only** per the Description column update;
+  recovery / rollback semantics deferred to Phase-4+ per AO
+  direction. The `docs/22-compatibility-versioning-policy.md` line
+  78 reservation reconciled in the docs flip from `zip archive` to
+  `tar archive` matching the AO Phase-3 narrowing decision.
+- **Row 36 `EV-PERF-BUDGETS`** — corpus + harness landed at `85f869e`
+  per Phase-3 wave PR 6 (`engine/runtime/benches/budgets.rs` criterion
+  proxy benches over command-bus dispatch + state-replay canonical-
+  hash + preset-recall + playlist-advance latency; `scripts/
+  budget-check.sh` budget assertion helper; `.github/workflows/
+  macos-nightly.yml` extended with `cargo bench` + budget-check +
+  artifact-upload steps; new `criterion 0.5` dev-dep clean against
+  `deny.toml`). **Per-PR CI does NOT exercise the bench harness**
+  (Path B nightly-only AO posture per the AO-approved cost
+  framing — ~$20/month vs ~$70-80/month for a per-PR macOS matrix
+  expansion). The row 36 Pass transition therefore awaits the
+  first GREEN macos-nightly run after `#309` merge (~24h post-
+  merge); the docs flip PR follows the wave-PR pattern but with
+  the macos-nightly anchor instead of the post-merge push CI run.
+  **Phase-3 EXIT scope explicitly narrows row 36 to observable-
+  subsystem proxy benchmarks**; the true frame-loop budget surface
+  is deferred until ADR-001/ADR-006 slice-3 lands the scheduler-
+  tick path (the `pub(crate) frame: u64` placeholder in
+  `engine/runtime/src/state.rs` carries the in-source comment
+  "scheduler-tick path lands in a later slice"). Row 36 corpus is
+  empirically green via local `cargo bench --quick` per the wave
+  PR 6 commit body; the registry transition lands in the follow-up
+  wave PR 6.1 docs flip after the macos-nightly anchor.
+- **Row 38 `EV-COLOR-MANAGEMENT-SRGB`** — explicitly deferred per AO
+  direction. Sequenced behind a separate render-HUD-diagnostics PR
+  (Phase-4+ scope). The deferral is recorded in `docs/13-risk-
+  register.md` R-37 alongside the Phase-3 wave narrative; row 38's
+  Description column will receive the deferral note in the wave
+  PR 6.1 docs flip alongside row 36 (the AO-approved bundling per
+  `docs/EV-GATE-MODEL-AUDIT-checklist.md`'s Phase-3 closure plan).
+
+### Verdict
+
+Six of the eight Phase-3 EXIT evidence IDs satisfy the Per-Type
+Minimums at HEAD `f86895b`: rows 30, 31, 32, 33, 34, 35 are at `Pass`
+in `docs/26-evidence-artifact-registry.md`. Row 36 is empirically
+green at the corpus + harness level (Phase-3 wave PR 6 merged at
+`85f869e`); the registry transition awaits the first green
+macos-nightly run anchor (~24h post-merge) and lands in the wave PR
+6.1 docs flip. Row 38 is explicitly deferred per AO direction
+(`EV-COLOR-MANAGEMENT-SRGB` sequenced behind a future render-HUD-
+diagnostics PR; Phase-4+ scope).
+
+Per `docs/26` §Rules line 194 the Phase-3 EXIT gate becomes passable
+once row 36's Pass transition lands and row 38's deferral is recorded
+in its Description column. **Phase-3 EXIT achievement is therefore
+two follow-up `docs(repo)` PRs away from declaration**: wave PR 6.1
+(row 36 + row 38, anchored against the first green macos-nightly run
+after `#309` merge), then this audit checklist gets its closing
+sign-off line below appended in a final amendment.
+
+The Phase-3 wave narrative is recorded in `docs/13-risk-register.md`
+R-37 across wave-PR-1, wave-PR-2, wave-PR-3, wave-PR-4, wave-PR-5
+paragraphs (one per merged wave). Phase-4+ entry remains a separate
+AO-held milestone with its own gate set per `docs/11-roadmap-phases.md`;
+this audit does not pre-empt the Phase-4 gate decision.
+
+### Deferred axes recorded for Phase-4+ homes
+
+These items were considered as candidates for Phase-3 EXIT but
+verified out-of-scope or scheduled to later phases:
+
+- **`EV-COLOR-MANAGEMENT-SRGB` (row 38)** — explicitly deferred per
+  AO direction; sequenced behind a future render-HUD-diagnostics PR
+  exposing the active color pipeline (sRGB encode/decode points,
+  gamma handling, output transfer function). Closure depends on the
+  HUD diagnostic surface landing as part of unrelated render work.
+- **Row 33 rollback semantics** — pre-migration snapshot capture +
+  atomic restore + partial-rollback UX per `docs/32-state-preset-
+  playlist-migration-policy.md` deferred to Phase-4+ feature work.
+  Phase-3 narrowed to forward-migration only.
+- **Row 34 preset-bank durability + scene-author preset capture +
+  playlist reordering** — Phase-4+ feature work per AO direction.
+  Phase-3 narrowed to existing PresetStore + PlaylistStore semantics.
+- **Row 35 recovery / rollback semantics** — corrupted-bundle repair,
+  partial-load fallback, last-good-state restore — Phase-4+ feature
+  work. Phase-3 narrowed to bundle-format spec only.
+- **Row 36 true frame-loop budget surface** — deferred until ADR-001/
+  ADR-006 slice-3 lands the scheduler-tick path. Phase-3 narrowed to
+  observable-subsystem proxy benchmarks. The follow-on `chore(release-
+  eng)` PR (~7 nightly runs post-wave-PR-6.1) tightens
+  `scripts/budget-check.sh` from the loose-floor record-don't-fail
+  posture to true budget assertions per `docs/10`.
+- **Row 36 per-PR macOS matrix expansion** — Path B AO posture is
+  nightly-only (~$20/month) rather than per-PR (~$70-80/month).
+  Re-evaluation conditional on a regression incident actually firing.
+
+### Sign-off
+
+- [ ] Phase-3 EXIT simulation pre-pass at HEAD `f86895b`. Six of the
+      eight Phase-3 EXIT evidence IDs (`EV-AUDIO-TRACE`,
+      `EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`,
+      `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`,
+      `EV-SHOW-BUNDLE-RECOVERY`) satisfy the Per-Type Minimums and are
+      at `Pass`. Row 36 (`EV-PERF-BUDGETS`) corpus + harness landed
+      at `85f869e`; registry transition pending the first green
+      macos-nightly run anchor. Row 38 (`EV-COLOR-MANAGEMENT-SRGB`)
+      explicitly deferred per AO direction. Final Phase-3 EXIT
+      sign-off lands in a follow-up `docs(repo)` amendment after wave
+      PR 6.1 closes the row 36 + row 38 transitions. Phase-3 narrowing
+      decisions for rows 33 / 34 / 35 / 36 are recorded in their
+      Description column updates; the deferred-axes list above
+      records each item's proper Phase-4+ home. Pending AO sign-off
+      `@PhantasticUniverse` for the closing checkbox.
