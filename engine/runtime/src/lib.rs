@@ -64,4 +64,5 @@ pub mod command_bus;
 #[cfg(feature = "script-bridge")]
 pub mod script_bridge;
 pub mod state;
+pub mod state_migration;
 pub mod state_replay;

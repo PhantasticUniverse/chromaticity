@@ -118,7 +118,15 @@ fn default_buffer_capacity(state: &State) -> usize {
     64 + pairs * 8
 }
 
-fn encode_state_canonical(state: &State, out: &mut Vec<u8>) {
+/// Canonical-binary-encode `state` per the module-prose shape.
+///
+/// `pub(crate)` so the sibling [`crate::state_migration`] module
+/// can wrap this output in a versioned envelope without re-
+/// implementing the encoder. The output shape is the EV-STATE-
+/// REPLAY contract documented above; no rows depending on this
+/// shape may drift without updating the goldens in row 32 / row
+/// 34 / row 33 corpora.
+pub(crate) fn encode_state_canonical(state: &State, out: &mut Vec<u8>) {
     // be_u64(frame).
     out.extend_from_slice(&state.frame.to_be_bytes());
 
