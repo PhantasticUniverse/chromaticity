@@ -843,3 +843,132 @@ later waves:
       Wave 1b home. **Pre-pass only — full Phase-4a EXIT requires
       all 11 rows at `Pass`, contingent on Wave 1b closure.**
       Sign-off pending the Wave 1b closing docs PR.
+
+## Slice-3 scheduler-tick engineering wave closure
+
+The slice-3 scheduler-tick engineering wave landed 2026-05-01 in a
+five-PR sequence post-Phase-4a-Wave-1a, introducing the canonical
+scheduler-tick frame loop per ADR-001 / ADR-006 across
+`engine/runtime/src/scheduler/{mod,observability,audio,render}.rs`
+plus the T2 corpus at
+`engine/runtime/tests/scheduler_tick_corpus/main.rs`. Row 38
+`EV-SCHEDULER-TICK` is not part of the Phase-4a EXIT gate set per
+`docs/26` line 128; this section records the wave closure as the
+equivalent of a phase-milestone sign-off for the new evidence ID
+and the row's `Planned` → `Pass` transition. Anchor: post-merge
+push run on `main` HEAD `642bada` after the slice-3 PR 4 merge
+(`#330`).
+
+### Per-PR Per-Type Minimums verification (5 PRs)
+
+`docs/26` line 159 specifies the Per-Type Minimums for Automated
+suite rows (a) `ci-run-url` or `repo-path` to test report artifact,
+(b) CI run identifier with green status for pinned corpus version,
+(c) corpus / fixture version recorded, (d) drift thresholds applied.
+Per-PR verification at HEAD `642bada`:
+
+- **Slice-3 PR 1 (`#321`, merge `5c1aeb3`)** — foundational
+  `engine/runtime/src/scheduler/mod.rs` module: `Scheduler` struct +
+  `tick(&mut State, &InMemoryBus) -> Result<TickReport,
+  SchedulerError>` API + `SchedulerError::FrameOverflow` variant. 4
+  T1 drift pins inline at `scheduler::tests` covering frame-
+  advancement-by-one, command-bus drain composition, tick purity
+  under identical inputs, and `u64::MAX` `FrameOverflow` grace
+  (state + bus unchanged on overflow). Drift thresholds applied via
+  direct equality assertion per pin against the slice-2 command-bus
+  + slice-3a `State` foundation.
+- **Slice-3 PR 2 (`#326`, merge `6f994ab`)** — T2 corpus at
+  `engine/runtime/tests/scheduler_tick_corpus/main.rs`: 6 fixtures
+  (50-command baseline + 256-command scale + 512-command complex
+  chain + multistore-interleaved-256 + snap-cycles-128 +
+  playlist-saturation-1024) × 100 trials each, with embedded golden
+  hashes mirroring the EV-STATE-REPLAY canonical-state-hash
+  composition pattern. Cross-trial identity assertion + golden-hash
+  drift threshold per fixture.
+- **Slice-3 PR 5 (`#328`, merge `6f46a35`)** — observability
+  metric-emit wiring: `engine/runtime/src/scheduler/observability.rs`
+  introduces the `TickEmitter` trait + `MetricEmitterAdapter`
+  wrapping `Box<dyn EmitMetric>`; `Scheduler::with_metric_emitter`
+  builder method. 5 T1 pins covering builder install + tick-with-
+  emit emission + tick-without-emit no-op + emit ordering after
+  frame advance. Drift thresholds applied via recording-emitter pin
+  + direct assertion per fixture.
+- **Slice-3 PR 3 (`#329`, merge `d888440`)** — audio snapshot pull
+  wiring: `engine/runtime/src/scheduler/audio.rs` introduces the
+  `AudioPull` trait + `MutexAudioPull` adapter (`Arc<Mutex<
+  AudioUniformSnapshot>>` poison-recovery); `Scheduler::with_audio_
+  pull` builder. 5 T1 pins covering snapshot-stored-on-state, no-
+  pull leaves snapshot None, pull-before-frame-advances, pull-
+  before-command-bus-commit, and lock-poisoning graceful recovery.
+  Drift thresholds applied via recorder pin + direct assertion per
+  fixture.
+- **Slice-3 PR 4 (`#330`, merge `642bada`)** — render dispatch
+  wiring: `engine/runtime/src/scheduler/render.rs` introduces the
+  `RenderDispatch` trait + `RenderDispatchOutcome` enum;
+  `Scheduler::with_render_dispatch` builder. 5 T1 pins covering
+  invocation-once-per-tick, no-dispatch no-op, post-tick-frame
+  hand-off, post-tick-audio-snapshot hand-off (the load-bearing
+  ordering pin tying audio pull + frame advance + render dispatch
+  together), and skipped-outcome does-not-abort-tick.
+
+### Tick-step ordering verification
+
+Tick-step ordering is load-bearing and pinned end-to-end by PR 4's
+`tick_render_handler_receives_post_tick_audio_snapshot` T1 pin in
+`engine/runtime/src/scheduler/render.rs`: audio pull (BEFORE state
+mutation) → bus drain + frame advance → render dispatch (AFTER
+state mutation, observing post-tick frame plus the audio snapshot
+pulled at tick start) → observability emit (last, observing post-
+tick state plus events-committed count). The slice-3 PR 1
+invariants (frame advancement, bus drain composition, tick purity,
+`FrameOverflow` grace) hold verbatim under additive subsystem
+extension because each subsystem-extension PR adds its seam without
+altering the bus-drain plus frame-advance core.
+
+### T1 + T2 coverage summary
+
+- T1 pins: 4 (PR 1 foundational) + 5 (PR 5 observability) + 5 (PR 3
+  audio) + 5 (PR 4 render) = 19 inline T1 drift pins across the
+  slice-3 wave.
+- T2 corpus: 6 fixtures × 100 trials = 600 trial replays with
+  embedded golden hashes (PR 2 corpus). The 3 existing T2 corpora
+  (`state_replay_corpus`, `preset_playlist_corpus`,
+  `state_migration_corpus`) preserve their goldens unchanged
+  because the scheduler is purely additive.
+- All 4 T2 corpora (`state_replay`, `preset_playlist`,
+  `state_migration`, `scheduler_tick`) pass green on the post-merge
+  push run on `main` HEAD `642bada`.
+
+### Verdict
+
+Row 38 `EV-SCHEDULER-TICK` transitions `Planned` → `Pass` against
+the post-merge push run on `main` HEAD `642bada`. The slice-3
+engineering wave closes the L2 / L3 deferral markers from the
+Phase-3 closure (`#[allow(dead_code)]` on `frame: u64` and
+`TODO(slice-3)` markers in observability) — the scheduler-side
+markers migrated to canonical advancement comments; the remaining
+markers are intentional deferrals to subsystem-side widening with
+proper Wave 1b / post-slice-3 homes recorded in the in-source
+rephrasings.
+
+### Sign-off
+
+- [x] Slice-3 scheduler-tick engineering wave closure verified at
+      HEAD `642bada`. Five feat PRs (`#321` `#326` `#328` `#329`
+      `#330`) merged in sequence; row 38 `EV-SCHEDULER-TICK`
+      transitions `Planned` → `Pass`. The canonical scheduler-tick
+      frame loop per ADR-001 / ADR-006 lands across
+      `engine/runtime/src/scheduler/{mod,observability,audio,render}
+      .rs` with the established sub-module + builder + tick-step
+      extension pattern; T1 + T2 coverage closed (19 inline T1 pins
+      + 6-fixture × 100-trial T2 corpus). All 4 T2 corpora
+      (state_replay, preset_playlist, state_migration,
+      scheduler_tick) pass with goldens preserved. Phase-4d row 36
+      `EV-PERF-BUDGETS` true frame-loop budget surface is now
+      unblockable — the criterion proxy harness in
+      `engine/runtime/benches/budgets.rs` can be widened to actual
+      scheduler-tick benchmarks in a follow-up
+      `chore(release-eng)` PR. **Wave-closure sign-off only —
+      Phase-4 EXIT itself remains AO-held until all four sub-phases
+      close per `docs/11`; this section records the slice-3
+      milestone, not a phase EXIT.**

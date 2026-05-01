@@ -48,9 +48,14 @@ pub trait EmitMetric: Send + Sync {
 /// the buffer.
 ///
 /// The in-process counter is the slice-2 emission-site claim for
-/// `chromaticity_observability_events_emitted_total`; slice-3 will
-/// route the counter through `MetricEvent::ObservabilityEventsEmitted`
-/// on the runtime bus.
+/// `chromaticity_observability_events_emitted_total`; the slice-3
+/// scheduler-tick wave (PRs `#321` `#326` `#328` `#329` `#330`)
+/// landed the scheduler-side `MetricEmitterAdapter` that calls
+/// `emitter.emit(MetricEvent::RuntimeUptime { .. })` once per tick,
+/// but did NOT route the meta-counter through the runtime bus —
+/// TODO(post-slice-3 meta-counter routing): emit the counter through
+/// `MetricEvent::ObservabilityEventsEmitted` on the runtime bus once
+/// the bus surface widens to carry a meta-counter variant.
 ///
 /// Used directly by the slice-2 drift pins. Slice-3 tests that need
 /// to observe telemetry use this implementation as the default test

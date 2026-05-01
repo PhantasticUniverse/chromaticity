@@ -49,9 +49,13 @@ pub enum ObservabilitySubsystem {
 ///
 /// The authoritative runtime-lifecycle state machine does not yet
 /// exist in-tree; this slice-2 shape is a best-effort synthesis
-/// against ADR-006 (thread-and-process-model). TODO(slice-3):
-/// reconcile variants against the concrete lifecycle enum once the
-/// runtime scheduler ships.
+/// against ADR-006 (thread-and-process-model). The slice-3 wave
+/// (PRs `#321` `#326` `#328` `#329` `#330`) landed the
+/// `scheduler::Scheduler::tick` frame-loop seam but did NOT widen
+/// this enum — TODO(post-slice-3 runtime-bus widening): reconcile
+/// variants against the concrete lifecycle enum once the runtime
+/// bus surfaces lifecycle transitions through a dedicated
+/// `MetricEvent::RuntimeLifecycleTransition` emission site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum RuntimeLifecycleState {
@@ -126,10 +130,13 @@ pub enum SceneLintCategory {
 /// Distinct from `chromaticity_audio::IngestStatus` — the `Status`
 /// enum is the per-pull outcome, whereas this enum is the
 /// transition state machine (Starting -> Running -> Draining ->
-/// Closed) that the transitions counter keys off. The slice-3 wiring
-/// maps outcomes to transitions; slice-2 pins the vocabulary.
-/// TODO(slice-3): reconcile against the concrete audio-pipeline
-/// lifecycle once the scheduler lands.
+/// Closed) that the transitions counter keys off. The slice-3 wave
+/// (PRs `#321` `#326` `#328` `#329` `#330`) landed the
+/// `scheduler::audio::AudioPull` snapshot-pull seam but did NOT
+/// reify the audio-pipeline lifecycle enum — TODO(post-slice-3
+/// audio-pipeline lifecycle widening): reconcile against the
+/// concrete enum once it ships in `engine/audio` or as a
+/// `chromaticity_audio::IngestLifecycle` companion type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AudioIngestState {
@@ -172,8 +179,14 @@ pub enum OscPacketOutcome {
 ///
 /// The concrete adapter-lifecycle enum in `docs/08-io-integrations.md`
 /// has not yet been reified as a Rust type; this slice-2 shape is
-/// a best-effort synthesis. TODO(slice-3): reconcile against the
-/// adapter-lifecycle enum once it ships in `integrations/`.
+/// a best-effort synthesis. The slice-3 scheduler-tick wave
+/// (PRs `#321` `#326` `#328` `#329` `#330`) did not touch the OSC
+/// adapter — TODO(Phase-4a Wave 1b OSC-adapter-lifecycle widening):
+/// reconcile against the concrete adapter-lifecycle enum once it
+/// ships in `integrations/osc-adapter` (currently `OscAdapterState`
+/// in `integrations/osc-adapter/src/adapter.rs` carries
+/// `Idle / Bound / Errored` — narrower than this enum's
+/// `Unbound / Binding / Bound / Unbinding` synthesis).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum OscAdapterState {
@@ -187,8 +200,11 @@ pub enum OscAdapterState {
 ///
 /// Synthesised from `std::io::ErrorKind` — the socket-bind failure
 /// categorisation that `UdpOscAdapter::bind` surfaces via
-/// `OscAdapterError::BindFailed`. TODO(slice-3): widen / align as
-/// the adapter grows structured bind-error reporting.
+/// `OscAdapterError::BindFailed`. The slice-3 scheduler-tick wave
+/// (PRs `#321` `#326` `#328` `#329` `#330`) did not touch the OSC
+/// adapter — TODO(Phase-4a Wave 1b OSC bind-error widening): widen /
+/// align as the adapter grows structured bind-error reporting beyond
+/// the current `std::io::ErrorKind` synthesis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum OscBindErrorReason {
