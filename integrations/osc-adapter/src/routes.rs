@@ -16,19 +16,24 @@
 //! `#[non_exhaustive]` is applied so that extension is an additive
 //! change rather than a breaking variant add.
 //!
-//! Every type in this module is `pub(crate)` — the shape is
-//! adapter-internal and not yet part of the operator-facing
-//! surface. Slice-3 may widen visibility when a consumer outside
-//! this crate needs to reference the taxonomy.
+//! Visibility was widened from `pub(crate)` to `pub` in Phase-4a
+//! Wave 1a so the `EV-INTEGRATION-MATRIX` (T2) conformance corpus
+//! in `integrations/osc-adapter/tests/integration_matrix_corpus/`
+//! can exercise the route-namespace taxonomy from outside the
+//! crate. The slice-2 module prose anticipated this trigger
+//! ("Slice-3 may widen visibility when a consumer outside this
+//! crate needs to reference the taxonomy"); Phase-4a's matrix
+//! gate is the legitimate consumer. The shape (variants,
+//! `RouteAddr` field set, `parse` signature) is unchanged — only
+//! the `pub(crate)` qualifier was relaxed.
 
 /// Top-level OSC namespace prefix.
 ///
 /// Slice-2 subset; slice-3 extends. See `docs/08-io-integrations.md`
 /// §OSC for the full prefix enumeration.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub(crate) enum RoutePrefix {
+pub enum RoutePrefix {
     /// `/controls/…` — control-value routes.
     Controls,
     /// `/scenes/…` — scene-selection routes.
@@ -45,11 +50,14 @@ pub(crate) enum RoutePrefix {
 /// any interpretation. Slice-3 route-handler dispatch consumes this
 /// shape to look up the matching handler and emit the corresponding
 /// runtime command.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RouteAddr {
-    pub(crate) prefix: RoutePrefix,
-    pub(crate) segments: Vec<String>,
+pub struct RouteAddr {
+    /// Top-level prefix tag — see [`RoutePrefix`].
+    pub prefix: RoutePrefix,
+    /// Tail address segments after the prefix. Empty segments
+    /// (caused by trailing or doubled slashes) are stripped during
+    /// [`parse`] so callers see a canonical segment vector.
+    pub segments: Vec<String>,
 }
 
 /// Parse an OSC address pattern into a [`RouteAddr`].
@@ -66,8 +74,7 @@ pub(crate) struct RouteAddr {
 /// `chromaticity-observability::catalog` (cross-subtree) and (b)
 /// route-extraction from the parsed [`OscPacket`], which is
 /// slice-3 dispatch scope per `lib.rs` module prose.
-#[allow(dead_code)]
-pub(crate) fn parse(s: &str) -> Option<RouteAddr> {
+pub fn parse(s: &str) -> Option<RouteAddr> {
     let rest = s.strip_prefix('/')?;
     let mut parts = rest.split('/');
     let head = parts.next()?;

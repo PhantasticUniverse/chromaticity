@@ -27,4 +27,4 @@
 
 pub mod adapter;
 pub mod defaults;
-pub(crate) mod routes;
+pub mod routes;
