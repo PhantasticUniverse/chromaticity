@@ -57,10 +57,24 @@ render dispatch (AFTER state mutation) → observability emit (last). Existing T
 replacing design (corpora continue to use `commit_all_into` directly with `frame=0` static
 state). Phase 4+ entry remains a separate AO-held milestone with its own gate set per
 `docs/11-roadmap-phases.md`; Phase-3 EXIT achievement does not pre-empt the Phase-4 gate
-decision. Engine and integration crates
-(runtime, scene, audio, observability, render, script, entitlement, osc-adapter) carry
-foundational evidence at EXIT quality; parallel UI port waves against the v0.2-beta bundle
-closed all three Vitest test-coverage tracks (widgets, shell components, routed views).
+decision. Phase-4a Wave 1b partial closure landed 2026-05-02 in a 3-PR session
+(`#332` entitlement tier-gating widening + `#333` MIDI adapter and EV-MIDI-EXTENDED
+corpus + this docs(repo) closing PR): row 80 `EV-MIDI-EXTENDED` Pass under new
+`integrations/midi-adapter/` crate (midir 0.10 cross-platform MIDI; 17 fixtures × 100
+trials covering MIDI-CONF-11..20 + 5 dual-tagged matrix-arm fixtures; MPE deferred to
+V2 with diagnostic-fires-once rejection); rows 37 + 86 narrowing-clauses dropped via
+`HONORED_TOKEN_CAPABILITIES` widening 1 → 13 entries (data-only; IO_CAMERA intentionally
+excluded — free at MVP per ADR-009). Phase-4a EXIT row state after Wave 1a + 1b:
+**11 of 11 Phase-4a rows at Pass under collective narrowings**; full conformance modulo
+Wave 1c camera/Syphon/audio-uniform-IPC narrowing on row 37 + IO_CAMERA tier-gating on
+row 86 (Wave 1c explicitly deferred per AO direction; estimated 5,000-10,000 LoC
+multi-week scope; requires platform integration decisions + likely new ADRs). Phase-4a
+EXIT is **passable under current narrowings per `docs/26` §Rules line 194**; AO can
+declare at discretion. Engine and integration crates
+(runtime, scene, audio, observability, render, script, entitlement, osc-adapter,
+midi-adapter) carry foundational evidence at EXIT quality; parallel UI port waves
+against the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets,
+shell components, routed views).
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and

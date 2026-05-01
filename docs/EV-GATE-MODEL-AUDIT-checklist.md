@@ -972,3 +972,75 @@ rephrasings.
       Phase-4 EXIT itself remains AO-held until all four sub-phases
       close per `docs/11`; this section records the slice-3
       milestone, not a phase EXIT.**
+
+## Phase-4a Wave 1b closure
+
+The Phase-4a Wave 1b closure (2026-05-02) closes 2 of 3 sub-bands
+under AO-approved autonomous-execution direction. Wave 1b-C is
+explicitly deferred to AO direction (camera adapter + Syphon adapter
++ IPC bridge framework; estimated 5,000-10,000 LoC multi-week scope;
+requires platform integration decisions + likely new ADRs).
+
+### Per-PR Per-Type Minimums verification
+
+- **Wave 1b-A `#333`** (`bba49c1`) — new `integrations/midi-adapter/`
+  crate; 2,535 LoC across 6 files; midir 0.10 cross-platform MIDI;
+  17 in-source T1 pins + 17 T2 corpus fixtures (10 MIDI-CONF-11..20
+  + 2 extras + 5 dual-tagged EV-INTEGRATION-MATRIX MIDI-arm); anchor
+  run id `25219692261` green. Per-Type Minimums: ci-run-url + repo-path
+  + corpus version (midir 0.10 + dual-tagged matrix-arm) + drift
+  thresholds (per-fixture parse / normalization / timeout / counter
+  assertions) all populated.
+
+- **Wave 1b-B `#332`** (`b57e11b`) — `engine/entitlement/src/enforcement.rs`
+  `HONORED_TOKEN_CAPABILITIES` widening 1 → 13 entries (data-only; no
+  code-path change; preserves fail-closed semantics + FREE_CAPABILITIES
+  unconditional grant + expired-token deny); 11 new Rust fixtures
+  (8 → 19 total) + 6 new TS fixtures (6 → 12 total); anchor run id
+  `25219329314` green. Per-Type Minimums: ci-run-url + repo-path +
+  corpus version (HONORED_TOKEN_CAPABILITIES 13-entry widening) +
+  drift thresholds (per-fixture boolean assertions across the widened
+  capability set) all populated.
+
+### Verdict
+
+Row 80 `EV-MIDI-EXTENDED` transitions `Planned` → `Pass`. Rows 37 +
+86 narrowing-clauses dropped (Phase-4a Wave 1a's OSC-only and
+MVP-watermark-only narrowings widened to MIDI matrix arm + tier-gating
+respectively). Phase-4a EXIT row state after Wave 1a + 1b: **11 of 11
+Phase-4a rows at Pass under collective narrowings**.
+
+Full Phase-4a EXIT activation requires Wave 1c (camera/Syphon/IPC)
+closure to drop the camera/Syphon/audio-uniform-IPC narrowing on row
+37 + IO_CAMERA tier-gating activation on row 86. Phase-4a EXIT is
+**passable under current narrowings per `docs/26` §Rules line 194**;
+the AO can declare Phase-4a EXIT at its discretion.
+
+### Wave 1c deferral (AO direction required)
+
+- **Camera adapter** (cross-platform: V4L2 / AVFoundation /
+  MediaFoundation) — new platform-integration crate; estimated
+  ~1,500-2,500 LoC; requires platform-specific FFI bindings.
+- **Syphon adapter** (macOS-specific GPU IO; Spout for Windows
+  parity) — new platform-integration crate; estimated ~1,500-2,500
+  LoC; requires Syphon SDK linkage decision (vendored vs system).
+- **IPC bridge framework** (H6 audio-visualizer engine→UI wiring
+  per the post-Phase-3 deferral; the framework also unblocks live
+  `EntitlementBitmask` IPC for the `capabilitiesStore` tier-gating
+  swap-in) — estimated ~2,000-5,000 LoC; requires Tauri ⇄ runtime
+  communication architecture decisions + likely new ADR-track work.
+
+The Wave 1c deferral is recorded in `docs/13-risk-register.md` R-37
+closing paragraph (this PR) and in the row 37 + row 86 Description
+columns (this PR). When AO direction lands for Wave 1c, the proper
+home is a new directed engineering wave with new ADR + research +
+plan-mode + implementation cycle (estimated multi-week wall-clock).
+
+### Sign-off
+
+- [x] Phase-4a Wave 1b closure recorded at `main` HEAD post-merge
+      of this PR. 2 of 3 sub-bands closed (1b-A MIDI; 1b-B
+      tier-gating); 1b-C deferred per AO direction. Phase-4a EXIT
+      passable under current narrowings; AO can declare at discretion.
+      **Phase-4a EXIT itself remains AO-held; Phase-4b/4c/4d remain
+      AO-held milestones with their own gate sets per `docs/11`.**
