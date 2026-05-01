@@ -21,18 +21,20 @@
 //! allocation across command + state, script, audio snapshot read,
 //! render graph, and present + overhead. The canonical scheduler-tick
 //! frame loop that would let a single-bench cover that allocation top-
-//! to-bottom is NOT yet in tree — `engine/runtime/src/state.rs` line
-//! ~31 carries the `pub(crate) frame: u64` counter under the in-source
-//! comment that the "scheduler-tick path lands in a later slice"
-//! (ADR-001 / ADR-006 slice-3 scope, deferred). Phase-3 row 36
-//! therefore measures **observable-subsystem proxies** — public-API
-//! latency around the command bus, the canonical-state replay + hash
-//! pipeline, and the preset / playlist apply path — without
-//! introducing instrumentation hooks or widening crate-private
-//! surface. Once the scheduler-tick path lands, a follow-up wave can
-//! add a true frame-loop bench against the hard budget; until then,
-//! the proxies are the most useful regression signal available
-//! through the public surface.
+//! to-bottom landed across the slice-3 wave (PRs `#321` `#326` `#328`
+//! `#329` `#330`); `engine/runtime/src/state.rs` lines ~32-40 carry
+//! the `pub(crate) frame: u64` counter under the canonical scheduler-
+//! tick advancement comment referencing
+//! [`crate::scheduler::Scheduler::tick`] (ADR-001 / ADR-006). Phase-3
+//! row 36 therefore measures **observable-subsystem proxies** —
+//! public-API latency around the command bus, the canonical-state
+//! replay + hash pipeline, and the preset / playlist apply path —
+//! without introducing instrumentation hooks or widening crate-private
+//! surface. With the scheduler-tick path now in tree, a follow-up
+//! `chore(release-eng)` PR can widen this harness to a true frame-
+//! loop bench against the hard budget (closing row 36's deferred
+//! frame-loop axis); until then, the proxies are the most useful
+//! regression signal available through the public surface.
 //!
 //! # Bench groups
 //!

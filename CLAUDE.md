@@ -45,7 +45,17 @@ catalog), and `EV-ENTITLEMENT-ENFORCEMENT` + `EV-ENTITLEMENT-OFFLINE` +
 watermark-only narrowing — tier gating deferred to post-MVP per `docs/11` line ~125). 6
 Phase-4a EXIT rows remain `Planned` for Wave 1b (`EV-MIDI-EXTENDED` plus the four deferred
 `EV-INTEGRATION-MATRIX` arms plus entitlement tier-gating beyond the MVP watermark
-surface). Phase 4+ entry remains a separate AO-held milestone with its own gate set per
+surface). Slice-3 scheduler-tick engineering wave closure landed 2026-05-01 in a 5-PR
+sequence (`#321` foundational module + `#326` T2 corpus + `#328` observability metric-emit
+wiring + `#329` audio snapshot pull wiring + `#330` render dispatch wiring + this
+docs(repo) closing PR): `engine/runtime/src/scheduler/{mod,observability,audio,render}.rs`
+ships the canonical scheduler-tick frame loop per ADR-001 / ADR-006 with the established
+sub-module + builder + tick-step extension pattern. Row 38 (`EV-SCHEDULER-TICK`) at Pass.
+Tick-step ordering: audio pull (BEFORE state mutation) → bus drain + frame advance →
+render dispatch (AFTER state mutation) → observability emit (last). Existing T2 corpora
+(state_replay, preset_playlist, state_migration) preserve goldens via the additive-not-
+replacing design (corpora continue to use `commit_all_into` directly with `frame=0` static
+state). Phase 4+ entry remains a separate AO-held milestone with its own gate set per
 `docs/11-roadmap-phases.md`; Phase-3 EXIT achievement does not pre-empt the Phase-4 gate
 decision. Engine and integration crates
 (runtime, scene, audio, observability, render, script, entitlement, osc-adapter) carry

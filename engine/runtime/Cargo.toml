@@ -50,12 +50,15 @@ workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 # `EventKind`, and `RuntimeLifecycleState` label-enums mirroring
 # docs/31 §Scheme and Metric Catalog. The runtime bus imports these
 # enums so the in-bus emission counters key off the same vocabulary
-# the slice-3 runtime-bus wiring will route through
+# slice-3 PR 5 (PR `#328`) wired through
 # `MetricEvent::RuntimeCommandsDispatched`, `RuntimeEventsEmitted`,
-# `RuntimeLifecycleTransition`, and `RuntimeUptime`. Slice-2 does NOT
-# depend on any other observability surface (no `MetricSink`, no
-# emitter types); those couplings are slice-3 scope per
-# engine/observability/src/lib.rs lines 26-27.
+# `RuntimeLifecycleTransition`, and `RuntimeUptime` via the
+# `scheduler::observability::TickEmitter` trait + `MetricEmitterAdapter`
+# wrapping `Box<dyn EmitMetric>` consumed by
+# `Scheduler::with_metric_emitter`. Slice-2 did NOT depend on any
+# other observability surface (no `MetricSink`, no emitter types);
+# those couplings landed in slice-3 PR 5 per the scheduler module
+# at `engine/runtime/src/scheduler/observability.rs`.
 chromaticity-observability = { version = "0.0.0", path = "../observability" }
 
 # chromaticity-audio carries the canonical
@@ -82,9 +85,9 @@ chromaticity-script = { version = "0.0.0", path = "../script", optional = true }
 
 # crossbeam-channel 0.5 backs the Phase-1 in-memory CommandChannel
 # implementation. Wrapped behind the crate-local `CommandChannel`
-# trait so slice-3 persistence work can substitute a disk-backed or
-# reconciliation-layer implementation without touching producer call
-# sites. License: MIT OR Apache-2.0 (allow-listed by deny.toml).
+# trait so Phase-3+/4a persistence work can substitute a disk-backed
+# or reconciliation-layer implementation without touching producer
+# call sites. License: MIT OR Apache-2.0 (allow-listed by deny.toml).
 # Slice-5.3 also reuses crossbeam-channel for the script-bridge
 # bounded MPMC consumer queue.
 crossbeam-channel = "0.5"
