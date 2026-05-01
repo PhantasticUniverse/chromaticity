@@ -30,9 +30,24 @@ preset capture + playlist reordering Phase-4+); row 35 bundle-format spec only (
 rollback semantics Phase-4+); row 36 observable-subsystem proxy benchmarks (true frame-loop
 budget surface deferred until ADR-001/ADR-006 slice-3 lands the scheduler-tick path; Path B
 nightly-only criterion harness in `engine/runtime/benches/budgets.rs` per the
-~$20/month-vs-~$70-80/month AO-approved cost posture). Phase 4+ entry remains a separate
-AO-held milestone with its own gate set per `docs/11-roadmap-phases.md`; Phase-3 EXIT
-achievement does not pre-empt the Phase-4 gate decision. Engine and integration crates
+~$20/month-vs-~$70-80/month AO-approved cost posture). Phase-4a Wave 1a partial closure
+landed 2026-05-01 in a 5-PR session (slice-3 PR 1 wave-PR `#321` introducing the
+foundational `Scheduler` + `Scheduler::tick` per ADR-001/006 with new evidence ID
+`EV-SCHEDULER-TICK` (pending Pass-anchor in the slice-3 closing docs PR after PRs 2-6 of
+the slice-3 wave land); plus Wave 1a feat PRs `#322` `#323` `#324` `#325`; plus this
+docs(repo) closing PR): 5 of 11 Phase-4a EXIT rows at `Pass` under AO-approved narrowings —
+`EV-INTEGRATION-MATRIX` (OSC-routing-matrix-only narrowing — MIDI / camera / Syphon /
+audio-uniform-IPC arms deferred to Wave 1b), `EV-HOTKEY-PARITY-CONFORMANCE` +
+`EV-HOTKEY-COMPLETENESS` + `EV-HOTKEY-CONFLICT` (full scope), `EV-NET-HARDENING` (full
+scope), `EV-HEALTH-METRICS-LOOPBACK-ONLY` (full scope per `docs/31` Phase-1 baseline
+catalog), and `EV-ENTITLEMENT-ENFORCEMENT` + `EV-ENTITLEMENT-OFFLINE` +
+`EV-ENTITLEMENT-REVOCATION` + `EV-ENTITLEMENT-FREE-FEATURES` (4 rows bundled at MVP
+watermark-only narrowing — tier gating deferred to post-MVP per `docs/11` line ~125). 6
+Phase-4a EXIT rows remain `Planned` for Wave 1b (`EV-MIDI-EXTENDED` plus the four deferred
+`EV-INTEGRATION-MATRIX` arms plus entitlement tier-gating beyond the MVP watermark
+surface). Phase 4+ entry remains a separate AO-held milestone with its own gate set per
+`docs/11-roadmap-phases.md`; Phase-3 EXIT achievement does not pre-empt the Phase-4 gate
+decision. Engine and integration crates
 (runtime, scene, audio, observability, render, script, entitlement, osc-adapter) carry
 foundational evidence at EXIT quality; parallel UI port waves against the v0.2-beta bundle
 closed all three Vitest test-coverage tracks (widgets, shell components, routed views).
