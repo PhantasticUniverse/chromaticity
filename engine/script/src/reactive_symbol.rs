@@ -7,7 +7,7 @@
 //! `__chromaticityEmit(name, value)` call lowers to
 //! [`crate::ScriptCommand::ReactiveWrite { name, value }`] — a
 //! string-keyed plain-data shape. Slice 5.2 closes the
-//! `docs/36-reactive-symbol-catalog.md` v1.1.0 binding gap by
+//! `docs/36-reactive-symbol-catalog.md` v1.3.0 binding gap by
 //! attaching a typed catalog: a [`ReactiveSymbol`] enum with one
 //! variant per documented `syn_*` / `chroma_*` name in the
 //! script-host-visible subset, a [`ReactiveValueKind`] dimensionality
@@ -122,7 +122,7 @@
 //!
 //! - `docs/26-evidence-artifact-registry.md` row 29 —
 //!   `EV-SCRIPT-CONTRACT`.
-//! - `docs/36-reactive-symbol-catalog.md` v1.1.0 — symbol
+//! - `docs/36-reactive-symbol-catalog.md` v1.3.0 — symbol
 //!   vocabulary.
 //! - `docs/43-development-standards.md` §15.5 — T-tier
 //!   definitions.
@@ -136,7 +136,7 @@
 use crate::value::ScriptValue;
 
 /// Canonical reactive-symbol identity for the script-host-visible
-/// subset of `docs/36-reactive-symbol-catalog.md` v1.1.0.
+/// subset of `docs/36-reactive-symbol-catalog.md` v1.3.0.
 ///
 /// One variant per documented name. The variant name is a Rust
 /// `PascalCase` rendering of the catalog string; the catalog

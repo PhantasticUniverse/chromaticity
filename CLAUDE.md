@@ -401,7 +401,7 @@ them, but `Read` and review are the entire point of the bundle):
   the bundle's `scene.jsx` is the full Author port source) plus shared primitives —
   `chroma_inspector.jsx` (input controls palette, the W10 port source), `cue_curve.jsx`
   (cubic bezier transition curve, the W13 PR2 port source), `hotkeys_data.jsx`
-  (canonical 70+ row hotkey vocabulary with the `cap` entitlement field),
+  (canonical 29-row hotkey vocabulary with the `cap` entitlement field),
   `empty_states.jsx` (per-view copy), `v02_supplement.jsx` (ChromaCtx + AdapterPill /
   DegradedBanner / OutputRoutingTile / WatermarkOverlay / LockedRow / CrashResumeBanner
   chrome), `extras.jsx` (ThemeSwitcher / FavslotsBar / SnapBar / ControlHotkeysHint),
@@ -433,15 +433,19 @@ entitlement infrastructure gates components (deferred for W14+).
 UI ports already in production: W6 ThemeSwitcher (3-theme cascade); W8 widget primitives
 (Fader / Knob / Toggle / Swatch / ControlGroup) + HotkeyOverlay + EmptyState; W9 Library
 backbone; W10 Inputs Inspector; W11 ErrorMessage primitive + Vitest scaffold + Tauri
-ship-time bundling; W12 app shell (AppShell + 12-icon SidebarRail + StatusBar +
+ship-time bundling; W12 app shell (AppShell + 13-icon SidebarRail + StatusBar +
 RouteStore + Perform / Library / Author / Settings views); W13 CueTransitionCurve widget
 
 - Playlist v2 view (first un-disabled bundle-port routed view in the W12 shell). W14-W34
   waves shipped MIDI view, OSC view, Audio view + canvas Spectrum / BpmRing / BeatDots
   visualizers, Author full port (with CodeMirror integration), and the Adapter UI suite
   (AdapterPill + DegradedBanner + OutputRoutingTile + LockedRow + WatermarkOverlay +
-  CrashResumeBanner) entitlement-gated via the `capabilitiesStore` that replaced the
-  bundle's React `ChromaCtx`.
+  CrashResumeBanner) wired via the `capabilitiesStore` that replaced the bundle's
+  React `ChromaCtx`. The store is currently fixture-seeded from the W33b
+  `LICENSE_FIXTURE`'s capability matrix per `src/lib/stores/capabilities.svelte.ts`
+  lines 19-28; the live `EntitlementBitmask` IPC swap-in is Phase-3+/4a
+  `EV-ENTITLEMENT-ENFORCEMENT` scope, so chrome elements render as if a fully-
+  activated license were installed until that lands.
 
 ## Where authoritative answers live
 

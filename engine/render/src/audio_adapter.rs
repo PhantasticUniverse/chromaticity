@@ -59,8 +59,11 @@
 //! # Stability and ordering
 //!
 //! [`uniform_input_from_audio_snapshot`] returns the uniforms in a
-//! stable, documented order (BPM, RMS, PEAK, FFT_LO, FFT_HI). The
-//! [`MultipassSpec`] scheduler binds uniforms in declaration order
+//! stable, documented order (BPM, RMS, PEAK, FFT) — four entries
+//! after the catalog v1.3.0 consolidation collapsed the v1.2.0
+//! transitional split-vec4 spelling (FFT_LO, FFT_HI) into a single
+//! `chroma_AudioFFT[8]` array. The [`MultipassSpec`] scheduler
+//! binds uniforms in declaration order
 //! (per `multipass.rs::PassDef::uniforms` doc comment), so this
 //! ordering is the binding contract for slot indices into the
 //! per-pass uniform buffer. The names themselves are diagnostic
@@ -80,7 +83,7 @@
 //!
 //! - `docs/26-evidence-artifact-registry.md` row 28 — `EV-RENDER-CONFORMANCE`.
 //! - `docs/26-evidence-artifact-registry.md` row 30 — `EV-AUDIO-TRACE`.
-//! - `docs/36-reactive-symbol-catalog.md` v1.1.0 — symbol vocabulary.
+//! - `docs/36-reactive-symbol-catalog.md` v1.3.0 — symbol vocabulary.
 //! - `docs/43-development-standards.md` §15.5 — T-tier definitions.
 //!
 //! [`bpm`]: chromaticity_audio::AudioUniformSnapshot::bpm
@@ -156,7 +159,7 @@ mod audio_adapter_drift_pins {
     //! cross-crate audio → render uniform-binding adapter drift pins.
     //!
     //! T1 per `docs/43-development-standards.md` §15.5: pins on the
-    //! `docs/36` v1.1.0 binding contract — symbol names, slot order,
+    //! `docs/36` v1.3.0 binding contract — symbol names, slot order,
     //! and `UniformValue` variant mapping. Catalog drift on any of
     //! these surfaces fires the moment `cargo test` runs, before the
     //! T2 GPU-roundtrip corpus in `engine/render/tests/audio_adapter.rs`

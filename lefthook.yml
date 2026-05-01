@@ -130,5 +130,5 @@ pre-push:
     ts-check:
       run: |
         if [ -f package.json ] && command -v npx >/dev/null 2>&1; then
-          npx --no-install tsc --noEmit || true
+          npx --no-install tsc --noEmit
         fi

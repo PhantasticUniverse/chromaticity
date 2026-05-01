@@ -34,7 +34,10 @@ on:
 
 concurrency:
   group: policy-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Match rust.yml + frontend.yml: only auto-cancel on PR events;
+  # push (incl. squash-merge to main) + merge_group run to completion
+  # so each merge commit's required-context bookkeeping lands cleanly.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
