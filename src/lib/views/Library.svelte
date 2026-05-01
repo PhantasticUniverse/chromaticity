@@ -266,6 +266,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         {/snippet}
       </EmptyState>
     {:else}
+      <!--
+        TODO(scale): adopt @tanstack/svelte-virtual (or equivalent) when fixture
+        cardinality exceeds ~200 cards. The library scene grid currently renders
+        full DOM; the first 1000-scene QA build will need windowing to keep
+        scroll perf acceptable. Pre-flag for the operator-cohort residency.
+      -->
       <div class="library__grid" data-size={size}>
         {#each filteredCards as card (card.id)}
           <article class="scene-tile">

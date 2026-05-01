@@ -592,6 +592,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 <th scope="col" aria-label="actions"></th>
               </tr>
             </thead>
+            <!--
+              TODO(scale): adopt @tanstack/svelte-virtual (or equivalent) when binding
+              cardinality exceeds ~200 rows. The MIDI binding table currently renders
+              full DOM. Pre-flag for the operator-cohort residency.
+            -->
             <tbody>
               {#each filteredRows as row (`${row.target}-${row.device}-${row.num}`)}
                 <tr

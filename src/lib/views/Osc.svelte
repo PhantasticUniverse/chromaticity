@@ -234,6 +234,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <th scope="col">family</th>
         </tr>
       </thead>
+      <!--
+        TODO(scale): adopt @tanstack/svelte-virtual (or equivalent) when route
+        cardinality exceeds ~200 entries. The OSC route table currently renders
+        full DOM. Pre-flag for the operator-cohort residency.
+      -->
       <tbody>
         {#each filteredRoutes as route (route.canonical)}
           <tr data-family={route.family} data-direction={route.direction}>

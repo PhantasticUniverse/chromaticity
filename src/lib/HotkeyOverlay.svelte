@@ -103,6 +103,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <p class="note">{group.note}</p>
             {/if}
             <table>
+              <!--
+                TODO(scale): adopt @tanstack/svelte-virtual (or equivalent) when hotkey
+                vocabulary exceeds ~200 rows per group. Currently 57 total rows
+                across all groups; full DOM render is fine. Pre-flag for future
+                hotkey-vocabulary expansion (e.g., per-cohort macro packs).
+              -->
               <tbody>
                 {#each group.rows as row, i (i)}
                   <tr>
