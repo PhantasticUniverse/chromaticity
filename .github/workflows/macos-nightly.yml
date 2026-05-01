@@ -1,0 +1,118 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# macOS-nightly workspace nextest sweep on Apple Silicon Metal
+# (post-Phase-2-EXIT cross-backend coverage anchor).
+#
+# Jobs:
+#   macos-nightly - cargo nextest run --workspace --all-features
+#                   --all-targets --no-fail-fast on `macos-latest`
+#                   (Apple Silicon, M1+). wgpu auto-selects Metal
+#                   via `Backends::PRIMARY`; no `WGPU_BACKEND`
+#                   override needed. cpal links coreaudio-rs from
+#                   the system audio stack — no `brew install`
+#                   step required for testing.
+#
+# Why nightly-only (not per-PR matrix expansion). The PR-time
+# `rust.yml` test job runs on `ubuntu-latest` with `WGPU_BACKEND:
+# vulkan` and the apt-installed Mesa llvmpipe stack — that exercises
+# the Linux Vulkan code path on every PR. Apple Silicon Metal is
+# the AO's local seed-source backend (every `engine/render/tests/`
+# fixture's per-backend ACCEPTED-set was first observed on Metal
+# during slice authoring). Without a CI surface for Metal, a wgpu
+# / naga toolchain bump that breaks Metal codegen would only be
+# discovered on the AO's next local `cargo test` — could be days.
+# This nightly closes that gap as a trailing signal: failures
+# surface in the Actions tab; review cadence is whenever the AO
+# next looks. No issue-creation, no Slack/Discord notification —
+# matches the closed two-human-team posture.
+#
+# Per-PR alternative was considered and explicitly rejected. macOS
+# runners on GitHub-hosted are 10x billing vs Linux (~75 min added
+# per PR at the current Tier-N+ cadence; ~$70-80/month at typical
+# PR throughput). Nightly-only is ~$20/month and catches the same
+# regression class with at most a 24h discovery delay. The Phase-2
+# EXIT simulation in `docs/EV-GATE-MODEL-AUDIT-checklist.md`
+# explicitly recorded macOS-in-CI as a Phase-4d release-validation
+# nightly gate rather than per-PR matrix expansion; this workflow
+# is the implementation of that recommendation.
+#
+# First-run expectation. The Tier-11 audio_adapter consolidation
+# (PR #295) harvested both backends' ACCEPTED hashes — Apple
+# Silicon Metal `0xe95a153320450d25` and Linux Vulkan / Mesa
+# llvmpipe `0x7ab4cc966bba0d25` — so the sine-tone fixture's
+# ACCEPTED array already contains the Metal observation. The
+# silent-frame hash `0x80131e415c3cfb25` is preserved across both
+# backends. First nightly run should pass on the audio-adapter T2
+# corpus without further harvest. Other GPU-output fixtures
+# (`feedback.rs`, `float_targets.rs`, `multipass.rs`, etc.) carry
+# Apple-Silicon-Metal-only ACCEPTED arrays seeded by the AO's
+# local environment; Linux Mesa llvmpipe values were harvested
+# implicitly via PR-time CI proving they happened to match Metal
+# byte-for-byte. If macOS-nightly diverges on any of those, the
+# follow-up is a `docs(repo)`-scoped append to that fixture's
+# ACCEPTED array (no source-code change; the per-backend ACCEPTED
+# pattern is the canonical harvest workflow per
+# `engine/render/tests/audio_adapter.rs` lines 264-280 prose).
+
+name: macos-nightly
+
+on:
+  # 04:19 UTC = 21:19 PST / 00:19 EST. Off-peak for GHA fleet,
+  # late evening for the AO. Daily cadence per the recommendation
+  # recorded in `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-2
+  # EXIT simulation appendix.
+  schedule:
+    - cron: '19 4 * * *'
+  # Manual trigger for ad-hoc runs (e.g., post-merge of a wgpu/naga
+  # bump where the AO wants the Metal cross-validation to run
+  # against the new toolchain before the next nightly window).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Allow concurrent nightly + manual-dispatch runs to complete —
+  # cancellation would only matter if the same trigger fired
+  # twice within the workspace's ~10 min nextest runtime, which
+  # the schedule + manual-dispatch overlap shouldn't produce.
+  group: macos-nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos-nightly:
+    name: macos-nightly
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Verify frontend dist sentinel
+        run: test -f dist/.gitkeep
+
+      # No `WGPU_BACKEND` override — macOS wgpu auto-selects Metal
+      # via `Backends::PRIMARY`. No `apt-get install libvulkan1`
+      # equivalent: Metal is part of the system frameworks, cpal
+      # links coreaudio-rs from CoreAudio.framework, and Tauri 2 on
+      # macOS uses WKWebView (system) instead of webkit2gtk
+      # (Linux apt). The Linux apt-install block in `rust.yml`
+      # lines 220-231 is intentionally absent here.
+      - name: Run unit + integration tests (nextest)
+        run: cargo nextest run --workspace --all-features --all-targets --no-fail-fast
+
+      - name: Run doc tests
+        run: cargo test --workspace --doc
