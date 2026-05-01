@@ -259,15 +259,23 @@ fn sine_tone_byte_hash_is_stable() {
     const ACCEPTED: &[u64] = &[
         // Apple Silicon, Metal backend, wgpu 26.0.1 + naga 26.0.0,
         // catalog v1.3.0 (single-array `chroma_AudioFFT[8]` binding).
-        // The slice-5a v1.2.0 split-vec4 hash (0x7ab4cc966bba0d25) was
-        // displaced by this consolidation: identical mathematical
-        // semantics but the GLSL `arr[0]+...+arr[7]` summation
-        // compiles to a different SPIR-V instruction order than the
-        // prior `Low.xyzw + High.xyzw` form, and FP non-associativity
-        // produces a tiny but deterministic alpha-channel rounding
-        // delta. The silent-frame hash is preserved across the
-        // consolidation because its FFT bands sum to bitwise 0.
+        // Apple's Metal compiler reorders the GLSL `arr[0]+...+arr[7]`
+        // summation into a different SPIR-V/MSL instruction order
+        // than the prior `Low.xyzw + High.xyzw` form, and FP
+        // non-associativity produces a deterministic alpha-channel
+        // rounding delta. The silent-frame hash is preserved across
+        // the consolidation because its FFT bands sum to bitwise 0.
         0xe95a_1533_2045_0d25,
+        // Linux Vulkan, Mesa llvmpipe, wgpu 26.0.1 + naga 26.0.0,
+        // catalog v1.3.0. Empirical finding: Mesa preserves the
+        // natural left-to-right `arr[0] + arr[1] + ... + arr[7]`
+        // summation order, which happens to be bit-identical to the
+        // pre-consolidation v1.2.0 split-vec4 byte stream (which
+        // also added components left-to-right: `Low.x + Low.y +
+        // ... + High.w`). The two ACCEPTED entries here therefore
+        // straddle the same mathematical semantics under different
+        // GPU-shader-compiler instruction orderings.
+        0x7ab4_cc96_6bba_0d25,
     ];
 
     if !ACCEPTED.contains(&observed) {
