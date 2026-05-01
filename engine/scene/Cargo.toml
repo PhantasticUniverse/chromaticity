@@ -35,6 +35,13 @@ workspace = true
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Phase-3 wave PR 5 EV-SHOW-BUNDLE-RECOVERY: tar carries the .chromaShow
+# bundle's flat tree (manifest.json + payload files) and sha2 carries
+# per-file + manifest SHA-256 integrity. Both MIT/Apache; covered by the
+# existing deny.toml allowlist (no advisories or bans). See
+# `engine/scene/src/show_bundle.rs` for the format-choice rationale.
+sha2 = "0.10"
+tar = "0.4"
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
 # chromaticity-observability owns the canonical `SceneValidationOutcome`

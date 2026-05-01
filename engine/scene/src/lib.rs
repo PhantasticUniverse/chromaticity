@@ -64,4 +64,5 @@ pub mod lint;
 pub mod loader;
 pub mod observability;
 pub mod schema;
+pub mod show_bundle;
 pub mod validator;
