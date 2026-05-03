@@ -1248,3 +1248,146 @@ decisions or the Phase-4 EXIT itself.
       sub-phase gate decisions. **Phase-4a EXIT achieved 2026-05-03
       at commit `<merge-sha>`**. Signed by AO `@PhantasticUniverse`
       on 2026-05-03.
+
+## Phase-4a Wave 1c-α closure
+
+The Phase-4a Wave 1c-α closure (2026-05-03) lands the audio-uniform
+IPC bridge governed by `docs/adr/ADR-019-audio-uniform-ipc-bridge.md`.
+The wave shipped in 3 PRs on `main`: PR `#338` (`efd5de0`) — ADR-019
+acceptance + new `EV-AUDIO-UNIFORM-IPC` evidence row added at status
+`Planned` (`docs/26-evidence-artifact-registry.md` row 83); PR `#339`
+(`c1d93e8`) — producer-side `AudioUniformSnapshotPayload` ts-rs
+newtype in `app/ui-bridge/`, new `engine/runtime/src/scheduler/ipc.rs`
+sub-module declaring the `IpcEmit` trait + 4 T1 drift pins,
+`Scheduler::with_ipc_emit` builder + tick step at AFTER-observability-
+emit, T2 round-trip corpus at
+`app/ui-bridge/tests/audio_uniform_payload_round_trip.rs`; PR `#340`
+(`fcb443f`) — consumer-side `src/lib/stores/audioSnapshot.svelte.ts`
+singleton store using `listen('audio_uniform_snapshot_changed', ...)`
+plus dual-mode retrofits to `AudioReactivity.svelte` /
+`BpmRing.svelte` / `BeatDots.svelte`. Wave 1c-α is the first sub-band
+of the Phase-4a EXIT closure's deferred Wave 1c (camera + Syphon +
+audio-uniform-IPC bridge); Wave 1c-β (camera + Syphon adapters)
+remains AO-held and carries forward unchanged.
+
+### Per-Type Minimums verification
+
+The closure transitions one row (row 83 `EV-AUDIO-UNIFORM-IPC`) from
+`Planned` to `Pass (narrowed)`. T2 conformance corpora shipped: 6
+round-trip tests in
+`app/ui-bridge/tests/audio_uniform_payload_round_trip.rs` (payload-
+identity / engine↔payload bidirectional / JSON round-trip / default
+round-trip / extreme-values round-trip / ts-rs name stability) plus
+4 T1 drift pins in
+`engine/runtime/src/scheduler/ipc.rs::scheduler_ipc_pins` (IpcEmit
+trait shape + with_ipc_emit builder composition + AFTER-observability-
+emit ordering + snapshot-presence gating) plus 7 T2 store tests in
+`src/lib/stores/audioSnapshot.svelte.test.ts` (subscribe idempotency
++ listen event handling + unsubscribe cleanup + no-Tauri fallback)
+plus 8 T2 widget live-mode tests across the 3 retrofitted widgets
+(`src/lib/widgets/AudioReactivity.test.ts`,
+`src/lib/widgets/BpmRing.test.ts`,
+`src/lib/widgets/BeatDots.test.ts`) validating the dual-mode live-
+snapshot vs synthetic-fallback gate.
+
+- **PR `#338`** (`efd5de0`) — ADR-019 acceptance plus row 83 added at
+  `Planned`; anchor run id `25277275238` (rust workflow on `main`
+  HEAD `efd5de0`) green. Per-Type Minimums: docs-only PR; no Per-Type
+  Minimums apply (status row added at `Planned`, no test corpus
+  required at this step).
+- **PR `#339`** (`c1d93e8`) — producer-side payload newtype + IpcEmit
+  trait + scheduler-tick wiring + T2 round-trip corpus; anchor run
+  id `25277801336` (rust workflow on `main` HEAD `c1d93e8`) green.
+  Per-Type Minimums: ci-run-url + repo-path
+  (`app/ui-bridge/tests/audio_uniform_payload_round_trip.rs` +
+  `engine/runtime/src/scheduler/ipc.rs`) + corpus version (ts-rs
+  payload newtype + IpcEmit trait composition into scheduler-tick) +
+  drift thresholds (field-by-field equality across the 11-field
+  surface + AFTER-observability-emit ordering pin + snapshot-presence
+  gating pin) all populated.
+- **PR `#340`** (`fcb443f`) — consumer-side store + dual-mode widget
+  retrofits + Vitest coverage; anchor run id `25278169331` (frontend
+  workflow on `main` HEAD `fcb443f`) green. Per-Type Minimums:
+  ci-run-url + repo-path (`src/lib/stores/audioSnapshot.svelte.ts` +
+  `src/lib/stores/audioSnapshot.svelte.test.ts` + the 3 widget
+  test files) + corpus version (Svelte 5 store with idempotent
+  subscribe + 3 widget retrofits with live-snapshot-presence gate) +
+  drift thresholds (per-fixture subscribe / unsubscribe / event-
+  handling assertions + dual-mode visual-gate assertions) all
+  populated.
+
+### Verdict
+
+Row 83 `EV-AUDIO-UNIFORM-IPC` transitions `Planned` → `Pass
+(narrowed)`. The Pass scope is explicitly narrowed to the cross-seam
+payload-shape contract plus per-side composition; the narrowing is
+recorded in the row 83 Description column and recapped here so the
+deferred-axes record stays honest. **Phase-4a Wave 1c-α closure
+achieved 2026-05-03 at commit `<merge-sha>`** (the merge commit of
+this docs(repo) closing PR; pre-merge anchor at HEAD `fcb443f`
+post-`#340` already carries the row 83 corpus + producer-side T2 +
+T1 pins + consumer-side store + widget retrofits). Phase-4a EXIT
+collective state is unchanged: row 37 narrowing-clause for the
+audio-uniform-IPC arm of `EV-INTEGRATION-MATRIX` still references
+"Wave 1c" because the live end-to-end IPC wiring (Tauri concrete
+implementation of the `IpcEmit` trait + audio-thread + scheduler-
+tick bootstrap) is the deferred axis below, not the cross-seam
+payload-shape contract that Wave 1c-α validated.
+
+### Deferred axes (Wave 1c-α narrowing record)
+
+The row 83 Pass narrowing carries 5 explicit deferred axes; each is
+preserved here so future-wave widening has an anchor:
+
+- **Live end-to-end producer→Tauri-emit→consumer wiring** is deferred
+  to a future production audio-thread + scheduler-tick + Tauri-emit-
+  adapter bootstrap wave. The Tauri shell currently does not
+  bootstrap the engine scheduler-tick or audio analysis thread, and
+  the `IpcEmit` trait has no Tauri concrete implementation yet
+  (engine/runtime correctly does not depend on Tauri). Widgets
+  render in synthetic-fallback mode in production until that
+  bootstrap wave lands.
+- **Drop-frames-on-saturation outcome** per ADR-019 §Decision §4 is
+  not directly exercised by a test in this wave. The behaviour
+  follows from Tauri's `app.emit` best-effort semantics (silent drop
+  on event-queue saturation), but no fixture forces saturation under
+  producer-overrun. Deferred to the future production-bootstrap
+  wave's integration test surface.
+- **Stale-but-last-good on audio-fault** per ADR-019 §Decision §6
+  similarly follows from `MutexAudioPull`'s poison-recovery path
+  (already exercised at T1 in
+  `engine/runtime/src/scheduler/audio.rs`) but is not surfaced
+  through the IPC seam in this wave's tests.
+- **Spectrum widget retrofit** listed in ADR-019 §Rollout PR 2 is
+  deferred — the Spectrum primitive does not exist as a standalone
+  widget; the bundle's Spectrum was inlined into
+  `src/lib/views/AudioUniforms.svelte` with 64 synthetic bars,
+  structurally incompatible with the engine's 8-band FFT surface
+  without a non-trivial 8 → 64 interpolation design choice. Deferred
+  as post-MVP enhancement.
+- **`AudioReactivity` 48-bar FFT visualiser** stays synthetic-driven
+  — only the 4 named band tiles plus the BPM strip read from the
+  live snapshot via the documented 8 → 4 reduction
+  (`avg(fft_bands[0..2])` → BASS, `avg(fft_bands[2..4])` → LOW-MID,
+  `avg(fft_bands[4..6])` → HIGH-MID, `avg(fft_bands[6..8])` → AIR);
+  the 8 → 48 widening is preserved as a future-wave option.
+
+### Wave 1c-β + production-bootstrap deferral (AO direction required)
+
+Wave 1c-β (camera + Syphon adapters) carries forward unchanged from
+the Phase-4a EXIT closure's deferred-axes record above; the home
+remains a future directed engineering wave with new ADR + research +
+plan-mode + implementation cycle (estimated 5,000-10,000 LoC multi-
+week wall-clock; requires platform integration decisions + likely
+new ADRs). The production-bootstrap wave (audio-thread + scheduler-
+tick + Tauri-emit-adapter) that drops the row 83 narrowing axes (i)
+through (iii) above is a separate AO-held axis from Wave 1c-β; it
+may sequence before, after, or in parallel with Wave 1c-β at AO
+discretion. Phase-4 EXIT itself remains AO-held until 4b / 4c / 4d
+sub-phases close per `docs/11`; Wave 1c-α achievement does not
+pre-empt the Phase-4b / 4c / 4d sub-phase gate decisions or the
+Phase-4 EXIT itself.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-03
