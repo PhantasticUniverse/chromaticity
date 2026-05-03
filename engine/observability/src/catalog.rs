@@ -181,7 +181,9 @@ pub enum OscPacketOutcome {
 /// has not yet been reified as a Rust type; this slice-2 shape is
 /// a best-effort synthesis. The slice-3 scheduler-tick wave
 /// (PRs `#321` `#326` `#328` `#329` `#330`) did not touch the OSC
-/// adapter — TODO(Phase-4a Wave 1b OSC-adapter-lifecycle widening):
+/// adapter; the Phase-4a Wave 1b cascade (PRs `#332` `#333` `#334`)
+/// shipped MIDI + tier-gating but also left the OSC adapter
+/// untouched — TODO(post-MVP OSC-adapter-lifecycle widening):
 /// reconcile against the concrete adapter-lifecycle enum once it
 /// ships in `integrations/osc-adapter` (currently `OscAdapterState`
 /// in `integrations/osc-adapter/src/adapter.rs` carries
@@ -202,7 +204,9 @@ pub enum OscAdapterState {
 /// categorisation that `UdpOscAdapter::bind` surfaces via
 /// `OscAdapterError::BindFailed`. The slice-3 scheduler-tick wave
 /// (PRs `#321` `#326` `#328` `#329` `#330`) did not touch the OSC
-/// adapter — TODO(Phase-4a Wave 1b OSC bind-error widening): widen /
+/// adapter; the Phase-4a Wave 1b cascade (PRs `#332` `#333` `#334`)
+/// shipped MIDI + tier-gating but also left the OSC adapter
+/// untouched — TODO(post-MVP OSC bind-error widening): widen /
 /// align as the adapter grows structured bind-error reporting beyond
 /// the current `std::io::ErrorKind` synthesis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
