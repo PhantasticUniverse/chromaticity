@@ -88,7 +88,39 @@ audio-uniform-IPC bridge) carries forward as a future directed engineering wave 
 new ADR + research + plan-mode + implementation cycle. Phase-4 EXIT itself remains a
 separate AO-held milestone with its own gate set per `docs/11-roadmap-phases.md`;
 Phase-4a EXIT achievement does not pre-empt the Phase-4b / 4c / 4d sub-phase gate
-decisions. Engine and integration crates
+decisions. **Phase-4a Wave 1c-α closure (audio-uniform IPC bridge sub-band) landed
+2026-05-03 in a 3-PR session** (`#338` ADR-019 acceptance + new row 83
+`EV-AUDIO-UNIFORM-IPC` at `Planned`; `#339` producer-side `AudioUniformSnapshotPayload`
+ts-rs newtype in `app/ui-bridge/` + new `engine/runtime/src/scheduler/ipc.rs` sub-module
+declaring the `IpcEmit` trait + 4 T1 pins + `Scheduler::with_ipc_emit` builder + tick
+step at AFTER-observability-emit + T2 round-trip corpus; `#340` consumer-side
+`src/lib/stores/audioSnapshot.svelte.ts` singleton store using
+`listen('audio_uniform_snapshot_changed', ...)` plus dual-mode retrofits to
+`AudioReactivity.svelte` / `BpmRing.svelte` / `BeatDots.svelte` — live IPC OR synthetic
+fallback per "live snapshot present" gate; plus this docs(repo) closing PR): row 83
+`EV-AUDIO-UNIFORM-IPC` Pass under explicit narrowing to the cross-seam payload-shape
+contract plus per-side composition (anchor run ids 25278169331 + 25277801336); 5
+deferred axes recorded honestly — (i) live end-to-end producer→Tauri-emit→consumer
+wiring (engine/runtime correctly does not depend on Tauri; the `IpcEmit` trait has no
+Tauri concrete implementation yet, and the Tauri shell currently does not bootstrap the
+engine scheduler-tick or audio analysis thread — widgets render in synthetic-fallback
+mode in production until that production-bootstrap wave lands); (ii) drop-frames-on-
+saturation testing per ADR-019 §Decision §4; (iii) stale-but-last-good IPC surfacing
+per ADR-019 §Decision §6; (iv) Spectrum widget retrofit (deferred as post-MVP
+enhancement — 8 → 64 interpolation design choice); (v) `AudioReactivity` 48-bar FFT
+visualiser stays synthetic-driven (only 4 named band tiles plus BPM strip read live
+via 8 → 4 reduction). Wave 1c-α delivered the cross-seam contract; Wave 1c-β (camera +
+Syphon adapters) and the **production-bootstrap wave** (audio-thread + scheduler-tick +
+Tauri-emit-adapter that drops narrowing axes i-iii) remain separate AO-held milestones
+with their own gate decisions per `docs/11`; Wave 1c-α achievement does not pre-empt
+them. Cumulative Phase-4a narrowings recap (across Wave 1a + Wave 1b + Wave 1c-α): row
+37 `EV-INTEGRATION-MATRIX` OSC routing-matrix plus MIDI input arm with camera / Syphon
+/ audio-uniform-IPC arms deferred to Wave 1c-β + production-bootstrap; row 80
+`EV-MIDI-EXTENDED` MPE V2 deferred plus SysEx-logged-only at MVP; row 83
+`EV-AUDIO-UNIFORM-IPC` Pass under cross-seam-contract narrowing (5 deferred axes per
+above); row 87 `EV-ENTITLEMENT-ENFORCEMENT` 13-cap honored set with IO_CAMERA
+intentionally excluded; row 89 `EV-ENTITLEMENT-REVOCATION` expiry-based only with
+deny-list activation deferred post-MVP. Engine and integration crates
 (runtime, scene, audio, observability, render, script, entitlement, osc-adapter,
 midi-adapter) carry foundational evidence at EXIT quality; parallel UI port waves
 against the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets,
