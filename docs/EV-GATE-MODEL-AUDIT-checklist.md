@@ -1044,3 +1044,207 @@ plan-mode + implementation cycle (estimated multi-week wall-clock).
       passable under current narrowings; AO can declare at discretion.
       **Phase-4a EXIT itself remains AO-held; Phase-4b/4c/4d remain
       AO-held milestones with their own gate sets per `docs/11`.**
+
+## Phase-4a EXIT closure
+
+The Phase-4a EXIT gate (per `docs/26-evidence-artifact-registry.md`
+§Phase Gate Evidence Sets line 128 — eleven required evidence IDs:
+`EV-INTEGRATION-MATRIX`, `EV-HOTKEY-PARITY-CONFORMANCE`,
+`EV-HOTKEY-COMPLETENESS`, `EV-HOTKEY-CONFLICT`, `EV-MIDI-EXTENDED`,
+`EV-NET-HARDENING`, `EV-ENTITLEMENT-ENFORCEMENT`,
+`EV-ENTITLEMENT-OFFLINE`, `EV-ENTITLEMENT-REVOCATION`,
+`EV-ENTITLEMENT-FREE-FEATURES`, and `EV-HEALTH-METRICS-LOOPBACK-ONLY`)
+is closed against the cumulative outcome of the Phase-4a Wave 1a (PR
+`#321` slice-3 PR 1 + feat PRs `#322` `#323` `#324` `#325`) plus
+Phase-4a Wave 1b (feat PRs `#332` `#333` plus closing docs PR `#334`)
+sequence landing on `main` 2026-05-01 → 2026-05-02. All eleven
+Phase-4a EXIT rows are at `Pass` in `docs/26-evidence-artifact-
+registry.md` post-`#334` merge at HEAD `288a214`; this section runs
+the Phase-4a EXIT closure simulation against that HEAD plus the
+post-this-PR merge anchor. AO has approved declaration; this section
+records the achieved framing.
+
+### Per-Type Minimums verification (11 rows enumerated)
+
+`docs/26` line 159 specifies the Per-Type Minimums for Automated suite
+rows: (a) `ci-run-url` or `repo-path` to test report artifact, (b) CI
+run identifier with green status for pinned corpus version, (c)
+corpus / fixture version recorded, (d) drift thresholds applied. Row-
+by-row verification at HEAD `288a214` (the eleven Phase-4a EXIT rows
+each cite their per-row anchor run id from the prior wave-closure
+sections above):
+
+- **Row 37 `EV-INTEGRATION-MATRIX`** — Status `Pass`. Narrowing: OSC
+  routing-matrix conformance plus MIDI input matrix arm — camera /
+  Syphon / audio-uniform-IPC arms deferred to Wave 1c. Per-row anchor
+  run id `25213038199` (Wave 1a-A `#323` merge `77f174c`); updated by
+  Wave 1b-A `#333` merge `bba49c1` (anchor run id `25219692261`)
+  landing the MIDI input arm. Per-Type Minimums: corpus version
+  pinned (`integrations/osc-adapter/tests/integration_matrix_corpus/
+  main.rs` 15 fixtures × 100 trials plus `integrations/midi-adapter/
+  tests/midi_extended_corpus/main.rs` 5 dual-tagged matrix-arm
+  fixtures) + drift thresholds applied (cross-trial identity +
+  per-fixture rejection-path + dual-tagged `defaults.rs` pins shared
+  with row 82) + reproducibility confirmed across both anchor runs.
+- **Row 73 `EV-HOTKEY-PARITY-CONFORMANCE`** — Status `Pass`. Narrowing:
+  none (full scope). Per-row anchor run id `25212775046` (Wave 1a-B
+  `#322` merge `a665d72`). Per-Type Minimums: corpus version pinned
+  (`src/lib/__tests__/hotkeys-parity.test.ts` 6 fixtures pinning
+  D/R/P/L → IPC contract via `vi.hoisted` invoke mock) + drift
+  thresholds applied (direct invoke-mock-call assertion per fixture
+  against `docs/42` Sec.1) + reproducibility confirmed.
+- **Row 74 `EV-HOTKEY-COMPLETENESS`** — Status `Pass`. Narrowing: none
+  (full scope). Per-row anchor run id `25212775046` (Wave 1a-B `#322`
+  merge `a665d72`). Per-Type Minimums: corpus version pinned (`src/
+  lib/__tests__/hotkeys-completeness.test.ts` 8 fixtures validating
+  the 57-row vocabulary in `src/lib/data/hotkeys.ts`) + drift
+  thresholds applied (direct equality assertion per fixture against
+  `docs/42` Sec.1-10) + reproducibility confirmed.
+- **Row 75 `EV-HOTKEY-CONFLICT`** — Status `Pass`. Narrowing: none
+  (full scope). Per-row anchor run id `25212775046` (Wave 1a-B `#322`
+  merge `a665d72`). Per-Type Minimums: corpus version pinned (`src/
+  lib/__tests__/hotkeys-conflict.test.ts` 8 fixtures encoding
+  6-context taxonomy + Cmd↔Ctrl + Opt↔Alt cross-platform alias
+  normalization + rules 1-5) + drift thresholds applied (direct
+  equality assertion per fixture against the conflict-and-priority-
+  rules contract) + reproducibility confirmed.
+- **Row 80 `EV-MIDI-EXTENDED`** — Status `Pass`. Narrowing: MPE V2
+  deferred (diagnostic-fires-once rejection at MVP per `docs/08`);
+  SysEx logged-only at MVP. Per-row anchor run id `25219692261`
+  (Wave 1b-A `#333` merge `bba49c1`). Per-Type Minimums: corpus
+  version pinned (`integrations/midi-adapter/` 17 fixtures × 100
+  trials covering MIDI-CONF-11..20 plus 5 dual-tagged matrix-arm
+  fixtures; midir 0.10 cross-platform MIDI) + drift thresholds
+  applied (per-fixture parse / normalization / timeout / counter
+  assertions) + reproducibility confirmed.
+- **Row 82 `EV-NET-HARDENING`** — Status `Pass`. Narrowing: none
+  (full scope). Per-row anchor run id `25213038199` (Wave 1a-A `#323`
+  merge `77f174c`). Per-Type Minimums: corpus version pinned
+  (`integrations/osc-adapter/tests/network_hardening_corpus/main.rs`
+  10 fixtures validating ADR-013 defaults + rate-limit precedence +
+  allowlist boundary + oversized-packet outcome counter) + drift
+  thresholds applied (direct equality assertion per fixture against
+  ADR-013 §1/3/5 constants and dual-tagged `defaults.rs` pins shared
+  with row 37) + reproducibility confirmed.
+- **Row 87 `EV-ENTITLEMENT-ENFORCEMENT`** — Status `Pass`. Narrowing:
+  13-cap honored set (Wave 1b-B widening from 1 → 13 entries; the
+  IO_CAMERA capability is intentionally excluded — free at MVP per
+  ADR-009 / `docs/09` Tier matrix). Per-row anchor run ids
+  `25213475549` (Wave 1a-D `#325` merge `b335939`) plus `25219329314`
+  (Wave 1b-B `#332` merge `b57e11b`). Per-Type Minimums: corpus
+  version pinned (`engine/entitlement/src/enforcement.rs` 377 LoC
+  enforcement module + `engine/entitlement/tests/enforcement_corpus/
+  main.rs` 19 Rust fixtures (8 → 19 widened) + `src/lib/stores/
+  __tests__/capabilities-conformance.test.ts` 12 TS fixtures (6 → 12
+  widened); HONORED_TOKEN_CAPABILITIES 13-entry set) + drift
+  thresholds applied (direct boolean assertion per fixture across the
+  widened capability set + <1µs latency assertion + `Send + Sync`
+  trait check) + reproducibility confirmed across both anchor runs.
+- **Row 88 `EV-ENTITLEMENT-OFFLINE`** — Status `Pass`. Narrowing: none
+  (full scope). Per-row anchor run id `25213475549` (Wave 1a-D `#325`
+  merge `b335939`). Per-Type Minimums: corpus version pinned
+  (`engine/entitlement/tests/offline_revocation_corpus/main.rs`
+  8 fixtures dual-tagged with row 89, covering 14-day offline window
+  honor + post-expiry deny + boundary at `expires_at` + injected-
+  clock determinism) + drift thresholds applied (cross-trial identity
+  assertion per fixture against the 14-day window contract) +
+  reproducibility confirmed.
+- **Row 89 `EV-ENTITLEMENT-REVOCATION`** — Status `Pass`. Narrowing:
+  expiry-based revocation only — deny-list activation behavior is
+  post-MVP optional and out-of-scope. Per-row anchor run id
+  `25213475549` (Wave 1a-D `#325` merge `b335939`). Per-Type
+  Minimums: corpus version pinned (same dual-tagged
+  `engine/entitlement/tests/offline_revocation_corpus/main.rs`
+  8 fixtures as row 88; expiry-based revocation only) + drift
+  thresholds applied (cross-trial identity assertion per fixture) +
+  reproducibility confirmed.
+- **Row 91 `EV-ENTITLEMENT-FREE-FEATURES`** — Status `Pass`. Narrowing:
+  none (full scope). Per-row anchor run id `25213475549` (Wave 1a-D
+  `#325` merge `b335939`). Per-Type Minimums: corpus version pinned
+  (`engine/entitlement/tests/free_features_corpus/main.rs` 12
+  fixtures pinning the ADR-009 §Explicitly-free namespace: pause +
+  transitions-off + playlist-next + playlist-previous + preset-recall
+  + snap-recall + snap-save + scene-export + 4 token-absent-still-
+  grants paths) + drift thresholds applied (direct boolean assertion
+  per fixture against the `FREE_CAPABILITIES` array) + reproducibility
+  confirmed.
+- **Row 95 `EV-HEALTH-METRICS-LOOPBACK-ONLY`** — Status `Pass`.
+  Narrowing: none (full scope per `docs/31` §Phase-1 baseline
+  catalog). Per-row anchor run id `25213270708` (Wave 1a-C `#324`
+  merge `e8917c3`). Per-Type Minimums: corpus version pinned
+  (`engine/observability/tests/catalog_conformance/main.rs` 12
+  fixtures validating Phase-1 baseline catalog plus `engine/
+  observability/tests/no_network_egress/main.rs` 4 fixtures verifying
+  no-network-egress invariants) + drift thresholds applied (direct
+  equality + structural-pin assertion per fixture against the
+  `docs/31` Phase-1 baseline contract) + reproducibility confirmed.
+
+### Verdict
+
+All 11 Phase-4a EXIT evidence IDs satisfy the Per-Type Minimums at
+HEAD `<merge-sha>` (the merge commit of this docs(repo) closing PR;
+the achievement-anchor is conceptually the merge commit, with the
+pre-merge anchor at HEAD `288a214` post-`#334` already carrying all
+11 rows at `Pass`). Status transitions are recorded in
+`docs/26-evidence-artifact-registry.md`. Per `docs/26` §Rules line
+194, the Phase-4a EXIT gate is therefore passable.
+**Phase-4a EXIT achieved 2026-05-03 at commit `<merge-sha>`.**
+
+Collective narrowings recap (the AO-approved scope reductions that
+together make Phase-4a EXIT passable under the current waveform): row
+37 `EV-INTEGRATION-MATRIX` narrowed to OSC routing-matrix plus MIDI
+input arm (camera / Syphon / audio-uniform-IPC arms deferred to Wave
+1c); row 81 `EV-MIDI-EXTENDED` narrowed to MPE V2 deferred plus SysEx
+logged-only at MVP; row 87 `EV-ENTITLEMENT-ENFORCEMENT` narrowed to
+the 13-cap honored set with IO_CAMERA intentionally excluded (free at
+MVP per ADR-009); row 89 `EV-ENTITLEMENT-REVOCATION` narrowed to
+expiry-based only with deny-list activation deferred to post-MVP.
+
+Wave 1c deferred-axes record (camera + Syphon adapters + audio-
+uniform-IPC bridge) carries forward unchanged from the Phase-4a Wave
+1b closure section above; the deferral home remains a future directed
+engineering wave with new ADR + research + plan-mode + implementation
+cycle (estimated 5,000-10,000 LoC multi-week wall-clock; requires
+platform integration decisions + likely new ADRs).
+
+Phase-4 EXIT itself remains a separate AO-held milestone with its
+own gate set per `docs/11-roadmap-phases.md`; Phase-4a EXIT
+achievement does not pre-empt the Phase-4b / 4c / 4d sub-phase gate
+decisions or the Phase-4 EXIT itself.
+
+### Sign-off
+
+- [x] Phase-4a EXIT simulation ran to completion at HEAD `<merge-sha>`
+      (this docs(repo) closing PR's merge commit; pre-merge anchor at
+      HEAD `288a214` post-`#334` already carries all 11 rows at
+      `Pass`). All 11 Phase-4a EXIT evidence IDs satisfy the Per-Type
+      Minimums and are at `Pass`: `EV-INTEGRATION-MATRIX` (row 37,
+      anchor run id 25213038199 plus 25219692261, narrowed to OSC
+      routing-matrix plus MIDI input arm), `EV-HOTKEY-PARITY-
+      CONFORMANCE` (row 73, run id 25212775046, full scope),
+      `EV-HOTKEY-COMPLETENESS` (row 74, run id 25212775046, full
+      scope), `EV-HOTKEY-CONFLICT` (row 75, run id 25212775046, full
+      scope), `EV-MIDI-EXTENDED` (row 80, run id 25219692261,
+      narrowed to MPE V2 deferred plus SysEx logged-only at MVP),
+      `EV-NET-HARDENING` (row 82, run id 25213038199, full scope),
+      `EV-ENTITLEMENT-ENFORCEMENT` (row 87, run ids 25213475549 plus
+      25219329314, narrowed to 13-cap honored set with IO_CAMERA
+      excluded), `EV-ENTITLEMENT-OFFLINE` (row 88, run id 25213475549,
+      full scope), `EV-ENTITLEMENT-REVOCATION` (row 89, run id
+      25213475549, narrowed to expiry-based only), `EV-ENTITLEMENT-
+      FREE-FEATURES` (row 91, run id 25213475549, full scope), and
+      `EV-HEALTH-METRICS-LOOPBACK-ONLY` (row 95, run id 25213270708,
+      full scope per `docs/31` Phase-1 baseline catalog). Phase-4a
+      EXIT collective narrowings recap: row 37 OSC plus MIDI input
+      (camera / Syphon / audio-uniform-IPC deferred to Wave 1c); row
+      81 MPE V2 plus SysEx-logged-only; row 87 13-cap honored set
+      (IO_CAMERA excluded — free at MVP per ADR-009); row 89 expiry-
+      only revocation. Wave 1c deferred axes (camera + Syphon
+      adapters + audio-uniform-IPC bridge) carry forward to a future
+      directed engineering wave with new ADR + research + plan-mode +
+      implementation cycle. Phase-4 EXIT itself remains a separate
+      AO-held milestone with its own gate set per `docs/11`; Phase-4a
+      EXIT achievement does not pre-empt the Phase-4b / 4c / 4d
+      sub-phase gate decisions. **Phase-4a EXIT achieved 2026-05-03
+      at commit `<merge-sha>`**. Signed by AO `@PhantasticUniverse`
+      on 2026-05-03.
