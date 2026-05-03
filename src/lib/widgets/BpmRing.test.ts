@@ -6,12 +6,25 @@
 // 343-358. Tests the structural render, ARIA label, BPM/size prop flow, and
 // the reduced-motion frozen-frame branch; rAF tick math is implementation
 // detail (the dashoffset only animates at >0 frames).
+//
+// Wave 6 PR 2 adds the live-mode dual-mode coverage: when a non-null
+// `snapshot` prop is passed the widget reads BPM from `snapshot.bpm`;
+// `null`/missing falls back to the existing `bpm` prop / synthetic
+// rAF behaviour exactly as before.
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import BpmRing from './BpmRing.svelte';
+import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
+
+const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
+  bpm: 145,
+  rms: 0.5,
+  peak: 0.9,
+  fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+};
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -80,5 +93,17 @@ describe('BpmRing widget', () => {
     const { container } = render(BpmRing);
     const svg = container.querySelector('.bpm-ring svg');
     expect(svg?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('renders bpm from snapshot prop when supplied (Wave 6 PR 2 live mode)', () => {
+    const { container } = render(BpmRing, { props: { bpm: 100, snapshot: SAMPLE_SNAPSHOT } });
+    expect(container.querySelector('.bpm-ring__val')?.textContent).toBe('145');
+    expect(container.querySelector('.bpm-ring')?.getAttribute('aria-label')).toContain('145 BPM');
+  });
+
+  it('falls back to the bpm prop when snapshot is null', () => {
+    const { container } = render(BpmRing, { props: { bpm: 100, snapshot: null } });
+    expect(container.querySelector('.bpm-ring__val')?.textContent).toBe('100');
+    expect(container.querySelector('.bpm-ring')?.getAttribute('aria-label')).toContain('100 BPM');
   });
 });
