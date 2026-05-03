@@ -18,10 +18,37 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // the cyan motion-category token so the divergence between downbeat
   // and the off-beats is theme-token-driven.
   //
-  // `prefers-reduced-motion: reduce` pins the visual at beat 1 (the
-  // downbeat) so the operator sees a static frame.
+  // **Live IPC OR synthetic fallback (Wave 6 PR 2).** Per
+  // `docs/adr/ADR-019-audio-uniform-ipc-bridge.md` §Rollout PR 2 this
+  // widget consumes the engine's `audio_uniform_snapshot_changed` Tauri
+  // event via `audioSnapshotStore` (producer side: Wave 6 PR 1, merge
+  // `c1d93e8`). When a non-null snapshot is available the BPM driving
+  // the beat-position math is sourced from `liveSnapshot.bpm`;
+  // otherwise the synthetic rAF tick keeps cycling so the dots still
+  // animate. `prefers-reduced-motion: reduce` pins beat 1 (the
+  // downbeat) regardless.
+  //
+  // The optional `snapshot` prop lets tests inject a fixed payload
+  // without going through the singleton store; default behaviour reads
+  // from the store.
 
-  let { bpm = 128 }: { bpm?: number } = $props();
+  import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
+  import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+
+  let {
+    bpm = 128,
+    snapshot = undefined,
+  }: {
+    bpm?: number;
+    snapshot?: AudioUniformSnapshotPayload | null;
+  } = $props();
+
+  $effect(() => {
+    void audioSnapshotStore.subscribe();
+  });
+
+  const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
+  const liveBpm = $derived(liveSnapshot?.bpm ?? bpm);
 
   let now = $state(0);
   let reduceMotion = $state(false);
@@ -52,12 +79,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     return () => cancelAnimationFrame(raf);
   });
 
-  const cur = $derived(Math.floor(((now * bpm) / 60) % 4));
+  const cur = $derived(Math.floor(((now * liveBpm) / 60) % 4));
 
   const DOTS: ReadonlyArray<number> = [0, 1, 2, 3];
 </script>
 
-<div class="beat-dots" role="img" aria-label="Beat {cur + 1} of 4 at {bpm} BPM">
+<div class="beat-dots" role="img" aria-label="Beat {cur + 1} of 4 at {liveBpm} BPM">
   {#each DOTS as i (i)}
     <span
       class="beat-dots__dot"

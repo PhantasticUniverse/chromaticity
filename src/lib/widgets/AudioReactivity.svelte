@@ -17,19 +17,47 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `liveBars` `$state` array. Reduced-motion guard short-circuits the
   // animation to a static fixture.
   //
-  // Frozen-frame contract — band-tile values, BPM, peer-count, tap
-  // button are all visual stubs; no IPC dispatch. Real audio analysis
-  // lands in Phase-3+/4a `EV-INTEGRATION-MATRIX` scope.
+  // **Live IPC OR synthetic fallback (Wave 6 PR 2).** Per
+  // `docs/adr/ADR-019-audio-uniform-ipc-bridge.md` §Rollout PR 2 this
+  // widget consumes the engine's `audio_uniform_snapshot_changed`
+  // Tauri event via `audioSnapshotStore` (producer side: Wave 6 PR 1,
+  // merge `c1d93e8`). When a non-null snapshot is available the four
+  // band-tile values are reduced from the engine's 8 FFT bands (BASS
+  // = avg(fft_bands[0..2]), LOW MID = avg(fft_bands[2..4]), HIGH MID
+  // = avg(fft_bands[4..6]), HIGH = avg(fft_bands[6..8])) and the BPM
+  // readout reads `liveSnapshot.bpm`; otherwise the existing
+  // synthetic-time defaults render. The 48-bar FFT visualiser stays
+  // synthetic-driven — the 8 → 48 interpolation is a stretch goal,
+  // not in PR 2 scope (deferred as a post-MVP enhancement). Tap-tempo
+  // and Ableton Link peer count remain visual stubs.
+  //
+  // The optional `snapshot` prop lets tests inject a fixed payload
+  // without going through the singleton store; default behaviour reads
+  // from the store. The `bands` prop (caller-supplied per-tile values)
+  // overrides both store and synthetic defaults so tests / future
+  // device-driven values keep working.
+
+  import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
+  import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
   let {
     bpm = 128,
     linkPeerCount = 4,
     bands,
+    snapshot = undefined,
   }: {
     bpm?: number;
     linkPeerCount?: number;
     bands?: ReadonlyArray<{ readonly name: string; readonly value: number; readonly tint: string }>;
+    snapshot?: AudioUniformSnapshotPayload | null;
   } = $props();
+
+  $effect(() => {
+    void audioSnapshotStore.subscribe();
+  });
+
+  const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
+  const liveBpm = $derived(liveSnapshot?.bpm ?? bpm);
 
   // Default band tiles match the bundle's `AudioReactivity` JSX values.
   // Pass `bands` to override (tests / future device-driven values).
@@ -43,7 +71,29 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { name: 'HIGH MID', value: 0.41, tint: 'var(--color-band-midhi)' },
     { name: 'HIGH', value: 0.58, tint: 'var(--color-band-high)' },
   ];
-  const renderBands = $derived(bands ?? DEFAULT_BANDS);
+
+  /**
+   * Reduce the engine's 8-band FFT array into the bundle's 4 named
+   * tiles by averaging adjacent pairs (8 → 4). Preserves the bundle's
+   * tile name + tint mapping so the visual layout never drifts; only
+   * the per-tile `value` switches to live data.
+   */
+  function reduceFftToTiles(
+    payload: AudioUniformSnapshotPayload,
+  ): ReadonlyArray<{ readonly name: string; readonly value: number; readonly tint: string }> {
+    const f = payload.fft_bands;
+    const avg = (a: number, b: number): number => (a + b) / 2;
+    return [
+      { name: 'BASS', value: avg(f[0], f[1]), tint: 'var(--color-band-bass)' },
+      { name: 'LOW MID', value: avg(f[2], f[3]), tint: 'var(--color-band-mid)' },
+      { name: 'HIGH MID', value: avg(f[4], f[5]), tint: 'var(--color-band-midhi)' },
+      { name: 'HIGH', value: avg(f[6], f[7]), tint: 'var(--color-band-high)' },
+    ];
+  }
+
+  const renderBands = $derived(
+    bands ?? (liveSnapshot ? reduceFftToTiles(liveSnapshot) : DEFAULT_BANDS),
+  );
 
   const FFT_BAR_COUNT = 48;
   const FFT_VIEW_W = 100;
@@ -159,7 +209,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   <div class="audio-reactivity__tempo">
     <span class="audio-reactivity__tempo-label">tempo</span>
-    <span class="audio-reactivity__tempo-bpm">{bpm.toFixed(2)} BPM</span>
+    <span class="audio-reactivity__tempo-bpm">{liveBpm.toFixed(2)} BPM</span>
     <span class="audio-reactivity__link-pill">
       <span class="audio-reactivity__link-dot" aria-hidden="true"></span>
       Ableton Link · {linkPeerCount} peers

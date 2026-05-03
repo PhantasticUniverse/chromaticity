@@ -13,14 +13,45 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `chromaticity-planning/ui-predev-bundle-v0.2-beta/components.jsx`
   // lines 343-358 (`const BpmRing = ({ bpm = 128 }) => …`). The bundle's
   // `useTick` rAF hook becomes a `$effect` here per the Svelte 5 idiom
-  // already used by `CueTransitionCurve`'s ghost-dot animation. Frozen
-  // frame contract: synthetic BPM only — no IPC, no audio-pipeline data.
+  // already used by `CueTransitionCurve`'s ghost-dot animation.
   //
-  // `prefers-reduced-motion: reduce` short-circuits the rAF tick and
-  // pins the visual at beat 1 / measure 0 so the operator sees a static
-  // frame instead of silent animation.
+  // **Live IPC OR synthetic fallback (Wave 6 PR 2).** Per
+  // `docs/adr/ADR-019-audio-uniform-ipc-bridge.md` §Rollout PR 2 this
+  // widget consumes the engine's `audio_uniform_snapshot_changed` Tauri
+  // event via `audioSnapshotStore` (producer side: Wave 6 PR 1, merge
+  // `c1d93e8`). When a non-null snapshot is available the displayed BPM
+  // is sourced from `liveSnapshot.bpm`; otherwise the synthetic
+  // rAF-driven sweep keeps running so the ring still animates while the
+  // production audio bootstrap is pending. Either way `prefers-
+  // reduced-motion: reduce` pins the visual at beat 1 / measure 0.
+  //
+  // The optional `snapshot` prop lets tests inject a fixed payload
+  // without going through the singleton store; default behaviour reads
+  // from the store. `bpm` remains the visual default when neither path
+  // delivers a value.
 
-  let { bpm = 128, size = 96 }: { bpm?: number; size?: number } = $props();
+  import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
+  import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+
+  let {
+    bpm = 128,
+    size = 96,
+    snapshot = undefined,
+  }: {
+    bpm?: number;
+    size?: number;
+    snapshot?: AudioUniformSnapshotPayload | null;
+  } = $props();
+
+  // Mount-time subscribe so production widgets attach to the IPC stream
+  // automatically; idempotent so multiple mounted visualizers share one
+  // listener.
+  $effect(() => {
+    void audioSnapshotStore.subscribe();
+  });
+
+  const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
+  const liveBpm = $derived(liveSnapshot?.bpm ?? bpm);
 
   let now = $state(0);
   let reduceMotion = $state(false);
@@ -51,7 +82,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     return () => cancelAnimationFrame(raf);
   });
 
-  const beatPos = $derived((now * bpm) / 60);
+  const beatPos = $derived((now * liveBpm) / 60);
   const measureFrac = $derived((((beatPos / 4) % 1) + 1) % 1);
   const beatIndex = $derived(Math.floor(beatPos % 4) + 1);
 
@@ -65,7 +96,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   class="bpm-ring"
   style="width: {size}px; height: {size}px;"
   role="img"
-  aria-label="BPM ring at {bpm} BPM, beat {beatIndex} of 4"
+  aria-label="BPM ring at {liveBpm} BPM, beat {beatIndex} of 4"
 >
   <svg viewBox="0 0 {VIEW} {VIEW}" aria-hidden="true">
     <circle class="bpm-ring__bg" cx={VIEW / 2} cy={VIEW / 2} r={RADIUS} />
@@ -78,7 +109,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       stroke-dashoffset={offset}
     />
   </svg>
-  <div class="bpm-ring__val">{bpm}</div>
+  <div class="bpm-ring__val">{liveBpm}</div>
 </div>
 
 <style>
