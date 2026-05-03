@@ -70,7 +70,25 @@ Wave 1c camera/Syphon/audio-uniform-IPC narrowing on row 37 + IO_CAMERA tier-gat
 row 86 (Wave 1c explicitly deferred per AO direction; estimated 5,000-10,000 LoC
 multi-week scope; requires platform integration decisions + likely new ADRs). Phase-4a
 EXIT is **passable under current narrowings per `docs/26` §Rules line 194**; AO can
-declare at discretion. Engine and integration crates
+declare at discretion. **Phase-4a EXIT was achieved 2026-05-03 at commit `<merge-sha>`**
+per the Phase-4a EXIT closure sign-off in `docs/EV-GATE-MODEL-AUDIT-checklist.md` —
+all 11 Phase-4a EXIT evidence IDs at `Pass` under the collective AO-approved
+narrowings (row 37 OSC routing-matrix plus MIDI input arm with camera / Syphon /
+audio-uniform-IPC arms deferred to Wave 1c; row 80 `EV-MIDI-EXTENDED` with MPE V2
+deferred plus SysEx logged-only at MVP; row 87 `EV-ENTITLEMENT-ENFORCEMENT` widened
+to the 13-cap honored set with IO_CAMERA intentionally excluded — free at MVP per
+ADR-009; row 89 `EV-ENTITLEMENT-REVOCATION` expiry-based only with deny-list
+activation deferred to post-MVP). The other seven rows (73, 74, 75, 82, 88, 91, 95)
+landed at full scope. Per-row anchor run ids cited in the Phase-4a EXIT closure
+section's Per-Type Minimums verification: 25212775046 (rows 73-75 hotkey trio),
+25213038199 (rows 37 + 82 OSC corpora), 25213270708 (row 95 observability),
+25213475549 (rows 87-89 + 91 entitlement bundle), 25219329314 (row 87 widening),
+25219692261 (row 80 + row 37 MIDI input arm). Wave 1c (camera + Syphon adapters +
+audio-uniform-IPC bridge) carries forward as a future directed engineering wave with
+new ADR + research + plan-mode + implementation cycle. Phase-4 EXIT itself remains a
+separate AO-held milestone with its own gate set per `docs/11-roadmap-phases.md`;
+Phase-4a EXIT achievement does not pre-empt the Phase-4b / 4c / 4d sub-phase gate
+decisions. Engine and integration crates
 (runtime, scene, audio, observability, render, script, entitlement, osc-adapter,
 midi-adapter) carry foundational evidence at EXIT quality; parallel UI port waves
 against the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets,
