@@ -20,6 +20,14 @@
 //! `Event` / `SnapshotPayload` shapes if the IPC contract grows beyond
 //! the typed-newtype + scene-card + osc-health set.
 //!
+//! Wave 1c-α (this PR) adds the [`AudioUniformSnapshotPayload`]
+//! ts-rs newtype mirror of [`chromaticity_audio::AudioUniformSnapshot`]
+//! per `docs/adr/ADR-019-audio-uniform-ipc-bridge.md`. The payload's
+//! producer-side emit step rides
+//! [`chromaticity_runtime::scheduler::ipc::IpcEmit`]; the
+//! consumer-side Svelte listener wiring lands in the Wave 1c-α PR 2
+//! follow-up.
+//!
 //! See `docs/47-ui-port-plan.md` §7.2 for the bridge-crate role.
 
 use serde::{Deserialize, Serialize};
@@ -245,6 +253,69 @@ pub struct OscHealthSnapshot {
     pub state: OscHealthState,
     pub attempted_binds: u32,
     pub local_addr: Option<String>,
+}
+
+/// IPC-facing snapshot of the engine's
+/// [`chromaticity_audio::AudioUniformSnapshot`] audio-analysis
+/// uniforms.
+///
+/// The Wave 1c-α audio-uniform IPC bridge per
+/// `docs/adr/ADR-019-audio-uniform-ipc-bridge.md` carries the four
+/// audio-analysis primitives (BPM, RMS, instantaneous peak, 8-band
+/// log-spaced FFT magnitudes) across the Tauri command boundary so
+/// the Svelte visualizer surface (Spectrum / BpmRing / BeatDots /
+/// AudioReactivity) can replace its synthetic-time-domain stubs with
+/// the real engine producer's data. Payload-shape parity with the
+/// engine type is the load-bearing contract: field names, field
+/// types, and field ordering must match
+/// [`chromaticity_audio::AudioUniformSnapshot`] exactly so the
+/// bidirectional `From` impls (and the JSON wire shape consumed by
+/// the Tauri event channel) preserve the 11-field surface (one
+/// `bpm`, one `rms`, one `peak`, eight `fft_bands`).
+///
+/// `Copy` rides for cheap once-per-tick emit copies; `f32` precludes
+/// `Eq` / `Hash` so tests use `PartialEq` only (matching the
+/// engine-side derive set).
+///
+/// The `8` in `fft_bands` re-derives the
+/// [`chromaticity_audio::FFT_BAND_COUNT`] constant locally — the
+/// duplication is intentional. ts-rs renders a fixed-length
+/// `[f32; 8]` as a TypeScript tuple type with eight numeric slots
+/// (one per band); referencing the constant via `[f32; FFT_BAND_COUNT]`
+/// in the struct literal does not affect the ts-rs export and adds
+/// a non-trivial transitive constant-resolution at the bridge edge.
+/// The pair of T2 round-trip corpora pins the arity drift so a
+/// future band-count change surfaces as a test failure rather than
+/// silent wire-shape divergence.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, PartialEq)]
+#[ts(export)]
+pub struct AudioUniformSnapshotPayload {
+    pub bpm: f32,
+    pub rms: f32,
+    pub peak: f32,
+    pub fft_bands: [f32; 8],
+}
+
+impl From<chromaticity_audio::AudioUniformSnapshot> for AudioUniformSnapshotPayload {
+    fn from(snapshot: chromaticity_audio::AudioUniformSnapshot) -> Self {
+        Self {
+            bpm: snapshot.bpm,
+            rms: snapshot.rms,
+            peak: snapshot.peak,
+            fft_bands: snapshot.fft_bands,
+        }
+    }
+}
+
+impl From<AudioUniformSnapshotPayload> for chromaticity_audio::AudioUniformSnapshot {
+    fn from(payload: AudioUniformSnapshotPayload) -> Self {
+        Self {
+            bpm: payload.bpm,
+            rms: payload.rms,
+            peak: payload.peak,
+            fft_bands: payload.fft_bands,
+        }
+    }
 }
 
 #[cfg(test)]

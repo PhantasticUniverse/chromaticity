@@ -17,8 +17,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use chromaticity_ui_bridge::{
-    ControlId, ControlValue, OscHealthSnapshot, OscHealthState, PresetId, SceneCard, SceneSource,
-    SnapSlotId,
+    AudioUniformSnapshotPayload, ControlId, ControlValue, OscHealthSnapshot, OscHealthState,
+    PresetId, SceneCard, SceneSource, SnapSlotId,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -38,4 +38,6 @@ fn export_bindings_to_frontend_tree() {
     SceneSource::export_all_to(&out_dir).expect("export SceneSource bindings");
     OscHealthState::export_all_to(&out_dir).expect("export OscHealthState bindings");
     OscHealthSnapshot::export_all_to(&out_dir).expect("export OscHealthSnapshot bindings");
+    AudioUniformSnapshotPayload::export_all_to(&out_dir)
+        .expect("export AudioUniformSnapshotPayload bindings");
 }

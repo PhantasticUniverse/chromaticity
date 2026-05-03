@@ -77,9 +77,9 @@
 //! the new field. Audio-specific T1 pins live co-located with the
 //! adapter under [`audio`].
 //!
-//! ## Slice-3 part 4 scope (this PR — render dispatch wiring)
+//! ## Slice-3 part 4 scope (predecessor PR — render dispatch wiring)
 //!
-//! This PR mirrors the same sub-module + builder + tick-step
+//! Slice-3 PR 4 mirrored the same sub-module + builder + tick-step
 //! pattern for render dispatch:
 //!
 //! - Adds the [`render`] sub-module with the [`render::RenderDispatch`]
@@ -104,6 +104,42 @@
 //! through the [`render::RenderDispatch`] seam without touching the
 //! scheduler. When no handler is configured the tick path is a no-op
 //! for render dispatch — the slice-3 PR 1 invariants hold verbatim.
+//!
+//! ## Wave 1c-α PR 1 scope (this PR — audio-uniform IPC emit wiring)
+//!
+//! This PR mirrors the established sub-module + builder + tick-step
+//! pattern for the producer side of the engine→UI audio-uniform IPC
+//! bridge per `docs/adr/ADR-019-audio-uniform-ipc-bridge.md`:
+//!
+//! - Adds the [`ipc`] sub-module with the [`ipc::IpcEmit`] trait. The
+//!   production Tauri-event adapter implementing this trait lives in
+//!   `app/shell/src/state/` (Wave 1c-α PR 2) — `engine/runtime` MUST
+//!   NOT depend on Tauri, so this PR ships only the trait + test
+//!   stubs.
+//! - Widens the [`Scheduler`] struct with an
+//!   `ipc_handler: Option<Box<dyn ipc::IpcEmit>>` field plus the
+//!   [`Scheduler::with_ipc_emit`] builder.
+//! - Inserts a per-tick IPC emit step into [`Scheduler::tick`] AT THE
+//!   END of the tick body, AFTER the slice-3 PR 5 observability emit.
+//!   This is the load-bearing ordering position per ADR-019: every
+//!   other per-tick subsystem (audio pull, command-bus drain, frame
+//!   advancement, render dispatch, observability emit) has fired
+//!   before the IPC handler observes the post-tick state.
+//! - The emit step is gated on BOTH a configured `ipc_handler` AND a
+//!   `Some(...)` value on [`crate::state::State::latest_audio_snapshot`].
+//!   This implements the "unconditional emit" semantics ADR-019 §7
+//!   requires (no subscriber-count gating) under a "but only when a
+//!   snapshot exists" guard that avoids emitting stale
+//!   [`chromaticity_audio::AudioUniformSnapshot::default`] zero
+//!   snapshots at startup before any audio handler has run. See the
+//!   [`ipc`] sub-module prose for the rationale.
+//!
+//! When no handler is configured the tick path is a no-op for IPC
+//! emit — the slice-3 PR 1 + PR 3 invariants hold verbatim. The
+//! existing T2 corpora (state_replay, preset_playlist, state_migration,
+//! scheduler_tick) preserve their goldens because none observes the
+//! IPC seam, and the canonical-binary state encoder does not
+//! observe the IPC handler field on [`Scheduler`].
 //!
 //! Per-PR scope is intentionally narrow: a single foundational
 //! module landing per PR keeps the integration surface reviewable,
@@ -157,6 +193,7 @@ use crate::state::State;
 use std::fmt;
 
 pub mod audio;
+pub mod ipc;
 pub mod observability;
 pub mod render;
 
@@ -214,6 +251,22 @@ pub struct Scheduler {
     /// `chromaticity_render::MultipassSpec` is post-Phase-3
     /// scene-adapter scope.
     render_handler: Option<Box<dyn render::RenderDispatch>>,
+    /// Optional audio-uniform IPC emit handler invoked at the END of
+    /// every tick, AFTER the slice-3 PR 5 observability emit AND
+    /// only when a fresh
+    /// [`chromaticity_audio::AudioUniformSnapshot`] is present on
+    /// [`crate::state::State::latest_audio_snapshot`]. Production
+    /// usage in Wave 1c-α PR 2 wraps a
+    /// [`std::sync::Arc<tauri::AppHandle>`] in a Tauri-event adapter
+    /// (engine/runtime must not depend on Tauri, so the production
+    /// adapter lives in `app/shell/src/state/`); Phase-4+ may surface
+    /// drop-frame or saturation outcomes through observability without
+    /// changing this seam. Set via [`Scheduler::with_ipc_emit`];
+    /// absent by default — the tick path is a no-op for IPC emit when
+    /// `None` and the slice-3 PR 1 + PR 3 invariants hold verbatim.
+    /// See the [`ipc`] sub-module prose for the
+    /// `docs/adr/ADR-019-audio-uniform-ipc-bridge.md` lineage.
+    ipc_handler: Option<Box<dyn ipc::IpcEmit>>,
 }
 
 impl fmt::Debug for Scheduler {
@@ -229,6 +282,7 @@ impl fmt::Debug for Scheduler {
             )
             .field("audio_handler", &self.audio_handler.is_some())
             .field("render_handler", &self.render_handler.is_some())
+            .field("ipc_handler", &self.ipc_handler.is_some())
             .finish()
     }
 }
@@ -310,6 +364,35 @@ impl Scheduler {
     #[must_use]
     pub fn with_render_dispatch(mut self, handler: Box<dyn render::RenderDispatch>) -> Self {
         self.render_handler = Some(handler);
+        self
+    }
+
+    /// Configure the scheduler to emit a
+    /// [`chromaticity_audio::AudioUniformSnapshot`] payload at the END
+    /// of every tick — AFTER the slice-3 PR 5 observability emit AND
+    /// only when a fresh snapshot is present on
+    /// [`crate::state::State::latest_audio_snapshot`] — to the
+    /// provided [`ipc::IpcEmit`] handler per
+    /// `docs/adr/ADR-019-audio-uniform-ipc-bridge.md`.
+    ///
+    /// Production usage in Wave 1c-α PR 2 wraps a
+    /// [`std::sync::Arc<tauri::AppHandle>`] in a Tauri-event adapter
+    /// (engine/runtime must not depend on Tauri, so the production
+    /// adapter lives in `app/shell/src/state/`); test stubs that
+    /// record the per-tick snapshot for assertion live alongside the
+    /// trait under [`ipc`]. When no handler is configured the tick
+    /// path is a no-op for IPC emit — the slice-3 PR 1 + PR 3
+    /// invariants hold verbatim, the existing T2 corpora preserve
+    /// their goldens (none observes the IPC seam), and the
+    /// canonical-binary state encoder does not observe the new field.
+    ///
+    /// Mirrors the builder pattern slice-3 PR 5
+    /// ([`Scheduler::with_metric_emitter`]) established and slice-3
+    /// PRs 3 / 4 ([`Scheduler::with_audio_pull`] /
+    /// [`Scheduler::with_render_dispatch`]) reused.
+    #[must_use]
+    pub fn with_ipc_emit(mut self, handler: Box<dyn ipc::IpcEmit>) -> Self {
+        self.ipc_handler = Some(handler);
         self
     }
 
@@ -410,6 +493,32 @@ impl Scheduler {
         // invariants hold verbatim.
         if let Some(handler) = &self.observability_handler {
             handler.emit_tick_event(state.frame, events_committed);
+        }
+
+        // Wave 1c-α PR 1: emit the audio-uniform IPC payload when
+        // both an IPC handler is configured AND a fresh
+        // `AudioUniformSnapshot` is present on
+        // `state.latest_audio_snapshot`. Ordering is load-bearing —
+        // the emit happens AT THE END of the tick body, AFTER every
+        // other per-tick subsystem has fired (audio pull, command-bus
+        // drain, frame increment, render dispatch, observability
+        // emit) so the visualizer-side payload subscriber observes
+        // the same canonical state-snapshot the render pipeline
+        // already consumed for the same frame. The snapshot-presence
+        // guard implements "unconditional emit only when a snapshot
+        // exists" per the `ipc` sub-module prose: ADR-019 §7
+        // requires no subscriber-count gating, but the implementation
+        // declines to emit stale `AudioUniformSnapshot::default()`
+        // zero snapshots at startup before any audio handler has run.
+        // When the IPC handler is `None` the tick path is a no-op for
+        // IPC emit and the slice-3 PR 1 + PR 3 invariants hold
+        // verbatim. When the audio handler is `None` the snapshot
+        // field stays `None` per the slice-3 PR 3 invariant and this
+        // step is also a no-op even with an IPC handler configured.
+        if let Some(handler) = &self.ipc_handler {
+            if let Some(snapshot) = state.latest_audio_snapshot {
+                handler.emit_snapshot(snapshot);
+            }
         }
 
         Ok(TickReport {
