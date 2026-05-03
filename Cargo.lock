@@ -529,6 +529,7 @@ dependencies = [
 name = "chromaticity-ui-bridge"
 version = "0.0.0"
 dependencies = [
+ "chromaticity-audio",
  "chromaticity-runtime",
  "serde",
  "serde_json",
