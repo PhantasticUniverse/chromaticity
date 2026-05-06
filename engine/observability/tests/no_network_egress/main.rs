@@ -136,7 +136,17 @@ mod fixtures {
     /// is the loud signal; the allowlist is the conservative
     /// fence that catches a network-bound crate added under a
     /// new name).
-    const DEPENDENCY_ALLOWLIST: &[&str] = &["workspace-hack"];
+    ///
+    /// `serde_json` is allowlisted as of the Phase-4d Wave 4d.1
+    /// Lane A `EV-CRASH-PAYLOAD-REDACTION` primitives PR: it backs
+    /// the [`chromaticity_observability::crash_redaction`] module's
+    /// [`serde_json::Value`]-based redactor (crash-report payload
+    /// shapes are unknown until the future construction PR lands,
+    /// so the redactor pivots through the JSON tree). `serde_json`
+    /// is a pure data-format crate with no network surface; it does
+    /// not appear on the denylist above and is allowlisted here so
+    /// the dependency-set assertion still flags genuine regressions.
+    const DEPENDENCY_ALLOWLIST: &[&str] = &["workspace-hack", "serde_json"];
 
     /// Socket-constructor tokens whose appearance in the emitter
     /// source signals the manual-bind escape route (the route

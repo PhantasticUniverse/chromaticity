@@ -45,3 +45,18 @@ workspace = true
 
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# `serde_json` 1 backs the `crash_redaction` module's
+# `serde_json::Value`-based redactor. Crash-report payload shapes are
+# unknown at module-author time (the actual crash-payload-construction
+# code lands in a future PR), so the redactor operates on a generic
+# JSON tree and replaces matched key/value pairs with the
+# `[REDACTED]` placeholder by field-name pattern. This is a pure-data
+# crate (no network I/O); it is allowlisted alongside `workspace-hack`
+# in the `tests/no_network_egress` corpus.
+#
+# See `engine/observability/src/crash_redaction.rs` module-level prose
+# for the ADR-016 §Crash reporting traceability + the deferred-
+# composition framing (primitives ship now; future crash-payload
+# construction code composes them).
+serde_json = "1"

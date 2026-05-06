@@ -14,6 +14,15 @@
 //! - [`emit`] — [`emit::EmitMetric`] object-safe trait plus an
 //!   [`emit::InMemoryEmitter`] stub that round-trips events through
 //!   an internal `Mutex<Vec<_>>` without network or filesystem I/O.
+//! - [`crash_redaction`] — Phase-4d Wave 4d.1 Lane A primitives
+//!   encoding the ADR-016 §Crash reporting redaction contract
+//!   (`main.glsl` / `script.js` / media buffers / operator free-text /
+//!   license-token bytes excluded from any future crash-report
+//!   payload). Primitives ship now; the future crash-payload-
+//!   construction PR composes them into the live redaction path.
+//!   Registry row 93 (`EV-CRASH-PAYLOAD-REDACTION`) stays at
+//!   `Planned` until that future PR + a payload-inspection corpus
+//!   land together.
 //!
 //! Divergence between the Rust types in [`catalog`] and docs/31 is a
 //! **schema-drift failure**. If the catalog itself needs amendment,
@@ -49,6 +58,7 @@
 
 pub mod analytics_audit;
 pub mod catalog;
+pub mod crash_redaction;
 pub mod emit;
 
 /// Construct the current observability schema-version metric event.
