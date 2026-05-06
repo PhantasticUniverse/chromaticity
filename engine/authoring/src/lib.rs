@@ -32,8 +32,8 @@
 //! author at the Shadertoy converter (V1) or a blank-scene-scaffold
 //! hand-port path.
 //!
-//! Slice 5 (this PR) ships the [`import_shadertoy`] module — the V1
-//! Shadertoy `.chroma` import converter per `docs/26` row 64
+//! Slice 5 (PR #361) shipped the [`import_shadertoy`] module — the
+//! V1 Shadertoy `.chroma` import converter per `docs/26` row 64
 //! (`EV-IMPORT-SHADERTOY`) and `docs/38` §5.2. PR 1 of 2 parses the
 //! Shadertoy `mainImage` entry point and maps Shadertoy uniforms to
 //! chromaticity preamble uniforms via `layout(binding=N)` declarations,
@@ -44,16 +44,31 @@
 //! bindings 0 through 4 to the appropriate reactive symbols without
 //! touching the converter's text-rewrite surface.
 //!
+//! Slice 6 (this PR) ships the [`ux_latency`] module — the
+//! co-developed §3.3a UX latency measurement harness satisfying
+//! both `EV-AUTHORING-UX-LATENCY` (`docs/26` row 83) and
+//! `EV-DOCS-UX-LATENCY` (row 84) per AO direction "co-develop the
+//! harness once and use it for both rows". The two rows share the
+//! §3.3a budget table verbatim — same hover-docs (80 ms p95),
+//! symbol-search / doc-search (150 ms p95), and first-paint
+//! (300 ms p95) targets per `docs/37-authoring-environment-spec.md`
+//! §3.3a — so a single producer-side harness is the correct shape.
+//! The harness is synthetic: it ships the measurement primitives
+//! plus the static budget tables ([`ux_latency::AUTHORING_BUDGETS`]
+//! / [`ux_latency::DOCS_BUDGETS`]) plus the comparator seam
+//! ([`ux_latency::assert_p95_within_budget`]); the UI-driven
+//! instrumentation feeding real authoring-view and embedded-docs-
+//! view samples lands as post-MVP integration work.
+//!
 //! Future authoring concerns expected to land here include the
-//! hover-docs registry (per `docs/37` §3.3 §3.5) and the latency
-//! harness instrumentation (per `docs/37` §3.3 / row 83
-//! `EV-AUTHORING-UX-LATENCY`).
+//! hover-docs registry (per `docs/37` §3.3 §3.5).
 
 pub mod diagnostics;
 pub mod import_isf;
 pub mod import_shadertoy;
 pub mod live_reload;
 pub mod scaffolder;
+pub mod ux_latency;
 
 pub use diagnostics::{
     Diagnostic, DiagnosticCode, IntoDiagnostic, Severity, Span, diagnostic_from_compile_error,
@@ -71,4 +86,8 @@ pub use live_reload::{
 };
 pub use scaffolder::{
     ScaffolderConfig, ScaffolderError, ScaffolderReport, load_scaffolded_scene, scaffold_to_path,
+};
+pub use ux_latency::{
+    AUTHORING_BUDGETS, BudgetExceeded, DOCS_BUDGETS, LatencyBudget, LatencyMeasurement,
+    assert_p95_within_budget, measure_p95,
 };
