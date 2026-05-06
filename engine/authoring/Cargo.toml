@@ -61,6 +61,16 @@ chromaticity-render = { version = "0.0.0", path = "../render" }
 chromaticity-scene = { version = "0.0.0", path = "../scene" }
 chromaticity-script = { version = "0.0.0", path = "../script" }
 
+# notify: cross-platform filesystem watcher backing the live-reload
+# pipeline. FSEvents on macOS, ReadDirectoryChangesW on Windows,
+# inotify on Linux. License is CC0-1.0 (in deny.toml allow list);
+# transitives are MIT / Apache-2.0 / Unlicense-OR-MIT, all already
+# in the workspace dep graph or covered by the existing allow list.
+# Used in production by cargo-watch, mdbook serve, and most Rust
+# hot-reload tools. See engine/authoring/src/live_reload.rs module
+# docstring "Why notify" section for the wave-1 sourcing rationale.
+notify = "8"
+
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
 [dev-dependencies]
