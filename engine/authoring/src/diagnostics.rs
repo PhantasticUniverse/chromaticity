@@ -140,6 +140,18 @@ pub enum DiagnosticCode {
     /// CP-01 coercion / lint diagnostic. Source: scene
     /// [`LintWarning`] and [`ValidationError`].
     Coercion,
+    /// Scene-import surface diagnostic. Source: the import-pipeline
+    /// surfaces under [`crate::import_isf`] (V1 actionable-reject for
+    /// ISF inputs per `docs/38-scene-library-and-import-spec.md` §6) and
+    /// future V1 Shadertoy / V2 ISF importers. Distinct from
+    /// `DiagnosticCode::Compile` (which surfaces engine-side GLSL parse
+    /// failures) because import-time diagnostics fire BEFORE the source
+    /// reaches the render pipeline; the file shape itself is the
+    /// rejected artefact, not the GLSL it might have produced. Distinct
+    /// from `DiagnosticCode::Coercion` because no source spelling is
+    /// rewritten — the import is rejected outright with an escape
+    /// hatch.
+    Import,
 }
 
 /// One-based source position. Mirrors the
