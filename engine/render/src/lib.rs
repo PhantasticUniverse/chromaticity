@@ -256,6 +256,7 @@ pub mod glsl_includes;
 pub mod multipass;
 #[cfg(feature = "scene-adapter")]
 pub mod scene_adapter;
+pub mod shader_cache;
 pub mod single_pass;
 pub mod transitions;
 
@@ -272,6 +273,7 @@ pub use multipass::{
 };
 #[cfg(feature = "scene-adapter")]
 pub use scene_adapter::{AdapterError, SceneAdapterOptions};
+pub use shader_cache::{ShaderCache, ShaderCompileMetric, ShaderId};
 pub use single_pass::{RenderError, compile_and_render_single_pass};
 pub use transitions::{
     DEFAULT_TIMEOUT_MS, FixedTransitionClock, MonotonicTransitionClock, TransitionClock,
