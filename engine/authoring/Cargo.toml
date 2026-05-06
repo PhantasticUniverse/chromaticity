@@ -71,6 +71,15 @@ chromaticity-script = { version = "0.0.0", path = "../script" }
 # docstring "Why notify" section for the wave-1 sourcing rationale.
 notify = "8"
 
+# dirs: cross-platform home / local-data directory resolution backing
+# the reference-app user-data root auto-discovery surface (per
+# ADR-015 lines 10-11). On macOS the canonical path is under
+# `~/Library/Application Support/...`; on Windows the canonical path
+# is under `%LOCALAPPDATA%\...`. License: MIT OR Apache-2.0
+# (allow-listed by /deny.toml). Already present in Cargo.lock via
+# transitive deps.
+dirs = "6"
+
 # naga 26 (runtime) matches the engine/render pin (which is itself
 # paired with wgpu 26's reexport — see engine/render/Cargo.toml).
 # The Shadertoy-import converter

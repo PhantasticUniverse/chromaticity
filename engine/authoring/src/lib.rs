@@ -65,6 +65,7 @@
 
 pub mod diagnostics;
 pub mod import_isf;
+pub mod import_reference;
 pub mod import_shadertoy;
 pub mod live_reload;
 pub mod scaffolder;

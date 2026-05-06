@@ -451,6 +451,7 @@ dependencies = [
  "chromaticity-render",
  "chromaticity-scene",
  "chromaticity-script",
+ "dirs",
  "naga",
  "notify",
  "serde",
