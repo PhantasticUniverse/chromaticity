@@ -1547,3 +1547,165 @@ sub-phase gate decisions or the Phase-4 EXIT itself.
 ### Sign-off
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-06
+
+## Phase-4b cluster (Wave 4b.1 through 4b.6) + Phase-4d Wave 4d.1 / 4d.2 / 4d.3 partial closure
+
+The Phase-4b cluster + Phase-4d 4d.1-4d.3 partial closure (2026-05-06)
+lands a 22-PR session covering the Phase-4b authoring + library +
+import surfaces plus the leading edge of Phase-4d hardening. The
+cluster transitions 9 evidence rows to `Pass` (under explicit
+narrowings recorded per row in `docs/26`), advances 6 evidence rows
+with PR-1-of-N work that keeps the row at `Planned` pending follow-on
+PRs, and lands 2 evidence rows under calendar-gated soak windows.
+Phase-4b EXIT itself remains AO-held — Wave 4b.7 (`EV-LIBRARY-BUNDLE-LAYOUT`
+adjacency on `EV-IMPORT-REFERENCE-SHOW`) and Wave 4b.8
+(`EV-ACCESSIBILITY-AA`) are explicitly carried forward as future
+waves; this cluster does not pre-empt the Phase-4b gate decision.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-LIBRARY-BUNDLE-LAYOUT`** — Wave 4b.1 PR `#348` (`b0d07f8`,
+  anchor run `25436889114`). Full scope. Canonical four-subdirectory
+  taxonomy `welcome / library / examples / shadertoy-fixtures`
+  under `<AppBundle>/Resources/scenes/` with bundle-walk assertion
+  corpus at `app/shell/tests/bundle_layout_assertion.rs`.
+- **`EV-LIBRARY-DISCOVERY`** — Wave 4b.6 PR `#349` (`747390a`,
+  anchor run `25438404895`) indexer + PR `#359` (`626116f`, anchor
+  run `25449217997`) search/filter IPC. Full scope. `engine/library::indexer`
+  crawl + index pipeline + `app/shell/src/commands/library.rs`
+  index-backed search + tag-filter + source-filter IPC commands.
+- **`EV-LIBRARY-THUMBNAIL`** — Wave 4b.6 PR `#352` (`3a091ef`,
+  anchor run `25440654237`). Narrowed: stub byte-hash renderer
+  (FNV-1a 64 over scene manifest bytes producing a stable 128×128
+  RGBA8 pattern) plus the documented fallback chain. Real GPU-backed
+  scene-render thumbnail rendering deferred post-MVP.
+- **`EV-AUTHORING-DIAGNOSTICS`** — Wave 4b.3 PR `#353` (`1e8b6f1`,
+  anchor run `25442351038`) renderer + PR `#362` (`4f222f9`, anchor
+  run `25451347283`) multi-class corpus. Narrowed: spans deferred
+  for compile / script / coercion classes (engine errors lack
+  structured spans); only the JSON class threads `serde_json::Error::(line, column)`
+  through to a populated `Span`. The other three classes emit
+  message-only diagnostics with `None` span.
+- **`EV-AUTHORING-SCAFFOLDER`** — Wave 4b.4 PR `#355` (`f455613`,
+  anchor run `25445241955`). Full scope. `engine/authoring::scaffolder`
+  emits a minimal-but-complete `.chroma` scene tree (manifest +
+  script + default frag pass) round-tripping through the existing
+  scene-loader + warning-free script-compile pipeline.
+- **`EV-IMPORT-ISF-REJECT`** — Wave 4b.5 PR `#358` (`8fadc55`,
+  anchor run `25448712246`). Full scope (ISF native import remains
+  deferred to V2 per design — the reject-with-escape-hatch path IS
+  the MVP scope). `engine/library::import::isf` detector + structured
+  reject diagnostic + escape-hatch link to manual-port docs.
+- **`EV-SHADER-CACHE`** — Wave 4d.2 PR `#350` (`e809991`, anchor
+  run `25439101309`). Narrowed: observation-only — the cold-vs-warm
+  ratio bench documents observed numbers (cold ~5-10× warm under
+  the slice-1 GLSL → SPIR-V naga frontend) but `scripts/budget-check.sh`
+  is NOT extended with a CI-enforced numeric threshold. CI gate
+  preserved as a post-MVP follow-on once the warm-cache key
+  derivation stabilises across naga / wgpu version bumps.
+- **`EV-AUTHORING-UX-LATENCY`** — co-developed wave PR `#363`
+  (`b2156bb`, anchor run `25451842146`). Narrowed: synthetic
+  harness only at `engine/authoring/src/ux_latency.rs` — full
+  UI-driven validation (real CodeMirror + W12 shell + DOM paint
+  timing) deferred post-MVP. Cross-tagged with `EV-DOCS-UX-LATENCY`.
+- **`EV-DOCS-UX-LATENCY`** — co-developed wave PR `#363`
+  (`b2156bb`, anchor run `25451842146`). Same harness as
+  `EV-AUTHORING-UX-LATENCY` per `37-authoring-environment-spec.md`
+  §3.3a shared-instrumentation note. Same narrowing: synthetic
+  harness only; full UI-driven validation deferred post-MVP.
+
+### Partial-PR-shipped rows (still Planned)
+
+- **`EV-AUTHORING-LIVE-RELOAD`** — PR `#356` (`d56f11d`, anchor run
+  `25445854497`) PR 1 of 3 landed: file-watch + reload-on-change
+  scaffolding under `engine/script/src/live_reload.rs`. PR 2
+  (state preservation across reload) + PR 3 (latency-budget harness)
+  pending.
+- **`EV-IMPORT-SHADERTOY`** — PR `#360` (`7497955`, anchor run
+  `25449975611`) PR 1 of 2 landed: Shadertoy-to-Chromaticity
+  converter at `engine/library/src/import/shadertoy.rs` + 3 starter
+  golden fixtures. PR 2 (broader corpus + edge-case fixture sweep)
+  pending.
+- **`EV-GPU-SELECTION`** — PR `#351` (`5abc443`, anchor run
+  `25439590858`) PR 1 of 2 landed: deterministic adapter-selection
+  scaffolding under `engine/render/src/adapter_selection.rs` +
+  operator-override persistence. PR 2 (hardware-gated dual-GPU +
+  battery / TDR / hot-plug fixtures) pending and requires hardware-
+  fixture infrastructure beyond the CI surface.
+- **`EV-CRASH-RESUME`** — Wave 4d.3 partial advance (PRs `#354` +
+  `#357` + `#361` (`5b2d1f7`, anchor run `25450892665`)) covering
+  state-restoration classes (a) active scene + preset channel values,
+  (b) Snap slot + scene-specific preset history, (c) playlist
+  position + iteration mode, and (e) audio input device + `syn_Threshold`.
+  Classes (d) OSC/MIDI session bindings, (f) operator meta-control
+  values, and (g) render resolution / FPS target pending.
+- **`EV-CRASH-PAYLOAD-REDACTION`** — PR `#346` (`7ff37c6`, anchor
+  run `25437375279`) PR 1 of 2 landed: redaction filter scaffolding
+  + T1 pins on the redaction transform under `engine/observability/src/crash_payload.rs`.
+  Future construction PR (full crash-injection harness + payload-
+  inspection T2 corpus) pending.
+- **`EV-ANALYTICS-ZERO-DEFAULT`** — Wave 4d.1 PR `#347` (`922f2d8`,
+  anchor run `25436242487`) scaffolding landed: default-off telemetry
+  config + opt-in surface + synthetic `engine/observability::analytics_observer`
+  T2 fixture corpus. **Calendar-gated**: 14-day observation window
+  soak fires from a fresh-install timestamp; row anchored to
+  ~2026-05-20.
+
+### Per-Type Minimums verification
+
+For each row transitioning to `Pass` above, ci-run-url + repo-path
++ corpus version + drift thresholds populate. Anchor run ids cited
+in this closure section: `25436889114` (PR `#348`), `25438404895`
+(PR `#349`), `25449217997` (PR `#359`), `25440654237` (PR `#352`),
+`25442351038` (PR `#353`), `25451347283` (PR `#362`), `25445241955`
+(PR `#355`), `25448712246` (PR `#358`), `25439101309` (PR `#350`),
+`25451842146` (PR `#363` — cross-tagged authoring + docs UX latency).
+
+### Cumulative session recap
+
+22 PRs landed on `main` between 2026-05-04 and 2026-05-06 covering
+PR numbers 342 through 363 inclusive. The session combined the
+Wave 4b.1 through 4b.6 authoring + library + import surface waves
+with the Phase-4d Wave 4d.1 (analytics-zero-default scaffolding),
+Wave 4d.2 (shader-cache observation), and Wave 4d.3 (crash-resume
+classes a/b/c/e) leading-edge hardening waves, plus the
+co-developed Phase-4b/4c synthetic UX-latency harness in PR `#363`.
+
+### Verdict
+
+**Phase-4b cluster (Wave 4b.1 through 4b.6) + Phase-4d Wave
+4d.1 / 4d.2 / 4d.3 partial closure achieved 2026-05-06 at commit
+`<merge-sha>`** (the merge commit of this docs(repo) closing PR).
+
+Phase-4b EXIT remains AO-held: Wave 4b.7 (`EV-IMPORT-REFERENCE-SHOW`)
+and Wave 4b.8 (`EV-ACCESSIBILITY-AA`) carry forward as future
+directed engineering waves. Phase-4c EXIT remains AO-held: rows
+`EV-DOCS-CLEANROOM` + `EV-DOCS-VERSION-SYNC` carry forward; Wave
+4d.4 (full `EV-CRASH-RESUME` classes d/f/g + `EV-CRASH-PAYLOAD-REDACTION`
+PR 2 + remaining `EV-GPU-SELECTION` hardware-gated fixtures + the
+calendar-gated `EV-ANALYTICS-ZERO-DEFAULT` soak completion + the
+`EV-SOAK-CHAOS` row not addressed in this cluster) carry forward
+as future Phase-4d waves. Phase-4 EXIT itself remains AO-held until
+4b / 4c / 4d sub-phases close per `docs/11-roadmap-phases.md`; this
+cluster's closure does not pre-empt the Phase-4 EXIT gate decision.
+
+### Deferred axes (cluster narrowing record)
+
+- `EV-LIBRARY-THUMBNAIL` real GPU-backed thumbnail rendering
+  (post-MVP).
+- `EV-AUTHORING-DIAGNOSTICS` structured spans for compile / script /
+  coercion classes (engine error surface widening — future wave).
+- `EV-SHADER-CACHE` CI-enforced budget threshold via
+  `scripts/budget-check.sh` extension (post-MVP, gated on warm-cache
+  key derivation stability).
+- `EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` full UI-driven
+  validation under the W12 shell with real DOM paint timing
+  (post-MVP).
+- 6 PR-1-shipped rows preserved at `Planned` per the per-row recap
+  above (`EV-AUTHORING-LIVE-RELOAD`, `EV-IMPORT-SHADERTOY`,
+  `EV-GPU-SELECTION`, `EV-CRASH-RESUME`, `EV-CRASH-PAYLOAD-REDACTION`,
+  `EV-ANALYTICS-ZERO-DEFAULT`).
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-06

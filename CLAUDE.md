@@ -152,7 +152,39 @@ reduced narrowing (2 post-MVP UX axes plus 1 still-deferred-through-the-wire
 stale-but-last-good axis); row 87 `EV-ENTITLEMENT-ENFORCEMENT` 13-cap honored set
 with IO_CAMERA intentionally excluded; row 89 `EV-ENTITLEMENT-REVOCATION` expiry-
 based only with deny-list activation deferred post-MVP. Wave 1c-β (camera + Syphon
-adapters) remains AO-held and carries forward unchanged. Engine and integration crates
+adapters) remains AO-held and carries forward unchanged. **Phase-4b cluster (Wave
+4b.1 through 4b.6) + Phase-4d Wave 4d.1 / 4d.2 / 4d.3 partial closure landed
+2026-05-06** in a 22-PR session covering PR numbers 342 through 363 inclusive
+(across `engine/library/`, `engine/authoring/`, `engine/script/`, `engine/render/`,
+`engine/observability/`, `app/shell/`, plus this docs(repo) closing PR). 9
+evidence rows transitioned `Planned` → `Pass` under explicit narrowings:
+`EV-LIBRARY-BUNDLE-LAYOUT` (full; PR `#348` / `b0d07f8`); `EV-LIBRARY-DISCOVERY`
+(full; PRs `#349` / `747390a` + `#359` / `626116f`); `EV-LIBRARY-THUMBNAIL`
+(stub byte-hash renderer; real GPU-backed rendering deferred post-MVP; PR `#352`
+/ `3a091ef`); `EV-AUTHORING-DIAGNOSTICS` (spans for JSON class only — compile /
+script / coercion classes message-only; PRs `#353` / `1e8b6f1` + `#362` /
+`4f222f9`); `EV-AUTHORING-SCAFFOLDER` (full; PR `#355` / `f455613`);
+`EV-IMPORT-ISF-REJECT` (full — ISF native import deferred to V2 per design;
+PR `#358` / `8fadc55`); `EV-SHADER-CACHE` (observation-only — no
+`scripts/budget-check.sh` extension; PR `#350` / `e809991`);
+`EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` (co-developed cross-tagged
+synthetic harness — full UI-driven validation deferred post-MVP; PR `#363` /
+`b2156bb`). Per-row anchor run ids: 25436889114, 25438404895, 25449217997,
+25440654237, 25442351038, 25451347283, 25445241955, 25448712246, 25439101309, 25451842146. 6 evidence rows received PR-1-of-N work but stay `Planned`
+pending follow-on PRs: `EV-AUTHORING-LIVE-RELOAD` (PR `#356` / `d56f11d`),
+`EV-IMPORT-SHADERTOY` (PR `#360` / `7497955`), `EV-GPU-SELECTION` (PR `#351`
+/ `5abc443`; PR 2 hardware-gated), `EV-CRASH-RESUME` (PRs `#354` + `#357` +
+`#361` / `5b2d1f7` covering classes a/b/c/e; classes d/f/g pending),
+`EV-CRASH-PAYLOAD-REDACTION` (PR `#346` / `7ff37c6`),
+`EV-ANALYTICS-ZERO-DEFAULT` (Wave 4d.1 PR `#347` / `922f2d8` scaffolding;
+14-day soak calendar-gated to ~2026-05-20). Remaining Phase-4 EXIT
+prerequisites: Wave 4b.7 (`EV-IMPORT-REFERENCE-SHOW`), Wave 4b.8
+(`EV-ACCESSIBILITY-AA`), Wave 4d.4 (remaining `EV-CRASH-RESUME` classes
+d/f/g plus `EV-CRASH-PAYLOAD-REDACTION` PR 2 plus `EV-GPU-SELECTION`
+hardware-gated PR 2 plus `EV-SOAK-CHAOS`), plus the PR-2/PR-3 follow-ons
+enumerated above. Phase-4b / 4c / 4d EXIT decisions remain AO-held per
+`docs/11-roadmap-phases.md`; this cluster's closure does not pre-empt them.
+Engine and integration crates
 (runtime, scene, audio, observability, render, script, entitlement, osc-adapter,
 midi-adapter) carry foundational evidence at EXIT quality; parallel UI port waves
 against the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets,
