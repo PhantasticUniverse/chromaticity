@@ -39,6 +39,25 @@
 //! into the tick across slice-3 PRs 2-5; this PR lands the module
 //! surface + T1 drift pins only.
 //!
+//! Phase-4d Wave 4d.3 PR 1 (post-Phase-3) adds the [`crash_resume`]
+//! module: the `EV-CRASH-RESUME` partial-advance state-restoration
+//! adapter for class-a + class-b (row 80). The adapter composes
+//! the existing Phase-3 [`state_migration`] V2 envelope with a
+//! disk-backed save / recover cycle plus per-class restoration
+//! helpers ([`crash_resume::restore_class_a`],
+//! [`crash_resume::restore_class_b`],
+//! [`crash_resume::restore_all_supported_classes`]). PR 1 is
+//! purely additive: existing EV-STATE-REPLAY (row 32),
+//! EV-PRESET-PLAYLIST (row 34), EV-STATE-MIGRATION (row 33), and
+//! EV-SCHEDULER-TICK (row 38) goldens are preserved verbatim.
+//! Subsequent PRs in the wave cluster widen the restoration
+//! surface to class-c (playlist position + iteration mode),
+//! class-d (OSC/MIDI session bindings), class-e (audio input
+//! device + threshold), class-f (operator meta-controls), and
+//! class-g (render resolution + FPS target); the time-to-resume +
+//! visible-artifact-window p50/p95 measurement budgets land
+//! alongside real cross-process crash injection in a later PR.
+//!
 //! Slice-5.3 (Phase-2, behind the `script-bridge` Cargo feature) adds
 //! the [`script_bridge`] module: an adapter that implements the
 //! slice-5.1 `chromaticity_script::ScriptCommandSender` trait against
@@ -79,6 +98,7 @@ pub use script_bridge::{
 };
 
 pub mod command_bus;
+pub mod crash_resume;
 pub mod scheduler;
 #[cfg(feature = "script-bridge")]
 pub mod script_bridge;
