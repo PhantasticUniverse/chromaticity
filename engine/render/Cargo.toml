@@ -154,3 +154,28 @@ audio-binding = ["dep:chromaticity-audio"]
 # `serde_json::Value` in its public API; the tests mirror that
 # vocabulary. License: Apache-2.0 OR MIT (allow-listed by /deny.toml).
 serde_json = "1"
+
+# criterion 0.5 backs the Phase-4d-exit `EV-SHADER-CACHE` cold-vs-warm
+# shader-compile bench harness under `benches/shader_cache.rs`.
+# Mirrors the engine/runtime `EV-PERF-BUDGETS` bench's Path B nightly-
+# only posture: `cargo bench --workspace --benches` in the existing
+# `.github/workflows/macos-nightly.yml` workflow runs this file once
+# per nightly cycle alongside the `budgets` harness; no per-PR matrix
+# expansion. `default-features = false` drops the `rayon` + `plotters`
+# defaults the AO doesn't consume locally; `cargo_bench_support` keeps
+# the harness usable from `cargo bench`. License: Apache-2.0 OR MIT
+# (allow-listed by /deny.toml). MSRV 1.74 (workspace MSRV is 1.85.0,
+# so no friction). Already present in `Cargo.lock` via the engine/
+# runtime `budgets` bench dev-dep.
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+# Path B nightly-only criterion harness for `EV-SHADER-CACHE` (row 79
+# of `docs/26-evidence-artifact-registry.md`); see
+# `benches/shader_cache.rs` module-prose for the cold-vs-warm framing
+# and the `docs/10-performance-latency-budgets.md` §Shader Cache
+# budget anchors. Observation-only at this PR; budget assertion via
+# `scripts/budget-check.sh` is a separate `chore(release-eng)`
+# follow-up.
+name = "shader_cache"
+harness = false

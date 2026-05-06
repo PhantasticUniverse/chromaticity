@@ -486,6 +486,7 @@ dependencies = [
  "bytemuck",
  "chromaticity-audio",
  "chromaticity-scene",
+ "criterion",
  "naga",
  "pollster",
  "serde_json",
