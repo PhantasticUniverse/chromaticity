@@ -27,6 +27,7 @@ members = [
     "engine/runtime",
     "engine/scene",
     "engine/audio",
+    "engine/authoring",
     "engine/entitlement",
     "engine/observability",
     "engine/render",

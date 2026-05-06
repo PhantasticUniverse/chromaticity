@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity authoring crate.
+#
+# Phase-4b foundational crate for the authoring environment. Hosts the
+# diagnostic-renderer surface that bridges engine-side errors (compile,
+# script, JSON, coercion) into a UI-friendly structured `Diagnostic`
+# shape per docs/37-authoring-environment-spec.md §3.4 + §3.5. The
+# Tauri/UI consumer-side wiring lands in a follow-up wave; this crate
+# stays producer-side and depends only on the engine error sources.
+#
+# This is PR 1 of the EV-AUTHORING-DIAGNOSTICS wave (the diagnostic-
+# renderer surface + minimal in-source pins). PR 2 ships the multi-class
+# fixture corpus exercising compile / script / JSON / coercion error
+# paths against real engine outputs.
+#
+# All workspace lints (including unsafe_code = forbid,
+# clippy::unwrap_used = deny, clippy::expect_used = deny) are inherited
+# via [lints] workspace = true; no local relaxation. See
+# docs/43-development-standards.md §12.1.
+
+[package]
+name = "chromaticity-authoring"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity authoring environment surface (diagnostic renderer for compile / script / JSON / coercion errors)."
+
+[lints]
+workspace = true
+
+[dependencies]
+# serde + serde_json: the Diagnostic surface is intended to cross the
+# Tauri IPC seam (a later wave wires it through app/ui-bridge), so the
+# canonical types derive Serialize / Deserialize today even though the
+# UI consumer is not yet wired. serde_json::Error is also the input type
+# for the JSON-class diagnostic mapper, where line / column extraction
+# uses serde_json::Error::line / column.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# thiserror is not strictly needed here — the crate currently emits
+# Diagnostic values rather than producing its own error type — but is
+# kept off the dep list to minimize surface. Add it when the crate
+# grows a fallible path of its own.
+
+# Engine error sources translated by the diagnostic mapper:
+# - chromaticity-render::RenderError (FragmentParse, FragmentValidate,
+#   IncludeError) → Compile diagnostics.
+# - chromaticity-script::ScriptError (Compile / Runtime / TimeoutExceeded /
+#   MemoryCapExceeded / ValueConversion / ...) → Script diagnostics.
+# - chromaticity-scene::loader::LoadError (Json) and
+#   chromaticity-scene::lint::Warning (CoercionApplied, LegacyKey,
+#   UnknownControlType, DeprecatedScriptApi) +
+#   chromaticity-scene::validator::ValidationError → Json + Coercion
+#   diagnostics.
+chromaticity-render = { version = "0.0.0", path = "../render" }
+chromaticity-scene = { version = "0.0.0", path = "../scene" }
+chromaticity-script = { version = "0.0.0", path = "../script" }
+
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }

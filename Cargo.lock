@@ -445,6 +445,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chromaticity-authoring"
+version = "0.0.0"
+dependencies = [
+ "chromaticity-render",
+ "chromaticity-scene",
+ "chromaticity-script",
+ "serde",
+ "serde_json",
+ "workspace-hack",
+]
+
+[[package]]
 name = "chromaticity-entitlement"
 version = "0.0.0"
 dependencies = [
