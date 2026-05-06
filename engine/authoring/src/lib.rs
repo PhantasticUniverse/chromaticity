@@ -18,15 +18,29 @@
 //! Svelte console-panel renderer) lands in a follow-up wave once the
 //! authoring view's port surface stabilises.
 //!
+//! Slice 2 (this PR) ships the [`scaffolder`] module — a New-Scene
+//! scaffolder that produces a minimal `.chroma` package skeleton
+//! consumable by `chromaticity_scene::loader::load_chroma_dir` and
+//! whose embedded fragment shader compiles + validates through the
+//! same naga GLSL frontend + IR validator pair the engine/render
+//! single-pass entry point uses internally. Slice scope per
+//! `docs/26-evidence-artifact-registry.md` row 63
+//! (`EV-AUTHORING-SCAFFOLDER`): scaffolder template + golden-output
+//! corpus, single PR.
+//!
 //! Future authoring concerns expected to land here include the
 //! hover-docs registry (per `docs/37` §3.3 §3.5) and the latency
 //! harness instrumentation (per `docs/37` §3.3 / row 83
 //! `EV-AUTHORING-UX-LATENCY`).
 
 pub mod diagnostics;
+pub mod scaffolder;
 
 pub use diagnostics::{
     Diagnostic, DiagnosticCode, IntoDiagnostic, Severity, Span, diagnostic_from_compile_error,
     diagnostic_from_json_error, diagnostic_from_lint_warning, diagnostic_from_script_error,
     diagnostic_from_validation_error,
+};
+pub use scaffolder::{
+    ScaffolderConfig, ScaffolderError, ScaffolderReport, load_scaffolded_scene, scaffold_to_path,
 };

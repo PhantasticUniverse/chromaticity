@@ -62,3 +62,18 @@ chromaticity-scene = { version = "0.0.0", path = "../scene" }
 chromaticity-script = { version = "0.0.0", path = "../script" }
 
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+[dev-dependencies]
+# naga 26 matches the engine/render pin (which is itself paired with
+# wgpu 26's reexport — see engine/render/Cargo.toml). The scaffolder
+# T1 + T2 corpora invoke the same naga GLSL frontend + IR validator
+# pair that engine/render::single_pass uses internally
+# (`compile_glsl_module` is `pub(crate)` there, so the scaffolder
+# reproduces the parse + validate seam in dev-only test code rather
+# than widening the engine/render visibility — `pub(crate)` is a
+# slice-boundary signal per CLAUDE.md). The naga path is
+# adapter-free, so the GLSL-compiles assertion is portable across
+# every CI runner regardless of wgpu adapter availability. License:
+# Apache-2.0 OR MIT (allow-listed by /deny.toml). Already present in
+# Cargo.lock via engine/render.
+naga = { version = "26", default-features = false, features = ["glsl-in"] }
