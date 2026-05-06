@@ -27,7 +27,7 @@
 //!   sub-store + commit-bus event family + canonical-binary encoder
 //!   widening), which carries broader review implications and is
 //!   sequenced behind that work.
-//! - **PR 3** (this PR): class-e (audio input device + `syn_Threshold`)
+//! - **PR 3**: class-e (audio input device + `syn_Threshold`)
 //!   helper [`restore_class_e`] lands as a documented-deferred no-op.
 //!   The canonical [`State`] does not carry an audio-input-device
 //!   field nor a `syn_Threshold` control as first-class state — the
@@ -47,12 +47,33 @@
 //!   invoke it, and the widening trigger is the State-shape extension
 //!   that promotes the audio-input-device + `syn_Threshold` selections
 //!   into canonical sub-stores.
-//! - **PR 4+**: class-d (OSC/MIDI session bindings) once the State
+//! - **PR 4** (this PR): class-f (operator meta-controls) helper
+//!   [`restore_class_f`] AND class-g (render resolution + FPS target)
+//!   helper [`restore_class_g`] both land as documented-deferred
+//!   no-ops mirroring the PR 3 class-e pattern. The canonical
+//!   [`State`] does not carry operator meta-control fields (no
+//!   `meta_controls` / `global_controls` sub-store; the existing
+//!   [`crate::state::ControlStore`] holds per-channel preset values
+//!   covered by class-a, NOT operator-scope global parameters) nor
+//!   render-config fields (no `render_resolution` / `fps_target`
+//!   sub-store; the scheduler-tick frame-rate is configured at
+//!   [`crate::scheduler::Scheduler`] construction time and the render
+//!   surface dimensions live at the host / Tauri shell side rather
+//!   than the canonical state core). Both helpers ship as no-op-shaped
+//!   functions: callable, accepting both arguments, reading neither,
+//!   mutating nothing. The widening trigger for each is the State-
+//!   shape extension that promotes the corresponding selections into
+//!   canonical sub-stores, at which point each helper gains the
+//!   corresponding sub-store assignments and joins
+//!   [`restore_all_supported_classes`]. As of this PR,
+//!   [`restore_all_supported_classes`] still covers ONLY class-a +
+//!   class-b + class-c.
+//! - **PR 5+**: class-d (OSC/MIDI session bindings) once the State
 //!   shape lands, class-e once the audio-input-device + `syn_Threshold`
-//!   sub-stores land (at which point [`restore_class_e`] widens from a
-//!   no-op to a sub-store assignment and gets added to
-//!   [`restore_all_supported_classes`]), then class-f (operator meta-
-//!   controls) and class-g (render resolution + FPS target).
+//!   sub-stores land, class-f once the operator meta-controls sub-store
+//!   lands, class-g once the render-config sub-store lands (at which
+//!   point each respective helper widens from a no-op to a sub-store
+//!   assignment and gets added to [`restore_all_supported_classes`]).
 //!
 //! # Class-a + class-b + class-c mapping onto current canonical state
 //!
@@ -436,15 +457,73 @@ pub fn restore_class_e(_restored: &State, _target: &mut State) {
     // class-e State-shape extension trigger.
 }
 
+/// Apply class-f fields from `restored` onto `target`.
+///
+/// Class-f per `docs/26` row 80: operator meta-controls.
+///
+/// **PR 4 status: documented-deferred no-op.** The canonical [`State`]
+/// does not carry operator meta-control fields as first-class sub-store
+/// state. The existing [`crate::state::ControlStore`] holds per-channel
+/// preset values that are covered by class-a (active scene + preset
+/// channel values), NOT operator-scope global / meta parameters that
+/// persist across scene changes. There is no `meta_controls` or
+/// `global_controls` sub-store on [`State`] today.
+///
+/// This helper is shipped as a no-op (it accepts both arguments, reads
+/// neither, mutates nothing) so call sites can be wired ahead of the
+/// widening trigger. The widening trigger is the State-shape extension
+/// that promotes operator meta-controls into a canonical sub-store, at
+/// which point this helper gains the corresponding sub-store assignment
+/// and joins [`restore_all_supported_classes`].
+///
+/// Does NOT touch class-a, class-b, class-c, or class-e fields — and
+/// does not touch ANY field, since the helper is a no-op until class-f
+/// State lands. The orthogonality is asserted at T1.
+pub fn restore_class_f(_restored: &State, _target: &mut State) {
+    // Documented-deferred no-op: see the doc comment above for the
+    // class-f State-shape extension trigger.
+}
+
+/// Apply class-g fields from `restored` onto `target`.
+///
+/// Class-g per `docs/26` row 80: render resolution + FPS target.
+///
+/// **PR 4 status: documented-deferred no-op.** The canonical [`State`]
+/// does not carry render-config fields as first-class sub-store state.
+/// There is no `render_resolution` or `fps_target` sub-store on
+/// [`State`] today — the scheduler-tick frame-rate is configured at
+/// [`crate::scheduler::Scheduler`] construction time (see the
+/// drift-corrected 60 Hz scheduler-tick thread spawned in
+/// `app/shell/src/lib.rs::run`) and the render surface dimensions live
+/// at the host / Tauri shell side rather than the canonical state
+/// core.
+///
+/// This helper is shipped as a no-op (it accepts both arguments, reads
+/// neither, mutates nothing) so call sites can be wired ahead of the
+/// widening trigger. The widening trigger is the State-shape extension
+/// that promotes the render-resolution + FPS-target selections into a
+/// canonical sub-store, at which point this helper gains the
+/// corresponding sub-store assignment and joins
+/// [`restore_all_supported_classes`].
+///
+/// Does NOT touch class-a, class-b, class-c, class-e, or class-f
+/// fields — and does not touch ANY field, since the helper is a no-op
+/// until class-g State lands. The orthogonality is asserted at T1.
+pub fn restore_class_g(_restored: &State, _target: &mut State) {
+    // Documented-deferred no-op: see the doc comment above for the
+    // class-g State-shape extension trigger.
+}
+
 /// Apply every class supported by the current adapter (class-a +
 /// class-b + class-c).
 ///
-/// Class-e is NOT invoked here in PR 3 — [`restore_class_e`] is the
-/// documented-deferred no-op preserved for PR 4+ widening once the
-/// canonical [`State`] grows the audio-input-device + `syn_Threshold`
-/// sub-stores. Subsequent PRs widen this convenience helper as
-/// class-d through class-g land. Existing call sites pick up the
-/// broader restoration without an API break.
+/// Class-e, class-f, and class-g are NOT invoked here as of PR 4 —
+/// [`restore_class_e`], [`restore_class_f`], and [`restore_class_g`]
+/// are documented-deferred no-ops preserved for PR 5+ widening once
+/// the canonical [`State`] grows the corresponding sub-stores.
+/// Subsequent PRs widen this convenience helper as class-d through
+/// class-g land. Existing call sites pick up the broader restoration
+/// without an API break.
 pub fn restore_all_supported_classes(restored: &State, target: &mut State) {
     restore_class_a(restored, target);
     restore_class_b(restored, target);
@@ -476,7 +555,7 @@ mod tests {
     use super::{
         CanonicalBinarySnapshotter, CrashResumeAdapter, CrashResumeError, SerializationKind,
         StateSnapshotter, restore_all_supported_classes, restore_class_a, restore_class_b,
-        restore_class_c, restore_class_e,
+        restore_class_c, restore_class_e, restore_class_f, restore_class_g,
     };
     use crate::command_bus::{
         Command, CommandBus, ControlId, ControlValue, InMemoryBus, MappingId, MappingSource,
@@ -791,20 +870,19 @@ mod tests {
     }
 
     #[test]
-    fn class_d_f_g_deferred_pending_state_shape_extension() {
-        // Documentation pin: class-d (OSC/MIDI session bindings),
+    fn class_d_deferred_pending_state_shape_extension() {
+        // Documentation pin: class-d (OSC/MIDI session bindings)
+        // is NOT shipped. Class-e (audio input device + `syn_Threshold`),
         // class-f (operator meta-controls), and class-g (render
-        // resolution + FPS target) are NOT shipped. Class-e (audio
-        // input device + `syn_Threshold`) ships as a documented-
-        // deferred no-op helper in PR 3 — see
-        // `class_e_deferred_pending_state_shape_extension` below.
-        // The canonical [`State`] does not yet carry session /
-        // device-id / audio-input / operator-meta / render-config
-        // sub-stores. Adding restoration for any of these classes
-        // requires a State-shape extension (new sub-store + commit-
-        // bus event family + canonical-binary encoder widening),
-        // which carries broader review implications and is sequenced
-        // behind that work.
+        // resolution + FPS target) ship as documented-deferred no-op
+        // helpers — see the dedicated `class_<x>_deferred_pending_*`
+        // pins below. The canonical [`State`] does not yet carry
+        // session / device-id / audio-input / operator-meta / render-
+        // config sub-stores. Adding restoration for any of these
+        // classes requires a State-shape extension (new sub-store +
+        // commit-bus event family + canonical-binary encoder
+        // widening), which carries broader review implications and is
+        // sequenced behind that work.
         //
         // Today: `restore_all_supported_classes` covers class-a +
         // class-b + class-c. The mapping_store IS in canonical
@@ -907,20 +985,173 @@ mod tests {
     }
 
     #[test]
-    fn restore_all_supported_classes_does_not_yet_invoke_class_e() {
-        // Pin: PR 3 ships `restore_class_e` as a documented-deferred
-        // no-op helper but explicitly DOES NOT add it to the
-        // convenience helper. When the State-shape extension lands
-        // and `restore_class_e` widens to a real sub-store
-        // assignment, this pin flips from "class-e not invoked" to
-        // "class-e invoked"; the test name updates alongside.
+    fn class_f_deferred_pending_state_shape_extension() {
+        // Documentation pin (PR 4): class-f (operator meta-controls)
+        // ships as a documented-deferred no-op helper. The canonical
+        // [`State`] does not carry operator meta-control fields as
+        // first-class sub-store state today — the existing
+        // [`crate::state::ControlStore`] holds per-channel preset
+        // values that are covered by class-a, NOT operator-scope
+        // global / meta parameters that persist across scene changes.
+        //
+        // The helper is no-op-shaped: it accepts both arguments,
+        // reads neither, mutates nothing. The widening trigger is
+        // the State-shape extension that promotes operator meta-
+        // controls into a canonical sub-store — at which point the
+        // helper gains the corresponding sub-store assignment and
+        // joins `restore_all_supported_classes`.
+        //
+        // Pin shape: build a `target` with class-a + class-b +
+        // class-c values plus a class-d-adjacent mapping value;
+        // invoke `restore_class_f` from a `restored` source that
+        // differs across every class; assert NOTHING on `target`
+        // changed. This is the orthogonality + no-op contract
+        // surfaced together: the helper does not touch class-a,
+        // class-b, class-c, the deferred-class-d mapping store,
+        // class-e (which is itself a no-op), OR any future class-f
+        // State (because there is none to touch).
+        let restored_source = seeded_state();
+        let mut target = seeded_class_a_only();
+        let snap = SnapSlotId::new(15).expect("valid snap slot");
+        target.snap_store.saved.insert(snap);
+        target.snap_store.active = Some(snap);
+        target.playlist_store.position = -42;
+        target
+            .mapping_store
+            .bindings
+            .insert(MappingId(99), MappingSource::Osc);
+
+        let target_active_preset_pre = target.active_preset();
+        let target_control_pre = target.control_value(ControlId(2));
+        let target_snap_active_pre = target.active_snap_slot();
+        let target_playlist_pre = target.playlist_position();
+        let target_mapping_pre = target.mapping_source(MappingId(99));
+
+        restore_class_f(&restored_source, &mut target);
+
+        // No-op contract: every observable on `target` is unchanged.
+        assert_eq!(target.active_preset(), target_active_preset_pre);
+        assert_eq!(target.control_value(ControlId(2)), target_control_pre);
+        assert_eq!(target.active_snap_slot(), target_snap_active_pre);
+        assert!(target.snap_slot_saved(snap));
+        assert_eq!(target.playlist_position(), target_playlist_pre);
+        assert_eq!(target.mapping_source(MappingId(99)), target_mapping_pre);
+    }
+
+    #[test]
+    fn restore_class_f_idempotent_on_equal_target() {
+        // Repeated invocation of the no-op helper must remain a no-
+        // op (no panic, no flap). When the helper widens into a
+        // sub-store assignment, this pin ensures idempotence on a
+        // converged target — matching the class-c / class-e
+        // idempotence pin shape from PR 2 / PR 3.
+        let restored_source = seeded_state();
+        let mut target = State::default();
+        restore_class_f(&restored_source, &mut target);
+        let snapshot_after_first = (
+            target.active_preset(),
+            target.active_snap_slot(),
+            target.playlist_position(),
+            target.frame(),
+        );
+        restore_class_f(&restored_source, &mut target);
+        let snapshot_after_second = (
+            target.active_preset(),
+            target.active_snap_slot(),
+            target.playlist_position(),
+            target.frame(),
+        );
+        assert_eq!(snapshot_after_first, snapshot_after_second);
+    }
+
+    #[test]
+    fn class_g_deferred_pending_state_shape_extension() {
+        // Documentation pin (PR 4): class-g (render resolution + FPS
+        // target) ships as a documented-deferred no-op helper. The
+        // canonical [`State`] does not carry render-config fields as
+        // first-class sub-store state today — the scheduler-tick
+        // frame-rate is configured at
+        // `crate::scheduler::Scheduler` construction time and the
+        // render surface dimensions live at the host / Tauri shell
+        // side rather than the canonical state core.
+        //
+        // The helper is no-op-shaped: it accepts both arguments,
+        // reads neither, mutates nothing. The widening trigger is
+        // the State-shape extension that promotes the render-
+        // resolution + FPS-target selections into a canonical sub-
+        // store — at which point the helper gains the corresponding
+        // sub-store assignment and joins
+        // `restore_all_supported_classes`.
+        //
+        // Pin shape: same orthogonality + no-op contract as the
+        // class-e / class-f pins.
+        let restored_source = seeded_state();
+        let mut target = seeded_class_a_only();
+        let snap = SnapSlotId::new(15).expect("valid snap slot");
+        target.snap_store.saved.insert(snap);
+        target.snap_store.active = Some(snap);
+        target.playlist_store.position = -42;
+        target
+            .mapping_store
+            .bindings
+            .insert(MappingId(99), MappingSource::Midi);
+
+        let target_active_preset_pre = target.active_preset();
+        let target_control_pre = target.control_value(ControlId(2));
+        let target_snap_active_pre = target.active_snap_slot();
+        let target_playlist_pre = target.playlist_position();
+        let target_mapping_pre = target.mapping_source(MappingId(99));
+
+        restore_class_g(&restored_source, &mut target);
+
+        // No-op contract: every observable on `target` is unchanged.
+        assert_eq!(target.active_preset(), target_active_preset_pre);
+        assert_eq!(target.control_value(ControlId(2)), target_control_pre);
+        assert_eq!(target.active_snap_slot(), target_snap_active_pre);
+        assert!(target.snap_slot_saved(snap));
+        assert_eq!(target.playlist_position(), target_playlist_pre);
+        assert_eq!(target.mapping_source(MappingId(99)), target_mapping_pre);
+    }
+
+    #[test]
+    fn restore_class_g_idempotent_on_equal_target() {
+        // Repeated invocation of the no-op helper must remain a no-
+        // op (no panic, no flap). Matches the class-c / class-e /
+        // class-f idempotence pin shape.
+        let restored_source = seeded_state();
+        let mut target = State::default();
+        restore_class_g(&restored_source, &mut target);
+        let snapshot_after_first = (
+            target.active_preset(),
+            target.active_snap_slot(),
+            target.playlist_position(),
+            target.frame(),
+        );
+        restore_class_g(&restored_source, &mut target);
+        let snapshot_after_second = (
+            target.active_preset(),
+            target.active_snap_slot(),
+            target.playlist_position(),
+            target.frame(),
+        );
+        assert_eq!(snapshot_after_first, snapshot_after_second);
+    }
+
+    #[test]
+    fn restore_all_supported_classes_does_not_yet_invoke_class_e_f_or_g() {
+        // Pin: PR 3 + PR 4 ship `restore_class_e`, `restore_class_f`,
+        // and `restore_class_g` as documented-deferred no-op helpers
+        // but explicitly DO NOT add any of them to the convenience
+        // helper. When each State-shape extension lands and the
+        // corresponding helper widens to a real sub-store
+        // assignment, this pin's name updates alongside.
         //
         // The pin shape exercises the convenience helper with a
         // `restored_source` that carries non-default class-a +
         // class-b + class-c mutations, against a `target` that is
         // `State::default`. Class-a, class-b, class-c MUST be
-        // applied; nothing else (since class-e has no State to
-        // project, and class-d/f/g are still entirely deferred).
+        // applied; nothing else (since class-e/f/g have no State to
+        // project, and class-d is still entirely deferred).
         let restored_source = seeded_state();
         let mut target = State::default();
 
