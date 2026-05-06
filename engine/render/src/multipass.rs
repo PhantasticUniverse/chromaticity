@@ -486,12 +486,22 @@ impl MultipassRenderer {
             backend_options: wgpu::BackendOptions::default(),
         });
 
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            force_fallback_adapter: false,
-            compatible_surface: None,
-        }))
-        .map_err(|_| RenderError::AdapterUnavailable)?;
+        // Adapter acquisition routes through the deterministic
+        // [`crate::adapter_selection`] policy per ADR-011 §7.
+        // Wave 4d.2 Lane B PR 1 wires the default (high-performance,
+        // no operator override, no battery flag) policy here; a
+        // future widening that exposes a `MultipassRenderer::with_policy`
+        // builder method threading the caller's persisted override is
+        // post-PR-2 scope. The byte-identity contract on existing T2
+        // corpora is preserved by routing through the same
+        // `Backends::PRIMARY` filter the prior `request_adapter` call
+        // used and by the fact that single-adapter hosts (the only
+        // class the existing T2 corpora exercise) yield the same
+        // selection under either path.
+        let policy = crate::adapter_selection::GpuSelectionPolicy::new();
+        let (_chosen_summary, adapter) =
+            crate::adapter_selection::select_adapter(&instance, wgpu::Backends::PRIMARY, &policy)
+                .ok_or(RenderError::AdapterUnavailable)?;
 
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("chromaticity-render multipass device"),

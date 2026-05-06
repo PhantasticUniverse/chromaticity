@@ -301,12 +301,22 @@ pub fn compile_and_render_single_pass(
         backend_options: wgpu::BackendOptions::default(),
     });
 
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        force_fallback_adapter: false,
-        compatible_surface: None,
-    }))
-    .map_err(|_| RenderError::AdapterUnavailable)?;
+    // Adapter acquisition routes through the deterministic
+    // [`crate::adapter_selection`] policy per ADR-011 §7. Wave 4d.2
+    // Lane B PR 1 supplies the default (high-performance, no
+    // operator override, no battery flag) policy here — the slice-1
+    // entry-point did not historically expose a policy parameter to
+    // its callers, and the T2 single-pass corpus runs on
+    // single-adapter hosts where the policy ranking yields the same
+    // adapter the prior `request_adapter(LowPower)` call would have.
+    // A future widening that threads a caller-supplied policy
+    // through is post-PR-2 scope; the byte-identity contract on
+    // existing T2 hashes is preserved by routing through the same
+    // backend filter (`Backends::PRIMARY`) the prior call used.
+    let policy = crate::adapter_selection::GpuSelectionPolicy::new();
+    let (_chosen_summary, adapter) =
+        crate::adapter_selection::select_adapter(&instance, wgpu::Backends::PRIMARY, &policy)
+            .ok_or(RenderError::AdapterUnavailable)?;
 
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("chromaticity-render single-pass device"),
