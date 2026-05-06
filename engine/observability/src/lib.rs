@@ -47,6 +47,7 @@
 //! - `docs/12-work-breakdown-estimates.md` — WP-8 ownership and
 //!   gate outputs.
 
+pub mod analytics_audit;
 pub mod catalog;
 pub mod emit;
 
