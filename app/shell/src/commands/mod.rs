@@ -18,3 +18,4 @@ pub mod picker;
 pub mod playlist;
 pub mod preset;
 pub mod snap;
+pub mod thumbnail;

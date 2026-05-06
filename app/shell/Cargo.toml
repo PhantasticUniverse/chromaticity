@@ -32,6 +32,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# sha2 powers the EV-LIBRARY-THUMBNAIL pipeline's deterministic key
+# hashing + the deterministic-stub renderer per docs/26 row 67. Same
+# 0.10 line already used by engine/scene.
+sha2 = "0.10"
 chromaticity-audio = { version = "0.0.0", path = "../../engine/audio" }
 chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }
 chromaticity-scene = { version = "0.0.0", path = "../../engine/scene" }
