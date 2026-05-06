@@ -20,7 +20,7 @@
 //! plugin commands, so a `#[tauri::command]` handler that reads via
 //! `std::fs` is not subject to the capability allowlist.
 //!
-//! Wave-11 PR2 introduces the bundled-resources path
+//! Wave-11 PR2 introduced the bundled-resources path
 //! (`docs/52-parity-coverage-matrix.md` row 37, partial advance on
 //! `EV-LIBRARY-BUNDLE-LAYOUT`): three demo `.chroma` packages are
 //! copied into the Tauri AppBundle's `Resources/scenes/` directory at
@@ -31,6 +31,18 @@
 //! without first running `scripts/stage-demo-scenes.sh`. Cards from
 //! the bundled root are tagged `SceneSource::Bundled`; cards from the
 //! user's writable root are tagged `SceneSource::User`.
+//!
+//! Wave-4b.1 widens the bundled-resources path to the canonical
+//! four-subdirectory layout per `docs/38-scene-library-and-import-spec.md`
+//! §2.1: `<AppBundle>/Resources/scenes/{welcome,library,examples,shadertoy-fixtures}/`.
+//! `list_bundled_scene_packages` recurses one level into the three
+//! user-facing subdirectories — `library/` (canonical demos),
+//! `welcome/` (first-launch onboarding), and `examples/` (per-feature
+//! demos linked from embedded docs per
+//! `docs/adr/ADR-010-embedded-docs-generation.md`). The
+//! `shadertoy-fixtures/` subdirectory is intentionally skipped: per
+//! `docs/38` §5.2a it carries Shadertoy iChannel asset inputs for the
+//! import flow, not user-facing playable scenes.
 
 use chromaticity_scene::loader::load_chroma_dir;
 use chromaticity_ui_bridge::{SceneCard, SceneSource};
@@ -200,22 +212,43 @@ pub fn list_scene_packages(root: String) -> Result<Vec<SceneCard>, String> {
     list_scene_packages_impl(&root, SceneSource::User, RootGuard::EnforceUserDefault)
 }
 
-/// List every `.chroma` package directly under the Tauri-bundled
-/// scene root (`<AppBundle>/Resources/scenes/`). Cards are tagged
-/// [`SceneSource::Bundled`].
+/// User-facing subdirectories of `<AppBundle>/Resources/scenes/` that
+/// the bundled-scene walk recurses into per
+/// `docs/38-scene-library-and-import-spec.md` §2.1. The
+/// `shadertoy-fixtures/` subdirectory is intentionally absent: per
+/// `docs/38` §5.2a it holds iChannel asset inputs for the Shadertoy
+/// import flow, not playable scenes.
+const BUNDLED_USER_FACING_SUBDIRS: &[&str] = &["library", "welcome", "examples"];
+
+/// List every `.chroma` package found under the canonical bundled
+/// scene root (`<AppBundle>/Resources/scenes/{library,welcome,examples}/`).
+/// Cards are tagged [`SceneSource::Bundled`].
 ///
 /// Surfaces the W11 ship-time corpus per
 /// `docs/52-parity-coverage-matrix.md` row 37 so a fresh
 /// `npm run tauri dev` lists the demo `.chroma` packages without
-/// running `scripts/stage-demo-scenes.sh`.
+/// running `scripts/stage-demo-scenes.sh`. Wave-4b.1 widens the walk
+/// to the four-subdirectory taxonomy per `docs/38` §2.1; the
+/// `shadertoy-fixtures/` subdirectory is skipped because it carries
+/// import-flow asset inputs, not user-facing playable scenes.
 #[tauri::command]
 pub fn list_bundled_scene_packages(handle: AppHandle) -> Result<Vec<SceneCard>, String> {
     let root = bundled_scene_root_impl(&handle)?;
-    list_scene_packages_impl(
-        &root.to_string_lossy(),
-        SceneSource::Bundled,
-        RootGuard::AllowBundled,
-    )
+    let mut cards = Vec::new();
+    for subdir in BUNDLED_USER_FACING_SUBDIRS {
+        let subdir_path = root.join(subdir);
+        // A missing subdirectory is the graceful empty-corpus case
+        // (e.g. an early `welcome/` README placeholder with no scenes
+        // yet authored). `list_scene_packages_impl` treats `NotFound`
+        // as `Ok(vec![])`, so the per-subdir scan composes naturally.
+        let mut sub_cards = list_scene_packages_impl(
+            &subdir_path.to_string_lossy(),
+            SceneSource::Bundled,
+            RootGuard::AllowBundled,
+        )?;
+        cards.append(&mut sub_cards);
+    }
+    Ok(cards)
 }
 
 /// Return the platform-default scene-library root path.
@@ -322,11 +355,16 @@ mod tests {
         // BUILT-IN chip without inferring from the path prefix.
         //
         // Uses the repo-resident demo corpus as a stand-in for the
-        // post-link `Resources/scenes/` directory; `bundle.resources`
-        // in `app/shell/tauri.conf.json` copies the same `.chroma`
-        // packages there at link time.
+        // post-link `Resources/scenes/library/` directory;
+        // `bundle.resources` in `app/shell/tauri.conf.json` copies the
+        // same `.chroma` packages there at link time. Wave-4b.1 moved
+        // the demo corpus under the `library/` subdirectory per the
+        // `docs/38` §2.1 four-subdirectory taxonomy; this test scans
+        // that subdirectory directly because `list_scene_packages_impl`
+        // is single-directory and the multi-subdirectory recursion is
+        // the responsibility of `list_bundled_scene_packages`.
         let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes");
+            .join("../../engine/scene/tests/fixtures/scenes/library");
 
         let cards = list_scene_packages_impl(
             &fixtures.to_string_lossy(),
@@ -370,7 +408,9 @@ mod tests {
     // Wave-10 PR1 reroutes both to the loader directly
     // (`chromaticity_scene::loader::load_chroma_dir`) using the
     // repo-resident demo corpus at
-    // `engine/scene/tests/fixtures/scenes/`. This exercises the
+    // `engine/scene/tests/fixtures/scenes/library/` (Wave-4b.1
+    // relocated the corpus under the `library/` subdirectory per
+    // `docs/38` §2.1). This exercises the
     // metadata-extraction contract that `list_scene_packages_impl`
     // depends on (canonical-model fields surface through the
     // `extensions` map exactly the way the IPC handler reads them) and
@@ -389,7 +429,7 @@ mod tests {
         // `SceneCard` mapping in `list_scene_packages_impl` reads from
         // `Scene::extensions`.
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/demo-kaleido.chroma");
+            .join("../../engine/scene/tests/fixtures/scenes/library/demo-kaleido.chroma");
 
         let scene =
             chromaticity_scene::loader::load_chroma_dir(&fixture).expect("fixture must load");

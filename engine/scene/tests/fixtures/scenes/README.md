@@ -11,6 +11,29 @@ that satisfies the slice-3a `Scene` deserializer in
 `engine/scene/src/schema.rs` and the `docs/38-scene-library-and-import-spec.md`
 §2.2 metadata fields (`TITLE`, `CREDIT`, `DESCRIPTION`, `TAGS`, `CATEGORIES`).
 
+## Layout — four-subdirectory taxonomy (Wave-4b.1)
+
+Per `docs/38-scene-library-and-import-spec.md` §2.1 the bundled scene root
+ships at `<AppBundle>/Resources/scenes/{welcome,library,examples,shadertoy-fixtures}/`.
+This fixtures root mirrors that layout because `bundle.resources` in
+`app/shell/tauri.conf.json` maps directly from this tree to the AppBundle:
+
+- `library/` — canonical bundled demos (the three `demo-*.chroma` packages).
+  See `library/README.md`.
+- `welcome/` — first-launch onboarding scene placeholder.
+  See `welcome/README.md`.
+- `examples/` — per-feature demonstration scenes placeholder.
+  See `examples/README.md`.
+- `shadertoy-fixtures/` — Shadertoy iChannel asset-pack placeholder.
+  See `shadertoy-fixtures/README.md`.
+
+The CP-01 compat-fallback fixtures (`cp01-*.chroma`) and the reactive-symbol-
+family fixtures (`multipass-*`, `reactive-audio`, `meta-controls`,
+`traveler-controls`, `transition-hard`, `pass-sizing-sentinel`) remain at
+the top level of this directory: they are test corpora for
+`engine/scene/tests/{import,cp01_compat,lint_corpus}.rs` and are not
+shipped into the AppBundle.
+
 ## Provenance
 
 The fixtures and this README were authored clean-room by Xavier Butler on
@@ -41,14 +64,14 @@ falls under the repo-default REUSE annotation (`LicenseRef-Chromaticity-Propriet
 - `scripts/stage-demo-scenes.sh` — developer-facing idempotent copy of the
   three demo packages to the platform-default scene root.
 
-## Demo corpus
+## Demo corpus (under `library/`)
 
-- `demo-kaleido.chroma` — geometric reference scene exercising slider, knob,
-  toggle, color, and xy controls.
-- `demo-spectrum.chroma` — audio-reactive reference scene carrying the
-  `audio` tag for library-scanner coverage.
-- `demo-text.chroma` — text-category reference scene carrying the `TEXT`
-  category for library-scanner coverage.
+- `library/demo-kaleido.chroma` — geometric reference scene exercising
+  slider, knob, toggle, color, and xy controls.
+- `library/demo-spectrum.chroma` — audio-reactive reference scene
+  carrying the `audio` tag for library-scanner coverage.
+- `library/demo-text.chroma` — text-category reference scene carrying
+  the `TEXT` category for library-scanner coverage.
 
 ## CP-01 fallback corpus (Wave-11 PR1)
 

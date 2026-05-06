@@ -226,8 +226,9 @@ Once Chromaticity is running:
   feedback. The `engine/scene/tests/fixtures/scenes/multipass-chain.chroma`
   fixture is a clean-room example.
 - **Larger reference patterns.** The demo corpus
-  (`engine/scene/tests/fixtures/scenes/demo-*.chroma`) ships clean-room
-  scenes covering geometric, audio-reactive, and text-driven shapes.
+  (`engine/scene/tests/fixtures/scenes/library/demo-*.chroma`) ships
+  clean-room scenes covering geometric, audio-reactive, and text-driven
+  shapes.
 - **Library and import.** `38-scene-library-and-import-spec.md` documents
   the on-disk layout the Library expects and the import pipeline for
   external scene formats.

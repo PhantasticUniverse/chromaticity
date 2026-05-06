@@ -3,8 +3,11 @@
 # SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 #
 # stage-demo-scenes — copy the bundled demo `.chroma` corpus from
-# engine/scene/tests/fixtures/scenes/ to the platform-default scene
-# root resolved by app/shell/src/commands/library.rs::default_scene_root_impl.
+# engine/scene/tests/fixtures/scenes/library/ to the platform-default
+# scene root resolved by
+# app/shell/src/commands/library.rs::default_scene_root_impl. Wave-4b.1
+# relocated the demo corpus under the `library/` subdirectory of the
+# fixtures root per `docs/38-scene-library-and-import-spec.md` §2.1.
 #
 # Idempotent: existing directories at the destination are left in place
 # (the script reports "skip" rather than overwriting). Removing or
@@ -22,7 +25,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURES="$REPO_ROOT/engine/scene/tests/fixtures/scenes"
+FIXTURES="$REPO_ROOT/engine/scene/tests/fixtures/scenes/library"
 
 case "$(uname -s)" in
     Darwin)
