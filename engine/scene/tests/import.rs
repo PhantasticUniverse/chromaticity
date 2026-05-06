@@ -114,7 +114,7 @@ fn load_and_hash(name: &str) -> u64 {
 
 #[test]
 fn golden_demo_kaleido() {
-    let actual = load_and_hash("demo-kaleido.chroma");
+    let actual = load_and_hash("library/demo-kaleido.chroma");
     const EXPECTED: u64 = 0x0697_B269_BE16_8551;
     assert_eq!(
         actual, EXPECTED,
@@ -124,7 +124,7 @@ fn golden_demo_kaleido() {
 
 #[test]
 fn golden_demo_spectrum() {
-    let actual = load_and_hash("demo-spectrum.chroma");
+    let actual = load_and_hash("library/demo-spectrum.chroma");
     const EXPECTED: u64 = 0x4E43_612C_C703_0A58;
     assert_eq!(
         actual, EXPECTED,
@@ -134,7 +134,7 @@ fn golden_demo_spectrum() {
 
 #[test]
 fn golden_demo_text() {
-    let actual = load_and_hash("demo-text.chroma");
+    let actual = load_and_hash("library/demo-text.chroma");
     const EXPECTED: u64 = 0x5AA7_78E5_7A91_01BE;
     assert_eq!(
         actual, EXPECTED,
@@ -148,7 +148,8 @@ fn loader_extracts_extensions_metadata() {
     // uses in `app/shell/src/commands/library.rs` (per PR landing the
     // `list_scene_packages` IPC handler), pinning the canonical-model
     // metadata-field surfacing for each demo fixture.
-    let kaleido = load_chroma_dir(fixture_path("demo-kaleido.chroma")).expect("kaleido must load");
+    let kaleido =
+        load_chroma_dir(fixture_path("library/demo-kaleido.chroma")).expect("kaleido must load");
     assert_eq!(
         kaleido.extensions.get("TITLE").and_then(|v| v.as_str()),
         Some("Demo Kaleido"),
@@ -159,7 +160,7 @@ fn loader_extracts_extensions_metadata() {
     );
 
     let spectrum =
-        load_chroma_dir(fixture_path("demo-spectrum.chroma")).expect("spectrum must load");
+        load_chroma_dir(fixture_path("library/demo-spectrum.chroma")).expect("spectrum must load");
     let tags: Vec<&str> = spectrum
         .extensions
         .get("TAGS")
@@ -171,7 +172,7 @@ fn loader_extracts_extensions_metadata() {
         "demo-spectrum should carry 'audio' tag, got {tags:?}",
     );
 
-    let text = load_chroma_dir(fixture_path("demo-text.chroma")).expect("text must load");
+    let text = load_chroma_dir(fixture_path("library/demo-text.chroma")).expect("text must load");
     let categories: Vec<&str> = text
         .extensions
         .get("CATEGORIES")

@@ -132,17 +132,17 @@ fn assert_lint_coerces(package_name: &str, control_name: &str, to_tag: &str) {
 
 #[test]
 fn lint_demo_kaleido_is_clean() {
-    assert_lint_clean("demo-kaleido.chroma");
+    assert_lint_clean("library/demo-kaleido.chroma");
 }
 
 #[test]
 fn lint_demo_spectrum_is_clean() {
-    assert_lint_clean("demo-spectrum.chroma");
+    assert_lint_clean("library/demo-spectrum.chroma");
 }
 
 #[test]
 fn lint_demo_text_is_clean() {
-    assert_lint_clean("demo-text.chroma");
+    assert_lint_clean("library/demo-text.chroma");
 }
 
 // ---------------------------------------------------------------------------

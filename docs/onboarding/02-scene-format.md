@@ -153,8 +153,9 @@ The validator's representative-subset of reactive symbols is documented in
   attribute names a wire key).
 - **Validator and CP-01 fallback:** `engine/scene/src/validator.rs`.
 - **Demo corpus:** `engine/scene/tests/fixtures/scenes/` and its
-  `README.md` — both the `demo-*.chroma` set and the `cp01-*.chroma`
-  fixtures are clean-room originals you can copy and modify.
+  `README.md` — both the `library/demo-*.chroma` set and the
+  `cp01-*.chroma` fixtures are clean-room originals you can copy and
+  modify.
 - **Evidence rows:** `26-evidence-artifact-registry.md` rows
   `EV-SCENE-IMPORT` (loader conformance) and `EV-COMPAT-FIXTURE-COVERAGE`
   (CP-01 fixture corpus). When the schema widens past slice-3a, the row

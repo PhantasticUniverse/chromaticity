@@ -6,7 +6,7 @@
  * self-contained; the structural template mirrors
  * `chromaticity-planning/ui-predev-bundle-v0.2-beta/chroma_inspector.jsx`
  * lines 28-78 (port source). The NATIVE fixture mirrors the content of
- * `engine/scene/tests/fixtures/scenes/demo-kaleido.chroma/scene.json` (W10
+ * `engine/scene/tests/fixtures/scenes/library/demo-kaleido.chroma/scene.json` (W10
  * PR1) — same TITLE / CREDIT / control NAMEs, with one synthesized row
  * appended (`palette`) so the inspector exercises the dropdown placeholder
  * alongside the four mappable widget primitives and the xy placeholder.
