@@ -197,6 +197,30 @@
 //!   [`multipass::UniformValue`] (the FFT array consolidation that
 //!   was previously listed here landed in the slice-5a follow-up
 //!   that opened catalog v1.3.0).
+//! - **Wave 4d.2 Lane B PR 1 of 2 (this PR)** — deterministic GPU
+//!   adapter-selection policy per ADR-011 §7
+//!   ([`adapter_selection::GpuSelectionPolicy`] +
+//!   [`adapter_selection::select_adapter`] +
+//!   [`adapter_selection::enumerate_adapter_summaries`]). Adds the
+//!   ranking core (adapter-type + per-OS backend preference + name
+//!   tie-breaker) and the operator-override input surface; the
+//!   per-installation persistence shell + battery / TDR-history
+//!   warning surfacing + hot-plug recovery are deferred per the
+//!   module-level "scope boundary" prose. The
+//!   [`multipass::MultipassRenderer::new`] and
+//!   [`single_pass::compile_and_render_single_pass`] wgpu adapter
+//!   acquisition sites both route through
+//!   [`adapter_selection::select_adapter`] with the default policy
+//!   (which preserves the prior `LowPower` / no-override behavior at
+//!   the *type* axis only — a Discrete adapter, when present, is now
+//!   preferred per the ADR; the slice-1 / slice-2 / slice-4 / slice-5
+//!   T2 corpora keep their byte hashes because none of those tests
+//!   rely on multi-adapter machines and the selector returns the
+//!   same single adapter when only one is enumerated). The pure-data
+//!   T1 ranking pins live in
+//!   `adapter_selection::adapter_selection_pins`; the dual-adapter
+//!   physical / VM validation corpus is PR 2 scope and lives in
+//!   `engine/render/tests/gpu_selection.rs` in that follow-up.
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
@@ -249,6 +273,7 @@
 //! - ADR-018 — non-scene UI toolkit
 //!   (`docs/adr/ADR-018-non-scene-ui-toolkit.md`).
 
+pub mod adapter_selection;
 #[cfg(feature = "audio-binding")]
 pub mod audio_adapter;
 pub mod composition;
@@ -260,6 +285,10 @@ pub mod shader_cache;
 pub mod single_pass;
 pub mod transitions;
 
+pub use adapter_selection::{
+    AdapterId, AdapterType, Backend, GpuSelectionPolicy, SelectedAdapter,
+    enumerate_adapter_summaries, select_adapter,
+};
 #[cfg(feature = "audio-binding")]
 pub use audio_adapter::{
     UNIFORM_NAME_BPM, UNIFORM_NAME_FFT, UNIFORM_NAME_PEAK, UNIFORM_NAME_RMS,
