@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Phase-4d Wave 4d.3 PR 1 EV-CRASH-RESUME corpus. Tier declaration
-//! and evidence tag live on the `fixtures` inner module below,
-//! matching the pattern established by
+//! Phase-4d Wave 4d.3 EV-CRASH-RESUME corpus. Tier declaration and
+//! evidence tag live on the `fixtures` inner module below, matching
+//! the pattern established by
 //! `engine/runtime/tests/state_replay_corpus/main.rs` so
 //! `scripts/evidence-tag-lint.sh`'s tier-distribution summary counts
 //! this file at T2.
@@ -11,8 +11,9 @@
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod fixtures {
-    //! Evidence: EV-CRASH-RESUME (T2) — Phase-4d Wave 4d.3 PR 1
-    //! crash-resume class-a + class-b state-restoration corpus.
+    //! Evidence: EV-CRASH-RESUME (T2) — Phase-4d Wave 4d.3
+    //! crash-resume class-a + class-b + class-c state-restoration
+    //! corpus.
     //!
     //! T2 per `docs/43-development-standards.md` §15.5: exercises
     //! the evidence-producing behaviour against a fixture corpus.
@@ -26,18 +27,21 @@ mod fixtures {
     //! (the in-process analogue of host re-launch), (e) recovers
     //! the snapshot, (f) projects the recovered values onto the
     //! fresh state via the per-class [`restore_class_a`] /
-    //! [`restore_class_b`] helpers (or
+    //! [`restore_class_b`] / [`restore_class_c`] helpers (or
     //! [`restore_all_supported_classes`]), and (g) asserts the per-
     //! class observable values match the pre-crash state.
     //!
     //! Fixtures cover the EV-CRASH-RESUME contract per
-    //! `docs/26-evidence-artifact-registry.md` row 80, narrowed in
-    //! PR 1 to the in-process simulated-crash + class-a + class-b
-    //! restoration surface. Real cross-process `SIGKILL` /
-    //! `SIGSEGV` / panic-in-render-thread / OOM injection plus the
-    //! time-to-resume + visible-artifact-window p50/p95
-    //! measurement budgets land in subsequent PRs in this wave
-    //! cluster. Fixture set:
+    //! `docs/26-evidence-artifact-registry.md` row 80. PR 1 narrowed
+    //! to in-process simulated-crash + class-a + class-b; PR 2
+    //! widens to class-c (playlist position; iteration mode is a
+    //! deferred sub-store). Class-d (OSC/MIDI session bindings)
+    //! through class-g (render resolution + FPS target) remain
+    //! deferred pending the corresponding State-shape extensions.
+    //! Real cross-process `SIGKILL` / `SIGSEGV` / panic-in-render-
+    //! thread / OOM injection plus the time-to-resume + visible-
+    //! artifact-window p50/p95 measurement budgets land in
+    //! subsequent PRs in this wave cluster. Fixture set:
     //!
     //! 1. `simulated_crash_recovery_round_trip_preserves_class_a_state`
     //!    — class-a (active scene + preset channel values) survives
@@ -45,13 +49,20 @@ mod fixtures {
     //! 2. `simulated_crash_recovery_round_trip_preserves_class_b_state`
     //!    — class-b (Snap slot selection + scene-specific preset
     //!    history) survives the same cycle.
-    //! 3. `simulated_crash_recovery_with_three_wallclock_injection_points`
-    //!    — drives a 10-tick scripted "show" that mutates state at
-    //!    tick 3, tick 6, and tick 9; snapshots after each
-    //!    mutation; asserts every snapshot recovers correctly.
-    //!    Approximates the row-80 "three wallclock points within a
-    //!    10-minute scripted show" at miniature scale.
-    //! 4. `recovery_from_corrupt_snapshot_returns_serialization_error_not_panic`
+    //! 3. `simulated_crash_recovery_round_trip_preserves_class_c_state`
+    //!    — class-c (playlist position + iteration mode) survives
+    //!    the same cycle. New in PR 2.
+    //! 4. `simulated_crash_recovery_with_three_wallclock_injection_points_now_covers_class_c`
+    //!    — drives a 10-tick scripted "show" that mutates class-a +
+    //!    class-b + class-c state at tick 3, tick 6, and tick 9;
+    //!    snapshots after each mutation; asserts every snapshot
+    //!    recovers correctly across all three classes. Extends the
+    //!    PR 1 three-injection-points fixture to cover class-c.
+    //! 5. `restore_class_c_idempotent_when_target_already_has_same_state`
+    //!    — applying class-c restoration to a target that already
+    //!    carries the same playlist position is a no-op (no panic,
+    //!    no flap). New in PR 2.
+    //! 6. `recovery_from_corrupt_snapshot_returns_serialization_error_not_panic`
     //!    — synthesises a corrupt blob and asserts the adapter
     //!    surfaces a typed `CrashResumeError::SerializationError`
     //!    rather than panicking.
@@ -59,7 +70,7 @@ mod fixtures {
     use chromaticity_runtime::crash_resume::{
         CanonicalBinarySnapshotter, CrashResumeAdapter, CrashResumeError, SerializationKind,
         StateSnapshotBlob, StateSnapshotter, restore_all_supported_classes, restore_class_a,
-        restore_class_b,
+        restore_class_b, restore_class_c,
     };
     use chromaticity_runtime::state::State;
     use chromaticity_runtime::{
@@ -121,6 +132,16 @@ mod fixtures {
             .expect("snap save command must dispatch");
         bus.dispatch(Command::SnapRecall { slot: slot_a })
             .expect("snap recall command must dispatch");
+        bus.commit_all_into(state);
+    }
+
+    /// Drive a class-c-rich state mutation: advance the playlist
+    /// position twice with non-trivial steps.
+    fn mutate_class_c(bus: &InMemoryBus, state: &mut State) {
+        bus.dispatch(Command::PlaylistAdvance { step: 11 })
+            .expect("playlist command must dispatch");
+        bus.dispatch(Command::PlaylistAdvance { step: 4 })
+            .expect("playlist command must dispatch");
         bus.commit_all_into(state);
     }
 
@@ -201,19 +222,51 @@ mod fixtures {
     }
 
     #[test]
-    fn simulated_crash_recovery_with_three_wallclock_injection_points() {
+    fn simulated_crash_recovery_round_trip_preserves_class_c_state() {
+        let path = unique_save_path("class-c-round-trip");
+        let pre_crash_position;
+        {
+            let bus = InMemoryBus::in_memory();
+            let mut pre_crash = State::default();
+            mutate_class_c(&bus, &mut pre_crash);
+            pre_crash_position = pre_crash.playlist_position();
+            assert_eq!(
+                pre_crash_position, 15,
+                "mutate_class_c contract: 11 + 4 = 15",
+            );
+            let mut adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+            adapter.save(&pre_crash).expect("save must succeed");
+        }
+        let adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+        let recovered = adapter
+            .try_recover()
+            .expect("recover must succeed")
+            .expect("recover must return Some(state)");
+        let mut post_crash = State::default();
+        restore_class_c(&recovered, &mut post_crash);
+        assert_eq!(post_crash.playlist_position(), pre_crash_position);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn simulated_crash_recovery_with_three_wallclock_injection_points_now_covers_class_c() {
         // Drive a 10-tick scripted show. Mutate state at tick 3,
         // tick 6, tick 9; snapshot after each mutation; assert each
         // snapshot independently recovers to the matching pre-
         // mutation observable values.
         //
+        // PR 1 covered class-a + class-b at each injection point.
+        // PR 2 extends with a class-c mutation (playlist advance) at
+        // each injection point so the recovery assertions cover all
+        // three currently-supported classes.
+        //
         // Approximates the row-80 "three wallclock points within a
-        // 10-minute scripted show" at miniature scale. PR 1 ships
-        // the structural correctness invariant; the production-
+        // 10-minute scripted show" at miniature scale. PR 1 + PR 2
+        // ship the structural correctness invariant; the production-
         // wallclock-budget version lands alongside real cross-
         // process injection in a future PR.
         let injection_ticks = [3u32, 6u32, 9u32];
-        let mut snapshots: Vec<(PathBuf, Option<PresetId>, Option<SnapSlotId>)> = Vec::new();
+        let mut snapshots: Vec<(PathBuf, Option<PresetId>, Option<SnapSlotId>, i64)> = Vec::new();
 
         let bus = InMemoryBus::in_memory();
         let mut state = State::default();
@@ -241,12 +294,24 @@ mod fixtures {
                 bus.dispatch(Command::SnapRecall { slot })
                     .expect("snap recall command must dispatch");
                 next_snap += 1;
+                // Class-c mutation: advance playlist by a per-
+                // injection-point step so each snapshot has a
+                // distinct position. `tick` is bounded to 0..10 so
+                // the cast to i32 is exact.
+                let step: i32 = i32::try_from(tick).expect("tick fits in i32") + 1;
+                bus.dispatch(Command::PlaylistAdvance { step })
+                    .expect("playlist command must dispatch");
                 bus.commit_all_into(&mut state);
                 // Snapshot at this wallclock point:
                 let path = unique_save_path(&format!("three-points-tick-{tick}"));
                 let mut adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
                 adapter.save(&state).expect("save must succeed");
-                snapshots.push((path, state.active_preset(), state.active_snap_slot()));
+                snapshots.push((
+                    path,
+                    state.active_preset(),
+                    state.active_snap_slot(),
+                    state.playlist_position(),
+                ));
             } else {
                 // No-op tick: drain whatever's pending (nothing).
                 bus.commit_all_into(&mut state);
@@ -259,8 +324,9 @@ mod fixtures {
         );
 
         // Recover each snapshot independently and assert the per-
-        // injection-point observable values survive.
-        for (path, expected_preset, expected_snap) in &snapshots {
+        // injection-point observable values survive across all
+        // currently-supported classes.
+        for (path, expected_preset, expected_snap, expected_position) in &snapshots {
             let adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
             let recovered = adapter
                 .try_recover()
@@ -278,8 +344,50 @@ mod fixtures {
                 *expected_snap,
                 "class-b snap slot must survive recovery from {path:?}",
             );
+            assert_eq!(
+                post_crash.playlist_position(),
+                *expected_position,
+                "class-c playlist position must survive recovery from {path:?}",
+            );
             cleanup(path);
         }
+    }
+
+    #[test]
+    fn restore_class_c_idempotent_when_target_already_has_same_state() {
+        // Applying class-c restoration to a target that already
+        // carries the same playlist position MUST be a no-op (no
+        // panic, no flap). Pins the partial-advance idempotence
+        // invariant: re-applying a restoration helper after the
+        // target has converged onto the restored value is safe.
+        let path = unique_save_path("class-c-idempotent");
+        {
+            let bus = InMemoryBus::in_memory();
+            let mut pre_crash = State::default();
+            mutate_class_c(&bus, &mut pre_crash);
+            let mut adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+            adapter.save(&pre_crash).expect("save must succeed");
+        }
+        let adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+        let recovered = adapter
+            .try_recover()
+            .expect("recover must succeed")
+            .expect("recover must return Some(state)");
+
+        // First application: target moves from default (position 0)
+        // to the recovered value.
+        let mut target = State::default();
+        restore_class_c(&recovered, &mut target);
+        let after_first = target.playlist_position();
+        assert_ne!(after_first, 0, "first application moves the target");
+        // Second application onto the already-converged target.
+        restore_class_c(&recovered, &mut target);
+        let after_second = target.playlist_position();
+        assert_eq!(
+            after_first, after_second,
+            "class-c restoration must be idempotent on a converged target",
+        );
+        cleanup(&path);
     }
 
     #[test]
