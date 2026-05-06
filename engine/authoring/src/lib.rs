@@ -12,39 +12,37 @@
 //! (compile, script, JSON, coercion) per
 //! `docs/37-authoring-environment-spec.md` §3.4 + §3.5.
 //!
-//! The diagnostic surface is producer-side: it composes existing
-//! engine error types without modifying them. The Tauri / UI
-//! consumer-side wiring (a `#[tauri::command]` adapter and the
-//! Svelte console-panel renderer) lands in a follow-up wave once the
-//! authoring view's port surface stabilises.
-//!
 //! Slice 2 (PR #355) shipped the [`scaffolder`] module — a New-Scene
 //! scaffolder that produces a minimal `.chroma` package skeleton
-//! consumable by `chromaticity_scene::loader::load_chroma_dir` and
-//! whose embedded fragment shader compiles + validates through the
-//! same naga GLSL frontend + IR validator pair the engine/render
-//! single-pass entry point uses internally. Slice scope per
-//! `docs/26-evidence-artifact-registry.md` row 63
-//! (`EV-AUTHORING-SCAFFOLDER`): scaffolder template + golden-output
-//! corpus, single PR.
+//! consumable by `chromaticity_scene::loader::load_chroma_dir` per
+//! `docs/26` row 63 (`EV-AUTHORING-SCAFFOLDER`).
 //!
-//! Slice 3 (this PR) ships the [`live_reload`] module — a cross-
+//! Slice 3 (PR #356) shipped the [`live_reload`] module — a cross-
 //! platform file-watcher around the `notify` crate plus a reload
 //! pipeline composing the [`diagnostics`] surface to report load
 //! failures as structured diagnostics. PR 1 of 2-3 for row 61
-//! (`EV-AUTHORING-LIVE-RELOAD`): file-watcher + reload pipeline + T1
-//! pins. State preservation is PR 2; the latency-budget T2 corpus is
-//! PR 3.
+//! (`EV-AUTHORING-LIVE-RELOAD`).
 //!
-//! Slice 4 (Phase-4b Wave 4b.5 Lane B, this PR) ships the
-//! [`import_isf`] module — the V1 actionable-reject diagnostic +
-//! escape hatch for ISF (Interactive Shader Format) inputs per
-//! `docs/26-evidence-artifact-registry.md` row 65
-//! (`EV-IMPORT-ISF-REJECT`) and `docs/38-scene-library-and-import-spec.md`
-//! §6. ISF native import is a V2 differentiation bet
-//! (`CHR-ISF-V2`); V1 detects the ISF fingerprint and rejects with a
-//! structured `Diagnostic` pointing the author at the Shadertoy
-//! converter (V1) or a blank-scene-scaffold hand-port path.
+//! Slice 4 (PR #358) shipped the [`import_isf`] module — the V1
+//! actionable-reject diagnostic + escape hatch for ISF (Interactive
+//! Shader Format) inputs per `docs/26` row 65 (`EV-IMPORT-ISF-REJECT`)
+//! and `docs/38-scene-library-and-import-spec.md` §6. ISF native import
+//! is a V2 differentiation bet (`CHR-ISF-V2`); V1 detects the ISF
+//! fingerprint and rejects with a structured `Diagnostic` pointing the
+//! author at the Shadertoy converter (V1) or a blank-scene-scaffold
+//! hand-port path.
+//!
+//! Slice 5 (this PR) ships the [`import_shadertoy`] module — the V1
+//! Shadertoy `.chroma` import converter per `docs/26` row 64
+//! (`EV-IMPORT-SHADERTOY`) and `docs/38` §5.2. PR 1 of 2 parses the
+//! Shadertoy `mainImage` entry point and maps Shadertoy uniforms to
+//! chromaticity preamble uniforms via `layout(binding=N)` declarations,
+//! validates through naga GLSL frontend, and writes a `.chroma`
+//! package at the target path. The runtime binding to
+//! chromaticity-native reactive symbols (`TIME`, `RENDERSIZE`) is a
+//! downstream binding-layer concern; PR 2 or a later wave wires
+//! bindings 0 through 4 to the appropriate reactive symbols without
+//! touching the converter's text-rewrite surface.
 //!
 //! Future authoring concerns expected to land here include the
 //! hover-docs registry (per `docs/37` §3.3 §3.5) and the latency
@@ -53,6 +51,7 @@
 
 pub mod diagnostics;
 pub mod import_isf;
+pub mod import_shadertoy;
 pub mod live_reload;
 pub mod scaffolder;
 
@@ -62,6 +61,10 @@ pub use diagnostics::{
     diagnostic_from_validation_error,
 };
 pub use import_isf::{build_isf_reject_diagnostic, detect_isf, try_reject_isf_input};
+pub use import_shadertoy::{
+    ImportError, ImportReport, ShadertoyImportConfig, import_shadertoy_to_chroma,
+    load_imported_scene,
+};
 pub use live_reload::{
     LiveReloadConfig, LiveReloadError, LiveReloadHandle, ReloadEvent, ReloadOutcome,
     perform_reload, start_watching,

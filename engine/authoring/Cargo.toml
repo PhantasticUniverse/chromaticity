@@ -71,6 +71,25 @@ chromaticity-script = { version = "0.0.0", path = "../script" }
 # docstring "Why notify" section for the wave-1 sourcing rationale.
 notify = "8"
 
+# naga 26 (runtime) matches the engine/render pin (which is itself
+# paired with wgpu 26's reexport — see engine/render/Cargo.toml).
+# The Shadertoy-import converter
+# (`engine/authoring/src/import_shadertoy.rs`) gates package
+# emission behind the same naga GLSL frontend + IR validator pair
+# that engine/render::single_pass uses internally — a Shadertoy
+# fragment that would not parse + validate at render time rejects
+# at import time with a clean
+# `ImportError::GlslCompileError` instead of leaving a broken
+# `.chroma` package on disk. `compile_glsl_module` is `pub(crate)`
+# in engine/render (a slice-boundary signal per CLAUDE.md), so the
+# converter reproduces the parse + validate seam directly against
+# `naga::front::glsl::Frontend`. License: Apache-2.0 OR MIT
+# (allow-listed by /deny.toml). Already present in Cargo.lock via
+# engine/render. The dev-dependency below is kept for the
+# scaffolder T1 / T2 corpora that pre-date this runtime use; cargo
+# de-duplicates the two listings into a single graph node.
+naga = { version = "26", default-features = false, features = ["glsl-in"] }
+
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
 [dev-dependencies]
