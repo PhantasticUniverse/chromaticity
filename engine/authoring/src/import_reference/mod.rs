@@ -59,13 +59,24 @@
 
 pub mod diagnostics;
 pub mod discovery;
+pub mod meta_media;
+pub mod playlists;
 pub mod presets;
 pub mod settings;
+pub mod snap;
 
 pub use diagnostics::{ArtifactClass, ImportDiagnostic, ImportDiagnosticCode};
 pub use discovery::{
     DiscoveryError, ReferenceUserDataRoot, discover_reference_user_data_root,
     override_reference_user_data_root,
 };
+pub use meta_media::{
+    ImportedMediaPreset, ImportedMetaMedia, ImportedMetaPreset, MetaMediaImporter,
+};
+pub use playlists::{
+    ImportedIterationMode, ImportedPlaylist, ImportedPlaylists, ImportedTransition,
+    PlaylistsImporter,
+};
 pub use presets::{ImportedPreset, ImportedPresets, PresetsImporter, PresetsImporterError};
 pub use settings::{ImportedSettings, SettingsImporter, SettingsImporterError};
+pub use snap::{ImportedSceneSnap, ImportedSlot, ImportedSnap, SnapImporter};
