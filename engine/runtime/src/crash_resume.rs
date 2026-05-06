@@ -16,7 +16,7 @@
 //! - **PR 1**: class-a (active scene + preset channel values) +
 //!   class-b (Snap slot selection + scene-specific preset history)
 //!   per their current canonical-state mappings.
-//! - **PR 2** (this PR): class-c (playlist position + iteration
+//! - **PR 2**: class-c (playlist position + iteration
 //!   mode) per the current canonical playlist-store mapping. Class-d
 //!   (OSC/MIDI session bindings) is DEFERRED: the canonical [`State`]
 //!   does not yet carry session / device-id state — the
@@ -27,10 +27,32 @@
 //!   sub-store + commit-bus event family + canonical-binary encoder
 //!   widening), which carries broader review implications and is
 //!   sequenced behind that work.
-//! - **PR 3+**: class-d (OSC/MIDI session bindings) once the State
-//!   shape lands, then class-e (audio input device + `syn_Threshold`),
-//!   class-f (operator meta-controls), and class-g (render resolution
-//!   + FPS target).
+//! - **PR 3** (this PR): class-e (audio input device + `syn_Threshold`)
+//!   helper [`restore_class_e`] lands as a documented-deferred no-op.
+//!   The canonical [`State`] does not carry an audio-input-device
+//!   field nor a `syn_Threshold` control as first-class state — the
+//!   transient
+//!   [`crate::state::State::latest_audio_snapshot`] is the only
+//!   audio-touching field today and is intentionally NOT serialized
+//!   (the scheduler-tick repopulates it on the next pull, matching
+//!   the row-80 "audio trailing reactivity state resets on resume by
+//!   design" note). The audio-input-device selection lives at the
+//!   producer side ([`chromaticity_audio::runtime::AudioRuntime`])
+//!   rather than the canonical state core, and `syn_Threshold` is a
+//!   future audio-uniform control reserved by [`chromaticity_audio`]
+//!   per the `engine/audio/src/uniforms.rs` module-level prose. Class-
+//!   e restoration therefore ships as the partial-advance no-op
+//!   PR 1 / PR 2 deferral pattern established for class-d: the helper
+//!   is callable, [`restore_all_supported_classes`] does NOT yet
+//!   invoke it, and the widening trigger is the State-shape extension
+//!   that promotes the audio-input-device + `syn_Threshold` selections
+//!   into canonical sub-stores.
+//! - **PR 4+**: class-d (OSC/MIDI session bindings) once the State
+//!   shape lands, class-e once the audio-input-device + `syn_Threshold`
+//!   sub-stores land (at which point [`restore_class_e`] widens from a
+//!   no-op to a sub-store assignment and gets added to
+//!   [`restore_all_supported_classes`]), then class-f (operator meta-
+//!   controls) and class-g (render resolution + FPS target).
 //!
 //! # Class-a + class-b + class-c mapping onto current canonical state
 //!
@@ -381,12 +403,48 @@ pub fn restore_class_c(restored: &State, target: &mut State) {
     target.playlist_store.position = restored.playlist_store.position;
 }
 
-/// Apply every class supported by the current adapter (class-a +
-/// class-b + class-c in PR 2).
+/// Apply class-e fields from `restored` onto `target`.
 ///
-/// Subsequent PRs widen this convenience helper as class-d through
-/// class-g land. Existing call sites pick up the broader
-/// restoration without an API break.
+/// Class-e per `docs/26` row 80: audio input device + `syn_Threshold`.
+///
+/// **PR 3 status: documented-deferred no-op.** The canonical [`State`]
+/// does not carry an audio-input-device field nor a `syn_Threshold`
+/// control as first-class sub-store state. The
+/// transient [`State::latest_audio_snapshot`] is the only audio-
+/// touching field today and is intentionally NOT serialized (the
+/// scheduler-tick repopulates it on the next pull, matching the row-80
+/// "audio trailing reactivity state resets on resume by design" note).
+/// The audio-input-device selection lives at the producer side
+/// ([`chromaticity_audio::runtime::AudioRuntime`]) rather than the
+/// canonical state core, and `syn_Threshold` is a future audio-uniform
+/// control reserved by [`chromaticity_audio`] per the
+/// `engine/audio/src/uniforms.rs` module-level prose.
+///
+/// This helper is shipped as a no-op (it accepts both arguments, reads
+/// neither, mutates nothing) so call sites can be wired ahead of the
+/// widening trigger. The widening trigger is the State-shape extension
+/// that promotes the audio-input-device + `syn_Threshold` selections
+/// into canonical sub-stores, at which point this helper gains the
+/// corresponding sub-store assignments and joins
+/// [`restore_all_supported_classes`].
+///
+/// Does NOT touch class-a, class-b, or class-c fields — and does not
+/// touch ANY field, since the helper is a no-op until class-e State
+/// lands. The orthogonality is asserted at T1.
+pub fn restore_class_e(_restored: &State, _target: &mut State) {
+    // Documented-deferred no-op: see the doc comment above for the
+    // class-e State-shape extension trigger.
+}
+
+/// Apply every class supported by the current adapter (class-a +
+/// class-b + class-c).
+///
+/// Class-e is NOT invoked here in PR 3 — [`restore_class_e`] is the
+/// documented-deferred no-op preserved for PR 4+ widening once the
+/// canonical [`State`] grows the audio-input-device + `syn_Threshold`
+/// sub-stores. Subsequent PRs widen this convenience helper as
+/// class-d through class-g land. Existing call sites pick up the
+/// broader restoration without an API break.
 pub fn restore_all_supported_classes(restored: &State, target: &mut State) {
     restore_class_a(restored, target);
     restore_class_b(restored, target);
@@ -418,7 +476,7 @@ mod tests {
     use super::{
         CanonicalBinarySnapshotter, CrashResumeAdapter, CrashResumeError, SerializationKind,
         StateSnapshotter, restore_all_supported_classes, restore_class_a, restore_class_b,
-        restore_class_c,
+        restore_class_c, restore_class_e,
     };
     use crate::command_bus::{
         Command, CommandBus, ControlId, ControlValue, InMemoryBus, MappingId, MappingSource,
@@ -733,16 +791,20 @@ mod tests {
     }
 
     #[test]
-    fn class_d_through_g_deferred_pending_state_shape_extension() {
-        // Documentation pin: class-d (OSC/MIDI session bindings)
-        // through class-g (render resolution + FPS target) are NOT
-        // shipped in PR 2. The canonical [`State`] does not yet
-        // carry session / device-id / audio-input / operator-meta /
-        // render-config sub-stores. Adding restoration for any of
-        // these classes requires a State-shape extension (new
-        // sub-store + commit-bus event family + canonical-binary
-        // encoder widening), which carries broader review
-        // implications and is sequenced behind that work.
+    fn class_d_f_g_deferred_pending_state_shape_extension() {
+        // Documentation pin: class-d (OSC/MIDI session bindings),
+        // class-f (operator meta-controls), and class-g (render
+        // resolution + FPS target) are NOT shipped. Class-e (audio
+        // input device + `syn_Threshold`) ships as a documented-
+        // deferred no-op helper in PR 3 — see
+        // `class_e_deferred_pending_state_shape_extension` below.
+        // The canonical [`State`] does not yet carry session /
+        // device-id / audio-input / operator-meta / render-config
+        // sub-stores. Adding restoration for any of these classes
+        // requires a State-shape extension (new sub-store + commit-
+        // bus event family + canonical-binary encoder widening),
+        // which carries broader review implications and is sequenced
+        // behind that work.
         //
         // Today: `restore_all_supported_classes` covers class-a +
         // class-b + class-c. The mapping_store IS in canonical
@@ -757,6 +819,124 @@ mod tests {
             target.mapping_source(MappingId(4)),
             None,
             "mapping store (class-d-adjacent) must not be touched by class-a/b/c restoration",
+        );
+    }
+
+    #[test]
+    fn class_e_deferred_pending_state_shape_extension() {
+        // Documentation pin (PR 3): class-e (audio input device +
+        // `syn_Threshold`) ships as a documented-deferred no-op
+        // helper. The canonical [`State`] does not carry an audio-
+        // input-device field nor a `syn_Threshold` control as first-
+        // class sub-store state today. The transient
+        // `latest_audio_snapshot` field is intentionally NOT
+        // serialized (audio trailing reactivity state resets on
+        // resume by design per `docs/26` row 80).
+        //
+        // The helper is no-op-shaped: it accepts both arguments,
+        // reads neither, mutates nothing. The widening trigger is
+        // the State-shape extension that promotes the audio-input-
+        // device + `syn_Threshold` selections into canonical sub-
+        // stores — at which point the helper gains the corresponding
+        // sub-store assignments and joins
+        // `restore_all_supported_classes`.
+        //
+        // Pin shape: build a `target` with class-a + class-b +
+        // class-c values; invoke `restore_class_e` from a `restored`
+        // source that differs across every class; assert NOTHING on
+        // `target` changed. This is the orthogonality + no-op
+        // contract surfaced together: the helper does not touch
+        // class-a, class-b, class-c, the deferred-class-d mapping
+        // store, OR any future class-e State (because there is none
+        // to touch).
+        let restored_source = seeded_state();
+        let mut target = seeded_class_a_only();
+        // Seed `target` with class-b, class-c, class-d-adjacent
+        // values that would surface as drift if `restore_class_e`
+        // accidentally became non-no-op.
+        let snap = SnapSlotId::new(15).expect("valid snap slot");
+        target.snap_store.saved.insert(snap);
+        target.snap_store.active = Some(snap);
+        target.playlist_store.position = -42;
+        target
+            .mapping_store
+            .bindings
+            .insert(MappingId(99), MappingSource::Osc);
+
+        let target_active_preset_pre = target.active_preset();
+        let target_control_pre = target.control_value(ControlId(2));
+        let target_snap_active_pre = target.active_snap_slot();
+        let target_playlist_pre = target.playlist_position();
+        let target_mapping_pre = target.mapping_source(MappingId(99));
+
+        restore_class_e(&restored_source, &mut target);
+
+        // No-op contract: every observable on `target` is unchanged.
+        assert_eq!(target.active_preset(), target_active_preset_pre);
+        assert_eq!(target.control_value(ControlId(2)), target_control_pre);
+        assert_eq!(target.active_snap_slot(), target_snap_active_pre);
+        assert!(target.snap_slot_saved(snap));
+        assert_eq!(target.playlist_position(), target_playlist_pre);
+        assert_eq!(target.mapping_source(MappingId(99)), target_mapping_pre);
+    }
+
+    #[test]
+    fn restore_class_e_idempotent_on_equal_target() {
+        // Repeated invocation of the no-op helper must remain a no-
+        // op (no panic, no flap). When the helper widens into a
+        // sub-store assignment, this pin ensures idempotence on a
+        // converged target — matching the class-c idempotence pin
+        // shape from PR 2.
+        let restored_source = seeded_state();
+        let mut target = State::default();
+        restore_class_e(&restored_source, &mut target);
+        let snapshot_after_first = (
+            target.active_preset(),
+            target.active_snap_slot(),
+            target.playlist_position(),
+            target.frame(),
+        );
+        restore_class_e(&restored_source, &mut target);
+        let snapshot_after_second = (
+            target.active_preset(),
+            target.active_snap_slot(),
+            target.playlist_position(),
+            target.frame(),
+        );
+        assert_eq!(snapshot_after_first, snapshot_after_second);
+    }
+
+    #[test]
+    fn restore_all_supported_classes_does_not_yet_invoke_class_e() {
+        // Pin: PR 3 ships `restore_class_e` as a documented-deferred
+        // no-op helper but explicitly DOES NOT add it to the
+        // convenience helper. When the State-shape extension lands
+        // and `restore_class_e` widens to a real sub-store
+        // assignment, this pin flips from "class-e not invoked" to
+        // "class-e invoked"; the test name updates alongside.
+        //
+        // The pin shape exercises the convenience helper with a
+        // `restored_source` that carries non-default class-a +
+        // class-b + class-c mutations, against a `target` that is
+        // `State::default`. Class-a, class-b, class-c MUST be
+        // applied; nothing else (since class-e has no State to
+        // project, and class-d/f/g are still entirely deferred).
+        let restored_source = seeded_state();
+        let mut target = State::default();
+
+        restore_all_supported_classes(&restored_source, &mut target);
+
+        // Class-a applied:
+        assert_eq!(target.active_preset(), restored_source.active_preset());
+        // Class-b applied:
+        assert_eq!(
+            target.active_snap_slot(),
+            restored_source.active_snap_slot(),
+        );
+        // Class-c applied:
+        assert_eq!(
+            target.playlist_position(),
+            restored_source.playlist_position(),
         );
     }
 
