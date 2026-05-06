@@ -59,7 +59,10 @@
 
 pub mod diagnostics;
 pub mod discovery;
+pub mod hotkey;
 pub mod meta_media;
+pub mod midi;
+pub mod osc;
 pub mod playlists;
 pub mod presets;
 pub mod settings;
@@ -70,9 +73,12 @@ pub use discovery::{
     DiscoveryError, ReferenceUserDataRoot, discover_reference_user_data_root,
     override_reference_user_data_root,
 };
+pub use hotkey::{HotkeyImporter, ImportedHotkey, ImportedHotkeyRemap, ImportedHotkeyStatus};
 pub use meta_media::{
     ImportedMediaPreset, ImportedMetaMedia, ImportedMetaPreset, MetaMediaImporter,
 };
+pub use midi::{ImportedMidi, ImportedMidiBinding, ImportedMidiSource, MidiImporter};
+pub use osc::{ImportedOsc, ImportedOscAlias, OscImporter};
 pub use playlists::{
     ImportedIterationMode, ImportedPlaylist, ImportedPlaylists, ImportedTransition,
     PlaylistsImporter,
