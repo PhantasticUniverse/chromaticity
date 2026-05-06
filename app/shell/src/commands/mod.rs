@@ -12,6 +12,7 @@
 pub mod control;
 pub mod library;
 pub mod library_index;
+pub mod library_search;
 pub mod license;
 pub mod osc;
 pub mod picker;
