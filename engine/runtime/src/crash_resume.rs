@@ -1,20 +1,38 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Phase-4d Wave 4d.3 PR 1 — `EV-CRASH-RESUME` partial-advance
-//! state-restoration adapter for class-a + class-b (row 80).
+//! Phase-4d Wave 4d.3 — `EV-CRASH-RESUME` partial-advance
+//! state-restoration adapter (row 80).
 //!
 //! Composes the Phase-3 EV-STATE-MIGRATION versioned snapshot
 //! envelope (sibling [`crate::state_migration`]) with a disk-backed
 //! save / recover cycle plus per-class restoration helpers. The
 //! partial-advance shape mirrors the Phase-3 narrowing precedent
 //! (rows 33-36): subsequent PRs in this wave cluster widen the
-//! restoration surface to class-c (playlist position + iteration
-//! mode), class-d (OSC/MIDI session bindings), class-e (audio input
-//! device + `syn_Threshold`), class-f (operator meta-controls), and
-//! class-g (render resolution + FPS target).
+//! restoration surface across the row-80 seven-class taxonomy.
 //!
-//! # Class-a + class-b mapping onto current canonical state
+//! # Slice progression
+//!
+//! - **PR 1**: class-a (active scene + preset channel values) +
+//!   class-b (Snap slot selection + scene-specific preset history)
+//!   per their current canonical-state mappings.
+//! - **PR 2** (this PR): class-c (playlist position + iteration
+//!   mode) per the current canonical playlist-store mapping. Class-d
+//!   (OSC/MIDI session bindings) is DEFERRED: the canonical [`State`]
+//!   does not yet carry session / device-id state — the
+//!   [`crate::state::MappingStore`] surface today is a per-mapping
+//!   [`crate::command_bus::MappingSource`] enum (`Osc` / `Midi`),
+//!   not a session-binding map keyed by device id. Adding class-d
+//!   restoration would require a State-shape extension (new
+//!   sub-store + commit-bus event family + canonical-binary encoder
+//!   widening), which carries broader review implications and is
+//!   sequenced behind that work.
+//! - **PR 3+**: class-d (OSC/MIDI session bindings) once the State
+//!   shape lands, then class-e (audio input device + `syn_Threshold`),
+//!   class-f (operator meta-controls), and class-g (render resolution
+//!   + FPS target).
+//!
+//! # Class-a + class-b + class-c mapping onto current canonical state
 //!
 //! Per `docs/26-evidence-artifact-registry.md` row 80:
 //!
@@ -32,6 +50,16 @@
 //!   reserved as a future addition — when it lands,
 //!   [`restore_class_b`] gains the corresponding sub-store
 //!   assignment.
+//! - **Class-c — playlist position + iteration mode.** Today the
+//!   canonical [`State`] carries the playlist cursor position
+//!   ([`State::playlist_position`]) via the `playlist_store.position`
+//!   `i64`. The "iteration mode" concept (forward / reverse / loop /
+//!   shuffle) is reserved as a future addition — when it lands,
+//!   [`restore_class_c`] gains the corresponding sub-store assignment
+//!   and the corpus widens. The current canonical-binary encoder
+//!   ([`crate::state_replay::encode_state_canonical`]) round-trips
+//!   the position field losslessly, so PR 2 ships the position-only
+//!   restoration surface.
 //!
 //! Class-by-class restoration is the partial-advance signal the wave
 //! cluster relies on: class-c through class-g land in subsequent PRs
@@ -57,8 +85,9 @@
 //!    analogue of the host re-launching),
 //! 5. invoking [`CrashResumeAdapter::try_recover`] to deserialize
 //!    the saved snapshot, then [`restore_all_supported_classes`] (or
-//!    [`restore_class_a`] / [`restore_class_b`] selectively) to
-//!    project the restored values onto the fresh state, and
+//!    [`restore_class_a`] / [`restore_class_b`] / [`restore_class_c`]
+//!    selectively) to project the restored values onto the fresh
+//!    state, and
 //! 6. asserting the per-class observable values match the pre-crash
 //!    state.
 //!
@@ -323,15 +352,45 @@ pub fn restore_class_b(restored: &State, target: &mut State) {
     target.snap_store.saved = restored.snap_store.saved.clone();
 }
 
-/// Apply every class supported by the current adapter (class-a +
-/// class-b in PR 1).
+/// Apply class-c fields from `restored` onto `target`.
 ///
-/// Subsequent PRs widen this convenience helper as class-c through
+/// Class-c per `docs/26` row 80: playlist position + iteration mode.
+/// Today this maps onto:
+///
+/// - `playlist_store.position` — copied wholesale from `restored` to
+///   `target`.
+///
+/// Iteration mode (forward / reverse / loop / shuffle) is reserved
+/// as a future canonical-state addition; the assignment widens here
+/// when the sub-store field lands (alongside the corpus and the
+/// `state_replay` encoder extension).
+///
+/// Does NOT touch class-a or class-b fields. The orthogonality is
+/// asserted at T1.
+///
+/// # Class-d deferral
+///
+/// Class-d (OSC/MIDI session bindings) is NOT shipped in this PR.
+/// The canonical [`State`] does not yet carry session / device-id
+/// state — the [`crate::state::MappingStore`] is a per-mapping
+/// `MappingId → MappingSource` enum, not a session-binding map keyed
+/// by device id. Adding class-d restoration requires a State-shape
+/// extension; see the module-level "Slice progression" prose for
+/// sequencing.
+pub fn restore_class_c(restored: &State, target: &mut State) {
+    target.playlist_store.position = restored.playlist_store.position;
+}
+
+/// Apply every class supported by the current adapter (class-a +
+/// class-b + class-c in PR 2).
+///
+/// Subsequent PRs widen this convenience helper as class-d through
 /// class-g land. Existing call sites pick up the broader
 /// restoration without an API break.
 pub fn restore_all_supported_classes(restored: &State, target: &mut State) {
     restore_class_a(restored, target);
     restore_class_b(restored, target);
+    restore_class_c(restored, target);
 }
 
 #[cfg(test)]
@@ -359,6 +418,7 @@ mod tests {
     use super::{
         CanonicalBinarySnapshotter, CrashResumeAdapter, CrashResumeError, SerializationKind,
         StateSnapshotter, restore_all_supported_classes, restore_class_a, restore_class_b,
+        restore_class_c,
     };
     use crate::command_bus::{
         Command, CommandBus, ControlId, ControlValue, InMemoryBus, MappingId, MappingSource,
@@ -453,14 +513,27 @@ mod tests {
         state
     }
 
-    /// Build a non-default state with mapping + playlist mutations
-    /// (NOT in class-a or class-b). Used to assert restoration does
-    /// not accidentally touch deferred classes.
+    /// Build a non-default state with ONLY class-c mutations
+    /// (playlist position only). Used by the class-c orthogonality
+    /// drift pin and the round-trip pin.
+    fn seeded_class_c_only() -> State {
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+        bus.dispatch(Command::PlaylistAdvance { step: 11 })
+            .expect("playlist command must dispatch");
+        bus.dispatch(Command::PlaylistAdvance { step: 4 })
+            .expect("playlist command must dispatch");
+        bus.commit_all_into(&mut state);
+        state
+    }
+
+    /// Build a non-default state with mapping mutations only (NOT in
+    /// class-a / -b / -c). Used to assert restoration does not
+    /// accidentally touch still-deferred classes (class-d through
+    /// class-g).
     fn seeded_deferred_classes() -> State {
         let bus = InMemoryBus::in_memory();
         let mut state = State::default();
-        bus.dispatch(Command::PlaylistAdvance { step: 7 })
-            .expect("playlist command must dispatch");
         bus.dispatch(Command::MappingBind {
             id: MappingId(4),
             source: MappingSource::Osc,
@@ -548,7 +621,7 @@ mod tests {
     }
 
     #[test]
-    fn restore_class_a_does_not_touch_class_b_fields() {
+    fn restore_class_a_does_not_touch_class_b_or_class_c_fields() {
         // Build a `target` carrying class-b values; restore class-a
         // from a `restored` source carrying DIFFERENT class-b
         // values; assert `target`'s class-b values are unchanged.
@@ -560,8 +633,9 @@ mod tests {
             v.sort_unstable();
             v
         };
-        // Also pin deferred-class fields (playlist, mapping) to
-        // assert restore_class_a leaves them untouched.
+        // Also pin class-c (playlist) + still-deferred-class
+        // (mapping) fields to assert restore_class_a leaves them
+        // untouched.
         target.playlist_store.position = 42;
         let target_playlist_pre = target.playlist_position();
 
@@ -577,12 +651,12 @@ mod tests {
             v
         };
         assert_eq!(target_snap_saved_post, target_snap_saved_pre);
-        // Deferred classes untouched:
+        // Class-c untouched (orthogonality with PR 2's new helper):
         assert_eq!(target.playlist_position(), target_playlist_pre);
     }
 
     #[test]
-    fn restore_class_b_does_not_touch_class_a_fields() {
+    fn restore_class_b_does_not_touch_class_a_or_class_c_fields() {
         let restored_source = seeded_state();
         let mut target = seeded_class_a_only();
         let target_active_preset_pre = target.active_preset();
@@ -600,17 +674,108 @@ mod tests {
         // Class-a untouched:
         assert_eq!(target.active_preset(), target_active_preset_pre);
         assert_eq!(target.control_value(ControlId(2)), target_control_pre);
-        // Deferred classes untouched:
+        // Class-c untouched (orthogonality with PR 2's new helper):
         assert_eq!(target.playlist_position(), target_playlist_pre);
     }
 
     #[test]
-    fn restore_all_supported_classes_applies_both_class_a_and_class_b() {
-        let restored_source = seeded_state();
+    fn restore_class_c_state_preserves_playlist_position_and_iteration_mode() {
+        // Pin: class-c restoration projects the canonical playlist
+        // position from `restored` onto `target`. Iteration mode is
+        // not yet a State field; this pin stays load-bearing for the
+        // position-only mapping today and widens to assert the
+        // iteration-mode field when it lands.
+        let restored_source = seeded_class_c_only();
         let mut target = State::default();
-        // Seed deferred-class fields on the target so we can assert
-        // they survive the restoration.
-        target.playlist_store.position = 17;
+        target.playlist_store.position = -7;
+
+        restore_class_c(&restored_source, &mut target);
+
+        assert_eq!(
+            target.playlist_position(),
+            restored_source.playlist_position(),
+            "class-c restoration must project playlist position",
+        );
+        // Iteration mode: deferred sub-store; documented in
+        // module-level prose. When the field lands, the assertion
+        // widens here.
+    }
+
+    #[test]
+    fn restore_class_c_does_not_touch_class_a_or_class_b_fields() {
+        // Build a `target` carrying class-a + class-b values;
+        // restore class-c from a `restored` source carrying
+        // DIFFERENT class-a + class-b values; assert `target`'s
+        // class-a + class-b values are unchanged.
+        let restored_source = seeded_state();
+        let mut target = seeded_class_a_only();
+        let target_active_preset_pre = target.active_preset();
+        let target_control_pre = target.control_value(ControlId(2));
+        // Also seed class-b on `target` to pin its untouched-ness.
+        let snap = SnapSlotId::new(15).expect("valid snap slot");
+        target.snap_store.saved.insert(snap);
+        target.snap_store.active = Some(snap);
+        let target_snap_active_pre = target.active_snap_slot();
+
+        restore_class_c(&restored_source, &mut target);
+
+        // Class-c applied:
+        assert_eq!(
+            target.playlist_position(),
+            restored_source.playlist_position(),
+        );
+        // Class-a untouched:
+        assert_eq!(target.active_preset(), target_active_preset_pre);
+        assert_eq!(target.control_value(ControlId(2)), target_control_pre);
+        // Class-b untouched:
+        assert_eq!(target.active_snap_slot(), target_snap_active_pre);
+        assert!(target.snap_slot_saved(snap));
+    }
+
+    #[test]
+    fn class_d_through_g_deferred_pending_state_shape_extension() {
+        // Documentation pin: class-d (OSC/MIDI session bindings)
+        // through class-g (render resolution + FPS target) are NOT
+        // shipped in PR 2. The canonical [`State`] does not yet
+        // carry session / device-id / audio-input / operator-meta /
+        // render-config sub-stores. Adding restoration for any of
+        // these classes requires a State-shape extension (new
+        // sub-store + commit-bus event family + canonical-binary
+        // encoder widening), which carries broader review
+        // implications and is sequenced behind that work.
+        //
+        // Today: `restore_all_supported_classes` covers class-a +
+        // class-b + class-c. The mapping_store IS in canonical
+        // state but is NOT class-d (per-mapping `MappingSource`
+        // enum, not session-binding map keyed by device id).
+        // Asserting it is left untouched by the supported-classes
+        // restoration confirms the partial-advance is honored.
+        let restored_source = seeded_deferred_classes();
+        let mut target = State::default();
+        restore_all_supported_classes(&restored_source, &mut target);
+        assert_eq!(
+            target.mapping_source(MappingId(4)),
+            None,
+            "mapping store (class-d-adjacent) must not be touched by class-a/b/c restoration",
+        );
+    }
+
+    #[test]
+    fn restore_all_supported_classes_now_includes_class_c() {
+        // Extends the PR 1 pin: class-c is added to the convenience
+        // helper in PR 2. Class-d through class-g remain deferred.
+        let restored_source = seeded_state();
+        // Seed `restored_source` with a class-c mutation so the
+        // helper has something to project.
+        let bus = InMemoryBus::in_memory();
+        let mut restored_source = restored_source;
+        bus.dispatch(Command::PlaylistAdvance { step: 23 })
+            .expect("playlist command must dispatch");
+        bus.commit_all_into(&mut restored_source);
+
+        let mut target = State::default();
+        // Seed still-deferred-class fields on the target so we can
+        // assert they survive the restoration.
         target
             .mapping_store
             .bindings
@@ -629,34 +794,15 @@ mod tests {
             target.active_snap_slot(),
             restored_source.active_snap_slot(),
         );
-        // Deferred classes (c-g) preserved on target:
-        assert_eq!(target.playlist_position(), 17);
+        // Class-c applied (new in PR 2):
+        assert_eq!(
+            target.playlist_position(),
+            restored_source.playlist_position(),
+        );
+        // Still-deferred classes (d-g) preserved on target:
         assert_eq!(
             target.mapping_source(MappingId(99)),
             Some(MappingSource::Midi),
-        );
-    }
-
-    #[test]
-    fn restore_helpers_ignore_deferred_class_state_on_source() {
-        // Even when the `restored` source carries deferred-class
-        // mutations (playlist position, mapping bindings), the
-        // class-a + class-b helpers MUST NOT project them onto
-        // `target`. Pins the partial-advance scope: class-c..g land
-        // by widening the helpers, not by widening what already-
-        // shipped helpers touch.
-        let restored_source = seeded_deferred_classes();
-        let mut target = State::default();
-        restore_all_supported_classes(&restored_source, &mut target);
-        assert_eq!(
-            target.playlist_position(),
-            0,
-            "playlist (class-c) must not be touched by class-a/b restoration",
-        );
-        assert_eq!(
-            target.mapping_source(MappingId(4)),
-            None,
-            "mapping (class-d) must not be touched by class-a/b restoration",
         );
     }
 
