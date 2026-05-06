@@ -40,6 +40,7 @@ workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
 [dev-dependencies]
 ts-rs = "10"
+tauri = { version = "2", features = ["test"] }
 
 [features]
 default = ["custom-protocol"]

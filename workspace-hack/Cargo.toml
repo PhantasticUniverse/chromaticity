@@ -46,7 +46,7 @@ serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value", "unbounded_depth"] }
 stable_deref_trait = { version = "1" }
-tauri = { version = "2", features = ["custom-protocol"] }
+tauri = { version = "2", features = ["custom-protocol", "test"] }
 tauri-utils = { version = "2", default-features = false, features = ["build", "compression", "resources"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 zerocopy = { version = "0.8", default-features = false, features = ["derive", "simd"] }

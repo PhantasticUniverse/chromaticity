@@ -120,7 +120,39 @@ them. Cumulative Phase-4a narrowings recap (across Wave 1a + Wave 1b + Wave 1c-�
 `EV-AUDIO-UNIFORM-IPC` Pass under cross-seam-contract narrowing (5 deferred axes per
 above); row 87 `EV-ENTITLEMENT-ENFORCEMENT` 13-cap honored set with IO_CAMERA
 intentionally excluded; row 89 `EV-ENTITLEMENT-REVOCATION` expiry-based only with
-deny-list activation deferred post-MVP. Engine and integration crates
+deny-list activation deferred post-MVP. **Phase-4a Wave 1c-α-2 production audio
+bootstrap closure landed 2026-05-06 in a 3-PR session** (Bootstrap PR 1 / `#343`
+(`804d6cd`) added `engine/audio/src/runtime.rs` `AudioRuntime` + `AudioRuntimeHandle`
+producer runtime feeding `Arc<Mutex<AudioUniformSnapshot>>` with 7 T1 pins; Bootstrap
+PR 2 / `#344` (`9a1131e`) added `app/shell/src/state/ipc_emit.rs` `TauriIpcEmitter`
+Tauri concrete `IpcEmit` adapter + extended `AppState` lifecycle with
+`SchedulerThreadHandle` ordered shutdown + drift-corrected 60 Hz scheduler-tick
+thread spawned in `app/shell/src/lib.rs::run` setup with 7 T1 pins; plus this
+Bootstrap PR 3 closing PR adding `app/shell/tests/audio_uniform_ipc_e2e.rs` 3 T2
+cross-seam wire tests via `tauri::test::mock_app()` covering round-trip payload
+identity, multi-emit ordering, and emit-after-listener-unlisten panic-free posture).
+Row 83 `EV-AUDIO-UNIFORM-IPC` stays at `Pass` but the narrowing widens against
+post-merge anchor run ids 25431406979 (rust on `9a1131e`) + 25431406965 (frontend on
+`9a1131e`): 3 of the 5 Wave 1c-α deferred axes drop — (i) ✓ live end-to-end
+producer→Tauri-emit→consumer wiring now flows in production (visualizer widgets read
+live IPC dispatch in production with synthetic fallback retained for the no-snapshot
+startup window per the dual-mode gate); (ii) ✓ drop-frames-on-saturation panic-free
+posture per ADR-019 §4 exercised by the `emit_after_listener_unlisten_does_not_panic`
+fixture; remaining narrowings are (iii) stale-but-last-good IPC surfacing through
+the wire (covered at producer-side T1 by `engine/audio/src/runtime.rs` via the
+`MutexAudioPull` poison-recovery path but not transitively through the IPC seam —
+future-wave option), (iv) Spectrum widget retrofit (post-MVP UX enhancement), and
+(v) `AudioReactivity` 48-bar FFT visualiser staying synthetic-driven (post-MVP UX
+enhancement). Cumulative Phase-4a narrowings recap (across Wave 1a + Wave 1b + Wave
+1c-α + Wave 1c-α-2): row 37 `EV-INTEGRATION-MATRIX` OSC routing-matrix plus MIDI
+input arm with camera + Syphon arms deferred to Wave 1c-β (the audio-uniform-IPC arm
+narrowing is now satisfied end-to-end by Wave 1c-α-2); row 80 `EV-MIDI-EXTENDED` MPE
+V2 deferred plus SysEx-logged-only at MVP; row 83 `EV-AUDIO-UNIFORM-IPC` Pass under
+reduced narrowing (2 post-MVP UX axes plus 1 still-deferred-through-the-wire
+stale-but-last-good axis); row 87 `EV-ENTITLEMENT-ENFORCEMENT` 13-cap honored set
+with IO_CAMERA intentionally excluded; row 89 `EV-ENTITLEMENT-REVOCATION` expiry-
+based only with deny-list activation deferred post-MVP. Wave 1c-β (camera + Syphon
+adapters) remains AO-held and carries forward unchanged. Engine and integration crates
 (runtime, scene, audio, observability, render, script, entitlement, osc-adapter,
 midi-adapter) carry foundational evidence at EXIT quality; parallel UI port waves
 against the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets,
@@ -573,16 +605,24 @@ RouteStore + Perform / Library / Author / Settings views); W13 CueTransitionCurv
   lines 19-28; the live `EntitlementBitmask` IPC swap-in is Phase-3+/4a
   `EV-ENTITLEMENT-ENFORCEMENT` scope, so chrome elements render as if a fully-
   activated license were installed until that lands. **Wireframe-faithful chrome
-  ported, not engine-wired.** The Spectrum / BpmRing / BeatDots / AudioReactivity
-  widgets run rAF against synthetic time-domain functions per their in-source
-  "Frozen frame contract: synthetic, no IPC dispatch" comments. The producer-side
-  `engine/audio::AudioUniformSnapshot` is real (slice-1 + slice-2 + slice-3a/b
-  - Tier-9 + Tier-11 cross-tag landed), and `engine/render::audio_adapter`
-    marshals it to GPU uniforms feature-gated under `audio-binding`, but the IPC
-    bridge that would carry that producer data through Tauri to the Svelte
-    visualizer surface is Phase-3+/4a `EV-INTEGRATION-MATRIX` scope. The
-    `AudioReactivity` widget is similarly stubbed (band-tile values, BPM, peer-
-    count, tap button — visual stubs; no IPC dispatch).
+  ported, then engine-wired (audio).** The BpmRing / BeatDots / AudioReactivity
+  widgets retrofitted to dual-mode in Wave 1c-α (PR `#340`): live snapshot drives
+  visuals when present, synthetic time-domain fallback when absent (per the
+  "live snapshot present" gate in each widget). Wave 1c-α-2 (PRs `#343` + `#344` +
+  this Bootstrap PR 3) closed the production wiring loop — `engine/audio`
+  `AudioRuntime` spawns the producer thread; `app/shell` `TauriIpcEmitter` is the
+  Tauri concrete `IpcEmit` adapter; `app/shell/src/lib.rs::run` setup spawns the
+  drift-corrected 60 Hz scheduler-tick thread that pulls from `MutexAudioPull` and
+  emits via `TauriIpcEmitter`. **Live IPC dispatch in production**: visualizers now
+  receive live audio snapshots end-to-end via `app.emit('audio_uniform_snapshot_changed', ...)`,
+  with the 4 named band tiles + BPM strip in `AudioReactivity` reading the live
+  snapshot via the documented 8 → 4 reduction; the synthetic fallback is retained
+  for the no-snapshot startup window only. Spectrum (a standalone widget that
+  doesn't exist — the bundle's Spectrum was inlined into
+  `src/lib/views/AudioUniforms.svelte` with 64 synthetic bars) and the
+  `AudioReactivity` 48-bar FFT visualiser remain synthetic-driven as post-MVP UX
+  enhancements. `engine/render::audio_adapter` continues to marshal the producer-
+  side snapshot to GPU uniforms feature-gated under `audio-binding`.
 
 ## Where authoritative answers live
 

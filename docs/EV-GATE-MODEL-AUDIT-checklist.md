@@ -1391,3 +1391,159 @@ Phase-4 EXIT itself.
 ### Sign-off
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-03
+
+## Phase-4a Wave 1c-α-2 closure
+
+The Phase-4a Wave 1c-α-2 closure (2026-05-06) lands the production
+audio bootstrap that drops three of the five row 83
+(`EV-AUDIO-UNIFORM-IPC`) deferred axes Wave 1c-α had recorded. Wave
+1c-α had shipped the cross-seam payload-shape contract plus per-side
+composition but had explicitly deferred the live end-to-end
+producer→Tauri-emit→consumer wiring because `engine/runtime` MUST
+NOT depend on Tauri (the `IpcEmit` trait had no Tauri concrete
+implementation; the Tauri shell did not bootstrap the engine
+scheduler-tick or the audio analysis thread; widgets rendered in
+synthetic-fallback mode in production). Wave 1c-α-2 retired that
+production-bootstrap deferral.
+
+The wave shipped in 3 PRs on `main`:
+
+- **Bootstrap PR 1 / PR `#343`** (`804d6cd`) — `engine/audio/src/runtime.rs`
+  added `AudioRuntime` + `AudioRuntimeHandle`. The producer-side
+  runtime spawns a thread feeding `Arc<Mutex<AudioUniformSnapshot>>`
+  consumed by `MutexAudioPull`. 7 T1 drift pins.
+- **Bootstrap PR 2 / PR `#344`** (`9a1131e`) — Tauri-shell wiring.
+  Added `app/shell/src/state/ipc_emit.rs` (`TauriIpcEmitter`, the
+  Tauri concrete `IpcEmit` adapter wrapping `AppHandle::emit`),
+  extended `AppState` lifecycle in `app/shell/src/state/mod.rs` with
+  `SchedulerThreadHandle` (ordered shutdown), and spawned the drift-
+  corrected 60 Hz scheduler-tick thread in `app/shell/src/lib.rs::run`
+  setup callback (configured with `MutexAudioPull` audio source +
+  `TauriIpcEmitter`). 7 T1 drift pins.
+- **Bootstrap PR 3** (this docs(repo) closing PR + e2e wire test) —
+  `app/shell/tests/audio_uniform_ipc_e2e.rs` added 3 T2 cross-seam
+  wire tests using `tauri::test::mock_app()`: round-trip payload
+  identity (producer→listener), multi-emit ordering (3 emits → in-
+  order delivery), emit-after-listener-unlisten panic-free posture
+  (ADR-019 §4 silent-drop kin path).
+
+### Per-Type Minimums verification
+
+The closure widens row 83 `EV-AUDIO-UNIFORM-IPC` from `Pass
+(narrowed; 5 deferred axes)` to `Pass (narrowed; 2 deferred axes
+plus 1 still-deferred-through-the-wire axis)`. Cumulative test
+count for the wave: 7 T1 pins (PR `#343` producer runtime) + 7 T1
+pins (PR `#344` Tauri adapter + scheduler-tick bootstrap) + 3 T2
+cross-seam wire tests (Bootstrap PR 3) = 17 new tests, all green
+on `main` HEAD `9a1131e` post-`#344` merge. Wave 1c-α's existing
+T2 corpora (6 round-trip + 7 store + 8 widget = 21 tests) plus T1
+pins (4 ipc.rs pins) stay green and unchanged.
+
+- **PR `#343`** (`804d6cd`) — producer-side `engine/audio` runtime
+  entrypoint; anchor run id `25430275781` (rust workflow on `main`
+  HEAD `804d6cd`) green. Per-Type Minimums: ci-run-url + repo-path
+  (`engine/audio/src/runtime.rs`) + corpus version (`AudioRuntime`
+  + `AudioRuntimeHandle` thread spawn pattern feeding
+  `Arc<Mutex<AudioUniformSnapshot>>`) + drift thresholds (7 T1
+  pins covering runtime construction / handle lifecycle / shared
+  snapshot mutation / poison recovery / shutdown ordering) all
+  populated.
+- **PR `#344`** (`9a1131e`) — Tauri concrete `IpcEmit` adapter +
+  scheduler-tick bootstrap; anchor run id `25431406979` (rust
+  workflow on `main` HEAD `9a1131e`) green; frontend run id
+  `25431406965` on the same HEAD green. Per-Type Minimums: ci-run-
+  url + repo-path (`app/shell/src/state/ipc_emit.rs` +
+  `app/shell/src/state/mod.rs` + `app/shell/src/lib.rs`) + corpus
+  version (`TauriIpcEmitter` + extended `AppState` lifecycle with
+  `SchedulerThreadHandle` + 60 Hz scheduler-tick thread spawned in
+  `run` setup) + drift thresholds (7 T1 pins covering payload
+  conversion / event name constant / panic-free posture / lifecycle
+  ordering / 60 Hz cadence) all populated.
+- **Bootstrap PR 3** (this PR) — e2e wire test + closing docs;
+  anchor run id will be the rust workflow run on the merge sha
+  of this PR. Per-Type Minimums: ci-run-url (post-merge anchor;
+  the Bootstrap PR 1 + PR 2 pre-merge anchors above carry the
+  bulk of the wave's corpora) + repo-path
+  (`app/shell/tests/audio_uniform_ipc_e2e.rs`) + corpus version
+  (3 T2 cross-seam wire tests using `tauri::test::mock_app()`) +
+  drift thresholds (per-fixture round-trip identity assertions +
+  multi-emit ordering assertions + emit-after-listener-unlisten
+  panic-free posture assertion) all populated.
+
+### Verdict
+
+Row 83 `EV-AUDIO-UNIFORM-IPC` stays at `Pass` (Wave 1c-α already
+transitioned `Planned` → `Pass` under narrowing; Wave 1c-α-2
+widens the Pass scope by dropping 3 of the 5 original narrowing
+axes). **Phase-4a Wave 1c-α-2 closure achieved 2026-05-06 at
+commit `<merge-sha>`** (the merge commit of this Bootstrap PR 3
+docs(repo) closing PR; pre-merge anchors at HEAD `9a1131e`
+post-`#344` already carry the producer runtime + Tauri adapter +
+scheduler-tick bootstrap + 14 T1 pins green on `main`). Phase-4a
+EXIT collective state is unchanged: row 37 narrowing-clause for
+the audio-uniform-IPC arm of `EV-INTEGRATION-MATRIX` carries
+forward unchanged because Wave 1c-α-2 is the audio-uniform-IPC
+arm completing rather than a row 37 widening (the row 37 arm was
+deferred to Wave 1c, which Wave 1c-α + 1c-α-2 sub-banded under
+row 83's payload-shape contract scope).
+
+### Deferred axes (Wave 1c-α-2 widening record)
+
+Row 83 narrowing axes after Wave 1c-α-2 widening:
+
+- ✓ **DROPPED** — Live end-to-end producer→Tauri-emit→consumer
+  wiring. Wave 1c-α-2 production audio bootstrap (PRs `#343` +
+  `#344`) wires the engine scheduler-tick + audio analysis
+  thread + Tauri-emit adapter end-to-end in production; the
+  Bootstrap PR 3 e2e fixture
+  (`app/shell/tests/audio_uniform_ipc_e2e.rs::producer_to_listener_round_trip_preserves_payload_identity`)
+  exercises the same composition cross-seam under
+  `tauri::test::mock_app()`. Visualizer widgets now read live IPC
+  in production (with synthetic fallback retained for the
+  no-snapshot startup window per Wave 1c-α PR 2's dual-mode gate).
+- ✓ **DROPPED** — Drop-frames-on-saturation panic-free posture
+  per ADR-019 §Decision §4. The Bootstrap PR 3
+  `emit_after_listener_unlisten_does_not_panic` T2 fixture
+  exercises the kin path: detached subscriber + multi-emit
+  producer + no panic + no spurious delivery. A true producer-
+  overrun saturation fixture (forcing the Tauri event queue to
+  saturate under high-rate emit) is preserved as a future-wave
+  option but not load-bearing for the panic-free posture itself.
+- **Stale-but-last-good on audio-fault** per ADR-019 §Decision §6
+  is exercised at producer-side T1 by PR `#343`'s
+  `engine/audio/src/runtime.rs` runtime drift pins (the
+  `MutexAudioPull` poison-recovery path) but not transitively
+  through the IPC wire — the e2e fixture uses synthetic snapshots
+  driven directly through the emit path rather than panicking the
+  audio thread upstream and observing the consumer side hold the
+  last good frame. Producer-side coverage is sufficient for the
+  invariant; the cross-seam exercise is preserved as a future-wave
+  option.
+- **Spectrum widget retrofit** listed in ADR-019 §Rollout PR 2
+  stays deferred — the Spectrum primitive does not exist as a
+  standalone widget; the bundle's Spectrum was inlined into
+  `src/lib/views/AudioUniforms.svelte` with 64 synthetic bars,
+  structurally incompatible with the engine's 8-band FFT surface
+  without a non-trivial 8 → 64 interpolation design choice.
+  Deferred as post-MVP UX enhancement.
+- **`AudioReactivity` 48-bar FFT visualiser** stays synthetic-
+  driven — only the 4 named band tiles plus the BPM strip read
+  from the live snapshot via the documented 8 → 4 reduction
+  (`avg(fft_bands[0..2])` → BASS, `avg(fft_bands[2..4])` → LOW-
+  MID, `avg(fft_bands[4..6])` → HIGH-MID, `avg(fft_bands[6..8])`
+  → AIR); the 8 → 48 widening is preserved as a future-wave
+  option. Deferred as post-MVP UX enhancement.
+
+### Wave 1c-β + Phase-4b kickoff cross-reference
+
+Wave 1c-β (camera + Syphon adapters) carries forward unchanged
+from the Phase-4a EXIT closure paragraph; the home remains a
+future directed engineering wave with new ADR + research +
+plan-mode + implementation cycle. Phase-4 EXIT itself remains
+AO-held until 4b / 4c / 4d sub-phases close per `docs/11`; Wave
+1c-α-2 achievement does not pre-empt the Phase-4b / 4c / 4d
+sub-phase gate decisions or the Phase-4 EXIT itself.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-06
