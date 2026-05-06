@@ -113,9 +113,27 @@ fn extract_string_array(
 /// bundled root resolves to `<AppBundle>/Resources/scenes/`, which is
 /// not a descendant of the user's `$HOME`-rooted scenes directory.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum RootGuard {
+pub(super) enum RootGuard {
     EnforceUserDefault,
     AllowBundled,
+}
+
+/// Walk every `.chroma` package directly under `root` and emit one
+/// [`SceneCard`] per package, tagged with `source`. The walk skips the
+/// W9 path-traversal guard (the indexer composes user + bundled roots
+/// already validated by their respective callers) and treats a missing
+/// `root` directory as the graceful empty-corpus case.
+///
+/// Used by [`super::library_index`] to build the in-memory index per
+/// `EV-LIBRARY-DISCOVERY` (`docs/26` row 66): the indexer assembles the
+/// per-root walk results into a single searchable surface without
+/// re-implementing the metadata-extraction contract that
+/// `list_scene_packages_impl` already pins.
+pub(super) fn walk_scene_packages_at_root(
+    root: &Path,
+    source: SceneSource,
+) -> Result<Vec<SceneCard>, String> {
+    list_scene_packages_impl(&root.to_string_lossy(), source, RootGuard::AllowBundled)
 }
 
 fn list_scene_packages_impl(
