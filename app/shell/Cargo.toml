@@ -32,6 +32,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chromaticity-audio = { version = "0.0.0", path = "../../engine/audio" }
 chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }
 chromaticity-scene = { version = "0.0.0", path = "../../engine/scene" }
 chromaticity-ui-bridge = { version = "0.0.0", path = "../ui-bridge" }
