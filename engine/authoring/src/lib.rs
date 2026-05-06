@@ -36,12 +36,23 @@
 //! pins. State preservation is PR 2; the latency-budget T2 corpus is
 //! PR 3.
 //!
+//! Slice 4 (Phase-4b Wave 4b.5 Lane B, this PR) ships the
+//! [`import_isf`] module — the V1 actionable-reject diagnostic +
+//! escape hatch for ISF (Interactive Shader Format) inputs per
+//! `docs/26-evidence-artifact-registry.md` row 65
+//! (`EV-IMPORT-ISF-REJECT`) and `docs/38-scene-library-and-import-spec.md`
+//! §6. ISF native import is a V2 differentiation bet
+//! (`CHR-ISF-V2`); V1 detects the ISF fingerprint and rejects with a
+//! structured `Diagnostic` pointing the author at the Shadertoy
+//! converter (V1) or a blank-scene-scaffold hand-port path.
+//!
 //! Future authoring concerns expected to land here include the
 //! hover-docs registry (per `docs/37` §3.3 §3.5) and the latency
 //! harness instrumentation (per `docs/37` §3.3 / row 83
 //! `EV-AUTHORING-UX-LATENCY`).
 
 pub mod diagnostics;
+pub mod import_isf;
 pub mod live_reload;
 pub mod scaffolder;
 
@@ -50,6 +61,7 @@ pub use diagnostics::{
     diagnostic_from_json_error, diagnostic_from_lint_warning, diagnostic_from_script_error,
     diagnostic_from_validation_error,
 };
+pub use import_isf::{build_isf_reject_diagnostic, detect_isf, try_reject_isf_input};
 pub use live_reload::{
     LiveReloadConfig, LiveReloadError, LiveReloadHandle, ReloadEvent, ReloadOutcome,
     perform_reload, start_watching,
