@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity Syphon adapter crate (macOS-only).
+#
+# Phase-4a Wave 1c-β scaffold: third integration adapter under
+# `integrations/`. The Syphon adapter widens the Syphon arm of
+# `EV-INTEGRATION-MATRIX` (row 37) that Wave 1a narrowed to OSC and
+# Wave 1b widened to include MIDI input. Macos-only by feature gate
+# per ADR-021 §1: `src/lib.rs` opens with
+# `#![cfg(target_os = "macos")]` so the entire crate body is gated
+# out of non-macOS compilation, and the macOS-specific
+# Objective-C binding stack (`objc2`, `objc2-foundation`,
+# `objc2-app-kit`, `core-foundation`) is declared exclusively under
+# `[target.'cfg(target_os = "macos")'.dependencies]`. Non-macOS
+# workspace builds neither resolve nor compile the binding stack.
+#
+# Mirrors the OSC + MIDI adapter shape per ADR-005 (integration
+# adapter boundary) — bind/unbind/poll trait surface, defaults
+# pinned via T1 drift pins, route-namespace types in a sibling
+# module — without protocol-specific logic in core. The wgpu ↔
+# IOSurface bridge contract is locked in ADR-021 §6 but the
+# bridge implementation lands engine-side at
+# `engine/render/src/syphon_adapter.rs` in Phase 3 PR 3.
+#
+# Phase 3 PR 1 (this scaffold): public surface types, defaults
+# constants, build script reading SYPHON_FRAMEWORK_PATH, and 8+
+# T1 drift pins. The Objective-C binding declarations and real
+# adapter implementations land in Phase 3 PR 2; the engine-side
+# wgpu interop bridge lands in Phase 3 PR 3.
+#
+# Governing ADRs:
+#   ADR-005 — integration adapter boundary
+#             (docs/adr/ADR-005-integration-adapter-boundary.md)
+#   ADR-006 — thread and process model
+#             (docs/adr/ADR-006-thread-and-process-model.md)
+#   ADR-009 — activation and entitlements
+#             (docs/adr/ADR-009-activation-and-entitlements.md)
+#   ADR-011 — rendering backend
+#             (docs/adr/ADR-011-rendering-backend.md)
+#   ADR-021 — Syphon adapter (macOS GPU surface I/O)
+#             (docs/adr/ADR-021-syphon-adapter.md)
+#
+# See also docs/43-development-standards.md §12.1 + §12.6. PR 1
+# inherits all workspace lints (including unsafe_code = forbid)
+# without relaxation; the per-module `#[allow(unsafe_code)]`
+# exemption ADR-021 §3 names is applied at PR 2 alongside the
+# real Objective-C binding declarations, in a single
+# subtree-tightening / loosening transaction with a policy-scoped
+# `[lints]` rewrite per docs/43 §12.6.
+
+[package]
+name = "chromaticity-syphon-adapter"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity Syphon integration adapter, macOS-only (ADR-021)."
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# chromaticity-observability is the canonical home for adapter-state
+# and packet-outcome label-enum vocabulary (mirrored by the OSC and
+# MIDI adapters via the Phase-4a Wave 1a/1b precedent). Phase 3 PR 1
+# does not yet add Syphon-specific catalog rows; the dependency is
+# declared so PR 2's adapter implementation can reuse the existing
+# enum vocabulary as a placeholder for the Syphon lifecycle counters
+# until the runtime catalog grows protocol-specific Syphon label
+# enums (slice tracked alongside `MetricEvent::OscInboundPackets` per
+# the OSC slice-3 deferral pattern).
+chromaticity-observability = { version = "0.0.0", path = "../../engine/observability" }
+
+# serde provides the derive macros the public-surface newtypes
+# (`SyphonServerId`, `SyphonTexture`) use to compose into operator-
+# facing Settings persistence and the IntegrationHub IPC seam. Slice-2
+# wiring lands in PR 2; PR 1 declares the dep so the surface types
+# can carry the derive immediately.
+serde = { version = "1", features = ["derive"] }
+
+# thiserror 2 derives the public-surface `SyphonAdapterError` enum.
+# Slice-2 + slice-3 surface-error variants land in PR 2; PR 1 sets
+# up the canonical error vocabulary (8 variants) per docs/54
+# Phase-3 lesson 10. Matches the engine/script + engine/render
+# precedent (thiserror 2 across the workspace).
+thiserror = "2"
+
+# macOS-only Objective-C binding stack. Non-macOS workspace builds
+# do not resolve these dependencies because the entire crate body is
+# gated by `#![cfg(target_os = "macos")]` in `src/lib.rs` per ADR-021
+# §1. PR 1 declares the dependencies but does not yet emit any
+# binding code; the binding declarations and their per-module
+# `#[allow(unsafe_code)]` exemption land in PR 2.
+[target.'cfg(target_os = "macos")'.dependencies]
+# objc2 0.5: Objective-C runtime bindings + `Encode` / `Message`
+# trait derivations the SyphonServer / SyphonClient /
+# SyphonServerDirectory framework binding declarations target. Dual
+# MIT / Apache-2.0 (allow-listed in deny.toml).
+objc2 = "0.5"
+# objc2-foundation 0.2: Foundation framework type bindings — NSString,
+# NSDictionary (used by SyphonServerDirectory), NSArray (server lists),
+# NSDistributedNotificationCenter (cross-process server-add /
+# server-update notifications per the canonical
+# SyphonServerDirectory.m discovery model). Dual MIT / Apache-2.0.
+objc2-foundation = { version = "0.2", features = ["NSString", "NSDictionary", "NSArray", "NSDistributedNotificationCenter"] }
+# objc2-app-kit 0.2: AppKit framework type bindings — NSImage is
+# used by the legacy GL-side SyphonClient `newFrameImageForContext:`
+# return type that PR 2's polling-only path calls into. The
+# SyphonMetalClient path uses `MTLTexture` instead, but the AppKit
+# binding remains in PR 1 to keep the dependency surface stable
+# across the two-PR sequence. Dual MIT / Apache-2.0.
+objc2-app-kit = { version = "0.2", features = ["NSImage"] }
+# core-foundation 0.10: CFType bindings — IOSurfaceRef is exposed
+# as a CFTypeRef on the framework side; the engine-side bridge in
+# Phase 3 PR 3 wraps the surface via wgpu::hal Metal interop per
+# ADR-011 §4. PR 1 declares the dep so the `SyphonTexture`
+# `iosurface_id: u64` field can carry the IOSurfaceID across the
+# adapter boundary as a plain integer (the canonical IOSurfaceID
+# is a 32-bit unsigned integer; PR 1 carries it as u64 to leave
+# room for PR 2 / PR 3 to widen if upstream ever does so). Dual
+# MIT / Apache-2.0.
+core-foundation = "0.10"
+
+# build-dependencies: build.rs is `[no_std]`-friendly stdlib-only
+# and reads `SYPHON_FRAMEWORK_PATH` env var. On non-macOS targets
+# the script is a no-op (early-returns before emitting any link
+# directive); the script itself does not depend on external crates.
+[build-dependencies]

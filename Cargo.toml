@@ -35,6 +35,7 @@ members = [
     "integrations/camera-adapter",
     "integrations/osc-adapter",
     "integrations/midi-adapter",
+    "integrations/syphon-adapter",
 ]
 
 [workspace.package]
