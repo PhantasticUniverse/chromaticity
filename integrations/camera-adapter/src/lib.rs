@@ -60,6 +60,18 @@ pub mod frames;
 #[cfg(target_os = "macos")]
 pub mod macos;
 
+/// Windows Media Foundation permission-flow surface per ADR-020 §5
+/// + §6 "Per-platform notes — Windows". Compiles to a no-op
+/// (empty module) on non-Windows targets; the gating lives at the
+/// module level so the cross-platform [`adapter`] surface stays
+/// uniform. Phase 2 PR 3 ships the trait surface +
+/// [`windows::PlaceholderProbe`] concrete impl + canonical HRESULT
+/// → fault-reason mapping; the real Media Foundation / consent-
+/// store binding lands in a follow-up policy-scoped PR per the
+/// `macos.rs` precedent.
+#[cfg(target_os = "windows")]
+pub mod windows;
+
 pub use adapter::{
     AdapterError, AdapterHealth, CameraAdapter, CameraConfig, CameraDeviceKind, DeviceSummary,
     NokhwaInputAdapter,

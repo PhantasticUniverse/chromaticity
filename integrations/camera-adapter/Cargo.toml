@@ -125,3 +125,25 @@ objc2 = "0.5"
 # `NSString` for the Objective-C-side device-ID identifiers the
 # binding declarations target. Dual MIT / Apache-2.0.
 objc2-foundation = { version = "0.2", features = ["NSString"] }
+
+# Windows-only Media Foundation / consent-store binding stack.
+# Non-Windows workspace builds do not resolve these dependencies;
+# the `src/windows.rs` module is gated by
+# `#[cfg(target_os = "windows")]` per ADR-020 §5 + §6
+# "Per-platform notes — Windows". Phase 2 PR 3 (this PR) ships the
+# trait surface (`WindowsCameraProbe`) + canonical HRESULT →
+# fault-reason mapping (`map_hresult_default`) + a
+# `PlaceholderProbe` concrete impl that returns conservative
+# defaults; the real consent-store registry read + Media Foundation
+# HRESULT propagation lands in a follow-up policy-scoped PR
+# alongside the workspace `unsafe_code = "forbid"` floor widening
+# per `docs/43` §12.6. The trait surface is binding-free in PR 3 —
+# HRESULT values are inlined `u32` constants from `<mferror.h>` /
+# `<winerror.h>` so PR 3 introduces NO Windows-target dependencies
+# beyond what nokhwa already pulls in transitively for the
+# `input-native` feature. The `windows` crate (or `windows-sys` for
+# raw FFI) declarations land in the follow-up policy-scoped PR; the
+# `[target.'cfg(target_os = "windows")'.dependencies]` table is
+# intentionally NOT declared here so PR 3's diff stays
+# dep-graph-clean (no transitive surface to audit, no
+# workspace-hack regen impact).
