@@ -96,6 +96,15 @@ the additive design — corpora continue to use `commit_all_into` directly with
 - Row 63 `EV-AUTHORING-SCAFFOLDER` — full scope.
 - Row 65 `EV-IMPORT-ISF-REJECT` — full scope; ISF native import deferred to V2 per
   design.
+- Row 61 `EV-AUTHORING-LIVE-RELOAD` — Wave 4b.2 PR 1 of 2 (`#356` / `d56f11d`)
+  shipped the file-watch + reload-on-change scaffolding under
+  `engine/authoring/src/live_reload.rs`; PR 2 of 2 (2026-05-07) ships the
+  `PreservedState` (control_values + active_preset + active_snap +
+  playlist_position) cross-seam contract per `docs/37` §3.3 hot-reload semantics.
+  Runtime-side wiring (engine/runtime adapter capturing `State -> PreservedState`
+  before reload + re-applying via command-bus + commit-thread per ADR-006)
+  deferred to a future composition wave; latency-budget arm cross-tagged with
+  row 83 `EV-AUTHORING-UX-LATENCY` (already `Pass` via PR `#363` `b2156bb`).
 - Row 79 `EV-SHADER-CACHE` — observation-only (no `scripts/budget-check.sh`
   extension).
 - Rows 83 + 84 `EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` — co-developed

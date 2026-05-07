@@ -82,8 +82,8 @@ pub use import_shadertoy::{
     load_imported_scene,
 };
 pub use live_reload::{
-    LiveReloadConfig, LiveReloadError, LiveReloadHandle, ReloadEvent, ReloadOutcome,
-    perform_reload, start_watching,
+    LiveReloadConfig, LiveReloadError, LiveReloadHandle, PreservedState, PreservedStateSnapshot,
+    ReloadEvent, ReloadOutcome, capture_preserved_state, perform_reload, start_watching,
 };
 pub use scaffolder::{
     ScaffolderConfig, ScaffolderError, ScaffolderReport, load_scaffolded_scene, scaffold_to_path,

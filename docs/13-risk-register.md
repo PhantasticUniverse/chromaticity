@@ -211,6 +211,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - lifecycle contract documentation and tests.
 - Residual: Medium. Docs-vs-runtime divergence is an ongoing excavation problem; every release cycle may surface a new ambiguity. Paired with R-23 (behavior excavation) as the escalation path.
 - Owner: Scene/authoring lead.
+- Phase-4b Wave 4b.2 update (2026-05-07): row 61 `EV-AUTHORING-LIVE-RELOAD` transitioned `Planned` → `Pass` under the state-preservation cross-seam-contract narrowing. PR `#356` / `d56f11d` shipped the file-watch + reload-on-change scaffolding; this PR ships the `PreservedState` (control_values + active_preset + active_snap + playlist_position) cross-seam contract per `docs/37-authoring-environment-spec.md` §3.3 hot-reload semantics. Runtime-side wiring (engine/runtime adapter capturing `State -> PreservedState` before reload + re-applying via the command-bus + commit-thread per ADR-006) deferred to a future composition wave; latency-budget arm cross-tagged with row 83 `EV-AUTHORING-UX-LATENCY` per `docs/37-shared-instrumentation` note. Authoring contract ambiguity surface narrows further as the §3.3 hot-reload semantics gain executable structural coverage.
 
 ### R-14 IP Contamination from Reference Materials
 - Probability: Medium

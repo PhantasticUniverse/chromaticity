@@ -121,14 +121,116 @@ pub enum ReloadEvent {
     FilesChanged(Vec<PathBuf>),
 }
 
+/// Captured pre-reload state that gets re-applied to the post-reload
+/// state on successful reload. Per
+/// `docs/37-authoring-environment-spec.md` §3.3 hot-reload semantics:
+/// an operator's mid-show edits to control values, active preset,
+/// Snap selection, and playlist position must survive a successful
+/// hot-reload — a reload is a code-change event, not a
+/// session-reset.
+///
+/// PR 2 ships the cross-seam contract: producer captures the
+/// preserved state before swapping the runtime artifact; consumer
+/// re-applies it onto the post-reload State at the first
+/// commit-thread tick. The canonical-state mutation path stays via
+/// the command-bus + commit-thread (ADR-006); state-preservation
+/// does NOT bypass it.
+///
+/// The runtime-side wiring (engine/runtime adapter that captures
+/// `State -> PreservedState` before reload + re-applies after) is a
+/// future-wave option scoped behind the live-reload + runtime
+/// composition; the engine/authoring crate ships only the cross-seam
+/// contract so it does not take a hard dep on the runtime crate's
+/// `State` type. Adapter crates wire the actual extraction at the
+/// call site.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PreservedState {
+    /// Control-value pairs captured pre-reload. Keys are control
+    /// IDs; values are the most-recently-committed values.
+    pub control_values: Vec<(String, f32)>,
+    /// Active preset id pre-reload, if any.
+    pub active_preset: Option<String>,
+    /// Active Snap slot pre-reload, if any.
+    pub active_snap: Option<u8>,
+    /// Playlist position pre-reload, if any.
+    pub playlist_position: Option<i64>,
+}
+
+impl PreservedState {
+    /// Returns `true` when no pre-reload state has been captured —
+    /// the consumer-side re-apply step can short-circuit on this.
+    pub fn is_empty(&self) -> bool {
+        self.control_values.is_empty()
+            && self.active_preset.is_none()
+            && self.active_snap.is_none()
+            && self.playlist_position.is_none()
+    }
+}
+
+/// Caller-supplied snapshot of the pre-reload state. The shape is
+/// opaque to the engine/authoring crate so it does not take a hard
+/// dep on the runtime crate's `State` type — adapter crates wire the
+/// actual `State -> PreservedStateSnapshot` extraction at the call
+/// site, then call [`capture_preserved_state`] to pin the
+/// preservation shape ahead of the reload.
+#[derive(Clone, Debug, Default)]
+pub struct PreservedStateSnapshot {
+    /// Control-value pairs captured pre-reload. Keys are control
+    /// IDs; values are the most-recently-committed values.
+    pub control_values: Vec<(String, f32)>,
+    /// Active preset id pre-reload, if any.
+    pub active_preset: Option<String>,
+    /// Active Snap slot pre-reload, if any.
+    pub active_snap: Option<u8>,
+    /// Playlist position pre-reload, if any.
+    pub playlist_position: Option<i64>,
+}
+
+/// Capture the pre-reload state from a snapshot the caller
+/// provides. The snapshot shape is opaque
+/// ([`PreservedStateSnapshot`] builder) so the engine/authoring
+/// crate doesn't take a hard dep on the runtime crate's `State`
+/// type — adapter crates wire the actual `State -> PreservedState`
+/// extraction at the call site.
+pub fn capture_preserved_state(snapshot: PreservedStateSnapshot) -> PreservedState {
+    PreservedState {
+        control_values: snapshot.control_values,
+        active_preset: snapshot.active_preset,
+        active_snap: snapshot.active_snap,
+        playlist_position: snapshot.playlist_position,
+    }
+}
+
 /// Result of a [`perform_reload`] step.
 #[derive(Debug)]
 pub enum ReloadOutcome<T> {
     /// Loader returned a fresh value of `T`.
-    Success(T),
+    ///
+    /// `preserved` carries the [`PreservedState`] captured pre-reload
+    /// per the §3.3 hot-reload semantics contract. The consumer-side
+    /// re-apply step folds `preserved` onto the post-reload State at
+    /// the first commit-thread tick; an empty `PreservedState` (the
+    /// default) signals "no state to preserve" and the consumer can
+    /// short-circuit via [`PreservedState::is_empty`].
+    Success {
+        /// Loaded artifact returned by the caller's loader closure.
+        value: T,
+        /// Pre-reload state captured by the caller before invoking
+        /// the loader. Forwarded verbatim onto the success outcome
+        /// so the consumer-side re-apply step has it in hand at the
+        /// same callback site that observes the new artifact.
+        preserved: PreservedState,
+    },
     /// Loader failed; the carried [`Diagnostic`] is the structured
     /// error shape the authoring console / inline-diagnostics
     /// surface consumes.
+    ///
+    /// On failure, no [`PreservedState`] is forwarded — the producer
+    /// retains the pre-reload state in its own buffer so the
+    /// next-attempt reload can re-capture or re-use it. Bundling
+    /// `PreservedState` with `Failed` would push pre-reload state
+    /// across a failed-load boundary the consumer cannot meaningfully
+    /// act on, so the contract is "preservation is success-only".
     Failed(Diagnostic),
 }
 
@@ -365,25 +467,37 @@ fn is_reload_relevant(kind: &EventKind) -> bool {
 /// Single-shot reload step.
 ///
 /// Calls the supplied `loader` against `scene_path` and wraps
-/// the result. Loader successes pass through verbatim; loader
-/// failures are routed through
-/// [`crate::diagnostics::diagnostic_from_load_error`] into a
-/// structured [`Diagnostic`] consumed by the authoring console
-/// and inline-diagnostics surfaces.
+/// the result. Loader successes pass through verbatim alongside
+/// the caller-provided `preserved` state; loader failures are
+/// routed through [`crate::diagnostics::diagnostic_from_load_error`]
+/// into a structured [`Diagnostic`] consumed by the authoring
+/// console and inline-diagnostics surfaces.
 ///
-/// PR-1 scope: state-preservation is OUT. The caller is assumed
-/// to have already chosen which file's change triggered the
-/// reload (the watcher emits paths; the caller maps them to a
-/// scene-package root and calls `perform_reload` against the
-/// canonical scene-package path). PR-2 layers preservation on
-/// top by replacing the loader closure with a state-aware
-/// rebuild that consults the prior scene state.
-pub fn perform_reload<F, T>(scene_path: &Path, loader: F) -> ReloadOutcome<T>
+/// `preserved` is the [`PreservedState`] the caller captured
+/// pre-reload (typically via [`capture_preserved_state`] folded
+/// over a [`PreservedStateSnapshot`] sourced from the runtime
+/// State at the call site). On a successful load, `preserved` is
+/// forwarded verbatim onto [`ReloadOutcome::Success`] so the
+/// consumer-side re-apply step has it in hand at the same callback
+/// site that observes the new artifact. On a failed load,
+/// `preserved` is dropped — preservation is success-only by
+/// contract; the producer retains the pre-reload state in its own
+/// buffer so the next-attempt reload can re-capture or re-use it.
+///
+/// The caller is assumed to have already chosen which file's
+/// change triggered the reload (the watcher emits paths; the
+/// caller maps them to a scene-package root and calls
+/// `perform_reload` against the canonical scene-package path).
+pub fn perform_reload<F, T>(
+    scene_path: &Path,
+    preserved: PreservedState,
+    loader: F,
+) -> ReloadOutcome<T>
 where
     F: Fn(&Path) -> Result<T, LoadError>,
 {
     match loader(scene_path) {
-        Ok(value) => ReloadOutcome::Success(value),
+        Ok(value) => ReloadOutcome::Success { value, preserved },
         Err(err) => ReloadOutcome::Failed(diagnostic_from_load_error(&err)),
     }
 }
@@ -482,26 +596,32 @@ mod tests {
     #[test]
     fn perform_reload_with_successful_loader_returns_success_variant() {
         let outcome: ReloadOutcome<u32> =
-            perform_reload(Path::new("/dummy"), |_p| Ok::<u32, LoadError>(42));
+            perform_reload(Path::new("/dummy"), PreservedState::default(), |_p| {
+                Ok::<u32, LoadError>(42)
+            });
         match outcome {
-            ReloadOutcome::Success(v) => assert_eq!(v, 42),
+            ReloadOutcome::Success { value, preserved } => {
+                assert_eq!(value, 42);
+                assert!(preserved.is_empty());
+            }
             ReloadOutcome::Failed(d) => panic!("expected Success, got Failed: {d:?}"),
         }
     }
 
     #[test]
     fn perform_reload_with_erroring_loader_returns_failed_variant_with_diagnostic() {
-        let outcome: ReloadOutcome<()> = perform_reload(Path::new("/dummy"), |_p| {
-            Err::<(), LoadError>(LoadError::MissingSceneJson(PathBuf::from(
-                "/dummy/scene.json",
-            )))
-        });
+        let outcome: ReloadOutcome<()> =
+            perform_reload(Path::new("/dummy"), PreservedState::default(), |_p| {
+                Err::<(), LoadError>(LoadError::MissingSceneJson(PathBuf::from(
+                    "/dummy/scene.json",
+                )))
+            });
         match outcome {
             ReloadOutcome::Failed(d) => {
                 assert_eq!(d.code, DiagnosticCode::Json);
                 assert!(d.message.contains("missing scene.json"));
             }
-            ReloadOutcome::Success(_) => panic!("expected Failed, got Success"),
+            ReloadOutcome::Success { .. } => panic!("expected Failed, got Success"),
         }
     }
 
@@ -511,13 +631,98 @@ mod tests {
         // `diagnostic_from_load_error`'s catch-all arm. This
         // pins the severity classification through the reload
         // pipeline so consumers can rely on it.
-        let outcome: ReloadOutcome<()> = perform_reload(Path::new("/dummy"), |_p| {
-            Err::<(), LoadError>(LoadError::NotDirectory(PathBuf::from("/dummy")))
-        });
+        let outcome: ReloadOutcome<()> =
+            perform_reload(Path::new("/dummy"), PreservedState::default(), |_p| {
+                Err::<(), LoadError>(LoadError::NotDirectory(PathBuf::from("/dummy")))
+            });
         let ReloadOutcome::Failed(d) = outcome else {
             panic!("expected Failed");
         };
         assert_eq!(d.severity, Severity::Error);
+    }
+
+    // ---- PR 2 state-preservation T1 pins ----
+    //
+    // Per `docs/37-authoring-environment-spec.md` §3.3 hot-reload
+    // semantics: an operator's mid-show edits to control values,
+    // active preset, Snap selection, and playlist position must
+    // survive a successful hot-reload. PR 2 ships the cross-seam
+    // contract (`PreservedState` + `PreservedStateSnapshot` +
+    // `capture_preserved_state` + `ReloadOutcome::Success` carrying
+    // the captured state); the runtime-side wiring is a future
+    // wave's option. These T1 pins exercise the contract surface in
+    // isolation — no filesystem, no notify dep, no scene loader.
+
+    #[test]
+    fn preserved_state_round_trips_via_capture_helper() {
+        let snapshot = PreservedStateSnapshot {
+            control_values: vec![("gain".to_string(), 0.5), ("tint".to_string(), 1.25)],
+            active_preset: Some("preset-a".to_string()),
+            active_snap: Some(3),
+            playlist_position: Some(7),
+        };
+        let preserved = capture_preserved_state(snapshot);
+        assert_eq!(
+            preserved.control_values,
+            vec![("gain".to_string(), 0.5), ("tint".to_string(), 1.25),],
+        );
+        assert_eq!(preserved.active_preset.as_deref(), Some("preset-a"));
+        assert_eq!(preserved.active_snap, Some(3));
+        assert_eq!(preserved.playlist_position, Some(7));
+        assert!(!preserved.is_empty());
+    }
+
+    #[test]
+    fn preserved_state_default_is_empty() {
+        let preserved = PreservedState::default();
+        assert!(preserved.is_empty());
+        assert!(preserved.control_values.is_empty());
+        assert!(preserved.active_preset.is_none());
+        assert!(preserved.active_snap.is_none());
+        assert!(preserved.playlist_position.is_none());
+    }
+
+    #[test]
+    fn preserved_state_with_control_values_round_trip() {
+        let snapshot = PreservedStateSnapshot {
+            control_values: vec![("gain".to_string(), 0.42)],
+            ..Default::default()
+        };
+        let preserved = capture_preserved_state(snapshot);
+        assert!(!preserved.is_empty());
+        assert_eq!(preserved.control_values.len(), 1);
+        assert_eq!(preserved.control_values[0].0, "gain");
+        assert!((preserved.control_values[0].1 - 0.42).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn reload_outcome_success_carries_preserved_state() {
+        let snapshot = PreservedStateSnapshot {
+            control_values: vec![("a".to_string(), 1.0)],
+            active_preset: Some("p1".to_string()),
+            active_snap: Some(2),
+            playlist_position: Some(4),
+        };
+        let preserved = capture_preserved_state(snapshot);
+        let outcome: ReloadOutcome<u32> = perform_reload(Path::new("/dummy"), preserved, |_p| {
+            Ok::<u32, LoadError>(99)
+        });
+        let ReloadOutcome::Success { value, preserved } = outcome else {
+            panic!("expected Success");
+        };
+        assert_eq!(value, 99);
+        assert_eq!(preserved.control_values.len(), 1);
+        assert_eq!(preserved.active_preset.as_deref(), Some("p1"));
+        assert_eq!(preserved.active_snap, Some(2));
+        assert_eq!(preserved.playlist_position, Some(4));
+    }
+
+    #[test]
+    fn is_empty_returns_true_for_default_state() {
+        // Explicit pin: the `PreservedState::default()` value MUST
+        // satisfy `is_empty()` so the consumer-side re-apply
+        // short-circuit is sound at the unmodified-session start.
+        assert!(PreservedState::default().is_empty());
     }
 
     #[test]
