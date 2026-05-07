@@ -1709,3 +1709,119 @@ cluster's closure does not pre-empt the Phase-4 EXIT gate decision.
 ### Sign-off
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-06
+
+## Phase-4b Wave 4b.7 closure
+
+Phase-4b Wave 4b.7 closure (2026-05-07) lands the largest Phase-4b
+evidence row — `EV-IMPORT-REFERENCE-SHOW` (row 86) — at `Pass`
+under documented narrowings via a 5-PR sequence covering PR numbers
+366 through 369 inclusive plus this docs(repo) closing PR. The wave
+ships the reference-app user-data importer surface end-to-end at the
+read-side, structured-diagnostic level, and orchestrator-shape level;
+actual Chromaticity user-data store mutation is preserved as a
+post-MVP V1 wave behind entitlement-tier-gating + scene-library-write
+surfaces. After this closure, Wave 4b.8 (`EV-ACCESSIBILITY-AA`)
+is the only remaining Phase-4b EXIT prerequisite.
+
+### Per-PR sequence
+
+- **PR `#366`** (`53ad7ce`, anchor run `25465983264`) — foundation +
+  discovery + settings + presets importers. Adds
+  `engine/authoring/src/import_reference/` with `mod.rs` +
+  `diagnostics.rs` + `discovery.rs` + `settings.rs` + `presets.rs`
+  realizing the `reference-user-data/` directory walk over the
+  on-disk literals (`Settings.json`, `Presets/`, `Favslots/`,
+  `Playlists/`, `MetaPresets/`, `MediaPresets/`, `MidiMappings/`,
+  `OscAliases.json`, `HotkeyRemaps.json`) + the structured-diagnostic
+  surface + the Settings.json + Presets/ per-class importers + the
+  T2 corpus at `engine/authoring/tests/import_reference_foundation_corpus.rs`.
+- **PR `#367`** (`86f8292`, anchor run `25466617886`) — snap slots
+  + playlists + meta/media preset importers. Adds `snap.rs`
+  (Favslots/ → Chromaticity Snap slots) + `playlists.rs` +
+  `meta_media.rs` (MetaPresets/ + MediaPresets/) + the T2 corpus at
+  `engine/authoring/tests/import_reference_snap_playlists_meta_corpus.rs`.
+- **PR `#368`** (`f9ad6eb`, anchor run `25467307204`) — MIDI mappings
+  + OSC alias tables + hotkey remappings. Adds `midi.rs` + `osc.rs`
+  (with the `/chroma/` route-prefix collision heuristic) + `hotkey.rs`
+  (with the literal-prefix + named-action V1-locked + control-focus
+  heuristics) + the T2 corpus at
+  `engine/authoring/tests/import_reference_midi_osc_hotkey_corpus.rs`.
+- **PR `#369`** (`f69fc34`, anchor run `25467953599`) — dry-run +
+  commit + rollback drill orchestrator at `drill.rs` composing all
+  8 importer classes through `dry_run() → commit() → rollback()`
+  with the synthetic-commit `CommitOutcome` + `RollbackSnapshot`
+  shape proof + the T2 corpus at
+  `engine/authoring/tests/import_reference_drill_harness_corpus.rs`.
+- **This PR** — closing docs flipping row 86
+  `EV-IMPORT-REFERENCE-SHOW` from `Planned` to `Pass` under the
+  documented narrowings.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-IMPORT-REFERENCE-SHOW`** — full 5-PR sequence above. Anchor
+  run `25467953599` (PR `#369`'s test job, the latest = the one
+  that exercised all 8 importer classes plus the orchestrator).
+  Narrowed per the four axes recorded in `docs/26` row 86
+  description column: (1) synthetic-commit harness — no actual
+  user-data store mutation; (2) synthetic-rollback — `Ok(())`
+  no-op; (3) heuristic stand-ins for OSC alias collision detection
+  (`/chroma/` prefix) + hotkey V1-locked + control-focus action
+  vocabulary (literal-prefix + named-action set); (4) library
+  cross-check on preset `unknown-scene` diagnostic mocked-empty.
+
+### Per-Type Minimums verification
+
+For row `EV-IMPORT-REFERENCE-SHOW` transitioning to `Pass`,
+ci-run-url + repo-path + corpus version + drift thresholds populate.
+Anchor run ids cited in this closure section: `25465983264` (PR
+`#366`), `25466617886` (PR `#367`), `25467307204` (PR `#368`),
+`25467953599` (PR `#369`; primary anchor for row 85 Pass).
+
+### Cumulative session recap
+
+5 PRs landed on `main` on 2026-05-07 covering PR numbers 366
+through 369 inclusive plus this docs(repo) closing PR. The session
+sequenced the import-reference foundation, the snap/playlist/meta
+channel set, the MIDI/OSC/hotkey channel set, the
+dry-run/commit/rollback drill orchestrator, and the closing-docs
+flip in lockstep — each PR's test job feeds the next anchor.
+
+### Verdict
+
+**Phase-4b Wave 4b.7 closure achieved 2026-05-07 at commit
+`<merge-sha>`** (the merge commit of this docs(repo) closing PR).
+
+Phase-4b EXIT remains AO-held: Wave 4b.8 (`EV-ACCESSIBILITY-AA`)
+is the only remaining 4b prerequisite and carries forward as a
+future directed engineering wave. Phase-4 EXIT itself remains
+AO-held until 4b / 4c / 4d sub-phases close per
+`docs/11-roadmap-phases.md`; this wave's closure does not pre-empt
+the Phase-4b EXIT gate decision.
+
+### Deferred axes (wave narrowing record)
+
+- **Synthetic-commit semantics** (PR `#369`'s drill harness produces
+  shape proof but does NOT mutate `PresetStore` / `MappingStore` /
+  hotkey-store / scene library); wiring against actual stores is
+  post-MVP V1 PR scoped behind entitlement-tier-gating +
+  scene-library-write surfaces.
+- **Synthetic-rollback** — `rollback(snapshot)` is `Ok(())` no-op
+  for the same reason; real rollback per ADR-015 §6 +
+  `32-state-preset-playlist-migration-policy.md` snapshot machinery
+  deferred to the same post-MVP PR.
+- **OSC alias collision heuristic** — PR `#368` uses a `/chroma/`
+  route-prefix check in lieu of the full canonical-route registry
+  lookup; lookup deferred.
+- **Hotkey vocabulary heuristics** — PR `#368` uses literal-prefix
+  + named-action set heuristics for V1-locked + control-focus
+  actions in lieu of the full Chromaticity-side hotkey-action
+  vocabulary lookup; lookup deferred.
+- **Library cross-check** — PR `#366`'s preset `unknown-scene`
+  diagnostic uses a mocked-empty library context; cross-checking
+  against the live `SceneIndex` from
+  `app/shell/src/commands/library_index.rs` deferred to a future
+  PR.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07

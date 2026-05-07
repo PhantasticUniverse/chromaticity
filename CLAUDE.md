@@ -184,11 +184,41 @@ d/f/g plus `EV-CRASH-PAYLOAD-REDACTION` PR 2 plus `EV-GPU-SELECTION`
 hardware-gated PR 2 plus `EV-SOAK-CHAOS`), plus the PR-2/PR-3 follow-ons
 enumerated above. Phase-4b / 4c / 4d EXIT decisions remain AO-held per
 `docs/11-roadmap-phases.md`; this cluster's closure does not pre-empt them.
-Engine and integration crates
-(runtime, scene, audio, observability, render, script, entitlement, osc-adapter,
-midi-adapter) carry foundational evidence at EXIT quality; parallel UI port waves
-against the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets,
-shell components, routed views).
+**Phase-4b Wave 4b.7 closure landed 2026-05-07** in a 5-PR session
+covering PR numbers 366 through 369 inclusive (PR `#366` / `53ad7ce`
+foundation + discovery + settings + presets importers under
+`engine/authoring/src/import_reference/` (`mod.rs` + `diagnostics.rs`
+
+- `discovery.rs` + `settings.rs` + `presets.rs`); PR `#367` /
+  `86f8292` snap + playlists + meta/media preset importers (`snap.rs`
+- `playlists.rs` + `meta_media.rs`); PR `#368` / `f9ad6eb` MIDI +
+  OSC + hotkey importers (`midi.rs` + `osc.rs` + `hotkey.rs`); PR
+  `#369` / `f69fc34` dry-run + commit + rollback drill orchestrator
+  (`drill.rs`) composing all 8 importer classes; plus this docs(repo)
+  closing PR). Row 86 `EV-IMPORT-REFERENCE-SHOW` transitions `Planned`
+  → `Pass` under explicit narrowings: (1) synthetic-commit harness in
+  PR 4 produces `CommitOutcome` + `RollbackSnapshot` shape proof but
+  does NOT mutate Chromaticity user-data stores (`PresetStore` /
+  `MappingStore` / hotkey-store / scene library); (2) synthetic-
+  rollback `Ok(())` no-op for the same reason — real rollback per
+  ADR-015 §6 + `32-state-preset-playlist-migration-policy.md`
+  deferred to a post-MVP V1 PR behind entitlement-tier-gating +
+  scene-library-write surfaces; (3) heuristic stand-ins in PR 3
+  (OSC `/chroma/` route-prefix collision detection in lieu of full
+  canonical-route registry lookup; hotkey V1-locked + control-focus
+  literal-prefix + named-action heuristics in lieu of full hotkey-
+  action vocabulary lookup); (4) library cross-check on preset
+  `unknown-scene` diagnostic mocked-empty pending live `SceneIndex`
+  wiring. Anchor run ids: 25465983264 (PR `#366`) + 25466617886
+  (PR `#367`) + 25467307204 (PR `#368`) + 25467953599 (PR `#369`;
+  primary anchor for row 85 Pass). Remaining Phase-4b EXIT
+  prerequisite is now Wave 4b.8 (`EV-ACCESSIBILITY-AA`) only;
+  Phase-4b EXIT decision remains AO-held per
+  `docs/11-roadmap-phases.md`. Engine and integration crates
+  (runtime, scene, audio, observability, render, script, entitlement, osc-adapter,
+  midi-adapter) carry foundational evidence at EXIT quality; parallel UI port waves
+  against the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets,
+  shell components, routed views).
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
