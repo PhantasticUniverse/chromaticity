@@ -28,11 +28,15 @@ describe('CuePad widget', () => {
     cleanup();
   });
 
-  it('renders the default 4×8 grid of cells with role=grid', () => {
+  it('renders the default 4×8 grid of cells with role=group', () => {
+    // Container uses role="group" rather than role="grid" so its
+    // <button> children pass `aria-required-children` (an aria grid
+    // would require <div role="row">/<div role="gridcell"> wrappers).
+    // See `EV-ACCESSIBILITY-AA` Wave 4b.8 PR 2 for the rationale.
     const { container } = render(CuePad);
     const grid = container.querySelector('.cue-pad');
     expect(grid).not.toBeNull();
-    expect(grid?.getAttribute('role')).toBe('grid');
+    expect(grid?.getAttribute('role')).toBe('group');
     expect(grid?.getAttribute('aria-label')).toBe('Cue pad (4 rows × 8 cols)');
     expect(grid?.getAttribute('style')).toContain('grid-template-columns: repeat(8, 1fr)');
     expect(container.querySelectorAll('.cue-pad__cell').length).toBe(32);

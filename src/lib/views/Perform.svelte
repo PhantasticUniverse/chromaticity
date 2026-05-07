@@ -274,7 +274,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <!-- Scene panel -->
     <section class="panel scene-panel" aria-label="Scenes">
       <header class="panel__head">
-        <div class="rail" role="tablist" aria-label="Scene panel mode">
+        <div class="rail" role="toolbar" aria-label="Scene panel mode">
           <button
             type="button"
             class="rail-btn"

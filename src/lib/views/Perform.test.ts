@@ -223,7 +223,7 @@ describe('Perform view', () => {
 
   it('rail-mode buttons toggle aria-pressed (scenes / presets / edit / add)', async () => {
     const { getByLabelText } = render(Perform);
-    const rail = within(getByLabelText('Scenes')).getByRole('tablist', {
+    const rail = within(getByLabelText('Scenes')).getByRole('toolbar', {
       name: 'Scene panel mode',
     });
     const scenesBtn = within(rail).getByTitle('Scenes');

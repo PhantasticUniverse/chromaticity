@@ -274,7 +274,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         class="cue-curve__svg"
         viewBox="0 0 {W} {H}"
         preserveAspectRatio="none"
-        role="img"
+        role="group"
         aria-label="Cue transition curve"
       >
         <g class="cue-curve__grid">

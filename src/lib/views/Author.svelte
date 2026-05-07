@@ -519,31 +519,53 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
     <!-- Inspector panel with tab strip -->
     <section class="au-author__panel au-author__inspector" aria-label="Scene inspector">
-      <div class="au-author__tabs" role="tablist" aria-label="Inspector tabs">
-        {#each INSPECTOR_TABS as tab (tab.id)}
-          <button
-            class="au-author__tab"
-            class:au-author__tab--active={activeTab === tab.id}
-            role="tab"
-            aria-selected={activeTab === tab.id ? 'true' : 'false'}
-            type="button"
-            title={tab.label}
-            onclick={() => selectTab(tab.id)}
-          >
-            <Icon name={tab.icon} size={13} />
-            <span class="au-author__tab-label">{tab.label}</span>
-          </button>
-        {/each}
+      <div class="au-author__tabs">
+        <div class="au-author__tablist" role="tablist" aria-label="Inspector tabs">
+          {#each INSPECTOR_TABS as tab (tab.id)}
+            <button
+              class="au-author__tab"
+              class:au-author__tab--active={activeTab === tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id ? 'true' : 'false'}
+              type="button"
+              title={tab.label}
+              onclick={() => selectTab(tab.id)}
+            >
+              <Icon name={tab.icon} size={13} />
+              <span class="au-author__tab-label">{tab.label}</span>
+            </button>
+          {/each}
+        </div>
         <span class="au-author__spacer" aria-hidden="true"></span>
-        <button class="au-author__icon-btn" type="button" disabled title="Reset inspector">
-          <Icon name="refresh" size={11} />
-        </button>
-        <button class="au-author__icon-btn" type="button" disabled title="Open folder">
-          <Icon name="folder" size={11} />
-        </button>
-        <button class="au-author__icon-btn" type="button" disabled title="Export">
-          <Icon name="upload" size={11} />
-        </button>
+        <div class="au-author__tab-actions" role="toolbar" aria-label="Inspector actions">
+          <button
+            class="au-author__icon-btn"
+            type="button"
+            disabled
+            title="Reset inspector"
+            aria-label="Reset inspector"
+          >
+            <Icon name="refresh" size={11} />
+          </button>
+          <button
+            class="au-author__icon-btn"
+            type="button"
+            disabled
+            title="Open folder"
+            aria-label="Open folder"
+          >
+            <Icon name="folder" size={11} />
+          </button>
+          <button
+            class="au-author__icon-btn"
+            type="button"
+            disabled
+            title="Export"
+            aria-label="Export"
+          >
+            <Icon name="upload" size={11} />
+          </button>
+        </div>
       </div>
 
       <div class="au-author__inspector-body">
@@ -1376,6 +1398,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     padding: var(--space-xs) var(--space-md);
     border-bottom: 1px solid var(--color-line-1);
     background: var(--color-bg-3);
+  }
+  .au-author__tablist,
+  .au-author__tab-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
   }
   .au-author__tab {
     display: inline-flex;
