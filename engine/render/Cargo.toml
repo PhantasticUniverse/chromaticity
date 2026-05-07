@@ -130,6 +130,24 @@ chromaticity-scene = { version = "0.0.0", path = "../scene", optional = true }
 # downstream binaries opt in explicitly.
 chromaticity-audio = { version = "0.0.0", path = "../audio", optional = true }
 
+# chromaticity-camera-adapter is an OPTIONAL cross-platform
+# dependency, gated behind the `camera-binding` cargo feature. The
+# render scheduler stays camera-agnostic by default — the
+# `chromaticity_camera_adapter` crate
+# (`integrations/camera-adapter/`) is itself cross-platform via
+# nokhwa 0.10 (CoreMediaIO on macOS + Media Foundation on Windows;
+# the adapter crate itself is platform-uniform), and the
+# engine-side `camera_adapter` module on the engine/render side
+# provides the pure-function `camera_texture_binding_from_frame`
+# marshal mapping `CameraFrame` payloads to wgpu texture bindings
+# under the `chroma_CameraInput[N]` namespace per ADR-020 §7.
+# Crate coupling stays consumer-side: integrations/camera-adapter/
+# does NOT depend on engine/render. Symmetric with the
+# audio-binding + scene-adapter precedents (top-level table entry,
+# `optional = true`); asymmetric with the syphon-binding
+# macOS-target-table precedent because nokhwa is cross-platform.
+chromaticity-camera-adapter = { version = "0.0.0", path = "../../integrations/camera-adapter", optional = true }
+
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
 # chromaticity-syphon-adapter is an OPTIONAL macOS-only dependency,
@@ -177,6 +195,19 @@ audio-binding = ["dep:chromaticity-audio"]
 # doc for the wgpu ↔ IOSurface bridge contract per ADR-021 §6 +
 # docs/54 Phase-3 lessons 3.1 / 3.2 / 3.3 / 3.4 / 3.6 / 3.7 / 3.8.
 syphon-binding = ["dep:chromaticity-syphon-adapter"]
+# Enables the `camera_adapter` module which marshals a
+# `chromaticity_camera_adapter::CameraFrame` (Phase 2 PR 1
+# producer-side, plain data) into a `CameraTextureBinding` keyed
+# by the ADR-020 §7 `chroma_CameraInput[N]` symbol family
+# (N ∈ 0..=3, max 4 cameras per scene). Cross-platform by feature
+# composition (the `chromaticity-camera-adapter` dep is declared
+# at the top-level `[dependencies]` table; nokhwa handles per-
+# platform CoreMediaIO / Media Foundation internally). See
+# `camera_adapter.rs` module-level doc for the pixel-format →
+# wgpu::TextureFormat mapping table per ADR-020 §7 + `docs/54`
+# Phase-2 lessons. Adds a crate-level dep on
+# `chromaticity-camera-adapter` when enabled.
+camera-binding = ["dep:chromaticity-camera-adapter"]
 
 [dev-dependencies]
 # `serde_json` is needed by the slice-4 scene-adapter T1 / T2 tests
