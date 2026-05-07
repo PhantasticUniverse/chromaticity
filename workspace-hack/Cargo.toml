@@ -26,7 +26,9 @@ workspace = true
 ### BEGIN HAKARI SECTION
 [dependencies]
 bitflags = { version = "2", default-features = false, features = ["serde"] }
+bytemuck = { version = "1", default-features = false, features = ["derive", "extern_crate_alloc", "min_const_generics"] }
 byteorder = { version = "1" }
+getrandom = { version = "0.2", default-features = false, features = ["js", "rdrand", "std"] }
 half = { version = "2", default-features = false, features = ["num-traits"] }
 indexmap = { version = "2" }
 memchr = { version = "2" }
@@ -53,6 +55,7 @@ zerocopy = { version = "0.8", default-features = false, features = ["derive", "s
 
 [build-dependencies]
 byteorder = { version = "1" }
+getrandom = { version = "0.2", default-features = false, features = ["js", "rdrand", "std"] }
 indexmap = { version = "2" }
 memchr = { version = "2" }
 percent-encoding = { version = "2" }
@@ -77,11 +80,24 @@ zerocopy = { version = "0.8", default-features = false, features = ["derive", "s
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
+either = { version = "1", features = ["use_std"] }
+futures-core = { version = "0.3", default-features = false, features = ["std"] }
+libc = { version = "0.2" }
+minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
+nom = { version = "7", default-features = false, features = ["std"] }
+rustc-hash = { version = "1" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
 
 [target.x86_64-unknown-linux-gnu.build-dependencies]
+bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
+either = { version = "1", features = ["use_std"] }
+libc = { version = "0.2" }
+minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
+nom = { version = "7", default-features = false, features = ["std"] }
 once_cell = { version = "1" }
+rustc-hash = { version = "1" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
+syn = { version = "2", default-features = false, features = ["visit-mut"] }
 
 [target.aarch64-apple-darwin.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
@@ -92,6 +108,7 @@ either = { version = "1", default-features = false, features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
+objc = { version = "0.2", default-features = false, features = ["exception"] }
 smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
@@ -114,6 +131,7 @@ either = { version = "1", default-features = false, features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
+objc = { version = "0.2", default-features = false, features = ["exception"] }
 smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
