@@ -19,6 +19,7 @@
 use chromaticity_ui_bridge::{
     AudioUniformSnapshotPayload, CameraDeviceKindPayload, CameraDevicePayload, ControlId,
     ControlValue, OscHealthSnapshot, OscHealthState, PresetId, SceneCard, SceneSource, SnapSlotId,
+    SyphonOutputStatusPayload, SyphonServerPayload,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -43,4 +44,7 @@ fn export_bindings_to_frontend_tree() {
     CameraDeviceKindPayload::export_all_to(&out_dir)
         .expect("export CameraDeviceKindPayload bindings");
     CameraDevicePayload::export_all_to(&out_dir).expect("export CameraDevicePayload bindings");
+    SyphonServerPayload::export_all_to(&out_dir).expect("export SyphonServerPayload bindings");
+    SyphonOutputStatusPayload::export_all_to(&out_dir)
+        .expect("export SyphonOutputStatusPayload bindings");
 }

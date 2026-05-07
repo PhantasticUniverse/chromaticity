@@ -412,6 +412,112 @@ impl From<CameraDevicePayload> for chromaticity_camera_adapter::DeviceSummary {
     }
 }
 
+/// IPC-facing Syphon server identifier, mirroring
+/// `chromaticity_syphon_adapter::SyphonServerId` across the Tauri
+/// command boundary.
+///
+/// Wave 1c-β Phase 4 Lane B introduces this struct so the operator-
+/// facing Syphon source-picker in `src/lib/views/Sources.svelte` can
+/// render the discovered server list (UUID, name, app_name) plus
+/// surface the `dictionary_version` value the canonical
+/// `SyphonClientBase.m:87-93` forward-compat refusal pattern keys off
+/// of. Field names mirror the engine-side struct verbatim per
+/// ADR-021 §4 so the wire shape is a 1:1 ts-rs export.
+///
+/// macOS-only at the engine seam (the syphon-adapter crate body is
+/// gated by `#![cfg(target_os = "macos")]` per ADR-021 §1), but this
+/// payload type itself is unconditionally compiled — non-macOS Tauri
+/// builds simply never construct it (the command handlers in
+/// `app/shell/src/commands/syphon.rs` return an "unavailable on this
+/// platform" error on those targets so the frontend store renders the
+/// "Unavailable on this platform" empty-state branch).
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct SyphonServerPayload {
+    pub uuid: String,
+    pub name: String,
+    pub app_name: String,
+    pub dictionary_version: u32,
+}
+
+#[cfg(target_os = "macos")]
+impl From<chromaticity_syphon_adapter::SyphonServerId> for SyphonServerPayload {
+    fn from(id: chromaticity_syphon_adapter::SyphonServerId) -> Self {
+        Self {
+            uuid: id.uuid,
+            name: id.name,
+            app_name: id.app_name,
+            dictionary_version: id.dictionary_version,
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl From<SyphonServerPayload> for chromaticity_syphon_adapter::SyphonServerId {
+    fn from(payload: SyphonServerPayload) -> Self {
+        Self {
+            uuid: payload.uuid,
+            name: payload.name,
+            app_name: payload.app_name,
+            dictionary_version: payload.dictionary_version,
+        }
+    }
+}
+
+/// IPC-facing Syphon output-publish status snapshot.
+///
+/// Wave 1c-β Phase 4 Lane B: backs the operator-facing
+/// publish/unpublish toggle in `src/lib/views/Sources.svelte`. The
+/// Tauri commands `publish_syphon_output` + `unpublish_syphon_output`
+/// return one of these so the frontend store can drive the
+/// non-dismissible trust-boundary warning banner per ADR-021 §10 +
+/// `docs/29` Wave 1c-β threat-model addendum.
+///
+/// Fields:
+///
+/// - `active` — `true` when a Syphon output server is currently
+///   registered on the bus; `false` after unpublish or before first
+///   publish.
+/// - `server_name` — `Some(name)` when active, carrying the
+///   operator-supplied server name (default
+///   [`DEFAULT_OUTPUT_NAME_TEMPLATE`]); `None` when inactive.
+///
+/// Default-off output posture per ADR-013 + ADR-016 default-off
+/// telemetry precedent: the initial state read by the frontend on
+/// view mount is `{active: false, server_name: None}` until the
+/// operator explicitly opts in via the publish toggle.
+///
+/// [`DEFAULT_OUTPUT_NAME_TEMPLATE`]: chromaticity_syphon_adapter::DEFAULT_OUTPUT_NAME_TEMPLATE
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct SyphonOutputStatusPayload {
+    pub active: bool,
+    pub server_name: Option<String>,
+}
+
+impl SyphonOutputStatusPayload {
+    /// Construct the inactive (default-off) output-status snapshot.
+    /// Used by `unpublish_syphon_output` and as the initial mount-
+    /// time state.
+    #[must_use]
+    pub fn inactive() -> Self {
+        Self {
+            active: false,
+            server_name: None,
+        }
+    }
+
+    /// Construct an active output-status snapshot carrying the
+    /// operator-supplied server name. Used by `publish_syphon_output`.
+    #[must_use]
+    pub fn active(server_name: String) -> Self {
+        Self {
+            active: true,
+            server_name: Some(server_name),
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {

@@ -19,3 +19,5 @@ export type { PresetId } from './PresetId';
 export type { SceneCard } from './SceneCard';
 export type { SceneSource } from './SceneSource';
 export type { SnapSlotId } from './SnapSlotId';
+export type { SyphonOutputStatusPayload } from './SyphonOutputStatusPayload';
+export type { SyphonServerPayload } from './SyphonServerPayload';
