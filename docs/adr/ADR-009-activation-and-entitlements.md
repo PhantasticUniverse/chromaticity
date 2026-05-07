@@ -156,3 +156,90 @@ These appear as capabilities in the namespace **only** as explicit `free.*` plac
 - `adr/ADR-005-integration-adapter-boundary.md` (adapter gating enforcement).
 - `adr/ADR-012-script-sandbox-engine.md` (script cannot bypass capability query).
 - `adr/ADR-014-signing-notarization-auto-update.md` (embedded-key provenance and rotation).
+
+## Wave 1c-β camera permission-policy addendum
+
+This addendum is recorded against Phase-4a Wave 1c-β (camera + Syphon adapter
+research / scoping). It does not change the §Explicitly free posture, the
+§Capability namespace declarations, or the §Decision tier matrix. It records the
+posture under which `IO_CAMERA` continues to ship free at MVP and the
+sign-off-recorded criteria a future wave must satisfy before camera tier-gating
+activates.
+
+### Reaffirmation: `IO_CAMERA` stays free at MVP
+
+`IO_CAMERA` (the `io.camera` capability declared at line 50 of this ADR) remains
+in the explicitly-free posture for MVP and Wave 1c-β. The runtime constant is
+pinned at `engine/entitlement/src/capability.rs::IO_CAMERA`, and the evaluator
+intentionally omits the constant from
+`engine/entitlement/src/enforcement.rs::HONORED_TOKEN_CAPABILITIES`
+(see the `IO_CAMERA intentionally omitted — free at MVP per ADR-009` annotation
+on the constant). No change to either site lands in Wave 1c-β; the camera adapter
+contract introduced in `ADR-020-camera-adapter.md` is permitted to start without
+consulting the entitlement evaluator for the MVP duration.
+
+### Post-MVP tier-gating-decision criteria
+
+Before any future wave activates `IO_CAMERA` tier-gating, every criterion below
+must be **verified and sign-off-recorded** in the activation PR's body. A partial
+satisfaction does not authorize the activation; the criteria are conjunctive.
+
+1. **Operator-research signal.** Post-MVP user research confirms operators expect
+   camera-as-paid-tier in line with reference-app peers. No such signal exists at
+   MVP — the default posture is therefore free, and the burden of proof rests on
+   the activation PR. Acceptable evidence: a written research artifact under
+   `docs/` linked from the activation PR body.
+2. **Adapter stability.** The camera adapter has logged at least three months of
+   production use without unrecovered faults; permission-flow, device-disconnect,
+   and re-enumeration paths all exercise cleanly in operator soak. Acceptable
+   evidence: a `docs/` soak summary or a green `EV-SOAK-CHAOS` row that includes
+   the camera adapter in its scope.
+3. **Tier-monetization model lock-in.** Chromaticity has a published
+   tier-pricing model that names `IO_CAMERA` explicitly as a paid-tier
+   capability. No such model exists at MVP; activation cannot precede
+   publication. Acceptable evidence: a linked SKU/pricing document referenced
+   from the §Capability namespace.
+4. **Entitlement-corpus extension.**
+   `engine/entitlement/tests/enforcement_corpus/` is extended with `IO_CAMERA`
+   tier-gating fixtures (token-with-`io.camera` permits the adapter; token-
+   without-`io.camera` denies; no-token denies after the activation). The
+   `EV-ENTITLEMENT-ENFORCEMENT` row narrowing-recap drops the
+   "IO_CAMERA intentionally excluded — free at MVP" clause as part of the same PR.
+5. **Migration plan for existing operators.** A documented grandfather clause
+   OR a free-trial window for the `IO_CAMERA` capability ships with the
+   activation, so engaging the gate does not interrupt operator workflows
+   mid-show. Acceptable evidence: a migration note in the activation PR body
+   plus a token-issuance change-log entry.
+
+### Activation PR shape
+
+When the future wave executes, the activation is a single PR comprising:
+
+- A one-line addition of `IO_CAMERA` to
+  `engine/entitlement/src/enforcement.rs::HONORED_TOKEN_CAPABILITIES` (or a lift
+  into `FREE_CAPABILITIES` if the operator-research signal lands on free-tier
+  with a placeholder, which is unlikely under criterion 3 above but is
+  permitted).
+- Extension of the entitlement corpus per criterion 4.
+- An update to the description column on `EV-ENTITLEMENT-ENFORCEMENT` in
+  `docs/26-evidence-artifact-registry.md` dropping the IO_CAMERA-excluded
+  narrowing clause.
+- Cross-tag the activation PR with `EV-ENTITLEMENT-ENFORCEMENT`.
+
+The widening is intentionally constrained to data + corpus + registry changes;
+the evaluator decision tree, fail-closed semantics, and offline / revocation
+behavior are unchanged.
+
+### Cross-references
+
+- `adr/ADR-020-camera-adapter.md` — camera adapter contract; parallel sibling
+  Phase-1 PR for Wave 1c-β scoping.
+- `engine/entitlement/src/capability.rs::IO_CAMERA` — capability constant.
+- `engine/entitlement/src/enforcement.rs::HONORED_TOKEN_CAPABILITIES` —
+  evaluator's honored set; `IO_CAMERA` intentionally absent.
+- `EV-ENTITLEMENT-ENFORCEMENT` — primary tagged evidence row for entitlement
+  work.
+- Wave 1b-B precedent: PR number 332 (`b57e11b`) widened
+  `HONORED_TOKEN_CAPABILITIES` from one entry to thirteen entries. The future
+  `IO_CAMERA` activation will follow a similar widening shape, but is
+  **explicitly out of scope** for Wave 1c-β.
