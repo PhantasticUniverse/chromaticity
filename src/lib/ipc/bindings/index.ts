@@ -9,6 +9,8 @@
 // callers import the IPC vocabulary from a single module path.
 
 export type { AudioUniformSnapshotPayload } from './AudioUniformSnapshotPayload';
+export type { CameraDeviceKindPayload } from './CameraDeviceKindPayload';
+export type { CameraDevicePayload } from './CameraDevicePayload';
 export type { ControlId } from './ControlId';
 export type { ControlValue } from './ControlValue';
 export type { OscHealthSnapshot } from './OscHealthSnapshot';

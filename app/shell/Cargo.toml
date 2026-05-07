@@ -37,6 +37,7 @@ serde_json = "1"
 # 0.10 line already used by engine/scene.
 sha2 = "0.10"
 chromaticity-audio = { version = "0.0.0", path = "../../engine/audio" }
+chromaticity-camera-adapter = { version = "0.0.0", path = "../../integrations/camera-adapter" }
 chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }
 chromaticity-scene = { version = "0.0.0", path = "../../engine/scene" }
 chromaticity-ui-bridge = { version = "0.0.0", path = "../ui-bridge" }

@@ -320,6 +320,98 @@ impl From<AudioUniformSnapshotPayload> for chromaticity_audio::AudioUniformSnaps
     }
 }
 
+/// IPC-facing classification of a camera device, mirroring
+/// [`chromaticity_camera_adapter::CameraDeviceKind`] across the Tauri
+/// command boundary.
+///
+/// Wave 1c-β Phase 4 Lane A introduces this enum so the operator-facing
+/// camera device-picker in `src/lib/views/Sources.svelte` can render
+/// per-row kind badges (built-in vs external vs Continuity vs virtual)
+/// without hard-coding the adapter's internal vocabulary in the
+/// frontend. ts-rs renders the enum as a flat string union
+/// (`"BuiltIn" | "External" | "Virtual" | "Continuity" | "Other"`)
+/// because there are no payload-bearing variants.
+///
+/// Mirrors the `#[non_exhaustive]` posture of the engine-side enum;
+/// the bridge wrapper reproduces every existing variant explicitly so
+/// future additions (e.g. a macOS DeskView discriminator) need a
+/// matching ts-rs variant before the IPC surface widens.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum CameraDeviceKindPayload {
+    BuiltIn,
+    External,
+    Virtual,
+    Continuity,
+    Other,
+}
+
+impl From<chromaticity_camera_adapter::CameraDeviceKind> for CameraDeviceKindPayload {
+    fn from(kind: chromaticity_camera_adapter::CameraDeviceKind) -> Self {
+        match kind {
+            chromaticity_camera_adapter::CameraDeviceKind::BuiltIn => Self::BuiltIn,
+            chromaticity_camera_adapter::CameraDeviceKind::External => Self::External,
+            chromaticity_camera_adapter::CameraDeviceKind::Virtual => Self::Virtual,
+            chromaticity_camera_adapter::CameraDeviceKind::Continuity => Self::Continuity,
+            // Catch-all for the engine-side `#[non_exhaustive]` enum:
+            // any future variant flows into `Other` until the bridge
+            // surface is widened explicitly.
+            _ => Self::Other,
+        }
+    }
+}
+
+impl From<CameraDeviceKindPayload> for chromaticity_camera_adapter::CameraDeviceKind {
+    fn from(payload: CameraDeviceKindPayload) -> Self {
+        match payload {
+            CameraDeviceKindPayload::BuiltIn => Self::BuiltIn,
+            CameraDeviceKindPayload::External => Self::External,
+            CameraDeviceKindPayload::Virtual => Self::Virtual,
+            CameraDeviceKindPayload::Continuity => Self::Continuity,
+            CameraDeviceKindPayload::Other => Self::Other,
+        }
+    }
+}
+
+/// IPC-facing camera device summary, mirroring
+/// [`chromaticity_camera_adapter::DeviceSummary`] across the Tauri
+/// command boundary.
+///
+/// Wave 1c-β Phase 4 Lane A: backs the `list_camera_devices` Tauri
+/// command consumed by `src/lib/stores/cameraStore.svelte.ts`. Field
+/// names mirror the engine-side struct verbatim
+/// (`device_id` / `display_name` / `kind`) so the wire shape is a
+/// 1:1 ts-rs export — the persisted device-id round-trips through the
+/// bridge unchanged so reconnect against a previously selected camera
+/// matches the platform-stable nokhwa identifier per ADR-020 §6.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct CameraDevicePayload {
+    pub device_id: String,
+    pub display_name: String,
+    pub kind: CameraDeviceKindPayload,
+}
+
+impl From<chromaticity_camera_adapter::DeviceSummary> for CameraDevicePayload {
+    fn from(summary: chromaticity_camera_adapter::DeviceSummary) -> Self {
+        Self {
+            device_id: summary.device_id,
+            display_name: summary.display_name,
+            kind: summary.kind.into(),
+        }
+    }
+}
+
+impl From<CameraDevicePayload> for chromaticity_camera_adapter::DeviceSummary {
+    fn from(payload: CameraDevicePayload) -> Self {
+        Self {
+            device_id: payload.device_id,
+            display_name: payload.display_name,
+            kind: payload.kind.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {

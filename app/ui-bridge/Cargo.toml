@@ -32,6 +32,7 @@ workspace = true
 
 [dependencies]
 chromaticity-audio = { version = "0.0.0", path = "../../engine/audio" }
+chromaticity-camera-adapter = { version = "0.0.0", path = "../../integrations/camera-adapter" }
 chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }
 serde = { version = "1", features = ["derive"] }
 ts-rs = "10"

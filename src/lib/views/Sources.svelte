@@ -52,6 +52,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MediaAsset,
   } from '../data/sources-fixtures';
   import Icon from '../Icon.svelte';
+  import { cameraStore } from '../stores/cameraStore.svelte';
   import { currentPlatform } from '../stores/platform';
 
   let selectedCollectionId = $state<string>(DEFAULT_COLLECTION_ID);
@@ -119,6 +120,45 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   function toggleLiveSource(src: LiveSource): void {
     if (liveSourceDisabled(src)) return;
     connectedLiveSources[src.id] = !connectedLiveSources[src.id];
+  }
+
+  // Wave 1c-β Phase 4 Lane A camera section. The store rehydrates the
+  // last-selected device from `localStorage` on mount, then dispatches
+  // the `list_camera_devices` Tauri command to populate the visible
+  // device list. The current command returns an empty vec under the
+  // documented stub posture (see `cameraStore.svelte.ts` module prose);
+  // the empty-state copy guides the operator to System Settings for
+  // permission granting until the per-platform nokhwa enumeration arms
+  // wire end-to-end.
+  $effect(() => {
+    cameraStore.loadPersistedSelection();
+    void cameraStore.refresh();
+  });
+
+  function selectCamera(deviceId: string): void {
+    if (cameraStore.selected === deviceId) {
+      cameraStore.select(null);
+    } else {
+      cameraStore.select(deviceId);
+    }
+  }
+
+  /** Operator-facing label for the camera-kind discriminator. Mirrors
+   * the `chromaticity_camera_adapter::CameraDeviceKind` variants per
+   * ADR-020 §Decision §2 / `docs/54` Phase-2 lesson 9. */
+  function cameraKindLabel(kind: string): string {
+    switch (kind) {
+      case 'BuiltIn':
+        return 'Built-in';
+      case 'External':
+        return 'External';
+      case 'Virtual':
+        return 'Virtual';
+      case 'Continuity':
+        return 'Continuity';
+      default:
+        return 'Other';
+    }
   }
 </script>
 
@@ -242,6 +282,77 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </li>
       {/if}
     </ul>
+
+    <section class="sources__live sources__live--camera" aria-label="Camera devices">
+      <header class="sources__live-header">
+        <h2 class="sources__live-title">
+          <span class="sources__grid-eyebrow">Live</span>
+          <span class="sources__grid-sep" aria-hidden="true">·</span>
+          Cameras
+          <span class="sources__grid-sep" aria-hidden="true">·</span>
+          <span class="sources__grid-count">{cameraStore.devices.length}</span>
+        </h2>
+        <p class="sources__live-sub">
+          Cross-platform camera input via the Phase-4a Wave 1c-β camera adapter (CoreMediaIO on
+          macOS, Media Foundation on Windows). Selection persists across launches.
+        </p>
+      </header>
+
+      {#if cameraStore.isLoading}
+        <p class="sources__live-status" role="status">Searching for cameras…</p>
+      {:else if cameraStore.error}
+        <p class="sources__live-status sources__live-status--error" role="alert">
+          Camera enumeration failed: {cameraStore.error}
+        </p>
+      {:else if cameraStore.devices.length === 0}
+        <p class="sources__live-status">
+          No cameras found — grant camera permission via System Settings (macOS: Privacy &amp;
+          Security › Camera; Windows: Settings › Privacy &amp; security › Camera) and reopen this
+          view.
+        </p>
+      {:else}
+        <ul class="sources__live-list" data-testid="camera-device-list">
+          {#each cameraStore.devices as device (device.device_id)}
+            {@const isSelected = cameraStore.selected === device.device_id}
+            <li
+              class="sources__live-row"
+              class:connected={isSelected}
+              data-device-id={device.device_id}
+            >
+              <span class="sources__live-glyph" aria-hidden="true">
+                <Icon name="camera" size={14} />
+              </span>
+              <div class="sources__live-meta">
+                <p class="sources__live-name">{device.display_name}</p>
+                <p class="sources__live-origin">{device.device_id}</p>
+              </div>
+              <span class="sources__live-spec">
+                <span>{cameraKindLabel(device.kind)}</span>
+              </span>
+              <span
+                class="sources__live-chip sources__live-chip--cross"
+                aria-label="Cross-platform"
+              >
+                CAMERA
+              </span>
+              <button
+                type="button"
+                class="sources__live-action"
+                class:sources__live-action--connected={isSelected}
+                onclick={() => selectCamera(device.device_id)}
+                aria-pressed={isSelected}
+              >
+                {#if isSelected}
+                  Selected
+                {:else}
+                  Connect
+                {/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
 
     <section class="sources__live" aria-label="Live sources">
       <header class="sources__live-header">
@@ -1052,5 +1163,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .sources__live-action:disabled {
     cursor: not-allowed;
     opacity: 0.6;
+  }
+  /* Wave 1c-β Phase 4 Lane A camera section status copy. Renders the
+   * loading / error / empty-state messages above the device list. */
+  .sources__live-status {
+    margin: 0;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-bg-3);
+    border: 1px dashed var(--color-line-2);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-2);
+    font-size: var(--font-size-body-sm);
+  }
+  .sources__live-status--error {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
   }
 </style>
