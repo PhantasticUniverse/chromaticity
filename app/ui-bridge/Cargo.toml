@@ -40,3 +40,14 @@ workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
 [dev-dependencies]
 serde_json = "1"
+
+# Wave 1c-β Phase 4 Lane B: SyphonServerPayload's `From` impls bridge
+# `chromaticity_syphon_adapter::SyphonServerId`. The syphon-adapter
+# crate body is gated by `#![cfg(target_os = "macos")]` per ADR-021
+# §1, so the dep declaration is `target_os = "macos"`-scoped to keep
+# non-macOS workspace builds free of the Objective-C binding stack.
+# The payload type itself stays unconditionally compiled — only the
+# `From` impls + the engine-side construction call sites are
+# macOS-gated.
+[target.'cfg(target_os = "macos")'.dependencies]
+chromaticity-syphon-adapter = { version = "0.0.0", path = "../../integrations/syphon-adapter" }

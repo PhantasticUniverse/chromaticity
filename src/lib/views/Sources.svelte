@@ -54,6 +54,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Icon from '../Icon.svelte';
   import { cameraStore } from '../stores/cameraStore.svelte';
   import { currentPlatform } from '../stores/platform';
+  import { DEFAULT_OUTPUT_NAME, syphonStore } from '../stores/syphonStore.svelte';
 
   let selectedCollectionId = $state<string>(DEFAULT_COLLECTION_ID);
   let selectedAssetId = $state<string>(DEFAULT_ASSET_ID);
@@ -158,6 +159,44 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         return 'Continuity';
       default:
         return 'Other';
+    }
+  }
+
+  // Wave 1c-β Phase 4 Lane B Syphon section. macOS-only at the engine
+  // seam per ADR-021 §1; the consumer view detects non-macOS via
+  // `currentPlatform` and renders the "Unavailable on this platform"
+  // empty-state branch without dispatching the Tauri commands. On
+  // macOS the store rehydrates the last-selected input UUID from
+  // `localStorage`, then dispatches `list_syphon_servers` to populate
+  // the visible server list.
+  //
+  // **CRITICAL** per ADR-021 §10 + `docs/29-cleanroom-legal-policy-baseline.md`
+  // Wave 1c-β threat-model addendum: when `syphonStore.output.active
+  // === true`, this view MUST render the non-dismissible
+  // trust-boundary warning banner. The banner copy is canonical and
+  // MUST NOT be modified or made dismissible while output is active.
+  let publishName = $state<string>(DEFAULT_OUTPUT_NAME);
+  $effect(() => {
+    if (currentPlatform !== 'mac') return;
+    syphonStore.loadPersistedSelection();
+    void syphonStore.refreshServers();
+  });
+
+  function selectSyphonInput(uuid: string): void {
+    if (syphonStore.selectedInput === uuid) {
+      syphonStore.selectInput(null);
+    } else {
+      syphonStore.selectInput(uuid);
+    }
+  }
+
+  async function toggleSyphonOutput(): Promise<void> {
+    if (syphonStore.output.active) {
+      await syphonStore.unpublishOutput();
+    } else {
+      const trimmed = publishName.trim();
+      const finalName = trimmed.length > 0 ? trimmed : DEFAULT_OUTPUT_NAME;
+      await syphonStore.publishOutput(finalName);
     }
   }
 </script>
@@ -351,6 +390,150 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             </li>
           {/each}
         </ul>
+      {/if}
+    </section>
+
+    <section class="sources__live sources__live--syphon" aria-label="Syphon servers">
+      <header class="sources__live-header">
+        <h2 class="sources__live-title">
+          <span class="sources__grid-eyebrow">Live</span>
+          <span class="sources__grid-sep" aria-hidden="true">·</span>
+          Syphon
+          <span class="sources__grid-sep" aria-hidden="true">·</span>
+          <span class="sources__grid-count">{syphonStore.servers.length}</span>
+        </h2>
+        <p class="sources__live-sub">
+          GPU-surface I/O via the Phase-4a Wave 1c-β Syphon adapter (macOS-only). Subscribe to a
+          server published by another application, or publish chromaticity's output back onto the
+          local-machine bus.
+        </p>
+      </header>
+
+      {#if currentPlatform !== 'mac'}
+        <p class="sources__live-status">
+          Unavailable on this platform — Syphon is macOS-only. Use NDI on Windows for cross-app live
+          texture I/O.
+        </p>
+      {:else}
+        <!-- Input section: discovered servers on the bus. -->
+        <div class="sources__syphon-section">
+          <h3 class="sources__syphon-subhead">Input · subscribe</h3>
+          <p class="sources__syphon-sub">
+            Syphon input may originate from any application on this machine; verify the source
+            before binding.
+          </p>
+          {#if syphonStore.isLoading}
+            <p class="sources__live-status" role="status">Searching for Syphon servers…</p>
+          {:else if syphonStore.error}
+            <p class="sources__live-status sources__live-status--error" role="alert">
+              Syphon error: {syphonStore.error}
+            </p>
+          {:else if syphonStore.servers.length === 0}
+            <p class="sources__live-status">
+              No Syphon sources found — start a Syphon-compatible app (Resolume, MadMapper, VDMX,
+              etc.) and refresh.
+            </p>
+          {:else}
+            <ul class="sources__live-list" data-testid="syphon-server-list">
+              {#each syphonStore.servers as server (server.uuid)}
+                {@const isSelected = syphonStore.selectedInput === server.uuid}
+                <li
+                  class="sources__live-row"
+                  class:connected={isSelected}
+                  data-server-uuid={server.uuid}
+                >
+                  <span class="sources__live-glyph" aria-hidden="true">
+                    <Icon name="link" size={14} />
+                  </span>
+                  <div class="sources__live-meta">
+                    <p class="sources__live-name">{server.name}</p>
+                    <p class="sources__live-origin">{server.app_name}</p>
+                  </div>
+                  <span class="sources__live-spec">
+                    <span>SYPHON</span>
+                  </span>
+                  <span
+                    class="sources__live-chip sources__live-chip--cross"
+                    aria-label="macOS-only"
+                  >
+                    MAC
+                  </span>
+                  <button
+                    type="button"
+                    class="sources__live-action"
+                    class:sources__live-action--connected={isSelected}
+                    onclick={() => selectSyphonInput(server.uuid)}
+                    aria-pressed={isSelected}
+                  >
+                    {#if isSelected}
+                      Selected
+                    {:else}
+                      Subscribe
+                    {/if}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          <button
+            type="button"
+            class="sources__syphon-refresh"
+            onclick={() => void syphonStore.refreshServers()}
+            disabled={syphonStore.isLoading}
+          >
+            <Icon name="refresh" size={12} /> Refresh
+          </button>
+        </div>
+
+        <!-- Output section: publish chromaticity's output onto the bus. -->
+        <div class="sources__syphon-section">
+          <h3 class="sources__syphon-subhead">Output · publish</h3>
+          <p class="sources__syphon-sub">
+            Default-off. Publishing exposes chromaticity's GPU output to any application on this
+            machine.
+          </p>
+          <div class="sources__syphon-publish">
+            <label class="sources__syphon-publish-label">
+              <span class="sources__syphon-publish-label-text">Server name</span>
+              <input
+                type="text"
+                class="sources__syphon-publish-input"
+                bind:value={publishName}
+                placeholder={DEFAULT_OUTPUT_NAME}
+                disabled={syphonStore.output.active}
+                aria-label="Syphon output server name"
+              />
+            </label>
+            <button
+              type="button"
+              class="sources__live-action"
+              class:sources__live-action--connected={syphonStore.output.active}
+              onclick={() => void toggleSyphonOutput()}
+              aria-pressed={syphonStore.output.active}
+            >
+              {#if syphonStore.output.active}
+                Stop publishing
+              {:else}
+                Publish output
+              {/if}
+            </button>
+          </div>
+
+          {#if syphonStore.output.active}
+            <!-- CRITICAL non-dismissible trust-boundary warning per
+              ADR-021 §10 + docs/29 Wave 1c-β threat-model addendum.
+              Copy is canonical; do not modify or make dismissible
+              while output is active. -->
+            <p
+              class="sources__syphon-warning"
+              role="alert"
+              data-testid="syphon-trust-boundary-warning"
+            >
+              Syphon output is visible to any application on this machine. Do not publish surfaces
+              containing PII or secrets.
+            </p>
+          {/if}
+        </div>
       {/if}
     </section>
 
@@ -1178,5 +1361,106 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .sources__live-status--error {
     color: var(--color-danger);
     border-color: var(--color-danger);
+  }
+
+  /* ---------------- Wave 1c-β Phase 4 Lane B Syphon section ------------- */
+  .sources__syphon-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px dashed var(--color-line-1);
+  }
+  .sources__syphon-section:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 0;
+  }
+  .sources__syphon-subhead {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-md);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-md);
+    color: var(--color-text-2);
+    font-weight: 500;
+  }
+  .sources__syphon-sub {
+    margin: 0 0 var(--space-xs) 0;
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-2);
+  }
+  .sources__syphon-refresh {
+    align-self: flex-start;
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-1);
+    padding: var(--space-xs) var(--space-sm);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-label);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+  .sources__syphon-refresh:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  .sources__syphon-publish {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+  .sources__syphon-publish-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 200px;
+  }
+  .sources__syphon-publish-label-text {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-2);
+  }
+  .sources__syphon-publish-input {
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-0);
+    padding: 4px var(--space-sm);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-body-sm);
+  }
+  .sources__syphon-publish-input:focus {
+    outline: none;
+    border-color: var(--color-line-3);
+  }
+  .sources__syphon-publish-input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  /* CRITICAL non-dismissible trust-boundary warning per ADR-021 §10 +
+   * docs/29 Wave 1c-β threat-model addendum. Visual treatment follows
+   * the danger-band pattern so the warning is unmissable while Syphon
+   * output is active. */
+  .sources__syphon-warning {
+    margin: var(--space-sm) 0 0 0;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-danger);
+    border-left: 4px solid var(--color-danger);
+    border-radius: var(--radius-sm);
+    color: var(--color-danger);
+    font-size: var(--font-size-body-sm);
+    font-weight: 500;
   }
 </style>

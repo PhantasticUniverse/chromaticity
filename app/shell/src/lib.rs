@@ -202,6 +202,9 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::license::install_license,
             commands::license::remove_license,
             commands::license::request_trial,
+            commands::syphon::list_syphon_servers,
+            commands::syphon::publish_syphon_output,
+            commands::syphon::unpublish_syphon_output,
         ])
         .run(tauri::generate_context!())
 }

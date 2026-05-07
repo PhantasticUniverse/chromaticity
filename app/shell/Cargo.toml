@@ -43,6 +43,17 @@ chromaticity-scene = { version = "0.0.0", path = "../../engine/scene" }
 chromaticity-ui-bridge = { version = "0.0.0", path = "../ui-bridge" }
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
+# Wave 1c-β Phase 4 Lane B: the Syphon command handlers
+# (`commands::syphon`) call into the syphon-adapter directly to drive
+# `SyphonServerDirectory::current_servers()`. The adapter crate body
+# is gated by `#![cfg(target_os = "macos")]` per ADR-021 §1, so the
+# dep is target-scoped to keep non-macOS builds free of the
+# Objective-C binding stack; the command handlers themselves carry a
+# matching `#[cfg(target_os = "macos")]` per-fn gate with a non-macOS
+# arm that returns the platform-unavailable error.
+[target.'cfg(target_os = "macos")'.dependencies]
+chromaticity-syphon-adapter = { version = "0.0.0", path = "../../integrations/syphon-adapter" }
+
 [dev-dependencies]
 ts-rs = "10"
 tauri = { version = "2", features = ["test"] }
