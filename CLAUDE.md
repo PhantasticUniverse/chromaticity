@@ -337,6 +337,37 @@ RecoveryDeadlineExceeded}` rejection taxonomy + `ChaosReport` +
     78 `EV-GPU-SELECTION` PR 2 (hardware-gated dual-GPU validation
     deferred). Phase-4d EXIT decision remains AO-held per
     `docs/11-roadmap-phases.md`; this wave's closure does not
+    pre-empt the gate decision. **Phase-4d Row 93
+    `EV-CRASH-PAYLOAD-REDACTION` closure landed 2026-05-07** in a
+    2-PR sequence covering PR numbers 346 (redaction primitives —
+    `7ff37c6`, anchor run `25415739244`) plus 377 (synthetic crash-
+    payload validation harness + closing-docs — this PR). Row 93
+    transitions `Planned -> Pass` under synthetic-harness narrowing:
+    `engine/observability/src/crash_harness.rs` ships the
+    `SimulatedCrashClass` 4-arm enum (`Sigsegv`,
+    `PanicInRenderThread`, `OutOfMemory`, `AssertionFailure`),
+    `SyntheticCrashPayload` constructor populating all 5
+    `RedactCategory` arms with class-distinct sentinel strings of
+    shape `<class-label>-<category>-sentinel-do-not-leak`,
+    `CrashPayloadValidationReport` (sentinels-redacted vs
+    sentinels-leaked accounting), and
+    `validate_synthetic_crash_payload` runner using substring-search
+    detection over the serialised redacted output, plus 9 T1 harness
+    pins and 7 new harness-driven T2 fixtures extending the existing
+    `crash_payload_redaction_corpus.rs`. Real platform-specific
+    crash-handler injection (POSIX signal handlers feeding `SIGSEGV`
+    minidumps, panic-hook wiring on the render thread, OOM-killer
+    integration) is out-of-scope at MVP and reserved for a future-
+    wave full-injection harness that composes on top of the
+    primitives + harness, mirroring the deferred-composition framing
+    accepted at row 40 `EV-SOAK-CHAOS` Wave 4d.4. After this closure
+    3 Phase-4d open items remain: row 80 `EV-CRASH-RESUME` class-d
+    (deferred-pending-state-shape gap; classes a/b/c/e/f/g already
+    shipped); row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs
+    (~2026-05-20 calendar-gated 14-day soak window); row 78
+    `EV-GPU-SELECTION` PR 2 (hardware-gated dual-GPU validation
+    deferred). Phase-4d EXIT decision remains AO-held per
+    `docs/11-roadmap-phases.md`; this row 93 closure does not
     pre-empt the gate decision.
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:

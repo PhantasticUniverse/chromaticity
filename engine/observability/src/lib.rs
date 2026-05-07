@@ -18,10 +18,18 @@
 //!   encoding the ADR-016 §Crash reporting redaction contract
 //!   (`main.glsl` / `script.js` / media buffers / operator free-text /
 //!   license-token bytes excluded from any future crash-report
-//!   payload). Primitives ship now; the future crash-payload-
-//!   construction PR composes them into the live redaction path.
-//!   Registry row 93 (`EV-CRASH-PAYLOAD-REDACTION`) stays at
-//!   `Planned` until that future PR + a payload-inspection corpus
+//!   payload).
+//! - [`crash_harness`] — synthetic crash-payload construction +
+//!   validation harness composing on top of [`crash_redaction`]. PR 2
+//!   of the row 93 sequence: builds shape-realistic payloads across
+//!   four simulated crash classes (SIGSEGV, panic-in-render-thread,
+//!   OOM, assertion-failure), runs them through
+//!   [`crash_redaction::CrashPayloadRedactor`], and asserts no
+//!   sentinel value from the sensitive-field set survives the
+//!   redaction transform. Registry row 93
+//!   (`EV-CRASH-PAYLOAD-REDACTION`) transitions `Planned -> Pass`
+//!   under the synthetic-harness narrowing recorded in the row 93
+//!   description column when this module + the sibling T2 corpus
 //!   land together.
 //!
 //! Divergence between the Rust types in [`catalog`] and docs/31 is a
@@ -59,6 +67,7 @@
 pub mod analytics_audit;
 pub mod catalog;
 pub mod chaos;
+pub mod crash_harness;
 pub mod crash_redaction;
 pub mod emit;
 pub mod soak;
@@ -66,6 +75,10 @@ pub mod soak;
 pub use chaos::{
     ChaosInjectionError, ChaosInjectionOutcome, ChaosPlan, ChaosReport, ChaosScheduleEntry,
     ChaosWorkload, FaultEvent, FiredFaultEvent, StabilityFailureChaosClass, run_chaos_soak,
+};
+pub use crash_harness::{
+    CrashPayloadValidationReport, SimulatedCrashClass, SyntheticCrashPayload,
+    validate_synthetic_crash_payload,
 };
 pub use soak::{
     SoakConfig, SoakHarnessError, SoakReport, SoakWorkload, SoakWorkloadError, StabilityFailure,

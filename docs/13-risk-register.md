@@ -352,6 +352,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - `EV-ATS-NO-THIRD-PARTY-EXCEPTIONS` fails the release if `Info.plist` grows a new `NSExceptionDomains` entry,
  - dependency intake checklist requires any third-party library to declare its outbound calls; unexpected calls fail intake review.
 - Residual: Low. Three independent gates (inventory, analytics-zero-default, ATS-exception grep) make a leak a release-blocker; residual is bounded to new-dependency oversight between release cycles.
+- Closure (Phase-4d 2026-05-07): row 93 `EV-CRASH-PAYLOAD-REDACTION` reaches `Pass` under synthetic-harness narrowing via the 2-PR sequence covering PR numbers 346 + 377. The redaction primitives (`engine/observability/src/crash_redaction.rs`) plus the synthetic crash-payload validation harness (`engine/observability/src/crash_harness.rs`) close the residual leak vector specific to crash-report payloads — even when a future Sentry transport ships and a real crash injects through the eventual platform-specific handler infrastructure, the redactor strips scene source, script source, media buffers, operator free-text, and license-token bytes before any byte reaches the wire. The R-25 gate set widens from three (inventory + analytics-zero-default + ATS-exception) to four (the new redaction-primitives + synthetic-harness validation gate).
 - Owner: AI QA/Ops Workcell + Accountable Owner.
 
 ### R-26 Bundle Hygiene Regression
