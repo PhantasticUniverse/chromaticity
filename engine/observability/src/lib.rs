@@ -60,6 +60,12 @@ pub mod analytics_audit;
 pub mod catalog;
 pub mod crash_redaction;
 pub mod emit;
+pub mod soak;
+
+pub use soak::{
+    SoakConfig, SoakHarnessError, SoakReport, SoakWorkload, SoakWorkloadError, StabilityFailure,
+    StabilityFailureKind, run_soak,
+};
 
 /// Construct the current observability schema-version metric event.
 ///
