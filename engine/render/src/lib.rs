@@ -197,6 +197,34 @@
 //!   [`multipass::UniformValue`] (the FFT array consolidation that
 //!   was previously listed here landed in the slice-5a follow-up
 //!   that opened catalog v1.3.0).
+//! - **Wave 1c-β Phase 3 PR 3** (this PR) — engine-side Syphon ↔ wgpu
+//!   bridge per ADR-021 §6 ([`syphon_adapter::SyphonRenderBridge`] +
+//!   [`syphon_adapter::Objc2SyphonClientHandle`] +
+//!   [`syphon_adapter::Objc2SyphonServerHandle`], gated behind the
+//!   optional `syphon-binding` cargo feature + `cfg(target_os = "macos")`).
+//!   Real-backend impls of
+//!   `chromaticity_syphon_adapter::adapter::backend::SyphonClientHandle`
+//!   / `SyphonServerHandle` wrap `Retained<SyphonMetalClient>` /
+//!   `Retained<SyphonMetalServer>` framework handles obtained via
+//!   `chromaticity_syphon_adapter::bindings`. Drop posture per
+//!   ADR-021 §8 + docs/54 Lesson 11 (defensive `[client stop]` /
+//!   `[server stop]`); CFType-as-Drop refcounting per docs/54
+//!   Lesson 3.7. PR 3 ships the trait-impl shape + T1 pins under
+//!   the wave's synthetic-narrowing posture (no live Syphon bus on
+//!   CI per ADR-021 §10); the live `wgpu_hal::api::Metal` escape-
+//!   hatch + `CVMetalTextureCache` + `CVPixelBufferPool` pre-warm
+//!   ring per docs/54 lessons 3.1 / 3.3 / 3.4 are documented
+//!   inline at [`syphon_adapter::SyphonRenderBridge::resolve_iosurface_to_wgpu_texture`]
+//!   / [`syphon_adapter::SyphonRenderBridge::prewarm_output_surface_ring`]
+//!   as the deferred bridge-body wave's target — both entry points
+//!   return [`syphon_adapter::SyphonRenderBridgeError::Unimplemented`]
+//!   in PR 3. The narrowing is recorded honestly in the
+//!   `EV-INTEGRATION-MATRIX` closing-docs description-column entry
+//!   per the wave's synthetic-narrowing posture; format locked to
+//!   [`wgpu::TextureFormat::Bgra8UnormSrgb`] ↔ `kCVPixelFormatType_32BGRA`
+//!   per docs/54 Lesson 3.2. Crate coupling stays consumer-side:
+//!   `integrations/syphon-adapter/` does NOT depend on
+//!   `engine/render`.
 //! - **Wave 4d.2 Lane B PR 1 of 2** (PR `#351` / `5abc443`) — deterministic GPU
 //!   adapter-selection policy per ADR-011 §7
 //!   ([`adapter_selection::GpuSelectionPolicy`] +
@@ -282,6 +310,8 @@ pub mod multipass;
 pub mod scene_adapter;
 pub mod shader_cache;
 pub mod single_pass;
+#[cfg(all(feature = "syphon-binding", target_os = "macos"))]
+pub mod syphon_adapter;
 pub mod transitions;
 
 pub use adapter_selection::{
@@ -303,6 +333,10 @@ pub use multipass::{
 pub use scene_adapter::{AdapterError, SceneAdapterOptions};
 pub use shader_cache::{ShaderCache, ShaderCompileMetric, ShaderId};
 pub use single_pass::{RenderError, compile_and_render_single_pass};
+#[cfg(all(feature = "syphon-binding", target_os = "macos"))]
+pub use syphon_adapter::{
+    Objc2SyphonClientHandle, Objc2SyphonServerHandle, SyphonRenderBridge, SyphonRenderBridgeError,
+};
 pub use transitions::{
     DEFAULT_TIMEOUT_MS, FixedTransitionClock, MonotonicTransitionClock, TransitionClock,
     TransitionError, TransitionOrchestrator, TransitionState,
