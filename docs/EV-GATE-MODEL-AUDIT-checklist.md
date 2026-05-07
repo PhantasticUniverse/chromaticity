@@ -1561,6 +1561,12 @@ Phase-4b EXIT itself remains AO-held — Wave 4b.7 (`EV-LIBRARY-BUNDLE-LAYOUT`
 adjacency on `EV-IMPORT-REFERENCE-SHOW`) and Wave 4b.8
 (`EV-ACCESSIBILITY-AA`) are explicitly carried forward as future
 waves; this cluster does not pre-empt the Phase-4b gate decision.
+**Closed**: Wave 4b.7 closure (2026-05-07) and Wave 4b.8 closure
+(2026-05-07) both landed; see the dedicated closure sections at the
+end of this file for the per-PR sequence + narrowings + Pass
+verdicts. As of Wave 4b.8 closure, all 11 Phase-4b EXIT rows are at
+`Pass` under collective narrowings; Phase-4b EXIT is passable at AO
+discretion.
 
 ### Per-row verdict (transitioned to Pass under narrowing)
 
@@ -1679,7 +1685,11 @@ co-developed Phase-4b/4c synthetic UX-latency harness in PR `#363`.
 
 Phase-4b EXIT remains AO-held: Wave 4b.7 (`EV-IMPORT-REFERENCE-SHOW`)
 and Wave 4b.8 (`EV-ACCESSIBILITY-AA`) carry forward as future
-directed engineering waves. Phase-4c EXIT remains AO-held: rows
+directed engineering waves. **Closed**: both waves landed
+2026-05-07 — see the Phase-4b Wave 4b.7 closure and Phase-4b Wave
+4b.8 closure sections at the end of this file. After Wave 4b.8
+closure all 11 Phase-4b EXIT rows are at `Pass` under collective
+narrowings; Phase-4b EXIT is passable at AO discretion. Phase-4c EXIT remains AO-held: rows
 `EV-DOCS-CLEANROOM` + `EV-DOCS-VERSION-SYNC` carry forward; Wave
 4d.4 (full `EV-CRASH-RESUME` classes d/f/g + `EV-CRASH-PAYLOAD-REDACTION`
 PR 2 + remaining `EV-GPU-SELECTION` hardware-gated fixtures + the
@@ -1721,7 +1731,9 @@ read-side, structured-diagnostic level, and orchestrator-shape level;
 actual Chromaticity user-data store mutation is preserved as a
 post-MVP V1 wave behind entitlement-tier-gating + scene-library-write
 surfaces. After this closure, Wave 4b.8 (`EV-ACCESSIBILITY-AA`)
-is the only remaining Phase-4b EXIT prerequisite.
+is the only remaining Phase-4b EXIT prerequisite. **Closed**: Wave
+4b.8 closure landed 2026-05-07 — see the Phase-4b Wave 4b.8 closure
+section immediately below this one for the per-PR sequence.
 
 ### Per-PR sequence
 
@@ -1793,10 +1805,14 @@ flip in lockstep — each PR's test job feeds the next anchor.
 
 Phase-4b EXIT remains AO-held: Wave 4b.8 (`EV-ACCESSIBILITY-AA`)
 is the only remaining 4b prerequisite and carries forward as a
-future directed engineering wave. Phase-4 EXIT itself remains
-AO-held until 4b / 4c / 4d sub-phases close per
-`docs/11-roadmap-phases.md`; this wave's closure does not pre-empt
-the Phase-4b EXIT gate decision.
+future directed engineering wave. **Closed**: Wave 4b.8 closure
+landed 2026-05-07 — see the Phase-4b Wave 4b.8 closure section
+immediately below; after that closure all 11 Phase-4b EXIT rows
+are at `Pass` under collective narrowings and Phase-4b EXIT is
+passable at AO discretion. Phase-4 EXIT itself remains AO-held
+until 4b / 4c / 4d sub-phases close per `docs/11-roadmap-phases.md`;
+this wave's closure does not pre-empt the Phase-4b EXIT gate
+decision.
 
 ### Deferred axes (wave narrowing record)
 
@@ -1821,6 +1837,161 @@ the Phase-4b EXIT gate decision.
   against the live `SceneIndex` from
   `app/shell/src/commands/library_index.rs` deferred to a future
   PR.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
+
+## Phase-4b Wave 4b.8 closure
+
+Phase-4b Wave 4b.8 closure (2026-05-07) lands the last remaining
+Phase-4b EXIT prerequisite — `EV-ACCESSIBILITY-AA` (row 76) — at
+`Pass` under documented narrowings via a 3-PR sequence covering PR
+numbers 371 + 372 plus this docs(repo) closing PR. The wave ships
+the WCAG 2.2 AA automated audit surface end-to-end at the
+component-scope level: an `axe-core` harness audits all 14 routed
+views in `src/lib/views/` against the four WCAG 2.2 AA tag groups,
+strict zero-finding budgets across the four severity tiers, and 6
+component-level fixes closing 5 real findings surfaced by PR 1.
+After this closure all 11 Phase-4b EXIT rows are at `Pass` under
+collective narrowings; Phase-4b EXIT is passable at AO discretion
+(the same posture Phase-4a reached prior to AO declaring EXIT
+2026-05-03 at commit `<merge-sha>` per the Phase-4a EXIT closure
+section above).
+
+### Per-PR sequence
+
+- **PR `#371`** (`54be28a`, anchor run `25469037211`) — axe-core
+  harness integration. Adds `src/lib/__tests__/accessibility/`
+  with `axe-harness.ts` (`runAxeAudit(container, view)` invoking
+  `axe.run` scoped to WCAG 2.2 AA tags `wcag2a` + `wcag2aa` +
+  `wcag22a` + `wcag22aa` plus `findingsAtOrAbove` filter),
+  `baseline-allowlist.ts` (per-view `BaselineEntry { maxCritical,
+  maxSerious, maxModerate, maxMinor }` permissive PR-1 ceiling
+  `{5, 10, 20, 50}`), and `wcag-aa-corpus.test.ts` (T2 corpus
+  iterating all 14 routed views in `src/lib/views/`). Adds
+  `axe-core ^4.10.0` (resolved 4.11.4) devDep. `matchMedia` stubbed
+  via `vi.stubGlobal` per `feedback_vitest_matchmedia_stubglobal.md`
+  and `@tauri-apps/api/core` `invoke` mocked via `vi.hoisted` +
+  `vi.mock` per `feedback_vitest_invoke_mock_hoisted.md` to keep
+  rAF-driven `$effect`s deterministic + `$effect`-driven IPC
+  fetches in their loading state through the audit window.
+- **PR `#372`** (`896b65a`, anchor run `25469465083`) — automated
+  remediation pass. Triages PR-1 per-view findings into Bucket A
+  (10 component-scope-disabled rules per axe-core's documented
+  `rules` parameter — `landmark-one-main` +
+  `landmark-no-duplicate-banner` +
+  `landmark-no-duplicate-contentinfo` + `landmark-unique` +
+  `page-has-heading-one` + `region` + `html-has-lang` +
+  `html-lang-valid` + `document-title` + `bypass`) and Bucket B
+  (5 real component-level findings closed by 6 edits across
+  `VuStereo` widget `role="img"` + `CuePad` widget `role="grid"`
+  → `role="group"` + `Author` view inspector tab strip + utility
+  toolbar split + `MIDI` view saved-state dot `role="img"` +
+  `Perform` view rail `role="tablist"` → `role="toolbar"` +
+  `CueTransitionCurve` widget SVG `role="img"` → `role="group"`
+  per the `nested-interactive` rule with `role="slider"` handle
+  children). Tightens every per-view + per-tier budget in
+  `baseline-allowlist.ts` to strict `{0, 0, 0, 0}` across 14
+  views × 4 tiers. Updates 2 per-component spec assertions
+  (`CuePad.test.ts` + `Perform.test.ts`) to follow the new role
+  contracts.
+- **This PR** — closing docs flipping row 76 `EV-ACCESSIBILITY-AA`
+  from `Planned` to `Pass` under the documented narrowings.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-ACCESSIBILITY-AA`** — full 3-PR sequence above. Anchor run
+  `25469465083` (PR `#372`'s frontend job, the latest = the one
+  that exercised the strict 0/0/0/0 budget across all 14 views).
+  Narrowed per the three axes recorded in `docs/26` row 76
+  description column: (1) axe-core automated audit only — 14 of
+  14 routed views (`AudioUniforms`, `Author`, `Import`, `Inputs`,
+  `Library`, `License`, `MIDI`, `Osc`, `Patch`, `Perform`,
+  `Playlist`, `Settings`, `Sources`, `Welcome`) audit clean at
+  strict 0/0/0/0 budgets across critical / serious / moderate /
+  minor tiers under WCAG 2.2 AA tags; (2) component-vs-page
+  scope rules disabled per axe-core's documented `rules`
+  parameter — the 10 disabled rules will still apply at any
+  future full-app integration audit; (3) manual VoiceOver / NVDA
+  review deferred to AO-led validation territory.
+
+### Per-Type Minimums verification
+
+For row `EV-ACCESSIBILITY-AA` transitioning to `Pass`,
+ci-run-url + repo-path + corpus version + drift thresholds
+populate. Anchor run ids cited in this closure section:
+`25469037211` (PR `#371`), `25469465083` (PR `#372`; primary
+anchor for row 76 Pass).
+
+### Cumulative session recap
+
+3 PRs landed on `main` on 2026-05-07 covering PR numbers 371 +
+372 plus this docs(repo) closing PR. The session sequenced the
+axe-core harness integration, the automated remediation pass with
+strict zero-budget tightening + 6 component-level fixes, and the
+closing-docs flip in lockstep — each PR's frontend job feeds the
+next anchor.
+
+### Verdict
+
+**Phase-4b Wave 4b.8 closure achieved 2026-05-07 at commit
+`<merge-sha>`** (the merge commit of this docs(repo) closing PR).
+
+After Wave 4b.8 closes, all 11 Phase-4b EXIT rows are at `Pass`
+under collective narrowings: `EV-LIBRARY-BUNDLE-LAYOUT` (Wave
+4b.1, full), `EV-LIBRARY-DISCOVERY` (Wave 4b.2 + 4b.6, full),
+`EV-LIBRARY-THUMBNAIL` (Wave 4b.6, byte-hash stub renderer
+narrowing), `EV-AUTHORING-DIAGNOSTICS` (Wave 4b.3, JSON-class
+spans only narrowing), `EV-AUTHORING-SCAFFOLDER` (Wave 4b.4,
+full), `EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` (Wave
+4b.6, synthetic-only narrowing), `EV-IMPORT-ISF-REJECT` (Wave
+4b.5, full — ISF native import deferred to V2),
+`EV-SHADER-CACHE` (Wave 4d.2, observation-only narrowing),
+`EV-IMPORT-REFERENCE-SHOW` (Wave 4b.7, synthetic-commit +
+synthetic-rollback + heuristic + mocked-empty-library
+narrowings), and `EV-ACCESSIBILITY-AA` (this Wave 4b.8,
+axe-core-only + component-scope-disabled + manual-deferred
+narrowings). Per `docs/26` §Rules line 194, **Phase-4b EXIT is
+passable at AO discretion** (matching the Phase-4a EXIT posture
+prior to AO declaring 2026-05-03 EXIT).
+
+Phase-4b EXIT itself remains AO-held per `docs/11`; this wave's
+closure does not pre-empt the gate decision. Phase-4 EXIT itself
+remains AO-held until 4b / 4c / 4d sub-phases close per
+`docs/11`; this wave's closure does not pre-empt the Phase-4
+EXIT gate decision.
+
+### Deferred axes (wave narrowing record)
+
+- **Manual VoiceOver / NVDA voice-output review** —
+  semantically-correct screen-reader voice testing across every
+  routed view remains AO-led manual review territory; no
+  automated tool can validate the qualitative axes (e.g. "does
+  the view announce in a sensible reading order" / "do widget
+  value-changes voice with appropriate aria-live politeness").
+- **Keyboard-only navigation flows** — focus-order audits under
+  live keyboard-only navigation (the Tab + arrow-key + Enter +
+  Escape vocabulary across every view) deferred to AO-led
+  manual review. The harness `axe.run` invocation does not
+  exercise keyboard event dispatch.
+- **Focus-order conformance under live shader output** — AO-led
+  manual review territory; no axe-core rule covers the visual
+  affordance of focus indicators against animated shader
+  backgrounds.
+- **Color contrast under live shader output** — the audit
+  currently sees component-level palette tokens, not the canvas
+  backdrop the user actually sees behind chrome elements; AO-led
+  manual review territory.
+- **Skip-link / landmark-traversal review against full-app
+  integration audit** — the 10 component-scope-disabled rules
+  will fire at any future full-app integration audit (e.g. a
+  Playwright-driven boot of the real `index.html` mounting the
+  entire shell with `<html lang>` / landmark / heading-one /
+  region scaffolding present). Building that future audit is
+  deferred as post-MVP work; the harness function is
+  forward-compatible (the rules array is a single in-source
+  constant).
 
 ### Sign-off
 
