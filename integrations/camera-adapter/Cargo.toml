@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Chromaticity camera adapter crate.
+#
+# Phase-4a Wave 1c-β Phase 2 PR 1 scaffold: third integration adapter
+# under `integrations/`, mirroring the osc-adapter / midi-adapter shape
+# (ADR-005 boundary). The camera adapter widens the camera arm of
+# `EV-INTEGRATION-MATRIX` (row 37) that Wave 1a / 1b narrowed to OSC +
+# MIDI; closure of the row's camera axis lands with Phase 2 PR 5
+# (engine/render/src/camera_adapter.rs + closing-docs widening).
+#
+# This PR ships the surface-only scaffold:
+#
+#   * `CameraAdapter` trait + `NokhwaInputAdapter` shell impl.
+#   * Defaults pinned via T1 drift pins to the ADR-020 §3 values.
+#   * `frames` module owns the `PixelFormat` taxonomy + canonical
+#     fault-reason `pub const` strings + `CameraFrame` value type.
+#
+# The macOS + Windows nokhwa backend wiring lands in Phase 2 PR 2 + PR 3
+# respectively; PR 4 ships the synthetic T2 corpus per the row 78 / row
+# 40 / row 93 narrowing precedent; PR 5 wires the render-side texture
+# binding under the `chroma_CameraInput[N]` namespace and closes the
+# Wave 1c-β EV-INTEGRATION-MATRIX widening.
+#
+# Governing ADRs:
+#   ADR-005 — integration adapter boundary
+#             (docs/adr/ADR-005-integration-adapter-boundary.md)
+#   ADR-009 — activation and entitlements
+#             (docs/adr/ADR-009-activation-and-entitlements.md;
+#             IO_CAMERA stays MVP-free per line 50)
+#   ADR-013 — networking defaults and security
+#             (docs/adr/ADR-013-networking-defaults-and-security.md;
+#             defaults-policy precedent for the T1 drift-pin shape)
+#   ADR-020 — camera adapter (locked contract; this PR scaffolds it)
+#             (docs/adr/ADR-020-camera-adapter.md, Status: Accepted
+#             2026-05-07 at commit 6059b44)
+#
+# See also docs/43-development-standards.md §12.1. All workspace lints
+# (including unsafe_code = forbid, clippy::unwrap_used = deny,
+# clippy::expect_used = deny) are inherited; no local relaxation. The
+# nokhwa wrapper crate encapsulates the per-platform unsafe boundary
+# (CoreMediaIO on macOS, MediaFoundation on Windows) so the workspace
+# `unsafe_code = "forbid"` floor stays in force inside this crate per
+# ADR-020 "Decision Drivers".
+
+[package]
+name = "chromaticity-camera-adapter"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Chromaticity camera integration adapter (ADR-020 contract; ADR-005 boundary)."
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
+
+# chromaticity-observability owns the canonical adapter-state and
+# packet-outcome label enums. The Phase 2 PR 1 scaffold does not yet
+# wire the camera-arm counters into the observability catalog —
+# protocol-specific camera label enums are slice-3+ scope tracked
+# alongside the OSC / MIDI counter parity work — but the dep is
+# declared upfront so PR 2 / PR 3 backend wiring can fold in lifecycle
+# counters without a new dep-add (which would be a serial-list touch
+# per the Agent parallelism playbook).
+chromaticity-observability = { version = "0.0.0", path = "../../engine/observability" }
+
+# nokhwa 0.10 is the cross-platform camera wrapper backing the
+# Phase-4a Wave 1c-β camera adapter. License Apache-2.0 (allow-listed
+# in deny.toml line 76). Wraps CoreMediaIO on macOS and Media
+# Foundation on Windows behind a uniform `Camera` / `CallbackCamera`
+# / threaded-source surface; the unsafe boundary is encapsulated by
+# nokhwa so the workspace `unsafe_code = "forbid"` lint stays in force
+# inside this crate. PR 1 declares the dep with the minimal feature
+# set (`input-native`); macOS-specific (`input-avfoundation`) and
+# Windows-specific (`input-msmf`) features land in PR 2 / PR 3 to
+# avoid pulling transitive C deps the scaffold does not need.
+nokhwa = { version = "0.10", default-features = false, features = ["input-native"] }
+
+# serde derives the `Serialize` / `Deserialize` impls on `PixelFormat`
+# so the type can flow through the ts-rs IPC bridge (Phase 2 PR 5
+# render-side wiring) without a per-crate adapter type. Mirrors the
+# pattern in engine/scene + engine/authoring + engine/entitlement.
+serde = { version = "1", features = ["derive"] }
+
+# thiserror generates the `AdapterError` Display / Error impls.
+# Mirrors the pattern in engine/script + engine/render (Phase-4b
+# scaffolding). The crate is small enough that a hand-rolled impl
+# would also work, but the consistency with sibling adapters
+# (osc-adapter eventually, midi-adapter — both currently hand-roll
+# Display) is cheap once thiserror is already in the dep graph via
+# engine/render and engine/script.
+thiserror = "2"
