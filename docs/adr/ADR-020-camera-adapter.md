@@ -77,10 +77,43 @@ The `[lints]` table inherits the workspace defaults (`unsafe_code = forbid`, `cl
   - `enumerate(&self) -> Result<Vec<DeviceSummary>, CameraError>`
 - **Impl** `NokhwaInputAdapter` over the `nokhwa` threaded camera source. The threaded surface aligns with the established `bind/unbind/poll` state machine: `bind` opens the device + spawns the capture thread; `unbind` joins it; `poll` drains the bounded internal channel non-blockingly.
 - **Frame value type** `CameraFrame { timestamp_ns: u64, width: u32, height: u32, pixel_format: PixelFormat, payload: Bytes }`. `Bytes` is the `bytes::Bytes` ref-counted byte buffer (already in the workspace dep graph via Tauri); the cheap-clone semantics let the render adapter (Phase 2 PR 5) take ownership without copy.
-- **Pixel-format enum** `PixelFormat` with the MVP variants `Nv12`, `Yuyv`, `Rgb24`, `Bgra32`. The enum is `#[non_exhaustive]`; widening criteria are documented as a module-level prose comment (added when it becomes useful, e.g. for HDR or 10-bit YCbCr surfaces). Negotiation: the adapter requests `pixel_format_preference` from nokhwa and falls back to whatever the hardware actually offers; the realised format is reported on each `CameraFrame`.
+
+  **Timestamp policy.** The reference clock is **monotonic-from-bind**, never wallclock. Source:
+
+  - macOS: device-supplied per-frame timestamp via `CMSampleBufferGetPresentationTimeStamp` where the CoreMediaIO pipeline exposes it through nokhwa.
+  - Windows: device-supplied Media Foundation sample timestamp (`IMFSample::GetSampleTime`) where nokhwa exposes it.
+  - Fallback: `std::time::Instant::now()` since adapter `bind` on backends that do not supply per-frame timestamps; the adapter records the bind-time `Instant` and computes `timestamp_ns` as the elapsed-since-bind nanosecond count.
+
+  **Wallclock is forbidden.** Never `SystemTime::now()` / `chrono::Utc::now()` / equivalent. Wallclock jumps from NTP slew, DST transitions, manual system-clock changes, or container-pause/resume would skip or freeze frames driving cue-curve animations — a five-second NTP slew during a live show would either lock the camera-feed visualization or fast-forward through five seconds of cue interpolation. Module-level prose in `frames.rs` documents this explicitly as an invariant.
+
+  **Cautionary precedent.** ffmpeg's `dshow` indev had a five-year regression where `av_gettime()` (wallclock-derived) was substituted for the device-supplied timestamp; commit `7dc33aad45` (2021-12-21) reverted that substitution after it surfaced as inter-frame jitter for users with well-behaved devices. The chromaticity pin closes that footgun before it opens.
+- **Pixel-format enum** `PixelFormat` with the MVP variants `Nv12`, `Yuyv`, `Rgb24`, `Bgra32`, `Mjpeg`. The enum is `#[non_exhaustive]`; widening criteria are documented as a module-level prose comment (added when it becomes useful, e.g. for HDR or 10-bit YCbCr surfaces). Negotiation: the adapter requests `pixel_format_preference` from nokhwa and falls back to whatever the hardware actually offers; the realised format is reported on each `CameraFrame`.
+
+  **`Mjpeg` rationale.** Many USB cameras (especially budget webcams + capture cards) default to MJPG at high-resolution modes — without the variant, format negotiation fails when MJPG is the only offered format, surfacing as `Faulted("format-not-supported")` on hardware that would otherwise enumerate cleanly under raw YUYV/NV12/etc. Including the variant lets enumeration succeed; the render path (Phase 2 PR 5) initially emits `AdapterHealth::Faulted("format-not-supported")` for `Mjpeg` until JPEG decode is wired (deferred enhancement — JPEG decode adds a CPU-side decompress step before the upload-to-GPU path, with non-trivial latency + CPU cost; the deferred-enhancement gate decides when to wire it).
 - **Config value type** `CameraConfig { device_id: String, target_fps: u32, target_resolution: (u32, u32), pixel_format_preference: Option<PixelFormat>, queue_depth: usize }`. `device_id` is the platform-stable nokhwa device identifier; `target_fps` and `target_resolution` are negotiation hints; `queue_depth` bounds the in-adapter frame channel.
-- **Health enum** `AdapterHealth { Bound, Disconnected, Negotiating, Faulted(Cow<'static, str>) }`, mirroring the MIDI / OSC adapter state machines. The `Faulted(reason)` variant carries a stable diagnostic string (`"permission-denied"`, `"device-not-found"`, `"format-negotiation-failed"`, …).
+- **Health enum** `AdapterHealth { Bound, Disconnected, Negotiating, Faulted(Cow<'static, str>) }`, mirroring the MIDI / OSC adapter state machines. The `Faulted(reason)` variant carries a stable diagnostic string drawn from a pinned canonical vocabulary (see "Canonical fault reason vocabulary" below).
+
+  **Canonical fault reason vocabulary.** The reason strings are pinned as `pub const` items in `frames.rs`, not free string literals — the conformance corpus matches against the constants, and the operator-facing UX surface localizes off them. The vocabulary:
+
+  - `PERMISSION_DENIED: &'static str = "permission-denied"` — OS denied camera access via TCC (macOS) / Privacy Settings (Windows).
+  - `DEVICE_BUSY: &'static str = "device-busy"` — device is held by another application (`AVCaptureDevice.isInUseByAnotherApplication == YES` on macOS; `MF_E_DEVICE_INVALIDATED` mid-stream on Windows).
+  - `DEVICE_NOT_FOUND: &'static str = "device-not-found"` — persisted device-id no longer enumerable (USB unplug + restart, OS-level removal, etc.).
+  - `FORMAT_NOT_SUPPORTED: &'static str = "format-not-supported"` — no overlap between requested and offered formats, OR the negotiated format is `Mjpeg` and JPEG decode is not yet wired.
+  - `RECONNECT_EXHAUSTED: &'static str = "reconnect-exhausted"` — `reconnect_attempts × reconnect_interval_ms` window exhausted without re-enumerating the persisted device.
+  - `BACKEND_ERROR: &'static str = "backend-error"` — generic nokhwa-internal failure (any error class not covered above).
+
+  **Rationale: separate `permission-denied` from `device-busy`.** VLC's `avcapture.m` historically conflated the two error paths, surfacing both as a generic "device unavailable" — operators could not tell whether the fix was "grant camera permission" or "quit the other app holding the camera". Chromaticity routes them to distinct reasons so the operator-facing UX surface (the permission banner vs the busy-device banner) shows the actionable remediation the user needs.
 - **Device summary** `DeviceSummary { device_id: String, display_name: String, kind: CameraDeviceKind }` for the enumeration surface. `CameraDeviceKind` covers `BuiltIn`, `External`, `Virtual` to drive UI grouping.
+
+**Byte-order discipline.** `PixelFormat` variants name in-memory byte order **explicitly** to avoid the ambiguity that has historically caused multi-year regression cycles in upstream codecs. Module-level prose in `frames.rs` pins these definitions; future widening of the `#[non_exhaustive]` enum reuses the discipline:
+
+- `Bgra32`: bytes B, G, R, A in memory (NOT `Argb32`; the leading-letter convention names the byte order, not the wgpu / DirectX-style component-naming-by-channel-significance).
+- `Rgb24`: bytes R, G, B in memory, no alpha, 3-byte stride.
+- `Nv12`: planar Y' (full-resolution luma plane) followed by interleaved U/V at 1/2 horizontal + vertical resolution (4:2:0 chroma subsampling).
+- `Yuyv`: packed Y0, U, Y1, V pattern repeating (4:2:2 chroma subsampling); byte-stride is `width * 2` (NOT `width * 3` or `width * 4`).
+- `Mjpeg`: payload is a complete JPEG bitstream (SOI...EOI markers); no fixed in-memory layout, decoded on the fly to `Bgra32` or `Rgb24` at the render-side wiring (deferred enhancement, see PixelFormat note above).
+
+**Cautionary precedent.** VLC's git log carries a multi-year sequence of byte-order-correction commits (`VLC_CODEC_RGB24 → RGB24M → BGR24` over months as the channel-order ambiguity surfaced on different platforms; `MEDIASUBTYPE_ARGB32 → VLC_CODEC_BGRA` in the dshow filter; `RGB32 → BGRX` in the avcodec mapping table). Each correction fixed a wrong-color regression on at least one platform. The chromaticity pin is "name the in-memory byte order, not the channel-significance label" — `Bgra32` not `Argb32`, `Rgb24` not `Rgb` (where the latter would not say where alpha lives or whether there is one).
 
 ### 3. Defaults
 
@@ -104,7 +137,16 @@ The drop-policy is documented as a module-level invariant in `adapter.rs` and ex
 #### macOS
 
 - `app/shell/tauri.conf.json` Info.plist override adds `NSCameraUsageDescription` with copy that satisfies App Store review and clearly identifies camera use.
+
+  **Build-time verification.** A release-validation step (or Phase 2 PR 2 reviewer-checklist line) asserts that the bundled `.app/Contents/Info.plist` contains the `NSCameraUsageDescription` key after `tauri build`. Tauri 2's plist merging has historically been finicky; bundle-resource overrides have silently dropped on certain config-file shapes. The check is a one-line `plutil -extract NSCameraUsageDescription raw .../Info.plist || exit 1` invocation in the release-validation script that fires before signing. The check is binary (key present / absent) and does not validate the copy text — the copy is reviewed manually for App Store compliance.
+
+  **TCC bundle-id pin.** The `tauri.conf.json` `identifier` is pinned early (before any TCC-grant prompt fires for a real user). TCC.db caches the first-grant state per-bundle-id, so identifier changes between dev builds (e.g. switching from `com.chromaticity.dev` to `com.chromaticity.app` mid-development) re-fire the prompt against the new bundle-id — leaving stale grants in TCC.db for the abandoned identifier. Pin the identifier in the `repo` scope (one of the few places where a `repo`-scoped commit affects user-visible behavior).
+
 - First call to `enumerate()` triggers `AVCaptureDevice.requestAccess(for: .video)`; nokhwa's macOS backend already invokes this on first device-list call. Operator denial → `AdapterHealth::Faulted("permission-denied")`; the adapter records the denial and does not retry on subsequent enumerate calls within the process lifetime (the OS-level grant is process-bound).
+
+  **Async permission-flow contract.** The macOS permission flow is **asynchronous**: `AVCaptureDevice.requestAccess(for: .video)` accepts a completion handler (Objective-C block) and returns immediately. The calling thread MUST NOT block on the OS prompt — patterns like `dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER)` to "synchronize" the permission result back to a synchronous Rust call site are incompatible with Tauri's main-thread-bound IPC handlers; blocking the main thread on a UI-synchronous permission prompt deadlocks the Tauri runtime. Contract: `enumerate()` returns immediately with `AdapterHealth::Negotiating` if a TCC prompt is in flight; the OS completion handler transitions the adapter health asynchronously to `Bound` (on grant) or `Faulted("permission-denied")` (on deny). The Tauri shell surfaces a non-modal "awaiting permission" state during negotiation, and re-renders to the granted / denied state when the adapter health transitions.
+
+  **Cautionary precedent.** VLC's `avcapture.m:420` blocks on the permission prompt via `dispatch_semaphore_wait` — that pattern works for VLC's threaded demux model (a dedicated capture thread can block without freezing the UI), but the same code in chromaticity's Tauri main-thread-bound IPC handler would deadlock the entire frontend. The async contract this ADR locks closes that footgun.
 - The Tauri shell shows a single non-modal banner: "Camera permission required to enumerate devices" with an "Open System Settings" deep-link (`x-apple.systempreferences:com.apple.preference.security?Privacy_Camera`). The banner is dismissable; re-enumeration after granting requires app restart per macOS TCC semantics.
 
 #### Windows
@@ -124,7 +166,9 @@ Reconnect parameters are configurable per `CameraConfig` extension (added in Pha
 - `reconnect_attempts: u32` — default `5`
 - `reconnect_interval_ms: u32` — default `1000`
 
-After exhausting attempts, the adapter stays at `AdapterHealth::Disconnected` until the user manually re-binds. This mirrors the MIDI-CONF-09 device-rebind precedent (`docs/26-evidence-artifact-registry.md` `EV-MIDI-EXTENDED` row, MIDI Learn save-quit-relaunch persistence fixture).
+After exhausting attempts, the adapter stays at `AdapterHealth::Disconnected` until the user manually re-binds (and `Faulted("reconnect-exhausted")` if the operator wants the explicit terminal state per the canonical reason vocabulary above). This mirrors the MIDI-CONF-09 device-rebind precedent (`docs/26-evidence-artifact-registry.md` `EV-MIDI-EXTENDED` row, MIDI Learn save-quit-relaunch persistence fixture).
+
+**Reconnect-interval clarification.** Default `reconnect_interval_ms = 1000` × `reconnect_attempts = 5` is a 5-second tolerance window. For live-show ergonomics where USB cameras may be physically bumped mid-show (cable wiggle, momentary disconnect), this window may be too long — a 5-second visual gap during a live performance is operator-visible and operator-painful. The defaults are operator-overridable via `CameraConfig::reconnect_attempts` + `CameraConfig::reconnect_interval_ms`; future-wave option to tune defaults lower (e.g. `250ms × 5 = 1.25s`) once live-show telemetry surfaces real disconnect-recovery latency requirements. The trade-off is between false-positive reconnect storms (too short, the adapter retry-storms a transient enumeration glitch) and operator-visible gaps (too long, the operator notices the visual hole). MVP uses the conservative 5-second window; the live-show telemetry to drive the tune-down is itself a Phase-5+ deliverable.
 
 ### 7. Texture-binding namespace
 
