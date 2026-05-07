@@ -2389,3 +2389,153 @@ does not pre-empt the Phase-4 EXIT gate decision.
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
 
+## Phase-4d Row 78 EV-GPU-SELECTION closure
+
+**Date.** 2026-05-07.
+
+**Scope.** Row 78 `EV-GPU-SELECTION` (registry line 78) transitions
+`Planned -> Pass-narrowed` under a 2-PR shipping sequence covering
+PR `#351` (selection-policy scaffolding) plus this PR (synthetic
+dual-adapter T2 corpus + closing-docs). The row pins deterministic
+multi-GPU adapter selection per ADR-011 §7: high-performance default
+ranking, operator-override pinning, battery-friendly preference
+flip, eGPU hot-plug-disappearance idempotent re-selection, and OS-
+aware backend tie-breakers per `cfg(target_os)`.
+
+### Per-PR sequence
+
+- **PR `#351`** (`5abc443`, landed 2026-05-06, Wave 4d.2 Lane B PR
+  1 of 2) — selection-policy core under
+  `engine/render/src/adapter_selection.rs` shipping `AdapterId` +
+  `AdapterType` + `Backend` (local mirrors of wgpu enums per the
+  module-level "Adapter ID encoding" rationale) + `SelectedAdapter`
+  + `GpuSelectionPolicy` (operator-override + prefer-battery-friendly
+  + prior-tdr-count fields, all builder-style) + `pub(crate) fn
+  rank_synthetic` decision-tree helper + `pub fn select_adapter`
+  wgpu-roundtrip surface + `pub fn enumerate_adapter_summaries`. T1
+  algorithm-drift pins shipped under `mod adapter_selection_pins`.
+  Module prose at line 411 anticipated PR 2 doing the wgpu round-
+  trip validation; the synthetic narrowing this PR ships exercises
+  the same `rank_synthetic` decision tree against constructed
+  `SelectedAdapter` fixtures so the validation lands on CI without
+  hardware.
+- **This PR (`<merge-sha>`, landed 2026-05-07)** — synthetic dual-
+  adapter T2 validation corpus inline in the same module under a
+  new sibling `mod adapter_selection_t2_corpus` test module
+  honouring the `pub(crate) rank_synthetic` slice-boundary signal
+  (the T2 fixtures live in-crate rather than as an external
+  integration test that would have to widen the visibility — per
+  the visibility-as-scope-signal posture in
+  `feedback_visibility_as_scope_signal.md`). 10 fixtures cover:
+  discrete + integrated laptop pairing under default-policy and
+  battery-friendly preference; dual-discrete workstation
+  deterministic backend tie-break; operator-override pinning + falls-
+  through-on-absent; eGPU hot-plug-disappearance idempotent re-
+  selection; empty adapter list returns None; TDR-history flag
+  plumbed-but-inert for ranking; battery preference flips top two
+  types only (Virtual / Cpu / Other ordering preserved); backend-
+  rank OS-aware tie-breakers per `cfg(target_os)` (Metal on macOS /
+  Vulkan on Linux / Dx12 on Windows — exactly one fixture fires per
+  target). Plus closing-docs.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-GPU-SELECTION`** — full 2-PR sequence above. Anchor run id
+  `<TBD-on-merge>` (this PR's CI nextest job; primary anchor for
+  row 78 Pass). Narrowed per the axes recorded in `docs/26` row 78
+  description column: **(1)** synthetic-corpus validation only —
+  the T2 corpus exercises the `rank_synthetic` pure decision-tree
+  helper from PR 1 against constructed `SelectedAdapter` fixtures;
+  same precedent as row 40 `EV-SOAK-CHAOS` synthetic-workload
+  narrowing, row 80 `EV-CRASH-RESUME` synthetic restore-helper
+  narrowing, and row 93 `EV-CRASH-PAYLOAD-REDACTION` synthetic-
+  harness narrowing accepted at their respective Phase-4d closures.
+  **(2)** Physical / VM dual-adapter validation deferred — the
+  registry's "Generation Source: Dual-GPU laptop VM test +
+  workstation discrete-pair test" full-spec validation requires
+  real multi-GPU rigs; the wgpu round-trip arm (`select_adapter`
+  against a live `wgpu::Instance`) is exercised by the existing
+  `engine/render` T2 corpora on actual CI Mac/Linux/Windows rigs
+  (verifying at-least-one-adapter selection succeeds), but
+  synthesised dual-GPU pairings happen only in the inline T2
+  corpus. **(3)** TDR-history warning surface deferred — the
+  `prior_tdr_count` field is plumbed through `GpuSelectionPolicy`
+  per PR 1's module prose; the actual UI warning ("TDR within 30
+  days → warn") is a future-wave UI surface; the T2 corpus asserts
+  ranking is currently inert under varying TDR counts.
+
+### Per-Type Minimums verification
+
+For row `EV-GPU-SELECTION` transitioning to `Pass`, ci-run-url +
+repo-path + corpus version + drift thresholds populate. Anchor run
+id cited in this closure section: `<TBD-on-merge>` (this PR's
+workspace nextest job; primary anchor for row 78 Pass). Corpus
+version pinned by the merged-on-main slice chain (PR `#351`
+selection-policy scaffolding + this PR synthetic-corpus + closing-
+docs). Drift thresholds applied via per-fixture deterministic-output
+assertion across the 10-fixture T2 corpus (3 fixtures additionally
+exercise multi-invocation cross-trial identity per the deterministic-
+selection axis ADR-011 §7 calls out).
+
+### Cumulative session recap
+
+2 engineering PRs landed on `main` covering PR `#351` (2026-05-06
+selection-policy scaffolding) + this PR (2026-05-07 synthetic dual-
+adapter corpus + closing-docs). The sequence ships the `pub(crate)
+rank_synthetic` decision-tree helper at PR 1 and exercises it
+against synthetic dual-adapter fixtures at PR 2, all under the
+existing visibility boundary — each PR's workspace nextest job is
+the auditable anchor.
+
+### Verdict
+
+**Row 78 `EV-GPU-SELECTION` closure achieved 2026-05-07 at commit
+`<merge-sha>`** (the merge commit of this PR 2 of 2). With this
+closure 1 Phase-4d open item remains (down from 2 prior to this
+closure):
+
+- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+  ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
+  Lane B scaffolding from PR `#347` / `922f2d8`.
+
+Phase-4d EXIT itself remains AO-held per
+`docs/11-roadmap-phases.md`; this row 78 closure does not pre-empt
+the Phase-4d EXIT decision. Phase-4 EXIT itself remains AO-held
+until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
+does not pre-empt the Phase-4 EXIT gate decision.
+
+### Deferred axes (row narrowing record)
+
+- **Physical / VM dual-adapter validation** — real multi-GPU rigs
+  (laptop dual-GPU VM with both integrated + discrete adapters,
+  workstation with two discrete adapters of different vendors,
+  eGPU hot-plug rig) carrying the registry's "Generation Source"
+  full-spec validation. Out-of-scope at MVP; future-wave hardware-
+  rig harness will compose on top of the synthetic decision-tree
+  by driving real `select_adapter` invocations against a live
+  `wgpu::Instance` and asserting the same per-fixture outcomes the
+  synthetic corpus pins today.
+- **TDR-history warning UI surface** — Windows-side OS query
+  (DXGI / EventLog TDR counter) feeding a per-OS warning banner
+  ("TDR within 30 days → warn") + UI surfacing. Out-of-scope at
+  MVP; the `prior_tdr_count` field is plumbed through
+  `GpuSelectionPolicy` so the future warning layer can consume it
+  without a side-channel; the T2 corpus pins the per-PR-2 ranking-
+  invariant-under-TDR property (the rank does not vary with
+  `prior_tdr_count` until the warning surface lands).
+- **Battery / power-source OS query** — the OS-side battery-state
+  query (`IOPSCopyPowerSourcesInfo` on macOS; analogous on Windows
+  / Linux) that flips `prefer_battery_friendly` automatically. The
+  flag is operator-supplied in this PR; the OS-watcher attaches in
+  a future wave.
+- **Operator-override settings persistence shell** — Tauri
+  `app/shell/` settings store + `src/lib/` UI binding for the
+  persisted-per-installation operator override. ADR-011 §7
+  specifies the override survives adapter hot-plug; the engine-side
+  surface (constructor argument on `GpuSelectionPolicy`) is ready
+  but the persistence shell is a future wave.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
+

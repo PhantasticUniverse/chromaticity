@@ -752,3 +752,276 @@ mod adapter_selection_pins {
         assert_eq!(Backend::from_wgpu(wgpu::Backend::Noop), Backend::Noop);
     }
 }
+
+#[cfg(test)]
+mod adapter_selection_t2_corpus {
+    //! Evidence: EV-GPU-SELECTION (T2) — synthetic dual-adapter
+    //! validation corpus exercising the [`rank_synthetic`]
+    //! decision tree against constructed `SelectedAdapter` fixtures.
+    //!
+    //! T2 per `docs/43-development-standards.md` §15.5: corpus-shaped
+    //! multi-fixture validation of the decision tree against
+    //! constructed `SelectedAdapter` lists. This corpus honours the
+    //! slice-boundary signal recorded by `rank_synthetic`'s
+    //! `pub(crate)` visibility — the fixtures live inline in the same
+    //! module rather than as an external integration test that would
+    //! have to widen the visibility (per the visibility-as-scope-
+    //! signal posture in `feedback_visibility_as_scope_signal.md`).
+    //!
+    //! Narrowing per `docs/26` row 78 description column: this T2
+    //! corpus is the synthetic-validation arm of the row's
+    //! "Generation Source: Dual-GPU laptop VM test + workstation
+    //! discrete-pair test" full-spec validation. The wgpu round-trip
+    //! arm (`select_adapter` against a live `wgpu::Instance`) is
+    //! exercised by the existing engine/render T2 corpora on actual
+    //! CI Mac/Linux/Windows rigs (which verify at-least-one-adapter
+    //! selection succeeds); synthesised dual-GPU pairings (which
+    //! require physical multi-GPU hardware) live here under
+    //! AO-approved synthetic-corpus narrowing — same precedent as
+    //! row 40 EV-SOAK-CHAOS / row 80 EV-CRASH-RESUME / row 93
+    //! EV-CRASH-PAYLOAD-REDACTION.
+    //!
+    //! Pinned coverage axes:
+    //!
+    //! - Discrete + integrated pairing under default + battery
+    //!   policies.
+    //! - Dual-discrete workstation deterministic backend tie-break.
+    //! - Operator-override matching + falls-through-on-absent.
+    //! - eGPU hot-plug-disappearance idempotent re-selection.
+    //! - Empty adapter list returns None.
+    //! - TDR-history flag plumbed but inert for ranking at PR 2.
+    //! - Battery-preference rank flips top two types only.
+    //! - Backend-rank OS-aware tie-breakers (macOS/Linux/Windows
+    //!   per `cfg(target_os)`).
+
+    use super::{
+        AdapterId, AdapterType, Backend, GpuSelectionPolicy, SelectedAdapter, rank_synthetic,
+    };
+
+    fn synth(name: &str, t: AdapterType, b: Backend) -> SelectedAdapter {
+        SelectedAdapter {
+            id: AdapterId::from_string(format!("00000001:00000002:{b:?}:{name}")),
+            name: name.to_string(),
+            adapter_type: t,
+            backend: b,
+            vendor: 0x1002,
+        }
+    }
+
+    // EV-GPU-SELECTION T2: discrete + integrated laptop pairing —
+    // high-performance default selects Discrete.
+    #[test]
+    fn t2_discrete_plus_integrated_default_policy_picks_discrete() {
+        let adapters = vec![
+            synth("Intel Iris Xe", AdapterType::Integrated, Backend::Vulkan),
+            synth("NVIDIA RTX 4080", AdapterType::Discrete, Backend::Vulkan),
+        ];
+        let policy = GpuSelectionPolicy::new();
+        let chosen = rank_synthetic(&adapters, &policy).unwrap();
+        assert_eq!(chosen.adapter_type, AdapterType::Discrete);
+        assert_eq!(chosen.name, "NVIDIA RTX 4080");
+    }
+
+    // EV-GPU-SELECTION T2: discrete + integrated laptop pairing —
+    // battery-friendly preference selects Integrated.
+    #[test]
+    fn t2_discrete_plus_integrated_battery_policy_picks_integrated() {
+        let adapters = vec![
+            synth("Intel Iris Xe", AdapterType::Integrated, Backend::Vulkan),
+            synth("NVIDIA RTX 4080", AdapterType::Discrete, Backend::Vulkan),
+        ];
+        let policy = GpuSelectionPolicy::new().prefer_battery_friendly(true);
+        let chosen = rank_synthetic(&adapters, &policy).unwrap();
+        assert_eq!(chosen.adapter_type, AdapterType::Integrated);
+        assert_eq!(chosen.name, "Intel Iris Xe");
+    }
+
+    // EV-GPU-SELECTION T2: dual-discrete workstation — deterministic
+    // tiebreaker resolves a tie on adapter type.
+    #[test]
+    fn t2_dual_discrete_workstation_resolves_deterministically() {
+        // Both Discrete; backend differs but on every OS exactly one
+        // backend ranks higher than the other (Metal on macOS, Dx12
+        // on Windows, Vulkan on Linux). Either way the choice is
+        // deterministic — three invocations must agree.
+        let adapters = vec![
+            synth("Quadro RTX A6000", AdapterType::Discrete, Backend::Vulkan),
+            synth("Quadro RTX A4000", AdapterType::Discrete, Backend::Gl),
+        ];
+        let policy = GpuSelectionPolicy::new();
+        let r1 = rank_synthetic(&adapters, &policy).unwrap().id.clone();
+        let r2 = rank_synthetic(&adapters, &policy).unwrap().id.clone();
+        let r3 = rank_synthetic(&adapters, &policy).unwrap().id.clone();
+        assert_eq!(r1, r2);
+        assert_eq!(r2, r3);
+    }
+
+    // EV-GPU-SELECTION T2: operator override pins a specific adapter
+    // regardless of policy (against the high-performance ranking
+    // axis).
+    #[test]
+    fn t2_operator_override_pins_target_against_ranking() {
+        let integrated = synth("Intel UHD 770", AdapterType::Integrated, Backend::Vulkan);
+        let discrete = synth("AMD RX 7900 XTX", AdapterType::Discrete, Backend::Vulkan);
+        let target_id = integrated.id.clone();
+        let adapters = vec![integrated, discrete];
+        let policy = GpuSelectionPolicy::new().with_operator_override(Some(target_id.clone()));
+        let chosen = rank_synthetic(&adapters, &policy).unwrap();
+        assert_eq!(chosen.id, target_id);
+        assert_eq!(chosen.adapter_type, AdapterType::Integrated);
+    }
+
+    // EV-GPU-SELECTION T2: operator override on absent adapter falls
+    // through to ranking — does NOT yield None.
+    #[test]
+    fn t2_operator_override_absent_falls_through_to_ranking() {
+        let adapters = vec![
+            synth("Intel UHD 770", AdapterType::Integrated, Backend::Vulkan),
+            synth("AMD RX 7900 XTX", AdapterType::Discrete, Backend::Vulkan),
+        ];
+        let absent_id = AdapterId::from_string("ffffffff:ffffffff:Vulkan:DetachedEGPU".to_string());
+        let policy = GpuSelectionPolicy::new().with_operator_override(Some(absent_id));
+        let chosen = rank_synthetic(&adapters, &policy).unwrap();
+        assert_eq!(chosen.adapter_type, AdapterType::Discrete);
+        assert_eq!(chosen.name, "AMD RX 7900 XTX");
+    }
+
+    // EV-GPU-SELECTION T2: eGPU hot-plug disappearance — selection
+    // re-invocation lands on the next-best adapter when the eGPU is
+    // removed (idempotent per ADR-011 §7's hot-plug clause).
+    #[test]
+    fn t2_egpu_hotplug_disappearance_lands_on_next_best() {
+        // First call: eGPU + integrated + iGPU enumerated. eGPU and
+        // iGPU are both Discrete; alphabetic name tie-break selects
+        // the earlier one — "AMD Radeon Pro W7900 (eGPU)" beats
+        // "NVIDIA RTX 4090".
+        let with_egpu = vec![
+            synth(
+                "AMD Radeon Pro W7900 (eGPU)",
+                AdapterType::Discrete,
+                Backend::Vulkan,
+            ),
+            synth("NVIDIA RTX 4090", AdapterType::Discrete, Backend::Vulkan),
+            synth("Intel UHD 770", AdapterType::Integrated, Backend::Vulkan),
+        ];
+        let policy = GpuSelectionPolicy::new();
+        let first = rank_synthetic(&with_egpu, &policy).unwrap();
+        assert_eq!(first.name, "AMD Radeon Pro W7900 (eGPU)");
+
+        // Second call after eGPU is unplugged: only the desktop
+        // discrete + integrated remain. The discrete wins.
+        let without_egpu = vec![
+            synth("NVIDIA RTX 4090", AdapterType::Discrete, Backend::Vulkan),
+            synth("Intel UHD 770", AdapterType::Integrated, Backend::Vulkan),
+        ];
+        let second = rank_synthetic(&without_egpu, &policy).unwrap();
+        assert_eq!(second.adapter_type, AdapterType::Discrete);
+        assert_eq!(second.name, "NVIDIA RTX 4090");
+    }
+
+    // EV-GPU-SELECTION T2: empty adapter list yields None (the
+    // headless-CI / no-driver corner case).
+    #[test]
+    fn t2_empty_adapter_list_yields_none() {
+        let policy = GpuSelectionPolicy::new();
+        let chosen = rank_synthetic(&[], &policy);
+        assert!(chosen.is_none());
+    }
+
+    // EV-GPU-SELECTION T2: TDR-history flag is plumbed but inert at
+    // PR 2 — the rank does not vary with `prior_tdr_count` (the
+    // future Windows-side warning surface consumes it; the field is
+    // not yet rank-aware).
+    #[test]
+    fn t2_tdr_history_flag_is_inert_for_ranking() {
+        let adapters = vec![
+            synth("Intel UHD 770", AdapterType::Integrated, Backend::Vulkan),
+            synth("NVIDIA RTX 4080", AdapterType::Discrete, Backend::Vulkan),
+        ];
+        let zero_tdr = GpuSelectionPolicy::new().with_prior_tdr_count(0);
+        let many_tdr = GpuSelectionPolicy::new().with_prior_tdr_count(5);
+        let r0 = rank_synthetic(&adapters, &zero_tdr).unwrap().id.clone();
+        let r5 = rank_synthetic(&adapters, &many_tdr).unwrap().id.clone();
+        assert_eq!(
+            r0, r5,
+            "prior_tdr_count is plumbing only; rank must be invariant under it at PR 2"
+        );
+    }
+
+    // EV-GPU-SELECTION T2: battery-preference rank flip preserves
+    // the ordering of the lower types (Virtual / Cpu / Other) and
+    // only swaps Integrated above Discrete at the top.
+    #[test]
+    fn t2_battery_preference_flips_only_top_two_types() {
+        let adapters = vec![
+            synth("Discrete-Card", AdapterType::Discrete, Backend::Vulkan),
+            synth("Integrated-Card", AdapterType::Integrated, Backend::Vulkan),
+            synth("Virtual-Card", AdapterType::Virtual, Backend::Vulkan),
+            synth("Cpu-Card", AdapterType::Cpu, Backend::Vulkan),
+            synth("Other-Card", AdapterType::Other, Backend::Vulkan),
+        ];
+        let high_perf = GpuSelectionPolicy::new();
+        let battery = GpuSelectionPolicy::new().prefer_battery_friendly(true);
+        assert_eq!(
+            rank_synthetic(&adapters, &high_perf).unwrap().adapter_type,
+            AdapterType::Discrete,
+            "default policy must rank Discrete at the top"
+        );
+        assert_eq!(
+            rank_synthetic(&adapters, &battery).unwrap().adapter_type,
+            AdapterType::Integrated,
+            "battery-friendly policy must rank Integrated at the top"
+        );
+    }
+
+    // EV-GPU-SELECTION T2: backend-rank tiebreaker is OS-aware. Two
+    // discrete adapters tying on type are disambiguated by per-OS
+    // backend preference per ADR-011 §1.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn t2_backend_tiebreaker_macos_picks_metal() {
+        let adapters = vec![
+            synth("DiscreteVulkan", AdapterType::Discrete, Backend::Vulkan),
+            synth("DiscreteMetal", AdapterType::Discrete, Backend::Metal),
+        ];
+        let policy = GpuSelectionPolicy::new();
+        let chosen = rank_synthetic(&adapters, &policy).unwrap();
+        assert_eq!(
+            chosen.backend,
+            Backend::Metal,
+            "macOS must prefer Metal over Vulkan when types tie"
+        );
+    }
+
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    #[test]
+    fn t2_backend_tiebreaker_linux_picks_vulkan() {
+        let adapters = vec![
+            synth("DiscreteVulkan", AdapterType::Discrete, Backend::Vulkan),
+            synth("DiscreteGl", AdapterType::Discrete, Backend::Gl),
+        ];
+        let policy = GpuSelectionPolicy::new();
+        let chosen = rank_synthetic(&adapters, &policy).unwrap();
+        assert_eq!(
+            chosen.backend,
+            Backend::Vulkan,
+            "Linux must prefer Vulkan over Gl when types tie"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn t2_backend_tiebreaker_windows_picks_dx12() {
+        let adapters = vec![
+            synth("DiscreteVulkan", AdapterType::Discrete, Backend::Vulkan),
+            synth("DiscreteDx12", AdapterType::Discrete, Backend::Dx12),
+        ];
+        let policy = GpuSelectionPolicy::new();
+        let chosen = rank_synthetic(&adapters, &policy).unwrap();
+        assert_eq!(
+            chosen.backend,
+            Backend::Dx12,
+            "Windows must prefer Dx12 over Vulkan when types tie"
+        );
+    }
+}

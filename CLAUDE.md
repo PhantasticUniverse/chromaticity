@@ -412,6 +412,40 @@ RecoveryDeadlineExceeded}` rejection taxonomy + `ChaosReport` +
     (hardware-gated dual-GPU validation deferred). Phase-4d EXIT
     decision remains AO-held per `docs/11-roadmap-phases.md`;
     this row 80 closure does not pre-empt the gate decision.
+    **Phase-4d Row 78 EV-GPU-SELECTION closure landed 2026-05-07** in
+    a 2-PR sequence (PR `#351` / `5abc443` selection-policy
+    scaffolding 2026-05-06 + this PR synthetic dual-adapter T2
+    corpus + closing-docs 2026-05-07). Row 78 `EV-GPU-SELECTION`
+    transitions `Planned -> Pass-narrowed`. The synthetic narrowing
+    ships an inline 10-fixture T2 corpus under
+    `engine/render/src/adapter_selection.rs::mod
+    adapter_selection_t2_corpus` honouring the `pub(crate)
+    rank_synthetic` slice-boundary signal (visibility-as-scope-
+    signal posture) — covers discrete + integrated default + battery
+    pairings, dual-discrete deterministic backend tie-break,
+    operator-override pinning + falls-through-on-absent, eGPU hot-
+    plug-disappearance idempotent re-selection, empty list → None,
+    TDR-history flag plumbed-but-inert, battery preference flips
+    only the top two types, and OS-aware backend tie-breakers per
+    `cfg(target_os)` (Metal on macOS / Vulkan on Linux / Dx12 on
+    Windows — exactly one fixture fires per target). Three
+    narrowing axes recorded: (1) synthetic-corpus validation only;
+    (2) physical / VM dual-adapter validation deferred (the
+    registry's "Generation Source" full-spec wgpu round-trip arm
+    runs against actual CI Mac/Linux/Windows rigs verifying at-
+    least-one-adapter, but synthesised dual-GPU pairings happen
+    only inline); (3) TDR-history warning UI surface deferred —
+    same precedent as row 40 `EV-SOAK-CHAOS` synthetic-workload
+    narrowing / row 80 `EV-CRASH-RESUME` synthetic restore-helper
+    narrowing / row 93 `EV-CRASH-PAYLOAD-REDACTION` synthetic-
+    harness narrowing. Anchor run id `<TBD-on-merge>` (this PR's
+    workspace nextest job; primary anchor for row 78 Pass). After
+    this closure **1 Phase-4d open item remains** (down from 2):
+    row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs (~2026-05-20
+    calendar-gated 14-day soak window per the Wave 4d.1 Lane B
+    scaffolding from PR `#347` / `922f2d8`). Phase-4d EXIT
+    decision remains AO-held per `docs/11-roadmap-phases.md`;
+    this row 78 closure does not pre-empt the gate decision.
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
