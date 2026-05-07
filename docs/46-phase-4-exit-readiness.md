@@ -84,8 +84,8 @@ state-preservation cross-seam-contract narrowing per the Phase-4b
 
 ## Phase-4c — Embedded Documentation (1 row)
 
-**Status:** at `Pass` — co-developed with `EV-MIDI-EXTENDED`
-`EV-AUTHORING-UX-LATENCY` via PR `#363`.
+**Status:** at `Pass` — co-developed with `EV-AUTHORING-UX-LATENCY`
+via PR `#363` (`b2156bb`).
 
 | Row | Evidence ID         | Status | Narrowing                                                                                            |
 | --- | ------------------- | ------ | ---------------------------------------------------------------------------------------------------- |
@@ -135,8 +135,8 @@ Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
   closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
   Unblocked from EXIT.
 - **Production-bootstrap stale-but-last-good IPC surfacing through
-  the wire** — narrowing axis carried forward on `EV-AUDIO-UNIFORM-IPC`
-  `EV-AUDIO-UNIFORM-IPC`; producer-side covered at T1, transitive
+  the wire** — narrowing axis carried forward on `EV-AUDIO-UNIFORM-IPC`;
+  producer-side covered at T1, transitive
   IPC-seam coverage future-wave option. Unblocked from EXIT.
 - **Spectrum widget retrofit + AudioReactivity 48-bar FFT live
   visualiser** — post-MVP UX enhancements carried forward as
@@ -163,17 +163,17 @@ Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
 | Phase-4a EXIT closure                          | 2026-05-03      | post-`#334` merge (closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`) |
 | Phase-4a Wave 1c-α                             | 2026-05-03      | post-`#340` merge   |
 | Phase-4a Wave 1c-α-2 (audio production bootstrap) | 2026-05-06   | `9a1131e` (PR `#344`) |
-| Phase-4a Wave 1c-β (camera + Syphon arm widening) | 2026-05-07     | `<merge-sha>` (this PR; engineering anchors at PRs `#389`-`#405` inclusive) |
+| Phase-4a Wave 1c-β (camera + Syphon arm widening) | 2026-05-07     | `fb2bc75` (PR `#406`; engineering anchors at PRs `#389`-`#405` inclusive) |
 | Phase-4b cluster (Wave 4b.1 — 4b.6) + 4d.1/4d.2/4d.3 partial | 2026-05-06 | post-`#363` merge   |
 | Phase-4b Wave 4b.7 (`EV-IMPORT-REFERENCE-SHOW`) | 2026-05-07     | `87b1a62` (PR `#370`) |
 | Phase-4b Wave 4b.8 (`EV-ACCESSIBILITY-AA`)     | 2026-05-07      | `e751752` (PR `#373`) |
 | Phase-4d Wave 4d.4 (`EV-SOAK-CHAOS`)           | 2026-05-07      | `ca7ddd8` (PR `#376`) |
-| Phase-4d `EV-CRASH-PAYLOAD-REDACTION` (`EV-CRASH-PAYLOAD-REDACTION`) | 2026-05-07      | `c57e09b` (PR `#377`) |
-| Phase-4d `EV-CRASH-RESUME` (`EV-CRASH-RESUME`)            | 2026-05-07      | `23b45ba` (PR `#379`) |
-| Phase-4d `EV-GPU-SELECTION` (`EV-GPU-SELECTION`)           | 2026-05-07      | `bcc4b5b` (PR `#380`) |
-| Phase-4b `EV-AUTHORING-LIVE-RELOAD` (`EV-AUTHORING-LIVE-RELOAD`)   | 2026-05-07      | `2336ef5` (PR `#383`) |
-| Phase-4b `EV-IMPORT-SHADERTOY` (`EV-IMPORT-SHADERTOY` PR 2)   | 2026-05-07      | `d6b266d` (PR `#384`) |
-| Phase-4d `EV-ANALYTICS-ZERO-DEFAULT` (`EV-ANALYTICS-ZERO-DEFAULT`)  | TBD ~2026-05-20 | TBD (calendar)      |
+| Phase-4d `EV-CRASH-PAYLOAD-REDACTION`          | 2026-05-07      | `c57e09b` (PR `#377`) |
+| Phase-4d `EV-CRASH-RESUME`                     | 2026-05-07      | `23b45ba` (PR `#379`) |
+| Phase-4d `EV-GPU-SELECTION`                    | 2026-05-07      | `bcc4b5b` (PR `#380`) |
+| Phase-4b `EV-AUTHORING-LIVE-RELOAD`            | 2026-05-07      | `2336ef5` (PR `#383`) |
+| Phase-4b `EV-IMPORT-SHADERTOY` (PR 2)          | 2026-05-07      | `d6b266d` (PR `#384`) |
+| Phase-4d `EV-ANALYTICS-ZERO-DEFAULT`           | TBD ~2026-05-20 | TBD (calendar)        |
 
 ---
 

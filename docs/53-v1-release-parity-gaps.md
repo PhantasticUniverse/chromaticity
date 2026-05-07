@@ -17,7 +17,7 @@ This doc is a planning artifact, not a gate. It does not declare V1 readiness, d
 
 ## 2. Cumulative parity rollup
 
-Approximately **75-80% of reference observable feature surface implemented** in chromaticity at HEAD `<this-pr-merge-sha>`, weighted by V1-relevance:
+Approximately **75-80% of reference observable feature surface implemented** in chromaticity at HEAD `fb2bc75`, weighted by V1-relevance:
 
 - **Engine-side surfaces** (scene model, runtime, audio, scheduler, render, scripting, integrations, entitlement, observability): **~90%**. Phase-4a EXIT achieved at commit `5acc452`; Wave 1c-β camera + Syphon adapters closed 2026-05-07 (synthetic-narrowing); Phase-4b passable under collective narrowings; 5 of 6 Phase-4d rows at `Pass` (only `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 per the 14-day soak).
 - **UI-shell parity** (views, widgets, hotkey / OSC / MIDI vocabularies): **~95%**. Wireframe-faithful complete via the v0.2-beta bundle port (W6-W34 sprint waves). Custom macOS menu bar parity beyond Tauri default is the only minor gap.
@@ -40,7 +40,8 @@ The audit covers twelve observable feature dimensions. Each row notes implementa
 | Hotkeys / OSC routes / MIDI vocabulary     | Implemented           | First-class wireframe parity. 57-row hotkey vocabulary, OSC route taxonomy, and MIDI-CONF-11..20 fixtures all landed.                          |
 | Embedded documentation                     | Missing               | Reference bundle ships an in-app help corpus. No equivalent in chromaticity. See gap G1.                                                       |
 | Auto-update / crash reporting / analytics  | Partial               | Analytics zero-default by design (ADR-013 + ADR-016); crash payload redaction scaffolded (PR #346). Auto-update absent. See gap G5.            |
-| Camera / video / OpenCV                    | Implemented           | Wave 1c-β closed 2026-05-07 (16-PR sequence). `integrations/camera-adapter/` (nokhwa cross-platform; CoreMediaIO + Media Foundation) + `integrations/syphon-adapter/` (macOS GPU IO via `objc2` framework bindings) + `engine/render` bridges + `Sources.svelte` device pickers. Synthetic-narrowing posture per ADR-020 + ADR-021 + `docs/54`; per-platform binding stubs + hardware validation deferred per `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β closure. |
+| Camera capture                             | Implemented           | Wave 1c-β closed 2026-05-07 (16-PR sequence). `integrations/camera-adapter/` (nokhwa cross-platform; CoreMediaIO + Media Foundation) + `integrations/syphon-adapter/` (macOS GPU IO via `objc2` framework bindings) + `engine/render` bridges + `Sources.svelte` device pickers. Synthetic-narrowing posture per ADR-020 + ADR-021 + `docs/54`; per-platform binding stubs + hardware validation deferred per `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β closure. |
+| OpenCV-backed video processing             | Deferred-Per-AO       | OpenCV-backed video processing (filters, vision pipelines, object detection) is out of scope for V1; no clean-room ADR or evidence row owns it at HEAD. The reference observable surface includes OpenCV-class processing nodes; chromaticity intentionally defers this scope. |
 | Localization                               | Matches reference     | English-only V1 across both surfaces.                                                                                                          |
 
 ## 4. Top V1 release gaps (engineering work)
