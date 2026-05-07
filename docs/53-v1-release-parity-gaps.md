@@ -1,0 +1,113 @@
+<!--
+SPDX-License-Identifier: CC-BY-4.0
+SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+-->
+
+# V1 Release Parity Gaps (Clean-Room Observable Audit)
+
+**Generated:** 2026-05-07. Anchor: `main` HEAD `d6b266d` (after PR #384 merge). Audit derived under clean-room observable-only posture per `29-cleanroom-legal-policy-baseline.md`.
+
+## 1. Posture
+
+This document is a derivative of an observable-data-only inspection of the reference application's `Contents/Resources/` bundle (file-tree shapes, public plist, JSON schema shapes, asset filenames, embedded documentation page filenames). NO source code, NO `.synScene` package contents, NO Mach-O binary, NO `.cpp` / `.h` / `.m` / `.storyboardc` internals were inspected. The audit's purpose is V1 feature-surface parity, not implementation parity.
+
+Entries are scoped at the feature-dimension level. Implementation work derived from this doc must continue to honor the clean-room SOP per `29-cleanroom-legal-policy-baseline.md`. Per the brand-trademark-review checklist in that SOP, no reference-app product name appears in the user-facing description columns of evidence rows or shipped UI strings derived from this audit.
+
+This doc is a planning artifact, not a gate. It does not declare V1 readiness, does not pre-empt Phase-4 EXIT decisions, and does not commit any specific row to a specific implementation path. The canonical evidence rows live in `26-evidence-artifact-registry.md`; this doc adds a parity-gap dimension that the registry does not carry.
+
+## 2. Cumulative parity rollup
+
+Approximately **70-75% of reference observable feature surface implemented** in chromaticity at HEAD `d6b266d`, weighted by V1-relevance:
+
+- **Engine-side surfaces** (scene model, runtime, audio, scheduler, render, scripting, integrations, entitlement, observability): **~85%**. Phase-4a EXIT achieved at commit `5acc452`; Phase-4b passable under collective narrowings; 5 of 6 Phase-4d rows at `Pass` (only row 94 `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 per the 14-day soak).
+- **UI-shell parity** (views, widgets, hotkey / OSC / MIDI vocabularies): **~95%**. Wireframe-faithful complete via the v0.2-beta bundle port (W6-W34 sprint waves). Custom macOS menu bar parity beyond Tauri default is the only minor gap.
+- **Content / asset bundling** (default scenes, library corpus, shadertoy assets, demo media, embedded docs, custom thumbnails): **~15%**. The dominant V1 gap. None of the bundled-content surfaces have been authored from a clean-room baseline yet.
+- **Update / telemetry infrastructure**: **~30%**. Auto-update absent (Tauri updater not yet wired); analytics correctly stricter-by-design at zero-default per ADR-013 + ADR-016, which is parity-by-omission rather than a gap.
+
+## 3. Per-feature-dimension findings
+
+The audit covers twelve observable feature dimensions. Each row notes implementation status against the reference observable surface and the V1-relevance of any gap.
+
+| Dimension                                  | Status                | Notes                                                                                                                                          |
+| ------------------------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scene packaging                            | Implemented           | Chromaticity-native `.chroma` / `.chromaPack`. Non-import of the reference scene format is intentional per the clean-room baseline.            |
+| Preset / scene JSON schema                 | Partial               | Slider control type covered. Control types beyond slider need explicit equivalent inventory in `38-scene-library-and-import-spec.md`.          |
+| Default / welcome scene + thumbnails       | Partial               | Per-source-class thumbnail fallback set + default seeded scene engine-side both missing. See gap G4.                                           |
+| Library scenes (bundled starter pack)      | Missing               | Reference bundle ships ~87 scenes. V1 needs an authored-from-scratch (clean-room) scene starter pack. See gap G2.                              |
+| Shader library (Lygia + sdf primitives)    | Partial               | Lygia matches reference at v1.1.4 (trial vendor under `third_party/lygia/`). Reference-bundle SDF + metacontrols GLSL analogs absent.          |
+| Image / asset coverage                     | Missing               | Shadertoy-channel image set + demo media absent. Required for `EV-IMPORT-SHADERTOY` runtime correctness beyond PR #360 scaffolding. See G3.    |
+| UI views / app shell                       | Implemented           | Wireframe-faithful native parity via the v0.2-beta bundle port. Custom menu bar minor gap.                                                     |
+| Hotkeys / OSC routes / MIDI vocabulary     | Implemented           | First-class wireframe parity. 57-row hotkey vocabulary, OSC route taxonomy, and MIDI-CONF-11..20 fixtures all landed.                          |
+| Embedded documentation                     | Missing               | Reference bundle ships an in-app help corpus. No equivalent in chromaticity. See gap G1.                                                       |
+| Auto-update / crash reporting / analytics  | Partial               | Analytics zero-default by design (ADR-013 + ADR-016); crash payload redaction scaffolded (PR #346). Auto-update absent. See gap G5.            |
+| Camera / video / OpenCV                    | Deferred-Per-AO       | Wave 1c-β; explicitly deferred per AO direction. Multi-week 5,000-10,000 LoC scope, requires platform integration decisions + likely new ADRs. |
+| Localization                               | Matches reference     | English-only V1 across both surfaces.                                                                                                          |
+
+## 4. Top V1 release gaps (engineering work)
+
+Five gaps surface as engineering work that would close measurable V1 parity. Each entry covers the dimension, what is missing, why it matters for V1, rough sizing, and a recommended sequence note.
+
+### G1. In-app embedded documentation bundle
+
+**Dimension:** Embedded documentation. **Missing:** A clean-room mkdocs (or equivalent static site) covering the chromaticity feature surface — scene JSON format, audio uniforms, hotkeys, OSC, MIDI, FAQ, troubleshooting — bundled into the Tauri shell under an in-app help route. **Why it matters for V1:** Reference observable surface includes an in-app help corpus; users expect first-launch discoverability without leaving the app. **Sizing:** Multi-PR — author corpus (clean-room), wire static-site bundling into the Tauri build, route the in-app help shell, write `EV-DOCS-UX-LATENCY` follow-on coverage beyond the synthetic harness already at `Pass`. Rough estimate: 4-6 PRs over 2-3 wave-cycles. **Sequence:** Phase-4c work; can run in parallel with G2-G4 (no shared choke points beyond review bandwidth).
+
+### G2. Bundled scene starter library
+
+**Dimension:** Library scenes. **Missing:** An authored-from-scratch starter pack of N (≥10-20) seed scenes shipped in the app bundle, exposed via the Library view at first launch. **Why it matters for V1:** First-launch UX with an empty library is a known regression risk. The reference observable surface ships ~87 scenes; V1 should not present an empty grid. **Sizing:** Author-time work primarily — the engine surfaces (`EV-LIBRARY-DISCOVERY`, `EV-LIBRARY-BUNDLE-LAYOUT`) already landed at `Pass`. Rough estimate: 2-3 PRs (corpus authoring + bundling + first-launch seed migration). **Sequence:** Independent; can land any time before V1 RC.
+
+### G3. Shadertoy-channel asset library
+
+**Dimension:** Image / asset coverage. **Missing:** A licensed shadertoy-equivalent texture / cubemap pack covering the channel slots a typical Shadertoy port references. **Why it matters for V1:** `EV-IMPORT-SHADERTOY` (row 65) currently lands at PR-1-of-N scaffolding only (PR #360 / `7497955`). Runtime correctness of imported Shadertoy scenes requires the channel-asset set to resolve. **Sizing:** Mostly licensing / sourcing work plus a small bundling PR. Rough estimate: 1-2 PRs after license posture is confirmed. **Sequence:** Blocks the `EV-IMPORT-SHADERTOY` PR-2 closure; should land before that PR opens.
+
+### G4. Default + per-source-class fallback thumbnails
+
+**Dimension:** Default / welcome scene + thumbnails. **Missing:** Four PNG fallback thumbnails — default, fallback (generic), ISF source-class, Shadertoy source-class — wiring `EV-LIBRARY-THUMBNAIL` (row 58, currently `Pass` under stub byte-hash narrowing) to a real first-launch UX without requiring the deferred GPU-backed renderer. **Why it matters for V1:** Library view first-launch UX surface; the byte-hash stub renderer ships a "no thumbnail" affordance that would read as polish-debt at V1. **Sizing:** 1 PR (assets + wiring). **Sequence:** Independent; small wave-tail PR.
+
+### G5. Tauri auto-updater
+
+**Dimension:** Auto-update / crash reporting / analytics. **Missing:** A Tauri-native auto-updater flow paired with ADR-014 release signing. **Why it matters for V1:** Without auto-update, post-V1 users do not pick up patch releases without manual download. The reference observable surface ships an updater equivalent (Sparkle-class). **Sizing:** Multi-PR — Tauri updater configuration + signing chain integration + UX surface (in-app update banner, defer / install-now affordance). Rough estimate: 3-5 PRs. **Sequence:** Pair with ADR-014 release signing; should land before V1 RC.
+
+## 5. Items recommended for AO-deferral (post-MVP)
+
+Seven items map to existing AO direction or are appropriate to defer past V1:
+
+- **ISF native import** — `EV-IMPORT-ISF-REJECT` already landed at `Pass` under design-deferred-to-V2 narrowing per PR #358 / `8fadc55`. No V1 work owed.
+- **OpenCV / camera live-feed** — Wave 1c-β explicitly deferred per AO direction; multi-week 5,000-10,000 LoC scope, requires new ADRs.
+- **Custom macOS menu bar parity beyond Tauri default** — UX polish; Tauri default is acceptable for V1.
+- **Demo media** (`demo_media.mp4` analog or equivalent) — nice-to-have, not gating for V1 RC.
+- **Sparkle EdDSA exact-mechanism parity** — the Tauri updater is the chromaticity-native path per ADR-014; reference-side mechanism is not the parity target.
+- **`hg_sdf.glsl` + metacontrols.glsl analogs** — clean-room rewrite or vendor-after-license-review; not required for V1 wireframe parity.
+- **Spectrum widget retrofit + `AudioReactivity` 48-bar live-driven mode** — already deferred to post-MVP per the Wave 1c-α narrowing (PRs #339 / #340) and the Wave 1c-α-2 narrowing reduction (PRs #343 / #344 / Bootstrap PR 3).
+
+## 6. Cross-reference
+
+- `26-evidence-artifact-registry.md` — canonical EV-ID inventory.
+- `29-cleanroom-legal-policy-baseline.md` — clean-room SOP and brand-trademark-review checklist.
+- `38-scene-library-and-import-spec.md` — scene library + import design.
+- `46-phase-4-exit-readiness.md` — Phase-4 EXIT readiness matrix.
+- `44-phase-4-exit-scoping.md` — companion sequencing aid for Phase-4b / 4c / 4d.
+
+## 7. Source audit reference
+
+The `Contents/` audit was performed by a sub-agent on 2026-05-07. The agent inspected only:
+
+- `Contents/Info.plist` (public app metadata).
+- `Contents/Resources/new_scene/scene.json` (template schema shape).
+- `Contents/Resources/{lib,images,shadertoy_images,views,Base.lproj,default,misc,synesthesia_reference_files}/` directory listings + filenames.
+- Public file-tree shapes via `ls` and `find`.
+
+The agent did NOT inspect:
+
+- `Contents/MacOS/` binary.
+- `Contents/Frameworks/*.framework/<binary>`.
+- `Contents/_CodeSignature/`.
+- `Contents/Resources/release/` per CLAUDE.md anti-patterns.
+- Any `.synScene` / `.synScenePack` files.
+- Any `.cpp` / `.h` / `.m` / `.mm` files.
+- Internal XML of `.xib` / `.storyboardc` / `.nib` files.
+
+Per the clean-room SOP brand-trademark-review checklist, no reference-app product name appears in the user-facing description columns of evidence rows or shipped UI strings derived from this audit.
+
+## 8. When this doc is wrong
+
+This doc is a planning artifact derived from an observable audit at a single moment in time. If a parity claim disagrees with the tree at a later HEAD, the tree wins — refresh this doc in a follow-up `docs(repo)` commit. Stale parity-gap inventory is worse than none.
