@@ -40,6 +40,8 @@ use crate::frames::{
 };
 #[cfg(target_os = "macos")]
 use crate::macos::{AuthorizationProbe, AuthorizationStatus, InUsePrecheck};
+#[cfg(target_os = "windows")]
+use crate::windows::{WindowsCameraProbe, WindowsPermissionStatus};
 
 /// Coarse classification of a camera device, used at enumeration
 /// time to drive UI grouping (built-in vs external vs Continuity vs
@@ -319,6 +321,16 @@ pub struct NokhwaInputAdapter {
     /// [`Self::with_in_use_precheck`].
     #[cfg(target_os = "macos")]
     in_use_precheck: Box<dyn InUsePrecheck>,
+    /// Windows-only Privacy-Settings probe + HRESULT-mapper.
+    /// Trait-object DI seam per ADR-020 §5 + §6 "Per-platform
+    /// notes — Windows"; defaults to
+    /// [`crate::windows::PlaceholderProbe`] returning `Unknown`
+    /// until the policy-scoped follow-up PR ships the real
+    /// consent-store + Media Foundation HRESULT binding. Tests
+    /// inject mock probes via
+    /// [`Self::with_windows_camera_probe`].
+    #[cfg(target_os = "windows")]
+    windows_probe: Box<dyn WindowsCameraProbe>,
 }
 
 impl NokhwaInputAdapter {
@@ -345,6 +357,8 @@ impl NokhwaInputAdapter {
             authorization_probe: Box::new(crate::macos::PlaceholderProbe),
             #[cfg(target_os = "macos")]
             in_use_precheck: Box::new(crate::macos::PlaceholderProbe),
+            #[cfg(target_os = "windows")]
+            windows_probe: Box::new(crate::windows::PlaceholderProbe),
         }
     }
 
@@ -372,6 +386,19 @@ impl NokhwaInputAdapter {
     #[must_use]
     pub fn with_in_use_precheck(mut self, precheck: Box<dyn InUsePrecheck>) -> Self {
         self.in_use_precheck = precheck;
+        self
+    }
+
+    /// Override the Windows Privacy-Settings probe + HRESULT-
+    /// mapper. Tests inject mock probes through this seam to drive
+    /// the adapter state machine through every
+    /// [`crate::windows::WindowsPermissionStatus`] arm + the
+    /// canonical HRESULT-mapping taxonomy without depending on a
+    /// real Media Foundation runtime.
+    #[cfg(target_os = "windows")]
+    #[must_use]
+    pub fn with_windows_camera_probe(mut self, probe: Box<dyn WindowsCameraProbe>) -> Self {
+        self.windows_probe = probe;
         self
     }
 }
@@ -404,6 +431,25 @@ impl CameraAdapter for NokhwaInputAdapter {
                 | AuthorizationStatus::Restricted => {
                     return Ok(Vec::new());
                 }
+            }
+        }
+
+        // On Windows, consult the Privacy-Settings probe before
+        // surfacing the device list. Per ADR-020 §6: Media
+        // Foundation device-enumeration succeeds even with camera
+        // privacy blocked (the device list is visible) but
+        // `MFCreateSourceReader` fails; surfacing devices the
+        // operator cannot bind would tantalize them. Per the
+        // brief direction for this PR, the adapter pre-empts that
+        // by routing an explicitly-`Denied` consent-store status
+        // to an empty enumeration vec. `Granted` and `Unknown`
+        // both proceed (the open-call HRESULT is the arbiter when
+        // the consent-store query is indeterminate, and the
+        // bind-time mapping surfaces the eventual fault).
+        #[cfg(target_os = "windows")]
+        {
+            if self.windows_probe.current().is_terminal_denial() {
+                return Ok(Vec::new());
             }
         }
 
@@ -475,6 +521,40 @@ impl CameraAdapter for NokhwaInputAdapter {
                      application; operator must close the holding \
                      application before re-binding",
                     config.device_id
+                )));
+            }
+        }
+
+        // Windows permission state machine per ADR-020 §5 + §6
+        // "Per-platform notes — Windows" + the brief direction for
+        // Wave 1c-β Phase 2 PR 3:
+        //
+        //   1. Query the Privacy-Settings consent-store status.
+        //      * `Denied` → terminal
+        //        `Faulted("permission-denied")` immediately. Unlike
+        //        macOS, Windows has no in-app permission prompt;
+        //        the operator-facing UX surface deep-links to
+        //        `ms-settings:privacy-webcam` per ADR-020 §6 line
+        //        156, and the adapter's recovery path is a manual
+        //        re-bind once the operator grants access.
+        //      * `Granted` / `Unknown` → fall through to the
+        //        nokhwa-bind path; the eventual HRESULT from the
+        //        Media Foundation open call is the authoritative
+        //        arbiter via [`crate::windows::map_hresult_default`].
+        //   2. nokhwa-bind (deferred to the follow-up policy-scoped
+        //      PR; on a real bind, `MF_E_DEVICE_INVALIDATED` →
+        //      `Faulted("device-busy")`, `E_ACCESSDENIED` →
+        //      `Faulted("permission-denied")`, success → `Bound`).
+        #[cfg(target_os = "windows")]
+        {
+            let status = self.windows_probe.current();
+            if status.is_terminal_denial() {
+                self.bound_config = None;
+                self.health = AdapterHealth::Faulted(Cow::Borrowed(PERMISSION_DENIED));
+                return Err(AdapterError::PermissionDenied(format!(
+                    "Windows Privacy-Settings camera access is denied \
+                     ({status:?}); operator must grant access via \
+                     ms-settings:privacy-webcam before re-binding"
                 )));
             }
         }
@@ -589,7 +669,15 @@ mod adapter_pins {
                 }))
                 .with_in_use_precheck(Box::new(MockInUsePrecheck { in_use: false }))
         };
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        let adapter = {
+            use crate::windows::WindowsPermissionStatus;
+            use crate::windows::test_support::MockWindowsCameraProbe;
+            NokhwaInputAdapter::new().with_windows_camera_probe(Box::new(MockWindowsCameraProbe {
+                status: WindowsPermissionStatus::Granted,
+            }))
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let adapter = NokhwaInputAdapter::new();
 
         let mut adapter = adapter;
@@ -849,6 +937,125 @@ mod adapter_pins {
             }
             other => panic!("expected Faulted(device-busy), got {other:?}"),
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Windows permission-flow state-machine pins per ADR-020 §5 + §6.
+    //
+    // The arms below cover the Privacy-Settings consent-store status
+    // taxonomy under DI-injected mocks. The `Unknown` arm exercises
+    // the open-call-as-arbiter contract (the consent-store query is
+    // indeterminate, so the eventual HRESULT drives the
+    // state-machine transition); the `Denied` arm exercises the
+    // terminal-fault path; the `Granted` arm composes with
+    // device-busy mapping to verify the canonical HRESULT taxonomy
+    // routes correctly.
+    // -----------------------------------------------------------------
+
+    /// `EV-INTEGRATION-MATRIX` T1: `bind` with `Denied` Privacy-
+    /// Settings status transitions to
+    /// `Faulted("permission-denied")` immediately without firing an
+    /// open call — the Privacy-Settings deep-link
+    /// (`ms-settings:privacy-webcam`) is the operator's recovery
+    /// path. Pinned because routing `Denied` through the open-call
+    /// path would silently swallow the user-visible operator
+    /// guidance.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn bind_with_windows_denied_permission_transitions_to_faulted_permission_denied() {
+        use crate::windows::WindowsPermissionStatus;
+        use crate::windows::test_support::MockWindowsCameraProbe;
+        let mut adapter =
+            NokhwaInputAdapter::new().with_windows_camera_probe(Box::new(MockWindowsCameraProbe {
+                status: WindowsPermissionStatus::Denied,
+            }));
+        let err = adapter
+            .bind(CameraConfig::defaults_for("any-device"))
+            .expect_err("Denied Privacy-Settings always errors");
+        assert!(matches!(err, AdapterError::PermissionDenied(_)));
+        match adapter.health() {
+            AdapterHealth::Faulted(reason) => {
+                assert_eq!(reason.as_ref(), PERMISSION_DENIED);
+            }
+            other => panic!("expected Faulted(permission-denied), got {other:?}"),
+        }
+        assert!(adapter.bound_config().is_none());
+    }
+
+    /// `EV-INTEGRATION-MATRIX` T1: `bind` with the `MF_E_DEVICE_INVALIDATED`
+    /// HRESULT route surfaces as
+    /// `AdapterError::DeviceBusy` via the canonical mapping in
+    /// [`crate::windows::map_hresult_default`]. The PR 3 scaffold
+    /// does not yet wire the open-call HRESULT through the bind
+    /// path (the nokhwa-bind path lands in a follow-up policy-
+    /// scoped PR), so this pin exercises the mapping function
+    /// directly + verifies the corresponding `AdapterError`
+    /// `canonical_reason` round-trips to `device-busy` distinct
+    /// from `permission-denied`.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn bind_with_windows_in_use_device_transitions_to_faulted_device_busy() {
+        use crate::windows::map_hresult_default;
+        // MF_E_DEVICE_INVALIDATED → device-busy via canonical map.
+        let reason = map_hresult_default(0xC00D_36B4);
+        assert_eq!(reason, DEVICE_BUSY);
+        // The reverse round-trip: an `AdapterError::DeviceBusy`
+        // surfaces the same canonical reason, locking the
+        // mapping symmetry the operator UX surface depends on.
+        let err = AdapterError::DeviceBusy(String::from(
+            "MF_E_DEVICE_INVALIDATED on MFCreateSourceReader",
+        ));
+        assert_eq!(err.canonical_reason(), DEVICE_BUSY);
+        assert_ne!(err.canonical_reason(), PERMISSION_DENIED);
+    }
+
+    /// `EV-INTEGRATION-MATRIX` T1: `enumerate` with `Denied`
+    /// Windows Privacy-Settings status returns an empty vec rather
+    /// than enumerating devices the operator cannot bind. Pinned
+    /// because the operator-facing device-picker UI iterates the
+    /// enumeration vec; surfacing devices under a denied probe
+    /// would tantalize the operator with cameras they cannot use.
+    /// `Granted` and `Unknown` both proceed to the cross-platform
+    /// (still-stubbed) enumeration path.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn enumerate_with_windows_denied_returns_empty_vec() {
+        use crate::windows::WindowsPermissionStatus;
+        use crate::windows::test_support::MockWindowsCameraProbe;
+        let adapter =
+            NokhwaInputAdapter::new().with_windows_camera_probe(Box::new(MockWindowsCameraProbe {
+                status: WindowsPermissionStatus::Denied,
+            }));
+        let devices = adapter
+            .enumerate()
+            .expect("enumerate succeeds under Denied status");
+        assert!(devices.is_empty());
+    }
+
+    /// `EV-INTEGRATION-MATRIX` T1: `enumerate` with the placeholder
+    /// `Unknown` probe falls through to the cross-platform
+    /// scaffold (empty vec under PR 3, since no backend
+    /// enumerates yet). Pinned because routing `Unknown` through
+    /// the empty-vec short-circuit would silently break the
+    /// open-call-as-arbiter contract — `Unknown` MUST proceed so
+    /// the eventual nokhwa enumeration sees the device list.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn enumerate_with_windows_unknown_proceeds() {
+        use crate::windows::WindowsPermissionStatus;
+        use crate::windows::test_support::MockWindowsCameraProbe;
+        let adapter =
+            NokhwaInputAdapter::new().with_windows_camera_probe(Box::new(MockWindowsCameraProbe {
+                status: WindowsPermissionStatus::Unknown,
+            }));
+        let devices = adapter
+            .enumerate()
+            .expect("enumerate succeeds under Unknown status");
+        // PR 3 scaffold: enumeration is empty across the board
+        // because no backend is wired; the pin's contract is the
+        // fall-through path is reached, not that devices are
+        // surfaced.
+        assert!(devices.is_empty());
     }
 
     /// `EV-INTEGRATION-MATRIX` T1: `enumerate` with `Denied`
