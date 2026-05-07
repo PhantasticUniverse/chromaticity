@@ -59,6 +59,7 @@
 
 pub mod diagnostics;
 pub mod discovery;
+pub mod drill;
 pub mod hotkey;
 pub mod meta_media;
 pub mod midi;
@@ -72,6 +73,10 @@ pub use diagnostics::{ArtifactClass, ImportDiagnostic, ImportDiagnosticCode};
 pub use discovery::{
     DiscoveryError, ReferenceUserDataRoot, discover_reference_user_data_root,
     override_reference_user_data_root,
+};
+pub use drill::{
+    CommitOutcome, DryRunReport, ImportClassCounts, ImportSelection, ReferenceImportDriver,
+    RollbackSnapshot,
 };
 pub use hotkey::{HotkeyImporter, ImportedHotkey, ImportedHotkeyRemap, ImportedHotkeyStatus};
 pub use meta_media::{
