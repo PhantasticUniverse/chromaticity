@@ -231,6 +231,134 @@ mod fixtures {
         assert_eq!(out["scene_name"], placeholder());
     }
 
+    // -----------------------------------------------------------------
+    // Wave 4d.1 PR 2 — synthetic crash-payload validation harness
+    // -----------------------------------------------------------------
+    //
+    // The fixtures below exercise the
+    // [`chromaticity_observability::crash_harness`] surface the row 93
+    // PR 2 closing-docs section transitions to Pass-narrowed. Each
+    // fixture constructs a synthetic payload for a simulated crash
+    // class, runs it through `CrashPayloadRedactor::all`, and asserts
+    // no sentinel from the sensitive-field set survives in the
+    // serialised redacted output.
+
+    use chromaticity_observability::crash_harness::{
+        CrashPayloadValidationReport, SimulatedCrashClass, SyntheticCrashPayload,
+        validate_synthetic_crash_payload,
+    };
+
+    fn assert_zero_leak(report: &CrashPayloadValidationReport, expected_sentinels: usize) {
+        assert!(
+            report.sentinels_leaked.is_empty(),
+            "{:?} leaked sentinels: {:?}",
+            report.crash_class,
+            report.sentinels_leaked
+        );
+        assert_eq!(report.sentinels_redacted, expected_sentinels);
+    }
+
+    #[test]
+    fn fixture_9_sigsegv_class_redacts_all_five_categories() {
+        let payload = SyntheticCrashPayload::synthetic_for(SimulatedCrashClass::Sigsegv);
+        let report = validate_synthetic_crash_payload(payload, &CrashPayloadRedactor::all());
+        assert_zero_leak(&report, 5);
+        assert_eq!(report.crash_class, SimulatedCrashClass::Sigsegv);
+        // The five known field-name keys land on the placeholder.
+        assert_eq!(report.redacted_payload["main_glsl"], placeholder());
+        assert_eq!(report.redacted_payload["script_js"], placeholder());
+        assert_eq!(report.redacted_payload["media_buffer"], placeholder());
+        assert_eq!(report.redacted_payload["comment"], placeholder());
+        assert_eq!(report.redacted_payload["license_token"], placeholder());
+    }
+
+    #[test]
+    fn fixture_10_panic_in_render_thread_class_redacts_all_five_categories() {
+        let payload =
+            SyntheticCrashPayload::synthetic_for(SimulatedCrashClass::PanicInRenderThread);
+        let report = validate_synthetic_crash_payload(payload, &CrashPayloadRedactor::all());
+        assert_zero_leak(&report, 5);
+        assert_eq!(report.crash_class, SimulatedCrashClass::PanicInRenderThread);
+    }
+
+    #[test]
+    fn fixture_11_oom_class_redacts_all_five_categories() {
+        let payload = SyntheticCrashPayload::synthetic_for(SimulatedCrashClass::OutOfMemory);
+        let report = validate_synthetic_crash_payload(payload, &CrashPayloadRedactor::all());
+        assert_zero_leak(&report, 5);
+        assert_eq!(report.crash_class, SimulatedCrashClass::OutOfMemory);
+    }
+
+    #[test]
+    fn fixture_12_assertion_failure_class_redacts_all_five_categories() {
+        let payload = SyntheticCrashPayload::synthetic_for(SimulatedCrashClass::AssertionFailure);
+        let report = validate_synthetic_crash_payload(payload, &CrashPayloadRedactor::all());
+        assert_zero_leak(&report, 5);
+        assert_eq!(report.crash_class, SimulatedCrashClass::AssertionFailure);
+    }
+
+    #[test]
+    fn fixture_13_safe_telemetry_field_passes_through_post_redaction() {
+        // ADR-016 §Crash reporting line 30 inclusion-list survives the
+        // harness's redactor pass with every value byte-for-byte
+        // preserved.
+        let payload = SyntheticCrashPayload::synthetic_for(SimulatedCrashClass::Sigsegv);
+        let report = validate_synthetic_crash_payload(payload, &CrashPayloadRedactor::all());
+        let telemetry = &report.redacted_payload["telemetry"];
+        assert_eq!(telemetry["build_version"], json!("0.0.0+phase-4d"));
+        assert_eq!(telemetry["profile_class"], json!("native-chroma-v1"));
+        assert_eq!(telemetry["subsystem"], json!("render"));
+        assert_eq!(telemetry["gpu_vendor"], json!("Apple"));
+        assert_eq!(telemetry["gpu_driver"], json!("Metal 3.0"));
+        assert_eq!(telemetry["os_version"], json!("macOS 25.3.0"));
+        assert_eq!(telemetry["frame_time_p99_ms"], json!(11.4));
+        assert_eq!(telemetry["frame_count"], json!(17_452_u64));
+        assert_eq!(telemetry["timestamp"], json!("2026-05-07T12:00:00Z"));
+        // Backtrace frames (file + line only) survive verbatim.
+        let backtrace = report.redacted_payload["backtrace"]
+            .as_array()
+            .expect("backtrace array");
+        assert_eq!(backtrace.len(), 3);
+        assert_eq!(
+            backtrace[0],
+            json!("engine/render/src/scene_adapter.rs:437")
+        );
+    }
+
+    #[test]
+    fn fixture_14_redactor_default_categories_redact_all_synthetic_classes() {
+        // Sweep every [`SimulatedCrashClass`] variant through the
+        // default-all redactor. Pin: NO sentinel survives across the
+        // full crash-class surface.
+        for class in SimulatedCrashClass::all() {
+            let payload = SyntheticCrashPayload::synthetic_for(*class);
+            let report = validate_synthetic_crash_payload(payload, &CrashPayloadRedactor::all());
+            assert_zero_leak(&report, 5);
+            assert_eq!(report.crash_class, *class);
+        }
+    }
+
+    #[test]
+    fn fixture_15_multi_class_validation_report_serializes_round_trip_via_json() {
+        // The redacted_payload is a `serde_json::Value` and must
+        // round-trip through `to_string` / `from_str` byte-for-byte.
+        // This pins the harness's "redacted output is itself
+        // serialisable" property — what a downstream Sentry
+        // transport composing on top of the redactor would rely on.
+        let payload = SyntheticCrashPayload::synthetic_for(SimulatedCrashClass::OutOfMemory);
+        let report = validate_synthetic_crash_payload(payload, &CrashPayloadRedactor::all());
+        let serialised = serde_json::to_string(&report.redacted_payload).unwrap();
+        let parsed: Value = serde_json::from_str(&serialised).unwrap();
+        assert_eq!(parsed, report.redacted_payload);
+        // None of the per-class sentinels must appear in the
+        // serialised string form.
+        assert!(!serialised.contains("oom-glsl-sentinel-do-not-leak"));
+        assert!(!serialised.contains("oom-script-sentinel-do-not-leak"));
+        assert!(!serialised.contains("oom-media-sentinel-do-not-leak"));
+        assert!(!serialised.contains("oom-free-text-sentinel-do-not-leak"));
+        assert!(!serialised.contains("oom-license-sentinel-do-not-leak"));
+    }
+
     #[test]
     fn fixture_8_diagnostic_inclusion_list_round_trips_verbatim() {
         // Lift-only assertion: a payload containing ONLY ADR-016

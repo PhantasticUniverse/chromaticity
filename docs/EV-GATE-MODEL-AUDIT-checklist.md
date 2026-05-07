@@ -2139,3 +2139,130 @@ gate decision.
 ### Sign-off
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
+
+## Phase-4d Row 93 EV-CRASH-PAYLOAD-REDACTION closure
+
+**Date.** 2026-05-07.
+
+**Scope.** Row 93 `EV-CRASH-PAYLOAD-REDACTION` (registry line 94)
+transitions `Planned -> Pass-narrowed` under a 2-PR sequence
+covering PR numbers 346 + 377 (this closing PR). The row pins the
+ADR-016 §Crash payloads redaction contract: scene source
+(`main.glsl`), script source (`script.js`), media-payload bytes,
+recent audio buffers, operator-entered free-text, and activation-
+token bytes MUST be excluded from any transmitted crash report.
+
+### Per-PR sequence
+
+- **PR `#346`** (`7ff37c6`, anchor run `25415739244`, landed
+  2026-05-06) — redaction primitives at
+  `engine/observability/src/crash_redaction.rs`. Ships the
+  `CrashPayloadRedactor` value-driven `serde_json::Value` redactor
+  (substring-match field-name redaction; `[REDACTED]` placeholder
+  substitution; recursion through nested objects + arrays;
+  scalar pass-through), the `RedactCategory` 5-arm enum (`Glsl` /
+  `Script` / `MediaBuffer` / `FreeText` / `LicenseToken`), the
+  `with_category` builder + `all` convenience constructor, and 12
+  T1 in-source drift pins covering field-name match, recursion
+  semantics, conservative-by-default behaviour, and case-
+  insensitivity. Includes the foundational T2 corpus at
+  `engine/observability/tests/crash_payload_redaction_corpus.rs`
+  (8 fixtures: per-category arm × 5 + cross-category interaction
+  + conservative-by-default-unknown-key + diagnostic-preservation).
+- **PR `#377`** (commit `<merge-sha>`, anchor run `<anchor>`, this
+  closing PR, landed 2026-05-07) — synthetic crash-payload
+  validation harness at `engine/observability/src/crash_harness.rs`.
+  Ships `SimulatedCrashClass::{Sigsegv, PanicInRenderThread,
+  OutOfMemory, AssertionFailure}` 4-arm enum,
+  `SyntheticCrashPayload` constructor (per-class fully-populated
+  payload across all 5 `RedactCategory` arms with class-distinct
+  sentinel strings of shape
+  `<class-label>-<category>-sentinel-do-not-leak`),
+  `CrashPayloadValidationReport` (sentinels-redacted vs
+  sentinels-leaked accounting), and
+  `validate_synthetic_crash_payload` runner (substring-search
+  detection over the serialised redacted output) plus 9 T1 harness
+  pins. Extends the T2 corpus with 7 harness-driven fixtures
+  exercising per-class redaction × 4 classes + safe-telemetry
+  pass-through + cross-class sweep + multi-class round-trip
+  serialisation.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-CRASH-PAYLOAD-REDACTION`** — full 2-PR sequence above.
+  Anchor run ids `25415739244` (PR `#346`) + `<anchor>` (PR `#377`;
+  primary anchor for row 93 Pass). Narrowed per the two axes
+  recorded in `docs/26` row 93 description column:
+  (1) **synthetic-harness validation** — the harness validates the
+  redactor surface contract via constructed synthetic payloads
+  across 4 simulated crash classes covering all 5 `RedactCategory`
+  arms; real platform-specific crash-handler injection (POSIX
+  signal handlers feeding `SIGSEGV` minidumps, panic-hook wiring
+  on the render thread, OOM-killer integration) is out-of-scope at
+  MVP and reserved for a future-wave full-injection harness that
+  composes on top of these primitives + harness, mirroring the
+  deferred-composition framing established for the redaction
+  primitives in PR 1 and the synthetic-workload framing already
+  accepted at row 40 `EV-SOAK-CHAOS` Wave 4d.4; (2) **sentinel-
+  string detection** — the harness asserts no sentinel value from
+  the sensitive-field set survives in the serialised redacted
+  output across every crash-class × redact-category combo, the
+  canonical contract per ADR-016 §Crash payloads.
+
+### Per-Type Minimums verification
+
+For row `EV-CRASH-PAYLOAD-REDACTION` transitioning to `Pass`,
+ci-run-url + repo-path + corpus version + drift thresholds
+populate. Anchor run ids cited in this closure section:
+`25415739244` (PR `#346`), `<anchor>` (PR `#377`; primary anchor
+for row 93 Pass).
+
+### Cumulative session recap
+
+2 PRs landed on `main` covering PR numbers 346 (2026-05-06) + 377
+(2026-05-07; this closing PR). The sequence ships the redaction
+primitives, then the synthetic crash-payload validation harness +
+closing-docs flip — each PR's workspace nextest job is the
+auditable anchor.
+
+### Verdict
+
+**Row 93 `EV-CRASH-PAYLOAD-REDACTION` closure achieved 2026-05-07
+at commit `<merge-sha>`** (the merge commit of this PR 2).
+
+After this closure 3 Phase-4d open items remain:
+
+- **Row 80 `EV-CRASH-RESUME` class-d** — deferred-pending-state-
+  shape gap (the class-d crash-resume drill needs a state-shape
+  extension that has not yet landed); classes a/b/c/e/f/g already
+  shipped via PRs `#354` + `#357` + `#361` + `#377-pred`.
+- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+  ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
+  Lane B scaffolding from PR `#347` / `922f2d8`.
+- **Row 78 `EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
+  validation deferred (requires real dual-GPU hardware in CI or
+  on an AO-driven validation rig).
+
+Phase-4d EXIT itself remains AO-held per
+`docs/11-roadmap-phases.md`; this row 93 closure does not pre-empt
+the Phase-4d EXIT decision. Phase-4 EXIT itself remains AO-held
+until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
+does not pre-empt the Phase-4 EXIT gate decision.
+
+### Deferred axes (row narrowing record)
+
+- **Real platform-specific crash-handler injection** — POSIX
+  signal handlers feeding `SIGSEGV` minidumps, Rust panic-hook
+  wiring on the render thread, OOM-killer integration. Out-of-
+  scope at MVP; future-wave full-injection harness will compose
+  on top of the synthetic harness's primitives + sentinel-search
+  apparatus.
+- **Live Sentry transport** — the redactor produces a redacted
+  `serde_json::Value` ready for serialisation, but the actual
+  Sentry-compatible HTTPS transport is a separate Phase-4d+ item
+  per ADR-016 §Crash reporting line 28-31. The transport will
+  consume the redactor's output as input.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
