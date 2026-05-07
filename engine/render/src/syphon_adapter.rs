@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Phase-4a Wave 1c-β Phase 3 PR 3 — engine-side Syphon bridge per
-//! ADR-021 §6.
+//! Engine-side Syphon bridge per ADR-021 §6 (Phase-4a Wave 1c-β
+//! Phase 3 PR 3, landed at PR `#400` / `e893e9e`).
 //!
 //! # Cross-crate boundary
 //!
@@ -90,9 +90,9 @@
 //! `SyphonOutputAdapter::Drop` defensively call `[client stop]` /
 //! `[server stop]` through the trait handle).
 //!
-//! # Scope narrowing for PR 3
+//! # Scope narrowing landed in PR `#400`
 //!
-//! PR 3 ships:
+//! PR 3 shipped:
 //!
 //! - The trait-impl shape: [`Objc2SyphonClientHandle`] /
 //!   [`Objc2SyphonServerHandle`] structs that wrap
@@ -113,7 +113,7 @@
 //!   refcounting invariants per docs/54 Phase-3 lessons 3.1 / 3.2 /
 //!   3.7.
 //!
-//! PR 3 explicitly **does NOT ship**, with the narrowing recorded
+//! PR 3 explicitly did **NOT** ship, with the narrowing recorded
 //! honestly in the closing-docs `EV-INTEGRATION-MATRIX` Syphon-arm
 //! widening:
 //!

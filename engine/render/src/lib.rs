@@ -197,8 +197,9 @@
 //!   [`multipass::UniformValue`] (the FFT array consolidation that
 //!   was previously listed here landed in the slice-5a follow-up
 //!   that opened catalog v1.3.0).
-//! - **Wave 1c-β Phase 3 PR 3** (this PR) — engine-side Syphon ↔ wgpu
-//!   bridge per ADR-021 §6 ([`syphon_adapter::SyphonRenderBridge`] +
+//! - **Wave 1c-β Phase 3 PR 3** (PR `#400` / `e893e9e`) — engine-side
+//!   Syphon ↔ wgpu bridge per ADR-021 §6
+//!   ([`syphon_adapter::SyphonRenderBridge`] +
 //!   [`syphon_adapter::Objc2SyphonClientHandle`] +
 //!   [`syphon_adapter::Objc2SyphonServerHandle`], gated behind the
 //!   optional `syphon-binding` cargo feature + `cfg(target_os = "macos")`).
@@ -209,7 +210,7 @@
 //!   `chromaticity_syphon_adapter::bindings`. Drop posture per
 //!   ADR-021 §8 + docs/54 Lesson 11 (defensive `[client stop]` /
 //!   `[server stop]`); CFType-as-Drop refcounting per docs/54
-//!   Lesson 3.7. PR 3 ships the trait-impl shape + T1 pins under
+//!   Lesson 3.7. PR 3 shipped the trait-impl shape + T1 pins under
 //!   the wave's synthetic-narrowing posture (no live Syphon bus on
 //!   CI per ADR-021 §10); the live `wgpu_hal::api::Metal` escape-
 //!   hatch + `CVMetalTextureCache` + `CVPixelBufferPool` pre-warm
@@ -218,14 +219,14 @@
 //!   / [`syphon_adapter::SyphonRenderBridge::prewarm_output_surface_ring`]
 //!   as the deferred bridge-body wave's target — both entry points
 //!   return [`syphon_adapter::SyphonRenderBridgeError::Unimplemented`]
-//!   in PR 3. The narrowing is recorded honestly in the
+//!   at PR 3 closure. The narrowing is recorded honestly in the
 //!   `EV-INTEGRATION-MATRIX` closing-docs description-column entry
 //!   per the wave's synthetic-narrowing posture; format locked to
 //!   [`wgpu::TextureFormat::Bgra8UnormSrgb`] ↔ `kCVPixelFormatType_32BGRA`
 //!   per docs/54 Lesson 3.2. Crate coupling stays consumer-side:
 //!   `integrations/syphon-adapter/` does NOT depend on
 //!   `engine/render`.
-//! - **Wave 1c-β Phase 2 PR 5** (this PR) — engine-side camera → render
+//! - **Wave 1c-β Phase 2 PR 5** (PR `#403` / `d0281b8`) — engine-side camera → render
 //!   texture-binding adapter per ADR-020 §7
 //!   ([`camera_adapter::camera_texture_binding_from_frame`] +
 //!   [`camera_adapter::CameraTextureBinding`] carrier shape +
@@ -252,7 +253,7 @@
 //!   `Mjpeg` → [`single_pass::RenderError::CameraFormatNotSupported`]
 //!   (JPEG decode deferred). Crate coupling stays consumer-side:
 //!   `integrations/camera-adapter/` does NOT depend on
-//!   `engine/render`. PR 5 ships the marshal + carrier shape +
+//!   `engine/render`. PR 5 shipped the marshal + carrier shape +
 //!   T1 pins (slot-namespace shape, mapping table, slot-bound
 //!   rejection, Mjpeg rejection, zero-dim rejection, purity); the
 //!   live `wgpu::Queue::write_texture` upload + the
@@ -283,9 +284,12 @@
 //!   rely on multi-adapter machines and the selector returns the
 //!   same single adapter when only one is enumerated). The pure-data
 //!   T1 ranking pins live in
-//!   `adapter_selection::adapter_selection_pins`; the dual-adapter
-//!   physical / VM validation corpus is PR 2 scope and lives in
-//!   `engine/render/tests/gpu_selection.rs` in that follow-up.
+//!   `adapter_selection::adapter_selection_pins`; the synthetic
+//!   10-fixture T2 corpus closing PR 2 of 2 (PR `#380` / `bcc4b5b`,
+//!   2026-05-07) lives inline in
+//!   `adapter_selection.rs::adapter_selection_t2_corpus`. Physical /
+//!   VM dual-adapter validation remains hardware-gated and deferred
+//!   per the Phase-4d `EV-GPU-SELECTION` cumulative narrowing.
 //!
 //! Produces evidence for `EV-RENDER-CONFORMANCE`:
 //!
@@ -326,7 +330,11 @@
 //! Per `docs/26-evidence-artifact-registry.md` row 28's Phase-2-exit
 //! definition, full conformance — feedback (slice 4 ✓), transition
 //! fixtures (slice 5b.1 / 5b.2 / 5b.3 ✓), backend matrix (Wave 4d.2
-//! Lane B PR 2 dual-adapter corpus pending) — was reached
+//! Lane B PR 2 of 2 closed at PR `#380` / `bcc4b5b` with the
+//! synthetic T2 corpus inline in
+//! `adapter_selection.rs::adapter_selection_t2_corpus`; physical
+//! dual-adapter hardware validation deferred per the Phase-4d
+//! `EV-GPU-SELECTION` cumulative narrowing) — was reached
 //! incrementally. Per-slice registry-row updates land on separate
 //! follow-up `docs(repo)` commits.
 //!

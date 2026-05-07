@@ -3,12 +3,16 @@
 
 //! Chromaticity Syphon I/O adapter (macOS-only).
 //!
-//! Phase-4a Wave 1c-β Phase 3 PR 1 scaffold per ADR-021. The crate
-//! is gated by `#![cfg(target_os = "macos")]`: on Windows + Linux it
-//! compiles to an empty rlib (no items, no framework dependency).
-//! The macOS-only feature gate lives at the crate root rather than
-//! at workspace `[members]` per ADR-021 §1, so the workspace
-//! topology stays single-list while non-macOS contributes zero items.
+//! Wave 1c-β Phase 3 surface per ADR-021. Wave 1c-β closed
+//! 2026-05-07 (cluster merge `#406`); the Syphon arm landed across
+//! the Phase-3 PR sequence — PR `#398` (scaffold), PR `#400`
+//! (engine bridge / `engine/render::syphon_adapter` real-backend
+//! impls). The crate is gated by `#![cfg(target_os = "macos")]`:
+//! on Windows + Linux it compiles to an empty rlib (no items, no
+//! framework dependency). The macOS-only feature gate lives at the
+//! crate root rather than at workspace `[members]` per ADR-021 §1,
+//! so the workspace topology stays single-list while non-macOS
+//! contributes zero items.
 //!
 //! Public surface (locked by ADR-021 §4):
 //!
@@ -39,16 +43,19 @@
 //! ([`defaults`]), route / discovery types in a sibling module
 //! ([`directory`] + [`frames`]), no protocol-specific logic in core
 //! rendering. The wgpu ↔ `IOSurface` bridge contract is locked in
-//! ADR-021 §6 but lives engine-side at
-//! `engine/render/src/syphon_adapter.rs` (Phase 3 PR 3) — this
-//! crate exposes only the cross-seam texture handle.
+//! ADR-021 §6 and lives engine-side at
+//! `engine/render/src/syphon_adapter.rs` (PR `#400` / `e893e9e`) —
+//! this crate exposes only the cross-seam texture handle plus the
+//! [`adapter::backend::SyphonClientHandle`] /
+//! [`adapter::backend::SyphonServerHandle`] trait surface the
+//! engine's real-backend impls satisfy.
 //!
 //! ## Unsafe posture
 //!
-//! Phase 3 PR 2 narrowly loosens the workspace
-//! `unsafe_code = "forbid"` floor for this crate to `"deny"` (per
-//! the crate-level `[lints.rust] unsafe_code = "deny"` override in
-//! `Cargo.toml` authorized by ADR-021 §3 + `docs/43-development-standards.md`
+//! The crate narrowly loosens the workspace
+//! `unsafe_code = "forbid"` floor to `"deny"` (per the crate-level
+//! `[lints.rust] unsafe_code = "deny"` override in `Cargo.toml`
+//! authorized by ADR-021 §3 + `docs/43-development-standards.md`
 //! §12.6). The `[crate::bindings]` module carries
 //! `#![allow(unsafe_code)]` and is the **only** module in this
 //! crate where unsafe is used; all other modules
@@ -59,10 +66,10 @@
 //!
 //! ## Texture binding namespace
 //!
-//! The engine-side wgpu interop bridge (Phase 3 PR 3) exposes input
-//! textures under the `chroma_SyphonInput[N]` namespace; output
-//! servers register under the [`defaults::DEFAULT_OUTPUT_NAME_TEMPLATE`]
-//! template (operator-overridable).
+//! The engine-side wgpu interop bridge exposes input textures under
+//! the `chroma_SyphonInput[N]` namespace; output servers register
+//! under the [`defaults::DEFAULT_OUTPUT_NAME_TEMPLATE`] template
+//! (operator-overridable).
 //!
 //! ## License
 //!
@@ -79,10 +86,16 @@
 //! ## Evidence
 //!
 //! T1 evidence: [`EV-INTEGRATION-MATRIX`] (Syphon arm, Phase-4a
-//! Wave 1c-β widening). The closing-docs PR 3 records the synthetic
-//! narrowing the Phase 3 PR 2 T2 corpus uses (no live Syphon bus on
-//! CI; mock framework trait) per the row 78 / row 80 / row 93
-//! precedent.
+//! Wave 1c-β widening). Synthetic-narrowing posture per the row 78
+//! / row 80 / row 93 precedent: no live Syphon bus on CI (mock
+//! framework trait at the T2 corpus), recorded honestly in the
+//! `EV-INTEGRATION-MATRIX` closing-docs description-column entry.
+//! Deferred follow-ups carried forward per
+//! `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β
+//! closure section: Syphon `Send`-trait reconciliation,
+//! `list_syphon_servers` `NSDistributedNotificationCenter`
+//! observer real-impl, `publish_syphon_output` real-impl, real
+//! hardware validation on AO dev rigs.
 //!
 //! [`EV-INTEGRATION-MATRIX`]: https://github.com/PhantasticUniverse/chromaticity/blob/main/docs/26-evidence-artifact-registry.md
 

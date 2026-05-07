@@ -41,24 +41,34 @@
 //! audio-pull / render-dispatch subsystems; the wave closed
 //! 2026-05-01 with `EV-SCHEDULER-TICK` at `Pass` (row 38).
 //!
-//! Phase-4d Wave 4d.3 PR 1 (post-Phase-3) adds the [`crash_resume`]
+//! Phase-4d Wave 4d.3 (post-Phase-3) adds the [`crash_resume`]
 //! module: the `EV-CRASH-RESUME` partial-advance state-restoration
-//! adapter for class-a + class-b (row 80). The adapter composes
-//! the existing Phase-3 [`state_migration`] V2 envelope with a
-//! disk-backed save / recover cycle plus per-class restoration
-//! helpers ([`crash_resume::restore_class_a`],
-//! [`crash_resume::restore_class_b`],
-//! [`crash_resume::restore_all_supported_classes`]). PR 1 is
-//! purely additive: existing EV-STATE-REPLAY (row 32),
-//! EV-PRESET-PLAYLIST (row 34), EV-STATE-MIGRATION (row 33), and
-//! EV-SCHEDULER-TICK (row 38) goldens are preserved verbatim.
-//! Subsequent PRs in the wave cluster widen the restoration
-//! surface to class-c (playlist position + iteration mode),
-//! class-d (OSC/MIDI session bindings), class-e (audio input
-//! device + threshold), class-f (operator meta-controls), and
-//! class-g (render resolution + FPS target); the time-to-resume +
-//! visible-artifact-window p50/p95 measurement budgets land
-//! alongside real cross-process crash injection in a later PR.
+//! adapter (row 80). The adapter composes the existing Phase-3
+//! [`state_migration`] V2 envelope with a disk-backed save /
+//! recover cycle plus per-class restoration helpers
+//! ([`crash_resume::restore_class_a`] through
+//! [`crash_resume::restore_class_g`] +
+//! [`crash_resume::restore_all_supported_classes`]). The wave
+//! cluster closed 2026-05-07 at PR `#378` / `9cbb428` with all
+//! seven restoration classes a/b/c/d/e/f/g at `Pass`: class-a +
+//! class-b (foundational), class-c (playlist position + iteration
+//! mode), class-d (OSC/MIDI session bindings; closes the
+//! deferred-pending-state-shape gap by extending [`state::State`]
+//! with `SessionBindings` + the V2 envelope
+//! `EXT_ID_V2_SESSION_BINDINGS` extension without breaking the
+//! V1 → V2 forward-only migration per Phase-3
+//! `EV-STATE-MIGRATION`), class-e (audio input device + threshold),
+//! class-f (operator meta-controls), and class-g (render
+//! resolution + FPS target). The wave is purely additive: existing
+//! EV-STATE-REPLAY (row 32), EV-PRESET-PLAYLIST (row 34),
+//! EV-STATE-MIGRATION (row 33), and EV-SCHEDULER-TICK (row 38)
+//! goldens are preserved verbatim. The full crash-injection drill
+//! (controlled `SIGKILL` / `SIGSEGV` / panic-in-render-thread /
+//! OOM at three wallclock points in a 10-minute scripted show)
+//! plus the time-to-resume + visible-artifact-window p50/p95
+//! measurement budgets are deferred to a future-wave full-injection
+//! harness composing on top of the synthetic restore-helper
+//! apparatus per the Phase-4d cumulative narrowing.
 //!
 //! Slice-5.3 (Phase-2, behind the `script-bridge` Cargo feature) adds
 //! the [`script_bridge`] module: an adapter that implements the

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Phase-4a Wave 1c-β Phase 2 PR 5 — engine-side camera → render
-//! texture-binding adapter per ADR-020 §7.
+//! Engine-side camera → render texture-binding adapter per ADR-020
+//! §7 (Phase-4a Wave 1c-β Phase 2 PR 5, landed at PR `#403` /
+//! `d0281b8`).
 //!
 //! # Cross-crate boundary
 //!
@@ -100,9 +101,9 @@
 //! camera-side coupling out of `multipass.rs` lets the feature gate
 //! cover one module instead of requiring `#[cfg]` on an impl block.
 //!
-//! # Scope narrowing for PR 5
+//! # Scope narrowing landed in PR `#403`
 //!
-//! PR 5 ships:
+//! PR 5 shipped:
 //!
 //! - The pure-function marshal
 //!   [`camera_texture_binding_from_frame`] — slot index ∈ `0..=3`
@@ -121,7 +122,7 @@
 //!   docs/43 §15.5 + the canonical EV-ID-not-row addressing
 //!   convention recorded in CLAUDE.md.
 //!
-//! PR 5 explicitly **does NOT ship**, with the narrowing recorded
+//! PR 5 explicitly did **NOT** ship, with the narrowing recorded
 //! honestly in the closing-docs `EV-INTEGRATION-MATRIX` camera-arm
 //! widening:
 //!

@@ -104,8 +104,9 @@
 //!   sample format, stream-build / stream-play failure).
 //!
 //!   Slice-3b shipped `f32`-only at the device side. The follow-up
-//!   multi-format widening (this PR) lifts the `f32`-only restriction
-//!   by dispatching over `cpal::SampleFormat` at stream-build time
+//!   multi-format widening (PR `#288` / `5ed1a6b`) lifts the
+//!   `f32`-only restriction by dispatching over `cpal::SampleFormat`
+//!   at stream-build time
 //!   and supporting `f32` (passthrough), `i16`, and `u16` device
 //!   formats with per-format conversion to `f32` inside the cpal
 //!   callback before the frame is pushed into the bounded channel.
