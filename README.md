@@ -20,7 +20,7 @@ gate evidence rows `Pass` per `docs/26-evidence-artifact-registry.md`.
 Phase 2 EXIT closed 2026-05-01 at commit `d8e92db` with the four
 foundational rows (`EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`,
 `EV-AUDIO-TRACE`, `EV-SANDBOX-SAFETY`) `Pass` against a green workspace
-nextest run. Phase 3 EXIT closed 2026-05-01 at commit `ec10ee7` with
+nextest run. Phase 3 EXIT closed 2026-05-01 at commit `953fd74` with
 seven of the eight Phase-3 gate rows `Pass` (`EV-AUDIO-TRACE`
 re-validated, `EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`,
 `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`, `EV-SHOW-BUNDLE-RECOVERY`,
@@ -51,8 +51,8 @@ chromaticity/
 ├── .gitignore
 ├── .github/                   # PR/issue templates, labels, workflows
 ├── app/                       # Tauri app shell + app-facing modules
-├── engine/                    # runtime, scene, audio, observability, render, script, entitlement crates
-├── integrations/              # external protocol adapters (OSC, etc.)
+├── engine/                    # authoring, runtime, scene, audio, observability, render, script, entitlement crates
+├── integrations/              # external protocol adapters (OSC, MIDI, etc.)
 ├── scripts/                   # policy/evidence automation helpers
 ├── docs/                      # normative planning corpus (promoted)
 │   ├── README.md              # document map

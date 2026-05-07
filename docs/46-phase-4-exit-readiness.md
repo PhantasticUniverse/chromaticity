@@ -19,7 +19,7 @@ This file is a condensation of facts already in
 
 ## Phase-4a — Integrations + Entitlement (11 rows)
 
-**Status:** Phase-4a EXIT achieved 2026-05-03 at commit `<merge-sha>`
+**Status:** Phase-4a EXIT achieved 2026-05-03 at commit `5acc452`
 per the Phase-4a EXIT closure section in
 `docs/EV-GATE-MODEL-AUDIT-checklist.md`. All 11 rows at `Pass` under
 collective narrowings.
@@ -155,7 +155,7 @@ Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
 | Phase-4d Row 80 (`EV-CRASH-RESUME`)            | 2026-05-07      | `23b45ba` (PR `#379`) |
 | Phase-4d Row 78 (`EV-GPU-SELECTION`)           | 2026-05-07      | `bcc4b5b` (PR `#380`) |
 | Phase-4b Row 61 (`EV-AUTHORING-LIVE-RELOAD`)   | 2026-05-07      | `2336ef5` (PR `#383`) |
-| Phase-4b Row 64 (`EV-IMPORT-SHADERTOY` PR 2)   | 2026-05-07      | `<TBD-on-merge>` (PR `#384`) |
+| Phase-4b Row 64 (`EV-IMPORT-SHADERTOY` PR 2)   | 2026-05-07      | `d6b266d` (PR `#384`) |
 | Phase-4d Row 94 (`EV-ANALYTICS-ZERO-DEFAULT`)  | TBD ~2026-05-20 | TBD (calendar)      |
 
 ---

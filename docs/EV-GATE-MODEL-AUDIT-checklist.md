@@ -1182,13 +1182,13 @@ sections above):
 ### Verdict
 
 All 11 Phase-4a EXIT evidence IDs satisfy the Per-Type Minimums at
-HEAD `<merge-sha>` (the merge commit of this docs(repo) closing PR;
+HEAD `5acc452` (the merge commit of this docs(repo) closing PR;
 the achievement-anchor is conceptually the merge commit, with the
 pre-merge anchor at HEAD `288a214` post-`#334` already carrying all
 11 rows at `Pass`). Status transitions are recorded in
 `docs/26-evidence-artifact-registry.md`. Per `docs/26` §Rules line
 194, the Phase-4a EXIT gate is therefore passable.
-**Phase-4a EXIT achieved 2026-05-03 at commit `<merge-sha>`.**
+**Phase-4a EXIT achieved 2026-05-03 at commit `5acc452`.**
 
 Collective narrowings recap (the AO-approved scope reductions that
 together make Phase-4a EXIT passable under the current waveform): row
