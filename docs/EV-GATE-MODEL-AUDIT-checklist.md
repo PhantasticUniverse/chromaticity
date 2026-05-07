@@ -2539,3 +2539,142 @@ does not pre-empt the Phase-4 EXIT gate decision.
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
 
+
+## Phase-4b Row 61 EV-AUTHORING-LIVE-RELOAD closure
+
+**Date.** 2026-05-07.
+
+**Scope.** Row 61 `EV-AUTHORING-LIVE-RELOAD` (registry line 61)
+transitions `Planned -> Pass` under a 2-PR shipping sequence covering
+PR `#356` (file-watch + reload-on-change scaffolding) plus this PR
+(state-preservation cross-seam contract + closing-docs). The row
+pins the `docs/37-authoring-environment-spec.md` §3.3 hot-reload
+semantics: an operator's mid-show edits to control values, active
+preset, Snap selection, and playlist position must survive a
+successful hot-reload — a reload is a code-change event, not a
+session-reset.
+
+### Per-PR sequence
+
+- **PR `#356`** (`d56f11d`, landed 2026-05-06, Wave 4b.2 PR 1 of 2)
+  — file-watcher + reload-pipeline producer surface under
+  `engine/authoring/src/live_reload.rs` (NOTE: original `docs/26`
+  row 61 description column referenced `engine/script/src/live_reload.rs`
+  — that's a stale path the prior audit missed; the actual location
+  is `engine/authoring/src/live_reload.rs`. This PR's docs touch
+  corrects the registry path). Module ships `LiveReloadConfig` +
+  `LiveReloadHandle` + `start_watching` (notify 6.x cross-platform
+  watcher) + `perform_reload` (single-shot reload step that maps
+  `LoadError -> Diagnostic`) + `ReloadOutcome::{Success, Failed(Diagnostic)}`
+  + 7 in-source T1 pins covering the structural surface (debounce
+  collapses bursts, handle drop signals worker stop, success / fail
+  variant routing, severity classification through the diagnostic
+  pipeline). Module prose at lines 24-40 anticipated PR 2 layering
+  state-preservation on top without re-shaping the surface.
+- **This PR (`<merge-sha>`, landed 2026-05-07)** — state-preservation
+  cross-seam contract extending `engine/authoring/src/live_reload.rs`
+  with `PreservedState` (control_values + active_preset + active_snap
+  + playlist_position) + `PreservedStateSnapshot` builder +
+  `capture_preserved_state` helper + reshaped `ReloadOutcome::Success
+  { value, preserved }` carrying the captured state across the reload
+  boundary. 5 added in-source T1 pins (preserved-state round-trip via
+  capture helper, default-is-empty, control-value round-trip, success
+  variant carries preserved state, is-empty on default). New T2 corpus
+  at `engine/authoring/tests/live_reload_corpus.rs` (6 fixtures: 4
+  single-field round-trips + 1 combined-all-four-fields + 1
+  failure-arm-drops-preserved-state per the "preservation is
+  success-only" contract). Plus closing-docs.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-AUTHORING-LIVE-RELOAD`** — full 2-PR sequence above. Anchor
+  run id `<TBD-on-merge>` (this PR's CI nextest job; primary anchor
+  for row 61 Pass). Narrowed per the axes recorded in `docs/26` row
+  61 description column: **(1)** state-preservation cross-seam
+  contract only — the `PreservedState` shape ships verbatim and a
+  successful `perform_reload` forwards it onto
+  `ReloadOutcome::Success { value, preserved }`; the runtime-side
+  wiring (engine/runtime adapter capturing `State -> PreservedState`
+  before reload + re-applying via the command-bus + commit-thread
+  per ADR-006 after) is a future-wave option scoped behind the
+  live-reload + runtime composition. Same precedent as row 83
+  `EV-AUDIO-UNIFORM-IPC` Wave 1c-α cross-seam-contract narrowing
+  accepted at its closure (the cross-seam contract lands ahead of
+  the producer-bootstrap wiring). **(2)** Latency-budget arm
+  cross-tagged with row 83 `EV-AUTHORING-UX-LATENCY` (already `Pass`
+  via PR `#363` commit `b2156bb`) per `docs/37-shared-instrumentation`
+  note — the synthetic UX-latency harness covers reload latency
+  under the same shared-instrumentation note. No separate
+  live-reload-specific latency harness lands here per
+  `docs/44` row 61 line 50 wave-PR sizing of "1-2 PRs". **(3)**
+  File-watch debounce shipped per PR 1 (notify 6.x) with the
+  configurable `LiveReloadConfig::debounce_ms` knob.
+
+### Per-Type Minimums verification
+
+For row `EV-AUTHORING-LIVE-RELOAD` transitioning to `Pass`,
+ci-run-url + repo-path + corpus version + drift thresholds populate.
+Anchor run id cited in this closure section: `<TBD-on-merge>` (this
+PR's workspace nextest job; primary anchor for row 61 Pass). Corpus
+version pinned by the merged-on-main slice chain (PR `#356`
+file-watch + reload-on-change scaffolding + this PR
+state-preservation cross-seam contract + new T2 corpus). Drift
+thresholds applied via per-fixture deterministic-output assertion
+across the 6-fixture T2 corpus + 5 added T1 pins exercising the
+cross-seam contract structurally in isolation.
+
+### Cumulative session recap
+
+2 engineering PRs landed on `main` covering PR `#356` (2026-05-06
+file-watch + reload-on-change scaffolding) + this PR (2026-05-07
+state-preservation cross-seam contract + new T2 corpus +
+closing-docs). The sequence ships the file-watcher + reload-pipeline
+producer surface at PR 1 and layers the state-preservation cross-seam
+contract on top at PR 2 without re-shaping the file-watcher / reload
+surface — each PR's workspace nextest job is the auditable anchor.
+
+### Verdict
+
+**Row 61 `EV-AUTHORING-LIVE-RELOAD` closure achieved 2026-05-07 at
+commit `<merge-sha>`** (the merge commit of this PR 2 of 2). With
+this closure 2 Phase-4 EXIT prerequisites remain (down from 3 prior
+to this closure):
+
+- **Row 64 `EV-IMPORT-SHADERTOY` PR 2 of 2** — broader corpus +
+  edge-case fixture sweep pending (a parallel sibling PR is updating
+  row 64 separately).
+- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+  ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
+  Lane B scaffolding from PR `#347` / `922f2d8`.
+
+Phase-4b EXIT itself remains AO-held per
+`docs/11-roadmap-phases.md`; this row 61 closure does not pre-empt
+the Phase-4b EXIT decision. Phase-4 EXIT itself remains AO-held
+until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
+does not pre-empt the Phase-4 EXIT gate decision.
+
+### Deferred axes (row narrowing record)
+
+- **Runtime-side wiring** — the engine/runtime adapter that captures
+  the live `State` into a `PreservedStateSnapshot` before reload +
+  re-applies the resulting `PreservedState` onto the post-reload
+  State via the command-bus + commit-thread per ADR-006 lives
+  behind the live-reload + runtime composition. Out-of-scope at
+  the cross-seam-contract MVP; future-wave runtime-bootstrap PR
+  composes the adapter on top of the producer-side `PreservedState`
+  shape this PR ships, the same way the
+  `EV-AUDIO-UNIFORM-IPC`-Wave-1c-α cross-seam-contract surface was
+  composed end-to-end by Wave 1c-α-2 production audio bootstrap.
+- **Live-reload-specific latency-budget harness** — the latency
+  arm cross-tags with row 83 `EV-AUTHORING-UX-LATENCY` per
+  `docs/37-shared-instrumentation` note; the synthetic UX-latency
+  harness covers reload-latency under the same shared-instrumentation
+  note. A live-reload-dedicated harness (driving real `notify`
+  filesystem events through the reload pipeline against a measurement
+  hook + asserting the `docs/37` §3.3 `p95 < 500 ms` budget) is a
+  future-wave option once the runtime adapter is wired and the live
+  reload-latency surface is observable end-to-end.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07

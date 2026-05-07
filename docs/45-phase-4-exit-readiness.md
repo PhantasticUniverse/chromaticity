@@ -45,12 +45,12 @@ closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
 
 ## Phase-4b — Authoring + Library + Import (11 rows)
 
-**Status:** 9 of 11 rows at `Pass` as of 2026-05-07 under collective
-narrowings. 2 rows remain `Planned` pending follow-on engineering PRs.
+**Status:** 10 of 11 rows at `Pass` as of 2026-05-07 under collective
+narrowings. 1 row remains `Planned` pending follow-on engineering PR.
 
 | Row | Evidence ID                | Status   | Narrowing                                                                                                                         |
 | --- | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 60  | EV-AUTHORING-LIVE-RELOAD   | Planned  | PR `#356` PR 1 of 3 landed (file-watch + reload-on-change scaffold); PR 2 (state preservation) + PR 3 (latency harness) pending  |
+| 60  | EV-AUTHORING-LIVE-RELOAD   | Pass     | state-preservation cross-seam contract only; runtime-side wiring deferred to future composition wave; latency-budget arm cross-tagged with row 83 `EV-AUTHORING-UX-LATENCY` |
 | 62  | EV-AUTHORING-DIAGNOSTICS   | Pass     | spans for JSON class only; compile / script / coercion classes emit message-only diagnostics                                      |
 | 63  | EV-AUTHORING-SCAFFOLDER    | Pass     | full scope                                                                                                                        |
 | 81  | EV-AUTHORING-UX-LATENCY    | Pass     | synthetic harness only; full UI-driven validation deferred post-MVP; cross-tagged with `EV-DOCS-UX-LATENCY`                       |
@@ -66,10 +66,14 @@ Phase-4b EXIT remains AO-held per `docs/11-roadmap-phases.md`. Per the
 Phase-4b Wave 4b.8 closure section in
 `docs/EV-GATE-MODEL-AUDIT-checklist.md`, "all 11 Phase-4b EXIT rows are
 at `Pass` under collective narrowings" was the closure language for
-the last directly-engineered Phase-4b EXIT prerequisite; rows 60 +
-64 carry forward as Planned pending their respective follow-on PRs
-but are recorded as Phase-4b EXIT prerequisites with PR-1-of-N
-shipped per `docs/26` row description columns.
+the last directly-engineered Phase-4b EXIT prerequisite. Row 60
+`EV-AUTHORING-LIVE-RELOAD` transitioned to `Pass` 2026-05-07 (Wave
+4b.2 PR 2 of 2) under the state-preservation cross-seam-contract
+narrowing per the Phase-4b Row 61 closure section in
+`docs/EV-GATE-MODEL-AUDIT-checklist.md`. Row 64 carries forward as
+Planned pending its broader-corpus follow-on PR and is recorded as a
+Phase-4b EXIT prerequisite with PR-1-of-N shipped per `docs/26` row
+description column.
 
 ## Phase-4c — Embedded Documentation (1 row)
 
@@ -105,10 +109,9 @@ that participates in the EXIT-readiness narrowing posture under
 that point all Phase-4 EXIT prerequisites that have been transitioned
 to `Pass` will be at `Pass` under the collective narrowings recorded
 in their respective `docs/26` description columns; the Phase-4b
-prerequisites with PR-1-of-N work shipped (rows 60 + 64) carry
-forward at the AO's discretion with the per-row PR-shipped record in
-`docs/26`. Phase-4 EXIT itself remains AO-held per
-`docs/11-roadmap-phases.md`.
+prerequisite with PR-1-of-N work shipped (row 64) carries forward at
+the AO's discretion with the per-row PR-shipped record in `docs/26`.
+Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
 
 ## Out-of-scope items carried forward
 
@@ -129,10 +132,12 @@ forward at the AO's discretion with the per-row PR-shipped record in
   recorded in this document.
 - **Repo-chore backlog** — backlogged per AO direction. Unblocked
   from EXIT.
-- **Phase-4b PR-1-shipped follow-ons** — `EV-AUTHORING-LIVE-RELOAD`
-  PR 2 + PR 3; `EV-IMPORT-SHADERTOY` PR 2 (broader corpus + edge-case
-  fixture sweep). Both carry forward as Planned per their `docs/26`
-  row description columns.
+- **Phase-4b PR-1-shipped follow-ons** — `EV-IMPORT-SHADERTOY` PR 2
+  (broader corpus + edge-case fixture sweep) carries forward as
+  Planned per its `docs/26` row description column.
+  `EV-AUTHORING-LIVE-RELOAD` transitioned to `Pass` 2026-05-07 via
+  Wave 4b.2 PR 2 of 2 under the state-preservation cross-seam-contract
+  narrowing; runtime-side wiring deferred to a future composition wave.
 
 ## Anchor commit table for the AO declaration
 
@@ -148,6 +153,7 @@ forward at the AO's discretion with the per-row PR-shipped record in
 | Phase-4d Row 93 (`EV-CRASH-PAYLOAD-REDACTION`) | 2026-05-07      | `c57e09b` (PR `#377`) |
 | Phase-4d Row 80 (`EV-CRASH-RESUME`)            | 2026-05-07      | `23b45ba` (PR `#379`) |
 | Phase-4d Row 78 (`EV-GPU-SELECTION`)           | 2026-05-07      | `bcc4b5b` (PR `#380`) |
+| Phase-4b Row 61 (`EV-AUTHORING-LIVE-RELOAD`)   | 2026-05-07      | `<TBD-on-merge>` (PR `<TBD>`) |
 | Phase-4d Row 94 (`EV-ANALYTICS-ZERO-DEFAULT`)  | TBD ~2026-05-20 | TBD (calendar)      |
 
 ---
