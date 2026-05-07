@@ -4,10 +4,10 @@
 //! Shadertoy-to-Chromaticity import converter.
 //!
 //! Slice scope per `docs/26-evidence-artifact-registry.md` row 64
-//! (`EV-IMPORT-SHADERTOY`): the converter surface plus a 3+ golden-
-//! fixture corpus. PR 1 of 2 — PR 2 ships the wider iChannel-fixture-
-//! pack-resolution path called out by `docs/38` §5.2a. Mechanics
-//! per `docs/38-scene-library-and-import-spec.md` §5.2:
+//! (`EV-IMPORT-SHADERTOY`): the converter surface plus the 3 PR-1
+//! starter fixtures plus the PR-2 broader corpus + iChannel-fixture-
+//! pack-resolution path called out by `docs/38` §5.2a. Mechanics per
+//! `docs/38-scene-library-and-import-spec.md` §5.2 + §5.2a:
 //!
 //! - The user supplies a Shadertoy GLSL body containing
 //!   `void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }`.
@@ -25,12 +25,26 @@
 //!   reactive symbols (`TIME`, `RENDERSIZE`, …) per `docs/38` §5.2
 //!   is a downstream binding-layer concern; this slice ships the
 //!   GLSL-text + `.chroma`-package surface only.
-//! - `iChannel0..3` and audio inputs are flagged as conversion
-//!   warnings (the body still references them so authors can wire
-//!   the fixture-pack mappings post-import per the PR 2 widening);
-//!   VR-mode patterns reject hard with
-//!   [`ImportError::UnsupportedShadertoyFeature`] because there is
-//!   no plausible auto-mapping at all.
+//! - `iChannel0..3` are resolved against the
+//!   [`ShadertoyImportConfig::ichannel_mappings`] builder per PR 2's
+//!   widening: each declared `IChannelMapping` causes the wrapper
+//!   preamble to declare a Chromaticity-native binding-slot uniform
+//!   (`chroma_input_<channel>`) and the body's `iChannelN` references
+//!   are rewritten to that slot symbol pre-naga. Channels that the
+//!   body references but the config does not map emit a
+//!   [`Warning::MissingIChannelMapping`] (the body still references
+//!   the symbol so authors can edit the `.chroma` package post-import
+//!   to add the binding). [`IChannelKind::Webcam`] mappings emit
+//!   [`Warning::WebcamIChannelDeferred`] (Shadertoy permits webcam
+//!   binding; Chromaticity defers to post-MVP).
+//! - VR-mode (`mainVR`) and cubemap-entry (`mainCubemap`) patterns
+//!   are rejected with [`ImportError::UnsupportedShadertoyFeature`]
+//!   and [`Warning::CubemapEntrypointDeferred`] respectively because
+//!   neither has a plausible auto-mapping into the single-pass
+//!   `mainImage` shape; deprecated `texture2D(...)` calls are auto-
+//!   corrected to `texture(...)` with a
+//!   [`Warning::DeprecatedTexture2DAutoCorrected`] surfaced for the
+//!   author's audit trail.
 //!
 //! # Atomicity
 //!
@@ -79,6 +93,12 @@ use std::path::{Path, PathBuf};
 /// per Shadertoy's editor contract. Whitespace + comment shapes
 /// observed in the Shadertoy editor are preserved through the
 /// converter; only the wrapper preamble is added.
+///
+/// `ichannel_mappings` resolves `iChannel0..3` references in the
+/// body to Chromaticity-native binding slots per `docs/38` §5.2a.
+/// Default: empty Vec — any `iChannelN` reference in the body emits
+/// a [`Warning::MissingIChannelMapping`]. Use
+/// [`Self::with_ichannel_mappings`] to populate.
 #[derive(Debug, Clone)]
 pub struct ShadertoyImportConfig {
     /// Optional Shadertoy `id` (the URL fragment). Preserved verbatim
@@ -94,6 +114,224 @@ pub struct ShadertoyImportConfig {
     /// Raw Shadertoy GLSL fragment containing
     /// `mainImage(out vec4 fragColor, in vec2 fragCoord)`.
     pub source_glsl: String,
+    /// Per `docs/38` §5.2a: caller-supplied iChannel resolution table.
+    /// Empty Vec is the default; the converter still functions but
+    /// any `iChannelN` reference in the body surfaces as a
+    /// [`Warning::MissingIChannelMapping`].
+    pub ichannel_mappings: Vec<IChannelMapping>,
+}
+
+impl ShadertoyImportConfig {
+    /// Builder-style setter for the iChannel resolution table.
+    ///
+    /// Each [`IChannelMapping`] in `mappings` declares which channel
+    /// index (0..=3) the entry resolves and what kind of source it
+    /// is. The converter rewrites `iChannelN` references in the body
+    /// to the canonical Chromaticity-native binding slot uniform
+    /// (`chroma_input_<index>`) and emits the matching sampler /
+    /// texture preamble declaration.
+    ///
+    /// Channels referenced by the body but absent from `mappings`
+    /// produce a [`Warning::MissingIChannelMapping`]; the rewrite
+    /// still fires (so the body compiles against the
+    /// `chroma_input_<index>` slot) but the slot has no source
+    /// declared in `scene.json` until the author edits the imported
+    /// package.
+    pub fn with_ichannel_mappings(mut self, mappings: Vec<IChannelMapping>) -> Self {
+        self.ichannel_mappings = mappings;
+        self
+    }
+}
+
+/// Per-channel iChannel resolution entry per `docs/38` §5.2a.
+#[derive(Debug, Clone)]
+pub struct IChannelMapping {
+    /// Channel index 0..=3 in the Shadertoy body.
+    pub channel_index: u8,
+    /// What kind of binding source the channel resolves to.
+    pub kind: IChannelKind,
+    /// Optional asset-source path (relative to the bundled fixture
+    /// pack at `<AppBundle>/Resources/scenes/shadertoy-fixtures/`,
+    /// or absolute for a `custom-asset` user-supplied file). The
+    /// converter records this in `scene.json` under
+    /// `ICHANNELS[<index>]` so the authoring UI can re-establish the
+    /// binding on subsequent loads.
+    pub source_path: Option<String>,
+}
+
+/// Categorical kind of a Shadertoy iChannel binding.
+///
+/// `Texture2D` / `Buffer` / `Video` / `Audio` map to a `sampler2D`
+/// in the wrapper preamble (Shadertoy's audio iChannel is a 512×2
+/// texture in the reference editor, so `sampler2D` is the correct
+/// shape for naga compile-validation). `Cubemap` maps to a
+/// `samplerCube`. `Keyboard` maps to a `sampler2D` with its
+/// standard 256×3 layout. `Webcam` is rejected as a deferral
+/// per `Warning::WebcamIChannelDeferred` — the slot still gets a
+/// `sampler2D` declaration so the body compiles, but the warning
+/// surfaces post-MVP-deferral context to the author.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IChannelKind {
+    /// 2D static texture (the most common Shadertoy iChannel).
+    Texture2D,
+    /// Cubemap from the bundled fixture pack.
+    Cubemap,
+    /// Audio iChannel — Shadertoy delivers this as a 512x2 sampler2D
+    /// (FFT row 0, time-domain row 1). Chromaticity wires the
+    /// audio-uniform-IPC snapshot through this slot; see
+    /// `engine/render::audio_adapter`.
+    Audio,
+    /// Video texture (file-backed media).
+    Video,
+    /// Buffer (Shadertoy multipass A/B/C/D output read as a 2D
+    /// texture). Chromaticity emits the binding slot but the
+    /// multipass evaluation order is a downstream authoring concern.
+    Buffer,
+    /// Shadertoy's keyboard sampler (256x3 layout — pressed / held /
+    /// toggled).
+    Keyboard,
+    /// Shadertoy's webcam iChannel — Chromaticity defers webcam
+    /// integration to post-MVP per the Phase-4a Wave 1c-β plan; this
+    /// entry exists so the converter can emit a structured deferral
+    /// warning rather than a coarse "unsupported" error.
+    Webcam,
+}
+
+impl IChannelKind {
+    /// Underlying GLSL `textureNN` / `textureCube` type the wrapper
+    /// preamble declares for this kind, per the separated-texture +
+    /// `sampler` shape naga's GLSL frontend accepts.
+    fn texture_type(self) -> &'static str {
+        match self {
+            IChannelKind::Cubemap => "textureCube",
+            IChannelKind::Texture2D
+            | IChannelKind::Audio
+            | IChannelKind::Video
+            | IChannelKind::Buffer
+            | IChannelKind::Keyboard
+            | IChannelKind::Webcam => "texture2D",
+        }
+    }
+
+    /// Combined-sampler GLSL constructor type the wrapper preamble's
+    /// `#define chroma_input_<N> ...` macro instantiates so the
+    /// rewritten body's `texture(chroma_input_<N>, uv)` call site
+    /// compiles against the separated-texture + `sampler` declaration.
+    fn combined_sampler_type(self) -> &'static str {
+        match self {
+            IChannelKind::Cubemap => "samplerCube",
+            IChannelKind::Texture2D
+            | IChannelKind::Audio
+            | IChannelKind::Video
+            | IChannelKind::Buffer
+            | IChannelKind::Keyboard
+            | IChannelKind::Webcam => "sampler2D",
+        }
+    }
+
+    /// Wire-format tag the converter writes into `scene.json`'s
+    /// `ICHANNELS[<index>].KIND` field so the authoring UI can
+    /// distinguish kinds on re-load.
+    fn wire_tag(self) -> &'static str {
+        match self {
+            IChannelKind::Texture2D => "texture2d",
+            IChannelKind::Cubemap => "cubemap",
+            IChannelKind::Audio => "audio",
+            IChannelKind::Video => "video",
+            IChannelKind::Buffer => "buffer",
+            IChannelKind::Keyboard => "keyboard",
+            IChannelKind::Webcam => "webcam",
+        }
+    }
+}
+
+/// Structured conversion warnings — soft observations a caller
+/// surfaces in the import-result dialog. Hard incompatibilities
+/// reject as [`ImportError::UnsupportedShadertoyFeature`] instead.
+///
+/// PR 2 widens this from the freeform `Vec<String>` shape PR 1 used
+/// for `iChannel*` / `iMouse` warnings into a structured enum so
+/// the import-UI can branch on warning kind. The legacy
+/// [`ImportReport::conversion_warnings`] string surface continues to
+/// exist (each `Warning` has a canonical `Display` impl); callers
+/// that want structured access read [`ImportReport::warnings`]
+/// directly.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Warning {
+    /// The Shadertoy body references `iChannelN` but the config did
+    /// not declare an [`IChannelMapping`] for index `N`. The wrapper
+    /// still declares a `chroma_input_<N>` slot so the body compiles,
+    /// but `scene.json` carries no source binding until the author
+    /// edits the imported package.
+    MissingIChannelMapping {
+        /// The unresolved channel index 0..=3.
+        channel_index: u8,
+    },
+    /// A declared mapping uses [`IChannelKind::Webcam`]; Chromaticity
+    /// defers webcam integration to post-MVP per the Wave 1c-β plan.
+    /// The slot still emits a `sampler2D` declaration so the body
+    /// compiles against the eventual binding.
+    WebcamIChannelDeferred {
+        /// The channel index that resolves to webcam.
+        channel_index: u8,
+    },
+    /// The Shadertoy source declares a `mainCubemap` entry-point;
+    /// Chromaticity does not auto-map cubemap render-target outputs
+    /// in the single-pass MVP shape. The converter rejects this
+    /// pattern at import time with this warning surfacing the
+    /// deferral rather than a coarse `Unsupported` error so the
+    /// import UI can carry actionable copy.
+    CubemapEntrypointDeferred,
+    /// The body uses the deprecated `texture2D(...)` call form.
+    /// Naga's GLSL frontend rejects `texture2D` outside legacy
+    /// `#version 110` profiles (the wrapper declares
+    /// `#version 450`), so the converter auto-corrects to
+    /// `texture(...)` and surfaces this warning so the author
+    /// knows the source-of-truth body now differs from the original
+    /// paste.
+    DeprecatedTexture2DAutoCorrected,
+    /// The body references `iMouse`. Mouse uniforms are wired
+    /// through `chroma_Mouse` in a later wave; the raw `iMouse`
+    /// uniform is declared in the preamble so the body compiles.
+    /// (PR 1 surfaced this as a freeform string; PR 2 promotes it
+    /// to a structured variant.)
+    MouseUniformDeferred,
+}
+
+impl std::fmt::Display for Warning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Warning::MissingIChannelMapping { channel_index } => {
+                write!(
+                    f,
+                    "iChannel{channel_index} referenced but no IChannelMapping declared — \
+                     edit scene.json post-import to add a source binding.",
+                )
+            }
+            Warning::WebcamIChannelDeferred { channel_index } => {
+                write!(
+                    f,
+                    "iChannel{channel_index} mapped to webcam — Chromaticity defers webcam \
+                     integration to post-MVP (Phase-4a Wave 1c-β).",
+                )
+            }
+            Warning::CubemapEntrypointDeferred => write!(
+                f,
+                "mainCubemap entry-point detected — Chromaticity defers cubemap render-target \
+                 outputs to post-MVP. The import was rejected.",
+            ),
+            Warning::DeprecatedTexture2DAutoCorrected => write!(
+                f,
+                "deprecated texture2D(...) calls auto-corrected to texture(...) — the imported \
+                 main.glsl differs from the original Shadertoy paste at these call sites.",
+            ),
+            Warning::MouseUniformDeferred => write!(
+                f,
+                "iMouse referenced — mouse binding wires through chroma_Mouse in a later wave.",
+            ),
+        }
+    }
 }
 
 /// Successful import report.
@@ -103,10 +341,14 @@ pub struct ImportReport {
     pub package_root: PathBuf,
     /// Files written by the converter, in order.
     pub files_written: Vec<PathBuf>,
-    /// Conversion warnings — soft observations a caller surfaces in
-    /// the import-result dialog. Hard incompatibilities reject as
-    /// [`ImportError::UnsupportedShadertoyFeature`] instead.
+    /// Legacy freeform per-warning string surface — every entry in
+    /// [`Self::warnings`] is `Display`-rendered into the matching
+    /// position in this Vec. Retained at PR 2 for back-compat with
+    /// the PR 1 callers that string-matched on the warning text.
     pub conversion_warnings: Vec<String>,
+    /// Structured warnings per the PR 2 widening — the import UI
+    /// branches on `Warning` variant for actionable copy / icons.
+    pub warnings: Vec<Warning>,
 }
 
 /// Errors returned by [`import_shadertoy_to_chroma`].
@@ -254,33 +496,15 @@ const VR_REJECT_NEEDLES: &[&str] = &[
     "mainVR(", "mainVR ", // tolerate the rare space-before-paren spelling
 ];
 
-/// Heuristic: soft warnings — features Chromaticity can render with
-/// a fixture-pack stand-in or stub uniform, but for which the user
-/// should be told "this isn't a perfect Shadertoy clone". Wired to
-/// emit one warning per matched substring; the PR 2 widening
-/// resolves `iChannel*` against the bundled fixture pack.
-const SOFT_WARNING_NEEDLES: &[(&str, &str)] = &[
-    (
-        "iChannel0",
-        "iChannel0 referenced — texture binding deferred to PR 2 fixture-pack pass.",
-    ),
-    (
-        "iChannel1",
-        "iChannel1 referenced — texture binding deferred to PR 2 fixture-pack pass.",
-    ),
-    (
-        "iChannel2",
-        "iChannel2 referenced — texture binding deferred to PR 2 fixture-pack pass.",
-    ),
-    (
-        "iChannel3",
-        "iChannel3 referenced — texture binding deferred to PR 2 fixture-pack pass.",
-    ),
-    (
-        "iMouse",
-        "iMouse referenced — mouse binding wires through chroma_Mouse in a later wave.",
-    ),
-];
+/// Heuristic: cubemap-entry rejection. Same posture as VR-mode —
+/// Shadertoy's `mainCubemap(out vec4 fragColor, in vec3 rayOrigin,
+/// in vec3 rayDir)` shape outputs to a 6-face cubemap render target,
+/// which has no auto-mapping into Chromaticity's single-pass
+/// `mainImage`-equivalent shape. Surfaced as
+/// [`Warning::CubemapEntrypointDeferred`] inside the
+/// [`ImportError::UnsupportedShadertoyFeature`] payload so the
+/// import UI carries actionable copy.
+const CUBEMAP_REJECT_NEEDLES: &[&str] = &["mainCubemap(", "mainCubemap "];
 
 /// Validate that `source_glsl` carries a well-formed Shadertoy
 /// `mainImage` entry point.
@@ -328,29 +552,180 @@ fn reject_unsupported(source: &str) -> Result<(), ImportError> {
             )));
         }
     }
+    for needle in CUBEMAP_REJECT_NEEDLES {
+        if source.contains(needle) {
+            return Err(ImportError::UnsupportedShadertoyFeature(
+                Warning::CubemapEntrypointDeferred.to_string(),
+            ));
+        }
+    }
     Ok(())
 }
 
-/// Collect soft conversion warnings for features the user should be
-/// told about post-import.
-fn collect_warnings(source: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for (needle, message) in SOFT_WARNING_NEEDLES {
-        if source.contains(needle) {
-            out.push((*message).to_string());
+/// Detect which `iChannelN` indices the body references.
+///
+/// Returns a sorted unique Vec of channel indices in `[0, 4)` whose
+/// `iChannelN` symbol appears in `source`.
+fn detect_referenced_ichannels(source: &str) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(4);
+    for index in 0..4u8 {
+        let needle = format!("iChannel{index}");
+        if source.contains(&needle) {
+            out.push(index);
         }
+    }
+    out
+}
+
+/// Auto-correct deprecated `texture2D(` and `textureCube(` call
+/// forms to the modern `texture(` form.
+///
+/// Returns the rewritten body plus a flag indicating whether the
+/// auto-correction fired (so the converter can emit a single
+/// [`Warning::DeprecatedTexture2DAutoCorrected`]).
+fn autocorrect_deprecated_texture(source: &str) -> (String, bool) {
+    let mut out = source.to_string();
+    let mut fired = false;
+    if out.contains("texture2D(") {
+        out = out.replace("texture2D(", "texture(");
+        fired = true;
+    }
+    if out.contains("textureCube(") {
+        out = out.replace("textureCube(", "texture(");
+        fired = true;
+    }
+    (out, fired)
+}
+
+/// Rewrite `iChannelN` → `chroma_input_<N>` in `source` for every
+/// channel index referenced by the body.
+///
+/// The wrapper preamble declares one sampler per referenced channel
+/// (see [`build_ichannel_preamble`]); rewriting the body keeps the
+/// converter's text-munging contract local to this module without a
+/// full GLSL parse.
+fn rewrite_ichannel_references(source: &str, referenced: &[u8]) -> String {
+    let mut out = source.to_string();
+    for &index in referenced {
+        let from = format!("iChannel{index}");
+        let to = format!("chroma_input_{index}");
+        out = out.replace(&from, &to);
+    }
+    out
+}
+
+/// Collect structured conversion warnings for the given source plus
+/// caller-supplied iChannel-mapping table.
+///
+/// `texture2d_autocorrected` is `true` iff
+/// [`autocorrect_deprecated_texture`] fired (the warning belongs in
+/// the `ImportReport`, not the body rewrite).
+fn collect_warnings(
+    source: &str,
+    referenced_channels: &[u8],
+    mappings: &[IChannelMapping],
+    texture2d_autocorrected: bool,
+) -> Vec<Warning> {
+    let mut out = Vec::new();
+
+    // Per-channel mapping warnings.
+    for &index in referenced_channels {
+        let mapping = mappings.iter().find(|m| m.channel_index == index);
+        match mapping {
+            None => out.push(Warning::MissingIChannelMapping {
+                channel_index: index,
+            }),
+            Some(m) if m.kind == IChannelKind::Webcam => {
+                out.push(Warning::WebcamIChannelDeferred {
+                    channel_index: index,
+                });
+            }
+            Some(_) => {}
+        }
+    }
+
+    // iMouse continues to surface as a warning per PR 1's contract,
+    // promoted to a structured variant.
+    if source.contains("iMouse") {
+        out.push(Warning::MouseUniformDeferred);
+    }
+
+    if texture2d_autocorrected {
+        out.push(Warning::DeprecatedTexture2DAutoCorrected);
+    }
+
+    out
+}
+
+/// Build the per-iChannel sampler-declaration block the wrapper
+/// preamble appends below the standard Shadertoy uniforms.
+///
+/// Naga's GLSL frontend rejects the combined `uniform sampler2D`
+/// shape outside legacy compatibility profiles; per the same
+/// `engine/render::multipass` rationale (`sampler2D(tex, samp)`
+/// constructor pattern), we declare separated `texture2D` /
+/// `samplerCube` + `sampler` pairs and expose a `#define
+/// chroma_input_<N> sampler2D(_chroma_tex_<N>, _chroma_samp_<N>)`
+/// alias so the rewritten body's `texture(chroma_input_<N>, uv)`
+/// call site compiles unchanged. The iChannel slots use bindings
+/// 5..=12 (each channel consumes 2 binding slots — texture +
+/// sampler) so they sit after the 5 standard Shadertoy uniforms
+/// (`iTime` / `iResolution` / `iTimeDelta` / `iFrame` / `iMouse`).
+fn build_ichannel_preamble(referenced: &[u8], mappings: &[IChannelMapping]) -> String {
+    if referenced.is_empty() {
+        return String::new();
+    }
+    let mut out = String::with_capacity(referenced.len() * 192);
+    out.push_str("\n// --- iChannel resolution preamble (PR 2 widening) ---\n");
+    for &index in referenced {
+        let kind = mappings
+            .iter()
+            .find(|m| m.channel_index == index)
+            .map(|m| m.kind)
+            // No mapping declared: default to Texture2D so the body
+            // compiles. The MissingIChannelMapping warning surfaces
+            // the missing binding to the author.
+            .unwrap_or(IChannelKind::Texture2D);
+        let texture_binding = 5_u32 + u32::from(index) * 2;
+        let sampler_binding = texture_binding + 1;
+        let texture_type = kind.texture_type();
+        let sampler_type = kind.combined_sampler_type();
+        out.push_str(&format!(
+            "layout(set = 0, binding = {texture_binding}) uniform {texture_type} \
+             _chroma_tex_{index};\n",
+        ));
+        out.push_str(&format!(
+            "layout(set = 0, binding = {sampler_binding}) uniform sampler \
+             _chroma_samp_{index};\n",
+        ));
+        out.push_str(&format!(
+            "#define chroma_input_{index} {sampler_type}(_chroma_tex_{index}, _chroma_samp_{index})\n",
+        ));
     }
     out
 }
 
 /// Compose the wrapped fragment body the converter writes to
 /// `main.glsl`.
-fn build_main_glsl(source: &str) -> String {
-    let mut out = String::with_capacity(PREAMBLE.len() + source.len() + TRAILER.len() + 8);
+///
+/// `referenced_channels` + `mappings` drive the iChannel-preamble
+/// declarations; `body_after_rewrites` is the user's body after both
+/// `iChannelN → chroma_input_<N>` rewriting and any `texture2D`
+/// auto-correction have fired upstream.
+fn build_main_glsl(
+    body_after_rewrites: &str,
+    referenced_channels: &[u8],
+    mappings: &[IChannelMapping],
+) -> String {
+    let ichannel_preamble = build_ichannel_preamble(referenced_channels, mappings);
+    let mut out = String::with_capacity(
+        PREAMBLE.len() + ichannel_preamble.len() + body_after_rewrites.len() + TRAILER.len() + 8,
+    );
     out.push_str(PREAMBLE);
-    out.push_str("\n// --- Shadertoy body (preserved verbatim) ---\n");
-    out.push_str(source);
-    if !source.ends_with('\n') {
+    out.push_str(&ichannel_preamble);
+    out.push_str("\n// --- Shadertoy body (rewritten if iChannel/texture2D used) ---\n");
+    out.push_str(body_after_rewrites);
+    if !body_after_rewrites.ends_with('\n') {
         out.push('\n');
     }
     out.push_str("// --- End Shadertoy body ---\n");
@@ -427,6 +802,33 @@ fn build_scene_json(config: &ShadertoyImportConfig, scene_id: &str) -> Result<St
         serde_json::Value::Array(vec![serde_json::Value::String("imported".to_string())]),
     );
     root.insert("CONTROLS".to_string(), serde_json::Value::Array(Vec::new()));
+
+    // PR 2 widening: serialize the iChannel mapping table per
+    // docs/38 §5.2a so the authoring UI can re-establish bindings
+    // on subsequent loads. Empty Vec → omit the key entirely.
+    if !config.ichannel_mappings.is_empty() {
+        let mut entries = Vec::with_capacity(config.ichannel_mappings.len());
+        for mapping in &config.ichannel_mappings {
+            let mut obj = serde_json::Map::new();
+            obj.insert(
+                "INDEX".to_string(),
+                serde_json::Value::from(mapping.channel_index),
+            );
+            obj.insert(
+                "KIND".to_string(),
+                serde_json::Value::String(mapping.kind.wire_tag().to_string()),
+            );
+            if let Some(ref path) = mapping.source_path {
+                obj.insert(
+                    "SOURCE_PATH".to_string(),
+                    serde_json::Value::String(path.clone()),
+                );
+            }
+            entries.push(serde_json::Value::Object(obj));
+        }
+        root.insert("ICHANNELS".to_string(), serde_json::Value::Array(entries));
+    }
+
     // Single-pass `backbuff` per docs/38 §5.2; TARGET names the
     // package's primary node-id. Slice-3a flatten-preserves
     // unknown per-pass keys, so `WIDTH` / `HEIGHT` are not stamped
@@ -501,13 +903,35 @@ pub fn import_shadertoy_to_chroma(
         return Err(ImportError::TargetExists(package_root));
     }
 
-    let main_glsl_body = build_main_glsl(&config.source_glsl);
+    // PR 2 pipeline: detect referenced iChannels → auto-correct
+    // deprecated texture2D → rewrite iChannelN → chroma_input_<N> →
+    // build wrapped GLSL with per-channel sampler preamble. The
+    // structured warning vec is computed against the original
+    // source so callers see warnings even when the rewrite consumes
+    // the literal `iChannelN` symbol.
+    let referenced_channels = detect_referenced_ichannels(&config.source_glsl);
+    let (after_texture_rewrite, texture2d_autocorrected) =
+        autocorrect_deprecated_texture(&config.source_glsl);
+    let body_after_rewrites =
+        rewrite_ichannel_references(&after_texture_rewrite, &referenced_channels);
+
+    let main_glsl_body = build_main_glsl(
+        &body_after_rewrites,
+        &referenced_channels,
+        &config.ichannel_mappings,
+    );
     // Compile-check BEFORE we touch the filesystem so a naga-rejected
     // import never leaves a half-written package on disk.
     naga_compile_check(&main_glsl_body).map_err(ImportError::GlslCompileError)?;
 
     let scene_json_body = build_scene_json(config, &scene_id)?;
-    let warnings = collect_warnings(&config.source_glsl);
+    let warnings = collect_warnings(
+        &config.source_glsl,
+        &referenced_channels,
+        &config.ichannel_mappings,
+        texture2d_autocorrected,
+    );
+    let conversion_warnings: Vec<String> = warnings.iter().map(ToString::to_string).collect();
 
     fs::create_dir(&package_root)?;
 
@@ -527,7 +951,8 @@ pub fn import_shadertoy_to_chroma(
     Ok(ImportReport {
         package_root,
         files_written: vec![scene_json_path, main_glsl_path],
-        conversion_warnings: warnings,
+        conversion_warnings,
+        warnings,
     })
 }
 
@@ -592,6 +1017,7 @@ mod tests {
             credit: "Imported test fixture (CC-BY-NC-SA 3.0)".to_string(),
             description: "T1 fixture — Shadertoy import converter pin.".to_string(),
             source_glsl: source.to_string(),
+            ichannel_mappings: Vec::new(),
         }
     }
 
@@ -647,8 +1073,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     }
 
     #[test]
-    fn shadertoy_with_unsupported_ichannel_emits_warning() {
-        let target = unique_target_dir("ichannel-warn");
+    fn shadertoy_with_unmapped_ichannel_imports_with_missing_mapping_warning() {
+        // PR 2 widening: an iChannel-referencing body with no
+        // declared mapping now imports successfully (the wrapper
+        // declares a fallback `sampler2D chroma_input_0`) and
+        // surfaces a structured `MissingIChannelMapping { 0 }`
+        // warning so the import UI prompts the author to bind it.
+        let target = unique_target_dir("ichannel-missing");
         let source = r#"
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = fragCoord / iResolution.xy;
@@ -656,49 +1087,162 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     fragColor = tex;
 }
 "#;
-        let mut config = config_for("iChannel Warn", source);
-        // Importer should NOT compile-fail on iChannel0 — but we have
-        // not declared a sampler for it, so the actual compile would
-        // fail at naga. To keep this T1 pin focused on the warning
-        // surface alone, we replace the texture call with a stub use
-        // of iChannel0 as a vec3 reference (which will fail compile,
-        // surfacing the iChannel as a referenced symbol the warning
-        // logic sees), and assert the warning is collected by
-        // collect_warnings on the raw source.
-        //
-        // Simpler approach: assert warning collection directly, then
-        // assert the converter rejects (because no iChannel0 sampler
-        // is declared in the preamble) with a GlslCompileError —
-        // this confirms BOTH the warning surface and the
-        // compile-check gating.
-        config.source_glsl = source.to_string();
+        let config = config_for("iChannel Missing", source);
+        let report =
+            import_shadertoy_to_chroma(&target, &config).expect("import succeeds with fallback");
 
-        let warnings = collect_warnings(source);
         assert!(
-            warnings.iter().any(|w| w.contains("iChannel0")),
-            "iChannel0 warning collected; got {warnings:?}",
+            report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::MissingIChannelMapping { channel_index: 0 })),
+            "missing-mapping warning fired; got {:?}",
+            report.warnings,
         );
 
-        // The full import will GlslCompileError because the wrapper
-        // does not (yet, pre-PR-2) declare an `iChannel0` sampler.
-        // That's the documented behavior — iChannel resolution is
-        // PR 2 scope. Confirm the failure is a compile error, not a
-        // panic, and confirm no package was left on disk.
-        let result = import_shadertoy_to_chroma(&target, &config);
-        match result {
-            Err(ImportError::GlslCompileError(_)) => {}
-            Err(other) => panic!("expected GlslCompileError, got {other:?}"),
-            Ok(_) => panic!("expected GlslCompileError, got Ok"),
+        // Verify the body rewrite consumed the literal `iChannel0`
+        // symbol — main.glsl on disk no longer references it.
+        let main_glsl =
+            fs::read_to_string(report.package_root.join("main.glsl")).expect("read main.glsl");
+        assert!(
+            !main_glsl.contains("iChannel0"),
+            "body rewrite consumed iChannel0",
+        );
+        assert!(
+            main_glsl.contains("chroma_input_0"),
+            "wrapper declares chroma_input_0 slot",
+        );
+        cleanup(&target);
+    }
+
+    #[test]
+    fn shadertoy_with_audio_ichannel_mapping_imports_clean() {
+        // PR 2 widening: explicit audio mapping → no warning fires.
+        let target = unique_target_dir("ichannel-audio");
+        let source = r#"
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    float fft = texture(iChannel0, vec2(uv.x, 0.25)).r;
+    fragColor = vec4(vec3(fft), 1.0);
+}
+"#;
+        let config =
+            config_for("iChannel Audio", source).with_ichannel_mappings(vec![IChannelMapping {
+                channel_index: 0,
+                kind: IChannelKind::Audio,
+                source_path: Some("audio:///input".to_string()),
+            }]);
+        let report = import_shadertoy_to_chroma(&target, &config)
+            .expect("audio-mapped iChannel imports successfully");
+        assert!(
+            !report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::MissingIChannelMapping { .. })),
+            "no MissingIChannelMapping warning when mapping is supplied; got {:?}",
+            report.warnings,
+        );
+        // Verify the scene.json carries the ICHANNELS table.
+        let scene_json =
+            fs::read_to_string(report.package_root.join("scene.json")).expect("read scene.json");
+        assert!(
+            scene_json.contains("\"ICHANNELS\""),
+            "scene.json carries ICHANNELS",
+        );
+        assert!(
+            scene_json.contains("\"audio\""),
+            "scene.json records the audio kind tag",
+        );
+        cleanup(&target);
+    }
+
+    #[test]
+    fn shadertoy_with_webcam_mapping_emits_deferred_warning() {
+        let target = unique_target_dir("ichannel-webcam");
+        let source = r#"
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    fragColor = texture(iChannel0, uv);
+}
+"#;
+        let config =
+            config_for("iChannel Webcam", source).with_ichannel_mappings(vec![IChannelMapping {
+                channel_index: 0,
+                kind: IChannelKind::Webcam,
+                source_path: None,
+            }]);
+        let report =
+            import_shadertoy_to_chroma(&target, &config).expect("webcam mapping still imports");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::WebcamIChannelDeferred { channel_index: 0 })),
+            "webcam-deferral warning fired; got {:?}",
+            report.warnings,
+        );
+        cleanup(&target);
+    }
+
+    #[test]
+    fn shadertoy_with_deprecated_texture2d_auto_corrects() {
+        let target = unique_target_dir("texture2d");
+        let source = r#"
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    vec4 tex = texture2D(iChannel0, uv);
+    fragColor = tex;
+}
+"#;
+        let config = config_for("Texture2D Deprecated", source).with_ichannel_mappings(vec![
+            IChannelMapping {
+                channel_index: 0,
+                kind: IChannelKind::Texture2D,
+                source_path: Some("textures/noise.png".to_string()),
+            },
+        ]);
+        let report =
+            import_shadertoy_to_chroma(&target, &config).expect("auto-corrected import succeeds");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::DeprecatedTexture2DAutoCorrected)),
+            "auto-correction warning fired; got {:?}",
+            report.warnings,
+        );
+        let main_glsl =
+            fs::read_to_string(report.package_root.join("main.glsl")).expect("read main.glsl");
+        assert!(
+            !main_glsl.contains("texture2D("),
+            "deprecated texture2D consumed by auto-correction",
+        );
+        cleanup(&target);
+    }
+
+    #[test]
+    fn shadertoy_main_cubemap_rejects_with_deferral_warning_text() {
+        let target = unique_target_dir("cubemap-reject");
+        let source = r#"
+void mainCubemap(out vec4 fragColor, in vec3 rayOrigin, in vec3 rayDir) {
+    fragColor = vec4(rayDir, 1.0);
+}
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    fragColor = vec4(0.5);
+}
+"#;
+        let config = config_for("Cubemap Pattern", source);
+        let err = import_shadertoy_to_chroma(&target, &config)
+            .expect_err("mainCubemap pattern must reject");
+        match err {
+            ImportError::UnsupportedShadertoyFeature(msg) => {
+                assert!(
+                    msg.contains("mainCubemap"),
+                    "rejection message names the feature; got {msg:?}",
+                );
+            }
+            other => panic!("expected UnsupportedShadertoyFeature, got {other:?}"),
         }
-        let entries: Vec<_> = fs::read_dir(&target)
-            .expect("target dir exists")
-            .filter_map(Result::ok)
-            .collect();
-        assert!(
-            entries.is_empty(),
-            "no package left after compile-check rejection",
-        );
-
         cleanup(&target);
     }
 

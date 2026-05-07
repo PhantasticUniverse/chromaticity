@@ -45,8 +45,8 @@ closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
 
 ## Phase-4b — Authoring + Library + Import (11 rows)
 
-**Status:** 10 of 11 rows at `Pass` as of 2026-05-07 under collective
-narrowings. 1 row remains `Planned` pending follow-on engineering PR.
+**Status:** all 11 rows at `Pass` as of 2026-05-07 under collective
+narrowings (row 60 + row 64 both transitioned via parallel PR-2-of-2 landings).
 
 | Row | Evidence ID                | Status   | Narrowing                                                                                                                         |
 | --- | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,7 +54,7 @@ narrowings. 1 row remains `Planned` pending follow-on engineering PR.
 | 62  | EV-AUTHORING-DIAGNOSTICS   | Pass     | spans for JSON class only; compile / script / coercion classes emit message-only diagnostics                                      |
 | 63  | EV-AUTHORING-SCAFFOLDER    | Pass     | full scope                                                                                                                        |
 | 81  | EV-AUTHORING-UX-LATENCY    | Pass     | synthetic harness only; full UI-driven validation deferred post-MVP; cross-tagged with `EV-DOCS-UX-LATENCY`                       |
-| 64  | EV-IMPORT-SHADERTOY        | Planned  | PR `#360` PR 1 of 2 landed (3 starter golden fixtures); PR 2 broader corpus + edge-case sweep pending                             |
+| 64  | EV-IMPORT-SHADERTOY        | Pass     | iChannel fixture-pack resolution (Texture2D/Cubemap/Audio/Video/Buffer/Keyboard kinds via IChannelMapping); Webcam deferred to Wave 1c-β; `mainCubemap` + `mainVR` hard-rejected; 10-fixture T2 corpus |
 | 65  | EV-IMPORT-ISF-REJECT       | Pass     | full scope; ISF native import deferred to V2 per design (the reject-with-escape-hatch path IS the MVP scope)                      |
 | 66  | EV-LIBRARY-DISCOVERY       | Pass     | full scope                                                                                                                        |
 | 67  | EV-LIBRARY-THUMBNAIL       | Pass     | stub byte-hash renderer; real GPU-backed thumbnail rendering deferred post-MVP                                                    |
@@ -66,14 +66,13 @@ Phase-4b EXIT remains AO-held per `docs/11-roadmap-phases.md`. Per the
 Phase-4b Wave 4b.8 closure section in
 `docs/EV-GATE-MODEL-AUDIT-checklist.md`, "all 11 Phase-4b EXIT rows are
 at `Pass` under collective narrowings" was the closure language for
-the last directly-engineered Phase-4b EXIT prerequisite. Row 60
-`EV-AUTHORING-LIVE-RELOAD` transitioned to `Pass` 2026-05-07 (Wave
-4b.2 PR 2 of 2) under the state-preservation cross-seam-contract
-narrowing per the Phase-4b Row 61 closure section in
-`docs/EV-GATE-MODEL-AUDIT-checklist.md`. Row 64 carries forward as
-Planned pending its broader-corpus follow-on PR and is recorded as a
-Phase-4b EXIT prerequisite with PR-1-of-N shipped per `docs/26` row
-description column.
+the original cluster closure. Row 60 `EV-AUTHORING-LIVE-RELOAD`
+transitioned to `Pass` 2026-05-07 (Wave 4b.2 PR 2 of 2) under the
+state-preservation cross-seam-contract narrowing per the Phase-4b
+Row 61 closure section. Row 64 `EV-IMPORT-SHADERTOY` transitioned to
+`Pass` 2026-05-07 (Wave 4b.5 PR 2 of 2) under the iChannel-fixture-pack
++ broader-corpus narrowing per the Phase-4b Row 64 closure section in
+`docs/EV-GATE-MODEL-AUDIT-checklist.md`.
 
 ## Phase-4c — Embedded Documentation (1 row)
 
@@ -132,12 +131,14 @@ Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
   recorded in this document.
 - **Repo-chore backlog** — backlogged per AO direction. Unblocked
   from EXIT.
-- **Phase-4b PR-1-shipped follow-ons** — `EV-IMPORT-SHADERTOY` PR 2
-  (broader corpus + edge-case fixture sweep) carries forward as
-  Planned per its `docs/26` row description column.
-  `EV-AUTHORING-LIVE-RELOAD` transitioned to `Pass` 2026-05-07 via
-  Wave 4b.2 PR 2 of 2 under the state-preservation cross-seam-contract
-  narrowing; runtime-side wiring deferred to a future composition wave.
+- **Phase-4b PR-1-shipped follow-ons** — closed 2026-05-07.
+  `EV-AUTHORING-LIVE-RELOAD` transitioned to `Pass` (Wave 4b.2 PR 2
+  of 2) under the state-preservation cross-seam-contract narrowing;
+  runtime-side wiring deferred to a future composition wave.
+  `EV-IMPORT-SHADERTOY` transitioned to `Pass` (Wave 4b.5 PR 2 of 2)
+  under the iChannel-fixture-pack-resolution + broader-corpus
+  narrowing per `docs/38` §5.2a; Webcam iChannel kind + `mainCubemap`
+  + `mainVR` deferred.
 
 ## Anchor commit table for the AO declaration
 
@@ -153,7 +154,8 @@ Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
 | Phase-4d Row 93 (`EV-CRASH-PAYLOAD-REDACTION`) | 2026-05-07      | `c57e09b` (PR `#377`) |
 | Phase-4d Row 80 (`EV-CRASH-RESUME`)            | 2026-05-07      | `23b45ba` (PR `#379`) |
 | Phase-4d Row 78 (`EV-GPU-SELECTION`)           | 2026-05-07      | `bcc4b5b` (PR `#380`) |
-| Phase-4b Row 61 (`EV-AUTHORING-LIVE-RELOAD`)   | 2026-05-07      | `<TBD-on-merge>` (PR `<TBD>`) |
+| Phase-4b Row 61 (`EV-AUTHORING-LIVE-RELOAD`)   | 2026-05-07      | `2336ef5` (PR `#383`) |
+| Phase-4b Row 64 (`EV-IMPORT-SHADERTOY` PR 2)   | 2026-05-07      | `<TBD-on-merge>` (PR `#384`) |
 | Phase-4d Row 94 (`EV-ANALYTICS-ZERO-DEFAULT`)  | TBD ~2026-05-20 | TBD (calendar)      |
 
 ---

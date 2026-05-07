@@ -28,7 +28,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - compatibility normalizer with warning taxonomy,
  - corpus-based contract tests,
  - explicit migration guidance.
-- Residual: Low / Medium. With `EV-SCENE-IMPORT` covering the full reference corpus and KM-01..07 fixtures exercising every known malformed class, the residual is limited to undiscovered legacy variants surfaced by field bugs (those flow to R-23).
+- Residual: Low / Medium. With `EV-SCENE-IMPORT` covering the full reference corpus and KM-01..07 fixtures exercising every known malformed class, the residual is limited to undiscovered legacy variants surfaced by field bugs (those flow to R-23). **Update 2026-05-07**: row 64 `EV-IMPORT-SHADERTOY` PR 2 of 2 (broader corpus + iChannel fixture-pack resolution per `docs/38` §5.2a) further narrows the residual on the Shadertoy-import surface — the `IChannelMapping` builder covers the 6 supported kinds (Texture2D / Cubemap / Audio / Video / Buffer / Keyboard); `Webcam` + `mainCubemap` + `mainVR` are explicitly diagnosed via the structured `Warning` + `ImportError::UnsupportedShadertoyFeature` surfaces; and the 10-fixture T2 corpus pins multi-channel binding + `texture2D` auto-correction + uniform-mapping drift.
 - Owner: Scene system lead.
 
 ### R-02 Script Runtime Behavioral Drift

@@ -36,6 +36,10 @@ the cumulative narrowing axes and milestone commits.
   closure landed 2026-05-06.
 - **Phase 4b EXIT** — passable at AO discretion as of 2026-05-07; all 11 Phase-4b
   rows at `Pass` under collective narrowings (Wave 4b.1 through 4b.8 inclusive).
+  Row 64 `EV-IMPORT-SHADERTOY` PR 2 of 2 (broader corpus + iChannel fixture-pack
+  resolution per `docs/38` §5.2a) closed the last directly-engineered Phase-4b
+  follow-on at 2026-05-07; row 60 `EV-AUTHORING-LIVE-RELOAD` PR 2 + PR 3 carry
+  forward at AO discretion.
 - **Phase 4d** — 5 of 6 rows at `Pass` as of 2026-05-07; row 94
   `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 (14-day soak window).
 
