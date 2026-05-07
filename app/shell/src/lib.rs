@@ -178,6 +178,7 @@ pub fn run() -> Result<(), tauri::Error> {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::camera::list_camera_devices,
             commands::control::set_control,
             commands::control::get_control,
             commands::snap::recall_snap,
