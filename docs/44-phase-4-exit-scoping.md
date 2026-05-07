@@ -1,5 +1,14 @@
 # Phase-4 EXIT Scoping Inventory
 
+> **Status note (2026-05-07)**: this scoping doc was authored at the start of
+> the Phase-4 EXIT planning wave. As of HEAD `d6b266d` (PR #384 merge), 17 of
+> the 18 rows inventoried below have transitioned to `Pass` per
+> `docs/26-evidence-artifact-registry.md`; only row 94
+> `EV-ANALYTICS-ZERO-DEFAULT` remains `Planned` (calendar-gated ~2026-05-20).
+> The §4 / §5 sequencing recommendations are preserved as historical record;
+> the canonical EXIT readiness matrix lives at
+> `docs/46-phase-4-exit-readiness.md`.
+
 Sequencing aid for Phase-4 EXIT planning. Inventories every Planned evidence row owed by sub-phases 4b (Authoring + Library + Import), 4c (Embedded Documentation), and 4d (Hardening) so the Accountable Owner can sequence ADR-drafting waves before engineering waves and slot independent rows into parallel lanes where the dependency graph permits.
 
 ## 1. Scope and intent

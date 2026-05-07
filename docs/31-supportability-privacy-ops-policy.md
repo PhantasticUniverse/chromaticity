@@ -94,7 +94,7 @@ The `engine/observability` crate (introduced in slice-2 per the Phase-1 work pla
 
 ### Evidence binding
 
-- `EV-OBSERVABILITY` (Phase 1 exit per `26-evidence-artifact-registry.md` line 38) validates that every metric in the Phase-1 baseline catalog has a corresponding emission site in the `engine/observability` crate and that the crate's schema types match this section verbatim. `EV-OBSERVABILITY` status transitions from `pending:artifact` to `Pass` only when the T2 conformance harness over this catalog lands.
+- `EV-OBSERVABILITY` (Phase 1 exit per `26-evidence-artifact-registry.md`) validates that every metric in the Phase-1 baseline catalog has a corresponding emission site in the `engine/observability` crate and that the crate's schema types match this section verbatim. `EV-OBSERVABILITY` status transitions from `pending:artifact` to `Pass` only when the T2 conformance harness over this catalog lands.
 - `EV-OBSERVABILITY-INVENTORY` (Phase 0 exit, separate track) is unaffected by this section; it governs outbound-endpoint enumeration per ADR-016 §Transparency artifact, not the metric schema.
 
 ## Crash Reporting Policy
