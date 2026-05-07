@@ -512,6 +512,7 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "workspace-hack",
 ]
