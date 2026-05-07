@@ -2266,3 +2266,126 @@ does not pre-empt the Phase-4 EXIT gate decision.
 ### Sign-off
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
+
+## Phase-4d Row 80 EV-CRASH-RESUME closure
+
+**Date.** 2026-05-07.
+
+**Scope.** Row 80 `EV-CRASH-RESUME` (registry line 80) transitions
+`Planned -> Pass-narrowed` under a 5-PR shipping sequence covering
+PR numbers 354 + 357 + 361 + 364 + 378 plus this closing-docs PR.
+The row pins per-class state restoration across all seven classes
+(a/b/c/d/e/f/g) defined in the row description column: active scene
++ preset channel values; Snap slot selection + scene-specific preset
+history; playlist position + iteration mode; OSC / MIDI session
+bindings (device IDs persist; bindings rebind on re-enumeration per
+MIDI-CONF-09); audio input device selection + `syn_Threshold`;
+operator meta-control values; render resolution + FPS target.
+
+### Per-PR sequence
+
+- **PR `#354`** (landed earlier in Wave 4d.3) — resume scaffold +
+  classes (a) active scene + preset channel values + (b) Snap slot
+  selection + scene-specific preset history. Shipped per-class
+  `restore_class_a` + `restore_class_b` helpers under the additive
+  partial-advance pattern.
+- **PR `#357`** (landed earlier in Wave 4d.3) — class (c) playlist
+  position + iteration mode. Shipped `restore_class_c` helper.
+- **PR `#361`** (`5b2d1f7`, landed earlier in Wave 4d.3) — class (e)
+  audio input device + `syn_Threshold`. Shipped `restore_class_e`
+  helper.
+- **PR `#364`** (`bcaf879`, landed 2026-05-07) — classes (f)
+  operator meta-control values + (g) render resolution + FPS target.
+  Shipped `restore_class_f` + `restore_class_g` helpers.
+- **PR `#378`** (`9cbb428`, landed 2026-05-07) — class (d) OSC /
+  MIDI session bindings, closing the deferred-pending-state-shape
+  gap. Extended `State` with the additive `SessionBindings` sub-
+  store carrying OSC + MIDI device-id-keyed binding state; extended
+  the V2 envelope with the `EXT_ID_V2_SESSION_BINDINGS` extension
+  (length-prefixed UTF-8 device-ids + mapping-id lists per OSC +
+  MIDI). Shipped `restore_class_d` helper plus the cross-class
+  `restore_all_supported_classes` composer.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-CRASH-RESUME`** — full 5-PR sequence above. Anchor run id
+  `25473152455` (PR `#378`; primary anchor for row 80 Pass).
+  Narrowed per the axis recorded in `docs/26` row 80 description
+  column: **synthetic restore-helper validation** — the harness
+  validates per-class state restoration via constructed source /
+  target `State` pairs and the `restore_class_<x>` helpers; the
+  full crash-injection drill per the spec ("controlled `SIGKILL` /
+  `SIGSEGV` / panic-in-render-thread / OOM simulation at three
+  wallclock points within a 10-minute scripted show") requires real
+  platform crash-handler infrastructure that doesn't ship at MVP —
+  same precedent as row 93 `EV-CRASH-PAYLOAD-REDACTION`'s synthetic-
+  harness narrowing accepted at the row 93 closure 2026-05-07 and
+  the synthetic-workload framing accepted at row 40 `EV-SOAK-CHAOS`
+  Wave 4d.4. The `restore_all_supported_classes` helper composes
+  all seven restoration paths under the documented additivity
+  invariant; pre-existing T2 corpora goldens (`state_replay`,
+  `state_migration`, `preset_playlist`, `scheduler_tick`) are
+  preserved verbatim — the V2 envelope grew the
+  `EXT_ID_V2_SESSION_BINDINGS` extension without breaking V1 → V2
+  forward-only migration semantics per Phase-3 row 33.
+
+### Per-Type Minimums verification
+
+For row `EV-CRASH-RESUME` transitioning to `Pass`, ci-run-url +
+repo-path + corpus version + drift thresholds populate. Anchor run
+id cited in this closure section: `25473152455` (PR `#378`; primary
+anchor for row 80 Pass).
+
+### Cumulative session recap
+
+5 engineering PRs landed on `main` covering PR numbers 354 + 357 +
+361 (Wave 4d.3 partial advance, 2026-05-06) + 364 + 378 (Wave 4d.3
+cluster closure, 2026-05-07) plus this docs(repo) closing PR. The
+sequence ships the per-class `restore_class_<x>` helpers under the
+additive Wave 4d.3 partial-advance pattern, then the cross-class
+`restore_all_supported_classes` composer, then the closing-docs flip
+— each PR's workspace nextest job is the auditable anchor.
+
+### Verdict
+
+**Row 80 `EV-CRASH-RESUME` closure achieved 2026-05-07 at commit
+`<merge-sha>`** (the merge commit of this PR 6 of 6). With this
+closure 2 Phase-4d open items remain (down from 4 prior to row 93's
+closure earlier on 2026-05-07):
+
+- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+  ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
+  Lane B scaffolding from PR `#347` / `922f2d8`.
+- **Row 78 `EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
+  validation deferred (requires real dual-GPU hardware in CI or on
+  an AO-driven validation rig).
+
+Phase-4d EXIT itself remains AO-held per
+`docs/11-roadmap-phases.md`; this row 80 closure does not pre-empt
+the Phase-4d EXIT decision. Phase-4 EXIT itself remains AO-held
+until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
+does not pre-empt the Phase-4 EXIT gate decision.
+
+### Deferred axes (row narrowing record)
+
+- **Real platform crash-handler infrastructure** — controlled
+  `SIGKILL` / `SIGSEGV` injection, panic-hook wiring on the render
+  thread, OOM simulation at scripted wallclock points within a
+  10-minute scripted show. Out-of-scope at MVP; future-wave full-
+  injection harness will compose on top of the synthetic restore-
+  helper apparatus (`restore_class_<x>` +
+  `restore_all_supported_classes`) by triggering the per-class
+  restoration paths through real crash events rather than constructed
+  source / target `State` pairs.
+- **Time-to-resume + visible-artifact-window SLO measurement** —
+  the row description column carries p50 ≤ 5 s / p95 ≤ 10 s time-
+  to-resume and ≤ 2 s visible-artifact-window targets. Synthetic
+  restore-helper validation pins the correctness contract (per-
+  class state restoration); the latency targets require the real
+  platform crash-handler infrastructure above to land before they
+  can be measured end-to-end.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
+

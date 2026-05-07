@@ -368,7 +368,50 @@ RecoveryDeadlineExceeded}` rejection taxonomy + `ChaosReport` +
     `EV-GPU-SELECTION` PR 2 (hardware-gated dual-GPU validation
     deferred). Phase-4d EXIT decision remains AO-held per
     `docs/11-roadmap-phases.md`; this row 93 closure does not
-    pre-empt the gate decision.
+    pre-empt the gate decision. **Phase-4d Row 80
+    `EV-CRASH-RESUME` closure landed 2026-05-07** in a 5-PR
+    engineering sequence plus this docs(repo) closing PR (PR
+    numbers 354 + 357 + 361 + 364 + 378 + closing-docs). Row 80
+    transitions `Planned -> Pass` under synthetic restore-helper
+    narrowing: all seven state-restoration classes
+    (a/b/c/d/e/f/g) ship as `restore_class_<x>` helpers in
+    `engine/runtime/src/crash_resume.rs` under the additive Wave
+    4d.3 partial-advance pattern, with a cross-class
+    `restore_all_supported_classes` composer. PR `#354` shipped
+    classes a + b (active scene + preset channel values + Snap
+    slot selection + scene-specific preset history); PR `#357`
+    shipped class c (playlist position + iteration mode); PR
+    `#361` (`5b2d1f7`) shipped class e (audio input device +
+    `syn_Threshold`); PR `#364` (`bcaf879`) shipped classes f +
+    g (operator meta-control values + render resolution + FPS
+    target); PR `#378` (`9cbb428`) shipped class d (OSC / MIDI
+    session bindings) — closing the deferred-pending-state-shape
+    gap by extending `State` with the additive `SessionBindings`
+    sub-store carrying OSC + MIDI device-id-keyed binding state
+    plus extending the V2 envelope with the
+    `EXT_ID_V2_SESSION_BINDINGS` extension (length-prefixed
+    UTF-8 device-ids + mapping-id lists per OSC + MIDI) without
+    breaking V1 → V2 forward-only migration semantics per
+    Phase-3 row 33. Pre-existing T2 corpora goldens
+    (`state_replay`, `state_migration`, `preset_playlist`,
+    `scheduler_tick`) are preserved verbatim. The full crash-
+    injection drill per the spec ("controlled `SIGKILL` /
+    `SIGSEGV` / panic-in-render-thread / OOM simulation at three
+    wallclock points within a 10-minute scripted show") requires
+    real platform crash-handler infrastructure that doesn't ship
+    at MVP and is reserved for a future-wave full-injection
+    harness composing on top of the synthetic restore-helper
+    apparatus — same precedent as row 93 `EV-CRASH-PAYLOAD-
+    REDACTION`'s synthetic-harness narrowing earlier on
+    2026-05-07. Anchor run id `25473152455` (PR `#378`; primary
+    anchor for row 80 Pass). After this closure 2 Phase-4d open
+    items remain (down from 3): row 94 `EV-ANALYTICS-ZERO-
+    DEFAULT` closing-docs (~2026-05-20 calendar-gated 14-day
+    soak window per the Wave 4d.1 Lane B scaffolding from PR
+    `#347` / `922f2d8`); row 78 `EV-GPU-SELECTION` PR 2
+    (hardware-gated dual-GPU validation deferred). Phase-4d EXIT
+    decision remains AO-held per `docs/11-roadmap-phases.md`;
+    this row 80 closure does not pre-empt the gate decision.
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
