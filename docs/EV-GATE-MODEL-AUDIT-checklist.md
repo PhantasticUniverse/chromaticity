@@ -1996,3 +1996,146 @@ EXIT gate decision.
 ### Sign-off
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
+
+## Phase-4d Wave 4d.4 closure
+
+Phase-4d Wave 4d.4 closure (2026-05-07) lands `EV-SOAK-CHAOS` (row
+40) at `Pass` under documented narrowings via a 3-PR sequence
+covering PR numbers 374 + 375 plus this docs(repo) closing PR. The
+wave ships the foundational soak + chaos-injection surface plus a
+multi-profile validation corpus exercising synthetic compat-syn-v1
+(parity-core narrow) and native-chroma-v1 (broader native) workload
+shapes. After this closure, Wave 4d.4 is the **Phase-4d capstone
+closure for the row that was the last 4d row needing direct
+engineering work**; the remaining open Phase-4d items (enumerated
+below) are calendar-gated, hardware-gated, or scoped behind a still-
+open follow-on PR.
+
+### Per-PR sequence
+
+- **PR `#374`** (`da34db6`, anchor run `25470304804`) — soak harness
+  scaffold. Adds `engine/observability/src/soak.rs` exposing
+  `SoakConfig` (with `tick_interval > 0` + `duration > 0`
+  validation), `SoakWorkload` trait, `SoakReport` (duration_observed
+  + tick_count + stability_checks_passed/failed + p50/p95/p99/max
+  tick_ms + per-`StabilityFailure` log keyed by
+  `StabilityFailureKind::{DriftExceeded, TickStalled,
+  StateCorruptionDetected}`), and `run_soak` with drift-corrected
+  timing (each tick deadline computed against `t0 + tick_interval *
+  tick_count`, not incrementally), plus 7 T1 pins inline at
+  `soak::soak_pins` and the foundational T2 corpus at
+  `engine/observability/tests/soak_harness_corpus.rs`. Row 40 stays
+  `Planned`.
+- **PR `#375`** (`06cf294`, anchor run `25470870950`) — chaos-
+  injection extension. Adds `engine/observability/src/chaos.rs`
+  exposing `FaultEvent::{AdapterDropout, AudioStreamInterruption,
+  GpuDeviceLost, Custom}` (each carrying a `recovery_after`
+  window), `ChaosScheduleEntry` + `ChaosPlan` (deterministic
+  schedule sorted at start-up), `ChaosWorkload: SoakWorkload` trait
+  extension with `inject_fault` callback, `ChaosInjectionError::
+  {AdapterNotFound, UnsupportedFault, RecoveryDeadlineExceeded}`
+  rejection taxonomy, `ChaosReport` embedding the underlying
+  `SoakReport` + per-`FiredFaultEvent` log, and
+  `stability_failure_chaos_classification` post-hoc classifier
+  (`ChaosRecoveryWindow` vs. `Independent`), plus 6 T1 chaos pins
+  inline at `chaos::chaos_pins` and the T2 chaos corpus at
+  `engine/observability/tests/chaos_soak_corpus.rs`. Row 40 still
+  `Planned` pending PR 3.
+- **This PR** — multi-profile validation corpus + closing-docs
+  flipping row 40 from `Planned` to `Pass` under the documented
+  narrowings. Adds
+  `engine/observability/tests/multi_profile_chaos_soak_corpus.rs`
+  (7 fixtures × CI-friendly sub-2-second-each runs) covering
+  synthetic `compat-syn-v1` and `native-chroma-v1` workload shapes.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-SOAK-CHAOS`** — full 3-PR sequence above. Anchor run ids
+  `25470304804` (PR `#374`) + `25470870950` (PR `#375`; primary
+  anchor for row 40 Pass). Narrowed per the three axes recorded in
+  `docs/26` row 40 description column: (1) **CI-short soak
+  surface** — the harness scaffold + chaos-injection layer +
+  multi-profile corpus all run against parameterized
+  sub-second / sub-2-second-each durations; the full ≥ 4-hour soak
+  target per `docs/10` line 55 is calendar-gated and runs as a
+  nightly criterion-bench-style harness, not as a per-PR CI gate
+  (mirroring `EV-PERF-BUDGETS` Phase-3 Path B per the ~$20/month-
+  vs-~$70-80/month AO-approved cost posture); (2) **synthetic
+  workload fixtures** — the multi-profile corpus uses synthetic
+  workloads representative of the two profiles, not the live
+  runtime; wiring the full live-runtime soak is a future-wave
+  option scoped behind real platform integration; (3) **GPU
+  device-lost arm** — exercises a per-platform-supported flag at
+  fixture level via `NativeChromaV1Workload::supports_gpu_lost`,
+  toggling between `Accepted` and `Rejected(UnsupportedFault)`;
+  actual `engine/render/` device-lost recovery is row 78
+  `EV-GPU-SELECTION` PR 2 (hardware-gated; deferred).
+
+### Per-Type Minimums verification
+
+For row `EV-SOAK-CHAOS` transitioning to `Pass`, ci-run-url +
+repo-path + corpus version + drift thresholds populate. Anchor run
+ids cited in this closure section: `25470304804` (PR `#374`),
+`25470870950` (PR `#375`; primary anchor for row 40 Pass).
+
+### Cumulative session recap
+
+3 PRs landed on `main` on 2026-05-07 covering PR numbers 374 + 375
+plus this docs(repo) closing PR. The session sequenced the soak
+harness scaffold, the chaos-injection extension, and the multi-
+profile validation corpus + closing-docs flip in lockstep — each
+PR's nextest job feeds the next anchor.
+
+### Verdict
+
+**Phase-4d Wave 4d.4 closure achieved 2026-05-07 at commit
+`<merge-sha>`** (the merge commit of this docs(repo) closing PR).
+
+Wave 4d.4 is the Phase-4d capstone closure for the row that was the
+last 4d row needing direct engineering work. After this wave
+closes, the remaining Phase-4d open items are calendar-gated,
+hardware-gated, or scoped behind still-open follow-on PRs:
+
+- **Row 80 `EV-CRASH-RESUME` class-d** — deferred-pending-state-
+  shape gap (the class-d crash-resume drill needs a state-shape
+  extension that has not yet landed).
+- **Row 93 `EV-CRASH-PAYLOAD-REDACTION` PR 2** — full crash-
+  injection harness pending; PR 1 (Wave 4d.1 Lane A) shipped the
+  redaction primitives but the injection harness PR 2 is still
+  open.
+- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+  ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
+  Lane B scaffolding from PR `#347` / `922f2d8`.
+- **Row 78 `EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
+  validation deferred (requires real dual-GPU hardware in CI or
+  on an AO-driven validation rig).
+
+Phase-4d EXIT itself remains AO-held per `docs/11`; this wave's
+closure does not pre-empt the gate decision. Phase-4 EXIT itself
+remains AO-held until 4b / 4c / 4d sub-phases close per
+`docs/11`; this wave's closure does not pre-empt the Phase-4 EXIT
+gate decision.
+
+### Deferred axes (wave narrowing record)
+
+- **Full ≥ 4-hour soak** — calendar-gated nightly criterion-bench-
+  style harness, not a per-PR CI gate; mirrors `EV-PERF-BUDGETS`
+  Phase-3 Path B nightly-only criterion harness in
+  `engine/runtime/benches/budgets.rs` per the ~$20/month-vs-
+  ~$70-80/month AO-approved cost posture. Future
+  `chore(release-eng)` PR can extend the macos-nightly workflow
+  with a chaos-soak step if AO directs.
+- **Live-runtime soak** — wiring the full live-runtime soak (engine
+  + scheduler + audio + render under operator-driven scene flow) is
+  a future-wave option scoped behind real platform integration; the
+  multi-profile corpus uses synthetic workloads representative of
+  the two profiles only.
+- **Real GPU device-lost recovery** — the `GpuDeviceLost` arm in
+  this corpus exercises a per-platform-supported flag at fixture
+  level via `NativeChromaV1Workload::supports_gpu_lost`; the actual
+  `engine/render/` device-lost recovery semantics are row 78
+  `EV-GPU-SELECTION` PR 2 (hardware-gated; deferred).
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07

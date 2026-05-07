@@ -94,7 +94,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - soak tests,
  - resource lifetime audits,
  - allocator telemetry.
-- Residual: **Pre-evidence Medium / Post-evidence Low / Medium**. `EV-SOAK-CHAOS` is `Planned` per `docs/26` row 38 (no `ci-run-url` yet), so the Low / Medium residual is the post-evidence target. The 24 h soak is designed to be sufficient for typical tour lengths; residual covers multi-day residency-club installations above soak coverage. Re-rating to Low / Medium on the Residual line is gated on `EV-SOAK-CHAOS` transitioning to `Pass`.
+- Residual: **Pre-evidence Medium / Post-evidence Low / Medium**. `EV-SOAK-CHAOS` transitioned to `Pass` per `docs/26` row 40 under Phase-4d Wave 4d.4 closure (2026-05-07, 3-PR sequence covering PR numbers 374 + 375 plus the docs(repo) closing PR; anchor run `25470870950`). The Low / Medium residual is now the post-evidence position under the Wave 4d.4 narrowings: row 40 Pass scope is **CI-short soak surface + synthetic workload fixtures + GPU device-lost arm-as-flag**; the full ≥ 4-hour soak target per `docs/10` line 55 remains calendar-gated as a nightly criterion-bench-style harness mirroring `EV-PERF-BUDGETS` Phase-3 Path B (~$20/month-vs-~$70-80/month AO-approved cost posture). Multi-day residency-club installations above the calendar-gated nightly soak coverage remain the dominant residual axis.
 - Owner: Runtime/platform lead.
 
 ### R-08 Under-scoped Test Harness
