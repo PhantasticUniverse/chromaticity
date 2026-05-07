@@ -286,10 +286,17 @@ mod fixtures {
         // section. Reusing the encoder helpers via `encode_snapshot`
         // keeps the offset derivation honest under encoder drift.
         let buf = encode_snapshot(&state);
-        // Extension trailer for V2 with one extension is fixed at:
-        //   be_u32(extension_count=1) || be_u32(ext_id) || be_u32(schema_version)
-        // = 12 bytes.
-        const V2_EXTENSION_TRAILER_LEN: usize = 12;
+        // Extension trailer for V2 with two extensions on a state
+        // carrying empty `session_bindings` (Wave 4d.3 PR 5, row 80
+        // class-d):
+        //   be_u32(extension_count=2)                              [4]
+        //   ext1: be_u32(ext_id=schema_metadata) || be_u32(schema)  [8]
+        //   ext2: be_u32(ext_id=session_bindings)
+        //      || be_u32(osc_count=0) || be_u32(midi_count=0)      [12]
+        // = 24 bytes. The mapping-store fixture used by this test
+        // does not populate `session_bindings`, so the empty-empty
+        // shape applies.
+        const V2_EXTENSION_TRAILER_LEN: usize = 24;
         let mapping_tag_offset = buf
             .len()
             .checked_sub(V2_EXTENSION_TRAILER_LEN + 1)

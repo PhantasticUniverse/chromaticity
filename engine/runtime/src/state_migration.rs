@@ -59,7 +59,7 @@
 //! widening at runtime.
 
 use crate::command_bus::{ControlId, ControlValue, MappingId, MappingSource, PresetId, SnapSlotId};
-use crate::state::State;
+use crate::state::{MidiDeviceBinding, OscDeviceBinding, State};
 use crate::state_replay::encode_state_canonical;
 use std::fmt;
 
@@ -72,6 +72,13 @@ const VERSION_V2: u32 = 0x0000_0002;
 /// land here as future extensions are added; the envelope decoder
 /// uses the id to dispatch to per-extension parsers.
 const EXT_ID_V2_SCHEMA_METADATA: u32 = 0x0000_0001;
+/// Stable extension id for the session-bindings extension carrying
+/// `state.session_bindings` (Wave 4d.3 PR 5, row 80 class-d). The
+/// canonical-binary segment intentionally does NOT carry session
+/// bindings — they ride in this extension so EV-STATE-REPLAY (row
+/// 32) / EV-PRESET-PLAYLIST (row 34) / EV-STATE-MIGRATION (row 33)
+/// canonical hashes are unaffected.
+const EXT_ID_V2_SESSION_BINDINGS: u32 = 0x0000_0002;
 
 /// Mapping-source tag bytes mirror [`encode_state_canonical`]'s
 /// shape (Osc=0x01, Midi=0x02 per state_replay.rs lines 197-208).
@@ -122,6 +129,10 @@ pub enum DecodeError {
     TrailingBytes(usize),
     /// Extension id was not recognised by the V2 envelope parser.
     UnknownExtensionId(u32),
+    /// Length-prefixed UTF-8 byte slice carried by the V2
+    /// session-bindings extension (Wave 4d.3 PR 5, row 80 class-d)
+    /// did not decode as valid UTF-8.
+    InvalidUtf8,
 }
 
 impl fmt::Display for DecodeError {
@@ -141,6 +152,7 @@ impl fmt::Display for DecodeError {
             Self::UnknownExtensionId(id) => {
                 write!(f, "unknown extension id 0x{id:08x}")
             }
+            Self::InvalidUtf8 => f.write_str("invalid utf-8 in length-prefixed string"),
         }
     }
 }
@@ -183,22 +195,41 @@ impl std::error::Error for MigrateError {
 /// Encode `state` as a V2 envelope (current schema version).
 ///
 /// Layout: `be_u32(0x0000_0002) || encode_state_canonical(state)
-/// || be_u32(1) || be_u32(EXT_ID_V2_SCHEMA_METADATA) ||
-/// be_u32(schema_version)`. The schema_version emitted is taken
-/// from `state.snapshot_metadata` if set, else defaults to V2.
+/// || be_u32(extension_count) || extensions[...]`. Two extensions
+/// ship today:
+///
+/// 1. [`EXT_ID_V2_SCHEMA_METADATA`] (`0x0000_0001`) — synthetic
+///    V1→V2 schema-version scalar. Schema version emitted is taken
+///    from `state.snapshot_metadata` if set, else defaults to V2.
+/// 2. [`EXT_ID_V2_SESSION_BINDINGS`] (`0x0000_0002`) — Wave 4d.3
+///    PR 5 row 80 class-d session-binding device-id snapshot. See
+///    [`encode_session_bindings_extension`] for the per-extension
+///    payload shape. Always emitted; an empty `SessionBindings`
+///    serializes to a four-byte `0u32 || 0u32` count pair.
+///
+/// The canonical-hash path
+/// ([`crate::state_replay::canonical_state_hash`]) reads the
+/// canonical-binary segment ONLY — both extensions sit outside that
+/// segment so adding extensions does not drift EV-STATE-REPLAY (row
+/// 32) / EV-PRESET-PLAYLIST (row 34) / EV-STATE-MIGRATION (row 33)
+/// canonical hashes.
 #[must_use]
 pub fn encode_snapshot(state: &State) -> Vec<u8> {
     let mut buf = Vec::with_capacity(64);
     buf.extend_from_slice(&VERSION_V2.to_be_bytes());
     encode_state_canonical(state, &mut buf);
-    // Single extension: V2SchemaMetadata.
-    let extension_count: u32 = 1;
+    // Two extensions: V2SchemaMetadata + V2SessionBindings.
+    let extension_count: u32 = 2;
     buf.extend_from_slice(&extension_count.to_be_bytes());
+    // Extension 1: V2SchemaMetadata.
     buf.extend_from_slice(&EXT_ID_V2_SCHEMA_METADATA.to_be_bytes());
     let schema_version = state
         .snapshot_metadata
         .map_or(V2SchemaMetadata::SCHEMA_VERSION_V2, |m| m.schema_version);
     buf.extend_from_slice(&schema_version.to_be_bytes());
+    // Extension 2: V2SessionBindings (Wave 4d.3 PR 5, row 80 class-d).
+    buf.extend_from_slice(&EXT_ID_V2_SESSION_BINDINGS.to_be_bytes());
+    encode_session_bindings_extension(state, &mut buf);
     buf
 }
 
@@ -324,6 +355,35 @@ impl<'a> Cursor<'a> {
         // i64 is the BE-bit-pattern reinterpretation of u64.
         Ok(self.read_be_u64()? as i64)
     }
+
+    fn read_bytes(&mut self, len: usize) -> Result<&'a [u8], DecodeError> {
+        let end = self.pos.checked_add(len).ok_or(DecodeError::Truncated)?;
+        let bytes = self.buf.get(self.pos..end).ok_or(DecodeError::Truncated)?;
+        self.pos = end;
+        Ok(bytes)
+    }
+
+    /// Read a length-prefixed UTF-8 string (BE-u32 length || bytes).
+    /// Surfaces [`DecodeError::Truncated`] on insufficient bytes and
+    /// [`DecodeError::InvalidUtf8`] on a non-UTF-8 byte sequence.
+    fn read_length_prefixed_utf8(&mut self) -> Result<String, DecodeError> {
+        let len = self.read_be_u32()? as usize;
+        let bytes = self.read_bytes(len)?;
+        std::str::from_utf8(bytes)
+            .map(str::to_owned)
+            .map_err(|_| DecodeError::InvalidUtf8)
+    }
+
+    /// Read a length-prefixed `Vec<MappingId>` (BE-u32 count ||
+    /// be_u32 mapping ids).
+    fn read_mapping_id_vec(&mut self) -> Result<Vec<MappingId>, DecodeError> {
+        let count = self.read_be_u32()?;
+        let mut out: Vec<MappingId> = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            out.push(MappingId(self.read_be_u32()?));
+        }
+        Ok(out)
+    }
 }
 
 /// Mirror of [`crate::state_replay::encode_state_canonical`] in
@@ -413,10 +473,96 @@ fn decode_v2_extensions(cursor: &mut Cursor<'_>, state: &mut State) -> Result<()
                 let schema_version = cursor.read_be_u32()?;
                 metadata = Some(V2SchemaMetadata { schema_version });
             }
+            EXT_ID_V2_SESSION_BINDINGS => {
+                decode_session_bindings_extension(cursor, state)?;
+            }
             other => return Err(DecodeError::UnknownExtensionId(other)),
         }
     }
     state.snapshot_metadata = Some(metadata.unwrap_or_else(V2SchemaMetadata::v2_default));
+    Ok(())
+}
+
+/// Encode `state.session_bindings` (Wave 4d.3 PR 5, row 80 class-d)
+/// as a tagged extension payload appended to the V2 envelope.
+///
+/// Layout:
+///
+/// ```text
+/// session_bindings_payload = be_u32(osc_count)
+///                         || osc_devices[
+///                                be_u32(device_id_len)
+///                             || device_id_utf8[device_id_len]
+///                             || be_u32(mapping_count)
+///                             || mappings[ be_u32(mapping_id) ]
+///                            ]
+///                         || be_u32(midi_count)
+///                         || midi_devices[ same shape as osc_devices ]
+/// ```
+///
+/// `pub(crate)` so the migration corpus can construct fixtures
+/// directly. Empty `SessionBindings` serialize to an eight-byte
+/// `0u32 || 0u32` count pair.
+fn encode_session_bindings_extension(state: &State, out: &mut Vec<u8>) {
+    let bindings = state.session_bindings();
+    // OSC devices.
+    let osc_len = u32::try_from(bindings.osc_devices.len()).unwrap_or(u32::MAX);
+    out.extend_from_slice(&osc_len.to_be_bytes());
+    for device in &bindings.osc_devices {
+        encode_device_id(&device.device_id, out);
+        encode_mapping_ids(&device.mappings, out);
+    }
+    // MIDI devices.
+    let midi_len = u32::try_from(bindings.midi_devices.len()).unwrap_or(u32::MAX);
+    out.extend_from_slice(&midi_len.to_be_bytes());
+    for device in &bindings.midi_devices {
+        encode_device_id(&device.device_id, out);
+        encode_mapping_ids(&device.mappings, out);
+    }
+}
+
+fn encode_device_id(device_id: &str, out: &mut Vec<u8>) {
+    let bytes = device_id.as_bytes();
+    let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+    out.extend_from_slice(&len.to_be_bytes());
+    out.extend_from_slice(bytes);
+}
+
+fn encode_mapping_ids(mappings: &[MappingId], out: &mut Vec<u8>) {
+    let len = u32::try_from(mappings.len()).unwrap_or(u32::MAX);
+    out.extend_from_slice(&len.to_be_bytes());
+    for mapping in mappings {
+        out.extend_from_slice(&mapping.0.to_be_bytes());
+    }
+}
+
+fn decode_session_bindings_extension(
+    cursor: &mut Cursor<'_>,
+    state: &mut State,
+) -> Result<(), DecodeError> {
+    let osc_count = cursor.read_be_u32()?;
+    let mut osc_devices: Vec<OscDeviceBinding> = Vec::with_capacity(osc_count as usize);
+    for _ in 0..osc_count {
+        let device_id = cursor.read_length_prefixed_utf8()?;
+        let mappings = cursor.read_mapping_id_vec()?;
+        osc_devices.push(OscDeviceBinding {
+            device_id,
+            mappings,
+        });
+    }
+    let midi_count = cursor.read_be_u32()?;
+    let mut midi_devices: Vec<MidiDeviceBinding> = Vec::with_capacity(midi_count as usize);
+    for _ in 0..midi_count {
+        let device_id = cursor.read_length_prefixed_utf8()?;
+        let mappings = cursor.read_mapping_id_vec()?;
+        midi_devices.push(MidiDeviceBinding {
+            device_id,
+            mappings,
+        });
+    }
+    let bindings = state.session_bindings_mut();
+    bindings.osc_devices = osc_devices;
+    bindings.midi_devices = midi_devices;
     Ok(())
 }
 

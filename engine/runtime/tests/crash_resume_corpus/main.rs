@@ -34,10 +34,13 @@ mod fixtures {
     //! Fixtures cover the EV-CRASH-RESUME contract per
     //! `docs/26-evidence-artifact-registry.md` row 80. PR 1 narrowed
     //! to in-process simulated-crash + class-a + class-b; PR 2
-    //! widens to class-c (playlist position; iteration mode is a
-    //! deferred sub-store). Class-d (OSC/MIDI session bindings)
-    //! through class-g (render resolution + FPS target) remain
-    //! deferred pending the corresponding State-shape extensions.
+    //! widened to class-c (playlist position; iteration mode is a
+    //! deferred sub-store). Wave 4d.3 PR 5 ships class-d (OSC/MIDI
+    //! session bindings) via the additive
+    //! `crate::state::SessionBindings` sub-store extension and the
+    //! V2 envelope's tagged session-bindings extension. Class-e
+    //! through class-g remain documented-deferred no-op helpers
+    //! pending the corresponding State-shape extensions.
     //! Real cross-process `SIGKILL` / `SIGSEGV` / panic-in-render-
     //! thread / OOM injection plus the time-to-resume + visible-
     //! artifact-window p50/p95 measurement budgets land in
@@ -70,11 +73,11 @@ mod fixtures {
     use chromaticity_runtime::crash_resume::{
         CanonicalBinarySnapshotter, CrashResumeAdapter, CrashResumeError, SerializationKind,
         StateSnapshotBlob, StateSnapshotter, restore_all_supported_classes, restore_class_a,
-        restore_class_b, restore_class_c,
+        restore_class_b, restore_class_c, restore_class_d,
     };
-    use chromaticity_runtime::state::State;
+    use chromaticity_runtime::state::{MidiDeviceBinding, OscDeviceBinding, State};
     use chromaticity_runtime::{
-        Command, CommandBus, ControlId, ControlValue, InMemoryBus, PresetId, SnapSlotId,
+        Command, CommandBus, ControlId, ControlValue, InMemoryBus, MappingId, PresetId, SnapSlotId,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -143,6 +146,24 @@ mod fixtures {
         bus.dispatch(Command::PlaylistAdvance { step: 4 })
             .expect("playlist command must dispatch");
         bus.commit_all_into(state);
+    }
+
+    /// Apply a class-d session-binding snapshot to `state` (Wave
+    /// 4d.3 PR 5, row 80 class-d). One OSC device and one MIDI
+    /// device, each with a small mapping list, exercise the full
+    /// device-id + mappings round-trip across the V2 envelope's
+    /// session-bindings extension.
+    fn mutate_class_d(state: &mut State) {
+        state.apply_session_bindings(chromaticity_runtime::state::SessionBindings {
+            osc_devices: vec![OscDeviceBinding {
+                device_id: "osc.studio.local:9000".to_owned(),
+                mappings: vec![MappingId(11), MappingId(12)],
+            }],
+            midi_devices: vec![MidiDeviceBinding {
+                device_id: "iac-bus-0".to_owned(),
+                mappings: vec![MappingId(21)],
+            }],
+        });
     }
 
     #[test]
@@ -387,6 +408,190 @@ mod fixtures {
             after_first, after_second,
             "class-c restoration must be idempotent on a converged target",
         );
+        cleanup(&path);
+    }
+
+    // --- Wave 4d.3 PR 5 class-d additive fixtures -------------------
+
+    #[test]
+    fn class_d_round_trip_session_bindings_via_restore_helper() {
+        // Pin: class-d (OSC/MIDI session bindings) survives a save /
+        // drop / recover / `restore_class_d` cycle. The V2 envelope
+        // carries the session-bindings extension; the canonical-
+        // binary segment is unchanged so EV-STATE-REPLAY (row 32) /
+        // EV-PRESET-PLAYLIST (row 34) goldens are preserved.
+        let path = unique_save_path("class-d-round-trip");
+        let pre_crash_bindings;
+        {
+            let mut pre_crash = State::default();
+            mutate_class_d(&mut pre_crash);
+            pre_crash_bindings = pre_crash.session_bindings().clone();
+            let mut adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+            adapter.save(&pre_crash).expect("save must succeed");
+        }
+        let adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+        let recovered = adapter
+            .try_recover()
+            .expect("recover must succeed")
+            .expect("recover must return Some(state)");
+        let mut post_crash = State::default();
+        restore_class_d(&mut post_crash, &recovered);
+        assert_eq!(post_crash.session_bindings(), &pre_crash_bindings);
+        assert_eq!(post_crash.session_bindings().osc_devices.len(), 1);
+        assert_eq!(post_crash.session_bindings().midi_devices.len(), 1);
+        assert_eq!(
+            post_crash.session_bindings().osc_devices[0].device_id,
+            "osc.studio.local:9000",
+        );
+        assert_eq!(
+            post_crash.session_bindings().osc_devices[0].mappings,
+            vec![MappingId(11), MappingId(12)],
+        );
+        cleanup(&path);
+    }
+
+    #[test]
+    fn class_d_scripted_show_three_injection_points_recover_session_bindings() {
+        // Drive a scripted show with three class-d injection points
+        // (each adds a new OSC device-id binding to the running
+        // session); snapshot after each injection; assert each
+        // snapshot independently recovers to the matching pre-
+        // injection-point session bindings via the convenience
+        // helper. Mirrors the PR 1 + PR 2 three-injection-points
+        // shape extended to class-d.
+        let mut snapshots: Vec<(PathBuf, usize, usize)> = Vec::new();
+        let mut state = State::default();
+        for tick in 0..3u8 {
+            // Append one OSC device per injection point so each
+            // snapshot has a distinct binding count.
+            let mut current = state.session_bindings().clone();
+            current.osc_devices.push(OscDeviceBinding {
+                device_id: format!("osc.tick-{tick}.local:9000"),
+                mappings: vec![MappingId(u32::from(tick) + 100)],
+            });
+            // MIDI grows alongside on the third injection only, so
+            // the OSC and MIDI counts diverge across snapshots.
+            if tick == 2 {
+                current.midi_devices.push(MidiDeviceBinding {
+                    device_id: "iac-bus-0".to_owned(),
+                    mappings: vec![MappingId(200)],
+                });
+            }
+            state.apply_session_bindings(current);
+
+            let path = unique_save_path(&format!("class-d-three-points-tick-{tick}"));
+            let mut adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+            adapter.save(&state).expect("save must succeed");
+            snapshots.push((
+                path,
+                state.session_bindings().osc_devices.len(),
+                state.session_bindings().midi_devices.len(),
+            ));
+        }
+        assert_eq!(snapshots.len(), 3);
+
+        for (path, expected_osc, expected_midi) in &snapshots {
+            let adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+            let recovered = adapter
+                .try_recover()
+                .expect("recover must succeed")
+                .expect("recover must return Some(state)");
+            let mut post_crash = State::default();
+            restore_all_supported_classes(&recovered, &mut post_crash);
+            assert_eq!(
+                post_crash.session_bindings().osc_devices.len(),
+                *expected_osc,
+                "class-d OSC device count must survive recovery from {path:?}",
+            );
+            assert_eq!(
+                post_crash.session_bindings().midi_devices.len(),
+                *expected_midi,
+                "class-d MIDI device count must survive recovery from {path:?}",
+            );
+            cleanup(path);
+        }
+    }
+
+    #[test]
+    fn class_d_recovers_independently_of_class_a_b_c_e_f_g() {
+        // Pin: class-d restoration is orthogonal to the other
+        // shipped + deferred classes. A target carrying class-a +
+        // class-b + class-c values + a still-deferred-class mapping
+        // value receives `restore_class_d` and only its session
+        // bindings change.
+        let path = unique_save_path("class-d-orthogonal");
+        let bus = InMemoryBus::in_memory();
+        let mut pre_crash = State::default();
+        // Seed pre-crash with all four shipped classes so the
+        // recovered state carries non-default values across each.
+        bus.dispatch(Command::ControlSet {
+            id: ControlId(7),
+            value: ControlValue(0.5),
+        })
+        .expect("control command must dispatch");
+        bus.dispatch(Command::PresetRecall { id: PresetId(3) })
+            .expect("preset command must dispatch");
+        bus.dispatch(Command::SnapSave {
+            slot: SnapSlotId::new(4).expect("valid snap slot"),
+        })
+        .expect("snap save command must dispatch");
+        bus.dispatch(Command::PlaylistAdvance { step: 9 })
+            .expect("playlist command must dispatch");
+        bus.commit_all_into(&mut pre_crash);
+        mutate_class_d(&mut pre_crash);
+
+        let pre_crash_bindings = pre_crash.session_bindings().clone();
+
+        {
+            let mut adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+            adapter.save(&pre_crash).expect("save must succeed");
+        }
+
+        let adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+        let recovered = adapter
+            .try_recover()
+            .expect("recover must succeed")
+            .expect("recover must return Some(state)");
+
+        // Apply ONLY class-d to a fresh-default target. The other
+        // classes must remain at default because class-d restoration
+        // is orthogonal.
+        let mut target = State::default();
+        restore_class_d(&mut target, &recovered);
+        assert_eq!(target.session_bindings(), &pre_crash_bindings);
+        // Class-a / class-b / class-c untouched — still default:
+        assert_eq!(target.active_preset(), None);
+        assert_eq!(target.active_snap_slot(), None);
+        assert_eq!(target.playlist_position(), 0);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn class_d_empty_session_bindings_round_trips() {
+        // Pin: a state with NO session bindings still round-trips
+        // cleanly through the V2 envelope's session-bindings
+        // extension. The encoder emits the (osc_count=0,
+        // midi_count=0) tuple; the decoder reads it back into an
+        // empty `SessionBindings`. Pins the structural-no-op
+        // behaviour the producer side will lean on at host startup
+        // before any device enumeration completes.
+        let path = unique_save_path("class-d-empty");
+        let pre_crash = State::default();
+        {
+            let mut adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+            adapter.save(&pre_crash).expect("save must succeed");
+        }
+        let adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, path.clone());
+        let recovered = adapter
+            .try_recover()
+            .expect("recover must succeed")
+            .expect("recover must return Some(state)");
+        assert!(recovered.session_bindings().osc_devices.is_empty());
+        assert!(recovered.session_bindings().midi_devices.is_empty());
+        let mut post_crash = State::default();
+        restore_class_d(&mut post_crash, &recovered);
+        assert!(post_crash.session_bindings().osc_devices.is_empty());
+        assert!(post_crash.session_bindings().midi_devices.is_empty());
         cleanup(&path);
     }
 
