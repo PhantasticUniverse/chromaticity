@@ -33,7 +33,10 @@ the cumulative narrowing axes and milestone commits.
   `EV-PERF-BUDGETS`) at `Pass`; `EV-COLOR-MANAGEMENT-SRGB` deferred per AO
   direction behind a future render-HUD-diagnostics PR.
 - **Phase 4a EXIT** — achieved 2026-05-03. Wave 1c-α-2 production audio bootstrap
-  closure landed 2026-05-06.
+  closure landed 2026-05-06; Wave 1c-β camera + Syphon adapter cluster closure
+  landed 2026-05-07 at PR `#406` / commit `fb2bc75` under synthetic-narrowing
+  (per-platform nokhwa concrete bindings + Syphon `Send`-trait reconciliation +
+  hardware validation deferred as known follow-ups).
 - **Phase 4b EXIT** — passable at AO discretion as of 2026-05-07; all 11 Phase-4b
   rows at `Pass` under collective narrowings (Wave 4b.1 through 4b.8 inclusive).
   `EV-IMPORT-SHADERTOY` PR 2 of 2 (broader corpus + iChannel fixture-pack
@@ -245,9 +248,9 @@ chromaticity/
 ├── app/
 │   ├── shell/            # Tauri 2 binary (chromaticity-app crate)
 │   └── ui-bridge/        # ts-rs IPC type generator (Rust → TypeScript bindings)
-├── engine/               # runtime/, scene/, audio/, observability/, render/, script/, entitlement/
-├── integrations/         # osc-adapter/ (more adapter crates to follow)
-├── third_party/          # vendored snapshots — currently lygia/ (Lygia v1.1.4 trial vendor)
+├── engine/               # runtime/, scene/, audio/, authoring/, observability/, render/, script/, entitlement/
+├── integrations/         # osc-adapter/, midi-adapter/, camera-adapter/, syphon-adapter/
+├── third_party/          # vendored snapshots — lygia/ (Lygia v1.1.4 trial vendor) + Syphon-Framework/ (BSD-3-Clause clean-room)
 ├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
 ├── .config/hakari.toml   # cargo-hakari config; platforms mirror deny.toml graph.targets
 ├── src/                  # Svelte web root; may migrate under app/ui/ later
