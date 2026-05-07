@@ -41,7 +41,7 @@ use crate::frames::{
 #[cfg(target_os = "macos")]
 use crate::macos::{AuthorizationProbe, AuthorizationStatus, InUsePrecheck};
 #[cfg(target_os = "windows")]
-use crate::windows::{WindowsCameraProbe, WindowsPermissionStatus};
+use crate::windows::WindowsCameraProbe;
 
 /// Coarse classification of a camera device, used at enumeration
 /// time to drive UI grouping (built-in vs external vs Continuity vs
