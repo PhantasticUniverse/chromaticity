@@ -126,6 +126,16 @@ objc2 = "0.5"
 # binding declarations target. Dual MIT / Apache-2.0.
 objc2-foundation = { version = "0.2", features = ["NSString"] }
 
+[dev-dependencies]
+# serde_json 1 backs the Phase 2 PR 4 synthetic T2 corpus's
+# `PixelFormat` round-trip fixture (variant identity through
+# `serde::Serialize` + `serde::Deserialize`). License: Apache-2.0
+# OR MIT (allow-listed by /deny.toml). Already in the
+# workspace-hack unified dep set via engine/observability,
+# engine/entitlement, engine/authoring, engine/scene, and
+# engine/render's dev-deps.
+serde_json = "1"
+
 # Windows-only Media Foundation / consent-store binding stack.
 # Non-Windows workspace builds do not resolve these dependencies;
 # the `src/windows.rs` module is gated by
