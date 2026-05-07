@@ -12,444 +12,172 @@ context that a code-reader cannot derive from the tree. Read it on turn one; kee
 ## Project at a glance
 
 Chromaticity is a deterministic, audio-reactive live-visuals runtime and authoring
-environment (macOS + Windows desktop). Toolkit: Tauri 2 + Svelte 5 + TypeScript on the UI
-side; Rust 2024 edition on the engine side. `docs/adr/ADR-018-non-scene-ui-toolkit.md` is
-the normative toolkit decision. Phase 1 entered April 2026 and EXIT was achieved at
-W12 (commit `e818752`); Phase 2 EXIT was achieved 2026-05-01 at commit `d8e92db`;
-**Phase 3 EXIT was achieved 2026-05-01 at commit `953fd74`** per the Phase-3 EXIT
-simulation closing sign-off in `docs/EV-GATE-MODEL-AUDIT-checklist.md` — seven of the eight
-Phase-3 EXIT evidence IDs (`EV-AUDIO-TRACE` re-validated cross-tag, `EV-AUDIO-ROUTING-MATRIX`,
-`EV-STATE-REPLAY`, `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`, `EV-SHOW-BUNDLE-RECOVERY`,
-`EV-PERF-BUDGETS`) transitioned `Planned` → `Pass` against six per-row anchor run ids
-(25204946481, 25203436497, 25207466995, 25205805621, 25208208038, 25208934213) plus the
-Phase-2 cross-tag for row 30; the eighth row `EV-COLOR-MANAGEMENT-SRGB` (row 38) is
-explicitly deferred per AO direction sequenced behind a future render-HUD-diagnostics PR.
-Phase-3 narrowing decisions: row 33 forward-migration only (rollback Phase-4+); row 34
-existing PresetStore + PlaylistStore semantics (preset-bank durability + scene-author
-preset capture + playlist reordering Phase-4+); row 35 bundle-format spec only (recovery /
-rollback semantics Phase-4+); row 36 observable-subsystem proxy benchmarks (true frame-loop
-budget surface deferred until ADR-001/ADR-006 slice-3 lands the scheduler-tick path; Path B
-nightly-only criterion harness in `engine/runtime/benches/budgets.rs` per the
-~$20/month-vs-~$70-80/month AO-approved cost posture). Phase-4a Wave 1a partial closure
-landed 2026-05-01 in a 5-PR session (slice-3 PR 1 wave-PR `#321` introducing the
-foundational `Scheduler` + `Scheduler::tick` per ADR-001/006 with new evidence ID
-`EV-SCHEDULER-TICK` (pending Pass-anchor in the slice-3 closing docs PR after PRs 2-6 of
-the slice-3 wave land); plus Wave 1a feat PRs `#322` `#323` `#324` `#325`; plus this
-docs(repo) closing PR): 5 of 11 Phase-4a EXIT rows at `Pass` under AO-approved narrowings —
-`EV-INTEGRATION-MATRIX` (OSC-routing-matrix-only narrowing — MIDI / camera / Syphon /
-audio-uniform-IPC arms deferred to Wave 1b), `EV-HOTKEY-PARITY-CONFORMANCE` +
-`EV-HOTKEY-COMPLETENESS` + `EV-HOTKEY-CONFLICT` (full scope), `EV-NET-HARDENING` (full
-scope), `EV-HEALTH-METRICS-LOOPBACK-ONLY` (full scope per `docs/31` Phase-1 baseline
-catalog), and `EV-ENTITLEMENT-ENFORCEMENT` + `EV-ENTITLEMENT-OFFLINE` +
-`EV-ENTITLEMENT-REVOCATION` + `EV-ENTITLEMENT-FREE-FEATURES` (4 rows bundled at MVP
-watermark-only narrowing — tier gating deferred to post-MVP per `docs/11` line ~125). 6
-Phase-4a EXIT rows remain `Planned` for Wave 1b (`EV-MIDI-EXTENDED` plus the four deferred
-`EV-INTEGRATION-MATRIX` arms plus entitlement tier-gating beyond the MVP watermark
-surface). Slice-3 scheduler-tick engineering wave closure landed 2026-05-01 in a 5-PR
-sequence (`#321` foundational module + `#326` T2 corpus + `#328` observability metric-emit
-wiring + `#329` audio snapshot pull wiring + `#330` render dispatch wiring + this
-docs(repo) closing PR): `engine/runtime/src/scheduler/{mod,observability,audio,render}.rs`
-ships the canonical scheduler-tick frame loop per ADR-001 / ADR-006 with the established
-sub-module + builder + tick-step extension pattern. Row 38 (`EV-SCHEDULER-TICK`) at Pass.
-Tick-step ordering: audio pull (BEFORE state mutation) → bus drain + frame advance →
-render dispatch (AFTER state mutation) → observability emit (last). Existing T2 corpora
-(state_replay, preset_playlist, state_migration) preserve goldens via the additive-not-
-replacing design (corpora continue to use `commit_all_into` directly with `frame=0` static
-state). Phase 4+ entry remains a separate AO-held milestone with its own gate set per
-`docs/11-roadmap-phases.md`; Phase-3 EXIT achievement does not pre-empt the Phase-4 gate
-decision. Phase-4a Wave 1b partial closure landed 2026-05-02 in a 3-PR session
-(`#332` entitlement tier-gating widening + `#333` MIDI adapter and EV-MIDI-EXTENDED
-corpus + this docs(repo) closing PR): row 80 `EV-MIDI-EXTENDED` Pass under new
-`integrations/midi-adapter/` crate (midir 0.10 cross-platform MIDI; 17 fixtures × 100
-trials covering MIDI-CONF-11..20 + 5 dual-tagged matrix-arm fixtures; MPE deferred to
-V2 with diagnostic-fires-once rejection); rows 37 + 86 narrowing-clauses dropped via
-`HONORED_TOKEN_CAPABILITIES` widening 1 → 13 entries (data-only; IO_CAMERA intentionally
-excluded — free at MVP per ADR-009). Phase-4a EXIT row state after Wave 1a + 1b:
-**11 of 11 Phase-4a rows at Pass under collective narrowings**; full conformance modulo
-Wave 1c camera/Syphon/audio-uniform-IPC narrowing on row 37 + IO_CAMERA tier-gating on
-row 86 (Wave 1c explicitly deferred per AO direction; estimated 5,000-10,000 LoC
-multi-week scope; requires platform integration decisions + likely new ADRs). Phase-4a
-EXIT is **passable under current narrowings per `docs/26` §Rules line 194**; AO can
-declare at discretion. **Phase-4a EXIT was achieved 2026-05-03 at commit `<merge-sha>`**
-per the Phase-4a EXIT closure sign-off in `docs/EV-GATE-MODEL-AUDIT-checklist.md` —
-all 11 Phase-4a EXIT evidence IDs at `Pass` under the collective AO-approved
-narrowings (row 37 OSC routing-matrix plus MIDI input arm with camera / Syphon /
-audio-uniform-IPC arms deferred to Wave 1c; row 80 `EV-MIDI-EXTENDED` with MPE V2
-deferred plus SysEx logged-only at MVP; row 87 `EV-ENTITLEMENT-ENFORCEMENT` widened
-to the 13-cap honored set with IO_CAMERA intentionally excluded — free at MVP per
-ADR-009; row 89 `EV-ENTITLEMENT-REVOCATION` expiry-based only with deny-list
-activation deferred to post-MVP). The other seven rows (73, 74, 75, 82, 88, 91, 95)
-landed at full scope. Per-row anchor run ids cited in the Phase-4a EXIT closure
-section's Per-Type Minimums verification: 25212775046 (rows 73-75 hotkey trio),
-25213038199 (rows 37 + 82 OSC corpora), 25213270708 (row 95 observability),
-25213475549 (rows 87-89 + 91 entitlement bundle), 25219329314 (row 87 widening),
-25219692261 (row 80 + row 37 MIDI input arm). Wave 1c (camera + Syphon adapters +
-audio-uniform-IPC bridge) carries forward as a future directed engineering wave with
-new ADR + research + plan-mode + implementation cycle. Phase-4 EXIT itself remains a
-separate AO-held milestone with its own gate set per `docs/11-roadmap-phases.md`;
-Phase-4a EXIT achievement does not pre-empt the Phase-4b / 4c / 4d sub-phase gate
-decisions. **Phase-4a Wave 1c-α closure (audio-uniform IPC bridge sub-band) landed
-2026-05-03 in a 3-PR session** (`#338` ADR-019 acceptance + new row 83
-`EV-AUDIO-UNIFORM-IPC` at `Planned`; `#339` producer-side `AudioUniformSnapshotPayload`
-ts-rs newtype in `app/ui-bridge/` + new `engine/runtime/src/scheduler/ipc.rs` sub-module
-declaring the `IpcEmit` trait + 4 T1 pins + `Scheduler::with_ipc_emit` builder + tick
-step at AFTER-observability-emit + T2 round-trip corpus; `#340` consumer-side
-`src/lib/stores/audioSnapshot.svelte.ts` singleton store using
-`listen('audio_uniform_snapshot_changed', ...)` plus dual-mode retrofits to
-`AudioReactivity.svelte` / `BpmRing.svelte` / `BeatDots.svelte` — live IPC OR synthetic
-fallback per "live snapshot present" gate; plus this docs(repo) closing PR): row 83
-`EV-AUDIO-UNIFORM-IPC` Pass under explicit narrowing to the cross-seam payload-shape
-contract plus per-side composition (anchor run ids 25278169331 + 25277801336); 5
-deferred axes recorded honestly — (i) live end-to-end producer→Tauri-emit→consumer
-wiring (engine/runtime correctly does not depend on Tauri; the `IpcEmit` trait has no
-Tauri concrete implementation yet, and the Tauri shell currently does not bootstrap the
-engine scheduler-tick or audio analysis thread — widgets render in synthetic-fallback
-mode in production until that production-bootstrap wave lands); (ii) drop-frames-on-
-saturation testing per ADR-019 §Decision §4; (iii) stale-but-last-good IPC surfacing
-per ADR-019 §Decision §6; (iv) Spectrum widget retrofit (deferred as post-MVP
-enhancement — 8 → 64 interpolation design choice); (v) `AudioReactivity` 48-bar FFT
-visualiser stays synthetic-driven (only 4 named band tiles plus BPM strip read live
-via 8 → 4 reduction). Wave 1c-α delivered the cross-seam contract; Wave 1c-β (camera +
-Syphon adapters) and the **production-bootstrap wave** (audio-thread + scheduler-tick +
-Tauri-emit-adapter that drops narrowing axes i-iii) remain separate AO-held milestones
-with their own gate decisions per `docs/11`; Wave 1c-α achievement does not pre-empt
-them. Cumulative Phase-4a narrowings recap (across Wave 1a + Wave 1b + Wave 1c-α): row
-37 `EV-INTEGRATION-MATRIX` OSC routing-matrix plus MIDI input arm with camera / Syphon
-/ audio-uniform-IPC arms deferred to Wave 1c-β + production-bootstrap; row 80
-`EV-MIDI-EXTENDED` MPE V2 deferred plus SysEx-logged-only at MVP; row 83
-`EV-AUDIO-UNIFORM-IPC` Pass under cross-seam-contract narrowing (5 deferred axes per
-above); row 87 `EV-ENTITLEMENT-ENFORCEMENT` 13-cap honored set with IO_CAMERA
-intentionally excluded; row 89 `EV-ENTITLEMENT-REVOCATION` expiry-based only with
-deny-list activation deferred post-MVP. **Phase-4a Wave 1c-α-2 production audio
-bootstrap closure landed 2026-05-06 in a 3-PR session** (Bootstrap PR 1 / `#343`
-(`804d6cd`) added `engine/audio/src/runtime.rs` `AudioRuntime` + `AudioRuntimeHandle`
-producer runtime feeding `Arc<Mutex<AudioUniformSnapshot>>` with 7 T1 pins; Bootstrap
-PR 2 / `#344` (`9a1131e`) added `app/shell/src/state/ipc_emit.rs` `TauriIpcEmitter`
-Tauri concrete `IpcEmit` adapter + extended `AppState` lifecycle with
-`SchedulerThreadHandle` ordered shutdown + drift-corrected 60 Hz scheduler-tick
-thread spawned in `app/shell/src/lib.rs::run` setup with 7 T1 pins; plus this
-Bootstrap PR 3 closing PR adding `app/shell/tests/audio_uniform_ipc_e2e.rs` 3 T2
-cross-seam wire tests via `tauri::test::mock_app()` covering round-trip payload
-identity, multi-emit ordering, and emit-after-listener-unlisten panic-free posture).
-Row 83 `EV-AUDIO-UNIFORM-IPC` stays at `Pass` but the narrowing widens against
-post-merge anchor run ids 25431406979 (rust on `9a1131e`) + 25431406965 (frontend on
-`9a1131e`): 3 of the 5 Wave 1c-α deferred axes drop — (i) ✓ live end-to-end
-producer→Tauri-emit→consumer wiring now flows in production (visualizer widgets read
-live IPC dispatch in production with synthetic fallback retained for the no-snapshot
-startup window per the dual-mode gate); (ii) ✓ drop-frames-on-saturation panic-free
-posture per ADR-019 §4 exercised by the `emit_after_listener_unlisten_does_not_panic`
-fixture; remaining narrowings are (iii) stale-but-last-good IPC surfacing through
-the wire (covered at producer-side T1 by `engine/audio/src/runtime.rs` via the
-`MutexAudioPull` poison-recovery path but not transitively through the IPC seam —
-future-wave option), (iv) Spectrum widget retrofit (post-MVP UX enhancement), and
-(v) `AudioReactivity` 48-bar FFT visualiser staying synthetic-driven (post-MVP UX
-enhancement). Cumulative Phase-4a narrowings recap (across Wave 1a + Wave 1b + Wave
-1c-α + Wave 1c-α-2): row 37 `EV-INTEGRATION-MATRIX` OSC routing-matrix plus MIDI
-input arm with camera + Syphon arms deferred to Wave 1c-β (the audio-uniform-IPC arm
-narrowing is now satisfied end-to-end by Wave 1c-α-2); row 80 `EV-MIDI-EXTENDED` MPE
-V2 deferred plus SysEx-logged-only at MVP; row 83 `EV-AUDIO-UNIFORM-IPC` Pass under
-reduced narrowing (2 post-MVP UX axes plus 1 still-deferred-through-the-wire
-stale-but-last-good axis); row 87 `EV-ENTITLEMENT-ENFORCEMENT` 13-cap honored set
-with IO_CAMERA intentionally excluded; row 89 `EV-ENTITLEMENT-REVOCATION` expiry-
-based only with deny-list activation deferred post-MVP. Wave 1c-β (camera + Syphon
-adapters) remains AO-held and carries forward unchanged. **Phase-4b cluster (Wave
-4b.1 through 4b.6) + Phase-4d Wave 4d.1 / 4d.2 / 4d.3 partial closure landed
-2026-05-06** in a 22-PR session covering PR numbers 342 through 363 inclusive
-(across `engine/library/`, `engine/authoring/`, `engine/script/`, `engine/render/`,
-`engine/observability/`, `app/shell/`, plus this docs(repo) closing PR). 9
-evidence rows transitioned `Planned` → `Pass` under explicit narrowings:
-`EV-LIBRARY-BUNDLE-LAYOUT` (full; PR `#348` / `b0d07f8`); `EV-LIBRARY-DISCOVERY`
-(full; PRs `#349` / `747390a` + `#359` / `626116f`); `EV-LIBRARY-THUMBNAIL`
-(stub byte-hash renderer; real GPU-backed rendering deferred post-MVP; PR `#352`
-/ `3a091ef`); `EV-AUTHORING-DIAGNOSTICS` (spans for JSON class only — compile /
-script / coercion classes message-only; PRs `#353` / `1e8b6f1` + `#362` /
-`4f222f9`); `EV-AUTHORING-SCAFFOLDER` (full; PR `#355` / `f455613`);
-`EV-IMPORT-ISF-REJECT` (full — ISF native import deferred to V2 per design;
-PR `#358` / `8fadc55`); `EV-SHADER-CACHE` (observation-only — no
-`scripts/budget-check.sh` extension; PR `#350` / `e809991`);
-`EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` (co-developed cross-tagged
-synthetic harness — full UI-driven validation deferred post-MVP; PR `#363` /
-`b2156bb`). Per-row anchor run ids: 25436889114, 25438404895, 25449217997,
-25440654237, 25442351038, 25451347283, 25445241955, 25448712246, 25439101309, 25451842146. 6 evidence rows received PR-1-of-N work but stay `Planned`
-pending follow-on PRs: `EV-AUTHORING-LIVE-RELOAD` (PR `#356` / `d56f11d`),
-`EV-IMPORT-SHADERTOY` (PR `#360` / `7497955`), `EV-GPU-SELECTION` (PR `#351`
-/ `5abc443`; PR 2 hardware-gated), `EV-CRASH-RESUME` (PRs `#354` + `#357` +
-`#361` / `5b2d1f7` covering classes a/b/c/e; classes d/f/g pending),
-`EV-CRASH-PAYLOAD-REDACTION` (PR `#346` / `7ff37c6`),
-`EV-ANALYTICS-ZERO-DEFAULT` (Wave 4d.1 PR `#347` / `922f2d8` scaffolding;
-14-day soak calendar-gated to ~2026-05-20). Remaining Phase-4 EXIT
-prerequisites: Wave 4b.7 (`EV-IMPORT-REFERENCE-SHOW`), Wave 4b.8
-(`EV-ACCESSIBILITY-AA`), Wave 4d.4 (remaining `EV-CRASH-RESUME` classes
-d/f/g plus `EV-CRASH-PAYLOAD-REDACTION` PR 2 plus `EV-GPU-SELECTION`
-hardware-gated PR 2 plus `EV-SOAK-CHAOS`), plus the PR-2/PR-3 follow-ons
-enumerated above. Phase-4b / 4c / 4d EXIT decisions remain AO-held per
-`docs/11-roadmap-phases.md`; this cluster's closure does not pre-empt them.
-**Phase-4b Wave 4b.7 closure landed 2026-05-07** in a 5-PR session
-covering PR numbers 366 through 369 inclusive (PR `#366` / `53ad7ce`
-foundation + discovery + settings + presets importers under
-`engine/authoring/src/import_reference/` (`mod.rs` + `diagnostics.rs`
+environment (macOS + Windows desktop). Toolkit per `docs/adr/ADR-018-non-scene-ui-toolkit.md`:
+Tauri 2 + Svelte 5 + TypeScript on the UI side; Rust 2024 edition on the engine side.
+Phase 4 EXIT decisions remain AO-held per `docs/11-roadmap-phases.md`; closure events
+below do not pre-empt the gate decisions. Authoritative planning corpus lives under
+`docs/`; two documents to read first: `docs/43-development-standards.md` (standards)
+and `docs/29-cleanroom-legal-policy-baseline.md` (clean-room SOP). Per-PR commit hashes,
+T1/T2 fixture counts, and Per-Type-Minimums anchor-run-id tables for every closure live
+in the closing-docs sections of `docs/EV-GATE-MODEL-AUDIT-checklist.md` and the row
+description columns of `docs/26-evidence-artifact-registry.md`; this file records only
+the cumulative narrowing axes and milestone commits.
 
-- `discovery.rs` + `settings.rs` + `presets.rs`); PR `#367` /
-  `86f8292` snap + playlists + meta/media preset importers (`snap.rs`
-- `playlists.rs` + `meta_media.rs`); PR `#368` / `f9ad6eb` MIDI +
-  OSC + hotkey importers (`midi.rs` + `osc.rs` + `hotkey.rs`); PR
-  `#369` / `f69fc34` dry-run + commit + rollback drill orchestrator
-  (`drill.rs`) composing all 8 importer classes; plus this docs(repo)
-  closing PR). Row 86 `EV-IMPORT-REFERENCE-SHOW` transitions `Planned`
-  → `Pass` under explicit narrowings: (1) synthetic-commit harness in
-  PR 4 produces `CommitOutcome` + `RollbackSnapshot` shape proof but
-  does NOT mutate Chromaticity user-data stores (`PresetStore` /
-  `MappingStore` / hotkey-store / scene library); (2) synthetic-
-  rollback `Ok(())` no-op for the same reason — real rollback per
-  ADR-015 §6 + `32-state-preset-playlist-migration-policy.md`
-  deferred to a post-MVP V1 PR behind entitlement-tier-gating +
-  scene-library-write surfaces; (3) heuristic stand-ins in PR 3
-  (OSC `/chroma/` route-prefix collision detection in lieu of full
-  canonical-route registry lookup; hotkey V1-locked + control-focus
-  literal-prefix + named-action heuristics in lieu of full hotkey-
-  action vocabulary lookup); (4) library cross-check on preset
-  `unknown-scene` diagnostic mocked-empty pending live `SceneIndex`
-  wiring. Anchor run ids: 25465983264 (PR `#366`) + 25466617886
-  (PR `#367`) + 25467307204 (PR `#368`) + 25467953599 (PR `#369`;
-  primary anchor for row 85 Pass). Remaining Phase-4b EXIT
-  prerequisite is now Wave 4b.8 (`EV-ACCESSIBILITY-AA`) only;
-  Phase-4b EXIT decision remains AO-held per
-  `docs/11-roadmap-phases.md`. **Phase-4b Wave 4b.8 closure landed
-  2026-05-07** in a 3-PR session covering PR numbers 371 + 372 plus
-  this docs(repo) closing PR (PR `#371` / `54be28a` axe-core harness
-  integration adding `src/lib/__tests__/accessibility/` with
-  `axe-harness.ts` + `baseline-allowlist.ts` + `wcag-aa-corpus.test.ts`
-  auditing all 14 routed views against WCAG 2.2 AA tags `wcag2a` +
-  `wcag2aa` + `wcag22a` + `wcag22aa` under jsdom + `axe-core ^4.10.0`;
-  PR `#372` / `896b65a` automated remediation tightening per-view +
-  per-tier budgets to strict `{0, 0, 0, 0}` across 14 views × 4
-  severity tiers (critical / serious / moderate / minor), 6
-  component-level fixes closing 5 real findings (`VuStereo` widget
-  `role="img"` + `CuePad` widget `role="grid"` → `role="group"` +
-  `Author` view inspector tab strip + utility toolbar split + `MIDI`
-  view saved-state dot `role="img"` + `Perform` view rail
-  `role="tablist"` → `role="toolbar"` + `CueTransitionCurve` widget
-  SVG `role="img"` → `role="group"` per `nested-interactive`), plus
-  10 page-scoped axe rules disabled at component scope per axe-core's
-  documented `rules` parameter (`landmark-one-main` +
-  `landmark-no-duplicate-banner` + `landmark-no-duplicate-contentinfo`
-  - `landmark-unique` + `page-has-heading-one` + `region` +
-    `html-has-lang` + `html-lang-valid` + `document-title` + `bypass`
-    — disabled rules will still apply at any future full-app
-    integration audit); plus this docs(repo) closing PR). Row 76
-    `EV-ACCESSIBILITY-AA` transitions `Planned` → `Pass` under three
-    explicit narrowings: (1) axe-core automated audit only across all
-    14 routed views (`AudioUniforms`, `Author`, `Import`, `Inputs`,
-    `Library`, `License`, `MIDI`, `Osc`, `Patch`, `Perform`,
-    `Playlist`, `Settings`, `Sources`, `Welcome`); (2) component-vs-page
-    scope rules disabled per axe-core's documented `rules` parameter
-    (10 rules covering landmark / page-heading / region / html-lang /
-    document-title / bypass that only meaningfully apply to complete
-    page layouts, not component-level fragments — rules will still
-    apply at any future full-app integration audit); (3) manual
-    VoiceOver / NVDA review deferred to AO-led validation territory.
-    Anchor run ids: 25469037211 (PR `#371` harness) + 25469465083 (PR
-    `#372` remediation; primary anchor for row 76 Pass). After this
-    closure all 11 Phase-4b EXIT rows are at `Pass` under collective
-    Phase-4b narrowings; **Phase-4b EXIT is passable at AO discretion**
-    (the same posture Phase-4a reached prior to AO declaring EXIT
-    2026-05-03 at commit `<merge-sha>`); Phase-4b EXIT decision remains
-    AO-held per `docs/11-roadmap-phases.md`. Cumulative Phase-4b
-    narrowings recap (across Wave 4b.1 through 4b.8): row 101
-    `EV-LIBRARY-BUNDLE-LAYOUT` full scope; row 66
-    `EV-LIBRARY-DISCOVERY` full scope (Wave 4b.2 indexer + Wave 4b.6
-    search-filter IPC); row 67 `EV-LIBRARY-THUMBNAIL` deterministic
-    byte-hash stub renderer (real GPU-backed rendering deferred
-    post-MVP); row 62 `EV-AUTHORING-DIAGNOSTICS` JSON-class spans only
-    (compile / script / coercion classes message-only); row 63
-    `EV-AUTHORING-SCAFFOLDER` full scope; rows 83 + 84
-    `EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` synthetic-only
-    (full UI-driven validation deferred post-MVP); row 65
-    `EV-IMPORT-ISF-REJECT` full scope (ISF native import deferred to
-    V2); row 79 `EV-SHADER-CACHE` observation-only (no
-    `scripts/budget-check.sh` extension); row 86
-    `EV-IMPORT-REFERENCE-SHOW` synthetic-commit harness +
-    synthetic-rollback no-op + OSC chroma-prefix collision heuristic +
-    hotkey V1-locked + control-focus heuristics + library cross-check
-    mocked-empty; row 76 `EV-ACCESSIBILITY-AA` axe-core-only +
-    component-scope-disabled + manual-deferred. Engine and integration
-    crates (runtime, scene, audio, observability, render, script,
-    entitlement, osc-adapter, midi-adapter) carry foundational evidence
-    at EXIT quality; parallel UI port waves against the v0.2-beta
-    bundle closed all three Vitest test-coverage tracks (widgets,
-    shell components, routed views). **Phase-4d Wave 4d.4 closure
-    landed 2026-05-07** in a 3-PR session covering PR numbers 374 +
-    375 plus this docs(repo) closing PR (PR `#374` / `da34db6`
-    introducing the soak harness scaffold at
-    `engine/observability/src/soak.rs` exposing `SoakConfig` +
-    `SoakWorkload` trait + `SoakReport` keyed by
-    `StabilityFailureKind::{DriftExceeded, TickStalled,
-StateCorruptionDetected}` + `run_soak` with drift-corrected
-    timing plus 7 T1 pins + foundational T2 corpus; PR `#375` /
-    `06cf294` layering the chaos-injection extension at
-    `engine/observability/src/chaos.rs` exposing `FaultEvent::
-{AdapterDropout, AudioStreamInterruption, GpuDeviceLost,
-Custom}` + `ChaosScheduleEntry` + `ChaosPlan` +
-    `ChaosWorkload: SoakWorkload` trait extension +
-    `ChaosInjectionError::{AdapterNotFound, UnsupportedFault,
-RecoveryDeadlineExceeded}` rejection taxonomy + `ChaosReport` +
-    `stability_failure_chaos_classification` (`ChaosRecoveryWindow`
-    vs. `Independent`) plus 6 T1 chaos pins + T2 chaos corpus; plus
-    this docs(repo) closing PR adding
-    `engine/observability/tests/multi_profile_chaos_soak_corpus.rs`
-    (7 fixtures × CI-friendly sub-2-second-each runs) covering
-    synthetic `compat-syn-v1` workload (parity-core narrow surface;
-    single-adapter `osc-input-1` + single-audio-stream + no-GPU-
-    device-lost handling; 2-event chaos plan) and
-    `native-chroma-v1` workload (broader native surface; multi-
-    adapter `osc-input-1` + `midi-port-1` + multi-audio-source
-    ready + `supports_gpu_lost: bool`-gated GPU device-lost stub;
-    4-event chaos plan)). Row 40 `EV-SOAK-CHAOS` transitions
-    `Planned` → `Pass` under three explicit narrowings: (1) **CI-
-    short soak surface** — sub-second / sub-2-second-each in CI; the
-    full ≥ 4-hour soak target per `docs/10` line 55 is calendar-
-    gated and runs as a nightly criterion-bench-style harness, not
-    as a per-PR CI gate, mirroring `EV-PERF-BUDGETS` Phase-3 Path B
-    nightly-only criterion harness in
-    `engine/runtime/benches/budgets.rs` per the ~$20/month-vs-
-    ~$70-80/month AO-approved cost posture; (2) **synthetic
-    workload fixtures** — multi-profile corpus uses synthetic
-    workloads representative of the two profiles, not the live
-    runtime; full live-runtime soak deferred to a future wave; (3)
-    **GPU device-lost arm** — exercises a per-platform-supported
-    flag at fixture level via
-    `NativeChromaV1Workload::supports_gpu_lost`, toggling between
-    `Accepted` and `Rejected(UnsupportedFault)`; actual
-    `engine/render/` device-lost recovery is row 78
-    `EV-GPU-SELECTION` PR 2 (hardware-gated; deferred). Anchor run
-    ids: 25470304804 (PR `#374` harness scaffold) + 25470870950
-    (PR `#375` chaos-injection; primary anchor for row 40 Pass).
-    Wave 4d.4 is the **Phase-4d capstone closure for the row that
-    was the last 4d row needing direct engineering work**;
-    remaining Phase-4d open items are calendar-gated, hardware-
-    gated, or scoped behind still-open follow-on PRs: row 80
-    `EV-CRASH-RESUME` class-d (deferred-pending-state-shape gap);
-    row 93 `EV-CRASH-PAYLOAD-REDACTION` PR 2 (full crash-injection
-    harness pending — PR 1 from Wave 4d.1 Lane A shipped redaction
-    primitives only); row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-
-    docs (~2026-05-20 calendar-gated 14-day soak window per the
-    Wave 4d.1 Lane B scaffolding from PR `#347` / `922f2d8`); row
-    78 `EV-GPU-SELECTION` PR 2 (hardware-gated dual-GPU validation
-    deferred). Phase-4d EXIT decision remains AO-held per
-    `docs/11-roadmap-phases.md`; this wave's closure does not
-    pre-empt the gate decision. **Phase-4d Row 93
-    `EV-CRASH-PAYLOAD-REDACTION` closure landed 2026-05-07** in a
-    2-PR sequence covering PR numbers 346 (redaction primitives —
-    `7ff37c6`, anchor run `25415739244`) plus 377 (synthetic crash-
-    payload validation harness + closing-docs — this PR). Row 93
-    transitions `Planned -> Pass` under synthetic-harness narrowing:
-    `engine/observability/src/crash_harness.rs` ships the
-    `SimulatedCrashClass` 4-arm enum (`Sigsegv`,
-    `PanicInRenderThread`, `OutOfMemory`, `AssertionFailure`),
-    `SyntheticCrashPayload` constructor populating all 5
-    `RedactCategory` arms with class-distinct sentinel strings of
-    shape `<class-label>-<category>-sentinel-do-not-leak`,
-    `CrashPayloadValidationReport` (sentinels-redacted vs
-    sentinels-leaked accounting), and
-    `validate_synthetic_crash_payload` runner using substring-search
-    detection over the serialised redacted output, plus 9 T1 harness
-    pins and 7 new harness-driven T2 fixtures extending the existing
-    `crash_payload_redaction_corpus.rs`. Real platform-specific
-    crash-handler injection (POSIX signal handlers feeding `SIGSEGV`
-    minidumps, panic-hook wiring on the render thread, OOM-killer
-    integration) is out-of-scope at MVP and reserved for a future-
-    wave full-injection harness that composes on top of the
-    primitives + harness, mirroring the deferred-composition framing
-    accepted at row 40 `EV-SOAK-CHAOS` Wave 4d.4. After this closure
-    3 Phase-4d open items remain: row 80 `EV-CRASH-RESUME` class-d
-    (deferred-pending-state-shape gap; classes a/b/c/e/f/g already
-    shipped); row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs
-    (~2026-05-20 calendar-gated 14-day soak window); row 78
-    `EV-GPU-SELECTION` PR 2 (hardware-gated dual-GPU validation
-    deferred). Phase-4d EXIT decision remains AO-held per
-    `docs/11-roadmap-phases.md`; this row 93 closure does not
-    pre-empt the gate decision. **Phase-4d Row 80
-    `EV-CRASH-RESUME` closure landed 2026-05-07** in a 5-PR
-    engineering sequence plus this docs(repo) closing PR (PR
-    numbers 354 + 357 + 361 + 364 + 378 + closing-docs). Row 80
-    transitions `Planned -> Pass` under synthetic restore-helper
-    narrowing: all seven state-restoration classes
-    (a/b/c/d/e/f/g) ship as `restore_class_<x>` helpers in
-    `engine/runtime/src/crash_resume.rs` under the additive Wave
-    4d.3 partial-advance pattern, with a cross-class
-    `restore_all_supported_classes` composer. PR `#354` shipped
-    classes a + b (active scene + preset channel values + Snap
-    slot selection + scene-specific preset history); PR `#357`
-    shipped class c (playlist position + iteration mode); PR
-    `#361` (`5b2d1f7`) shipped class e (audio input device +
-    `syn_Threshold`); PR `#364` (`bcaf879`) shipped classes f +
-    g (operator meta-control values + render resolution + FPS
-    target); PR `#378` (`9cbb428`) shipped class d (OSC / MIDI
-    session bindings) — closing the deferred-pending-state-shape
-    gap by extending `State` with the additive `SessionBindings`
-    sub-store carrying OSC + MIDI device-id-keyed binding state
-    plus extending the V2 envelope with the
-    `EXT_ID_V2_SESSION_BINDINGS` extension (length-prefixed
-    UTF-8 device-ids + mapping-id lists per OSC + MIDI) without
-    breaking V1 → V2 forward-only migration semantics per
-    Phase-3 row 33. Pre-existing T2 corpora goldens
-    (`state_replay`, `state_migration`, `preset_playlist`,
-    `scheduler_tick`) are preserved verbatim. The full crash-
-    injection drill per the spec ("controlled `SIGKILL` /
-    `SIGSEGV` / panic-in-render-thread / OOM simulation at three
-    wallclock points within a 10-minute scripted show") requires
-    real platform crash-handler infrastructure that doesn't ship
-    at MVP and is reserved for a future-wave full-injection
-    harness composing on top of the synthetic restore-helper
-    apparatus — same precedent as row 93 `EV-CRASH-PAYLOAD-
-    REDACTION`'s synthetic-harness narrowing earlier on
-    2026-05-07. Anchor run id `25473152455` (PR `#378`; primary
-    anchor for row 80 Pass). After this closure 2 Phase-4d open
-    items remain (down from 3): row 94 `EV-ANALYTICS-ZERO-
-    DEFAULT` closing-docs (~2026-05-20 calendar-gated 14-day
-    soak window per the Wave 4d.1 Lane B scaffolding from PR
-    `#347` / `922f2d8`); row 78 `EV-GPU-SELECTION` PR 2
-    (hardware-gated dual-GPU validation deferred). Phase-4d EXIT
-    decision remains AO-held per `docs/11-roadmap-phases.md`;
-    this row 80 closure does not pre-empt the gate decision.
-    **Phase-4d Row 78 EV-GPU-SELECTION closure landed 2026-05-07** in
-    a 2-PR sequence (PR `#351` / `5abc443` selection-policy
-    scaffolding 2026-05-06 + this PR synthetic dual-adapter T2
-    corpus + closing-docs 2026-05-07). Row 78 `EV-GPU-SELECTION`
-    transitions `Planned -> Pass-narrowed`. The synthetic narrowing
-    ships an inline 10-fixture T2 corpus under
-    `engine/render/src/adapter_selection.rs::mod
-    adapter_selection_t2_corpus` honouring the `pub(crate)
-    rank_synthetic` slice-boundary signal (visibility-as-scope-
-    signal posture) — covers discrete + integrated default + battery
-    pairings, dual-discrete deterministic backend tie-break,
-    operator-override pinning + falls-through-on-absent, eGPU hot-
-    plug-disappearance idempotent re-selection, empty list → None,
-    TDR-history flag plumbed-but-inert, battery preference flips
-    only the top two types, and OS-aware backend tie-breakers per
-    `cfg(target_os)` (Metal on macOS / Vulkan on Linux / Dx12 on
-    Windows — exactly one fixture fires per target). Three
-    narrowing axes recorded: (1) synthetic-corpus validation only;
-    (2) physical / VM dual-adapter validation deferred (the
-    registry's "Generation Source" full-spec wgpu round-trip arm
-    runs against actual CI Mac/Linux/Windows rigs verifying at-
-    least-one-adapter, but synthesised dual-GPU pairings happen
-    only inline); (3) TDR-history warning UI surface deferred —
-    same precedent as row 40 `EV-SOAK-CHAOS` synthetic-workload
-    narrowing / row 80 `EV-CRASH-RESUME` synthetic restore-helper
-    narrowing / row 93 `EV-CRASH-PAYLOAD-REDACTION` synthetic-
-    harness narrowing. Anchor run id `<TBD-on-merge>` (this PR's
-    workspace nextest job; primary anchor for row 78 Pass). After
-    this closure **1 Phase-4d open item remains** (down from 2):
-    row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs (~2026-05-20
-    calendar-gated 14-day soak window per the Wave 4d.1 Lane B
-    scaffolding from PR `#347` / `922f2d8`). Phase-4d EXIT
-    decision remains AO-held per `docs/11-roadmap-phases.md`;
-    this row 78 closure does not pre-empt the gate decision.
+### Phase progression
 
-Authoritative planning corpus lives under `docs/`. Two documents to read first:
-`docs/43-development-standards.md` (standards) and
-`docs/29-cleanroom-legal-policy-baseline.md` (clean-room SOP).
+- **Phase 1 EXIT** — achieved at W12 (commit `e818752`), April 2026.
+- **Phase 2 EXIT** — achieved 2026-05-01 at commit `d8e92db`.
+- **Phase 3 EXIT** — achieved 2026-05-01 at commit `953fd74`. Seven of eight Phase-3
+  rows (`EV-AUDIO-TRACE` cross-tag, `EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`,
+  `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`, `EV-SHOW-BUNDLE-RECOVERY`,
+  `EV-PERF-BUDGETS`) at `Pass`; row 38 `EV-COLOR-MANAGEMENT-SRGB` deferred per AO
+  direction behind a future render-HUD-diagnostics PR.
+- **Phase 4a EXIT** — achieved 2026-05-03. Wave 1c-α-2 production audio bootstrap
+  closure landed 2026-05-06.
+- **Phase 4b EXIT** — passable at AO discretion as of 2026-05-07; all 11 Phase-4b
+  rows at `Pass` under collective narrowings (Wave 4b.1 through 4b.8 inclusive).
+- **Phase 4d** — 5 of 6 rows at `Pass` as of 2026-05-07; row 94
+  `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 (14-day soak window).
+
+Slice-3 scheduler-tick wave (closing 2026-05-01) shipped
+`engine/runtime/src/scheduler/{mod,observability,audio,render,ipc}.rs` per
+ADR-001 / ADR-006, introducing `EV-SCHEDULER-TICK` (row 38) at `Pass`. Tick-step
+ordering: audio pull (BEFORE state mutation) → bus drain + frame advance → render
+dispatch (AFTER state mutation) → observability emit → IPC emit (last). Existing T2
+corpora (`state_replay`, `preset_playlist`, `state_migration`) preserve goldens via
+the additive design — corpora continue to use `commit_all_into` directly with
+`frame=0` static state.
+
+### Phase-3 narrowings
+
+- Row 33 forward-migration only (rollback Phase-4+).
+- Row 34 existing PresetStore + PlaylistStore semantics; preset-bank durability +
+  scene-author preset capture + playlist reordering deferred Phase-4+.
+- Row 35 bundle-format spec only; recovery / rollback semantics Phase-4+.
+- Row 36 observable-subsystem proxy benchmarks; true frame-loop budget surface
+  ships Phase-4 via the Path B nightly-only criterion harness in
+  `engine/runtime/benches/budgets.rs` (~$20/month-vs-~$70-80/month AO-approved cost
+  posture).
+
+### Phase-4a cumulative narrowings (Wave 1a + 1b + 1c-α + 1c-α-2)
+
+- Row 37 `EV-INTEGRATION-MATRIX` — OSC routing-matrix + MIDI input arm at `Pass`;
+  camera + Syphon arms deferred to Wave 1c-β. The audio-uniform-IPC arm narrowing
+  is now satisfied end-to-end by Wave 1c-α-2.
+- Row 80 `EV-MIDI-EXTENDED` — `Pass` under `integrations/midi-adapter/` (midir 0.10
+  cross-platform); MPE deferred to V2 with diagnostic-fires-once rejection;
+  SysEx-logged-only at MVP.
+- Row 83 `EV-AUDIO-UNIFORM-IPC` — `Pass` (per ADR-019). Live IPC dispatch flows in
+  production after Wave 1c-α-2 (`engine/audio::AudioRuntime` producer +
+  `app/shell::TauriIpcEmitter` adapter + drift-corrected 60 Hz scheduler-tick
+  thread in `app/shell/src/lib.rs::run`). Three residual narrowings: (i) Spectrum
+  widget retrofit deferred (post-MVP UX); (ii) `AudioReactivity` 48-bar FFT
+  visualiser stays synthetic-driven (only 4 named band tiles + BPM strip read live
+  via 8 → 4 reduction; post-MVP UX); (iii) stale-but-last-good IPC surfacing
+  through the wire deferred (covered at producer-side T1 by
+  `engine/audio/src/runtime.rs` via `MutexAudioPull` poison-recovery, but not
+  transitively through the IPC seam).
+- Rows 87 + 89 entitlement `EV-ENTITLEMENT-ENFORCEMENT` /
+  `EV-ENTITLEMENT-REVOCATION` — `Pass` at the 13-cap honored set
+  (`HONORED_TOKEN_CAPABILITIES`, data-only); IO_CAMERA intentionally excluded —
+  free at MVP per ADR-009. Revocation expiry-based only; deny-list activation
+  deferred post-MVP.
+- Rows 73, 74, 75 (hotkey trio), 82, 88, 91, 95 — full scope.
+
+### Phase-4b cumulative narrowings (Wave 4b.1 through 4b.8)
+
+- Row 101 `EV-LIBRARY-BUNDLE-LAYOUT` — full scope (four-subdir taxonomy).
+- Row 66 `EV-LIBRARY-DISCOVERY` — full scope (Wave 4b.2 indexer + Wave 4b.6
+  search-filter IPC).
+- Row 67 `EV-LIBRARY-THUMBNAIL` — deterministic byte-hash stub renderer; real
+  GPU-backed rendering deferred post-MVP.
+- Row 62 `EV-AUTHORING-DIAGNOSTICS` — JSON-class spans only; compile / script /
+  coercion classes message-only.
+- Row 63 `EV-AUTHORING-SCAFFOLDER` — full scope.
+- Row 65 `EV-IMPORT-ISF-REJECT` — full scope; ISF native import deferred to V2 per
+  design.
+- Row 79 `EV-SHADER-CACHE` — observation-only (no `scripts/budget-check.sh`
+  extension).
+- Rows 83 + 84 `EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` — co-developed
+  cross-tagged synthetic harness; full UI-driven validation deferred post-MVP.
+- Row 86 `EV-IMPORT-REFERENCE-SHOW` — synthetic-commit harness across 8 importer
+  classes producing `CommitOutcome` + `RollbackSnapshot` shape proof; does NOT
+  mutate Chromaticity user-data stores; rollback `Ok(())` no-op (real rollback per
+  ADR-015 §6 + `docs/32` deferred behind entitlement-tier-gating +
+  scene-library-write surfaces); OSC `/chroma/` route-prefix collision detection
+  heuristic (in lieu of canonical-route registry); hotkey V1-locked +
+  control-focus literal-prefix + named-action heuristics; library cross-check on
+  preset `unknown-scene` mocked-empty pending live `SceneIndex` wiring.
+- Row 76 `EV-ACCESSIBILITY-AA` — axe-core automated audit only across all 14
+  routed views; component-vs-page scope rules disabled per axe-core's documented
+  `rules` parameter (10 rules covering landmark / page-heading / region /
+  html-lang / document-title / bypass — will still apply at any future full-app
+  integration audit); manual VoiceOver / NVDA review deferred to AO-led
+  validation.
+- Engine and integration crates (runtime, scene, audio, observability, render,
+  script, entitlement, osc-adapter, midi-adapter) carry foundational evidence at
+  EXIT quality; parallel UI port waves against the v0.2-beta bundle closed all
+  three Vitest test-coverage tracks (widgets, shell components, routed views).
+
+### Phase-4d cumulative narrowings (Wave 4d.1 through 4d.4 + row closures)
+
+- Row 40 `EV-SOAK-CHAOS` — CI-short synthetic-workload soak surface
+  (sub-2-second-each in CI); ≥4-hour soak target per `docs/10` line 55 deferred to
+  a calendar-gated nightly criterion-bench-style harness mirroring
+  `EV-PERF-BUDGETS` Phase-3 Path B (~$20/month-vs-~$70-80/month posture);
+  multi-profile fixtures use synthetic workloads representative of the
+  `compat-syn-v1` and `native-chroma-v1` profiles, not the live runtime; GPU
+  device-lost arm exercises a per-platform-supported flag at fixture level.
+- Row 78 `EV-GPU-SELECTION` — synthetic 10-fixture inline T2 corpus only
+  (`engine/render/src/adapter_selection.rs`); physical / VM dual-adapter
+  validation deferred (CI's wgpu round-trip arm covers at-least-one-adapter only);
+  TDR-history warning UI surface deferred. Hardware-gated dual-GPU validation
+  remains a future PR.
+- Row 79 `EV-SHADER-CACHE` — observation-only (see Phase-4b above).
+- Row 80 `EV-CRASH-RESUME` — all 7 restoration classes (a/b/c/d/e/f/g) shipped via
+  the additive Wave 4d.3 partial-advance pattern as `restore_class_<x>` helpers in
+  `engine/runtime/src/crash_resume.rs`; class d closes the
+  deferred-pending-state-shape gap by extending `State` with `SessionBindings` +
+  the V2 envelope `EXT_ID_V2_SESSION_BINDINGS` extension without breaking
+  V1 → V2 forward-only migration per Phase-3 row 33. Full crash-injection drill
+  (controlled `SIGKILL` / `SIGSEGV` / panic-in-render-thread / OOM at three
+  wallclock points in a 10-minute scripted show) deferred to a future-wave
+  full-injection harness composing on top of the synthetic restore-helper
+  apparatus.
+- Row 93 `EV-CRASH-PAYLOAD-REDACTION` — synthetic crash-payload validation
+  harness in `engine/observability/src/crash_harness.rs`
+  (`SimulatedCrashClass` 4-arm + `SyntheticCrashPayload` constructor populating
+  all 5 `RedactCategory` arms with class-distinct sentinel strings +
+  substring-search detection over serialised redacted output); real
+  platform-specific crash-handler injection (POSIX signal handlers / panic-hook
+  wiring / OOM-killer integration) reserved for a future-wave full-injection
+  harness — same precedent as row 40.
+- Row 94 `EV-ANALYTICS-ZERO-DEFAULT` — Wave 4d.1 Lane B scaffolding shipped;
+  closing docs calendar-gated to ~2026-05-20 (14-day soak window).
+
+### Out-of-scope (AO-deferred)
+
+- **Wave 1c-β** (camera + Syphon adapters) — new ADR(s) + multi-week
+  implementation cycle; estimated 5,000-10,000 LoC.
+- **Production-bootstrap follow-on** for row 83 stale-but-last-good IPC seam
+  surfacing (axis (iii)).
+- **Hardware-gated** validation for rows 78 (dual-GPU) and the row 80 / 93
+  full-injection crash harness.
+- **Post-MVP UX enhancements** — Spectrum widget retrofit + `AudioReactivity`
+  48-bar FFT visualiser live wiring (row 83 narrowing).
+
+### Live-IPC dispatch verified (Wave 1c-α-2, 2026-05-06)
+
+`engine/audio::AudioRuntime` spawns the producer thread feeding
+`Arc<Mutex<AudioUniformSnapshot>>`; `app/shell::TauriIpcEmitter` is the concrete
+`IpcEmit` adapter; `app/shell/src/lib.rs::run` setup spawns the drift-corrected
+60 Hz scheduler-tick thread that pulls from `MutexAudioPull` and emits via
+`app.emit("audio_uniform_snapshot_changed", ...)`. Visualizer widgets
+(`AudioReactivity.svelte`, `BpmRing.svelte`, `BeatDots.svelte`) read live IPC in
+production with synthetic fallback retained for the no-snapshot startup window
+per the dual-mode "live snapshot present" gate. The `AudioReactivity` widget's 4
+named band tiles + BPM strip read live via 8 → 4 reduction; the 48-bar FFT
+visualiser stays synthetic-driven (post-MVP).
 
 ## Fast commands
 
