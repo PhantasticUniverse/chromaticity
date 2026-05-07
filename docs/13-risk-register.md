@@ -306,6 +306,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
  - fallback: for unsupported scenes, authoring environment surfaces explicit diagnostic rather than silent miscompile.
 - Residual: Medium. wgpu/naga maturity is improving but not fully mature; the published gap list plus authoring diagnostic make the failure mode "scene refuses to compile with clear guidance" rather than silent miscompile, which keeps impact bounded.
 - Owner: AI Runtime Workcell + Accountable Owner.
+- Closure note (2026-05-07): row 78 `EV-GPU-SELECTION` transitioned `Planned -> Pass-narrowed` under a 2-PR sequence (`#351` selection-policy scaffolding + this PR synthetic dual-adapter T2 corpus + closing-docs) covering deterministic adapter ranking, operator-override pinning, eGPU hot-plug-disappearance idempotent re-selection, and OS-aware backend tie-breakers per `cfg(target_os)`. Narrowing accepted under the row 40 / row 80 / row 93 synthetic-validation precedent; physical / VM dual-adapter rigs and TDR-history warning UI deferred to future hardware + UI waves. Adapter-selection axis of the residual is now bounded by the inline 10-fixture T2 corpus.
 
 ### R-23 Reference-App Behavior Excavation Incomplete
 - Probability: High (behavior excavation is inherently open-ended)
