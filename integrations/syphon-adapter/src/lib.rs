@@ -45,16 +45,17 @@
 //!
 //! ## Unsafe posture
 //!
-//! Phase 3 PR 1 (this scaffold) carries **zero** `unsafe` blocks.
-//! All workspace lints (`unsafe_code = "forbid"`,
-//! `clippy::unwrap_used = "deny"`, `clippy::expect_used = "deny"`)
-//! apply unrelaxed. The per-module `#[allow(unsafe_code)]`
-//! exemption ADR-021 §3 names is applied at PR 2 alongside the
-//! real Objective-C binding declarations, in a policy-scoped
-//! transaction that loosens the workspace `forbid` for the
-//! binding-declaration module per `docs/43-development-standards.md`
-//! §12.6. PR 1 ships the type surface only; the binding code that
-//! requires the exemption does not exist in this PR.
+//! Phase 3 PR 2 narrowly loosens the workspace
+//! `unsafe_code = "forbid"` floor for this crate to `"deny"` (per
+//! the crate-level `[lints.rust] unsafe_code = "deny"` override in
+//! `Cargo.toml` authorized by ADR-021 §3 + `docs/43-development-standards.md`
+//! §12.6). The `[crate::bindings]` module carries
+//! `#![allow(unsafe_code)]` and is the **only** module in this
+//! crate where unsafe is used; all other modules
+//! ([`crate::adapter`], [`crate::defaults`], [`crate::directory`],
+//! [`crate::frames`]) are safe Rust. Workspace floors for
+//! `clippy::unwrap_used`, `clippy::expect_used`, and
+//! `clippy::missing_safety_doc` stay in force unrelaxed.
 //!
 //! ## Texture binding namespace
 //!
@@ -88,6 +89,7 @@
 #![cfg(target_os = "macos")]
 
 pub mod adapter;
+pub mod bindings;
 pub mod defaults;
 pub mod directory;
 pub mod frames;

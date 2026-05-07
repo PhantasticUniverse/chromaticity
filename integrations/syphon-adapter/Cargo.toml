@@ -58,8 +58,27 @@ license.workspace = true
 publish.workspace = true
 description = "Chromaticity Syphon integration adapter, macOS-only (ADR-021)."
 
-[lints]
-workspace = true
+# Subtree-loosening for the Objective-C framework binding-declaration
+# module. Per docs/43-development-standards.md §12.6, member-crate
+# `[lints]` overrides are normally subtree-tightening only; loosening
+# below the workspace `unsafe_code = "forbid"` floor requires a
+# policy-scoped ADR. ADR-021 §Decision Drivers + §3 ("Module-level
+# `#[allow(unsafe_code)]` exemption per docs/43 §12.1 is applied only
+# to the binding-declaration module") authorizes this loosening for
+# this crate alone, narrowly scoped to the `objc2` framework binding
+# declarations in `src/bindings.rs`. The rest of the crate is safe
+# Rust; the per-module `#[allow(unsafe_code)]` annotation in
+# `bindings.rs` keeps the surface explicit. `clippy::unwrap_used`,
+# `clippy::expect_used`, and `clippy::missing_safety_doc` workspace
+# floors stay in force unrelaxed.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+missing_safety_doc = "deny"
 
 [dependencies]
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
