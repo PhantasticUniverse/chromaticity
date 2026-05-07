@@ -35,14 +35,14 @@ Represent scene rendering contracts in an engine-neutral internal interface so t
 `EV-*` IDs whose status is produced, advanced, or blocked by this decision. The frame-graph strategy and pass-level semantics here remain normative even though backend selection is superseded by `adr/ADR-011-rendering-backend.md`; the rows below depend on the engine-neutral frame-graph contract this ADR established, with backend-specific evidence rolled forward into ADR-011's coverage.
 
 - `EV-RENDER-CONFORMANCE` — multipass + feedback behavior is the row's direct subject; the frame-graph strategy declared here (deterministic pass ordering, per-pass resource descriptors, explicit feedback resource) is the architectural precondition. Backend-specific conformance details (wgpu adapter selection, GLSL 4.50 shader toolchain) are rolled forward to ADR-011.
-- `EV-COMPAT-FIXTURE-COVERAGE` — CP-01 missing-`TYPE` coercion fallback fixture coverage uses the frame-graph contract; without per-pass resource descriptors the coercion-fallback branches (slider, toggle, color, xy, strict-reject) would not be testable on a per-pass basis. The slice-2 T1 cr-01 branch coverage at `engine/scene` (`docs/26` row 25 + PR `#47`) tests against this ADR's contract.
+- `EV-COMPAT-FIXTURE-COVERAGE` — CP-01 missing-`TYPE` coercion fallback fixture coverage uses the frame-graph contract; without per-pass resource descriptors the coercion-fallback branches (slider, toggle, color, xy, strict-reject) would not be testable on a per-pass basis. The slice-2 T1 cr-01 branch coverage at `engine/scene` (per `docs/26` `EV-COMPAT-FIXTURE-COVERAGE` + PR `#47`) tests against this ADR's contract.
 - `EV-PERF-BUDGETS` — per-pass performance instrumentation is what the frame-graph enables; budgets are declared per-pass in `10-performance-latency-budgets.md` because this ADR makes the per-pass boundary first-class.
 - `EV-SHADER-CACHE` — the hot-reload-safe recompile pipeline this ADR mandates is what the shader cache wraps; cold vs warm compile budgets are measurable because the per-pass shader is a cache key.
 - `EV-IMPORT-SHADERTOY` — multipass Shadertoy imports lower into the frame-graph defined here; row's golden-fixture conversion is to this contract.
 - `EV-GPU-SELECTION` — deterministic multi-GPU adapter selection is declared in `adr/ADR-011-rendering-backend.md` Sec.7, but the per-pass invalidation pipeline this ADR mandates is what makes adapter switches recoverable without scene reconstruction.
 - `EV-COLOR-MANAGEMENT-SRGB` / `EV-COLOR-MANAGEMENT-HDR` — output color-space behavior is delegated to ADR-011 (V1 sRGB) and the post-MVP HDR amendment of ADR-011 Sec.8; the frame-graph here is colour-space-neutral and remains the host for either pipeline.
 
-The backend-selection coverage portion of this ADR is rolled forward into the `EV-ARCH-CONTRACT-BASELINE` enumeration via ADR-011 (per `docs/26` row 22, ADR-011 is the gating ADR; ADR-002 is not enumerated because the superseder carries the gating responsibility).
+The backend-selection coverage portion of this ADR is rolled forward into the `EV-ARCH-CONTRACT-BASELINE` enumeration via ADR-011 (per the `EV-ARCH-CONTRACT-BASELINE` row in `docs/26`, ADR-011 is the gating ADR; ADR-002 is not enumerated because the superseder carries the gating responsibility).
 
 ## Traceability
 

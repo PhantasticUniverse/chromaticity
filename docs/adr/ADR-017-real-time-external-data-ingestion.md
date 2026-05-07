@@ -41,7 +41,7 @@ Before this ADR may be authored:
 - `EV-DATA-INGEST-CAPABILITY-GATING` — disabled-capability tokens block the data adapter with `data-entitlement-denied` diagnostic per `adr/ADR-009-activation-and-entitlements.md` Sec.Capability namespace `data.ingest.*`. Activated on this ADR + ADR-009 capability-token surface.
 - `EV-DATA-INGEST-KEY-STORAGE` — operator-supplied API keys stored in OS secrets store only and excluded from support bundles, crash reports, telemetry. Activated on this ADR's key-handling decision plus `adr/ADR-016-observability-and-telemetry-posture.md` payload-redaction posture.
 
-The reserved-slot status `Proposed (reserved slot; normative content deferred post-MVP)` is the documented acceptable state during Phase 0 through MVP per `43-development-standards.md` Sec.14; `EV-ARCH-CONTRACT-BASELINE` (`26-evidence-artifact-registry.md` row 22) does not enumerate this ADR among its gating-ADR artifact set precisely because the reserved-slot posture is intentional and contract-pack closure is not blocked on this ADR's authoring.
+The reserved-slot status `Proposed (reserved slot; normative content deferred post-MVP)` is the documented acceptable state during Phase 0 through MVP per `43-development-standards.md` Sec.14; `EV-ARCH-CONTRACT-BASELINE` (`26-evidence-artifact-registry.md`) does not enumerate this ADR among its gating-ADR artifact set precisely because the reserved-slot posture is intentional and contract-pack closure is not blocked on this ADR's authoring.
 
 ## Traceability
 

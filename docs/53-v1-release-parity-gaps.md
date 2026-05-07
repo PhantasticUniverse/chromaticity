@@ -19,7 +19,7 @@ This doc is a planning artifact, not a gate. It does not declare V1 readiness, d
 
 Approximately **70-75% of reference observable feature surface implemented** in chromaticity at HEAD `d6b266d`, weighted by V1-relevance:
 
-- **Engine-side surfaces** (scene model, runtime, audio, scheduler, render, scripting, integrations, entitlement, observability): **~85%**. Phase-4a EXIT achieved at commit `5acc452`; Phase-4b passable under collective narrowings; 5 of 6 Phase-4d rows at `Pass` (only row 94 `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 per the 14-day soak).
+- **Engine-side surfaces** (scene model, runtime, audio, scheduler, render, scripting, integrations, entitlement, observability): **~85%**. Phase-4a EXIT achieved at commit `5acc452`; Phase-4b passable under collective narrowings; 5 of 6 Phase-4d rows at `Pass` (only `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 per the 14-day soak).
 - **UI-shell parity** (views, widgets, hotkey / OSC / MIDI vocabularies): **~95%**. Wireframe-faithful complete via the v0.2-beta bundle port (W6-W34 sprint waves). Custom macOS menu bar parity beyond Tauri default is the only minor gap.
 - **Content / asset bundling** (default scenes, library corpus, shadertoy assets, demo media, embedded docs, custom thumbnails): **~15%**. The dominant V1 gap. None of the bundled-content surfaces have been authored from a clean-room baseline yet.
 - **Update / telemetry infrastructure**: **~30%**. Auto-update absent (Tauri updater not yet wired); analytics correctly stricter-by-design at zero-default per ADR-013 + ADR-016, which is parity-by-omission rather than a gap.
@@ -57,11 +57,11 @@ Five gaps surface as engineering work that would close measurable V1 parity. Eac
 
 ### G3. Shadertoy-channel asset library
 
-**Dimension:** Image / asset coverage. **Missing:** A licensed shadertoy-equivalent texture / cubemap pack covering the channel slots a typical Shadertoy port references. **Why it matters for V1:** `EV-IMPORT-SHADERTOY` (row 65) currently lands at PR-1-of-N scaffolding only (PR #360 / `7497955`). Runtime correctness of imported Shadertoy scenes requires the channel-asset set to resolve. **Sizing:** Mostly licensing / sourcing work plus a small bundling PR. Rough estimate: 1-2 PRs after license posture is confirmed. **Sequence:** Blocks the `EV-IMPORT-SHADERTOY` PR-2 closure; should land before that PR opens.
+**Dimension:** Image / asset coverage. **Missing:** A licensed shadertoy-equivalent texture / cubemap pack covering the channel slots a typical Shadertoy port references. **Why it matters for V1:** `EV-IMPORT-SHADERTOY` currently lands at PR-1-of-N scaffolding only (PR #360 / `7497955`). Runtime correctness of imported Shadertoy scenes requires the channel-asset set to resolve. **Sizing:** Mostly licensing / sourcing work plus a small bundling PR. Rough estimate: 1-2 PRs after license posture is confirmed. **Sequence:** Blocks the `EV-IMPORT-SHADERTOY` PR-2 closure; should land before that PR opens.
 
 ### G4. Default + per-source-class fallback thumbnails
 
-**Dimension:** Default / welcome scene + thumbnails. **Missing:** Four PNG fallback thumbnails — default, fallback (generic), ISF source-class, Shadertoy source-class — wiring `EV-LIBRARY-THUMBNAIL` (row 58, currently `Pass` under stub byte-hash narrowing) to a real first-launch UX without requiring the deferred GPU-backed renderer. **Why it matters for V1:** Library view first-launch UX surface; the byte-hash stub renderer ships a "no thumbnail" affordance that would read as polish-debt at V1. **Sizing:** 1 PR (assets + wiring). **Sequence:** Independent; small wave-tail PR.
+**Dimension:** Default / welcome scene + thumbnails. **Missing:** Four PNG fallback thumbnails — default, fallback (generic), ISF source-class, Shadertoy source-class — wiring `EV-LIBRARY-THUMBNAIL` (currently `Pass` under stub byte-hash narrowing) to a real first-launch UX without requiring the deferred GPU-backed renderer. **Why it matters for V1:** Library view first-launch UX surface; the byte-hash stub renderer ships a "no thumbnail" affordance that would read as polish-debt at V1. **Sizing:** 1 PR (assets + wiring). **Sequence:** Independent; small wave-tail PR.
 
 ### G5. Tauri auto-updater
 

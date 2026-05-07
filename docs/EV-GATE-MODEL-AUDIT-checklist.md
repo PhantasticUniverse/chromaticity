@@ -6,7 +6,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 # EV-GATE-MODEL-AUDIT — Phase 0 Exit Checklist
 
 **Evidence ID:** `EV-GATE-MODEL-AUDIT`
-**Registry row:** row 52 of `docs/26-evidence-artifact-registry.md`.
+**Registry row:** `EV-ACCESSIBILITY-AA` of `docs/26-evidence-artifact-registry.md`.
 **Current status:** `Planned` -> target `Pass`.
 **Gate role:** Phase 0 exit gate (`docs/26-evidence-artifact-registry.md` row
 `EV-GATE-MODEL-AUDIT`).
@@ -17,7 +17,7 @@ state, and record that the audit ran honestly with findings noted.
 **Checklist date:** 2026-04-29.
 **Accountable Owner:** Xavier Butler (`@PhantasticUniverse`).
 
-## Deliverable restated (from `docs/26` row 52)
+## Deliverable restated (from `docs/26` `EV-ACCESSIBILITY-AA`)
 
 > Validate gate ledger integrity and cumulative release evaluation. Generation
 > Source: gate audit checklist + release gate simulation. Owner Workcell:
@@ -258,7 +258,7 @@ pre-empt.
       sign-off claimed 9-of-19; the W34h drift sweep at 2026-04-30 corrected
       a duplicative "plus the present row" qualifier in the listing — the
       audit's gate-model integrity finding is unchanged.)
-- [x] Forward-roll: `EV-ENTITLEMENT-TOKEN-FORMAT` (row 88) closed 2026-04-30
+- [x] Forward-roll: `EV-ENTITLEMENT-TOKEN-FORMAT` closed 2026-04-30
       via PR 270 merge `107552f` (engine/entitlement crate scaffolded; 25
       tests pass; canonical CBOR byte-identity verified). The Phase-0 EXIT
       simulation advances to 9-of-19 members met; the remaining 10 gaps
@@ -267,7 +267,7 @@ pre-empt.
       still `Planned`). Phase-0 EXIT itself remains AO-held; the gate-model
       integrity finding is unchanged.
       Recorded by AO `@PhantasticUniverse` on 2026-04-30.
-- [x] Forward-roll: `EV-DOCS-PHASE0-SEED` (row 66) closed 2026-04-30 via
+- [x] Forward-roll: `EV-DOCS-PHASE0-SEED` closed 2026-04-30 via
       PR 277 merge `b785e91` (docs/onboarding/ cluster scaffolded — 5
       files / ~35 KB / ~750 lines covering Intro, Scene JSON ref,
       Standard Uniforms, First-Scene tutorial; clean-room compliant per
@@ -308,7 +308,7 @@ status for pinned corpus version; (c) corpus/fixture version recorded;
 (d) drift thresholds from `10-performance-latency-budgets.md`
 applied." Row-by-row:
 
-- **Row 28 `EV-RENDER-CONFORMANCE`** — (a) `ci-run-url:25201608223`
+- **`EV-RENDER-CONFORMANCE`** — (a) `ci-run-url:25201608223`
   prefixed to the existing T1+T2 corpus repo-path chain. (b) green
   workspace test job on `main` HEAD `d8e92db`. (c) corpus version
   pinned by the merged-on-main slice chain (slices 1+2+3+4+5a+5b.1+
@@ -324,7 +324,7 @@ applied." Row-by-row:
   Vulkan / Mesa llvmpipe) and the silent-frame hash
   `0x80131e415c3cfb25` is preserved verbatim across both backends and
   the consolidation.
-- **Row 29 `EV-SCRIPT-CONTRACT`** — (a) `ci-run-url:25201608223`
+- **`EV-SCRIPT-CONTRACT`** — (a) `ci-run-url:25201608223`
   prefixed to the existing T1+T2 corpus repo-path chain. (b) green
   workspace test job. (c) corpus version pinned by slices 1+2+3+4+
   5.1+5.2+5.3 + the Tier-11 catalog v1.3.0 mirror retirement of
@@ -333,7 +333,7 @@ applied." Row-by-row:
   cap discipline + memory-cap T2 corpus + determinism shim T1+T2
   pins + the `slice_5a_v1_2_0_split_fft_names_no_longer_route`
   inverted retirement pin asserting the v1.3.0 catalog narrowing.
-  **Phase-2 EXIT scope explicitly narrows row 29 to slices 1-5.3**
+  **Phase-2 EXIT scope explicitly narrows `EV-SCRIPT-CONTRACT` to slices 1-5.3**
   per the Description column update in this PR; slice 5.4+
   (scene-author surface — control bindings, event handlers,
   preset-recall hooks per ADR-003) is post-Phase-2 feature work
@@ -342,7 +342,7 @@ applied." Row-by-row:
   EXIT-quality core with slice 5.3 — the producer / consumer /
   catalog / adapter quad covers the cross-crate contract; further
   widening is feature work, not foundational").
-- **Row 30 `EV-AUDIO-TRACE`** — (a) `ci-run-url:25201608223`
+- **`EV-AUDIO-TRACE`** — (a) `ci-run-url:25201608223`
   prefixed to the existing T1+T2 corpus repo-path chain. (b) green
   workspace test job. (c) corpus version pinned by slices 1+2+3a+3b
   + slice-5a cross-tag from EV-RENDER-CONFORMANCE + Tier-9 cpal
@@ -350,11 +350,11 @@ applied." Row-by-row:
   cpal 0.15 + crossbeam-channel pinned by the lockfile. (d) drift
   thresholds applied via the LVL/HIT/TIM/PRS/BEAT/BPM/LRG family-
   tolerance discipline + the per-backend ACCEPTED-set framework
-  carrying its first dual-backend entry post Tier-11 (see row 28).
+  carrying its first dual-backend entry post Tier-11 (see `EV-RENDER-CONFORMANCE`).
   The slice-3b CpalSource owner-thread pattern + FFI-seam
   `catch_unwind` discipline + Tier-9 multi-format conversion math
   T1 pins all green on the workspace test run.
-- **Row 42 `EV-SANDBOX-SAFETY`** — (a) `ci-run-url:25201608223`
+- **`EV-SANDBOX-SAFETY`** — (a) `ci-run-url:25201608223`
   prefixed to the existing T1+T2 corpus repo-path chain. (b) green
   workspace test job. (c) corpus version pinned by slice-2 watchdog
   + slice-3 memory-cap surfaces; rquickjs 0.11.0 pinned by the
@@ -370,7 +370,8 @@ applied." Row-by-row:
 
 All four Phase-2 EXIT evidence IDs satisfy the Per-Type Minimums at
 HEAD `d8e92db`. Status transitions to `Pass` are recorded in
-`docs/26-evidence-artifact-registry.md` rows 28, 29, 30, 42 by this
+`docs/26-evidence-artifact-registry.md` for `EV-RENDER-CONFORMANCE`,
+`EV-SCRIPT-CONTRACT`, `EV-AUDIO-TRACE`, and `EV-SANDBOX-SAFETY` by this
 PR. Per `docs/26` §Rules line 194, the Phase-2 EXIT gate is therefore
 passable. **Phase-2 EXIT achieved 2026-05-01 at commit `d8e92db`**.
 
@@ -385,12 +386,12 @@ pre-empt the Phase-3 gate decision.
 These items were considered as candidates for Phase-2 EXIT but
 verified out-of-scope or scheduled to later phases:
 
-- **`EV-INTEGRATION-MATRIX` (row 37)** — Phase-4a-bound per the
+- **`EV-INTEGRATION-MATRIX`** — Phase-4a-bound per the
   registry's Phase Gate Evidence Sets section. Out of scope for
   Phase-2 EXIT. Covers OSC/MIDI/media route conformance + the
   Tauri-IPC bridge framework that downstream UI features depend on.
 - **engine/script slice 5.4+ scene-author surface** — feature work
-  per AO framing; explicitly narrowed out of row 29's Phase-2
+  per AO framing; explicitly narrowed out of `EV-SCRIPT-CONTRACT`'s Phase-2
   EXIT scope above. Schedule depends on AO direction for the
   Phase-3+ feature-development cadence.
 - **device-enum UI** — has a hard dependency on the
@@ -407,7 +408,7 @@ verified out-of-scope or scheduled to later phases:
       All four Phase-2 EXIT evidence IDs satisfy the Per-Type
       Minimums; the gate is passable; the four row Status
       transitions are recorded by this PR. Slice 5.4+ scene-author
-      surface narrowing on row 29 is recorded in the Description
+      surface narrowing on `EV-SCRIPT-CONTRACT` is recorded in the Description
       column. The deferred axes (`EV-INTEGRATION-MATRIX`, slice
       5.4+, device-enum UI, macOS-in-CI) are recorded with their
       proper Phase-3+/4a homes. Signed by AO `@PhantasticUniverse`
@@ -432,22 +433,24 @@ This section runs the Phase-3 EXIT simulation against HEAD `f86895b`
 `#311`). The wave landed across six feat PRs (state-replay corpus,
 audio-routing-matrix corpus, preset-playlist corpus, state-migration
 envelope corpus, show-bundle format harness, perf-budgets nightly
-proxy benches) and five `docs(repo)` flip PRs transitioning rows 31,
-32, 33, 34, 35 from `Planned` to `Pass`.
+proxy benches) and five `docs(repo)` flip PRs transitioning
+`EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`, `EV-STATE-MIGRATION`,
+`EV-PRESET-PLAYLIST`, and `EV-SHOW-BUNDLE-RECOVERY` from `Planned` to
+`Pass`.
 
 ### Per-Type Minimums verification (Automated suite rows)
 
 `docs/26` line 159 specifies the Per-Type Minimums for Automated suite
 rows. Row-by-row verification at HEAD `f86895b`:
 
-- **Row 30 `EV-AUDIO-TRACE`** — re-validated against the full corpus
+- **`EV-AUDIO-TRACE`** — re-validated against the full corpus
   per the Phase-3 cumulative gate. Already `Pass` from Phase-2 EXIT
   cross-tag (run id `25201608223` at `d8e92db`); no Phase-3 widening
   required. The slice-1 `extract_uniform_snapshot` routing path is
-  cross-tagged with `EV-AUDIO-ROUTING-MATRIX` row 31's T1 invariants
+  cross-tagged with `EV-AUDIO-ROUTING-MATRIX`'s T1 invariants
   in `engine/audio/src/uniforms.rs::uniforms_drift_pins` (`Evidence:
   EV-AUDIO-TRACE (T1) + EV-AUDIO-ROUTING-MATRIX (T1)`).
-- **Row 31 `EV-AUDIO-ROUTING-MATRIX`** — (a) `ci-run-url:25204946481`
+- **`EV-AUDIO-ROUTING-MATRIX`** — (a) `ci-run-url:25204946481`
   + repo-path chain. (b) green workspace test job on `main` HEAD
   `f14c3d3` post-`#303` merge. (c) corpus version pinned by Phase-3
   wave PR 2 (`engine/audio/tests/routing_matrix_corpus/main.rs` —
@@ -455,8 +458,8 @@ rows. Row-by-row verification at HEAD `f86895b`:
   aggregation, clamp-boundary edges). (d) drift thresholds applied
   via per-fixture tolerance assertion (1e-5 for direct conversions,
   0.0 exact for baselines) + dual-tagged uniforms_drift_pins module
-  sharing T1 invariants with row 30.
-- **Row 32 `EV-STATE-REPLAY`** — (a) `ci-run-url:25203436497` +
+  sharing T1 invariants with `EV-AUDIO-TRACE`.
+- **`EV-STATE-REPLAY`** — (a) `ci-run-url:25203436497` +
   repo-path chain. (b) green workspace test job on `main` HEAD
   `0ddcb9c` post-`#301` merge. (c) corpus version pinned by Phase-3
   wave PR 1 (`engine/runtime/src/state_replay.rs` canonical-binary
@@ -466,7 +469,7 @@ rows. Row-by-row verification at HEAD `f86895b`:
   assertion per fixture. Pure-Rust FNV-1a-64; empirically backend-
   invariant on Linux Vulkan / Mesa llvmpipe (no per-backend ACCEPTED-
   set widening required).
-- **Row 33 `EV-STATE-MIGRATION`** — (a) `ci-run-url:25207466995` +
+- **`EV-STATE-MIGRATION`** — (a) `ci-run-url:25207466995` +
   repo-path chain. (b) green workspace test job on `main` HEAD
   `ef45bd0` post-`#307` merge. (c) corpus version pinned by Phase-3
   wave PR 4 (`engine/runtime/src/state_migration.rs` envelope
@@ -474,14 +477,14 @@ rows. Row-by-row verification at HEAD `f86895b`:
   tests/state_migration_corpus/main.rs` 8 fixtures × 100 trials).
   (d) drift thresholds applied via cross-trial identity + golden-
   buffer assertion + decoder-rejection-path assertion per fixture.
-  **Phase-3 EXIT scope explicitly narrows row 33 to forward-
+  **Phase-3 EXIT scope explicitly narrows `EV-STATE-MIGRATION` to forward-
   migration only** per the Description column update; rollback
   semantics deferred to Phase-4+ per AO direction. The dual-encoder
-  envelope design preserves row 32 + row 34 goldens verbatim
+  envelope design preserves `EV-STATE-REPLAY` + `EV-PRESET-PLAYLIST` goldens verbatim
   (existing `encode_state_canonical` hashing path UNCHANGED; new
   `encode_snapshot` envelope wraps it with a 4-byte BE version-tag
   prefix at the State level).
-- **Row 34 `EV-PRESET-PLAYLIST`** — (a) `ci-run-url:25205805621` +
+- **`EV-PRESET-PLAYLIST`** — (a) `ci-run-url:25205805621` +
   repo-path chain. (b) green workspace test job on `main` HEAD
   `c33913a` post-`#305` merge. (c) corpus version pinned by Phase-3
   wave PR 3 (`engine/runtime/tests/preset_playlist_corpus/main.rs`
@@ -489,12 +492,12 @@ rows. Row-by-row verification at HEAD `f86895b`:
   trial identity + direct semantic invariants over public State
   accessors (`active_preset` / `playlist_position` / `control_value`)
   + canonical_state_hash composition pin on the combined fixture.
-  **Phase-3 EXIT scope explicitly narrows row 34 to validation of
+  **Phase-3 EXIT scope explicitly narrows `EV-PRESET-PLAYLIST` to validation of
   existing PresetStore + PlaylistStore semantics** per the Description
   column update; preset-bank durability + scene-author preset capture
   + playlist reordering deferred to Phase-4+ per AO feature-work
   direction.
-- **Row 35 `EV-SHOW-BUNDLE-RECOVERY`** — (a) `ci-run-url:25208208038`
+- **`EV-SHOW-BUNDLE-RECOVERY`** — (a) `ci-run-url:25208208038`
   + repo-path chain. (b) green workspace test job on `main` HEAD
   `92d50d0` post-`#308` merge. (c) corpus version pinned by Phase-3
   wave PR 5 (`engine/scene/src/show_bundle.rs` manifest types + tar
@@ -503,13 +506,13 @@ rows. Row-by-row verification at HEAD `f86895b`:
   thresholds applied via cross-trial identity + canonical-JSON byte-
   stability assertion + per-fixture rejection-path assertion (file-
   checksum mismatch, manifest-checksum tamper, path-traversal
-  defense). **Phase-3 EXIT scope explicitly narrows row 35 to
+  defense). **Phase-3 EXIT scope explicitly narrows `EV-SHOW-BUNDLE-RECOVERY` to
   bundle-format spec only** per the Description column update;
   recovery / rollback semantics deferred to Phase-4+ per AO
   direction. The `docs/22-compatibility-versioning-policy.md` line
   78 reservation reconciled in the docs flip from `zip archive` to
   `tar archive` matching the AO Phase-3 narrowing decision.
-- **Row 36 `EV-PERF-BUDGETS`** — corpus + harness landed at `85f869e`
+- **`EV-PERF-BUDGETS`** — corpus + harness landed at `85f869e`
   per Phase-3 wave PR 6 (`engine/runtime/benches/budgets.rs` criterion
   proxy benches over command-bus dispatch + state-replay canonical-
   hash + preset-recall + playlist-advance latency; `scripts/
@@ -519,42 +522,44 @@ rows. Row-by-row verification at HEAD `f86895b`:
   `deny.toml`). **Per-PR CI does NOT exercise the bench harness**
   (Path B nightly-only AO posture per the AO-approved cost
   framing — ~$20/month vs ~$70-80/month for a per-PR macOS matrix
-  expansion). The row 36 Pass transition therefore awaits the
+  expansion). The `EV-PERF-BUDGETS` Pass transition therefore awaits the
   first GREEN macos-nightly run after `#309` merge (~24h post-
   merge); the docs flip PR follows the wave-PR pattern but with
   the macos-nightly anchor instead of the post-merge push CI run.
-  **Phase-3 EXIT scope explicitly narrows row 36 to observable-
+  **Phase-3 EXIT scope explicitly narrows `EV-PERF-BUDGETS` to observable-
   subsystem proxy benchmarks**; the true frame-loop budget surface
   is deferred until ADR-001/ADR-006 slice-3 lands the scheduler-
   tick path (the `pub(crate) frame: u64` placeholder in
   `engine/runtime/src/state.rs` carries the in-source comment
-  "scheduler-tick path lands in a later slice"). Row 36 corpus is
+  "scheduler-tick path lands in a later slice"). `EV-PERF-BUDGETS` corpus is
   empirically green via local `cargo bench --quick` per the wave
   PR 6 commit body; the registry transition lands in the follow-up
   wave PR 6.1 docs flip after the macos-nightly anchor.
-- **Row 38 `EV-COLOR-MANAGEMENT-SRGB`** — explicitly deferred per AO
+- **`EV-COLOR-MANAGEMENT-SRGB`** — explicitly deferred per AO
   direction. Sequenced behind a separate render-HUD-diagnostics PR
   (Phase-4+ scope). The deferral is recorded in `docs/13-risk-
-  register.md` R-37 alongside the Phase-3 wave narrative; row 38's
-  Description column will receive the deferral note in the wave
-  PR 6.1 docs flip alongside row 36 (the AO-approved bundling per
+  register.md` R-37 alongside the Phase-3 wave narrative; the
+  `EV-COLOR-MANAGEMENT-SRGB` Description column will receive the
+  deferral note in the wave PR 6.1 docs flip alongside `EV-PERF-BUDGETS`
+  (the AO-approved bundling per
   `docs/EV-GATE-MODEL-AUDIT-checklist.md`'s Phase-3 closure plan).
 
 ### Verdict
 
 Seven of the eight Phase-3 EXIT evidence IDs satisfy the Per-Type
-Minimums at HEAD `953fd74`: rows 30, 31, 32, 33, 34, 35, and 36 are
-at `Pass` in `docs/26-evidence-artifact-registry.md`. The eighth
-row, 38 `EV-COLOR-MANAGEMENT-SRGB`, is explicitly deferred per AO
-direction — sequenced behind a separate render-HUD-diagnostics PR
-exposing the active color pipeline (sRGB encode/decode points, gamma
-handling, output transfer function); the deferral note + re-evaluation
-criteria are recorded in row 38's Description column update by this
-PR.
+Minimums at HEAD `953fd74`: `EV-AUDIO-TRACE`, `EV-AUDIO-ROUTING-MATRIX`,
+`EV-STATE-REPLAY`, `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`,
+`EV-SHOW-BUNDLE-RECOVERY`, and `EV-PERF-BUDGETS` are at `Pass` in
+`docs/26-evidence-artifact-registry.md`. The eighth, `EV-COLOR-MANAGEMENT-SRGB`,
+is explicitly deferred per AO direction — sequenced behind a separate
+render-HUD-diagnostics PR exposing the active color pipeline (sRGB
+encode/decode points, gamma handling, output transfer function); the
+deferral note + re-evaluation criteria are recorded in the
+`EV-COLOR-MANAGEMENT-SRGB` Description column update by this PR.
 
 Per `docs/26` §Rules line 194 the Phase-3 EXIT gate is therefore
 passable. **Phase-3 EXIT achieved 2026-05-01 at commit `953fd74`**.
-Row 36 (`EV-PERF-BUDGETS`) was anchored against macos-nightly run
+`EV-PERF-BUDGETS` was anchored against macos-nightly run
 id `25208934213`, manually dispatched via `workflow_dispatch` to
 avoid the natural 04:19 UTC cadence wait — same hardware (macOS-
 latest Apple-Silicon Metal), same workflow body, same green
@@ -574,28 +579,28 @@ pre-empt the Phase-4 gate decision.
 These items were considered as candidates for Phase-3 EXIT but
 verified out-of-scope or scheduled to later phases:
 
-- **`EV-COLOR-MANAGEMENT-SRGB` (row 38)** — explicitly deferred per
+- **`EV-COLOR-MANAGEMENT-SRGB`** — explicitly deferred per
   AO direction; sequenced behind a future render-HUD-diagnostics PR
   exposing the active color pipeline (sRGB encode/decode points,
   gamma handling, output transfer function). Closure depends on the
   HUD diagnostic surface landing as part of unrelated render work.
-- **Row 33 rollback semantics** — pre-migration snapshot capture +
+- **`EV-STATE-MIGRATION` rollback semantics** — pre-migration snapshot capture +
   atomic restore + partial-rollback UX per `docs/32-state-preset-
   playlist-migration-policy.md` deferred to Phase-4+ feature work.
   Phase-3 narrowed to forward-migration only.
-- **Row 34 preset-bank durability + scene-author preset capture +
+- **`EV-PRESET-PLAYLIST` preset-bank durability + scene-author preset capture +
   playlist reordering** — Phase-4+ feature work per AO direction.
   Phase-3 narrowed to existing PresetStore + PlaylistStore semantics.
-- **Row 35 recovery / rollback semantics** — corrupted-bundle repair,
+- **`EV-SHOW-BUNDLE-RECOVERY` recovery / rollback semantics** — corrupted-bundle repair,
   partial-load fallback, last-good-state restore — Phase-4+ feature
   work. Phase-3 narrowed to bundle-format spec only.
-- **Row 36 true frame-loop budget surface** — deferred until ADR-001/
+- **`EV-PERF-BUDGETS` true frame-loop budget surface** — deferred until ADR-001/
   ADR-006 slice-3 lands the scheduler-tick path. Phase-3 narrowed to
   observable-subsystem proxy benchmarks. The follow-on `chore(release-
   eng)` PR (~7 nightly runs post-wave-PR-6.1) tightens
   `scripts/budget-check.sh` from the loose-floor record-don't-fail
   posture to true budget assertions per `docs/10`.
-- **Row 36 per-PR macOS matrix expansion** — Path B AO posture is
+- **`EV-PERF-BUDGETS` per-PR macOS matrix expansion** — Path B AO posture is
   nightly-only (~$20/month) rather than per-PR (~$70-80/month).
   Re-evaluation conditional on a regression incident actually firing.
 
@@ -603,22 +608,22 @@ verified out-of-scope or scheduled to later phases:
 
 - [x] Phase-3 EXIT simulation ran to completion at HEAD `953fd74`.
       Seven of the eight Phase-3 EXIT evidence IDs satisfy the
-      Per-Type Minimums and are at `Pass`: `EV-AUDIO-TRACE` (row 30,
-      Phase-2 cross-tag), `EV-AUDIO-ROUTING-MATRIX` (row 31, run id
-      25204946481), `EV-STATE-REPLAY` (row 32, run id 25203436497),
-      `EV-STATE-MIGRATION` (row 33, run id 25207466995, narrowed to
-      forward-migration only), `EV-PRESET-PLAYLIST` (row 34, run id
+      Per-Type Minimums and are at `Pass`: `EV-AUDIO-TRACE` (
+      Phase-2 cross-tag), `EV-AUDIO-ROUTING-MATRIX` (run id
+      25204946481), `EV-STATE-REPLAY` (run id 25203436497),
+      `EV-STATE-MIGRATION` (run id 25207466995, narrowed to
+      forward-migration only), `EV-PRESET-PLAYLIST` (run id
       25205805621, narrowed to existing PresetStore + PlaylistStore
-      semantics), `EV-SHOW-BUNDLE-RECOVERY` (row 35, run id
+      semantics), `EV-SHOW-BUNDLE-RECOVERY` (run id
       25208208038, narrowed to bundle-format spec only), and
-      `EV-PERF-BUDGETS` (row 36, macos-nightly run id 25208934213
+      `EV-PERF-BUDGETS` (macos-nightly run id 25208934213
       manually dispatched against `main` HEAD `953fd74`, narrowed to
       observable-subsystem proxy benchmarks). The eighth row,
-      `EV-COLOR-MANAGEMENT-SRGB` (row 38), is explicitly deferred per
-      AO direction — sequenced behind a separate render-HUD-
-      diagnostics PR exposing the active color pipeline; Phase-3 EXIT
-      achieved without row 38 closure via the AO-approved deferral
-      with the row's Description column carrying the deferral note +
+      `EV-COLOR-MANAGEMENT-SRGB`, is explicitly deferred per AO
+      direction — sequenced behind a separate render-HUD-diagnostics
+      PR exposing the active color pipeline; Phase-3 EXIT achieved
+      without `EV-COLOR-MANAGEMENT-SRGB` closure via the AO-approved
+      deferral with the row's Description column carrying the deferral note +
       re-evaluation criteria. Phase-3 narrowing decisions for rows
       33 / 34 / 35 / 36 are recorded in their Description column
       updates; the deferred-axes list above records each item's
@@ -647,8 +652,12 @@ wave landed across four feat PRs (hotkey parity + completeness +
 conflict corpus, OSC integration-matrix + net-hardening corpus,
 observability catalog-conformance + no-network-egress corpus,
 entitlement enforcement + offline + revocation + free-features corpus
-bundle) plus this `docs(repo)` flip PR transitioning rows 37, 73, 74,
-75, 82, 87, 88, 89, 91, 95 from `Planned` to `Pass`.
+bundle) plus this `docs(repo)` flip PR transitioning
+`EV-INTEGRATION-MATRIX`, `EV-HOTKEY-PARITY-CONFORMANCE`,
+`EV-HOTKEY-COMPLETENESS`, `EV-HOTKEY-CONFLICT`, `EV-NET-HARDENING`,
+`EV-ENTITLEMENT-ENFORCEMENT`, `EV-ENTITLEMENT-OFFLINE`,
+`EV-ENTITLEMENT-REVOCATION`, `EV-ENTITLEMENT-FREE-FEATURES`, and
+`EV-HEALTH-METRICS-LOOPBACK-ONLY` from `Planned` to `Pass`.
 
 ### Per-Type Minimums verification (Automated suite rows)
 
@@ -658,7 +667,7 @@ run identifier with green status for pinned corpus version, (c)
 corpus/fixture version recorded, (d) drift thresholds applied. Row-by-
 row verification at HEAD `b335939`:
 
-- **Row 37 `EV-INTEGRATION-MATRIX`** — (a) `ci-run-url:25213038199`
+- **`EV-INTEGRATION-MATRIX`** — (a) `ci-run-url:25213038199`
   + repo-path chain. (b) green workspace nextest job on `main` HEAD
   `77f174c` post-`#323` merge. (c) corpus version pinned by Phase-4a
   Wave 1a-A wave-PR (`integrations/osc-adapter/tests/
@@ -666,11 +675,11 @@ row verification at HEAD `b335939`:
   covering 4 route prefixes + path-traversal + adapter state machine
   + UDP loopback bind + packet validation). (d) drift thresholds
   applied via cross-trial identity assertion + per-fixture rejection-
-  path assertion + dual-tagged `defaults.rs` pins shared with row 82
-  EV-NET-HARDENING. **Phase-4a Wave 1a scope row 37 narrowed to OSC
+  path assertion + dual-tagged `defaults.rs` pins shared with `EV-NET-HARDENING`
+  EV-NET-HARDENING. **Phase-4a Wave 1a scope `EV-INTEGRATION-MATRIX` narrowed to OSC
   routing-matrix conformance only** per AO direction; MIDI / camera
   / Syphon / audio-uniform-IPC arms deferred to Wave 1b.
-- **Row 73 `EV-HOTKEY-PARITY-CONFORMANCE`** — (a) `ci-run-url:
+- **`EV-HOTKEY-PARITY-CONFORMANCE`** — (a) `ci-run-url:
   25212775046` + repo-path chain. (b) green workspace Vitest job on
   `main` HEAD `a665d72` post-`#322` merge. (c) corpus version pinned
   by Phase-4a Wave 1a-B wave-PR (`src/lib/__tests__/
@@ -678,7 +687,7 @@ row verification at HEAD `b335939`:
   contract via `vi.hoisted` invoke mock). (d) drift thresholds
   applied via direct invoke-mock-call assertion per fixture against
   the `docs/42` Sec.1 D/R/P/L parity contract.
-- **Row 74 `EV-HOTKEY-COMPLETENESS`** — (a) `ci-run-url:25212775046`
+- **`EV-HOTKEY-COMPLETENESS`** — (a) `ci-run-url:25212775046`
   + repo-path chain. (b) green workspace Vitest job on `main` HEAD
   `a665d72` post-`#322` merge. (c) corpus version pinned by Phase-4a
   Wave 1a-B wave-PR (`src/lib/__tests__/
@@ -687,7 +696,7 @@ row verification at HEAD `b335939`:
   keys + action, capability namespace ⊂ ALL ∪ {'free'}, no verbatim
   duplicates). (d) drift thresholds applied via direct equality
   assertion per fixture against the `docs/42` Sec.1-10 contract.
-- **Row 75 `EV-HOTKEY-CONFLICT`** — (a) `ci-run-url:25212775046` +
+- **`EV-HOTKEY-CONFLICT`** — (a) `ci-run-url:25212775046` +
   repo-path chain. (b) green workspace Vitest job on `main` HEAD
   `a665d72` post-`#322` merge. (c) corpus version pinned by Phase-4a
   Wave 1a-B wave-PR (`src/lib/__tests__/hotkeys-conflict.test.ts` —
@@ -696,7 +705,7 @@ row verification at HEAD `b335939`:
   Sec.Conflict-and-priority-rules). (d) drift thresholds applied via
   direct equality assertion per fixture against the conflict-and-
   priority-rules contract.
-- **Row 82 `EV-NET-HARDENING`** — (a) `ci-run-url:25213038199` +
+- **`EV-NET-HARDENING`** — (a) `ci-run-url:25213038199` +
   repo-path chain. (b) green workspace nextest job on `main` HEAD
   `77f174c` post-`#323` merge. (c) corpus version pinned by Phase-4a
   Wave 1a-A wave-PR (`integrations/osc-adapter/tests/
@@ -704,9 +713,9 @@ row verification at HEAD `b335939`:
   defaults + rate-limit precedence + allowlist boundary + oversized-
   packet outcome counter). (d) drift thresholds applied via direct
   equality assertion per fixture against ADR-013 §1/3/5 constants
-  and dual-tagged `defaults.rs` pins shared with row 37
+  and dual-tagged `defaults.rs` pins shared with `EV-INTEGRATION-MATRIX`
   EV-INTEGRATION-MATRIX.
-- **Row 87 `EV-ENTITLEMENT-ENFORCEMENT`** — (a) `ci-run-url:
+- **`EV-ENTITLEMENT-ENFORCEMENT`** — (a) `ci-run-url:
   25213475549` + repo-path chain. (b) green workspace nextest +
   Vitest jobs on `main` HEAD `b335939` post-`#325` merge. (c) corpus
   version pinned by Phase-4a Wave 1a-D wave-PR
@@ -716,28 +725,29 @@ row verification at HEAD `b335939`:
   capabilities-conformance.test.ts` 6 fixtures). (d) drift thresholds
   applied via direct boolean assertion per fixture + <1µs latency
   assertion + `Send + Sync` trait check. **Phase-4a Wave 1a scope
-  row 87 narrowed to MVP watermark-on/off only** per AO direction;
-  tier capability gating beyond the watermark deferred to post-MVP.
-- **Row 88 `EV-ENTITLEMENT-OFFLINE`** — (a) `ci-run-url:25213475549`
+  for `EV-ENTITLEMENT-ENFORCEMENT` narrowed to MVP watermark-on/off
+  only** per AO direction; tier capability gating beyond the watermark
+  deferred to post-MVP.
+- **`EV-ENTITLEMENT-OFFLINE`** — (a) `ci-run-url:25213475549`
   + repo-path chain. (b) green workspace nextest job on `main` HEAD
   `b335939` post-`#325` merge. (c) corpus version pinned by Phase-4a
   Wave 1a-D wave-PR (`engine/entitlement/tests/
   offline_revocation_corpus/main.rs` — 8 fixtures dual-tagged with
-  row 89, covering 14-day offline window honor + post-expiry deny +
+  `EV-ENTITLEMENT-REVOCATION`, covering 14-day offline window honor + post-expiry deny +
   boundary at `expires_at` + injected-clock determinism). (d) drift
   thresholds applied via cross-trial identity assertion per fixture
   against the 14-day window contract.
-- **Row 89 `EV-ENTITLEMENT-REVOCATION`** — (a) `ci-run-url:
+- **`EV-ENTITLEMENT-REVOCATION`** — (a) `ci-run-url:
   25213475549` + repo-path chain. (b) green workspace nextest job
   on `main` HEAD `b335939` post-`#325` merge. (c) corpus version
   pinned by Phase-4a Wave 1a-D wave-PR (same dual-tagged
   `engine/entitlement/tests/offline_revocation_corpus/main.rs`
-  8 fixtures as row 88; expiry-based revocation only). (d) drift
+  8 fixtures as `EV-ENTITLEMENT-OFFLINE`; expiry-based revocation only). (d) drift
   thresholds applied via cross-trial identity assertion per fixture.
-  **Phase-4a Wave 1a scope row 89 narrowed to expiry-based
+  **Phase-4a Wave 1a scope `EV-ENTITLEMENT-REVOCATION` narrowed to expiry-based
   revocation only** per AO direction; deny-list activation behavior
   is post-MVP optional and out-of-scope for this row.
-- **Row 91 `EV-ENTITLEMENT-FREE-FEATURES`** — (a) `ci-run-url:
+- **`EV-ENTITLEMENT-FREE-FEATURES`** — (a) `ci-run-url:
   25213475549` + repo-path chain. (b) green workspace nextest job
   on `main` HEAD `b335939` post-`#325` merge. (c) corpus version
   pinned by Phase-4a Wave 1a-D wave-PR (`engine/entitlement/tests/
@@ -747,7 +757,7 @@ row verification at HEAD `b335939`:
   scene-export + 4 token-absent-still-grants paths). (d) drift
   thresholds applied via direct boolean assertion per fixture
   against the `FREE_CAPABILITIES` array.
-- **Row 95 `EV-HEALTH-METRICS-LOOPBACK-ONLY`** — (a) `ci-run-url:
+- **`EV-HEALTH-METRICS-LOOPBACK-ONLY`** — (a) `ci-run-url:
   25213270708` + repo-path chain. (b) green workspace nextest job
   on `main` HEAD `e8917c3` post-`#324` merge. (c) corpus version
   pinned by Phase-4a Wave 1a-C wave-PR
@@ -761,15 +771,20 @@ row verification at HEAD `b335939`:
 ### Verdict
 
 Five of the eleven Phase-4a EXIT evidence IDs satisfy the Per-Type
-Minimums at HEAD `b335939` (counting hotkey rows 73-75 as a single
-group, entitlement rows 87-89 + 91 as a single group, and rows 37 +
-82 + 95 individually): five row groups covering ten registry rows are
-at `Pass` in `docs/26-evidence-artifact-registry.md`. Six Phase-4a
-EXIT rows remain `Planned` for Wave 1b: row 80 `EV-MIDI-EXTENDED`,
-the four deferred arms behind row 37 `EV-INTEGRATION-MATRIX` (MIDI
-conformance, camera conformance, Syphon conformance, audio-uniform-
-IPC arm), and entitlement tier-gating beyond the MVP watermark
-surface (which extends rows 87 and the post-MVP capability matrix).
+Minimums at HEAD `b335939` (counting the hotkey trio
+`EV-HOTKEY-PARITY-CONFORMANCE` / `EV-HOTKEY-COMPLETENESS` /
+`EV-HOTKEY-CONFLICT` as a single group, the entitlement quartet
+`EV-ENTITLEMENT-ENFORCEMENT` / `EV-ENTITLEMENT-OFFLINE` /
+`EV-ENTITLEMENT-REVOCATION` / `EV-ENTITLEMENT-FREE-FEATURES` as a
+single group, and `EV-INTEGRATION-MATRIX` + `EV-NET-HARDENING` +
+`EV-HEALTH-METRICS-LOOPBACK-ONLY` individually): five row groups
+covering ten registry rows are at `Pass` in
+`docs/26-evidence-artifact-registry.md`. Six Phase-4a EXIT rows remain
+`Planned` for Wave 1b: `EV-MIDI-EXTENDED`, the four deferred arms behind
+`EV-INTEGRATION-MATRIX` (MIDI conformance, camera conformance, Syphon
+conformance, audio-uniform-IPC arm), and entitlement tier-gating beyond
+the MVP watermark surface (which extends `EV-ENTITLEMENT-ENFORCEMENT`
+and the post-MVP capability matrix).
 
 This is a **Wave 1a pre-pass simulation**, not a full Phase-4a EXIT
 sign-off. Per `docs/26` §Rules line 194, Phase-4a EXIT requires all
@@ -788,25 +803,26 @@ These items were considered as candidates for Phase-4a Wave 1a closure
 but verified out-of-scope per AO narrowing direction or scheduled to
 later waves:
 
-- **Row 80 `EV-MIDI-EXTENDED`** — Wave 1b scope. The hotkey corpus
-  (rows 73-75) covers control-focused parity + 57-row vocabulary
-  completeness + 6-context conflict resolution but does not exercise
-  the extended MIDI surface (CC + NRPN + program change + sysex
-  routing) — that is row 80's surface and lands in Wave 1b.
-- **Row 37 `EV-INTEGRATION-MATRIX` MIDI / camera / Syphon / audio-
+- **`EV-MIDI-EXTENDED`** — Wave 1b scope. The hotkey corpus
+  (`EV-HOTKEY-PARITY-CONFORMANCE` / `EV-HOTKEY-COMPLETENESS` /
+  `EV-HOTKEY-CONFLICT`) covers control-focused parity + 57-row
+  vocabulary completeness + 6-context conflict resolution but does not
+  exercise the extended MIDI surface (CC + NRPN + program change + sysex
+  routing) — that is `EV-MIDI-EXTENDED`'s surface and lands in Wave 1b.
+- **`EV-INTEGRATION-MATRIX` MIDI / camera / Syphon / audio-
   uniform-IPC arms** — Wave 1b scope. Wave 1a narrowed to OSC
   routing-matrix conformance only per AO direction. The four
   deferred arms each follow the same fixture-corpus pattern against
   the relevant integration crate when those crates exist (MIDI
   adapter crate, camera-input integration, Syphon publisher, Tauri
   audio-uniform IPC bridge).
-- **Entitlement tier-gating beyond MVP watermark (rows 87 + post-MVP
-  surface)** — Wave 1b scope. Wave 1a closure is narrowed to the
-  watermark-on/off MVP per AO direction (`docs/11` line ~125). Tier
-  capability gating beyond the watermark surface is post-MVP and
-  lands in a Wave 1b expansion of row 87 + the deferred ADR-009 tier
-  matrix.
-- **`EV-SCHEDULER-TICK` (row 38) Pass-anchor** — slice-3 PR 1
+- **Entitlement tier-gating beyond MVP watermark
+  (`EV-ENTITLEMENT-ENFORCEMENT` + post-MVP surface)** — Wave 1b
+  scope. Wave 1a closure is narrowed to the watermark-on/off MVP per
+  AO direction (`docs/11` line ~125). Tier capability gating beyond
+  the watermark surface is post-MVP and lands in a Wave 1b expansion
+  of `EV-ENTITLEMENT-ENFORCEMENT` + the deferred ADR-009 tier matrix.
+- **`EV-SCHEDULER-TICK` Pass-anchor** — slice-3 PR 1
   (`#321`, merge `5c1aeb3`) introduced the foundational `Scheduler`
   + `Scheduler::tick` API per ADR-001/006 with the new evidence ID
   added in `Planned` state; the Pass transition lands in the
@@ -819,26 +835,25 @@ later waves:
 - [ ] Phase-4a Wave 1a pre-pass simulation ran to completion at HEAD
       `b335939`. Five of the eleven Phase-4a EXIT evidence IDs
       satisfy the Per-Type Minimums and are at `Pass`:
-      `EV-INTEGRATION-MATRIX` (row 37, run id 25213038199, narrowed
+      `EV-INTEGRATION-MATRIX` (run id 25213038199, narrowed
       to OSC routing-matrix conformance only),
-      `EV-HOTKEY-PARITY-CONFORMANCE` (row 73, run id 25212775046),
-      `EV-HOTKEY-COMPLETENESS` (row 74, run id 25212775046),
-      `EV-HOTKEY-CONFLICT` (row 75, run id 25212775046),
-      `EV-NET-HARDENING` (row 82, run id 25213038199),
-      `EV-ENTITLEMENT-ENFORCEMENT` (row 87, run id 25213475549,
+      `EV-HOTKEY-PARITY-CONFORMANCE` (run id 25212775046),
+      `EV-HOTKEY-COMPLETENESS` (run id 25212775046),
+      `EV-HOTKEY-CONFLICT` (run id 25212775046),
+      `EV-NET-HARDENING` (run id 25213038199),
+      `EV-ENTITLEMENT-ENFORCEMENT` (run id 25213475549,
       narrowed to MVP watermark-on/off only),
-      `EV-ENTITLEMENT-OFFLINE` (row 88, run id 25213475549),
-      `EV-ENTITLEMENT-REVOCATION` (row 89, run id 25213475549,
+      `EV-ENTITLEMENT-OFFLINE` (run id 25213475549),
+      `EV-ENTITLEMENT-REVOCATION` (run id 25213475549,
       narrowed to expiry-based revocation only),
-      `EV-ENTITLEMENT-FREE-FEATURES` (row 91, run id 25213475549),
-      and `EV-HEALTH-METRICS-LOOPBACK-ONLY` (row 95, run id
+      `EV-ENTITLEMENT-FREE-FEATURES` (run id 25213475549),
+      and `EV-HEALTH-METRICS-LOOPBACK-ONLY` (run id
       25213270708). Six Phase-4a EXIT rows remain `Planned` for
-      Wave 1b: row 80 `EV-MIDI-EXTENDED`, the four deferred arms
-      behind row 37 `EV-INTEGRATION-MATRIX` (MIDI conformance,
+      Wave 1b: `EV-MIDI-EXTENDED`, the four deferred arms
+      behind `EV-INTEGRATION-MATRIX` (MIDI conformance,
       camera conformance, Syphon conformance, audio-uniform-IPC
       arm), and entitlement tier-gating beyond the MVP watermark
-      surface. Phase-4a Wave 1a narrowing decisions for rows 37 +
-      87 + 89 are recorded in their Description column updates;
+      surface. Phase-4a Wave 1a narrowing decisions are recorded in their Description column updates;
       the deferred-axes list above records each item's proper
       Wave 1b home. **Pre-pass only — full Phase-4a EXIT requires
       all 11 rows at `Pass`, contingent on Wave 1b closure.**
@@ -851,7 +866,7 @@ five-PR sequence post-Phase-4a-Wave-1a, introducing the canonical
 scheduler-tick frame loop per ADR-001 / ADR-006 across
 `engine/runtime/src/scheduler/{mod,observability,audio,render}.rs`
 plus the T2 corpus at
-`engine/runtime/tests/scheduler_tick_corpus/main.rs`. Row 38
+`engine/runtime/tests/scheduler_tick_corpus/main.rs`. `EV-SCHEDULER-TICK`
 `EV-SCHEDULER-TICK` is not part of the Phase-4a EXIT gate set per
 `docs/26` line 128; this section records the wave closure as the
 equivalent of a phase-milestone sign-off for the new evidence ID
@@ -941,7 +956,7 @@ altering the bus-drain plus frame-advance core.
 
 ### Verdict
 
-Row 38 `EV-SCHEDULER-TICK` transitions `Planned` → `Pass` against
+`EV-SCHEDULER-TICK` transitions `Planned` → `Pass` against
 the post-merge push run on `main` HEAD `642bada`. The slice-3
 engineering wave closes the L2 / L3 deferral markers from the
 Phase-3 closure (`#[allow(dead_code)]` on `frame: u64` and
@@ -955,7 +970,7 @@ rephrasings.
 
 - [x] Slice-3 scheduler-tick engineering wave closure verified at
       HEAD `642bada`. Five feat PRs (`#321` `#326` `#328` `#329`
-      `#330`) merged in sequence; row 38 `EV-SCHEDULER-TICK`
+      `#330`) merged in sequence; `EV-SCHEDULER-TICK`
       transitions `Planned` → `Pass`. The canonical scheduler-tick
       frame loop per ADR-001 / ADR-006 lands across
       `engine/runtime/src/scheduler/{mod,observability,audio,render}
@@ -963,7 +978,7 @@ rephrasings.
       extension pattern; T1 + T2 coverage closed (19 inline T1 pins
       + 6-fixture × 100-trial T2 corpus). All 4 T2 corpora
       (state_replay, preset_playlist, state_migration,
-      scheduler_tick) pass with goldens preserved. Phase-4d row 36
+      scheduler_tick) pass with goldens preserved. Phase-4d `EV-PERF-BUDGETS`
       `EV-PERF-BUDGETS` true frame-loop budget surface is now
       unblockable — the criterion proxy harness in
       `engine/runtime/benches/budgets.rs` can be widened to actual
@@ -1004,7 +1019,7 @@ requires platform integration decisions + likely new ADRs).
 
 ### Verdict
 
-Row 80 `EV-MIDI-EXTENDED` transitions `Planned` → `Pass`. Rows 37 +
+`EV-MIDI-EXTENDED` transitions `Planned` → `Pass`. Rows 37 +
 86 narrowing-clauses dropped (Phase-4a Wave 1a's OSC-only and
 MVP-watermark-only narrowings widened to MIDI matrix arm + tier-gating
 respectively). Phase-4a EXIT row state after Wave 1a + 1b: **11 of 11
@@ -1012,7 +1027,7 @@ Phase-4a rows at Pass under collective narrowings**.
 
 Full Phase-4a EXIT activation requires Wave 1c (camera/Syphon/IPC)
 closure to drop the camera/Syphon/audio-uniform-IPC narrowing on row
-37 + IO_CAMERA tier-gating activation on row 86. Phase-4a EXIT is
+37 + IO_CAMERA tier-gating activation on `EV-IMPORT-REFERENCE-SHOW`. Phase-4a EXIT is
 **passable under current narrowings per `docs/26` §Rules line 194**;
 the AO can declare Phase-4a EXIT at its discretion.
 
@@ -1031,7 +1046,7 @@ the AO can declare Phase-4a EXIT at its discretion.
   communication architecture decisions + likely new ADR-track work.
 
 The Wave 1c deferral is recorded in `docs/13-risk-register.md` R-37
-closing paragraph (this PR) and in the row 37 + row 86 Description
+closing paragraph (this PR) and in the `EV-INTEGRATION-MATRIX` + `EV-IMPORT-REFERENCE-SHOW` Description
 columns (this PR). When AO direction lands for Wave 1c, the proper
 home is a new directed engineering wave with new ADR + research +
 plan-mode + implementation cycle (estimated multi-week wall-clock).
@@ -1074,7 +1089,7 @@ by-row verification at HEAD `288a214` (the eleven Phase-4a EXIT rows
 each cite their per-row anchor run id from the prior wave-closure
 sections above):
 
-- **Row 37 `EV-INTEGRATION-MATRIX`** — Status `Pass`. Narrowing: OSC
+- **`EV-INTEGRATION-MATRIX`** — Status `Pass`. Narrowing: OSC
   routing-matrix conformance plus MIDI input matrix arm — camera /
   Syphon / audio-uniform-IPC arms deferred to Wave 1c. Per-row anchor
   run id `25213038199` (Wave 1a-A `#323` merge `77f174c`); updated by
@@ -1085,22 +1100,22 @@ sections above):
   tests/midi_extended_corpus/main.rs` 5 dual-tagged matrix-arm
   fixtures) + drift thresholds applied (cross-trial identity +
   per-fixture rejection-path + dual-tagged `defaults.rs` pins shared
-  with row 82) + reproducibility confirmed across both anchor runs.
-- **Row 73 `EV-HOTKEY-PARITY-CONFORMANCE`** — Status `Pass`. Narrowing:
+  with `EV-NET-HARDENING`) + reproducibility confirmed across both anchor runs.
+- **`EV-HOTKEY-PARITY-CONFORMANCE`** — Status `Pass`. Narrowing:
   none (full scope). Per-row anchor run id `25212775046` (Wave 1a-B
   `#322` merge `a665d72`). Per-Type Minimums: corpus version pinned
   (`src/lib/__tests__/hotkeys-parity.test.ts` 6 fixtures pinning
   D/R/P/L → IPC contract via `vi.hoisted` invoke mock) + drift
   thresholds applied (direct invoke-mock-call assertion per fixture
   against `docs/42` Sec.1) + reproducibility confirmed.
-- **Row 74 `EV-HOTKEY-COMPLETENESS`** — Status `Pass`. Narrowing: none
+- **`EV-HOTKEY-COMPLETENESS`** — Status `Pass`. Narrowing: none
   (full scope). Per-row anchor run id `25212775046` (Wave 1a-B `#322`
   merge `a665d72`). Per-Type Minimums: corpus version pinned (`src/
   lib/__tests__/hotkeys-completeness.test.ts` 8 fixtures validating
   the 57-row vocabulary in `src/lib/data/hotkeys.ts`) + drift
   thresholds applied (direct equality assertion per fixture against
   `docs/42` Sec.1-10) + reproducibility confirmed.
-- **Row 75 `EV-HOTKEY-CONFLICT`** — Status `Pass`. Narrowing: none
+- **`EV-HOTKEY-CONFLICT`** — Status `Pass`. Narrowing: none
   (full scope). Per-row anchor run id `25212775046` (Wave 1a-B `#322`
   merge `a665d72`). Per-Type Minimums: corpus version pinned (`src/
   lib/__tests__/hotkeys-conflict.test.ts` 8 fixtures encoding
@@ -1108,7 +1123,7 @@ sections above):
   normalization + rules 1-5) + drift thresholds applied (direct
   equality assertion per fixture against the conflict-and-priority-
   rules contract) + reproducibility confirmed.
-- **Row 80 `EV-MIDI-EXTENDED`** — Status `Pass`. Narrowing: MPE V2
+- **`EV-MIDI-EXTENDED`** — Status `Pass`. Narrowing: MPE V2
   deferred (diagnostic-fires-once rejection at MVP per `docs/08`);
   SysEx logged-only at MVP. Per-row anchor run id `25219692261`
   (Wave 1b-A `#333` merge `bba49c1`). Per-Type Minimums: corpus
@@ -1117,7 +1132,7 @@ sections above):
   fixtures; midir 0.10 cross-platform MIDI) + drift thresholds
   applied (per-fixture parse / normalization / timeout / counter
   assertions) + reproducibility confirmed.
-- **Row 82 `EV-NET-HARDENING`** — Status `Pass`. Narrowing: none
+- **`EV-NET-HARDENING`** — Status `Pass`. Narrowing: none
   (full scope). Per-row anchor run id `25213038199` (Wave 1a-A `#323`
   merge `77f174c`). Per-Type Minimums: corpus version pinned
   (`integrations/osc-adapter/tests/network_hardening_corpus/main.rs`
@@ -1125,8 +1140,8 @@ sections above):
   allowlist boundary + oversized-packet outcome counter) + drift
   thresholds applied (direct equality assertion per fixture against
   ADR-013 §1/3/5 constants and dual-tagged `defaults.rs` pins shared
-  with row 37) + reproducibility confirmed.
-- **Row 87 `EV-ENTITLEMENT-ENFORCEMENT`** — Status `Pass`. Narrowing:
+  with `EV-INTEGRATION-MATRIX`) + reproducibility confirmed.
+- **`EV-ENTITLEMENT-ENFORCEMENT`** — Status `Pass`. Narrowing:
   13-cap honored set (Wave 1b-B widening from 1 → 13 entries; the
   IO_CAMERA capability is intentionally excluded — free at MVP per
   ADR-009 / `docs/09` Tier matrix). Per-row anchor run ids
@@ -1140,25 +1155,25 @@ sections above):
   thresholds applied (direct boolean assertion per fixture across the
   widened capability set + <1µs latency assertion + `Send + Sync`
   trait check) + reproducibility confirmed across both anchor runs.
-- **Row 88 `EV-ENTITLEMENT-OFFLINE`** — Status `Pass`. Narrowing: none
+- **`EV-ENTITLEMENT-OFFLINE`** — Status `Pass`. Narrowing: none
   (full scope). Per-row anchor run id `25213475549` (Wave 1a-D `#325`
   merge `b335939`). Per-Type Minimums: corpus version pinned
   (`engine/entitlement/tests/offline_revocation_corpus/main.rs`
-  8 fixtures dual-tagged with row 89, covering 14-day offline window
+  8 fixtures dual-tagged with `EV-ENTITLEMENT-REVOCATION`, covering 14-day offline window
   honor + post-expiry deny + boundary at `expires_at` + injected-
   clock determinism) + drift thresholds applied (cross-trial identity
   assertion per fixture against the 14-day window contract) +
   reproducibility confirmed.
-- **Row 89 `EV-ENTITLEMENT-REVOCATION`** — Status `Pass`. Narrowing:
+- **`EV-ENTITLEMENT-REVOCATION`** — Status `Pass`. Narrowing:
   expiry-based revocation only — deny-list activation behavior is
   post-MVP optional and out-of-scope. Per-row anchor run id
   `25213475549` (Wave 1a-D `#325` merge `b335939`). Per-Type
   Minimums: corpus version pinned (same dual-tagged
   `engine/entitlement/tests/offline_revocation_corpus/main.rs`
-  8 fixtures as row 88; expiry-based revocation only) + drift
+  8 fixtures as `EV-ENTITLEMENT-OFFLINE`; expiry-based revocation only) + drift
   thresholds applied (cross-trial identity assertion per fixture) +
   reproducibility confirmed.
-- **Row 91 `EV-ENTITLEMENT-FREE-FEATURES`** — Status `Pass`. Narrowing:
+- **`EV-ENTITLEMENT-FREE-FEATURES`** — Status `Pass`. Narrowing:
   none (full scope). Per-row anchor run id `25213475549` (Wave 1a-D
   `#325` merge `b335939`). Per-Type Minimums: corpus version pinned
   (`engine/entitlement/tests/free_features_corpus/main.rs` 12
@@ -1168,7 +1183,7 @@ sections above):
   grants paths) + drift thresholds applied (direct boolean assertion
   per fixture against the `FREE_CAPABILITIES` array) + reproducibility
   confirmed.
-- **Row 95 `EV-HEALTH-METRICS-LOOPBACK-ONLY`** — Status `Pass`.
+- **`EV-HEALTH-METRICS-LOOPBACK-ONLY`** — Status `Pass`.
   Narrowing: none (full scope per `docs/31` §Phase-1 baseline
   catalog). Per-row anchor run id `25213270708` (Wave 1a-C `#324`
   merge `e8917c3`). Per-Type Minimums: corpus version pinned
@@ -1194,10 +1209,10 @@ Collective narrowings recap (the AO-approved scope reductions that
 together make Phase-4a EXIT passable under the current waveform): row
 37 `EV-INTEGRATION-MATRIX` narrowed to OSC routing-matrix plus MIDI
 input arm (camera / Syphon / audio-uniform-IPC arms deferred to Wave
-1c); row 81 `EV-MIDI-EXTENDED` narrowed to MPE V2 deferred plus SysEx
-logged-only at MVP; row 87 `EV-ENTITLEMENT-ENFORCEMENT` narrowed to
+1c); `EV-MIDI-EXTENDED` narrowed to MPE V2 deferred plus SysEx
+logged-only at MVP; `EV-ENTITLEMENT-ENFORCEMENT` narrowed to
 the 13-cap honored set with IO_CAMERA intentionally excluded (free at
-MVP per ADR-009); row 89 `EV-ENTITLEMENT-REVOCATION` narrowed to
+MVP per ADR-009); `EV-ENTITLEMENT-REVOCATION` narrowed to
 expiry-based only with deny-list activation deferred to post-MVP.
 
 Wave 1c deferred-axes record (camera + Syphon adapters + audio-
@@ -1218,27 +1233,28 @@ decisions or the Phase-4 EXIT itself.
       (this docs(repo) closing PR's merge commit; pre-merge anchor at
       HEAD `288a214` post-`#334` already carries all 11 rows at
       `Pass`). All 11 Phase-4a EXIT evidence IDs satisfy the Per-Type
-      Minimums and are at `Pass`: `EV-INTEGRATION-MATRIX` (row 37,
+      Minimums and are at `Pass`: `EV-INTEGRATION-MATRIX` (
       anchor run id 25213038199 plus 25219692261, narrowed to OSC
       routing-matrix plus MIDI input arm), `EV-HOTKEY-PARITY-
-      CONFORMANCE` (row 73, run id 25212775046, full scope),
-      `EV-HOTKEY-COMPLETENESS` (row 74, run id 25212775046, full
-      scope), `EV-HOTKEY-CONFLICT` (row 75, run id 25212775046, full
-      scope), `EV-MIDI-EXTENDED` (row 80, run id 25219692261,
+      CONFORMANCE` (`EV-HOTKEY-PARITY-CONFORMANCE`, run id 25212775046, full scope),
+      `EV-HOTKEY-COMPLETENESS` (run id 25212775046, full
+      scope), `EV-HOTKEY-CONFLICT` (run id 25212775046, full
+      scope), `EV-MIDI-EXTENDED` (run id 25219692261,
       narrowed to MPE V2 deferred plus SysEx logged-only at MVP),
-      `EV-NET-HARDENING` (row 82, run id 25213038199, full scope),
-      `EV-ENTITLEMENT-ENFORCEMENT` (row 87, run ids 25213475549 plus
+      `EV-NET-HARDENING` (run id 25213038199, full scope),
+      `EV-ENTITLEMENT-ENFORCEMENT` (run id 25213475549 plus
       25219329314, narrowed to 13-cap honored set with IO_CAMERA
-      excluded), `EV-ENTITLEMENT-OFFLINE` (row 88, run id 25213475549,
-      full scope), `EV-ENTITLEMENT-REVOCATION` (row 89, run id
+      excluded), `EV-ENTITLEMENT-OFFLINE` (run id 25213475549,
+      full scope), `EV-ENTITLEMENT-REVOCATION` (run id
       25213475549, narrowed to expiry-based only), `EV-ENTITLEMENT-
-      FREE-FEATURES` (row 91, run id 25213475549, full scope), and
-      `EV-HEALTH-METRICS-LOOPBACK-ONLY` (row 95, run id 25213270708,
+      FREE-FEATURES` (`EV-ENTITLEMENT-FREE-FEATURES`, run id 25213475549, full scope), and
+      `EV-HEALTH-METRICS-LOOPBACK-ONLY` (run id 25213270708,
       full scope per `docs/31` Phase-1 baseline catalog). Phase-4a
-      EXIT collective narrowings recap: row 37 OSC plus MIDI input
-      (camera / Syphon / audio-uniform-IPC deferred to Wave 1c); row
-      81 MPE V2 plus SysEx-logged-only; row 87 13-cap honored set
-      (IO_CAMERA excluded — free at MVP per ADR-009); row 89 expiry-
+      EXIT collective narrowings recap: `EV-INTEGRATION-MATRIX` OSC plus MIDI input
+      (camera / Syphon / audio-uniform-IPC deferred to Wave 1c);
+      `EV-MIDI-EXTENDED` MPE V2 plus SysEx-logged-only;
+      `EV-ENTITLEMENT-ENFORCEMENT` 13-cap honored set
+      (IO_CAMERA excluded — free at MVP per ADR-009); `EV-ENTITLEMENT-REVOCATION` expiry-
       only revocation. Wave 1c deferred axes (camera + Syphon
       adapters + audio-uniform-IPC bridge) carry forward to a future
       directed engineering wave with new ADR + research + plan-mode +
@@ -1255,7 +1271,7 @@ The Phase-4a Wave 1c-α closure (2026-05-03) lands the audio-uniform
 IPC bridge governed by `docs/adr/ADR-019-audio-uniform-ipc-bridge.md`.
 The wave shipped in 3 PRs on `main`: PR `#338` (`efd5de0`) — ADR-019
 acceptance + new `EV-AUDIO-UNIFORM-IPC` evidence row added at status
-`Planned` (`docs/26-evidence-artifact-registry.md` row 83); PR `#339`
+`Planned` (`docs/26-evidence-artifact-registry.md` `EV-AUDIO-UNIFORM-IPC`); PR `#339`
 (`c1d93e8`) — producer-side `AudioUniformSnapshotPayload` ts-rs
 newtype in `app/ui-bridge/`, new `engine/runtime/src/scheduler/ipc.rs`
 sub-module declaring the `IpcEmit` trait + 4 T1 drift pins,
@@ -1272,7 +1288,7 @@ remains AO-held and carries forward unchanged.
 
 ### Per-Type Minimums verification
 
-The closure transitions one row (row 83 `EV-AUDIO-UNIFORM-IPC`) from
+The closure transitions one row (`EV-AUDIO-UNIFORM-IPC`) from
 `Planned` to `Pass (narrowed)`. T2 conformance corpora shipped: 6
 round-trip tests in
 `app/ui-bridge/tests/audio_uniform_payload_round_trip.rs` (payload-
@@ -1290,7 +1306,7 @@ plus 8 T2 widget live-mode tests across the 3 retrofitted widgets
 `src/lib/widgets/BeatDots.test.ts`) validating the dual-mode live-
 snapshot vs synthetic-fallback gate.
 
-- **PR `#338`** (`efd5de0`) — ADR-019 acceptance plus row 83 added at
+- **PR `#338`** (`efd5de0`) — ADR-019 acceptance plus `EV-AUDIO-UNIFORM-IPC` added at
   `Planned`; anchor run id `25277275238` (rust workflow on `main`
   HEAD `efd5de0`) green. Per-Type Minimums: docs-only PR; no Per-Type
   Minimums apply (status row added at `Planned`, no test corpus
@@ -1318,16 +1334,16 @@ snapshot vs synthetic-fallback gate.
 
 ### Verdict
 
-Row 83 `EV-AUDIO-UNIFORM-IPC` transitions `Planned` → `Pass
+`EV-AUDIO-UNIFORM-IPC` transitions `Planned` → `Pass
 (narrowed)`. The Pass scope is explicitly narrowed to the cross-seam
 payload-shape contract plus per-side composition; the narrowing is
-recorded in the row 83 Description column and recapped here so the
+recorded in the `EV-AUDIO-UNIFORM-IPC` Description column and recapped here so the
 deferred-axes record stays honest. **Phase-4a Wave 1c-α closure
 achieved 2026-05-03 at commit `<merge-sha>`** (the merge commit of
 this docs(repo) closing PR; pre-merge anchor at HEAD `fcb443f`
-post-`#340` already carries the row 83 corpus + producer-side T2 +
+post-`#340` already carries the `EV-AUDIO-UNIFORM-IPC` corpus + producer-side T2 +
 T1 pins + consumer-side store + widget retrofits). Phase-4a EXIT
-collective state is unchanged: row 37 narrowing-clause for the
+collective state is unchanged: `EV-INTEGRATION-MATRIX` narrowing-clause for the
 audio-uniform-IPC arm of `EV-INTEGRATION-MATRIX` still references
 "Wave 1c" because the live end-to-end IPC wiring (Tauri concrete
 implementation of the `IpcEmit` trait + audio-thread + scheduler-
@@ -1336,7 +1352,7 @@ payload-shape contract that Wave 1c-α validated.
 
 ### Deferred axes (Wave 1c-α narrowing record)
 
-The row 83 Pass narrowing carries 5 explicit deferred axes; each is
+The `EV-AUDIO-UNIFORM-IPC` Pass narrowing carries 5 explicit deferred axes; each is
 preserved here so future-wave widening has an anchor:
 
 - **Live end-to-end producer→Tauri-emit→consumer wiring** is deferred
@@ -1380,7 +1396,7 @@ remains a future directed engineering wave with new ADR + research +
 plan-mode + implementation cycle (estimated 5,000-10,000 LoC multi-
 week wall-clock; requires platform integration decisions + likely
 new ADRs). The production-bootstrap wave (audio-thread + scheduler-
-tick + Tauri-emit-adapter) that drops the row 83 narrowing axes (i)
+tick + Tauri-emit-adapter) that drops the `EV-AUDIO-UNIFORM-IPC` narrowing axes (i)
 through (iii) above is a separate AO-held axis from Wave 1c-β; it
 may sequence before, after, or in parallel with Wave 1c-β at AO
 discretion. Phase-4 EXIT itself remains AO-held until 4b / 4c / 4d
@@ -1395,7 +1411,7 @@ Phase-4 EXIT itself.
 ## Phase-4a Wave 1c-α-2 closure
 
 The Phase-4a Wave 1c-α-2 closure (2026-05-06) lands the production
-audio bootstrap that drops three of the five row 83
+audio bootstrap that drops three of the five `EV-AUDIO-UNIFORM-IPC`
 (`EV-AUDIO-UNIFORM-IPC`) deferred axes Wave 1c-α had recorded. Wave
 1c-α had shipped the cross-seam payload-shape contract plus per-side
 composition but had explicitly deferred the live end-to-end
@@ -1429,7 +1445,7 @@ The wave shipped in 3 PRs on `main`:
 
 ### Per-Type Minimums verification
 
-The closure widens row 83 `EV-AUDIO-UNIFORM-IPC` from `Pass
+The closure widens `EV-AUDIO-UNIFORM-IPC` from `Pass
 (narrowed; 5 deferred axes)` to `Pass (narrowed; 2 deferred axes
 plus 1 still-deferred-through-the-wire axis)`. Cumulative test
 count for the wave: 7 T1 pins (PR `#343` producer runtime) + 7 T1
@@ -1472,7 +1488,7 @@ pins (4 ipc.rs pins) stay green and unchanged.
 
 ### Verdict
 
-Row 83 `EV-AUDIO-UNIFORM-IPC` stays at `Pass` (Wave 1c-α already
+`EV-AUDIO-UNIFORM-IPC` stays at `Pass` (Wave 1c-α already
 transitioned `Planned` → `Pass` under narrowing; Wave 1c-α-2
 widens the Pass scope by dropping 3 of the 5 original narrowing
 axes). **Phase-4a Wave 1c-α-2 closure achieved 2026-05-06 at
@@ -1480,16 +1496,16 @@ commit `<merge-sha>`** (the merge commit of this Bootstrap PR 3
 docs(repo) closing PR; pre-merge anchors at HEAD `9a1131e`
 post-`#344` already carry the producer runtime + Tauri adapter +
 scheduler-tick bootstrap + 14 T1 pins green on `main`). Phase-4a
-EXIT collective state is unchanged: row 37 narrowing-clause for
+EXIT collective state is unchanged: `EV-INTEGRATION-MATRIX` narrowing-clause for
 the audio-uniform-IPC arm of `EV-INTEGRATION-MATRIX` carries
 forward unchanged because Wave 1c-α-2 is the audio-uniform-IPC
-arm completing rather than a row 37 widening (the row 37 arm was
+arm completing rather than a `EV-INTEGRATION-MATRIX` widening (the `EV-INTEGRATION-MATRIX` arm was
 deferred to Wave 1c, which Wave 1c-α + 1c-α-2 sub-banded under
-row 83's payload-shape contract scope).
+`EV-AUDIO-UNIFORM-IPC`'s payload-shape contract scope).
 
 ### Deferred axes (Wave 1c-α-2 widening record)
 
-Row 83 narrowing axes after Wave 1c-α-2 widening:
+`EV-AUDIO-UNIFORM-IPC` narrowing axes after Wave 1c-α-2 widening:
 
 - ✓ **DROPPED** — Live end-to-end producer→Tauri-emit→consumer
   wiring. Wave 1c-α-2 production audio bootstrap (PRs `#343` +
@@ -1723,7 +1739,7 @@ cluster's closure does not pre-empt the Phase-4 EXIT gate decision.
 ## Phase-4b Wave 4b.7 closure
 
 Phase-4b Wave 4b.7 closure (2026-05-07) lands the largest Phase-4b
-evidence row — `EV-IMPORT-REFERENCE-SHOW` (row 86) — at `Pass`
+evidence row — `EV-IMPORT-REFERENCE-SHOW` — at `Pass`
 under documented narrowings via a 5-PR sequence covering PR numbers
 366 through 369 inclusive plus this docs(repo) closing PR. The wave
 ships the reference-app user-data importer surface end-to-end at the
@@ -1764,7 +1780,7 @@ section immediately below this one for the per-PR sequence.
   with the synthetic-commit `CommitOutcome` + `RollbackSnapshot`
   shape proof + the T2 corpus at
   `engine/authoring/tests/import_reference_drill_harness_corpus.rs`.
-- **This PR** — closing docs flipping row 86
+- **This PR** — closing docs flipping `EV-IMPORT-REFERENCE-SHOW`
   `EV-IMPORT-REFERENCE-SHOW` from `Planned` to `Pass` under the
   documented narrowings.
 
@@ -1773,7 +1789,7 @@ section immediately below this one for the per-PR sequence.
 - **`EV-IMPORT-REFERENCE-SHOW`** — full 5-PR sequence above. Anchor
   run `25467953599` (PR `#369`'s test job, the latest = the one
   that exercised all 8 importer classes plus the orchestrator).
-  Narrowed per the four axes recorded in `docs/26` row 86
+  Narrowed per the four axes recorded in `docs/26` `EV-IMPORT-REFERENCE-SHOW`
   description column: (1) synthetic-commit harness — no actual
   user-data store mutation; (2) synthetic-rollback — `Ok(())`
   no-op; (3) heuristic stand-ins for OSC alias collision detection
@@ -1787,7 +1803,7 @@ For row `EV-IMPORT-REFERENCE-SHOW` transitioning to `Pass`,
 ci-run-url + repo-path + corpus version + drift thresholds populate.
 Anchor run ids cited in this closure section: `25465983264` (PR
 `#366`), `25466617886` (PR `#367`), `25467307204` (PR `#368`),
-`25467953599` (PR `#369`; primary anchor for row 85 Pass).
+`25467953599` (PR `#369`; primary anchor for `EV-IMPORT-REFERENCE-SHOW` Pass).
 
 ### Cumulative session recap
 
@@ -1845,7 +1861,7 @@ decision.
 ## Phase-4b Wave 4b.8 closure
 
 Phase-4b Wave 4b.8 closure (2026-05-07) lands the last remaining
-Phase-4b EXIT prerequisite — `EV-ACCESSIBILITY-AA` (row 76) — at
+Phase-4b EXIT prerequisite — `EV-ACCESSIBILITY-AA` — at
 `Pass` under documented narrowings via a 3-PR sequence covering PR
 numbers 371 + 372 plus this docs(repo) closing PR. The wave ships
 the WCAG 2.2 AA automated audit surface end-to-end at the
@@ -1896,7 +1912,7 @@ section above).
   views × 4 tiers. Updates 2 per-component spec assertions
   (`CuePad.test.ts` + `Perform.test.ts`) to follow the new role
   contracts.
-- **This PR** — closing docs flipping row 76 `EV-ACCESSIBILITY-AA`
+- **This PR** — closing docs flipping `EV-ACCESSIBILITY-AA`
   from `Planned` to `Pass` under the documented narrowings.
 
 ### Per-row verdict (transitioned to Pass under narrowing)
@@ -1904,7 +1920,7 @@ section above).
 - **`EV-ACCESSIBILITY-AA`** — full 3-PR sequence above. Anchor run
   `25469465083` (PR `#372`'s frontend job, the latest = the one
   that exercised the strict 0/0/0/0 budget across all 14 views).
-  Narrowed per the three axes recorded in `docs/26` row 76
+  Narrowed per the three axes recorded in `docs/26` `EV-ACCESSIBILITY-AA`
   description column: (1) axe-core automated audit only — 14 of
   14 routed views (`AudioUniforms`, `Author`, `Import`, `Inputs`,
   `Library`, `License`, `MIDI`, `Osc`, `Patch`, `Perform`,
@@ -1922,7 +1938,7 @@ For row `EV-ACCESSIBILITY-AA` transitioning to `Pass`,
 ci-run-url + repo-path + corpus version + drift thresholds
 populate. Anchor run ids cited in this closure section:
 `25469037211` (PR `#371`), `25469465083` (PR `#372`; primary
-anchor for row 76 Pass).
+anchor for `EV-ACCESSIBILITY-AA` Pass).
 
 ### Cumulative session recap
 
@@ -2024,7 +2040,7 @@ open follow-on PR.
   timing (each tick deadline computed against `t0 + tick_interval *
   tick_count`, not incrementally), plus 7 T1 pins inline at
   `soak::soak_pins` and the foundational T2 corpus at
-  `engine/observability/tests/soak_harness_corpus.rs`. Row 40 stays
+  `engine/observability/tests/soak_harness_corpus.rs`. `EV-SOAK-CHAOS` stays
   `Planned`.
 - **PR `#375`** (`06cf294`, anchor run `25470870950`) — chaos-
   injection extension. Adds `engine/observability/src/chaos.rs`
@@ -2039,10 +2055,10 @@ open follow-on PR.
   `stability_failure_chaos_classification` post-hoc classifier
   (`ChaosRecoveryWindow` vs. `Independent`), plus 6 T1 chaos pins
   inline at `chaos::chaos_pins` and the T2 chaos corpus at
-  `engine/observability/tests/chaos_soak_corpus.rs`. Row 40 still
+  `engine/observability/tests/chaos_soak_corpus.rs`. `EV-SOAK-CHAOS` still
   `Planned` pending PR 3.
 - **This PR** — multi-profile validation corpus + closing-docs
-  flipping row 40 from `Planned` to `Pass` under the documented
+  flipping `EV-SOAK-CHAOS` from `Planned` to `Pass` under the documented
   narrowings. Adds
   `engine/observability/tests/multi_profile_chaos_soak_corpus.rs`
   (7 fixtures × CI-friendly sub-2-second-each runs) covering
@@ -2052,8 +2068,8 @@ open follow-on PR.
 
 - **`EV-SOAK-CHAOS`** — full 3-PR sequence above. Anchor run ids
   `25470304804` (PR `#374`) + `25470870950` (PR `#375`; primary
-  anchor for row 40 Pass). Narrowed per the three axes recorded in
-  `docs/26` row 40 description column: (1) **CI-short soak
+  anchor for `EV-SOAK-CHAOS` Pass). Narrowed per the three axes recorded in
+  `docs/26` `EV-SOAK-CHAOS` description column: (1) **CI-short soak
   surface** — the harness scaffold + chaos-injection layer +
   multi-profile corpus all run against parameterized
   sub-second / sub-2-second-each durations; the full ≥ 4-hour soak
@@ -2068,7 +2084,7 @@ open follow-on PR.
   device-lost arm** — exercises a per-platform-supported flag at
   fixture level via `NativeChromaV1Workload::supports_gpu_lost`,
   toggling between `Accepted` and `Rejected(UnsupportedFault)`;
-  actual `engine/render/` device-lost recovery is row 78
+  actual `engine/render/` device-lost recovery is `EV-GPU-SELECTION`
   `EV-GPU-SELECTION` PR 2 (hardware-gated; deferred).
 
 ### Per-Type Minimums verification
@@ -2076,7 +2092,7 @@ open follow-on PR.
 For row `EV-SOAK-CHAOS` transitioning to `Pass`, ci-run-url +
 repo-path + corpus version + drift thresholds populate. Anchor run
 ids cited in this closure section: `25470304804` (PR `#374`),
-`25470870950` (PR `#375`; primary anchor for row 40 Pass).
+`25470870950` (PR `#375`; primary anchor for `EV-SOAK-CHAOS` Pass).
 
 ### Cumulative session recap
 
@@ -2096,17 +2112,17 @@ last 4d row needing direct engineering work. After this wave
 closes, the remaining Phase-4d open items are calendar-gated,
 hardware-gated, or scoped behind still-open follow-on PRs:
 
-- **Row 80 `EV-CRASH-RESUME` class-d** — deferred-pending-state-
+- **`EV-CRASH-RESUME` class-d** — deferred-pending-state-
   shape gap (the class-d crash-resume drill needs a state-shape
   extension that has not yet landed).
-- **Row 93 `EV-CRASH-PAYLOAD-REDACTION` PR 2** — full crash-
+- **`EV-CRASH-PAYLOAD-REDACTION` PR 2** — full crash-
   injection harness pending; PR 1 (Wave 4d.1 Lane A) shipped the
   redaction primitives but the injection harness PR 2 is still
   open.
-- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+- **`EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
   ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
   Lane B scaffolding from PR `#347` / `922f2d8`.
-- **Row 78 `EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
+- **`EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
   validation deferred (requires real dual-GPU hardware in CI or
   on an AO-driven validation rig).
 
@@ -2133,18 +2149,18 @@ gate decision.
 - **Real GPU device-lost recovery** — the `GpuDeviceLost` arm in
   this corpus exercises a per-platform-supported flag at fixture
   level via `NativeChromaV1Workload::supports_gpu_lost`; the actual
-  `engine/render/` device-lost recovery semantics are row 78
+  `engine/render/` device-lost recovery semantics are `EV-GPU-SELECTION`
   `EV-GPU-SELECTION` PR 2 (hardware-gated; deferred).
 
 ### Sign-off
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
 
-## Phase-4d Row 93 EV-CRASH-PAYLOAD-REDACTION closure
+## Phase-4d EV-CRASH-PAYLOAD-REDACTION closure
 
 **Date.** 2026-05-07.
 
-**Scope.** Row 93 `EV-CRASH-PAYLOAD-REDACTION` (registry line 94)
+**Scope.** `EV-CRASH-PAYLOAD-REDACTION` (registry line 94)
 transitions `Planned -> Pass-narrowed` under a 2-PR sequence
 covering PR numbers 346 + 377 (this closing PR). The row pins the
 ADR-016 §Crash payloads redaction contract: scene source
@@ -2191,8 +2207,8 @@ token bytes MUST be excluded from any transmitted crash report.
 
 - **`EV-CRASH-PAYLOAD-REDACTION`** — full 2-PR sequence above.
   Anchor run ids `25415739244` (PR `#346`) + `<anchor>` (PR `#377`;
-  primary anchor for row 93 Pass). Narrowed per the two axes
-  recorded in `docs/26` row 93 description column:
+  primary anchor for `EV-CRASH-PAYLOAD-REDACTION` Pass). Narrowed per the two axes
+  recorded in `docs/26` `EV-CRASH-PAYLOAD-REDACTION` description column:
   (1) **synthetic-harness validation** — the harness validates the
   redactor surface contract via constructed synthetic payloads
   across 4 simulated crash classes covering all 5 `RedactCategory`
@@ -2203,7 +2219,7 @@ token bytes MUST be excluded from any transmitted crash report.
   composes on top of these primitives + harness, mirroring the
   deferred-composition framing established for the redaction
   primitives in PR 1 and the synthetic-workload framing already
-  accepted at row 40 `EV-SOAK-CHAOS` Wave 4d.4; (2) **sentinel-
+  accepted at `EV-SOAK-CHAOS` Wave 4d.4; (2) **sentinel-
   string detection** — the harness asserts no sentinel value from
   the sensitive-field set survives in the serialised redacted
   output across every crash-class × redact-category combo, the
@@ -2215,7 +2231,7 @@ For row `EV-CRASH-PAYLOAD-REDACTION` transitioning to `Pass`,
 ci-run-url + repo-path + corpus version + drift thresholds
 populate. Anchor run ids cited in this closure section:
 `25415739244` (PR `#346`), `<anchor>` (PR `#377`; primary anchor
-for row 93 Pass).
+for `EV-CRASH-PAYLOAD-REDACTION` Pass).
 
 ### Cumulative session recap
 
@@ -2227,24 +2243,24 @@ auditable anchor.
 
 ### Verdict
 
-**Row 93 `EV-CRASH-PAYLOAD-REDACTION` closure achieved 2026-05-07
+**`EV-CRASH-PAYLOAD-REDACTION` closure achieved 2026-05-07
 at commit `<merge-sha>`** (the merge commit of this PR 2).
 
 After this closure 3 Phase-4d open items remain:
 
-- **Row 80 `EV-CRASH-RESUME` class-d** — deferred-pending-state-
+- **`EV-CRASH-RESUME` class-d** — deferred-pending-state-
   shape gap (the class-d crash-resume drill needs a state-shape
   extension that has not yet landed); classes a/b/c/e/f/g already
   shipped via PRs `#354` + `#357` + `#361` + `#377-pred`.
-- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+- **`EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
   ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
   Lane B scaffolding from PR `#347` / `922f2d8`.
-- **Row 78 `EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
+- **`EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
   validation deferred (requires real dual-GPU hardware in CI or
   on an AO-driven validation rig).
 
 Phase-4d EXIT itself remains AO-held per
-`docs/11-roadmap-phases.md`; this row 93 closure does not pre-empt
+`docs/11-roadmap-phases.md`; this `EV-CRASH-PAYLOAD-REDACTION` closure does not pre-empt
 the Phase-4d EXIT decision. Phase-4 EXIT itself remains AO-held
 until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
 does not pre-empt the Phase-4 EXIT gate decision.
@@ -2267,11 +2283,11 @@ does not pre-empt the Phase-4 EXIT gate decision.
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
 
-## Phase-4d Row 80 EV-CRASH-RESUME closure
+## Phase-4d EV-CRASH-RESUME closure
 
 **Date.** 2026-05-07.
 
-**Scope.** Row 80 `EV-CRASH-RESUME` (registry line 80) transitions
+**Scope.** `EV-CRASH-RESUME` (registry line 80) transitions
 `Planned -> Pass-narrowed` under a 5-PR shipping sequence covering
 PR numbers 354 + 357 + 361 + 364 + 378 plus this closing-docs PR.
 The row pins per-class state restoration across all seven classes
@@ -2309,8 +2325,8 @@ operator meta-control values; render resolution + FPS target.
 ### Per-row verdict (transitioned to Pass under narrowing)
 
 - **`EV-CRASH-RESUME`** — full 5-PR sequence above. Anchor run id
-  `25473152455` (PR `#378`; primary anchor for row 80 Pass).
-  Narrowed per the axis recorded in `docs/26` row 80 description
+  `25473152455` (PR `#378`; primary anchor for `EV-CRASH-RESUME` Pass).
+  Narrowed per the axis recorded in `docs/26` `EV-CRASH-RESUME` description
   column: **synthetic restore-helper validation** — the harness
   validates per-class state restoration via constructed source /
   target `State` pairs and the `restore_class_<x>` helpers; the
@@ -2318,23 +2334,23 @@ operator meta-control values; render resolution + FPS target.
   `SIGSEGV` / panic-in-render-thread / OOM simulation at three
   wallclock points within a 10-minute scripted show") requires real
   platform crash-handler infrastructure that doesn't ship at MVP —
-  same precedent as row 93 `EV-CRASH-PAYLOAD-REDACTION`'s synthetic-
-  harness narrowing accepted at the row 93 closure 2026-05-07 and
-  the synthetic-workload framing accepted at row 40 `EV-SOAK-CHAOS`
+  same precedent as `EV-CRASH-PAYLOAD-REDACTION`'s synthetic-
+  harness narrowing accepted at the `EV-CRASH-PAYLOAD-REDACTION` closure 2026-05-07 and
+  the synthetic-workload framing accepted at `EV-SOAK-CHAOS`
   Wave 4d.4. The `restore_all_supported_classes` helper composes
   all seven restoration paths under the documented additivity
   invariant; pre-existing T2 corpora goldens (`state_replay`,
   `state_migration`, `preset_playlist`, `scheduler_tick`) are
   preserved verbatim — the V2 envelope grew the
   `EXT_ID_V2_SESSION_BINDINGS` extension without breaking V1 → V2
-  forward-only migration semantics per Phase-3 row 33.
+  forward-only migration semantics per Phase-3 `EV-STATE-MIGRATION`.
 
 ### Per-Type Minimums verification
 
 For row `EV-CRASH-RESUME` transitioning to `Pass`, ci-run-url +
 repo-path + corpus version + drift thresholds populate. Anchor run
 id cited in this closure section: `25473152455` (PR `#378`; primary
-anchor for row 80 Pass).
+anchor for `EV-CRASH-RESUME` Pass).
 
 ### Cumulative session recap
 
@@ -2348,20 +2364,20 @@ additive Wave 4d.3 partial-advance pattern, then the cross-class
 
 ### Verdict
 
-**Row 80 `EV-CRASH-RESUME` closure achieved 2026-05-07 at commit
+**`EV-CRASH-RESUME` closure achieved 2026-05-07 at commit
 `<merge-sha>`** (the merge commit of this PR 6 of 6). With this
-closure 2 Phase-4d open items remain (down from 4 prior to row 93's
+closure 2 Phase-4d open items remain (down from 4 prior to `EV-CRASH-PAYLOAD-REDACTION`'s
 closure earlier on 2026-05-07):
 
-- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+- **`EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
   ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
   Lane B scaffolding from PR `#347` / `922f2d8`.
-- **Row 78 `EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
+- **`EV-GPU-SELECTION` PR 2** — hardware-gated dual-GPU
   validation deferred (requires real dual-GPU hardware in CI or on
   an AO-driven validation rig).
 
 Phase-4d EXIT itself remains AO-held per
-`docs/11-roadmap-phases.md`; this row 80 closure does not pre-empt
+`docs/11-roadmap-phases.md`; this `EV-CRASH-RESUME` closure does not pre-empt
 the Phase-4d EXIT decision. Phase-4 EXIT itself remains AO-held
 until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
 does not pre-empt the Phase-4 EXIT gate decision.
@@ -2389,11 +2405,11 @@ does not pre-empt the Phase-4 EXIT gate decision.
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
 
-## Phase-4d Row 78 EV-GPU-SELECTION closure
+## Phase-4d EV-GPU-SELECTION closure
 
 **Date.** 2026-05-07.
 
-**Scope.** Row 78 `EV-GPU-SELECTION` (registry line 78) transitions
+**Scope.** `EV-GPU-SELECTION` (registry line 78) transitions
 `Planned -> Pass-narrowed` under a 2-PR shipping sequence covering
 PR `#351` (selection-policy scaffolding) plus this PR (synthetic
 dual-adapter T2 corpus + closing-docs). The row pins deterministic
@@ -2442,13 +2458,13 @@ aware backend tie-breakers per `cfg(target_os)`.
 
 - **`EV-GPU-SELECTION`** — full 2-PR sequence above. Anchor run id
   `<TBD-on-merge>` (this PR's CI nextest job; primary anchor for
-  row 78 Pass). Narrowed per the axes recorded in `docs/26` row 78
+  `EV-GPU-SELECTION` Pass). Narrowed per the axes recorded in `docs/26` `EV-GPU-SELECTION`
   description column: **(1)** synthetic-corpus validation only —
   the T2 corpus exercises the `rank_synthetic` pure decision-tree
   helper from PR 1 against constructed `SelectedAdapter` fixtures;
-  same precedent as row 40 `EV-SOAK-CHAOS` synthetic-workload
-  narrowing, row 80 `EV-CRASH-RESUME` synthetic restore-helper
-  narrowing, and row 93 `EV-CRASH-PAYLOAD-REDACTION` synthetic-
+  same precedent as `EV-SOAK-CHAOS` synthetic-workload
+  narrowing, `EV-CRASH-RESUME` synthetic restore-helper
+  narrowing, and `EV-CRASH-PAYLOAD-REDACTION` synthetic-
   harness narrowing accepted at their respective Phase-4d closures.
   **(2)** Physical / VM dual-adapter validation deferred — the
   registry's "Generation Source: Dual-GPU laptop VM test +
@@ -2469,7 +2485,7 @@ aware backend tie-breakers per `cfg(target_os)`.
 For row `EV-GPU-SELECTION` transitioning to `Pass`, ci-run-url +
 repo-path + corpus version + drift thresholds populate. Anchor run
 id cited in this closure section: `<TBD-on-merge>` (this PR's
-workspace nextest job; primary anchor for row 78 Pass). Corpus
+workspace nextest job; primary anchor for `EV-GPU-SELECTION` Pass). Corpus
 version pinned by the merged-on-main slice chain (PR `#351`
 selection-policy scaffolding + this PR synthetic-corpus + closing-
 docs). Drift thresholds applied via per-fixture deterministic-output
@@ -2489,17 +2505,17 @@ the auditable anchor.
 
 ### Verdict
 
-**Row 78 `EV-GPU-SELECTION` closure achieved 2026-05-07 at commit
+**`EV-GPU-SELECTION` closure achieved 2026-05-07 at commit
 `<merge-sha>`** (the merge commit of this PR 2 of 2). With this
 closure 1 Phase-4d open item remains (down from 2 prior to this
 closure):
 
-- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+- **`EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
   ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
   Lane B scaffolding from PR `#347` / `922f2d8`.
 
 Phase-4d EXIT itself remains AO-held per
-`docs/11-roadmap-phases.md`; this row 78 closure does not pre-empt
+`docs/11-roadmap-phases.md`; this `EV-GPU-SELECTION` closure does not pre-empt
 the Phase-4d EXIT decision. Phase-4 EXIT itself remains AO-held
 until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
 does not pre-empt the Phase-4 EXIT gate decision.
@@ -2539,11 +2555,11 @@ does not pre-empt the Phase-4 EXIT gate decision.
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
 
-## Phase-4b Row 61 EV-AUTHORING-LIVE-RELOAD closure
+## Phase-4b EV-AUTHORING-LIVE-RELOAD closure
 
 **Date.** 2026-05-07.
 
-**Scope.** Row 61 `EV-AUTHORING-LIVE-RELOAD` (registry line 61)
+**Scope.** `EV-AUTHORING-LIVE-RELOAD` (registry line 61)
 transitions `Planned -> Pass` under a 2-PR shipping sequence covering
 PR `#356` (file-watch + reload-on-change scaffolding) plus this PR
 (state-preservation cross-seam contract + closing-docs). The row
@@ -2558,7 +2574,7 @@ session-reset.
 - **PR `#356`** (`d56f11d`, landed 2026-05-06, Wave 4b.2 PR 1 of 2)
   — file-watcher + reload-pipeline producer surface under
   `engine/authoring/src/live_reload.rs` (NOTE: original `docs/26`
-  row 61 description column referenced `engine/script/src/live_reload.rs`
+  `EV-AUTHORING-LIVE-RELOAD` description column referenced `engine/script/src/live_reload.rs`
   — that's a stale path the prior audit missed; the actual location
   is `engine/authoring/src/live_reload.rs`. This PR's docs touch
   corrects the registry path). Module ships `LiveReloadConfig` +
@@ -2588,7 +2604,7 @@ session-reset.
 
 - **`EV-AUTHORING-LIVE-RELOAD`** — full 2-PR sequence above. Anchor
   run id `<TBD-on-merge>` (this PR's CI nextest job; primary anchor
-  for row 61 Pass). Narrowed per the axes recorded in `docs/26` row
+  for `EV-AUTHORING-LIVE-RELOAD` Pass). Narrowed per the axes recorded in `docs/26` row
   61 description column: **(1)** state-preservation cross-seam
   contract only — the `PreservedState` shape ships verbatim and a
   successful `perform_reload` forwards it onto
@@ -2596,16 +2612,16 @@ session-reset.
   wiring (engine/runtime adapter capturing `State -> PreservedState`
   before reload + re-applying via the command-bus + commit-thread
   per ADR-006 after) is a future-wave option scoped behind the
-  live-reload + runtime composition. Same precedent as row 83
+  live-reload + runtime composition. Same precedent as `EV-AUDIO-UNIFORM-IPC`
   `EV-AUDIO-UNIFORM-IPC` Wave 1c-α cross-seam-contract narrowing
   accepted at its closure (the cross-seam contract lands ahead of
   the producer-bootstrap wiring). **(2)** Latency-budget arm
-  cross-tagged with row 83 `EV-AUTHORING-UX-LATENCY` (already `Pass`
+  cross-tagged with `EV-AUTHORING-UX-LATENCY` (already `Pass`
   via PR `#363` commit `b2156bb`) per `docs/37-shared-instrumentation`
   note — the synthetic UX-latency harness covers reload latency
   under the same shared-instrumentation note. No separate
   live-reload-specific latency harness lands here per
-  `docs/44` row 61 line 50 wave-PR sizing of "1-2 PRs". **(3)**
+  `docs/44` `EV-AUTHORING-LIVE-RELOAD` line 50 wave-PR sizing of "1-2 PRs". **(3)**
   File-watch debounce shipped per PR 1 (notify 6.x) with the
   configurable `LiveReloadConfig::debounce_ms` knob.
 
@@ -2614,7 +2630,7 @@ session-reset.
 For row `EV-AUTHORING-LIVE-RELOAD` transitioning to `Pass`,
 ci-run-url + repo-path + corpus version + drift thresholds populate.
 Anchor run id cited in this closure section: `<TBD-on-merge>` (this
-PR's workspace nextest job; primary anchor for row 61 Pass). Corpus
+PR's workspace nextest job; primary anchor for `EV-AUTHORING-LIVE-RELOAD` Pass). Corpus
 version pinned by the merged-on-main slice chain (PR `#356`
 file-watch + reload-on-change scaffolding + this PR
 state-preservation cross-seam contract + new T2 corpus). Drift
@@ -2634,19 +2650,19 @@ surface — each PR's workspace nextest job is the auditable anchor.
 
 ### Verdict
 
-**Row 61 `EV-AUTHORING-LIVE-RELOAD` closure achieved 2026-05-07 at
+**`EV-AUTHORING-LIVE-RELOAD` closure achieved 2026-05-07 at
 commit `<merge-sha>`** (the merge commit of this PR 2 of 2). With
 this closure 2 Phase-4 EXIT prerequisites remain (down from 3 prior
 to this closure):
 
-- **Row 64 `EV-IMPORT-SHADERTOY` PR 2 of 2** — broader corpus +
-  iChannel widening landed in parallel sibling (see following row 64
+- **`EV-IMPORT-SHADERTOY` PR 2 of 2** — broader corpus +
+  iChannel widening landed in parallel sibling (see following `EV-IMPORT-SHADERTOY`
   closure section).
-- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** — calendar-gated
+- **`EV-ANALYTICS-ZERO-DEFAULT` closing-docs** — calendar-gated
   ~2026-05-20.
 
 Phase-4b EXIT itself remains AO-held per `docs/11-roadmap-phases.md`;
-this row 61 closure does not pre-empt the Phase-4b EXIT decision.
+this `EV-AUTHORING-LIVE-RELOAD` closure does not pre-empt the Phase-4b EXIT decision.
 
 ### Deferred axes (row narrowing record)
 
@@ -2661,7 +2677,7 @@ this row 61 closure does not pre-empt the Phase-4b EXIT decision.
   `EV-AUDIO-UNIFORM-IPC`-Wave-1c-α cross-seam-contract surface was
   composed end-to-end by Wave 1c-α-2 production audio bootstrap.
 - **Live-reload-specific latency-budget harness** — the latency
-  arm cross-tags with row 83 `EV-AUTHORING-UX-LATENCY` per
+  arm cross-tags with `EV-AUTHORING-UX-LATENCY` per
   `docs/37-shared-instrumentation` note; the synthetic UX-latency
   harness covers reload-latency under the same shared-instrumentation
   note. A live-reload-dedicated harness driving real `notify`
@@ -2673,11 +2689,11 @@ this row 61 closure does not pre-empt the Phase-4b EXIT decision.
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
 
-## Phase-4b Row 64 EV-IMPORT-SHADERTOY closure
+## Phase-4b EV-IMPORT-SHADERTOY closure
 
 **Date.** 2026-05-07.
 
-**Scope.** Row 64 `EV-IMPORT-SHADERTOY` (registry line 64) transitions
+**Scope.** `EV-IMPORT-SHADERTOY` (registry line 64) transitions
 `Planned -> Pass` under a 2-PR shipping sequence covering PR `#360`
 (converter scaffolding + 3 starter golden fixtures, PR 1 of 2) plus
 this PR (broader corpus + iChannel fixture-pack resolution +
@@ -2722,7 +2738,7 @@ PR-2 edge-case fixtures.
 
 - **`EV-IMPORT-SHADERTOY`** — full 2-PR sequence above. Anchor run id
   `<TBD-on-merge>` (this PR's CI nextest job; primary anchor for
-  row 64 Pass). Narrowed per the axes recorded in `docs/26` row 64
+  `EV-IMPORT-SHADERTOY` Pass). Narrowed per the axes recorded in `docs/26` `EV-IMPORT-SHADERTOY`
   description column: **(1)** iChannel resolution covers `Texture2D`
   / `Cubemap` / `Audio` / `Video` / `Buffer` / `Keyboard` kinds via
   the `IChannelMapping` builder; `Webcam` emits
@@ -2744,7 +2760,7 @@ PR-2 edge-case fixtures.
 For row `EV-IMPORT-SHADERTOY` transitioning to `Pass`, ci-run-url +
 repo-path + corpus version + drift thresholds populate. Anchor run
 id cited in this closure section: `<TBD-on-merge>` (this PR's
-workspace nextest job; primary anchor for row 64 Pass). Corpus
+workspace nextest job; primary anchor for `EV-IMPORT-SHADERTOY` Pass). Corpus
 version pinned by the merged-on-main slice chain (PR `#360`
 converter scaffolding + this PR broader-corpus + closing-docs).
 Drift thresholds applied via per-fixture deterministic-output
@@ -2766,17 +2782,17 @@ PR's workspace nextest job is the auditable anchor.
 
 ### Verdict
 
-**Row 64 `EV-IMPORT-SHADERTOY` closure achieved 2026-05-07 at commit
+**`EV-IMPORT-SHADERTOY` closure achieved 2026-05-07 at commit
 `<merge-sha>`** (the merge commit of this PR 2 of 2). With this
 closure 1 Phase-4 EXIT prerequisite remains (with the parallel
-sibling row 61 PR 2 having landed earlier today):
+sibling `EV-AUTHORING-LIVE-RELOAD` PR 2 having landed earlier today):
 
-- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+- **`EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
   ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
   Lane B scaffolding from PR `#347` / `922f2d8`.
 
 Phase-4b EXIT itself remains AO-held per
-`docs/11-roadmap-phases.md`; this row 64 closure does not pre-empt
+`docs/11-roadmap-phases.md`; this `EV-IMPORT-SHADERTOY` closure does not pre-empt
 the Phase-4b EXIT decision. Phase-4 EXIT itself remains AO-held
 until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
 does not pre-empt the Phase-4 EXIT gate decision.
@@ -2816,7 +2832,7 @@ does not pre-empt the Phase-4 EXIT gate decision.
   fixtures and is not duplicated per Shadertoy fixture in the T2
   corpus. Future-wave option to extend the corpus with a wgpu
   round-trip arm; out-of-scope at MVP per the synthetic-corpus
-  precedent set by row 78 closure.
+  precedent set by `EV-GPU-SELECTION` closure.
 
 ### Sign-off
 

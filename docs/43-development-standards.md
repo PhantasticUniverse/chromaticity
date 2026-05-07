@@ -145,7 +145,7 @@ Risk: R-<NN>
 - `commitlint` validates the PR squash-merge title against Sec.4.1–4.4. Per-commit lint is advisory on feature branches (friendly for WIP), mandatory for the squash-merge commit that lands on `main`.
 - `Signed-off-by` is enforced by a required-status check (`dco`) on every commit in the PR, not only the merge commit.
 - `Profile-Impact` trailer is enforced by a custom check; absence blocks merge.
-- `ADR:` and `Evidence:` trailers are REQUIRED on architecture-labeled PRs (Sec.16) for traceability into `docs/adr/` and `docs/26-evidence-artifact-registry.md`. **Enforcement is active**: the `architecture-trailer-check` workflow job (`.github/workflows/policy.yml`) invokes `scripts/architecture-trailer-check.sh` against the PR's `architecture` label; missing `ADR: ADR-NNN` or `Evidence: EV-XX` trailers (or references that don't resolve to existing ADR files / registry rows) block merge via the required-context branch protection on `main`. The script reuses the body-extraction pattern from `scripts/trailer-check.sh`, ADR-NNN existence check from `scripts/adr-lint.sh`, and row-anchored EV-ID extraction from `scripts/evidence-tag-lint.sh`. `EV-COMMIT-CONVENTION-LINT` (`docs/26` row 100) tracks the broader commit-convention coverage envelope this check participates in.
+- `ADR:` and `Evidence:` trailers are REQUIRED on architecture-labeled PRs (Sec.16) for traceability into `docs/adr/` and `docs/26-evidence-artifact-registry.md`. **Enforcement is active**: the `architecture-trailer-check` workflow job (`.github/workflows/policy.yml`) invokes `scripts/architecture-trailer-check.sh` against the PR's `architecture` label; missing `ADR: ADR-NNN` or `Evidence: EV-XX` trailers (or references that don't resolve to existing ADR files / registry rows) block merge via the required-context branch protection on `main`. The script reuses the body-extraction pattern from `scripts/trailer-check.sh`, ADR-NNN existence check from `scripts/adr-lint.sh`, and row-anchored EV-ID extraction from `scripts/evidence-tag-lint.sh`. `EV-COMMIT-CONVENTION-LINT` tracks the broader commit-convention coverage envelope this check participates in.
 
 The `trailer-check` required context fires at three distinct points:
 
@@ -609,6 +609,10 @@ The four Diátaxis modes map onto the ADR-010 URL taxonomy as follows; front-mat
 | Explanation (understanding-oriented) | `/resources/*`, portions of `/manual/*` | `explanation` | Background, rationale, trade-offs |
 
 A page mixing modes is an `EV-DOCS-COVERAGE` failure. Split the page.
+
+### 13.1a Cross-document evidence-row addressing
+
+Cross-document references to evidence rows in `26-evidence-artifact-registry.md` use the stable `EV-*` identifier (e.g., `` `EV-CRASH-RESUME` ``), NOT the row's current line position. See `docs/26-evidence-artifact-registry.md` §Rules → Cross-document addressing convention for the canonical statement; canonicalized 2026-05-07.
 
 ### 13.2 Front-matter
 
