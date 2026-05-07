@@ -29,6 +29,9 @@
     "active": false,
     "targets": "all",
     "icon": ["icons/icon.png"],
+    "macOS": {
+      "infoPlist": "Info.plist"
+    },
     "resources": {
       "../../engine/scene/tests/fixtures/scenes/library/demo-kaleido.chroma/scene.json": "scenes/library/demo-kaleido.chroma/scene.json",
       "../../engine/scene/tests/fixtures/scenes/library/demo-spectrum.chroma/scene.json": "scenes/library/demo-spectrum.chroma/scene.json",
