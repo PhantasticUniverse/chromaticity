@@ -7,7 +7,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
