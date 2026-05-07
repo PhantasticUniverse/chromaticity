@@ -171,3 +171,26 @@ path = "LICENSES/LicenseRef-Prosperity-3.0.0.txt"
 precedence = "override"
 SPDX-FileCopyrightText = "Patricio Gonzalez Vivo and Lygia contributors"
 SPDX-License-Identifier = "LicenseRef-Prosperity-3.0.0"
+
+# Syphon-Framework canonical source vendor (Wave 1c-β Phase 1.7, 2026-05-07).
+# BSD-3-Clause is already on `deny.toml` `[licenses].allow`; the
+# `BSD-3-Clause.txt` filename is a chromaticity-side
+# LICENSES/ mirror of the upstream `License.txt` for clean-room provenance,
+# not a non-SPDX dialect. The vendor is an unmodified verbatim snapshot per
+# `third_party/Syphon-Framework/CHROMATICITY_VENDOR_NOTE.md`.
+[[annotations]]
+path = "third_party/Syphon-Framework/**"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "2010-2023 bangnoise (Tom Butterworth) & vade (Anton Marini)",
+  "2020-2023 Maxime Touroute & Philippe Chaurand (Millumin)",
+]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+# License text file: surface the SPDX identifier on the canonical text so
+# `reuse lint` does not flag it as missing coverage.
+[[annotations]]
+path = "LICENSES/BSD-3-Clause.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "2010 bangnoise (Tom Butterworth) & vade (Anton Marini)"
+SPDX-License-Identifier = "BSD-3-Clause"

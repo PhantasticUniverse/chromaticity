@@ -7,7 +7,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -79,7 +79,7 @@ cargo:rustc-link-lib=framework=Syphon
 cargo:rustc-link-search=framework=<dev-box framework search path>
 ```
 
-The framework binary itself is **NOT vendored** in the chromaticity repo. Reference path is the macOS dev-box system framework search path; production app builds will resolve the framework via the Tauri bundling step that pulls `Contents/Frameworks/Syphon.framework` (or the chromaticity-side equivalent) into the `.app` bundle. The license file IS vendored at `LICENSES/LicenseRef-Syphon-BSD-3-Clause.txt` and annotated in `REUSE.toml` per the REUSE 3.2 posture documented in `CLAUDE.md`. The license file lands in Phase 3 PR 1 alongside the crate scaffold; the framework search path is configurable via an environment variable for CI / dev-box flexibility.
+The framework binary itself is **NOT vendored** in the chromaticity repo. Reference path is the macOS dev-box system framework search path; production app builds will resolve the framework via the Tauri bundling step that pulls `Contents/Frameworks/Syphon.framework` (or the chromaticity-side equivalent) into the `.app` bundle. The license file IS vendored at `LICENSES/BSD-3-Clause.txt` and annotated in `REUSE.toml` per the REUSE 3.2 posture documented in `CLAUDE.md`. The license file lands in Phase 3 PR 1 alongside the crate scaffold; the framework search path is configurable via an environment variable for CI / dev-box flexibility.
 
 The Cargo build script `integrations/syphon-adapter/build.rs` reads a `SYPHON_FRAMEWORK_PATH` environment variable to locate the framework, defaulting to `/Library/Frameworks/Syphon.framework` (the canonical macOS install location) and falling back to a vendored copy under `third_party/Syphon-Framework/` if present. The build script emits, on macOS only:
 
@@ -157,7 +157,7 @@ Idiomatic Rust shape: the wrapper holds `Retained<SyphonServer>` (objc2 referenc
 
 **Attribution.** BSD-3-Clause clauses 1 + 2 require attribution in source + binary redistributions. Chromaticity satisfies this two ways:
 
-- The `LICENSES/LicenseRef-Syphon-BSD-3-Clause.txt` file vendored at Phase 3 PR 1 reproduces the canonical `Syphon-Framework/License.txt` verbatim including the full copyright + permission text + no-endorsement clause + warranty disclaimer.
+- The `LICENSES/BSD-3-Clause.txt` file vendored at Phase 3 PR 1 reproduces the canonical `Syphon-Framework/License.txt` verbatim including the full copyright + permission text + no-endorsement clause + warranty disclaimer.
 - The chromaticity About / Acknowledgements UI surface (the surface required for redistributing third-party code under attribution-bearing licenses) lists the Syphon framework with copyright credit:
 
   > Copyright 2010-2023 bangnoise (Tom Butterworth) & vade (Anton Marini); Metal subtree co-authored by Maxime Touroute & Philippe Chaurand (Millumin). Licensed under BSD-3-Clause.
@@ -220,7 +220,7 @@ The threat-model addendum is documented in `docs/29-cleanroom-legal-policy-basel
 - **`EV-ENTITLEMENT-ENFORCEMENT`** — unaffected by this ADR. `IO_SYPHON_INPUT` and `IO_SYPHON_OUTPUT` already entered `HONORED_TOKEN_CAPABILITIES` in the Wave 1b-B 13-cap widening; no entitlement work is needed in this wave.
 - **`EV-RENDER-CONFORMANCE`** — the wgpu ↔ `IOSurface` bridge in §6 reuses the Metal interop path `adr/ADR-011` Sec.4 already names. Per-backend parity diffs (Metal / DX12 / Vulkan) are unaffected because Syphon is macOS-only by gate; the bridge composes additively over the existing render-thread frame graph.
 - **`EV-PLATFORM-CONFORMANCE`** — neutral. The macOS-only feature gate means Windows / Linux platform builds have no Syphon code to validate; the macOS arm gains a Syphon-bridge presence row that the Phase 3 closing-docs PR records.
-- **`EV-LICENSE-AUDIT`** — the `LICENSES/LicenseRef-Syphon-BSD-3-Clause.txt` file Phase 3 PR 1 vendors lands annotated in `REUSE.toml` per the REUSE 3.2 posture; the audit row is unaffected (BSD-3-Clause is on the workspace allowlist) but the row's coverage envelope widens by one license file. The §License compliance attribution + no-endorsement clauses are tracked under this row's audit envelope.
+- **`EV-LICENSE-AUDIT`** — the `LICENSES/BSD-3-Clause.txt` file Phase 3 PR 1 vendors lands annotated in `REUSE.toml` per the REUSE 3.2 posture; the audit row is unaffected (BSD-3-Clause is on the workspace allowlist) but the row's coverage envelope widens by one license file. The §License compliance attribution + no-endorsement clauses are tracked under this row's audit envelope.
 
 ## Traceability
 
@@ -240,7 +240,7 @@ The threat-model addendum is documented in `docs/29-cleanroom-legal-policy-basel
 ## Rollout and Review
 
 - **Rollout (status: proposed; will be Accepted at AO review time).** Wave 1c-β Phase 3 engineering plan, gated on this ADR's acceptance:
-  - **PR 1** — `integrations/syphon-adapter/` scaffold: `[workspace.members]` registration, `Cargo.toml` with macOS-only `[target.'cfg(target_os = "macos")'.dependencies]` (`objc2 = "0.5"` + `objc2-foundation`), `src/lib.rs` opening with `#![cfg(target_os = "macos")]`, `src/adapter.rs` skeleton with `objc2` framework binding declarations under `#[allow(unsafe_code)]`, `src/defaults.rs` with the §5 constants, `src/routes.rs` skeleton, `build.rs` reading `SYPHON_FRAMEWORK_PATH` env var + emitting the framework link directives, `LICENSES/LicenseRef-Syphon-BSD-3-Clause.txt` plus `REUSE.toml` annotation, and 6-8 T1 pins covering the public surface declarations including the `Drop` impls + the `dictionary_version` discovery filter.
+  - **PR 1** — `integrations/syphon-adapter/` scaffold: `[workspace.members]` registration, `Cargo.toml` with macOS-only `[target.'cfg(target_os = "macos")'.dependencies]` (`objc2 = "0.5"` + `objc2-foundation`), `src/lib.rs` opening with `#![cfg(target_os = "macos")]`, `src/adapter.rs` skeleton with `objc2` framework binding declarations under `#[allow(unsafe_code)]`, `src/defaults.rs` with the §5 constants, `src/routes.rs` skeleton, `build.rs` reading `SYPHON_FRAMEWORK_PATH` env var + emitting the framework link directives, `LICENSES/BSD-3-Clause.txt` plus `REUSE.toml` annotation, and 6-8 T1 pins covering the public surface declarations including the `Drop` impls + the `dictionary_version` discovery filter.
   - **PR 2** — `SyphonOutputAdapter` + `SyphonInputAdapter` implementation: discovery loop, bind / unbind state machine, `poll` / `publish` plumbing, `health()` surface, and a T2 corpus under synthetic narrowing (mock framework trait — no live Syphon bus on CI; the mock asserts adapter state-machine behavior end-to-end).
   - **PR 3** — `engine/render/src/syphon_adapter.rs`: wgpu ↔ `IOSurface` bridge for input texture binding + output surface publish per §6; operator-facing UI warning string in the `Sources.svelte` / output-routing tile per §8; closing-docs PR widens `EV-INTEGRATION-MATRIX` Syphon-arm coverage with the synthetic-narrowing recorded honestly.
   - Sub-phase scope-window: estimated 1000-1800 LoC across the 3 PRs.
