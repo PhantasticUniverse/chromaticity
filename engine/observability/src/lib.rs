@@ -58,10 +58,15 @@
 
 pub mod analytics_audit;
 pub mod catalog;
+pub mod chaos;
 pub mod crash_redaction;
 pub mod emit;
 pub mod soak;
 
+pub use chaos::{
+    ChaosInjectionError, ChaosInjectionOutcome, ChaosPlan, ChaosReport, ChaosScheduleEntry,
+    ChaosWorkload, FaultEvent, FiredFaultEvent, StabilityFailureChaosClass, run_chaos_soak,
+};
 pub use soak::{
     SoakConfig, SoakHarnessError, SoakReport, SoakWorkload, SoakWorkloadError, StabilityFailure,
     StabilityFailureKind, run_soak,
