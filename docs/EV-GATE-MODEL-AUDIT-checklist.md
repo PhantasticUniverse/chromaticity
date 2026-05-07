@@ -2539,7 +2539,6 @@ does not pre-empt the Phase-4 EXIT gate decision.
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
 
-
 ## Phase-4b Row 61 EV-AUTHORING-LIVE-RELOAD closure
 
 **Date.** 2026-05-07.
@@ -2641,17 +2640,13 @@ this closure 2 Phase-4 EXIT prerequisites remain (down from 3 prior
 to this closure):
 
 - **Row 64 `EV-IMPORT-SHADERTOY` PR 2 of 2** — broader corpus +
-  edge-case fixture sweep pending (a parallel sibling PR is updating
-  row 64 separately).
-- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
-  ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
-  Lane B scaffolding from PR `#347` / `922f2d8`.
+  iChannel widening landed in parallel sibling (see following row 64
+  closure section).
+- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** — calendar-gated
+  ~2026-05-20.
 
-Phase-4b EXIT itself remains AO-held per
-`docs/11-roadmap-phases.md`; this row 61 closure does not pre-empt
-the Phase-4b EXIT decision. Phase-4 EXIT itself remains AO-held
-until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
-does not pre-empt the Phase-4 EXIT gate decision.
+Phase-4b EXIT itself remains AO-held per `docs/11-roadmap-phases.md`;
+this row 61 closure does not pre-empt the Phase-4b EXIT decision.
 
 ### Deferred axes (row narrowing record)
 
@@ -2669,11 +2664,159 @@ does not pre-empt the Phase-4 EXIT gate decision.
   arm cross-tags with row 83 `EV-AUTHORING-UX-LATENCY` per
   `docs/37-shared-instrumentation` note; the synthetic UX-latency
   harness covers reload-latency under the same shared-instrumentation
-  note. A live-reload-dedicated harness (driving real `notify`
+  note. A live-reload-dedicated harness driving real `notify`
   filesystem events through the reload pipeline against a measurement
-  hook + asserting the `docs/37` §3.3 `p95 < 500 ms` budget) is a
-  future-wave option once the runtime adapter is wired and the live
-  reload-latency surface is observable end-to-end.
+  hook is a future-wave option once the runtime adapter is wired
+  and the live reload-latency surface is observable end-to-end.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
+
+## Phase-4b Row 64 EV-IMPORT-SHADERTOY closure
+
+**Date.** 2026-05-07.
+
+**Scope.** Row 64 `EV-IMPORT-SHADERTOY` (registry line 64) transitions
+`Planned -> Pass` under a 2-PR shipping sequence covering PR `#360`
+(converter scaffolding + 3 starter golden fixtures, PR 1 of 2) plus
+this PR (broader corpus + iChannel fixture-pack resolution +
+warning-surface widening, PR 2 of 2). The row pins the Shadertoy-to-
+Chromaticity converter end-to-end across the 5 fixture mandates from
+`docs/38-scene-library-and-import-spec.md` §5.4 (3 PR-1 starters per
+line 120 plus 2 PR-2 iChannel fixtures per line 121) plus 5 additional
+PR-2 edge-case fixtures.
+
+### Per-PR sequence
+
+- **PR `#360`** (`7497955`, landed 2026-05-06, Wave 4b.5 Lane A PR
+  1 of 2) — converter scaffolding under
+  `engine/authoring/src/import_shadertoy.rs` shipping
+  `ShadertoyImportConfig` + `ImportReport` + `ImportError` +
+  `import_shadertoy_to_chroma` + `load_imported_scene`. T1 algorithm-
+  drift pins inline; T2 starter corpus at
+  `engine/authoring/tests/import_shadertoy_corpus.rs` covering 3
+  fixtures (simple-math, noise-fbm, raymarched-sphere). Module
+  prose at line 9 anticipated PR 2 widening the iChannel-fixture-
+  pack-resolution path called out by `docs/38` §5.2a.
+- **This PR (`<merge-sha>`, landed 2026-05-07)** — broader corpus +
+  iChannel widening per `docs/38` §5.2a. Adds `IChannelMapping` +
+  `IChannelKind` + `Warning` (structured enum) to the public
+  surface; `ShadertoyImportConfig::with_ichannel_mappings` builder
+  setter; `iChannelN -> chroma_input_<N>` body rewrite with
+  separated-`textureNN`+`sampler` preamble per the
+  `engine/render::multipass` naga-frontend constraint; `mainCubemap`
+  rejection arm; deprecated `texture2D(...)` -> `texture(...)` auto-
+  correction with structured warning; `ICHANNELS` table written into
+  `scene.json` so authoring-UI re-establishes bindings on subsequent
+  loads. T2 corpus widens from 3 -> 10 fixtures (3 PR-1 starters
+  preserved plus 7 new arms: 2D-texture iChannel, cubemap iChannel,
+  audio iChannel, multi-channel iChannel binding, iTime+iResolution+
+  iMouse uniforms, gl_FragCoord direct access, deprecated texture2D
+  auto-correction). T1 module-tests widen from the original PR-1
+  set with 5 new variants (unmapped iChannel + audio mapping +
+  webcam deferral + texture2D auto-correction + mainCubemap
+  rejection). Plus closing-docs.
+
+### Per-row verdict (transitioned to Pass under narrowing)
+
+- **`EV-IMPORT-SHADERTOY`** — full 2-PR sequence above. Anchor run id
+  `<TBD-on-merge>` (this PR's CI nextest job; primary anchor for
+  row 64 Pass). Narrowed per the axes recorded in `docs/26` row 64
+  description column: **(1)** iChannel resolution covers `Texture2D`
+  / `Cubemap` / `Audio` / `Video` / `Buffer` / `Keyboard` kinds via
+  the `IChannelMapping` builder; `Webcam` emits
+  `Warning::WebcamIChannelDeferred` (post-MVP integration per Phase-
+  4a Wave 1c-β); `mainCubemap` entry-point hard-rejected with
+  `Warning::CubemapEntrypointDeferred`-keyed
+  `ImportError::UnsupportedShadertoyFeature`. **(2)** VR-mode
+  `mainVR` hard-rejected with the existing PR-1 diagnostic — Shadertoy
+  VR is out-of-scope per Chromaticity MVP. **(3)** Broader corpus
+  covers 10 representative Shadertoy patterns via the inline T2
+  corpus; the 5 `docs/38` §5.4 mandates (3 starters per line 120 + 2
+  iChannel fixture-pack arms per line 121) are all satisfied; the
+  remaining 5 fixtures pin multi-channel binding + canonical-uniform
+  mapping + gl_FragCoord direct access + deprecated texture2D auto-
+  correction.
+
+### Per-Type Minimums verification
+
+For row `EV-IMPORT-SHADERTOY` transitioning to `Pass`, ci-run-url +
+repo-path + corpus version + drift thresholds populate. Anchor run
+id cited in this closure section: `<TBD-on-merge>` (this PR's
+workspace nextest job; primary anchor for row 64 Pass). Corpus
+version pinned by the merged-on-main slice chain (PR `#360`
+converter scaffolding + this PR broader-corpus + closing-docs).
+Drift thresholds applied via per-fixture deterministic-output
+assertion across the 10-fixture T2 corpus (every fixture round-trips
+through `chromaticity_scene::loader::load_chroma_dir` and the on-disk
+`main.glsl` parses + validates through the same naga GLSL frontend +
+IR validator pair the engine/render single-pass entry point uses
+internally).
+
+### Cumulative session recap
+
+2 engineering PRs landed on `main` covering PR `#360` (2026-05-06
+converter scaffolding) + this PR (2026-05-07 broader corpus +
+iChannel widening + closing-docs). The sequence ships
+`ShadertoyImportConfig` + `import_shadertoy_to_chroma` at PR 1 and
+extends with `IChannelMapping` + structured `Warning` enum +
+text-rewrite pipeline + 7 additional T2 fixtures at PR 2 — each
+PR's workspace nextest job is the auditable anchor.
+
+### Verdict
+
+**Row 64 `EV-IMPORT-SHADERTOY` closure achieved 2026-05-07 at commit
+`<merge-sha>`** (the merge commit of this PR 2 of 2). With this
+closure 1 Phase-4 EXIT prerequisite remains (with the parallel
+sibling row 61 PR 2 having landed earlier today):
+
+- **Row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-docs** —
+  ~2026-05-20 calendar-gated 14-day soak window per the Wave 4d.1
+  Lane B scaffolding from PR `#347` / `922f2d8`.
+
+Phase-4b EXIT itself remains AO-held per
+`docs/11-roadmap-phases.md`; this row 64 closure does not pre-empt
+the Phase-4b EXIT decision. Phase-4 EXIT itself remains AO-held
+until 4b / 4c / 4d sub-phases close per `docs/11`; this closure
+does not pre-empt the Phase-4 EXIT gate decision.
+
+### Deferred axes (row narrowing record)
+
+- **Webcam iChannel binding** — `IChannelKind::Webcam` mappings
+  emit a structured `Warning::WebcamIChannelDeferred` and the slot
+  still receives a `texture2D` + `sampler` declaration so the body
+  compiles, but the live webcam capture / OS-permission / device-
+  selection wiring is post-MVP per the Phase-4a Wave 1c-β plan
+  (camera + Syphon adapters; ADR-019 narrowing axis).
+- **`mainCubemap` cubemap render-target outputs** — Shadertoy's
+  `mainCubemap(out vec4 fragColor, in vec3 rayOrigin, in vec3 rayDir)`
+  shape outputs to a 6-face cubemap render target with no auto-
+  mapping into Chromaticity's single-pass `mainImage`-equivalent
+  shape; the converter rejects with
+  `Warning::CubemapEntrypointDeferred`-keyed
+  `ImportError::UnsupportedShadertoyFeature`. Future-wave option to
+  add explicit cubemap render-target multi-pass support; out-of-
+  scope at MVP.
+- **VR-mode `mainVR`** — out-of-scope per Chromaticity MVP; rejected
+  with the existing PR-1 diagnostic.
+- **`Buffer A/B/C/D` multipass evaluation order** — the
+  `IChannelKind::Buffer` slot preamble emits the `texture2D` +
+  `sampler` declaration so the body compiles against a buffer-bound
+  channel, but the multipass evaluation-order DAG that Shadertoy's
+  multipass model requires is a downstream authoring concern; the
+  converter does not synthesize the multipass scene-graph from the
+  Shadertoy source. Authors edit the imported scene-graph post-
+  import to wire the buffer pass.
+- **Live render-execution validation** — the on-disk `main.glsl`
+  parses + validates through naga (T2 anchor) but the row's
+  description column also names "renders without errors"; the
+  render-execution arm relies on the existing
+  `engine/render::single_pass` test harness exercising scaffolded
+  fixtures and is not duplicated per Shadertoy fixture in the T2
+  corpus. Future-wave option to extend the corpus with a wgpu
+  round-trip arm; out-of-scope at MVP per the synthetic-corpus
+  precedent set by row 78 closure.
 
 ### Sign-off
 
