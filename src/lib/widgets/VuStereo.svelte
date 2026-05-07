@@ -62,7 +62,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   });
 </script>
 
-<div class="vu-stereo" style="width: {width}px" aria-label="Stereo output levels">
+<div class="vu-stereo" style="width: {width}px" role="img" aria-label="Stereo output levels">
   <div
     class="vu-row"
     style="--lvl: {clamp(lvlL) * 100}%; --peak: {clamp(peakL) * 100}%"

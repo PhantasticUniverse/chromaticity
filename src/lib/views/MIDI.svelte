@@ -638,6 +638,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                     {/if}
                     <span
                       class="midi__saved-dot"
+                      role="img"
                       title="Saved · session-stable (MIDI-CONF-20)"
                       aria-label="saved · session-stable"
                     ></span>

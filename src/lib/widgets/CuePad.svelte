@@ -48,7 +48,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <div
   class="cue-pad"
   style="grid-template-columns: repeat({cols}, 1fr);"
-  role="grid"
+  role="group"
   aria-label="Cue pad ({rows} rows × {cols} cols)"
 >
   {#each Array.from({ length: total }, (_, idx) => idx) as i (i)}
