@@ -17,9 +17,9 @@ This doc is a planning artifact, not a gate. It does not declare V1 readiness, d
 
 ## 2. Cumulative parity rollup
 
-Approximately **70-75% of reference observable feature surface implemented** in chromaticity at HEAD `d6b266d`, weighted by V1-relevance:
+Approximately **75-80% of reference observable feature surface implemented** in chromaticity at HEAD `<this-pr-merge-sha>`, weighted by V1-relevance:
 
-- **Engine-side surfaces** (scene model, runtime, audio, scheduler, render, scripting, integrations, entitlement, observability): **~85%**. Phase-4a EXIT achieved at commit `5acc452`; Phase-4b passable under collective narrowings; 5 of 6 Phase-4d rows at `Pass` (only `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 per the 14-day soak).
+- **Engine-side surfaces** (scene model, runtime, audio, scheduler, render, scripting, integrations, entitlement, observability): **~90%**. Phase-4a EXIT achieved at commit `5acc452`; Wave 1c-β camera + Syphon adapters closed 2026-05-07 (synthetic-narrowing); Phase-4b passable under collective narrowings; 5 of 6 Phase-4d rows at `Pass` (only `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 per the 14-day soak).
 - **UI-shell parity** (views, widgets, hotkey / OSC / MIDI vocabularies): **~95%**. Wireframe-faithful complete via the v0.2-beta bundle port (W6-W34 sprint waves). Custom macOS menu bar parity beyond Tauri default is the only minor gap.
 - **Content / asset bundling** (default scenes, library corpus, shadertoy assets, demo media, embedded docs, custom thumbnails): **~15%**. The dominant V1 gap. None of the bundled-content surfaces have been authored from a clean-room baseline yet.
 - **Update / telemetry infrastructure**: **~30%**. Auto-update absent (Tauri updater not yet wired); analytics correctly stricter-by-design at zero-default per ADR-013 + ADR-016, which is parity-by-omission rather than a gap.
@@ -40,7 +40,7 @@ The audit covers twelve observable feature dimensions. Each row notes implementa
 | Hotkeys / OSC routes / MIDI vocabulary     | Implemented           | First-class wireframe parity. 57-row hotkey vocabulary, OSC route taxonomy, and MIDI-CONF-11..20 fixtures all landed.                          |
 | Embedded documentation                     | Missing               | Reference bundle ships an in-app help corpus. No equivalent in chromaticity. See gap G1.                                                       |
 | Auto-update / crash reporting / analytics  | Partial               | Analytics zero-default by design (ADR-013 + ADR-016); crash payload redaction scaffolded (PR #346). Auto-update absent. See gap G5.            |
-| Camera / video / OpenCV                    | Deferred-Per-AO       | Wave 1c-β; explicitly deferred per AO direction. Multi-week 5,000-10,000 LoC scope, requires platform integration decisions + likely new ADRs. |
+| Camera / video / OpenCV                    | Implemented           | Wave 1c-β closed 2026-05-07 (16-PR sequence). `integrations/camera-adapter/` (nokhwa cross-platform; CoreMediaIO + Media Foundation) + `integrations/syphon-adapter/` (macOS GPU IO via `objc2` framework bindings) + `engine/render` bridges + `Sources.svelte` device pickers. Synthetic-narrowing posture per ADR-020 + ADR-021 + `docs/54`; per-platform binding stubs + hardware validation deferred per `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β closure. |
 | Localization                               | Matches reference     | English-only V1 across both surfaces.                                                                                                          |
 
 ## 4. Top V1 release gaps (engineering work)
@@ -72,7 +72,7 @@ Five gaps surface as engineering work that would close measurable V1 parity. Eac
 Seven items map to existing AO direction or are appropriate to defer past V1:
 
 - **ISF native import** — `EV-IMPORT-ISF-REJECT` already landed at `Pass` under design-deferred-to-V2 narrowing per PR #358 / `8fadc55`. No V1 work owed.
-- **OpenCV / camera live-feed** — Wave 1c-β explicitly deferred per AO direction; multi-week 5,000-10,000 LoC scope, requires new ADRs.
+- **OpenCV / camera live-feed** — Wave 1c-β closed 2026-05-07 (camera + Syphon adapters at synthetic-narrowing per ADR-020 + ADR-021); per-platform nokhwa concrete bindings + Syphon `Send`-trait reconciliation + `list_syphon_servers` `NSDistributedNotificationCenter` observer + `publish_syphon_output` real-impl + real hardware validation carry forward as known follow-up PRs per `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β closure.
 - **Custom macOS menu bar parity beyond Tauri default** — UX polish; Tauri default is acceptable for V1.
 - **Demo media** (`demo_media.mp4` analog or equivalent) — nice-to-have, not gating for V1 RC.
 - **Sparkle EdDSA exact-mechanism parity** — the Tauri updater is the chromaticity-native path per ADR-014; reference-side mechanism is not the parity target.

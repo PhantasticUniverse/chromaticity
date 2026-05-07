@@ -26,7 +26,7 @@ collective narrowings.
 
 | Row | Evidence ID                   | Status | Narrowing                                                                                                                          |
 | --- | ----------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| 37  | EV-INTEGRATION-MATRIX         | Pass   | OSC routing-matrix conformance plus MIDI input matrix arm; camera / Syphon / audio-uniform-IPC arms deferred to Wave 1c-β          |
+| 37  | EV-INTEGRATION-MATRIX         | Pass   | OSC + MIDI + audio-uniform-IPC + camera + Syphon all widened post-Wave-1c-β-closure 2026-05-07; per-platform binding stubs + Syphon Send-trait reconciliation deferred to follow-up PRs (synthetic-narrowing posture) |
 | 73  | EV-HOTKEY-PARITY-CONFORMANCE  | Pass   | full scope                                                                                                                         |
 | 74  | EV-HOTKEY-COMPLETENESS        | Pass   | full scope                                                                                                                         |
 | 75  | EV-HOTKEY-CONFLICT            | Pass   | full scope                                                                                                                         |
@@ -41,6 +41,14 @@ collective narrowings.
 Wave 1c-α-2 production audio bootstrap (2026-05-06) further narrowed
 the `EV-AUDIO-UNIFORM-IPC` cross-tag for the audio-uniform-IPC arm of
 `EV-INTEGRATION-MATRIX`; live IPC dispatch in production. See the Phase-4a Wave 1c-α-2
+closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
+
+Wave 1c-β cluster closure (2026-05-07, 16-PR sequence) drops the
+cumulative "camera + Syphon arms deferred to Wave 1c-β" narrowing on
+`EV-INTEGRATION-MATRIX`. Both arms ship under the documented
+synthetic-narrowing posture (per the row 78 / row 40 / row 93
+precedent); per-platform binding stubs + Syphon `Send`-trait
+reconciliation deferred to follow-up PRs. See the Phase-4a Wave 1c-β
 closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
 
 ## Phase-4b — Authoring + Library + Import (11 rows)
@@ -114,10 +122,18 @@ Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
 
 ## Out-of-scope items carried forward
 
-- **Phase-4a Wave 1c-β** (camera + Syphon adapters) — explicitly
-  AO-deferred per ADR-019 and the cumulative narrowings on `EV-INTEGRATION-MATRIX`;
-  estimated 5,000-10,000 LoC multi-week scope; requires platform
-  integration decisions + likely new ADRs. Unblocked from EXIT.
+- **Phase-4a Wave 1c-β** (camera + Syphon adapters) — closed
+  2026-05-07 in a 16-PR sequence under the documented synthetic-
+  narrowing posture per ADR-020 + ADR-021 + `docs/54` Phase-2 /
+  Phase-3 lessons. `EV-INTEGRATION-MATRIX` widened across all five
+  arms (OSC + MIDI + audio-uniform-IPC + camera + Syphon). Per-
+  platform nokhwa concrete bindings + Syphon `Send`-trait
+  reconciliation + `list_syphon_servers`
+  `NSDistributedNotificationCenter` observer +
+  `publish_syphon_output` real-impl + real hardware validation
+  carry forward as known follow-ups per the Phase-4a Wave 1c-β
+  closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
+  Unblocked from EXIT.
 - **Production-bootstrap stale-but-last-good IPC surfacing through
   the wire** — narrowing axis carried forward on `EV-AUDIO-UNIFORM-IPC`
   `EV-AUDIO-UNIFORM-IPC`; producer-side covered at T1, transitive
@@ -147,6 +163,7 @@ Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
 | Phase-4a EXIT closure                          | 2026-05-03      | post-`#334` merge (closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`) |
 | Phase-4a Wave 1c-α                             | 2026-05-03      | post-`#340` merge   |
 | Phase-4a Wave 1c-α-2 (audio production bootstrap) | 2026-05-06   | `9a1131e` (PR `#344`) |
+| Phase-4a Wave 1c-β (camera + Syphon arm widening) | 2026-05-07     | `<merge-sha>` (this PR; engineering anchors at PRs `#389`-`#405` inclusive) |
 | Phase-4b cluster (Wave 4b.1 — 4b.6) + 4d.1/4d.2/4d.3 partial | 2026-05-06 | post-`#363` merge   |
 | Phase-4b Wave 4b.7 (`EV-IMPORT-REFERENCE-SHOW`) | 2026-05-07     | `87b1a62` (PR `#370`) |
 | Phase-4b Wave 4b.8 (`EV-ACCESSIBILITY-AA`)     | 2026-05-07      | `e751752` (PR `#373`) |
