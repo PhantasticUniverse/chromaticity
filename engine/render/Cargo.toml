@@ -132,6 +132,25 @@ chromaticity-audio = { version = "0.0.0", path = "../audio", optional = true }
 
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
+# chromaticity-syphon-adapter is an OPTIONAL macOS-only dependency,
+# gated behind the `syphon-binding` cargo feature. The render
+# scheduler stays Syphon-agnostic by default — the
+# `chromaticity_syphon_adapter` crate
+# (`integrations/syphon-adapter/`) is itself macOS-gated by
+# `#![cfg(target_os = "macos")]` per ADR-021 §1, and the engine-side
+# `syphon_adapter` module on the engine/render side provides the
+# real-backend `SyphonClientHandle` / `SyphonServerHandle` impls
+# wrapping the framework `Retained<>` handles per docs/54 Phase-3
+# lesson 7 + ADR-021 §6. Crate coupling stays consumer-side:
+# integrations/syphon-adapter/ does NOT depend on engine/render. The
+# dep is declared under the macOS target table so non-macOS
+# workspace builds neither resolve nor compile the Syphon binding
+# stack even with the `syphon-binding` feature flag enabled (the
+# feature gate at the engine/render `lib.rs` level additionally
+# guards the module behind `cfg(target_os = "macos")`).
+[target.'cfg(target_os = "macos")'.dependencies]
+chromaticity-syphon-adapter = { version = "0.0.0", path = "../../integrations/syphon-adapter", optional = true }
+
 [features]
 default = []
 # Enables the `scene_adapter` module which produces a `MultipassSpec`
@@ -146,6 +165,18 @@ scene-adapter = ["dep:chromaticity-scene"]
 # `chromaticity-audio`. See `audio_adapter.rs` module-level doc for
 # the symbol → UniformValue mapping table.
 audio-binding = ["dep:chromaticity-audio"]
+# Enables the `syphon_adapter` module which provides real-backend
+# `SyphonClientHandle` / `SyphonServerHandle` impls wrapping the
+# framework `Retained<>` handles obtained via
+# `chromaticity_syphon_adapter::bindings`. macOS-only by feature
+# composition (the `chromaticity-syphon-adapter` dep + the `objc2`
+# direct dep are declared under
+# `[target.'cfg(target_os = "macos")'.dependencies]`); the
+# engine/render `lib.rs` additionally gates the module behind
+# `cfg(target_os = "macos")`. See `syphon_adapter.rs` module-level
+# doc for the wgpu ↔ IOSurface bridge contract per ADR-021 §6 +
+# docs/54 Phase-3 lessons 3.1 / 3.2 / 3.3 / 3.4 / 3.6 / 3.7 / 3.8.
+syphon-binding = ["dep:chromaticity-syphon-adapter"]
 
 [dev-dependencies]
 # `serde_json` is needed by the slice-4 scene-adapter T1 / T2 tests
