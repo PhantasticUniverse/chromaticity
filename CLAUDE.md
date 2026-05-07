@@ -277,7 +277,67 @@ foundation + discovery + settings + presets importers under
     entitlement, osc-adapter, midi-adapter) carry foundational evidence
     at EXIT quality; parallel UI port waves against the v0.2-beta
     bundle closed all three Vitest test-coverage tracks (widgets,
-    shell components, routed views).
+    shell components, routed views). **Phase-4d Wave 4d.4 closure
+    landed 2026-05-07** in a 3-PR session covering PR numbers 374 +
+    375 plus this docs(repo) closing PR (PR `#374` / `da34db6`
+    introducing the soak harness scaffold at
+    `engine/observability/src/soak.rs` exposing `SoakConfig` +
+    `SoakWorkload` trait + `SoakReport` keyed by
+    `StabilityFailureKind::{DriftExceeded, TickStalled,
+StateCorruptionDetected}` + `run_soak` with drift-corrected
+    timing plus 7 T1 pins + foundational T2 corpus; PR `#375` /
+    `06cf294` layering the chaos-injection extension at
+    `engine/observability/src/chaos.rs` exposing `FaultEvent::
+{AdapterDropout, AudioStreamInterruption, GpuDeviceLost,
+Custom}` + `ChaosScheduleEntry` + `ChaosPlan` +
+    `ChaosWorkload: SoakWorkload` trait extension +
+    `ChaosInjectionError::{AdapterNotFound, UnsupportedFault,
+RecoveryDeadlineExceeded}` rejection taxonomy + `ChaosReport` +
+    `stability_failure_chaos_classification` (`ChaosRecoveryWindow`
+    vs. `Independent`) plus 6 T1 chaos pins + T2 chaos corpus; plus
+    this docs(repo) closing PR adding
+    `engine/observability/tests/multi_profile_chaos_soak_corpus.rs`
+    (7 fixtures × CI-friendly sub-2-second-each runs) covering
+    synthetic `compat-syn-v1` workload (parity-core narrow surface;
+    single-adapter `osc-input-1` + single-audio-stream + no-GPU-
+    device-lost handling; 2-event chaos plan) and
+    `native-chroma-v1` workload (broader native surface; multi-
+    adapter `osc-input-1` + `midi-port-1` + multi-audio-source
+    ready + `supports_gpu_lost: bool`-gated GPU device-lost stub;
+    4-event chaos plan)). Row 40 `EV-SOAK-CHAOS` transitions
+    `Planned` → `Pass` under three explicit narrowings: (1) **CI-
+    short soak surface** — sub-second / sub-2-second-each in CI; the
+    full ≥ 4-hour soak target per `docs/10` line 55 is calendar-
+    gated and runs as a nightly criterion-bench-style harness, not
+    as a per-PR CI gate, mirroring `EV-PERF-BUDGETS` Phase-3 Path B
+    nightly-only criterion harness in
+    `engine/runtime/benches/budgets.rs` per the ~$20/month-vs-
+    ~$70-80/month AO-approved cost posture; (2) **synthetic
+    workload fixtures** — multi-profile corpus uses synthetic
+    workloads representative of the two profiles, not the live
+    runtime; full live-runtime soak deferred to a future wave; (3)
+    **GPU device-lost arm** — exercises a per-platform-supported
+    flag at fixture level via
+    `NativeChromaV1Workload::supports_gpu_lost`, toggling between
+    `Accepted` and `Rejected(UnsupportedFault)`; actual
+    `engine/render/` device-lost recovery is row 78
+    `EV-GPU-SELECTION` PR 2 (hardware-gated; deferred). Anchor run
+    ids: 25470304804 (PR `#374` harness scaffold) + 25470870950
+    (PR `#375` chaos-injection; primary anchor for row 40 Pass).
+    Wave 4d.4 is the **Phase-4d capstone closure for the row that
+    was the last 4d row needing direct engineering work**;
+    remaining Phase-4d open items are calendar-gated, hardware-
+    gated, or scoped behind still-open follow-on PRs: row 80
+    `EV-CRASH-RESUME` class-d (deferred-pending-state-shape gap);
+    row 93 `EV-CRASH-PAYLOAD-REDACTION` PR 2 (full crash-injection
+    harness pending — PR 1 from Wave 4d.1 Lane A shipped redaction
+    primitives only); row 94 `EV-ANALYTICS-ZERO-DEFAULT` closing-
+    docs (~2026-05-20 calendar-gated 14-day soak window per the
+    Wave 4d.1 Lane B scaffolding from PR `#347` / `922f2d8`); row
+    78 `EV-GPU-SELECTION` PR 2 (hardware-gated dual-GPU validation
+    deferred). Phase-4d EXIT decision remains AO-held per
+    `docs/11-roadmap-phases.md`; this wave's closure does not
+    pre-empt the gate decision.
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
