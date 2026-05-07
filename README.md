@@ -24,7 +24,7 @@ nextest run. Phase 3 EXIT closed 2026-05-01 at commit `953fd74` with
 seven of the eight Phase-3 gate rows `Pass` (`EV-AUDIO-TRACE`
 re-validated, `EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`,
 `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`, `EV-SHOW-BUNDLE-RECOVERY`,
-`EV-PERF-BUDGETS`); the eighth row `EV-COLOR-MANAGEMENT-SRGB` (row 38)
+`EV-PERF-BUDGETS`); the eighth row `EV-COLOR-MANAGEMENT-SRGB` (`EV-COLOR-MANAGEMENT-SRGB`)
 is explicitly deferred per AO direction sequenced behind a future
 render-HUD-diagnostics PR. Phase 0 governance and clean-room baseline
 ADRs remain established; Phase 4+ entry is a separate AO-held milestone

@@ -39,14 +39,14 @@ Use a single canonical internal state model as the only source of truth for:
 
 `EV-*` IDs whose status is produced, advanced, or blocked by this decision. The frame-orchestrated runtime + single-canonical-state-model decision is the architectural precondition for the determinism-class evidence set; an event-only or plugin-first alternative would have shifted every replay-determinism, render-conformance, and state-replay row's closure path off the runtime baseline this ADR locks.
 
-- `EV-DETERMINISM` — frame-orchestrated dispatcher + canonical state is the precondition the determinism replay corpus measures. The `engine/runtime/src/command_bus.rs` typed-command + commit-thread implementation that Pass'd the row at slice-2 (`docs/26` row 37) is the direct realization of this ADR's "single canonical internal state model" decision.
+- `EV-DETERMINISM` — frame-orchestrated dispatcher + canonical state is the precondition the determinism replay corpus measures. The `engine/runtime/src/command_bus.rs` typed-command + commit-thread implementation that Pass'd the row at slice-2 (`docs/26` `EV-INTEGRATION-MATRIX`) is the direct realization of this ADR's "single canonical internal state model" decision.
 - `EV-RENDER-CONFORMANCE` — `SceneRuntime` ownership of scene lifecycle and frame graph is the boundary the render-conformance suite tests against; the multipass + feedback parity behavior measured by the row depends on the SceneRuntime owning the frame graph rather than scripts owning rendering directly.
 - `EV-SCRIPT-CONTRACT` — `ScriptRuntime` lifecycle hooks + controlled host API is the contract the row tests; subsequently refined by `adr/ADR-003-script-runtime-sandbox.md` (architectural sandbox) and `adr/ADR-012-script-sandbox-engine.md` (engine choice + budgets), but the lifecycle separation comes from this ADR.
 - `EV-AUDIO-TRACE` — `AudioRuntime` publishing sampled reactive state on a known cadence is what the audio-trace fixture comparison harness compares against; without the runtime separation this row would not have a deterministic publication-point to sample.
 - `EV-STATE-REPLAY` — single canonical state + typed commands is the precondition; `adr/ADR-004-state-model.md` refines into the per-store decomposition this row tests, but the canonical-state decision originates here.
 - `EV-INTEGRATION-MATRIX` — `IntegrationHub` as the canonical adapter sink is what the conformance matrix asserts; refined by `adr/ADR-005-integration-adapter-boundary.md`.
 - `EV-PERF-BUDGETS` — frame-orchestrated tick is the budget unit `10-performance-latency-budgets.md` measures against.
-- `EV-OBSERVABILITY` — explicit subsystem boundaries are observable; the per-subsystem metric attribution validated by row 38 (`engine/observability/src/catalog.rs`) presupposes the subsystem decomposition declared here.
+- `EV-OBSERVABILITY` — explicit subsystem boundaries are observable; the per-subsystem metric attribution validated by `EV-SCHEDULER-TICK` (`engine/observability/src/catalog.rs`) presupposes the subsystem decomposition declared here.
 
 ## Traceability
 

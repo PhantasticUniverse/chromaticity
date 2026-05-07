@@ -35,11 +35,11 @@ Implement script execution in a constrained sandbox with:
 
 - `EV-SCRIPT-CONTRACT` — script lifecycle hooks (`setup`, `update`, `transition`) and the allowlisted host API (`setUniform`, control updates, event registration, optional pixel readback helpers) are the row's direct subjects; the contract this row tests originates here, with engine-specific behavior validated by ADR-012's engine choice.
 - `EV-SANDBOX-SAFETY` — script isolation boundaries are this row's direct subject. The runtime guards declared here (timeout, memory, error containment) are what the sandbox security suite validates; budget numerics (p99 execution budget, hard watchdog timing) are delegated to ADR-012.
-- `EV-DETERMINISM` — deterministic host call ordering relative to the frame scheduler is part of the runtime determinism precondition; the determinism replay corpus (`docs/26` row 37) depends on script host-call dispatch being reproducible across runs. JIT vs interpreted engine choice is delegated to ADR-012 because JIT compilers are a known source of cross-run variance.
+- `EV-DETERMINISM` — deterministic host call ordering relative to the frame scheduler is part of the runtime determinism precondition; the determinism replay corpus (`docs/26` `EV-INTEGRATION-MATRIX`) depends on script host-call dispatch being reproducible across runs. JIT vs interpreted engine choice is delegated to ADR-012 because JIT compilers are a known source of cross-run variance.
 - `EV-AUTHORING-DIAGNOSTICS` — script error-containment is part of the inline/console diagnostic mapping the row tests; the runtime-guards posture here is what makes script errors recoverable to actionable diagnostics rather than runtime crashes.
 - `EV-CRASH-RESUME` — fault isolation of script crashes (per the `## Positive` consequences) is what keeps script-induced failures within their containment boundary rather than escalating to host-process crashes; the row's recovery model presupposes this isolation.
 
-The engine-choice + budgets coverage portion of this ADR is rolled forward into the `EV-ARCH-CONTRACT-BASELINE` enumeration via ADR-012 (per `docs/26` row 22, ADR-012 is the gating ADR; ADR-003 is not enumerated because the superseder carries the gating responsibility).
+The engine-choice + budgets coverage portion of this ADR is rolled forward into the `EV-ARCH-CONTRACT-BASELINE` enumeration via ADR-012 (per the `EV-ARCH-CONTRACT-BASELINE` row in `docs/26`, ADR-012 is the gating ADR; ADR-003 is not enumerated because the superseder carries the gating responsibility).
 
 ## Traceability
 

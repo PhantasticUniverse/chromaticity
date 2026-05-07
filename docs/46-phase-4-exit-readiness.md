@@ -10,7 +10,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 This document is the AO-facing EXIT-declaration packet. Every Phase-4
 EXIT row's current state, narrowing axes, and remaining gates are
 recorded below so AO can declare Phase-4 EXIT in one pass once the
-sole remaining calendar gate (row 94 `EV-ANALYTICS-ZERO-DEFAULT`)
+sole remaining calendar gate (`EV-ANALYTICS-ZERO-DEFAULT`)
 clears at ~2026-05-20.
 
 This file is a condensation of facts already in
@@ -40,17 +40,17 @@ collective narrowings.
 
 Wave 1c-α-2 production audio bootstrap (2026-05-06) further narrowed
 the `EV-AUDIO-UNIFORM-IPC` cross-tag for the audio-uniform-IPC arm of
-row 37; live IPC dispatch in production. See the Phase-4a Wave 1c-α-2
+`EV-INTEGRATION-MATRIX`; live IPC dispatch in production. See the Phase-4a Wave 1c-α-2
 closure section in `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
 
 ## Phase-4b — Authoring + Library + Import (11 rows)
 
 **Status:** all 11 rows at `Pass` as of 2026-05-07 under collective
-narrowings (row 60 + row 64 both transitioned via parallel PR-2-of-2 landings).
+narrowings (`EV-AUTHORING-LIVE-RELOAD` + `EV-IMPORT-SHADERTOY` both transitioned via parallel PR-2-of-2 landings).
 
 | Row | Evidence ID                | Status   | Narrowing                                                                                                                         |
 | --- | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 60  | EV-AUTHORING-LIVE-RELOAD   | Pass     | state-preservation cross-seam contract only; runtime-side wiring deferred to future composition wave; latency-budget arm cross-tagged with row 83 `EV-AUTHORING-UX-LATENCY` |
+| 60  | EV-AUTHORING-LIVE-RELOAD   | Pass     | state-preservation cross-seam contract only; runtime-side wiring deferred to future composition wave; latency-budget arm cross-tagged with `EV-AUTHORING-UX-LATENCY` |
 | 62  | EV-AUTHORING-DIAGNOSTICS   | Pass     | spans for JSON class only; compile / script / coercion classes emit message-only diagnostics                                      |
 | 63  | EV-AUTHORING-SCAFFOLDER    | Pass     | full scope                                                                                                                        |
 | 81  | EV-AUTHORING-UX-LATENCY    | Pass     | synthetic harness only; full UI-driven validation deferred post-MVP; cross-tagged with `EV-DOCS-UX-LATENCY`                       |
@@ -66,17 +66,17 @@ Phase-4b EXIT remains AO-held per `docs/11-roadmap-phases.md`. Per the
 Phase-4b Wave 4b.8 closure section in
 `docs/EV-GATE-MODEL-AUDIT-checklist.md`, "all 11 Phase-4b EXIT rows are
 at `Pass` under collective narrowings" was the closure language for
-the original cluster closure. Row 60 `EV-AUTHORING-LIVE-RELOAD`
+the original cluster closure. `EV-AUTHORING-LIVE-RELOAD`
 transitioned to `Pass` 2026-05-07 (Wave 4b.2 PR 2 of 2) under the
 state-preservation cross-seam-contract narrowing per the Phase-4b
-Row 61 closure section. Row 64 `EV-IMPORT-SHADERTOY` transitioned to
+`EV-AUTHORING-LIVE-RELOAD` closure section. `EV-IMPORT-SHADERTOY` transitioned to
 `Pass` 2026-05-07 (Wave 4b.5 PR 2 of 2) under the iChannel-fixture-pack
-+ broader-corpus narrowing per the Phase-4b Row 64 closure section in
++ broader-corpus narrowing per the Phase-4b `EV-IMPORT-SHADERTOY` closure section in
 `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
 
 ## Phase-4c — Embedded Documentation (1 row)
 
-**Status:** at `Pass` — co-developed with row 81
+**Status:** at `Pass` — co-developed with `EV-MIDI-EXTENDED`
 `EV-AUTHORING-UX-LATENCY` via PR `#363`.
 
 | Row | Evidence ID         | Status | Narrowing                                                                                            |
@@ -91,7 +91,7 @@ that participates in the EXIT-readiness narrowing posture under
 ## Phase-4d — Hardening (6 rows)
 
 **Status:** 5 of 6 rows at `Pass` as of 2026-05-07 under narrowings.
-**Sole remaining gate: row 94 calendar (~2026-05-20).**
+**Sole remaining gate: `EV-ANALYTICS-ZERO-DEFAULT` calendar (~2026-05-20).**
 
 | Row | Evidence ID                | Status              | Narrowing                                                                                                                                | Remaining Gate                                |
 | --- | -------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
@@ -104,27 +104,27 @@ that participates in the EXIT-readiness narrowing posture under
 
 ## Phase-4 EXIT decision
 
-**AO-declarable** once row 94 closing-docs lands (~2026-05-20). At
+**AO-declarable** once `EV-ANALYTICS-ZERO-DEFAULT` closing-docs lands (~2026-05-20). At
 that point all Phase-4 EXIT prerequisites that have been transitioned
 to `Pass` will be at `Pass` under the collective narrowings recorded
 in their respective `docs/26` description columns; the Phase-4b
-prerequisite with PR-1-of-N work shipped (row 64) carries forward at
+prerequisite with PR-1-of-N work shipped carries forward at
 the AO's discretion with the per-row PR-shipped record in `docs/26`.
 Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
 
 ## Out-of-scope items carried forward
 
 - **Phase-4a Wave 1c-β** (camera + Syphon adapters) — explicitly
-  AO-deferred per ADR-019 and the cumulative narrowings on row 37;
+  AO-deferred per ADR-019 and the cumulative narrowings on `EV-INTEGRATION-MATRIX`;
   estimated 5,000-10,000 LoC multi-week scope; requires platform
   integration decisions + likely new ADRs. Unblocked from EXIT.
 - **Production-bootstrap stale-but-last-good IPC surfacing through
-  the wire** — narrowing axis carried forward on row 83
+  the wire** — narrowing axis carried forward on `EV-AUDIO-UNIFORM-IPC`
   `EV-AUDIO-UNIFORM-IPC`; producer-side covered at T1, transitive
   IPC-seam coverage future-wave option. Unblocked from EXIT.
 - **Spectrum widget retrofit + AudioReactivity 48-bar FFT live
   visualiser** — post-MVP UX enhancements carried forward as
-  narrowing axes on row 83. The row's `Pass` posture is unaffected.
+  narrowing axes on `EV-AUDIO-UNIFORM-IPC`. The row's `Pass` posture is unaffected.
 - **Phase-4c remainder** (`EV-DOCS-CLEANROOM` on shipped-to-date
   pages, `EV-DOCS-VERSION-SYNC`) — separate AO-held gate per
   `docs/11`; out of scope for the Phase-4 EXIT readiness reading
@@ -151,12 +151,12 @@ Phase-4 EXIT itself remains AO-held per `docs/11-roadmap-phases.md`.
 | Phase-4b Wave 4b.7 (`EV-IMPORT-REFERENCE-SHOW`) | 2026-05-07     | `87b1a62` (PR `#370`) |
 | Phase-4b Wave 4b.8 (`EV-ACCESSIBILITY-AA`)     | 2026-05-07      | `e751752` (PR `#373`) |
 | Phase-4d Wave 4d.4 (`EV-SOAK-CHAOS`)           | 2026-05-07      | `ca7ddd8` (PR `#376`) |
-| Phase-4d Row 93 (`EV-CRASH-PAYLOAD-REDACTION`) | 2026-05-07      | `c57e09b` (PR `#377`) |
-| Phase-4d Row 80 (`EV-CRASH-RESUME`)            | 2026-05-07      | `23b45ba` (PR `#379`) |
-| Phase-4d Row 78 (`EV-GPU-SELECTION`)           | 2026-05-07      | `bcc4b5b` (PR `#380`) |
-| Phase-4b Row 61 (`EV-AUTHORING-LIVE-RELOAD`)   | 2026-05-07      | `2336ef5` (PR `#383`) |
-| Phase-4b Row 64 (`EV-IMPORT-SHADERTOY` PR 2)   | 2026-05-07      | `d6b266d` (PR `#384`) |
-| Phase-4d Row 94 (`EV-ANALYTICS-ZERO-DEFAULT`)  | TBD ~2026-05-20 | TBD (calendar)      |
+| Phase-4d `EV-CRASH-PAYLOAD-REDACTION` (`EV-CRASH-PAYLOAD-REDACTION`) | 2026-05-07      | `c57e09b` (PR `#377`) |
+| Phase-4d `EV-CRASH-RESUME` (`EV-CRASH-RESUME`)            | 2026-05-07      | `23b45ba` (PR `#379`) |
+| Phase-4d `EV-GPU-SELECTION` (`EV-GPU-SELECTION`)           | 2026-05-07      | `bcc4b5b` (PR `#380`) |
+| Phase-4b `EV-AUTHORING-LIVE-RELOAD` (`EV-AUTHORING-LIVE-RELOAD`)   | 2026-05-07      | `2336ef5` (PR `#383`) |
+| Phase-4b `EV-IMPORT-SHADERTOY` (`EV-IMPORT-SHADERTOY` PR 2)   | 2026-05-07      | `d6b266d` (PR `#384`) |
+| Phase-4d `EV-ANALYTICS-ZERO-DEFAULT` (`EV-ANALYTICS-ZERO-DEFAULT`)  | TBD ~2026-05-20 | TBD (calendar)      |
 
 ---
 

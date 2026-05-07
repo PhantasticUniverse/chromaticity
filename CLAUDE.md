@@ -30,22 +30,22 @@ the cumulative narrowing axes and milestone commits.
 - **Phase 3 EXIT** — achieved 2026-05-01 at commit `953fd74`. Seven of eight Phase-3
   rows (`EV-AUDIO-TRACE` cross-tag, `EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`,
   `EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`, `EV-SHOW-BUNDLE-RECOVERY`,
-  `EV-PERF-BUDGETS`) at `Pass`; row 38 `EV-COLOR-MANAGEMENT-SRGB` deferred per AO
+  `EV-PERF-BUDGETS`) at `Pass`; `EV-COLOR-MANAGEMENT-SRGB` deferred per AO
   direction behind a future render-HUD-diagnostics PR.
 - **Phase 4a EXIT** — achieved 2026-05-03. Wave 1c-α-2 production audio bootstrap
   closure landed 2026-05-06.
 - **Phase 4b EXIT** — passable at AO discretion as of 2026-05-07; all 11 Phase-4b
   rows at `Pass` under collective narrowings (Wave 4b.1 through 4b.8 inclusive).
-  Row 64 `EV-IMPORT-SHADERTOY` PR 2 of 2 (broader corpus + iChannel fixture-pack
+  `EV-IMPORT-SHADERTOY` PR 2 of 2 (broader corpus + iChannel fixture-pack
   resolution per `docs/38` §5.2a) closed the last directly-engineered Phase-4b
-  follow-on at 2026-05-07; row 60 `EV-AUTHORING-LIVE-RELOAD` PR 2 + PR 3 carry
+  follow-on at 2026-05-07; `EV-AUTHORING-LIVE-RELOAD` PR 2 + PR 3 carry
   forward at AO discretion.
-- **Phase 4d** — 5 of 6 rows at `Pass` as of 2026-05-07; row 94
+- **Phase 4d** — 5 of 6 rows at `Pass` as of 2026-05-07;
   `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 (14-day soak window).
 
 Slice-3 scheduler-tick wave (closing 2026-05-01) shipped
 `engine/runtime/src/scheduler/{mod,observability,audio,render,ipc}.rs` per
-ADR-001 / ADR-006, introducing `EV-SCHEDULER-TICK` (row 38) at `Pass`. Tick-step
+ADR-001 / ADR-006, introducing `EV-SCHEDULER-TICK` at `Pass`. Tick-step
 ordering: audio pull (BEFORE state mutation) → bus drain + frame advance → render
 dispatch (AFTER state mutation) → observability emit → IPC emit (last). Existing T2
 corpora (`state_replay`, `preset_playlist`, `state_migration`) preserve goldens via
@@ -54,24 +54,25 @@ the additive design — corpora continue to use `commit_all_into` directly with
 
 ### Phase-3 narrowings
 
-- Row 33 forward-migration only (rollback Phase-4+).
-- Row 34 existing PresetStore + PlaylistStore semantics; preset-bank durability +
-  scene-author preset capture + playlist reordering deferred Phase-4+.
-- Row 35 bundle-format spec only; recovery / rollback semantics Phase-4+.
-- Row 36 observable-subsystem proxy benchmarks; true frame-loop budget surface
-  ships Phase-4 via the Path B nightly-only criterion harness in
+- `EV-STATE-MIGRATION` forward-migration only (rollback Phase-4+).
+- `EV-PRESET-PLAYLIST` existing PresetStore + PlaylistStore semantics; preset-bank
+  durability + scene-author preset capture + playlist reordering deferred Phase-4+.
+- `EV-SHOW-BUNDLE-RECOVERY` bundle-format spec only; recovery / rollback semantics
+  Phase-4+.
+- `EV-PERF-BUDGETS` observable-subsystem proxy benchmarks; true frame-loop budget
+  surface ships Phase-4 via the Path B nightly-only criterion harness in
   `engine/runtime/benches/budgets.rs` (~$20/month-vs-~$70-80/month AO-approved cost
   posture).
 
 ### Phase-4a cumulative narrowings (Wave 1a + 1b + 1c-α + 1c-α-2)
 
-- Row 37 `EV-INTEGRATION-MATRIX` — OSC routing-matrix + MIDI input arm at `Pass`;
+- `EV-INTEGRATION-MATRIX` — OSC routing-matrix + MIDI input arm at `Pass`;
   camera + Syphon arms deferred to Wave 1c-β. The audio-uniform-IPC arm narrowing
   is now satisfied end-to-end by Wave 1c-α-2.
-- Row 80 `EV-MIDI-EXTENDED` — `Pass` under `integrations/midi-adapter/` (midir 0.10
+- `EV-MIDI-EXTENDED` — `Pass` under `integrations/midi-adapter/` (midir 0.10
   cross-platform); MPE deferred to V2 with diagnostic-fires-once rejection;
   SysEx-logged-only at MVP.
-- Row 83 `EV-AUDIO-UNIFORM-IPC` — `Pass` (per ADR-019). Live IPC dispatch flows in
+- `EV-AUDIO-UNIFORM-IPC` — `Pass` (per ADR-019). Live IPC dispatch flows in
   production after Wave 1c-α-2 (`engine/audio::AudioRuntime` producer +
   `app/shell::TauriIpcEmitter` adapter + drift-corrected 60 Hz scheduler-tick
   thread in `app/shell/src/lib.rs::run`). Three residual narrowings: (i) Spectrum
@@ -81,26 +82,27 @@ the additive design — corpora continue to use `commit_all_into` directly with
   through the wire deferred (covered at producer-side T1 by
   `engine/audio/src/runtime.rs` via `MutexAudioPull` poison-recovery, but not
   transitively through the IPC seam).
-- Rows 87 + 89 entitlement `EV-ENTITLEMENT-ENFORCEMENT` /
-  `EV-ENTITLEMENT-REVOCATION` — `Pass` at the 13-cap honored set
-  (`HONORED_TOKEN_CAPABILITIES`, data-only); IO_CAMERA intentionally excluded —
-  free at MVP per ADR-009. Revocation expiry-based only; deny-list activation
-  deferred post-MVP.
-- Rows 73, 74, 75 (hotkey trio), 82, 88, 91, 95 — full scope.
+- `EV-ENTITLEMENT-ENFORCEMENT` + `EV-ENTITLEMENT-REVOCATION` — `Pass` at the
+  13-cap honored set (`HONORED_TOKEN_CAPABILITIES`, data-only); IO_CAMERA
+  intentionally excluded — free at MVP per ADR-009. Revocation expiry-based
+  only; deny-list activation deferred post-MVP.
+- Hotkey trio (`EV-HOTKEY-PARITY-CONFORMANCE` / `EV-HOTKEY-COMPLETENESS` /
+  `EV-HOTKEY-CONFLICT`), `EV-NET-HARDENING`, `EV-ENTITLEMENT-OFFLINE`,
+  `EV-ENTITLEMENT-FREE-FEATURES`, `EV-HEALTH-METRICS-LOOPBACK-ONLY` — full scope.
 
 ### Phase-4b cumulative narrowings (Wave 4b.1 through 4b.8)
 
-- Row 101 `EV-LIBRARY-BUNDLE-LAYOUT` — full scope (four-subdir taxonomy).
-- Row 66 `EV-LIBRARY-DISCOVERY` — full scope (Wave 4b.2 indexer + Wave 4b.6
+- `EV-LIBRARY-BUNDLE-LAYOUT` — full scope (four-subdir taxonomy).
+- `EV-LIBRARY-DISCOVERY` — full scope (Wave 4b.2 indexer + Wave 4b.6
   search-filter IPC).
-- Row 67 `EV-LIBRARY-THUMBNAIL` — deterministic byte-hash stub renderer; real
+- `EV-LIBRARY-THUMBNAIL` — deterministic byte-hash stub renderer; real
   GPU-backed rendering deferred post-MVP.
-- Row 62 `EV-AUTHORING-DIAGNOSTICS` — JSON-class spans only; compile / script /
+- `EV-AUTHORING-DIAGNOSTICS` — JSON-class spans only; compile / script /
   coercion classes message-only.
-- Row 63 `EV-AUTHORING-SCAFFOLDER` — full scope.
-- Row 65 `EV-IMPORT-ISF-REJECT` — full scope; ISF native import deferred to V2 per
+- `EV-AUTHORING-SCAFFOLDER` — full scope.
+- `EV-IMPORT-ISF-REJECT` — full scope; ISF native import deferred to V2 per
   design.
-- Row 61 `EV-AUTHORING-LIVE-RELOAD` — Wave 4b.2 PR 1 of 2 (`#356` / `d56f11d`)
+- `EV-AUTHORING-LIVE-RELOAD` — Wave 4b.2 PR 1 of 2 (`#356` / `d56f11d`)
   shipped the file-watch + reload-on-change scaffolding under
   `engine/authoring/src/live_reload.rs`; PR 2 of 2 (2026-05-07) ships the
   `PreservedState` (control_values + active_preset + active_snap +
@@ -108,12 +110,12 @@ the additive design — corpora continue to use `commit_all_into` directly with
   Runtime-side wiring (engine/runtime adapter capturing `State -> PreservedState`
   before reload + re-applying via command-bus + commit-thread per ADR-006)
   deferred to a future composition wave; latency-budget arm cross-tagged with
-  row 83 `EV-AUTHORING-UX-LATENCY` (already `Pass` via PR `#363` `b2156bb`).
-- Row 79 `EV-SHADER-CACHE` — observation-only (no `scripts/budget-check.sh`
+  `EV-AUTHORING-UX-LATENCY` (already `Pass` via PR `#363` `b2156bb`).
+- `EV-SHADER-CACHE` — observation-only (no `scripts/budget-check.sh`
   extension).
-- Rows 83 + 84 `EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` — co-developed
-  cross-tagged synthetic harness; full UI-driven validation deferred post-MVP.
-- Row 86 `EV-IMPORT-REFERENCE-SHOW` — synthetic-commit harness across 8 importer
+- `EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` — co-developed cross-tagged
+  synthetic harness; full UI-driven validation deferred post-MVP.
+- `EV-IMPORT-REFERENCE-SHOW` — synthetic-commit harness across 8 importer
   classes producing `CommitOutcome` + `RollbackSnapshot` shape proof; does NOT
   mutate Chromaticity user-data stores; rollback `Ok(())` no-op (real rollback per
   ADR-015 §6 + `docs/32` deferred behind entitlement-tier-gating +
@@ -121,7 +123,7 @@ the additive design — corpora continue to use `commit_all_into` directly with
   heuristic (in lieu of canonical-route registry); hotkey V1-locked +
   control-focus literal-prefix + named-action heuristics; library cross-check on
   preset `unknown-scene` mocked-empty pending live `SceneIndex` wiring.
-- Row 76 `EV-ACCESSIBILITY-AA` — axe-core automated audit only across all 14
+- `EV-ACCESSIBILITY-AA` — axe-core automated audit only across all 14
   routed views; component-vs-page scope rules disabled per axe-core's documented
   `rules` parameter (10 rules covering landmark / page-heading / region /
   html-lang / document-title / bypass — will still apply at any future full-app
@@ -134,50 +136,50 @@ the additive design — corpora continue to use `commit_all_into` directly with
 
 ### Phase-4d cumulative narrowings (Wave 4d.1 through 4d.4 + row closures)
 
-- Row 40 `EV-SOAK-CHAOS` — CI-short synthetic-workload soak surface
+- `EV-SOAK-CHAOS` — CI-short synthetic-workload soak surface
   (sub-2-second-each in CI); ≥4-hour soak target per `docs/10` line 55 deferred to
   a calendar-gated nightly criterion-bench-style harness mirroring
   `EV-PERF-BUDGETS` Phase-3 Path B (~$20/month-vs-~$70-80/month posture);
   multi-profile fixtures use synthetic workloads representative of the
   `compat-syn-v1` and `native-chroma-v1` profiles, not the live runtime; GPU
   device-lost arm exercises a per-platform-supported flag at fixture level.
-- Row 78 `EV-GPU-SELECTION` — synthetic 10-fixture inline T2 corpus only
+- `EV-GPU-SELECTION` — synthetic 10-fixture inline T2 corpus only
   (`engine/render/src/adapter_selection.rs`); physical / VM dual-adapter
   validation deferred (CI's wgpu round-trip arm covers at-least-one-adapter only);
   TDR-history warning UI surface deferred. Hardware-gated dual-GPU validation
   remains a future PR.
-- Row 79 `EV-SHADER-CACHE` — observation-only (see Phase-4b above).
-- Row 80 `EV-CRASH-RESUME` — all 7 restoration classes (a/b/c/d/e/f/g) shipped via
+- `EV-SHADER-CACHE` — observation-only (see Phase-4b above).
+- `EV-CRASH-RESUME` — all 7 restoration classes (a/b/c/d/e/f/g) shipped via
   the additive Wave 4d.3 partial-advance pattern as `restore_class_<x>` helpers in
   `engine/runtime/src/crash_resume.rs`; class d closes the
   deferred-pending-state-shape gap by extending `State` with `SessionBindings` +
   the V2 envelope `EXT_ID_V2_SESSION_BINDINGS` extension without breaking
-  V1 → V2 forward-only migration per Phase-3 row 33. Full crash-injection drill
+  V1 → V2 forward-only migration per Phase-3 `EV-STATE-MIGRATION`. Full crash-injection drill
   (controlled `SIGKILL` / `SIGSEGV` / panic-in-render-thread / OOM at three
   wallclock points in a 10-minute scripted show) deferred to a future-wave
   full-injection harness composing on top of the synthetic restore-helper
   apparatus.
-- Row 93 `EV-CRASH-PAYLOAD-REDACTION` — synthetic crash-payload validation
+- `EV-CRASH-PAYLOAD-REDACTION` — synthetic crash-payload validation
   harness in `engine/observability/src/crash_harness.rs`
   (`SimulatedCrashClass` 4-arm + `SyntheticCrashPayload` constructor populating
   all 5 `RedactCategory` arms with class-distinct sentinel strings +
   substring-search detection over serialised redacted output); real
   platform-specific crash-handler injection (POSIX signal handlers / panic-hook
   wiring / OOM-killer integration) reserved for a future-wave full-injection
-  harness — same precedent as row 40.
-- Row 94 `EV-ANALYTICS-ZERO-DEFAULT` — Wave 4d.1 Lane B scaffolding shipped;
+  harness — same precedent as `EV-SOAK-CHAOS`.
+- `EV-ANALYTICS-ZERO-DEFAULT` — Wave 4d.1 Lane B scaffolding shipped;
   closing docs calendar-gated to ~2026-05-20 (14-day soak window).
 
 ### Out-of-scope (AO-deferred)
 
 - **Wave 1c-β** (camera + Syphon adapters) — new ADR(s) + multi-week
   implementation cycle; estimated 5,000-10,000 LoC.
-- **Production-bootstrap follow-on** for row 83 stale-but-last-good IPC seam
-  surfacing (axis (iii)).
-- **Hardware-gated** validation for rows 78 (dual-GPU) and the row 80 / 93
-  full-injection crash harness.
+- **Production-bootstrap follow-on** for `EV-AUDIO-UNIFORM-IPC` stale-but-last-good
+  IPC seam surfacing (axis (iii)).
+- **Hardware-gated** validation for `EV-GPU-SELECTION` (dual-GPU) and the
+  `EV-CRASH-RESUME` / `EV-CRASH-PAYLOAD-REDACTION` full-injection crash harness.
 - **Post-MVP UX enhancements** — Spectrum widget retrofit + `AudioReactivity`
-  48-bar FFT visualiser live wiring (row 83 narrowing).
+  48-bar FFT visualiser live wiring (`EV-AUDIO-UNIFORM-IPC` narrowing).
 
 ### Live-IPC dispatch verified (Wave 1c-α-2, 2026-05-06)
 
@@ -570,7 +572,7 @@ surfaced from the PR #47 `EV-COMPAT-FIXTURE-COVERAGE` scope-correction:
   brief is the weaker document.
 - **Re-derive test tier from the registry `Generation Source` column, not the brief.**
   A brief's `T<n>` label is inherited data; the canonical axis is `docs/26` row
-  `Generation Source` (e.g. row 23's "Scene import harness + golden corpus fixtures"
+  `Generation Source` (e.g. `EV-SCENE-IMPORT`'s "Scene import harness + golden corpus fixtures"
   as the T2 target for `EV-SCENE-IMPORT`) read against `docs/43` §15.5 T-tier
   definitions. A tier-mislabel produces a test module that can't satisfy its row — a
   rollup inconsistency `evidence-tag-lint` surfaces much later than the PR that

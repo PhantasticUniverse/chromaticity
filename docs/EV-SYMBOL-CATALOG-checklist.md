@@ -203,8 +203,8 @@ Sec.2.11 and Sec.8 so authoring surface remains stable across the transition.
       corpus (`engine/render/tests/audio_adapter.rs`, silent-frame and 440 Hz
       sine byte-hash fixtures) already exercise every binding in Sec.2.11. The
       v1.1.0 ratification deferred fixture coverage to Phase-2 evidence-row
-      closure, which has since landed under `EV-RENDER-CONFORMANCE` (row 28)
-      and `EV-AUDIO-TRACE` (row 30).
+      closure, which has since landed under `EV-RENDER-CONFORMANCE`
+      and `EV-AUDIO-TRACE`.
 - (c) **Release-notes entry appended** to
       `docs/22-compatibility-versioning-policy.md` Catalog Ratification Log
       (v1.2.0 row, 2026-05-01) by this PR.
@@ -258,8 +258,8 @@ yet), so no `compat-syn-v1` aliases are required.
       preserved verbatim because zero FFT bands sum identically under
       any summation order, so the GLSL `arr[K]` summation reorder
       under SPIR-V compilation produces no rounding delta on that
-      fixture. Coverage remains under `EV-RENDER-CONFORMANCE` (row 28)
-      and `EV-AUDIO-TRACE` (row 30).
+      fixture. Coverage remains under `EV-RENDER-CONFORMANCE`
+      and `EV-AUDIO-TRACE`.
 - (c) **Release-notes entry appended** to
       `docs/22-compatibility-versioning-policy.md` Catalog Ratification
       Log (v1.3.0 row, 2026-05-01) by this PR.
