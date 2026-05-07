@@ -2837,3 +2837,226 @@ does not pre-empt the Phase-4 EXIT gate decision.
 ### Sign-off
 
 - [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07
+
+## Phase-4a Wave 1c-β closure
+
+**Date.** 2026-05-07.
+
+**Scope.** `EV-INTEGRATION-MATRIX` (registry line 53) cumulative
+narrowing widening: drops the "camera + Syphon arms deferred to Wave
+1c-β" narrowing accumulated across Phase-4a Wave 1a + Wave 1b. Both
+arms now ship at full Phase-4a scope under the documented synthetic-
+narrowing posture (T2 corpora × deterministic synthetic frames per
+the row 78 / row 40 / row 93 precedent; per-platform binding stubs +
+Syphon `Send`-trait reconciliation deferred to follow-up PRs;
+hardware validation manual on AO dev rigs). With this closure, all
+five `EV-INTEGRATION-MATRIX` arms (OSC + MIDI + audio-uniform-IPC +
+camera + Syphon) are widened.
+
+### Per-PR sequence (16 PRs total)
+
+**Phase 1 — Design (5 PRs, 2026-05-07).**
+
+- **PR `#389`** — Wave 1c-β threat-model + decision-driver corpus
+  amendments under `docs/threat-model/` plus `docs/52-` design notes
+  (camera/Syphon platform integration analysis).
+- **PR `#390`** — ADR-009 permission-policy addendum widening the
+  capability vocabulary to cover camera + Syphon flows; honored-cap
+  set widening sequenced behind the PR `#391` / PR `#392` ADR
+  acceptance.
+- **PR `#391`** — ADR-020 acceptance (camera input adapter design
+  per the nokhwa cross-platform abstraction; CoreMediaIO on macOS +
+  Media Foundation on Windows; permission-flow trait surface +
+  texture-binding namespace + synthetic-corpus posture per
+  `docs/54` Phase-2 lessons).
+- **PR `#392`** — ADR-021 acceptance (Syphon publisher / subscriber
+  adapter design for macOS GPU IO; `objc2 = "0.5"` framework
+  bindings against `SyphonMetalServer` / `SyphonMetalClient` /
+  `SyphonServerDirectory`; synthetic-corpus posture per `docs/54`
+  Phase-3 lessons; CVPixelBuffer + IOSurface marshal pattern).
+- **PR `#393`** — research-pass amendments under `docs/52-` /
+  `docs/54-` capturing the Phase-2 + Phase-3 lessons that drove the
+  ADR-020 + ADR-021 acceptance shapes.
+
+**Phase 1.7 — Acceptance + Vendor (1 PR, 2026-05-07).**
+
+- **PR `#394`** — final ADR-020 + ADR-021 acceptance metadata pass
+  plus Syphon-Framework BSD-3-Clause vendoring under
+  `third_party/Syphon-Framework/` (license headers, REUSE
+  registration, deny.toml allowlist alignment).
+
+**Phase 2 — Camera track (5 PRs + 1 hotfix, 2026-05-07).**
+
+- **PR `#395`** — `integrations/camera-adapter/` crate scaffold:
+  `CameraAdapter` trait + `NokhwaInputAdapter` impl seam +
+  `CameraConfig` / `CameraDeviceKind` / `DeviceSummary` enumeration
+  types + `CameraFrame` / `PixelFormat` + six canonical `pub const`
+  fault-reason strings + `defaults.rs` ADR-020 §3 constants under T1
+  drift pins.
+- **PR `#397`** — macOS permission-flow trait surface
+  (`AuthorizationProbe` / `InUsePrecheck` traits +
+  `PlaceholderProbe` impl); `unsafe_code` stays forbidden in the
+  adapter crate (binding stubs only).
+- **PR `#399`** — Windows MF permission-probe trait surface
+  (`WindowsCameraProbe` trait + canonical HRESULT → fault-reason
+  mapping); `unsafe_code` stays forbidden in the adapter crate
+  (binding stubs only).
+- **PR `#402`** — hotfix removing an unused Windows import surfaced
+  by `cargo clippy --workspace --all-targets` after PR `#399` merge.
+- **PR `#401`** — T2 synthetic corpus: 12 fixtures × deterministic
+  synthetic frames per `docs/54` Phase-2 lessons (frame-marshal
+  shape, fault-reason taxonomy, permission-state transitions,
+  pixel-format mapping table, slot-bound rejection, multi-camera
+  slot independence).
+- **PR `#403`** — engine/render bridge:
+  `engine/render/src/camera_adapter.rs` ships
+  `camera_texture_binding_from_frame` pure-function marshal +
+  `CameraTextureBinding` carrier shape + `CAMERA_UNIFORM_NAMES` /
+  `camera_uniform_name` slot lookup + 7 T1 drift pins + per-track
+  closing-docs (description-column update on `EV-INTEGRATION-MATRIX`
+  for the camera-arm closure).
+
+**Phase 3 — Syphon track (3 PRs, 2026-05-07).**
+
+- **PR `#396`** — `integrations/syphon-adapter/` crate scaffold:
+  public surface types, defaults, server-directory discovery seam,
+  `SyphonInputAdapter` / `SyphonOutputAdapter` bind / unbind / poll
+  / publish state machine through the `SyphonClientHandle` /
+  `SyphonServerHandle` trait abstraction.
+- **PR `#398`** — `objc2 = "0.5"` framework binding declarations
+  against `SyphonMetalServer` / `SyphonMetalClient` /
+  `SyphonServerDirectory` plus 11-fixture T2 mock-backend corpus
+  (deterministic synthetic frames; trait-mock backend per the row
+  78 / row 40 / row 93 precedent).
+- **PR `#400`** — engine/render bridge:
+  `engine/render/src/syphon_adapter.rs` ships `SyphonRenderBridge`
+  carrier + real-backend `Objc2SyphonClientHandle` /
+  `Objc2SyphonServerHandle` carrier shapes +
+  `SyphonRenderBridgeError` variant taxonomy + 10 T1 trait-impl-
+  shape pins (gated behind the new `syphon-binding` cargo feature
+  on `engine/render` plus `cfg(target_os = "macos")`) + per-track
+  closing-docs (description-column update on
+  `EV-INTEGRATION-MATRIX` for the Syphon-arm closure).
+
+**Phase 4 — UI integration (2 PRs, 2026-05-07).**
+
+- **PR `#404`** — `Sources.svelte` camera source-picker (Wave 1c-β
+  Phase 4 lane A): camera-input device list bound to the
+  camera-adapter `enumerate_devices` seam through the Tauri IPC
+  shim; per-source kind affordances (Built-In / USB / Virtual);
+  permission-state pill per the macOS / Windows probe surface.
+- **PR `#405`** — `Sources.svelte` Syphon source-picker (Wave 1c-β
+  Phase 4 lane B): Syphon server list bound to the
+  syphon-adapter `list_syphon_servers` seam (currently empty-vec
+  stub awaiting the deferred NSDistributedNotificationCenter
+  observer wave); per-server app-name + name display.
+
+**Phase 5 — Cluster closing-docs (1 PR, this PR).**
+
+- **This PR** — drops the cumulative "camera + Syphon arms
+  deferred to Wave 1c-β" narrowing on `EV-INTEGRATION-MATRIX`;
+  retires the Wave 1c-β AO-deferral note from `CLAUDE.md`; flips
+  camera + Syphon entries in `docs/53` from gap to implemented;
+  adds this Phase-4a Wave 1c-β closure section to
+  `docs/EV-GATE-MODEL-AUDIT-checklist.md`; updates
+  `docs/46-phase-4-exit-readiness.md` Phase-4a row + anchor commit
+  table; appends a closure paragraph to R-05 in
+  `docs/13-risk-register.md`.
+
+### Per-row verdict (cumulative narrowing widened)
+
+- **`EV-INTEGRATION-MATRIX`** — stays at `Pass` (already
+  transitioned in Phase-4a Wave 1a-A); the Phase-4a EXIT closure
+  decision was AO-declarable as of 2026-05-03 under collective
+  narrowings. This Phase-5 cluster closure widens the row's Pass
+  scope by dropping the cumulative "camera + Syphon arms deferred
+  to Wave 1c-β" narrowing. Both arms ship per the per-track
+  description-column updates on the row (PR `#400` Syphon-arm
+  closure paragraph + PR `#403` camera-arm closure paragraph)
+  with this PR appending the Phase-5 cluster-closure paragraph.
+
+### Per-Type Minimums verification
+
+For row `EV-INTEGRATION-MATRIX`, the Phase-4a EXIT closure section
+already records the Per-Type Minimums (anchor run id `25213038199`
+on Phase-4a Wave 1a-A merge `77f174c`) which carry forward
+unchanged. The Wave 1c-β cluster closure adds per-track anchors
+through the per-track closing-docs already shipped in PRs `#400` +
+`#403` (Syphon-arm + camera-arm description-column updates). This
+Phase-5 closing-docs PR is documentation-only (no engineering code
+changes); the auditable anchor for this PR is its own workspace
+nextest job at the merge sha.
+
+### Cumulative session recap
+
+16 PRs landed on `main` covering the full Wave 1c-β engineering
+sequence: 5 design PRs (`#389`-`#393`) + 1 acceptance/vendor PR
+(`#394`) + 5 camera-track PRs (`#395` `#397` `#399` `#401` `#403`)
++ 1 hotfix PR (`#402`) + 3 Syphon-track PRs (`#396` `#398` `#400`)
++ 2 Phase-4 UI PRs (`#404` `#405`) + this Phase-5 closing-docs PR.
+Each engineering PR's workspace nextest job is the auditable
+per-PR anchor; the Phase-5 closing-docs PR's nextest job is the
+auditable cluster anchor.
+
+### Verdict
+
+**Phase-4a Wave 1c-β cluster closure achieved 2026-05-07 at commit
+`<merge-sha>`** (the merge commit of this Phase-5 closing-docs PR).
+With this closure, `EV-INTEGRATION-MATRIX` is at full Phase-4a
+scope across all five arms (OSC + MIDI + audio-uniform-IPC +
+camera + Syphon) with no cumulative narrowing remaining beyond the
+per-arm deferred-axes records below. Phase-4a EXIT remains
+AO-declarable per the existing posture (achieved 2026-05-03 under
+collective narrowings; this closure widens the Pass scope by
+dropping one of those narrowings); the cluster closure does not
+pre-empt the Phase-4 / Phase-4b / Phase-4c / Phase-4d gate
+decisions that remain AO-held per `docs/11-roadmap-phases.md`.
+
+### Deferred axes (cluster narrowing record)
+
+These items are explicitly out-of-scope for Wave 1c-β and tracked
+as known follow-ups:
+
+- **macOS + Windows nokhwa concrete bindings** — PRs `#397` +
+  `#399` ship trait-only stubs (`AuthorizationProbe` /
+  `InUsePrecheck` / `WindowsCameraProbe` + `PlaceholderProbe`
+  impl); the live CoreMediaIO / Media Foundation binding wiring is
+  encapsulated by nokhwa upstream so the workspace
+  `unsafe_code = "forbid"` lint stays in force inside
+  `integrations/camera-adapter/` itself per ADR-020 "Decision
+  Drivers". Concrete binding-call surface deferred to a follow-up
+  policy-scoped `unsafe_code` widening PR.
+- **Syphon `SyphonClientHandle: Send` vs
+  `Retained<SyphonMetalClient>: !Send` reconciliation** — PR
+  `#400` worked around with carrier shapes that intentionally do
+  NOT yet store the `Retained<SyphonMetalClient>` /
+  `Retained<SyphonMetalServer>` framework handles because the
+  trait's `Send` bound declared by PR `#398` is incompatible with
+  `objc2`'s `NSObject` interior. Full reconciliation via a
+  render-thread-affine `unsafe Send` wrapper per ADR-006 deferred
+  to a post-Wave-1c-β policy-scoped follow-up.
+- **`list_syphon_servers` real
+  `NSDistributedNotificationCenter` observer** — currently
+  empty-vec stub; needs main-thread runloop integration. The PR
+  `#405` Sources.svelte Syphon source-picker hits the stub today
+  and renders an empty-state. Future-wave option to land the
+  observer plus reactive store wiring; out-of-scope at Wave 1c-β.
+- **`publish_syphon_output` / `unpublish_syphon_output` real-
+  impl** — currently synthetic stubs returning
+  `SyphonRenderBridgeError::Unimplemented` per the documented
+  PR 3 narrowing in `engine/render/src/syphon_adapter.rs`.
+  Live `wgpu_hal::api::Metal` escape-hatch + `CVMetalTextureCache`
+  allocation + `CVPixelBufferPool` 2-3-surface pre-warm ring per
+  `docs/54` Phase-3 lessons 3.1 / 3.3 / 3.4 / 3.6 / 3.8 deferred to
+  a follow-up hardware-validated wave.
+- **Real hardware validation** — the synthetic-corpus posture per
+  ADR-020 §10 + ADR-021 §10 + `docs/54` Phase-2 / Phase-3 lessons
+  defers physical camera + Syphon publisher-subscriber validation
+  to manual exercise on AO dev rigs. Same precedent as `EV-CRASH-
+  RESUME` synthetic restore-helper narrowing accepted at the row
+  80 closure 2026-05-07 and the `EV-GPU-SELECTION` synthetic dual-
+  adapter narrowing accepted at the row 78 closure 2026-05-07.
+
+### Sign-off
+
+- [x] AO sign-off: Xavier Butler (@PhantasticUniverse) — 2026-05-07

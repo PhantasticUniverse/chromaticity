@@ -64,11 +64,15 @@ the additive design — corpora continue to use `commit_all_into` directly with
   `engine/runtime/benches/budgets.rs` (~$20/month-vs-~$70-80/month AO-approved cost
   posture).
 
-### Phase-4a cumulative narrowings (Wave 1a + 1b + 1c-α + 1c-α-2)
+### Phase-4a cumulative narrowings (Wave 1a + 1b + 1c-α + 1c-α-2 + 1c-β)
 
-- `EV-INTEGRATION-MATRIX` — OSC routing-matrix + MIDI input arm at `Pass`;
-  camera + Syphon arms deferred to Wave 1c-β. The audio-uniform-IPC arm narrowing
-  is now satisfied end-to-end by Wave 1c-α-2.
+- `EV-INTEGRATION-MATRIX` — OSC + MIDI + audio-uniform-IPC + camera + Syphon all
+  widened post-Wave-1c-β-closure 2026-05-07 (16-PR sequence covering PRs `#389`-`#405`
+  inclusive); synthetic-narrowing posture per the row 78 / row 40 / row 93 precedent;
+  per-platform binding stubs + Syphon `Send`-trait reconciliation +
+  `list_syphon_servers` `NSDistributedNotificationCenter` observer +
+  `publish_syphon_output` real-impl + real hardware validation deferred to follow-up
+  PRs per `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β closure section.
 - `EV-MIDI-EXTENDED` — `Pass` under `integrations/midi-adapter/` (midir 0.10
   cross-platform); MPE deferred to V2 with diagnostic-fires-once rejection;
   SysEx-logged-only at MVP.
@@ -172,8 +176,12 @@ the additive design — corpora continue to use `commit_all_into` directly with
 
 ### Out-of-scope (AO-deferred)
 
-- **Wave 1c-β** (camera + Syphon adapters) — new ADR(s) + multi-week
-  implementation cycle; estimated 5,000-10,000 LoC.
+- **Wave 1c-β follow-ups** — Wave 1c-β closed 2026-05-07 under synthetic-narrowing;
+  per-platform nokhwa concrete bindings + Syphon `Send`-trait reconciliation +
+  `list_syphon_servers` `NSDistributedNotificationCenter` observer +
+  `publish_syphon_output` real-impl + hardware validation carry forward as known
+  follow-up PRs per `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β
+  closure section.
 - **Production-bootstrap follow-on** for `EV-AUDIO-UNIFORM-IPC` stale-but-last-good
   IPC seam surfacing (axis (iii)).
 - **Hardware-gated** validation for `EV-GPU-SELECTION` (dual-GPU) and the
