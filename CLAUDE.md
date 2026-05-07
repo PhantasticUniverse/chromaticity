@@ -214,11 +214,70 @@ foundation + discovery + settings + presets importers under
   primary anchor for row 85 Pass). Remaining Phase-4b EXIT
   prerequisite is now Wave 4b.8 (`EV-ACCESSIBILITY-AA`) only;
   Phase-4b EXIT decision remains AO-held per
-  `docs/11-roadmap-phases.md`. Engine and integration crates
-  (runtime, scene, audio, observability, render, script, entitlement, osc-adapter,
-  midi-adapter) carry foundational evidence at EXIT quality; parallel UI port waves
-  against the v0.2-beta bundle closed all three Vitest test-coverage tracks (widgets,
-  shell components, routed views).
+  `docs/11-roadmap-phases.md`. **Phase-4b Wave 4b.8 closure landed
+  2026-05-07** in a 3-PR session covering PR numbers 371 + 372 plus
+  this docs(repo) closing PR (PR `#371` / `54be28a` axe-core harness
+  integration adding `src/lib/__tests__/accessibility/` with
+  `axe-harness.ts` + `baseline-allowlist.ts` + `wcag-aa-corpus.test.ts`
+  auditing all 14 routed views against WCAG 2.2 AA tags `wcag2a` +
+  `wcag2aa` + `wcag22a` + `wcag22aa` under jsdom + `axe-core ^4.10.0`;
+  PR `#372` / `896b65a` automated remediation tightening per-view +
+  per-tier budgets to strict `{0, 0, 0, 0}` across 14 views × 4
+  severity tiers (critical / serious / moderate / minor), 6
+  component-level fixes closing 5 real findings (`VuStereo` widget
+  `role="img"` + `CuePad` widget `role="grid"` → `role="group"` +
+  `Author` view inspector tab strip + utility toolbar split + `MIDI`
+  view saved-state dot `role="img"` + `Perform` view rail
+  `role="tablist"` → `role="toolbar"` + `CueTransitionCurve` widget
+  SVG `role="img"` → `role="group"` per `nested-interactive`), plus
+  10 page-scoped axe rules disabled at component scope per axe-core's
+  documented `rules` parameter (`landmark-one-main` +
+  `landmark-no-duplicate-banner` + `landmark-no-duplicate-contentinfo`
+  - `landmark-unique` + `page-has-heading-one` + `region` +
+    `html-has-lang` + `html-lang-valid` + `document-title` + `bypass`
+    — disabled rules will still apply at any future full-app
+    integration audit); plus this docs(repo) closing PR). Row 76
+    `EV-ACCESSIBILITY-AA` transitions `Planned` → `Pass` under three
+    explicit narrowings: (1) axe-core automated audit only across all
+    14 routed views (`AudioUniforms`, `Author`, `Import`, `Inputs`,
+    `Library`, `License`, `MIDI`, `Osc`, `Patch`, `Perform`,
+    `Playlist`, `Settings`, `Sources`, `Welcome`); (2) component-vs-page
+    scope rules disabled per axe-core's documented `rules` parameter
+    (10 rules covering landmark / page-heading / region / html-lang /
+    document-title / bypass that only meaningfully apply to complete
+    page layouts, not component-level fragments — rules will still
+    apply at any future full-app integration audit); (3) manual
+    VoiceOver / NVDA review deferred to AO-led validation territory.
+    Anchor run ids: 25469037211 (PR `#371` harness) + 25469465083 (PR
+    `#372` remediation; primary anchor for row 76 Pass). After this
+    closure all 11 Phase-4b EXIT rows are at `Pass` under collective
+    Phase-4b narrowings; **Phase-4b EXIT is passable at AO discretion**
+    (the same posture Phase-4a reached prior to AO declaring EXIT
+    2026-05-03 at commit `<merge-sha>`); Phase-4b EXIT decision remains
+    AO-held per `docs/11-roadmap-phases.md`. Cumulative Phase-4b
+    narrowings recap (across Wave 4b.1 through 4b.8): row 101
+    `EV-LIBRARY-BUNDLE-LAYOUT` full scope; row 66
+    `EV-LIBRARY-DISCOVERY` full scope (Wave 4b.2 indexer + Wave 4b.6
+    search-filter IPC); row 67 `EV-LIBRARY-THUMBNAIL` deterministic
+    byte-hash stub renderer (real GPU-backed rendering deferred
+    post-MVP); row 62 `EV-AUTHORING-DIAGNOSTICS` JSON-class spans only
+    (compile / script / coercion classes message-only); row 63
+    `EV-AUTHORING-SCAFFOLDER` full scope; rows 83 + 84
+    `EV-AUTHORING-UX-LATENCY` + `EV-DOCS-UX-LATENCY` synthetic-only
+    (full UI-driven validation deferred post-MVP); row 65
+    `EV-IMPORT-ISF-REJECT` full scope (ISF native import deferred to
+    V2); row 79 `EV-SHADER-CACHE` observation-only (no
+    `scripts/budget-check.sh` extension); row 86
+    `EV-IMPORT-REFERENCE-SHOW` synthetic-commit harness +
+    synthetic-rollback no-op + OSC chroma-prefix collision heuristic +
+    hotkey V1-locked + control-focus heuristics + library cross-check
+    mocked-empty; row 76 `EV-ACCESSIBILITY-AA` axe-core-only +
+    component-scope-disabled + manual-deferred. Engine and integration
+    crates (runtime, scene, audio, observability, render, script,
+    entitlement, osc-adapter, midi-adapter) carry foundational evidence
+    at EXIT quality; parallel UI port waves against the v0.2-beta
+    bundle closed all three Vitest test-coverage tracks (widgets,
+    shell components, routed views).
 
 Authoritative planning corpus lives under `docs/`. Two documents to read first:
 `docs/43-development-standards.md` (standards) and
