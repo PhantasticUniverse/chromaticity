@@ -24,7 +24,7 @@
 //! - **Slice 2** — real validator, CP-01 coercion, typed control
 //!   declarations, serde derives (derive-only). Schema fields
 //!   remained `pub(crate)`; no wire-format freeze.
-//! - **Slice 3a (this PR)** — `scene.json` wire-format freeze against
+//! - **Slice 3a** — `scene.json` wire-format freeze against
 //!   `docs/02-synesthesia-contracts.md` §Observed root keys + §Observed
 //!   control keys + §2 Multipass, schema field visibility widened from
 //!   `pub(crate)` to `pub`, and a minimal `serde_json`-backed loader
@@ -32,12 +32,19 @@
 //!   `docs/22-compatibility-versioning-policy.md` §Version Axes
 //!   scene-schema row, further non-additive wire changes now require a
 //!   `compat!` profile bump.
-//! - **Slice 4 (next)** — structured parsing of `HARD_TRANSITIONS` /
-//!   `SMOOTH_TRANSITIONS` per `docs/02` §15, `.chromaPack` zip transport,
-//!   `script.js` / `main.glsl` / `images/` pairing, the full
-//!   `docs/36-reactive-symbol-catalog.md` loader, and the scene-lint
-//!   harness emitting the [`lint::Warning`] taxonomy outside the
-//!   validate path.
+//! - **Slice 4 (partial — split across modules)** — shipped:
+//!   `script.js` / `main.glsl` / `images/` directory pairing via
+//!   [`loader::load_chroma_dir`]; the scene-lint harness emitting the
+//!   [`lint::Warning`] taxonomy outside the validate path
+//!   ([`lint::scene_lint_classification`] + the 15-fixture corpus in
+//!   `engine/scene/tests/lint_corpus.rs` advancing row 26 to Pass);
+//!   the `.chromaShow` bundle format harness ([`show_bundle`], Phase-3
+//!   wave PR 5 / `#308`); and the [`engine/authoring`] sister crate's
+//!   scaffolder + ISF-reject + Shadertoy-import surfaces (Phase-4b
+//!   wave). Still deferred: structured parsing of `HARD_TRANSITIONS` /
+//!   `SMOOTH_TRANSITIONS` per `docs/02` §15, the `.chromaPack` zip
+//!   transport, and the full `docs/36-reactive-symbol-catalog.md`
+//!   loader.
 //!
 //! Produces evidence for `EV-SCENE-IMPORT` (T0 placeholder retained
 //! in `validator::ctor_placeholder`; T1 drift pins in

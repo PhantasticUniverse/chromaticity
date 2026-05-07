@@ -22,7 +22,7 @@
 //!   `globalThis.process`, `globalThis.window` are all `undefined`
 //!   by construction, and `import('foo')` rejects at parse time as
 //!   ECMAScript-module syntax outside an `eval`-mode script.
-//! - **Slice 2 (this PR)** — watchdog timeouts (1 ms p99 soft / 4 ms
+//! - **Slice 2** (PR `#258` / `13cd1ca`) — watchdog timeouts (1 ms p99 soft / 4 ms
 //!   hard per ADR-012 §2) via
 //!   `rquickjs::Runtime::set_interrupt_handler`. The
 //!   [`ScriptRuntime::with_watchdog`] builder method mounts a
@@ -34,7 +34,7 @@
 //!   evidence opens; `EV-SCRIPT-CONTRACT` widens with the watchdog
 //!   path. The slice-1 `ScriptRuntime::new()` constructor stays
 //!   watchdog-free for slice-1 callers' continuity.
-//! - **Slice 3 (this PR)** — memory cap (16 MiB heap per ADR-012
+//! - **Slice 3** (PR `#262` / `7aeeb45`) — memory cap (16 MiB heap per ADR-012
 //!   §3) via `rquickjs::Runtime::set_memory_limit`. The
 //!   [`ScriptRuntime::with_memory_limit`] builder method mounts
 //!   the cap on every per-execute bracketed scope; allocations
@@ -48,7 +48,7 @@
 //!   `EV-SANDBOX-SAFETY` widens with the memory-cap path; the
 //!   slice-2 watchdog continues to compose alongside the
 //!   memory cap on a single-runtime builder chain.
-//! - **Slice 4 (this PR)** — determinism shims: seeded
+//! - **Slice 4** (PR `#266` / `0c486d2`) — determinism shims: seeded
 //!   `Math.random()` (xoroshiro128+, expanded from a caller-supplied
 //!   `u64` seed via splitmix64) and frame-locked `Date.now()` (a
 //!   caller-injected [`determinism::Clock`] trait object,
@@ -63,7 +63,7 @@
 //!   widens with the determinism path. `EV-DETERMINISM` opens
 //!   for the script lane in a later slice once the recorded-seed
 //!   replay corpus lands.
-//! - **Slice 5.1 (this PR)** — command-bus integration foundational
+//! - **Slice 5.1** (PR `#273` / `f8f819b`) — command-bus integration foundational
 //!   mount: producer-side bridge from a JS-side
 //!   `__chromaticityEmit(name, value)` global to a host-supplied
 //!   [`command_bus::ScriptCommandSender`] trait object. Engine/script
@@ -83,7 +83,7 @@
 //!   failure modes lifted from the JS-side throw via the runtime's
 //!   post-execute remap). `EV-SCRIPT-CONTRACT` widens with the
 //!   command-bus path.
-//! - **Slice 5.2 (this PR)** — typed reactive-symbol-catalog
+//! - **Slice 5.2** (PR `#278` / `ad8379d`) — typed reactive-symbol-catalog
 //!   binding: maps `docs/36` v1.3.0 retentions (e.g. `syn_BPM`,
 //!   `syn_Level`, `syn_Spectrum`) and the slice-5a chromaticity-
 //!   native `chroma_AudioRMS` / `chroma_AudioPeak` primitives (the
@@ -113,7 +113,7 @@
 //!   crate) so the dep direction stays clean — engine/script does
 //!   not take a `chromaticity-runtime` dep. `EV-SCRIPT-CONTRACT`
 //!   widens with the catalog-binding path.
-//! - **Slice 5.3 (this PR)** — engine/runtime consumer-side adapter:
+//! - **Slice 5.3** (PR `#282` / `855ed9a`) — engine/runtime consumer-side adapter:
 //!   the `chromaticity_runtime::script_bridge` module (gated behind
 //!   the runtime-side `script-bridge` Cargo feature) implements
 //!   [`ScriptCommandSender`] over a runtime-owned bounded
@@ -192,12 +192,10 @@
 //! Per `docs/26-evidence-artifact-registry.md` rows 29 / 42
 //! Phase-2-exit definitions, full conformance — host-API parity
 //! matrix, lifecycle hooks, event ordering, full sandbox-isolation
-//! audit — requires successive slices. Both rows stay `Planned` /
-//! `pending:artifact` while the harness path tightens. Registry
-//! updates after slice 2 land on a separate small follow-up commit
-//! (this PR is `engine/script` only and does not touch
-//! `docs/26-evidence-artifact-registry.md` or
-//! `docs/13-risk-register.md`).
+//! audit — required successive slices; the slice 5.3 producer /
+//! consumer / catalog / adapter quad covers the cross-crate contract.
+//! Per-slice registry updates land on separate follow-up `docs(repo)`
+//! commits.
 //!
 //! Governing ADRs:
 //!

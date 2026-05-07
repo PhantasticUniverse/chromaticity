@@ -20,13 +20,15 @@
 //! `Event` / `SnapshotPayload` shapes if the IPC contract grows beyond
 //! the typed-newtype + scene-card + osc-health set.
 //!
-//! Wave 1c-α (this PR) adds the [`AudioUniformSnapshotPayload`]
-//! ts-rs newtype mirror of [`chromaticity_audio::AudioUniformSnapshot`]
-//! per `docs/adr/ADR-019-audio-uniform-ipc-bridge.md`. The payload's
+//! Wave 1c-α (PR `#339` / `c1d93e8`) added the
+//! [`AudioUniformSnapshotPayload`] ts-rs newtype mirror of
+//! [`chromaticity_audio::AudioUniformSnapshot`] per
+//! `docs/adr/ADR-019-audio-uniform-ipc-bridge.md`. The payload's
 //! producer-side emit step rides
 //! [`chromaticity_runtime::scheduler::ipc::IpcEmit`]; the
-//! consumer-side Svelte listener wiring lands in the Wave 1c-α PR 2
-//! follow-up.
+//! consumer-side Svelte listener (`audioSnapshot.svelte.ts`) shipped
+//! in PR `#340`. Wave 1c-α-2 production-bootstrap (PRs `#343` /
+//! `#344`) closed the live producer→Tauri-emit→consumer wiring loop.
 //!
 //! See `docs/47-ui-port-plan.md` §7.2 for the bridge-crate role.
 
