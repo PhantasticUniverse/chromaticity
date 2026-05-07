@@ -95,3 +95,33 @@ serde = { version = "1", features = ["derive"] }
 # Display) is cheap once thiserror is already in the dep graph via
 # engine/render and engine/script.
 thiserror = "2"
+
+# macOS-only Objective-C binding stack. Non-macOS workspace builds
+# do not resolve these dependencies; the `src/macos.rs` module is
+# gated by `#[cfg(target_os = "macos")]` per ADR-020 §5. Phase 2
+# PR 2 (this PR) declares the dependencies and wires the
+# trait-based authorization-status / in-use-precheck / request-
+# access seams; the concrete `AVCaptureDevice` Objective-C binding
+# code that requires the per-module `#[allow(unsafe_code)]`
+# exemption (and the accompanying policy-scoped widening of the
+# workspace `unsafe_code = "forbid"` floor per `docs/43` §12.6) is
+# deferred to a follow-up policy-scoped PR. Mirrors the
+# `integrations/syphon-adapter/` precedent — Syphon PR 1 ships the
+# `objc2 = "0.5"` + `objc2-foundation = "0.2"` declarations without
+# any `unsafe` blocks, then PR 2 lands the binding code under the
+# policy-scoped lint widening.
+[target.'cfg(target_os = "macos")'.dependencies]
+# objc2 0.5: Objective-C runtime bindings. Dual MIT / Apache-2.0
+# (allow-listed in deny.toml). Reserved for the future
+# `AVCaptureDevice.authorizationStatus(for: .video)` /
+# `AVCaptureDevice.requestAccess(for: .video)` /
+# `AVCaptureDevice.isInUseByAnotherApplication` binding declarations
+# per ADR-020 §5 + `docs/54-wave-1c-beta-research-lessons.md`
+# Phase-2 lessons 2 + 10. The scaffold trait surface in
+# `src/macos.rs` is dependency-injection-ready for the future
+# concrete impl.
+objc2 = "0.5"
+# objc2-foundation 0.2: Foundation framework type bindings —
+# `NSString` for the Objective-C-side device-ID identifiers the
+# binding declarations target. Dual MIT / Apache-2.0.
+objc2-foundation = { version = "0.2", features = ["NSString"] }

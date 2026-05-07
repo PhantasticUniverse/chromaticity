@@ -38,6 +38,8 @@ use crate::frames::{
     BACKEND_ERROR, CameraFrame, DEVICE_BUSY, DEVICE_NOT_FOUND, FORMAT_NOT_SUPPORTED,
     PERMISSION_DENIED, PixelFormat, RECONNECT_EXHAUSTED,
 };
+#[cfg(target_os = "macos")]
+use crate::macos::{AuthorizationProbe, AuthorizationStatus, InUsePrecheck};
 
 /// Coarse classification of a camera device, used at enumeration
 /// time to drive UI grouping (built-in vs external vs Continuity vs
@@ -302,6 +304,21 @@ pub struct NokhwaInputAdapter {
     /// drives `Negotiating → Bound` (or `Faulted(reason)` on
     /// failure).
     health: AdapterHealth,
+    /// macOS-only authorization-status probe. Trait-object DI seam
+    /// per ADR-020 §5 + `docs/54-wave-1c-beta-research-lessons.md`
+    /// Phase-2 lesson 2; defaults to
+    /// [`crate::macos::PlaceholderProbe`] returning
+    /// `NotDetermined` until the policy-scoped follow-up PR ships
+    /// the real `AVCaptureDevice` binding. Tests inject mock
+    /// probes via [`Self::with_authorization_probe`].
+    #[cfg(target_os = "macos")]
+    authorization_probe: Box<dyn AuthorizationProbe>,
+    /// macOS-only in-use precheck. Trait-object DI seam per
+    /// ADR-020 §5 + `docs/54` Phase-2 lesson 10. Defaults to
+    /// [`crate::macos::PlaceholderProbe`]; tests inject mocks via
+    /// [`Self::with_in_use_precheck`].
+    #[cfg(target_os = "macos")]
+    in_use_precheck: Box<dyn InUsePrecheck>,
 }
 
 impl NokhwaInputAdapter {
@@ -312,12 +329,22 @@ impl NokhwaInputAdapter {
     /// environments without camera-subsystem access (e.g. CI
     /// sandboxes for the synthetic T2 corpus that ships with Phase
     /// 2 PR 4).
+    ///
+    /// On macOS the adapter holds default probes
+    /// ([`crate::macos::PlaceholderProbe`]) for the authorization-
+    /// status query + in-use precheck per ADR-020 §5; tests
+    /// override with [`Self::with_authorization_probe`] /
+    /// [`Self::with_in_use_precheck`].
     #[must_use]
     pub fn new() -> Self {
         Self {
             bound_config: None,
             frame_queue: VecDeque::new(),
             health: AdapterHealth::Disconnected,
+            #[cfg(target_os = "macos")]
+            authorization_probe: Box::new(crate::macos::PlaceholderProbe),
+            #[cfg(target_os = "macos")]
+            in_use_precheck: Box::new(crate::macos::PlaceholderProbe),
         }
     }
 
@@ -325,6 +352,27 @@ impl NokhwaInputAdapter {
     #[must_use]
     pub fn bound_config(&self) -> Option<&CameraConfig> {
         self.bound_config.as_ref()
+    }
+
+    /// Override the macOS authorization-status probe. Tests inject
+    /// mock probes through this seam to drive the adapter state
+    /// machine through every [`crate::macos::AuthorizationStatus`]
+    /// arm without depending on the OS TCC subsystem.
+    #[cfg(target_os = "macos")]
+    #[must_use]
+    pub fn with_authorization_probe(mut self, probe: Box<dyn AuthorizationProbe>) -> Self {
+        self.authorization_probe = probe;
+        self
+    }
+
+    /// Override the macOS in-use precheck. Tests inject mocks
+    /// through this seam to exercise the
+    /// `Faulted("device-busy")` transition deterministically.
+    #[cfg(target_os = "macos")]
+    #[must_use]
+    pub fn with_in_use_precheck(mut self, precheck: Box<dyn InUsePrecheck>) -> Self {
+        self.in_use_precheck = precheck;
+        self
     }
 }
 
@@ -336,28 +384,118 @@ impl Default for NokhwaInputAdapter {
 
 impl CameraAdapter for NokhwaInputAdapter {
     fn enumerate(&self) -> Result<Vec<DeviceSummary>, AdapterError> {
-        // PR 1 scaffold: no backend is enumerating, so the device
-        // list is empty. Phase 2 PR 2 / PR 3 wire the per-platform
-        // nokhwa enumeration; the trait contract permits an empty
-        // vec on a system with no cameras attached.
+        // On macOS, consult the authorization-status probe before
+        // surfacing the device list. Per ADR-020 §5: if the operator
+        // has explicitly denied access (or MDM has restricted it),
+        // return an empty vec rather than tantalizing them with a
+        // device they cannot use; if `NotDetermined`, also return
+        // empty — the OS-level prompt is kicked from `bind`, not
+        // from `enumerate`. Only the `Authorized` arm proceeds to
+        // the (still-stubbed) nokhwa enumeration.
+        #[cfg(target_os = "macos")]
+        {
+            match self.authorization_probe.current() {
+                AuthorizationStatus::Authorized => {
+                    // Fall through to the cross-platform enumeration
+                    // path below.
+                }
+                AuthorizationStatus::NotDetermined
+                | AuthorizationStatus::Denied
+                | AuthorizationStatus::Restricted => {
+                    return Ok(Vec::new());
+                }
+            }
+        }
+
+        // Phase 2 PR 2 scaffold: no backend is enumerating yet on
+        // any platform, so the device list is empty. Phase 2 PR 3
+        // (Windows) and the follow-up policy-scoped PR (macOS
+        // AVFoundation binding) wire the per-platform nokhwa
+        // enumeration; the trait contract permits an empty vec on
+        // a system with no cameras attached.
         Ok(Vec::new())
     }
 
     fn bind(&mut self, config: CameraConfig) -> Result<(), AdapterError> {
-        // PR 1 scaffold: no backend is enumerating, so any
-        // persisted device-id is unreachable. The error variant
-        // surfaces the device id so test fixtures can match against
-        // the request without poking adapter internals. Health
-        // moves Disconnected -> Negotiating -> Disconnected to
-        // match the eventual real-bind state-machine shape and
-        // reset the bound-config cache.
+        // macOS permission state machine per ADR-020 §5 +
+        // `docs/54-wave-1c-beta-research-lessons.md` Phase-2 lessons
+        // 2 + 10:
+        //
+        //   1. Query authorization status.
+        //      * `Denied` / `Restricted` → terminal
+        //        `Faulted("permission-denied")` immediately.
+        //      * `NotDetermined` → transition to `Negotiating`
+        //        (the OS prompt is kicked by the concrete
+        //        `RequestAccess` impl in the follow-up policy-
+        //        scoped PR; the placeholder leaves the adapter in
+        //        `Negotiating` until a real probe transitions it).
+        //      * `Authorized` → fall through to in-use precheck.
+        //   2. In-use precheck. If another macOS app holds the
+        //      device, transition to `Faulted("device-busy")` —
+        //      distinct from `permission-denied` per the canonical
+        //      reason vocabulary in ADR-020 §2.
+        //   3. nokhwa-bind (deferred to the follow-up policy-scoped
+        //      PR + Phase 2 PR 3 for Windows).
+        #[cfg(target_os = "macos")]
+        {
+            let status = self.authorization_probe.current();
+            if status.is_terminal_denial() {
+                self.bound_config = None;
+                self.health = AdapterHealth::Faulted(Cow::Borrowed(PERMISSION_DENIED));
+                return Err(AdapterError::PermissionDenied(format!(
+                    "camera authorization status is terminal-denial ({status:?}); \
+                     operator must grant access via System Settings \
+                     before re-binding"
+                )));
+            }
+            if !status.permits_bind() {
+                // NotDetermined: kick the async OS prompt path. The
+                // placeholder `RequestAccess` impl is a no-op; the
+                // adapter stays in `Negotiating` until the concrete
+                // impl (follow-up policy-scoped PR) transitions it
+                // via the OS completion handler. Returning a
+                // `PermissionDenied` error here would short-circuit
+                // the async contract; instead we surface the
+                // negotiating state to the caller and let them
+                // re-enumerate / re-bind once the operator responds
+                // to the prompt.
+                self.health = AdapterHealth::Negotiating;
+                self.bound_config = None;
+                return Err(AdapterError::PermissionDenied(format!(
+                    "camera authorization status is {status:?}; \
+                     awaiting operator response to OS prompt \
+                     (async permission-flow contract per ADR-020 §5)"
+                )));
+            }
+            if self.in_use_precheck.is_in_use(&config.device_id) {
+                self.bound_config = None;
+                self.health = AdapterHealth::Faulted(Cow::Borrowed(DEVICE_BUSY));
+                return Err(AdapterError::DeviceBusy(format!(
+                    "camera device {:?} is in use by another macOS \
+                     application; operator must close the holding \
+                     application before re-binding",
+                    config.device_id
+                )));
+            }
+        }
+
+        // Phase 2 PR 2 scaffold: no backend is enumerating, so any
+        // persisted device-id is unreachable from the (still-stubbed)
+        // nokhwa-bind path. The error variant surfaces the device id
+        // so test fixtures can match against the request without
+        // poking adapter internals. Health moves
+        // Disconnected -> Negotiating -> Disconnected to match the
+        // eventual real-bind state-machine shape and reset the
+        // bound-config cache.
         self.health = AdapterHealth::Negotiating;
         let device_id = config.device_id.clone();
         self.bound_config = None;
         self.health = AdapterHealth::Disconnected;
         Err(AdapterError::DeviceNotFound(format!(
-            "camera-adapter PR 1 scaffold: backend not yet wired (requested device {device_id:?}); \
-             macOS backend lands in Phase 2 PR 2 + Windows backend in Phase 2 PR 3"
+            "camera-adapter Phase 2 PR 2 scaffold: nokhwa backend not yet \
+             wired (requested device {device_id:?}); macOS AVFoundation \
+             binding lands in the follow-up policy-scoped PR + Windows \
+             Media Foundation backend lands in Phase 2 PR 3"
         )))
     }
 
@@ -430,17 +568,33 @@ mod adapter_pins {
         assert!(devices.is_empty());
     }
 
-    /// `EV-INTEGRATION-MATRIX` T1: `bind` against any device id in
-    /// the PR 1 scaffold routes through `DeviceNotFound` (the
-    /// persisted-id-unreachable path) rather than `BackendError`
-    /// or `PermissionDenied`. The fault-reason mapping must be
-    /// stable across PR 2 / PR 3 wiring even when the actual error
-    /// path differs at runtime.
+    /// `EV-INTEGRATION-MATRIX` T1: `bind` with an `Authorized`
+    /// authorization probe + a not-in-use device routes through
+    /// `DeviceNotFound` (the persisted-id-unreachable path) rather
+    /// than `BackendError` or `PermissionDenied`. The fault-reason
+    /// mapping must be stable across PR 2 / PR 3 wiring even when
+    /// the actual error path differs at runtime. The test injects
+    /// the `Authorized` probe explicitly because the default
+    /// placeholder returns `NotDetermined` which now routes
+    /// through the negotiating-permission path per ADR-020 §5.
     #[test]
     fn bind_with_unknown_device_returns_devicenotfound() {
-        let mut adapter = NokhwaInputAdapter::new();
+        #[cfg(target_os = "macos")]
+        let adapter = {
+            use crate::macos::AuthorizationStatus;
+            use crate::macos::test_support::{MockAuthorizationProbe, MockInUsePrecheck};
+            NokhwaInputAdapter::new()
+                .with_authorization_probe(Box::new(MockAuthorizationProbe {
+                    status: AuthorizationStatus::Authorized,
+                }))
+                .with_in_use_precheck(Box::new(MockInUsePrecheck { in_use: false }))
+        };
+        #[cfg(not(target_os = "macos"))]
+        let adapter = NokhwaInputAdapter::new();
+
+        let mut adapter = adapter;
         let config = CameraConfig::defaults_for("nonexistent-device-id");
-        let err = adapter.bind(config).expect_err("PR 1 bind always errors");
+        let err = adapter.bind(config).expect_err("PR 2 bind always errors");
         assert!(matches!(err, AdapterError::DeviceNotFound(_)));
         // Health resets to Disconnected on bind failure rather
         // than leaving the adapter in Negotiating limbo.
@@ -560,6 +714,170 @@ mod adapter_pins {
                 assert!(matches!(reason, Cow::Borrowed(_)));
             }
             other => panic!("expected Faulted, got {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // macOS permission-flow state-machine pins per ADR-020 §5.
+    //
+    // The four arms below cover the cross product of authorization
+    // status (Denied / Restricted / Authorized + in-use / Authorized
+    // + not-in-use) under DI-injected mocks. The `NotDetermined`
+    // arm is exercised by the `bind_with_notdetermined_authorization_negotiating`
+    // pin which verifies the negotiating-permission contract per the
+    // async permission-flow contract in `docs/54` Phase-2 lesson 2.
+    // -----------------------------------------------------------------
+
+    /// `EV-INTEGRATION-MATRIX` T1: `bind` with `Denied` authorization
+    /// transitions to `Faulted("permission-denied")` immediately
+    /// without firing an OS-level prompt — operator must
+    /// re-authorize via System Settings. Pinned because routing
+    /// `Denied` through the negotiating-async-prompt path would
+    /// silently re-fire the prompt on every bind attempt within a
+    /// process, which violates macOS TCC's process-bound grant
+    /// semantics.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bind_with_denied_authorization_transitions_to_faulted_permission_denied() {
+        use crate::macos::AuthorizationStatus;
+        use crate::macos::test_support::MockAuthorizationProbe;
+        let mut adapter =
+            NokhwaInputAdapter::new().with_authorization_probe(Box::new(MockAuthorizationProbe {
+                status: AuthorizationStatus::Denied,
+            }));
+        let err = adapter
+            .bind(CameraConfig::defaults_for("any-device"))
+            .expect_err("Denied authorization always errors");
+        assert!(matches!(err, AdapterError::PermissionDenied(_)));
+        match adapter.health() {
+            AdapterHealth::Faulted(reason) => {
+                assert_eq!(reason.as_ref(), PERMISSION_DENIED);
+            }
+            other => panic!("expected Faulted(permission-denied), got {other:?}"),
+        }
+        assert!(adapter.bound_config().is_none());
+    }
+
+    /// `EV-INTEGRATION-MATRIX` T1: `Restricted` authorization
+    /// (Parental Controls / MDM) routes through the same terminal
+    /// `Faulted("permission-denied")` transition as `Denied`. Pinned
+    /// because the operator-facing UX surface conflates the two
+    /// (both surface the "permission required" banner); the
+    /// distinction matters only in the System Settings deep-link copy
+    /// which is non-blocking.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bind_with_restricted_authorization_transitions_to_faulted_permission_denied() {
+        use crate::macos::AuthorizationStatus;
+        use crate::macos::test_support::MockAuthorizationProbe;
+        let mut adapter =
+            NokhwaInputAdapter::new().with_authorization_probe(Box::new(MockAuthorizationProbe {
+                status: AuthorizationStatus::Restricted,
+            }));
+        let err = adapter
+            .bind(CameraConfig::defaults_for("any-device"))
+            .expect_err("Restricted authorization always errors");
+        assert!(matches!(err, AdapterError::PermissionDenied(_)));
+        match adapter.health() {
+            AdapterHealth::Faulted(reason) => {
+                assert_eq!(reason.as_ref(), PERMISSION_DENIED);
+            }
+            other => panic!("expected Faulted(permission-denied), got {other:?}"),
+        }
+    }
+
+    /// `EV-INTEGRATION-MATRIX` T1: `bind` with `NotDetermined`
+    /// authorization transitions to `AdapterHealth::Negotiating` and
+    /// returns a `PermissionDenied` error code — but does NOT
+    /// terminal-fault. The async permission-flow contract per
+    /// ADR-020 §5 + `docs/54` Phase-2 lesson 2 requires the adapter
+    /// to surface "awaiting OS prompt" rather than block on the
+    /// completion handler. Pinned because routing `NotDetermined`
+    /// through the terminal-fault path would silently break the
+    /// async contract — the operator-facing UI would render
+    /// "permission denied" before the operator has even seen the
+    /// system prompt.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bind_with_notdetermined_authorization_negotiating() {
+        use crate::macos::AuthorizationStatus;
+        use crate::macos::test_support::MockAuthorizationProbe;
+        let mut adapter =
+            NokhwaInputAdapter::new().with_authorization_probe(Box::new(MockAuthorizationProbe {
+                status: AuthorizationStatus::NotDetermined,
+            }));
+        let err = adapter
+            .bind(CameraConfig::defaults_for("any-device"))
+            .expect_err("NotDetermined authorization defers via err");
+        assert!(matches!(err, AdapterError::PermissionDenied(_)));
+        // Health stays at Negotiating rather than terminal-faulting,
+        // so the operator-facing UI surfaces "awaiting permission"
+        // not "permission denied". Caller re-binds once the OS
+        // completion handler transitions the probe to `Authorized`
+        // (or to terminal `Denied` on operator decline).
+        assert!(matches!(adapter.health(), AdapterHealth::Negotiating));
+    }
+
+    /// `EV-INTEGRATION-MATRIX` T1: `bind` with `Authorized`
+    /// authorization but an in-use device transitions to
+    /// `Faulted("device-busy")` — distinct from the
+    /// `permission-denied` reason. Pinned because the canonical
+    /// reason vocabulary in ADR-020 §2 explicitly separates the two
+    /// per `docs/54` Phase-2 lesson 10; the operator-facing UI
+    /// shows "Camera is in use by <App Name>" rather than the
+    /// permission-denied banner.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bind_with_in_use_device_transitions_to_faulted_device_busy() {
+        use crate::macos::AuthorizationStatus;
+        use crate::macos::test_support::{MockAuthorizationProbe, MockInUsePrecheck};
+        let mut adapter = NokhwaInputAdapter::new()
+            .with_authorization_probe(Box::new(MockAuthorizationProbe {
+                status: AuthorizationStatus::Authorized,
+            }))
+            .with_in_use_precheck(Box::new(MockInUsePrecheck { in_use: true }));
+        let err = adapter
+            .bind(CameraConfig::defaults_for("held-device"))
+            .expect_err("in-use device always errors");
+        assert!(matches!(err, AdapterError::DeviceBusy(_)));
+        match adapter.health() {
+            AdapterHealth::Faulted(reason) => {
+                assert_eq!(reason.as_ref(), DEVICE_BUSY);
+                // device-busy and permission-denied must remain
+                // distinct strings — the UX surface routes off this.
+                assert_ne!(reason.as_ref(), PERMISSION_DENIED);
+            }
+            other => panic!("expected Faulted(device-busy), got {other:?}"),
+        }
+    }
+
+    /// `EV-INTEGRATION-MATRIX` T1: `enumerate` with `Denied`
+    /// authorization returns an empty vec rather than enumerating
+    /// devices the operator cannot use. Pinned because the
+    /// operator-facing device-picker UI iterates the enumeration
+    /// vec; surfacing devices under a denied-authorization probe
+    /// would tantalize the operator with cameras they cannot bind.
+    /// `Restricted` and `NotDetermined` route through the same
+    /// empty-vec path.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn enumerate_with_denied_authorization_returns_empty_vec() {
+        use crate::macos::AuthorizationStatus;
+        use crate::macos::test_support::MockAuthorizationProbe;
+        for status in [
+            AuthorizationStatus::Denied,
+            AuthorizationStatus::Restricted,
+            AuthorizationStatus::NotDetermined,
+        ] {
+            let adapter = NokhwaInputAdapter::new()
+                .with_authorization_probe(Box::new(MockAuthorizationProbe { status }));
+            let devices = adapter
+                .enumerate()
+                .expect("enumerate succeeds under non-Authorized status");
+            assert!(
+                devices.is_empty(),
+                "enumerate must return empty vec under {status:?}; got {devices:?}",
+            );
         }
     }
 }

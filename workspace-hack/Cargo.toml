@@ -109,6 +109,8 @@ libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
 objc = { version = "0.2", default-features = false, features = ["exception"] }
+objc2 = { version = "0.5" }
+objc2-foundation = { version = "0.2", features = ["NSArray", "NSBundle", "NSCoder", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSGeometry", "NSItemProvider", "NSLocale", "NSObject", "NSString", "NSURL"] }
 smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
@@ -132,6 +134,8 @@ libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
 objc = { version = "0.2", default-features = false, features = ["exception"] }
+objc2 = { version = "0.5" }
+objc2-foundation = { version = "0.2", features = ["NSArray", "NSBundle", "NSCoder", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSGeometry", "NSItemProvider", "NSLocale", "NSObject", "NSString", "NSURL"] }
 smallvec = { version = "1", default-features = false, features = ["const_generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 

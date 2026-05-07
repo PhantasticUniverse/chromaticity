@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+  SPDX-FileCopyrightText: 2026 Chromaticity
+
+  macOS Info.plist override merged into the bundled .app/Contents/Info.plist
+  by Tauri 2's bundler per `bundle.macOS.infoPlist` in `tauri.conf.json`.
+
+  Phase-4a Wave 1c-β Phase 2 PR 2 wires `NSCameraUsageDescription` for the
+  camera adapter (ADR-020 §5). The TCC permission subsystem reads this key
+  from the bundled .app/Contents/Info.plist; missing key skips the consent
+  dialog entirely (the OS denies access without surfacing a UI), per
+  `docs/54-wave-1c-beta-research-lessons.md` Phase-2 lesson 5.
+
+  The release-validation script `scripts/check-camera-info-plist.sh`
+  asserts the key survives Tauri's plist merge into the bundled output.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSCameraUsageDescription</key>
+  <string>Chromaticity uses the camera to provide live video input for visual scenes selected by the operator.</string>
+</dict>
+</plist>

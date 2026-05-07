@@ -53,6 +53,13 @@ pub mod adapter;
 pub mod defaults;
 pub mod frames;
 
+/// macOS-specific permission-flow surface per ADR-020 §5. Compiles
+/// to a no-op (empty module) on non-macOS targets; the gating lives
+/// at the module level rather than at the crate root so the cross-
+/// platform [`adapter`] surface stays uniform.
+#[cfg(target_os = "macos")]
+pub mod macos;
+
 pub use adapter::{
     AdapterError, AdapterHealth, CameraAdapter, CameraConfig, CameraDeviceKind, DeviceSummary,
     NokhwaInputAdapter,
