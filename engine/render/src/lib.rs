@@ -225,6 +225,43 @@
 //!   per docs/54 Lesson 3.2. Crate coupling stays consumer-side:
 //!   `integrations/syphon-adapter/` does NOT depend on
 //!   `engine/render`.
+//! - **Wave 1c-β Phase 2 PR 5** (this PR) — engine-side camera → render
+//!   texture-binding adapter per ADR-020 §7
+//!   ([`camera_adapter::camera_texture_binding_from_frame`] +
+//!   [`camera_adapter::CameraTextureBinding`] carrier shape +
+//!   [`camera_adapter::CAMERA_UNIFORM_NAMES`] /
+//!   [`camera_adapter::camera_uniform_name`], gated behind the
+//!   optional `camera-binding` cargo feature). Cross-platform via
+//!   the `chromaticity_camera_adapter` crate
+//!   (`integrations/camera-adapter/`, nokhwa 0.10 abstracting
+//!   CoreMediaIO on macOS + Media Foundation on Windows; the
+//!   adapter crate itself is platform-uniform). Marshals a
+//!   plain-data `chromaticity_camera_adapter::CameraFrame` into a
+//!   [`camera_adapter::CameraTextureBinding`] keyed by the
+//!   `chroma_CameraInput[N]` symbol family (N ∈ 0..=3, max 4
+//!   cameras per scene per ADR-020 §7). Pixel-format →
+//!   `wgpu::TextureFormat` mapping covers `Bgra32` →
+//!   [`wgpu::TextureFormat::Bgra8UnormSrgb`] (verbatim 4-bpp
+//!   copy), `Rgb24` → [`wgpu::TextureFormat::Rgba8UnormSrgb`]
+//!   (3 → 4 bpp expansion w/ alpha = 0xFF; wgpu has no native
+//!   `Rgb8` sampler-bind format), `Nv12` →
+//!   [`wgpu::TextureFormat::R8Unorm`] (luma plane only — chroma
+//!   plane deferred per the module's "Scope narrowing for PR 5"),
+//!   `Yuyv` → [`wgpu::TextureFormat::Rg8Unorm`] (verbatim packed
+//!   2-bpp; full YUV → RGB conversion is the future-wave path),
+//!   `Mjpeg` → [`single_pass::RenderError::CameraFormatNotSupported`]
+//!   (JPEG decode deferred). Crate coupling stays consumer-side:
+//!   `integrations/camera-adapter/` does NOT depend on
+//!   `engine/render`. PR 5 ships the marshal + carrier shape +
+//!   T1 pins (slot-namespace shape, mapping table, slot-bound
+//!   rejection, Mjpeg rejection, zero-dim rejection, purity); the
+//!   live `wgpu::Queue::write_texture` upload + the
+//!   `wgpu::Texture` / `wgpu::TextureView` / `wgpu::Sampler`
+//!   resource lifecycle is the consumer's job — a future wave
+//!   that integrates the camera binding into
+//!   [`multipass::MultipassRenderer`]'s per-pass binding loop is
+//!   the natural target.
+//!
 //! - **Wave 4d.2 Lane B PR 1 of 2** (PR `#351` / `5abc443`) — deterministic GPU
 //!   adapter-selection policy per ADR-011 §7
 //!   ([`adapter_selection::GpuSelectionPolicy`] +
@@ -303,6 +340,8 @@
 pub mod adapter_selection;
 #[cfg(feature = "audio-binding")]
 pub mod audio_adapter;
+#[cfg(feature = "camera-binding")]
+pub mod camera_adapter;
 pub mod composition;
 pub mod glsl_includes;
 pub mod multipass;
@@ -322,6 +361,11 @@ pub use adapter_selection::{
 pub use audio_adapter::{
     UNIFORM_NAME_BPM, UNIFORM_NAME_FFT, UNIFORM_NAME_PEAK, UNIFORM_NAME_RMS,
     uniform_input_from_audio_snapshot,
+};
+#[cfg(feature = "camera-binding")]
+pub use camera_adapter::{
+    CAMERA_UNIFORM_NAMES, CameraTextureBinding, MAX_CAMERA_BINDING_SLOTS,
+    camera_texture_binding_from_frame, camera_uniform_name,
 };
 pub use composition::{PreparedScene, compose_transition_frame, compose_transition_frame_gpu};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};

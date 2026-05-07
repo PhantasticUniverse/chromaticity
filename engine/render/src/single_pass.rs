@@ -202,6 +202,30 @@ pub enum RenderError {
     /// without the `scene-adapter` feature.
     #[error("scene-adapter conversion failed: {0}")]
     SceneAdapterError(String),
+
+    // ----- Wave 1c-β Phase 2 PR 5: camera adapter variants. -----
+    /// The camera-adapter marshal at
+    /// [`crate::camera_adapter::camera_texture_binding_from_frame`]
+    /// rejected a [`chromaticity_camera_adapter::PixelFormat`] that
+    /// has no documented `wgpu::TextureFormat` mapping in PR 5. The
+    /// `format` string is the offending pixel-format label
+    /// (`"Mjpeg"` is the canonical case until JPEG decode wires);
+    /// `reason` carries the ADR-020 §7 / docs/54 Phase-2 mapping
+    /// rationale. Mirrors the
+    /// [`Self::FloatTargetUnsupported`] shape established by slice 4.
+    ///
+    /// This variant is gated by the `camera-binding` cargo feature
+    /// (the camera-adapter dep is feature-optional). It is declared
+    /// unconditionally on [`RenderError`] so the variant taxonomy
+    /// stays uniform across feature-flag permutations; callers
+    /// without the feature simply never observe the variant.
+    #[error("camera pixel format unsupported (format={format}): {reason}")]
+    CameraFormatNotSupported {
+        /// Human-readable pixel-format label (e.g. `"Mjpeg"`).
+        format: String,
+        /// Mapping rationale per ADR-020 §7 / docs/54 Phase-2.
+        reason: String,
+    },
 }
 
 /// GLSL source for the hardcoded full-screen triangle vertex shader.
