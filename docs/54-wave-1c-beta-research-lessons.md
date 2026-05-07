@@ -5,7 +5,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
 # Wave 1c-β research-lessons
 
-**Generated:** 2026-05-07. Anchor: `main` HEAD `<TBD-on-merge>` (post-Phase-1
+**Generated:** 2026-05-07. Anchor: `main` HEAD `fb2bc75` (post-Phase-1
 ADR drafts + Phase-1.5 multi-agent research pass).
 
 This document captures implementation-level lessons surfaced by reading

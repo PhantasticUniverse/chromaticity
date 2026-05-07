@@ -2857,9 +2857,17 @@ camera + Syphon) are widened.
 
 **Phase 1 — Design (5 PRs, 2026-05-07).**
 
-- **PR `#389`** — Wave 1c-β threat-model + decision-driver corpus
-  amendments under `docs/threat-model/` plus `docs/52-` design notes
-  (camera/Syphon platform integration analysis).
+- **PR `#389`** — Wave 1c-β threat-model addendum amending
+  `docs/29-cleanroom-legal-policy-baseline.md` with a "Wave 1c-β
+  threat-model addendum (camera + Syphon)" section covering camera
+  privacy posture (frames as user-PII, redaction via
+  `RedactCategory::MediaBuffer`, NSCameraUsageDescription /
+  Windows Privacy-Settings UX, device-id-in-Settings-only rule, no
+  facial recognition / biometric processing) and the Syphon
+  shared-memory boundary (IOSurface bus visible to any macOS app on
+  the machine, operator-facing non-dismissible warning, default-off
+  output posture, default server name carrying no machine /
+  operator / scene metadata, input-side trust boundary).
 - **PR `#390`** — ADR-009 permission-policy addendum widening the
   capability vocabulary to cover camera + Syphon flows; honored-cap
   set widening sequenced behind the PR `#391` / PR `#392` ADR
@@ -3001,7 +3009,7 @@ auditable cluster anchor.
 ### Verdict
 
 **Phase-4a Wave 1c-β cluster closure achieved 2026-05-07 at commit
-`<merge-sha>`** (the merge commit of this Phase-5 closing-docs PR).
+`fb2bc75`** (the merge commit of this Phase-5 closing-docs PR).
 With this closure, `EV-INTEGRATION-MATRIX` is at full Phase-4a
 scope across all five arms (OSC + MIDI + audio-uniform-IPC +
 camera + Syphon) with no cumulative narrowing remaining beyond the
