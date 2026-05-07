@@ -3,7 +3,9 @@
 
 //! Chromaticity engine observability.
 //!
-//! Phase-1 slice-2 surface:
+//! Surface (Phase-1 slice-2 baseline widened through Phase-4a
+//! `EV-HEALTH-METRICS-LOOPBACK-ONLY` and Phase-4d Wave 4d.1 / 4d.2 /
+//! 4d.3 lanes):
 //!
 //! - [`catalog`] — Rust type mirror of the metric catalog at
 //!   `docs/31-supportability-privacy-ops-policy.md` §Scheme and
@@ -14,23 +16,26 @@
 //! - [`emit`] — [`emit::EmitMetric`] object-safe trait plus an
 //!   [`emit::InMemoryEmitter`] stub that round-trips events through
 //!   an internal `Mutex<Vec<_>>` without network or filesystem I/O.
-//! - [`crash_redaction`] — Phase-4d Wave 4d.1 Lane A primitives
-//!   encoding the ADR-016 §Crash reporting redaction contract
-//!   (`main.glsl` / `script.js` / media buffers / operator free-text /
-//!   license-token bytes excluded from any future crash-report
-//!   payload).
+//! - [`analytics_audit`] — Wave 4d.1 zero-by-default analytics-event
+//!   audit scaffolding for `EV-ANALYTICS-ZERO-DEFAULT` (row 92).
+//! - [`chaos`] — Wave 4d.2 chaos-injection harness producing
+//!   stability-failure events the soak runner consumes.
+//! - [`crash_redaction`] — Wave 4d.1 Lane A primitives encoding the
+//!   ADR-016 §Crash reporting redaction contract (`main.glsl` /
+//!   `script.js` / media buffers / operator free-text / license-token
+//!   bytes excluded from any future crash-report payload).
 //! - [`crash_harness`] — synthetic crash-payload construction +
-//!   validation harness composing on top of [`crash_redaction`]. PR 2
-//!   of the row 93 sequence: builds shape-realistic payloads across
-//!   four simulated crash classes (SIGSEGV, panic-in-render-thread,
-//!   OOM, assertion-failure), runs them through
-//!   [`crash_redaction::CrashPayloadRedactor`], and asserts no
-//!   sentinel value from the sensitive-field set survives the
+//!   validation harness composing on top of [`crash_redaction`]
+//!   (PR 2 of the row 93 sequence). Builds shape-realistic payloads
+//!   across four simulated crash classes (SIGSEGV,
+//!   panic-in-render-thread, OOM, assertion-failure), runs them
+//!   through [`crash_redaction::CrashPayloadRedactor`], and asserts
+//!   no sentinel value from the sensitive-field set survives the
 //!   redaction transform. Registry row 93
-//!   (`EV-CRASH-PAYLOAD-REDACTION`) transitions `Planned -> Pass`
-//!   under the synthetic-harness narrowing recorded in the row 93
-//!   description column when this module + the sibling T2 corpus
-//!   land together.
+//!   (`EV-CRASH-PAYLOAD-REDACTION`) is scope-narrowed to the
+//!   synthetic-harness path; the row remains `Planned` pending a
+//!   later wave PR.
+//! - [`soak`] — Wave 4d.3 long-running soak runner for `EV-SOAK-CHAOS`.
 //!
 //! Divergence between the Rust types in [`catalog`] and docs/31 is a
 //! **schema-drift failure**. If the catalog itself needs amendment,
@@ -38,10 +43,10 @@
 //! surface, AO-authored), then update the Rust types to match the
 //! amended baseline.
 //!
-//! Slice-2 does NOT ship any transport. The Prometheus text-format
-//! endpoint (loopback-only, opt-in via Settings) is a Phase 4d
-//! item per ADR-016. The runtime-bus wiring that feeds actual
-//! events into [`emit::EmitMetric`] implementations is slice-3.
+//! This crate does NOT ship a network transport. The Prometheus
+//! text-format endpoint (loopback-only, opt-in via Settings) is
+//! covered by `EV-HEALTH-METRICS-LOOPBACK-ONLY` per ADR-016 and
+//! lives outside this crate.
 //!
 //! ADR-016 posture constraints this crate honours:
 //!
@@ -60,7 +65,7 @@
 //! - `docs/adr/ADR-016-observability-and-telemetry-posture.md` —
 //!   posture constraints.
 //! - `docs/26-evidence-artifact-registry.md` — `EV-OBSERVABILITY`
-//!   row (advances from nonexistent to T0 with this slice).
+//!   row.
 //! - `docs/12-work-breakdown-estimates.md` — WP-8 ownership and
 //!   gate outputs.
 

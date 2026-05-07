@@ -25,7 +25,7 @@
 //! only the public command / event / trait surface is exported for
 //! sibling crates to consume.
 //!
-//! Slice-3 part 1 (post-Phase-3) adds the [`scheduler`] module: the
+//! Slice-3 (post-Phase-3) adds the [`scheduler`] module: the
 //! foundational scheduler-tick path per ADR-001 §Decision and ADR-006
 //! §Decision. [`scheduler::Scheduler::tick`] composes
 //! [`command_bus::CommandBus::commit_all_into`] with an explicit
@@ -34,10 +34,12 @@
 //! drain. The scheduler is purely additive: existing callers that
 //! drive state mutation through `commit_all_into` directly continue
 //! to observe `frame == 0` (the EV-STATE-REPLAY row 32 +
-//! EV-PRESET-PLAYLIST row 34 T2 corpora pin this invariant). Audio
-//! uniform pull, render dispatch, and observability emission wire
-//! into the tick across slice-3 PRs 2-5; this PR lands the module
-//! surface + T1 drift pins only.
+//! EV-PRESET-PLAYLIST row 34 T2 corpora pin this invariant). PR
+//! `#321` (`5c1aeb3`) landed the module surface + T1 drift pins;
+//! PRs `#326` (`6f994ab`) / `#328` (`6f46a35`) / `#329` (`d888440`) /
+//! `#330` (`642bada`) landed the T2 corpus + observability-emit /
+//! audio-pull / render-dispatch subsystems; the wave closed
+//! 2026-05-01 with `EV-SCHEDULER-TICK` at `Pass` (row 38).
 //!
 //! Phase-4d Wave 4d.3 PR 1 (post-Phase-3) adds the [`crash_resume`]
 //! module: the `EV-CRASH-RESUME` partial-advance state-restoration

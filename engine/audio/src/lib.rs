@@ -126,24 +126,27 @@
 //!   improvements, sample-rate resampling) is feature work tracked
 //!   outside the slice-progression list.
 //!
-//! - **Phase-4a Wave 1c-α-2 production-bootstrap PR 1** (this PR):
-//!   adds the [`runtime`] composition-layer entrypoint. Wave 1c-α
-//!   shipped the cross-seam payload-shape contract for
-//!   `EV-AUDIO-UNIFORM-IPC` (row 83) producer-side
-//!   ([`runtime::AudioRuntime`] not yet wired) and consumer-side
-//!   (`audioSnapshot.svelte.ts` Svelte store) but explicitly recorded
-//!   the live end-to-end producer→Tauri-emit→consumer wiring as the
-//!   first deferred axis. PR 1 of the production-bootstrap wave (this
-//!   PR) ships the producer-side runtime that wraps the existing
-//!   [`cpal_source::try_default_input`] /
+//! - **Phase-4a Wave 1c-α-2 production-bootstrap**: adds the
+//!   [`runtime`] composition-layer entrypoint. Wave 1c-α shipped the
+//!   cross-seam payload-shape contract for `EV-AUDIO-UNIFORM-IPC`
+//!   (row 83) producer-side ([`runtime::AudioRuntime`] not yet wired)
+//!   and consumer-side (`audioSnapshot.svelte.ts` Svelte store) but
+//!   explicitly recorded the live end-to-end producer→Tauri-emit→
+//!   consumer wiring as the first deferred axis. Bootstrap PR 1
+//!   (`#343` / `804d6cd`) ships the producer-side runtime that wraps
+//!   the existing [`cpal_source::try_default_input`] /
 //!   [`ingest_negotiation::IngestNegotiator`] /
 //!   [`silent::SilentSource`] / [`bpm::BpmEstimator`] /
 //!   [`uniforms::extract_uniform_snapshot`] surfaces into a
 //!   thread-spawnable unit owning an
-//!   `Arc<Mutex<AudioUniformSnapshot>>` shared seam. PR 2 of the
-//!   wave wires the Tauri-side `IpcEmit` adapter + scheduler
-//!   bootstrap; PR 3 lands the e2e IPC wire test plus the closing
-//!   docs.
+//!   `Arc<Mutex<AudioUniformSnapshot>>` shared seam. Bootstrap PR 2
+//!   (`#344` / `9a1131e`) wires the Tauri-side `IpcEmit` adapter +
+//!   scheduler bootstrap; Bootstrap PR 3 lands the e2e IPC wire test
+//!   plus the closing docs. The wave closed 2026-05-06 with row 83
+//!   Pass at reduced narrowing (3 of 5 Wave 1c-α deferred axes drop;
+//!   stale-but-last-good IPC surfacing through the wire, Spectrum
+//!   widget retrofit, and `AudioReactivity` 48-bar FFT visualiser
+//!   remain post-MVP).
 //!
 //! # Surface summary
 //!

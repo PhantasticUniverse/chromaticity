@@ -3,35 +3,44 @@
 
 //! Chromaticity entitlement token format fixture pack.
 //!
-//! Phase-0 evidence harness for `EV-ENTITLEMENT-TOKEN-FORMAT`
-//! (`docs/26-evidence-artifact-registry.md` row 88). Realizes the
-//! locked `entitlement-v2` token schema from
+//! Phase-0 fixture-pack origin for `EV-ENTITLEMENT-TOKEN-FORMAT`
+//! (`docs/26-evidence-artifact-registry.md` row 88), widened through
+//! Phase-4a Wave 1a + 1b to the runtime enforcement surface
+//! ([`enforcement::entitled`] / [`enforcement::is_valid_at`] /
+//! [`enforcement::HONORED_TOKEN_CAPABILITIES`]). Realizes the locked
+//! `entitlement-v2` token schema from
 //! `docs/adr/ADR-009-activation-and-entitlements.md` as Rust types
 //! and exercises round-trip serialization over JSON and canonical
 //! CBOR.
 //!
 //! # Scope
 //!
-//! This crate is **fixture-pack only**. It pins the schema-shape
-//! contract (field names, optionality, value types) and the
-//! deterministic-CBOR encode round-trip property that the future
-//! signature-verification path (Phase 4a, `EV-ENTITLEMENT-ENFORCEMENT`)
-//! will sign over. It does NOT implement:
+//! The schema-shape contract (field names, optionality, value types)
+//! and the deterministic-CBOR encode round-trip property are pinned
+//! at Phase-0 quality. Phase-4a Wave 1a (anchor run `25213475549`)
+//! landed the runtime enforcement surface for `EV-ENTITLEMENT-ENFORCEMENT`
+//! (row 87), `EV-ENTITLEMENT-OFFLINE` (row 88), `EV-ENTITLEMENT-REVOCATION`
+//! (row 89), and `EV-ENTITLEMENT-FREE-FEATURES` (row 91) under the
+//! MVP watermark-only narrowing — all four rows at `Pass`. Phase-4a
+//! Wave 1b widened [`enforcement::HONORED_TOKEN_CAPABILITIES`] from
+//! the initial 1-cap honored set to 13 entries (anchor run
+//! `25219329314`); IO_CAMERA is intentionally excluded — free at
+//! MVP per ADR-009.
 //!
-//! - Signature verification (Ed25519 over canonical CBOR; Phase 4a).
-//! - Offline 14-day expiry behaviour (`EV-ENTITLEMENT-OFFLINE`,
-//!   Phase 4a).
-//! - Deny-list / session-revocation evaluation
-//!   (`EV-ENTITLEMENT-REVOCATION`, Phase 4a).
-//! - The `chromaticity.entitled(capability) -> bool` runtime
-//!   surface (`EV-ENTITLEMENT-ENFORCEMENT`, Phase 4a).
+//! Still-future scope:
 //!
-//! The capability namespace constants in [`capability`] are a
-//! parsing target only — they exist so a token's
-//! `capabilities: Vec<String>` field can be populated from a
-//! known-good source in fixtures and so the namespace itself is
-//! pinned alongside the schema. Wiring any of these strings to a
-//! runtime entitlement evaluator is Phase 4a.
+//! - Signature verification (Ed25519 over canonical CBOR) — the
+//!   token type carries the [`token::Signature`] field but no
+//!   verification path is wired; production activation lives outside
+//!   this crate.
+//! - Deny-list activation for `EV-ENTITLEMENT-REVOCATION` is deferred
+//!   post-MVP; the row 89 narrowing covers expiry-based revocation
+//!   only.
+//!
+//! The capability namespace constants in [`capability`] back the
+//! `Token::capabilities: Vec<String>` field; the runtime enforcement
+//! surface in [`enforcement`] consumes them via the
+//! [`enforcement::HONORED_TOKEN_CAPABILITIES`] honored set.
 //!
 //! # Surface summary
 //!

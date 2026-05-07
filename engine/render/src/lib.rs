@@ -42,7 +42,7 @@
 //!   [`glsl_includes::resolve_includes`] before passing source to those
 //!   entry points. Trial-period scope; the preprocessor stays as a
 //!   generic include-resolver if Phase-5 `EV-LICENSE-AUDIT` drops Lygia.
-//! - **Slice 4 (this PR)** — feedback-texture sampling
+//! - **Slice 4** (PR `#259` / `efd8b63`) — feedback-texture sampling
 //!   ([`multipass::PassDef::feedback_self`] + ping-pong texture
 //!   pair, multi-frame execution via
 //!   [`multipass::MultipassSpec::frame_count`]), `RGBA32F` /
@@ -58,7 +58,7 @@
 //!   slice-2 corpus byte-hashes remain bit-identical (single-
 //!   frame, `Rgba8Unorm`-only, no feedback paths preserve the
 //!   slice-2 byte stream).
-//! - **Slice 5a (this PR)** — cross-crate audio → render uniform-
+//! - **Slice 5a** (PR `#269` / `c724d17`) — cross-crate audio → render uniform-
 //!   binding adapter ([`audio_adapter::uniform_input_from_audio_snapshot`],
 //!   gated behind the optional `audio-binding` cargo feature).
 //!   Marshals a `chromaticity_audio::AudioUniformSnapshot` (slice-1
@@ -75,7 +75,7 @@
 //!   Crate coupling stays consumer-side: `engine/audio` does NOT
 //!   depend on `engine/render` (see `engine/audio/src/lib.rs`
 //!   lines 16-31).
-//! - **Slice 5b.1 (this PR)** — transition-orchestration LIFECYCLE
+//! - **Slice 5b.1** (PR `#276` / `f6d6540`) — transition-orchestration LIFECYCLE
 //!   per `docs/adr/ADR-007-scene-warm-switch-policy.md` Accepted
 //!   four-phase warm-switch (`PrepareNext` / `PrimeNext` /
 //!   `CrossfadeOrHardCut` / `CommitNext`) plus an `Idle`
@@ -98,7 +98,7 @@
 //!   5b.2 will add the actual crossfade composition + 500 ms
 //!   timeout-degrades-to-hard-cut path + GPU resource preallocation
 //!   wiring.
-//! - **Slice 5b.2 (this PR)** — crossfade frame composition with the
+//! - **Slice 5b.2** (PR `#283` / `5fb9c03`) — crossfade frame composition with the
 //!   ADR-007 §Decision 500 ms timeout-degrades-to-hard-cut fallback
 //!   plus GPU resource preallocation wiring on the orchestrator's
 //!   `PrepareNext` and `PrimeNext` advance. Adds
@@ -129,7 +129,7 @@
 //!   clock monotonicity, and elapsed accessor. The T2 GPU corpus in
 //!   `engine/render/tests/transition_composition.rs` exercises the
 //!   orchestrator + composition end-to-end.
-//! - **Slice 5b.2+ refactor (this PR)** —
+//! - **Slice 5b.2+ refactor** (PR `#289` / `91f421a`) —
 //!   [`multipass::MultipassRenderer`] long-lived-device entry
 //!   point. The pre-refactor `compile_and_render_multipass` free
 //!   function acquired a fresh wgpu Instance / Adapter / Device per
@@ -155,7 +155,7 @@
 //!   need zero changes. The refactor is purely a device-ownership
 //!   widening; slice 5b.3 (a separate follow-up PR that USES this
 //!   refactor) will pull the CPU-side blend onto the GPU.
-//! - **Slice 5b.3 (this PR)** — GPU-side compositing pipeline. The
+//! - **Slice 5b.3** (PR `#291` / `5263422`) — GPU-side compositing pipeline. The
 //!   slice-5b.2 [`composition::compose_transition_frame`] CPU-side
 //!   per-byte alpha lerp is retired in favor of a third blend-pass
 //!   render pipeline that samples the current and next render
@@ -197,7 +197,7 @@
 //!   [`multipass::UniformValue`] (the FFT array consolidation that
 //!   was previously listed here landed in the slice-5a follow-up
 //!   that opened catalog v1.3.0).
-//! - **Wave 4d.2 Lane B PR 1 of 2 (this PR)** — deterministic GPU
+//! - **Wave 4d.2 Lane B PR 1 of 2** (PR `#351` / `5abc443`) — deterministic GPU
 //!   adapter-selection policy per ADR-011 §7
 //!   ([`adapter_selection::GpuSelectionPolicy`] +
 //!   [`adapter_selection::select_adapter`] +
@@ -260,11 +260,10 @@
 //!
 //! Per `docs/26-evidence-artifact-registry.md` row 28's Phase-2-exit
 //! definition, full conformance — feedback (slice 4 ✓), transition
-//! fixtures (slice 5+), backend matrix (slice 5+) — requires
-//! successive slices; the row's status stays `Planned` while the
-//! harness path tightens. Per-slice row updates land on separate
-//! small follow-up commits (this PR is `engine/render` only and does
-//! not touch the registry).
+//! fixtures (slice 5b.1 / 5b.2 / 5b.3 ✓), backend matrix (Wave 4d.2
+//! Lane B PR 2 dual-adapter corpus pending) — was reached
+//! incrementally. Per-slice registry-row updates land on separate
+//! follow-up `docs(repo)` commits.
 //!
 //! Governing ADRs:
 //!
