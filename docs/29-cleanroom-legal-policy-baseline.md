@@ -130,3 +130,43 @@ Every shipped data-source provider (post-MVP) must have a provenance entry exten
 ## Governance
 - Policy gate and release gate approvals are owned by the Accountable Owner.
 - Legal gates are non-waivable per `23-decision-ownership-matrix.md`.
+
+## Wave 1c-β threat-model addendum (camera + Syphon adapters)
+
+**Date.** 2026-05-07. **Scope.** Camera-input adapter (cross-platform per `adr/ADR-020-camera-adapter.md`) + Syphon-I/O adapter (macOS-only per `adr/ADR-021-syphon-adapter.md`). This addendum captures privacy + threat-boundary considerations specific to the new adapter surfaces; the broader clean-room SOP elsewhere in this doc continues to apply unchanged.
+
+### Camera privacy
+
+**Threat surface.** Captured frames are user-PII. The adapter binds an OS-permission-gated device, retains frames in a bounded queue (default queue depth 4 per `adr/ADR-020-camera-adapter.md`), and exposes them to the render pipeline as GPU textures via `chroma_CameraInput[N]` symbols. Frames may transit:
+
+- the camera-adapter producer thread (CPU memory; bounded queue);
+- the render-side texture-upload path (GPU memory);
+- crash payloads (if not redacted).
+
+**Mitigations.**
+
+- **Crash-payload redaction.** Live frame buffers MUST NOT survive in crash payloads. The redaction is already enforced via `engine/observability/src/crash_redaction.rs::RedactCategory::MediaBuffer` (shipped in `EV-CRASH-PAYLOAD-REDACTION`, PR #346 + downstream closure). Phase 3 of Wave 1c-β confirms this contract holds for the new camera frame paths via a synthetic crash-injection corpus extension; no widening of the existing `RedactCategory` taxonomy is required.
+- **Permission UX.** Cameras only enumerate after explicit OS-level permission grant (`NSCameraUsageDescription` + `AVCaptureDevice.requestAccess` on macOS; the Privacy-Settings camera-allow-list on Windows). The app surfaces a single non-modal banner on first device-list call when the OS denies; no fallback to fingerprinting unique device identifiers, no covert enumeration. The deny posture is the steady state until the operator opens System Settings and grants access.
+- **Device-id persistence.** Persisted device IDs are stored in app settings under the chromaticity-namespace; never transmitted to telemetry or analytics surfaces. The persistence shape mirrors the MIDI device-id rule from `EV-MIDI-EXTENDED` MIDI-CONF-09 (device-id persists; bindings rebind on re-enumeration). Operators may clear all camera bindings via Settings → Sources → "Reset camera bindings".
+- **No facial recognition or biometric processing.** The adapter ships frame data verbatim (NV12 / YUYV / RGB / BGRA per `adr/ADR-020-camera-adapter.md`) without applying any face-detection, biometric extraction, or content-classification logic. Any future feature in this space requires a separate ADR + threat-model addendum.
+
+### Syphon shared-memory boundary
+
+**Threat surface.** Syphon's IOSurface-backed protocol means published GPU surfaces are visible to ANY macOS application on the same machine. There is no per-app access control on the Syphon bus; any process that links the Syphon framework on macOS can subscribe to any published server.
+
+**Mitigations.**
+
+- **Operator-facing warning.** When an operator enables Syphon output via the Sources view, a one-line warning appears in the inspector pane: *"Syphon output is visible to any application on this machine. Do not publish surfaces containing PII or secrets."* The warning is non-dismissible while output is active; it disappears when output is unbound.
+- **No automatic publish.** Syphon output requires explicit operator opt-in via the Sources view. Default state: output disabled. The default-off posture matches the default-off telemetry posture in `adr/ADR-013-network-defaults.md` and `adr/ADR-016-observability-and-telemetry-posture.md`.
+- **No metadata leak.** Published server names default to `"Chromaticity ${profile_name}"` per `adr/ADR-021-syphon-adapter.md` — no machine identifier, no operator name, no scene name embedded by default. Operators may override the server name via Settings; the override is held in operator-controlled application settings, not shipped telemetry.
+- **Input-side trust boundary.** Subscribing to a Syphon input means trusting whatever published the surface. The Sources inspector documents this in copy: *"Syphon input may originate from any application on this machine; verify source before binding."* No automatic input subscription; the adapter never speculatively binds a server discovered on the bus.
+
+### Cross-references
+
+- `adr/ADR-020-camera-adapter.md` — camera adapter contract.
+- `adr/ADR-021-syphon-adapter.md` — Syphon adapter contract.
+- `adr/ADR-016-observability-and-telemetry-posture.md` — crash-payload redaction policy.
+- `engine/observability/src/crash_redaction.rs` — `RedactCategory::MediaBuffer` redaction enforcement.
+- `EV-CRASH-PAYLOAD-REDACTION` (Phase-4d row in `26-evidence-artifact-registry.md`) — crash-payload validation harness.
+- `EV-INTEGRATION-MATRIX` (Phase-4a row in `26-evidence-artifact-registry.md`) — primary tagged evidence row for the adapter wave.
+- `13-risk-register.md` — operator-facing threat-surface register; extend with a Wave 1c-β row at adapter-acceptance time if a residual risk is not captured by an existing entry.
