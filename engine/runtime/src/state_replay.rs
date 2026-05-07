@@ -126,6 +126,22 @@ fn default_buffer_capacity(state: &State) -> usize {
 /// REPLAY contract documented above; no rows depending on this
 /// shape may drift without updating the goldens in row 32 / row
 /// 34 / row 33 corpora.
+///
+/// # Intentionally NOT observed
+///
+/// Several [`State`] fields are intentionally NOT observed by this
+/// encoder so the EV-STATE-REPLAY (row 32), EV-PRESET-PLAYLIST
+/// (row 34), and EV-STATE-MIGRATION (row 33) goldens remain
+/// invariant under their addition:
+///
+/// - `latest_audio_snapshot` (row 65 IPC bridge): scheduler-tick
+///   transient; repopulates on the next pull.
+/// - `snapshot_metadata` (row 33 envelope trailer): observed only
+///   on the [`crate::state_migration`] envelope path.
+/// - `session_bindings` (row 80 class-d, Wave 4d.3 PR 5): consumed
+///   by [`crate::crash_resume::restore_class_d`] only; adapter-
+///   side rebinding lives outside the canonical-binary
+///   contract.
 pub(crate) fn encode_state_canonical(state: &State, out: &mut Vec<u8>) {
     // be_u64(frame).
     out.extend_from_slice(&state.frame.to_be_bytes());
@@ -135,6 +151,12 @@ pub(crate) fn encode_state_canonical(state: &State, out: &mut Vec<u8>) {
     encode_playlist_store(state, out);
     encode_snap_store(state, out);
     encode_mapping_store(state, out);
+    // `state.session_bindings` (row 80 class-d, Wave 4d.3 PR 5) is
+    // intentionally NOT encoded: matches the
+    // `latest_audio_snapshot` precedent — adding it to the
+    // canonical-binary contract would drift row 32 / row 34 / row
+    // 33 goldens. Class-d restoration consumes the field directly
+    // via `crash_resume::restore_class_d`.
 }
 
 fn encode_control_store(state: &State, out: &mut Vec<u8>) {

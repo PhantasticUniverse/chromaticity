@@ -50,6 +50,29 @@ pub struct State {
     pub(crate) snap_store: SnapStore,
     /// Integration-mapping store. See [`Self::control_store`].
     pub(crate) mapping_store: MappingStore,
+    /// Session-binding device-id state for crash-resume class-d
+    /// (OSC/MIDI session bindings per
+    /// `docs/26-evidence-artifact-registry.md` row 80 description
+    /// column).
+    ///
+    /// Records the device IDs that were bound at session start so
+    /// that crash-resume can rebind on re-enumeration per
+    /// MIDI-CONF-09. The per-mapping
+    /// [`crate::command_bus::MappingSource`] enum on
+    /// [`MappingStore`] continues to carry the OSC / MIDI tag; this
+    /// sub-store carries the device-id dimension that was previously
+    /// absent.
+    ///
+    /// Additive: defaults to empty [`SessionBindings`]; existing
+    /// tests observe identical [`State`] equality + canonical-binary
+    /// encoding because the canonical-binary encoder
+    /// ([`crate::state_replay::encode_state_canonical`]) MUST NOT
+    /// observe this field (per the same precedent as
+    /// [`Self::latest_audio_snapshot`] on row 65, and
+    /// [`Self::snapshot_metadata`] on row 32 / 34).
+    ///
+    /// Wave 4d.3 PR 5 (row 80 class-d) shipping addition.
+    pub(crate) session_bindings: SessionBindings,
     /// Phase-3 EV-STATE-MIGRATION envelope metadata.
     ///
     /// Synthetic V1→V2 schema-version scalar carried by the
@@ -208,6 +231,45 @@ impl State {
     pub fn snapshot_metadata(&self) -> Option<V2SchemaMetadata> {
         self.snapshot_metadata
     }
+
+    /// Read the session-binding sub-store (Wave 4d.3 PR 5, row 80
+    /// class-d). Returns the OSC + MIDI device-id list captured at
+    /// session start so callers (the crash-resume adapter, OSC /
+    /// MIDI integration crates, the T2 corpus) can inspect the
+    /// recovery-side snapshot. Mutation flows through
+    /// [`Self::apply_session_bindings`] — see that method's prose
+    /// for the recovery-write-path rationale.
+    #[must_use]
+    pub fn session_bindings(&self) -> &SessionBindings {
+        &self.session_bindings
+    }
+
+    /// Apply a [`SessionBindings`] snapshot to this state, replacing
+    /// any existing bindings (Wave 4d.3 PR 5, row 80 class-d).
+    ///
+    /// This is the recovery-side write path used by
+    /// [`crate::crash_resume::restore_class_d`] and the integration-
+    /// test corpus. Unlike the per-mapping
+    /// [`crate::command_bus::Event`] flow, session-binding writes do
+    /// NOT route through the canonical command bus — class-d state
+    /// is a wholesale snapshot of the device-id list as it was at
+    /// session start, captured by the adapter crates at adapter
+    /// startup-time and then frozen for the duration of the session.
+    /// The recovery exception in ADR-006 covers this:
+    /// crash-resume restoration projects the recovered snapshot
+    /// directly without re-driving the original committed events.
+    pub fn apply_session_bindings(&mut self, bindings: SessionBindings) {
+        self.session_bindings = bindings;
+    }
+
+    /// Crate-private mutable accessor used by the in-crate T1 pins
+    /// to seed fixtures. The sibling
+    /// [`crate::state_migration::decode_session_bindings_extension`]
+    /// also writes through this path. Public callers use
+    /// [`Self::apply_session_bindings`].
+    pub(crate) fn session_bindings_mut(&mut self) -> &mut SessionBindings {
+        &mut self.session_bindings
+    }
 }
 
 /// Control-value store.
@@ -243,6 +305,50 @@ pub(crate) struct SnapStore {
 #[derive(Debug, Default)]
 pub(crate) struct MappingStore {
     pub(crate) bindings: HashMap<MappingId, MappingSource>,
+}
+
+/// Session-binding state recording the OSC/MIDI device IDs that were
+/// active at session start. Crash-resume class-d
+/// ([`crate::crash_resume::restore_class_d`]) uses this to rebind on
+/// re-enumeration per MIDI-CONF-09.
+///
+/// Both fields are `Vec<>` to preserve insertion order — which devices
+/// were enumerated when in the session — because that ordering matters
+/// for the rebind-priority in case of partial-reconnect scenarios.
+///
+/// Visibility note (Wave 4d.3 PR 5): the struct ships `pub` rather
+/// than the broader `pub(crate)` posture used by [`MappingStore`]
+/// because (a) crash-resume restoration is a recovery-side write
+/// path that does NOT flow through the canonical command-bus
+/// commit-thread (the device-id snapshot is repopulated wholesale
+/// from the recovered state per ADR-006's recovery exception), and
+/// (b) the integration-test corpus + future adapter crates need to
+/// construct + observe these values across the snapshot envelope
+/// boundary. Field visibility stays `pub` for the same reason.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct SessionBindings {
+    pub osc_devices: Vec<OscDeviceBinding>,
+    pub midi_devices: Vec<MidiDeviceBinding>,
+}
+
+/// One OSC device binding (device id plus the mapping ids bound to
+/// that device at session-start time). Public so the
+/// [`crate::crash_resume::restore_class_d`] helper can construct +
+/// read these values when wiring with the OSC adapter crate in a
+/// future PR; mirrors the [`MappingId`] visibility posture (`pub`
+/// even though [`MappingStore`] itself is `pub(crate)`).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct OscDeviceBinding {
+    pub device_id: String,
+    pub mappings: Vec<MappingId>,
+}
+
+/// One MIDI device binding. See [`OscDeviceBinding`] for the same
+/// visibility + composition posture.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct MidiDeviceBinding {
+    pub device_id: String,
+    pub mappings: Vec<MappingId>,
 }
 
 #[cfg(test)]

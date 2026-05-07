@@ -68,8 +68,22 @@
 //!   [`restore_all_supported_classes`]. As of this PR,
 //!   [`restore_all_supported_classes`] still covers ONLY class-a +
 //!   class-b + class-c.
-//! - **PR 5+**: class-d (OSC/MIDI session bindings) once the State
-//!   shape lands, class-e once the audio-input-device + `syn_Threshold`
+//! - **PR 5** (this PR): class-d (OSC/MIDI session bindings) ships
+//!   as a real sub-store assignment via the additive [`State`]
+//!   extension introduced in
+//!   [`crate::state::SessionBindings`]. The V2 snapshot envelope
+//!   ([`crate::state_migration::encode_snapshot`]) gains a tagged
+//!   `EXT_ID_V2_SESSION_BINDINGS` extension carrying the device-id
+//!   list per OSC and MIDI; the canonical-binary segment
+//!   ([`crate::state_replay::encode_state_canonical`]) does NOT
+//!   observe `session_bindings`, so EV-STATE-REPLAY (row 32) /
+//!   EV-PRESET-PLAYLIST (row 34) / EV-STATE-MIGRATION (row 33)
+//!   canonical hashes are preserved. [`restore_class_d`] joins
+//!   [`restore_all_supported_classes`]. Adapter-side rebinding
+//!   (re-enumerating OSC / MIDI ports against the persisted device
+//!   IDs per MIDI-CONF-09) is the responsibility of the integration
+//!   crates and runs at adapter startup-time, not this restore step.
+//! - **PR 6+**: class-e once the audio-input-device + `syn_Threshold`
 //!   sub-stores land, class-f once the operator meta-controls sub-store
 //!   lands, class-g once the render-config sub-store lands (at which
 //!   point each respective helper widens from a no-op to a sub-store
@@ -410,18 +424,36 @@ pub fn restore_class_b(restored: &State, target: &mut State) {
 ///
 /// Does NOT touch class-a or class-b fields. The orthogonality is
 /// asserted at T1.
-///
-/// # Class-d deferral
-///
-/// Class-d (OSC/MIDI session bindings) is NOT shipped in this PR.
-/// The canonical [`State`] does not yet carry session / device-id
-/// state — the [`crate::state::MappingStore`] is a per-mapping
-/// `MappingId → MappingSource` enum, not a session-binding map keyed
-/// by device id. Adding class-d restoration requires a State-shape
-/// extension; see the module-level "Slice progression" prose for
-/// sequencing.
 pub fn restore_class_c(restored: &State, target: &mut State) {
     target.playlist_store.position = restored.playlist_store.position;
+}
+
+/// Apply class-d fields from `restored` onto `target`.
+///
+/// Class-d per `docs/26-evidence-artifact-registry.md` row 80
+/// description column: "OSC/MIDI session bindings (device IDs
+/// persist; bindings rebind on re-enumeration per MIDI-CONF-09)".
+///
+/// Wave 4d.3 PR 5 ships the additive
+/// [`crate::state::SessionBindings`] sub-store on [`State`]
+/// recording the OSC + MIDI device IDs that were bound at session
+/// start. This helper overwrites `target.session_bindings` with
+/// `restored.session_bindings` verbatim. Adapter-side rebinding
+/// (re-enumerating the OSC / MIDI ports against the persisted
+/// device IDs per MIDI-CONF-09) is the responsibility of the
+/// integration crates and runs at adapter startup-time, not this
+/// restore step — class-d's contribution is the device-id
+/// PERSISTENCE shape, not the rebind protocol.
+///
+/// Does NOT touch class-a, class-b, class-c fields, the
+/// per-mapping [`crate::state::MappingStore`] (which carries the
+/// OSC / MIDI tag for each `MappingId` and is class-d-adjacent but
+/// distinct), the deferred class-e / class-f / class-g surfaces, or
+/// the snapshot envelope metadata. The orthogonality is asserted at
+/// T1.
+pub fn restore_class_d(target: &mut State, recovered: &State) {
+    let recovered_bindings = recovered.session_bindings().clone();
+    *target.session_bindings_mut() = recovered_bindings;
 }
 
 /// Apply class-e fields from `restored` onto `target`.
@@ -515,19 +547,23 @@ pub fn restore_class_g(_restored: &State, _target: &mut State) {
 }
 
 /// Apply every class supported by the current adapter (class-a +
-/// class-b + class-c).
+/// class-b + class-c + class-d).
 ///
-/// Class-e, class-f, and class-g are NOT invoked here as of PR 4 —
+/// Class-e, class-f, and class-g are NOT invoked here as of PR 5 —
 /// [`restore_class_e`], [`restore_class_f`], and [`restore_class_g`]
-/// are documented-deferred no-ops preserved for PR 5+ widening once
-/// the canonical [`State`] grows the corresponding sub-stores.
-/// Subsequent PRs widen this convenience helper as class-d through
-/// class-g land. Existing call sites pick up the broader restoration
-/// without an API break.
+/// remain documented-deferred no-ops preserved for PR 6+ widening
+/// once the canonical [`State`] grows the corresponding sub-stores.
+/// Class-d (OSC/MIDI session bindings) joined this helper in Wave
+/// 4d.3 PR 5 alongside the additive
+/// [`crate::state::SessionBindings`] sub-store extension on
+/// [`State`]. Subsequent PRs widen this convenience helper as
+/// class-e through class-g land. Existing call sites pick up the
+/// broader restoration without an API break.
 pub fn restore_all_supported_classes(restored: &State, target: &mut State) {
     restore_class_a(restored, target);
     restore_class_b(restored, target);
     restore_class_c(restored, target);
+    restore_class_d(target, restored);
 }
 
 #[cfg(test)]
@@ -555,13 +591,13 @@ mod tests {
     use super::{
         CanonicalBinarySnapshotter, CrashResumeAdapter, CrashResumeError, SerializationKind,
         StateSnapshotter, restore_all_supported_classes, restore_class_a, restore_class_b,
-        restore_class_c, restore_class_e, restore_class_f, restore_class_g,
+        restore_class_c, restore_class_d, restore_class_e, restore_class_f, restore_class_g,
     };
     use crate::command_bus::{
         Command, CommandBus, ControlId, ControlValue, InMemoryBus, MappingId, MappingSource,
         PresetId, SnapSlotId,
     };
-    use crate::state::State;
+    use crate::state::{MidiDeviceBinding, OscDeviceBinding, State};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -869,34 +905,164 @@ mod tests {
         assert!(target.snap_slot_saved(snap));
     }
 
+    /// Build a non-default state with class-d session bindings (one
+    /// OSC device + one MIDI device, each with one mapping). Used by
+    /// the class-d round-trip + orthogonality drift pins.
+    fn seeded_class_d_only() -> State {
+        let mut state = State::default();
+        let bindings = state.session_bindings_mut();
+        bindings.osc_devices.push(OscDeviceBinding {
+            device_id: "osc.example.local:9000".to_owned(),
+            mappings: vec![MappingId(11), MappingId(12)],
+        });
+        bindings.midi_devices.push(MidiDeviceBinding {
+            device_id: "iac-bus-0".to_owned(),
+            mappings: vec![MappingId(21)],
+        });
+        state
+    }
+
     #[test]
-    fn class_d_deferred_pending_state_shape_extension() {
-        // Documentation pin: class-d (OSC/MIDI session bindings)
-        // is NOT shipped. Class-e (audio input device + `syn_Threshold`),
-        // class-f (operator meta-controls), and class-g (render
-        // resolution + FPS target) ship as documented-deferred no-op
-        // helpers — see the dedicated `class_<x>_deferred_pending_*`
-        // pins below. The canonical [`State`] does not yet carry
-        // session / device-id / audio-input / operator-meta / render-
-        // config sub-stores. Adding restoration for any of these
-        // classes requires a State-shape extension (new sub-store +
-        // commit-bus event family + canonical-binary encoder
-        // widening), which carries broader review implications and is
-        // sequenced behind that work.
+    fn class_d_status_no_longer_deferred_pending_state_shape() {
+        // Documentation pin (Wave 4d.3 PR 5): class-d (OSC/MIDI
+        // session bindings) ships in this PR via the additive
+        // `crate::state::SessionBindings` sub-store extension on
+        // `State`. The widening trigger documented by PR 1-4 has
+        // landed: this pin replaces the previous `class_d_deferred_*`
+        // pin and asserts the helper is wired into
+        // `restore_all_supported_classes` for class-d round-trip.
         //
-        // Today: `restore_all_supported_classes` covers class-a +
-        // class-b + class-c. The mapping_store IS in canonical
-        // state but is NOT class-d (per-mapping `MappingSource`
-        // enum, not session-binding map keyed by device id).
-        // Asserting it is left untouched by the supported-classes
-        // restoration confirms the partial-advance is honored.
+        // Class-e / class-f / class-g remain documented-deferred no-
+        // ops pending their respective State-shape extensions.
+        let restored_source = seeded_class_d_only();
+        let mut target = State::default();
+        // Pre-condition: target has empty session_bindings.
+        assert!(target.session_bindings().osc_devices.is_empty());
+        assert!(target.session_bindings().midi_devices.is_empty());
+
+        restore_all_supported_classes(&restored_source, &mut target);
+
+        // Post-condition: class-d state has been projected.
+        assert_eq!(
+            target.session_bindings().osc_devices.len(),
+            1,
+            "class-d OSC device must be projected",
+        );
+        assert_eq!(
+            target.session_bindings().midi_devices.len(),
+            1,
+            "class-d MIDI device must be projected",
+        );
+        assert_eq!(
+            target.session_bindings().osc_devices[0].device_id,
+            "osc.example.local:9000",
+        );
+    }
+
+    #[test]
+    fn restore_class_d_overwrites_target_session_bindings_with_recovered() {
+        // Pin: class-d restoration projects the canonical
+        // `SessionBindings` sub-store from `recovered` onto `target`,
+        // overwriting any prior bindings on `target`.
+        let recovered = seeded_class_d_only();
+        let mut target = State::default();
+        // Seed `target` with a different binding shape that must be
+        // overwritten.
+        target
+            .session_bindings_mut()
+            .osc_devices
+            .push(OscDeviceBinding {
+                device_id: "stale-osc-device".to_owned(),
+                mappings: vec![MappingId(99)],
+            });
+
+        restore_class_d(&mut target, &recovered);
+
+        assert_eq!(target.session_bindings(), recovered.session_bindings());
+    }
+
+    #[test]
+    fn restore_class_d_handles_empty_recovered_session_bindings() {
+        // Pin: class-d restoration with empty `recovered.session_bindings`
+        // clears any state the target was carrying. The helper is a
+        // wholesale replace, not a merge.
+        let recovered = State::default();
+        let mut target = seeded_class_d_only();
+
+        restore_class_d(&mut target, &recovered);
+
+        assert!(target.session_bindings().osc_devices.is_empty());
+        assert!(target.session_bindings().midi_devices.is_empty());
+    }
+
+    #[test]
+    fn restore_class_d_does_not_touch_other_state_fields() {
+        // Pin: class-d restoration only touches `session_bindings`.
+        // Class-a (preset / control), class-b (Snap), class-c
+        // (playlist), class-d-adjacent `mapping_store`, and the
+        // snapshot envelope metadata are all preserved.
+        let recovered = seeded_class_d_only();
+        let mut target = seeded_class_a_only();
+        let snap = SnapSlotId::new(15).expect("valid snap slot");
+        target.snap_store.saved.insert(snap);
+        target.snap_store.active = Some(snap);
+        target.playlist_store.position = -42;
+        target
+            .mapping_store
+            .bindings
+            .insert(MappingId(99), MappingSource::Osc);
+
+        let target_active_preset_pre = target.active_preset();
+        let target_control_pre = target.control_value(ControlId(2));
+        let target_snap_active_pre = target.active_snap_slot();
+        let target_playlist_pre = target.playlist_position();
+        let target_mapping_pre = target.mapping_source(MappingId(99));
+
+        restore_class_d(&mut target, &recovered);
+
+        // Class-a / b / c / mapping store untouched:
+        assert_eq!(target.active_preset(), target_active_preset_pre);
+        assert_eq!(target.control_value(ControlId(2)), target_control_pre);
+        assert_eq!(target.active_snap_slot(), target_snap_active_pre);
+        assert!(target.snap_slot_saved(snap));
+        assert_eq!(target.playlist_position(), target_playlist_pre);
+        assert_eq!(target.mapping_source(MappingId(99)), target_mapping_pre);
+        // Class-d applied:
+        assert_eq!(target.session_bindings(), recovered.session_bindings());
+    }
+
+    #[test]
+    fn restore_all_supported_classes_invokes_class_d() {
+        // Pin: PR 5 widens the convenience helper to invoke
+        // `restore_class_d`. A target lacking session bindings whose
+        // restored source carries them must end up with the bindings
+        // applied alongside the class-a / class-b / class-c values.
+        let restored_source = seeded_class_d_only();
+        let mut target = State::default();
+
+        restore_all_supported_classes(&restored_source, &mut target);
+
+        assert_eq!(
+            target.session_bindings(),
+            restored_source.session_bindings()
+        );
+    }
+
+    #[test]
+    fn supported_classes_restoration_does_not_touch_per_mapping_store() {
+        // Pin: although class-d is now shipped, the per-mapping
+        // `mapping_store` (which carries the OSC / MIDI tag for each
+        // `MappingId` and is class-d-adjacent but distinct) is
+        // intentionally NOT touched by `restore_all_supported_classes`
+        // — its restoration would belong to a future class-d-extension
+        // PR or a follow-on class assignment.
         let restored_source = seeded_deferred_classes();
         let mut target = State::default();
         restore_all_supported_classes(&restored_source, &mut target);
         assert_eq!(
             target.mapping_source(MappingId(4)),
             None,
-            "mapping store (class-d-adjacent) must not be touched by class-a/b/c restoration",
+            "per-mapping mapping_store must not be touched by class-a/b/c/d restoration",
         );
     }
 
@@ -1142,16 +1308,19 @@ mod tests {
         // Pin: PR 3 + PR 4 ship `restore_class_e`, `restore_class_f`,
         // and `restore_class_g` as documented-deferred no-op helpers
         // but explicitly DO NOT add any of them to the convenience
-        // helper. When each State-shape extension lands and the
-        // corresponding helper widens to a real sub-store
+        // helper. PR 5 added `restore_class_d` to the convenience
+        // helper alongside the additive `SessionBindings` sub-store
+        // extension. When each remaining State-shape extension lands
+        // and the corresponding helper widens to a real sub-store
         // assignment, this pin's name updates alongside.
         //
         // The pin shape exercises the convenience helper with a
         // `restored_source` that carries non-default class-a +
         // class-b + class-c mutations, against a `target` that is
         // `State::default`. Class-a, class-b, class-c MUST be
-        // applied; nothing else (since class-e/f/g have no State to
-        // project, and class-d is still entirely deferred).
+        // applied; class-d operates on empty `session_bindings`
+        // (which round-trips as a clear-target no-op for this
+        // fixture); class-e/f/g have no State to project.
         let restored_source = seeded_state();
         let mut target = State::default();
 
@@ -1168,6 +1337,11 @@ mod tests {
         assert_eq!(
             target.playlist_position(),
             restored_source.playlist_position(),
+        );
+        // Class-d applied (empty bindings round-trip):
+        assert_eq!(
+            target.session_bindings(),
+            restored_source.session_bindings()
         );
     }
 
