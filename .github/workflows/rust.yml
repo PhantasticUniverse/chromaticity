@@ -126,7 +126,6 @@ jobs:
               - 'app/**'
               - 'engine/**'
               - 'integrations/**'
-              - 'release-eng/**'
               - 'dist/.gitkeep'
               - '.github/workflows/rust.yml'
 
