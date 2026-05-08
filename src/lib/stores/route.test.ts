@@ -28,6 +28,7 @@ const ALL_ROUTES: readonly RouteName[] = [
   'settings',
   'license',
   'welcome',
+  'help',
 ];
 
 describe('routeStore', () => {

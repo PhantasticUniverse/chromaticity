@@ -47,6 +47,11 @@ export default [
       'third_party/**',
       // Grandfathered planning prose (promoted normative docs).
       'docs/**',
+      // Wave 1d-α docs corpus — markdown source tree for the
+      // mkdocs-built in-app help; not JS / TS so ESLint has nothing
+      // to do here, but the explicit ignore keeps any future
+      // tooling sweep from accidentally claiming it.
+      'docs-corpus/**',
     ],
   },
 

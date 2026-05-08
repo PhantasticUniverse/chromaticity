@@ -34,8 +34,9 @@
 //    `axe.run` invocation.
 //
 // `afterEach(cleanup)` per `feedback_vitest_svelte_cleanup_required.md`
-// — the corpus mounts and unmounts 14 views, and missing cleanup
-// causes "found multiple elements" cross-test bleed.
+// — the corpus mounts and unmounts 15 views (14 routed views + the
+// Wave 1d-α PR 1 Help view scaffold), and missing cleanup causes
+// "found multiple elements" cross-test bleed.
 
 import { cleanup, render } from '@testing-library/svelte';
 import type { Component } from 'svelte';
@@ -49,16 +50,29 @@ import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vite
 // region so it executes before the view modules that transitively
 // import `@tauri-apps/api/core` — `vi.mock` is hoisted by Vitest, so
 // physical placement here is documentation, not load order.
-const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+const { invokeMock, convertFileSrcMock, resolveResourceMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  convertFileSrcMock: vi.fn().mockImplementation((path: string) => `tauri-asset://${path}`),
+  resolveResourceMock: vi.fn().mockImplementation(async (path: string) => `/resolved/${path}`),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
+  convertFileSrc: convertFileSrcMock,
+}));
+
+// Wave 1d-α PR 1 added the Help view, which imports `resolveResource`
+// from `@tauri-apps/api/path`. Mock it alongside the core mock so the
+// corpus render of Help does not throw on the non-Tauri test runtime.
+vi.mock('@tauri-apps/api/path', () => ({
+  resolveResource: resolveResourceMock,
 }));
 
 /* eslint-disable import/order */
 import { CHROMA_FIXTURE_NATIVE } from '../../data/scene-fixtures';
 import AudioUniforms from '../../views/AudioUniforms.svelte';
 import Author from '../../views/Author.svelte';
+import Help from '../../views/Help.svelte';
 import Import from '../../views/Import.svelte';
 import Inputs from '../../views/Inputs.svelte';
 import Library from '../../views/Library.svelte';
@@ -92,6 +106,7 @@ const VIEWS: ViewEntry[] = [
     component: AudioUniforms as unknown as Component<Record<string, unknown>>,
   },
   { name: 'Author', component: Author as unknown as Component<Record<string, unknown>> },
+  { name: 'Help', component: Help as unknown as Component<Record<string, unknown>> },
   { name: 'Import', component: Import as unknown as Component<Record<string, unknown>> },
   // Inputs requires a `scene` prop (no default); reuse the canonical
   // native-format scene fixture used by `Inputs.test.ts`.

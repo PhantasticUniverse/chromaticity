@@ -84,6 +84,8 @@ export const BASELINE: BaselineEntry[] = [
   { view: 'Settings', maxCritical: 0, maxSerious: 0, maxModerate: 0, maxMinor: 0 },
   { view: 'Sources', maxCritical: 0, maxSerious: 0, maxModerate: 0, maxMinor: 0 },
   { view: 'Welcome', maxCritical: 0, maxSerious: 0, maxModerate: 0, maxMinor: 0 },
+  // Wave 1d-α PR 1 — Help view scaffold.
+  { view: 'Help', maxCritical: 0, maxSerious: 0, maxModerate: 0, maxMinor: 0 },
 ];
 
 /**

@@ -43,6 +43,14 @@
 // promotes the previously-disabled Import sidebar entry to a routed view,
 // closing the v0.2 surface inventory. Insert position mirrors the bundle's
 // VIEWS ordering (between `osc` and `patch`).
+//
+// Wave 1d-α PR 1 adds `help` to the union: the in-app embedded
+// documentation corpus rails (`docs-corpus/` mkdocs source +
+// `dist/help/` static-HTML build output bundled via Tauri
+// `bundle.resources`) get a routed view at `src/lib/views/Help.svelte`,
+// promoting the previously-disabled bottom-section Help sidebar entry.
+// This is the first scaffold PR; corpus content authoring is PR 2+
+// scope per `docs/26` row `EV-DOCS-CORPUS`.
 
 export type RouteName =
   | 'perform'
@@ -57,7 +65,8 @@ export type RouteName =
   | 'patch'
   | 'settings'
   | 'license'
-  | 'welcome';
+  | 'welcome'
+  | 'help';
 
 class RouteStore {
   current: RouteName = $state('perform');

@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Wave 1d-α PR 1: chromaticity in-app embedded documentation corpus
+# scaffold. This config drives `mkdocs build` for the docs corpus shipped
+# inside the chromaticity desktop bundle and surfaced through the Help
+# view (`src/lib/views/Help.svelte`). The build emits to `../dist/help/`
+# so Vite's frontend dist directory picks the static HTML up at bundle
+# time per `app/shell/tauri.conf.json` `bundle.resources`.
+#
+# `material` is selected as the theme for built-in search + offline
+# operation + MIT licensing (clean against `deny.toml` non-Rust posture).
+# The corpus content itself MUST be original chromaticity prose — see
+# `docs-corpus/README.md` clean-room attestation per
+# `docs/29-cleanroom-legal-policy-baseline.md`.
+#
+# This PR ships the rails only; corpus content authoring is PR 2+ scope.
+site_name: Chromaticity Help
+site_description: In-app help and reference for the Chromaticity desktop runtime.
+site_author: Chromaticity
+docs_dir: docs
+site_dir: ../dist/help
+use_directory_urls: false
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.sections
+    - search.highlight
+    - search.suggest
+  palette:
+    scheme: slate
+
+nav:
+  - Welcome: index.md
+  - About: about.md
+
+# Strict-build flag: surface broken links / orphan pages at corpus-build
+# time. Authors land doc updates with `mkdocs build --strict` clean.
+strict: true

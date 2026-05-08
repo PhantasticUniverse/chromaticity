@@ -64,9 +64,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { route: 'welcome', label: 'Welcome', icon: 'heart' },
   ] as const;
 
-  const NAV_BOTTOM: readonly DisabledEntry[] = [
+  // Wave 1d-α PR 1 promotes the Help bottom-section entry from a
+  // disabled stub to a routed view (`views/Help.svelte`). The Account
+  // entry remains disabled pending entitlement-tier UI work. The
+  // bottom-section list now mixes wired + disabled entries; the
+  // `isWired` discriminator below already covers both shapes.
+  const NAV_BOTTOM: readonly (NavEntry | DisabledEntry)[] = [
     { label: 'Account', icon: 'user', section: 'bottom' },
-    { label: 'Help', icon: 'help', section: 'bottom' },
+    { route: 'help', label: 'Help', icon: 'help' },
   ] as const;
 
   function isWired(entry: NavEntry | DisabledEntry): entry is NavEntry {
@@ -112,18 +117,34 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <ul class="sidebar-rail__section sidebar-rail__section--bottom">
     {#each NAV_BOTTOM as entry (entry.label)}
       <li>
-        <button
-          type="button"
-          class="sidebar-rail__btn"
-          aria-disabled="true"
-          disabled
-          title="{entry.label} — coming in W17+"
-        >
-          <span class="sidebar-rail__glyph">
-            <Icon name={entry.icon} size={20} />
-          </span>
-          <span class="sidebar-rail__label">{entry.label}</span>
-        </button>
+        {#if isWired(entry)}
+          <button
+            type="button"
+            class="sidebar-rail__btn"
+            class:active={routeStore.current === entry.route}
+            aria-current={routeStore.current === entry.route ? 'page' : undefined}
+            title={entry.label}
+            onclick={() => routeStore.set(entry.route)}
+          >
+            <span class="sidebar-rail__glyph">
+              <Icon name={entry.icon} size={20} />
+            </span>
+            <span class="sidebar-rail__label">{entry.label}</span>
+          </button>
+        {:else}
+          <button
+            type="button"
+            class="sidebar-rail__btn"
+            aria-disabled="true"
+            disabled
+            title="{entry.label} — coming in W17+"
+          >
+            <span class="sidebar-rail__glyph">
+              <Icon name={entry.icon} size={20} />
+            </span>
+            <span class="sidebar-rail__label">{entry.label}</span>
+          </button>
+        {/if}
       </li>
     {/each}
   </ul>
