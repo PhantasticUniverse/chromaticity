@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+  SPDX-FileCopyrightText: 2026 Chromaticity
+
+  Hardened-runtime entitlements for Chromaticity macOS builds per
+  docs/adr/ADR-014-signing-notarization-auto-update.md Sec.1 (macOS).
+
+  Declared capabilities:
+    - microphone: live audio analysis (cpal input streams)
+    - camera: optional video input source (operator-enabled, free at MVP per ADR-009)
+    - network client: outbound HTTPS for appcast + crash-payload egress (loopback OSC handled separately)
+
+  Inbound OSC ports (by default 9000/udp loopback) do NOT require an
+  entitlement under hardened runtime since `com.apple.security.network.server`
+  is a sandbox key; Chromaticity ships hardened-runtime non-sandboxed at
+  MVP. The plist is the canonical entitlement surface for `codesign
+  --entitlements` consumed by release-eng/sign-macos.sh.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <key>com.apple.security.device.camera</key>
+  <true/>
+  <key>com.apple.security.network.client</key>
+  <true/>
+</dict>
+</plist>
