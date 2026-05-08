@@ -45,6 +45,13 @@ the cumulative narrowing axes and milestone commits.
   forward at AO discretion.
 - **Phase 4d** — 5 of 6 rows at `Pass` as of 2026-05-07;
   `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 (14-day soak window).
+- **Wave 1d-α PR 1** — docs corpus scaffold landed 2026-05-08. Establishes
+  `docs-corpus/` mkdocs source tree + `dist/help/` static-HTML build output
+  bundled via Tauri `bundle.resources` + routed `Help` view at
+  `src/lib/views/Help.svelte` reading bundled HTML through Tauri's
+  `convertFileSrc`. Two placeholder pages (Welcome / About) ship at PR 1;
+  real corpus content authoring is PR 2+ scope per `EV-DOCS-CORPUS` (status
+  `Scoped`).
 
 Slice-3 scheduler-tick wave (closing 2026-05-01) shipped
 `engine/runtime/src/scheduler/{mod,observability,audio,render,ipc}.rs` per

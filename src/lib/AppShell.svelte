@@ -125,6 +125,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import TopBar from './TopBar.svelte';
   import AudioUniforms from './views/AudioUniforms.svelte';
   import Author from './views/Author.svelte';
+  import Help from './views/Help.svelte';
   import Import from './views/Import.svelte';
   import Library from './views/Library.svelte';
   import License from './views/License.svelte';
@@ -267,6 +268,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <License />
       {:else if routeStore.current === 'welcome'}
         <Welcome />
+      {:else if routeStore.current === 'help'}
+        <Help />
       {/if}
     </div>
     {#if routeStore.current === 'perform'}

@@ -78,14 +78,20 @@ describe('SidebarRail shell component', () => {
     }
   });
 
-  it('renders Account and Help in the bottom section as disabled buttons', () => {
+  it('renders Account in the bottom section as a disabled button (Help routed in Wave 1d-α)', () => {
     const { getByTitle } = render(SidebarRail);
     const account = getByTitle('Account — coming in W17+');
-    const help = getByTitle('Help — coming in W17+');
     expect(account).toBeDisabled();
     expect(account).toHaveAttribute('aria-disabled', 'true');
-    expect(help).toBeDisabled();
-    expect(help).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('Help bottom-section entry is wired and routes to the help view (Wave 1d-α PR 1)', async () => {
+    routeStore.set('perform');
+    const { getByTitle } = render(SidebarRail);
+    const help = getByTitle('Help');
+    expect(help).not.toBeDisabled();
+    await fireEvent.click(help);
+    expect(routeStore.current).toBe('help');
   });
 
   it('does not change the active route when a disabled bottom-section button is clicked', async () => {

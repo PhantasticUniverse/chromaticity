@@ -17,6 +17,11 @@ third_party/
 # Prettier-clean.
 docs/
 
+# Wave 1d-α docs corpus — markdown source for the mkdocs-built in-app
+# help. Authored by hand without prettier rewrap so each page's prose
+# wraps to the author's chosen rhythm.
+docs-corpus/
+
 # Generated artifacts.
 generated/
 # ts-rs writes the per-type IPC bindings here from

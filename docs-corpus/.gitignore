@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Local mkdocs scratch artifacts. The canonical build output lives at
+# the repo-root `dist/help/` (gitignored alongside the rest of `dist/*`
+# in the root `.gitignore`); these patterns guard against `mkdocs`
+# leaving anything in the corpus dir itself.
+
+# mkdocs intermediate caches and any in-tree builds (`mkdocs build`
+# without `--site-dir` would default to `site/`; our config sets
+# `site_dir: ../dist/help` so this is a belt-and-braces guard).
+site/
+.mkdocs-cache/
+
+# Editor scratch.
+.DS_Store
+*.swp

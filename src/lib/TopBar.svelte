@@ -78,6 +78,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     settings: 'Settings',
     license: 'License',
     welcome: 'Welcome',
+    help: 'Help',
   };
 
   // Adapter status pills mirroring the v0.2 wireframe pack's top-right
