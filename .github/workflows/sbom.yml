@@ -80,6 +80,7 @@ jobs:
               - 'app/**'
               - 'engine/**'
               - 'integrations/**'
+              - 'release-eng/**'
               - '.github/workflows/sbom.yml'
 
       - name: Combine filter output with non-PR bypass
