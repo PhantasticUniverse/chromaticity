@@ -96,7 +96,7 @@ The `[lints]` table inherits the workspace defaults (`unsafe_code = forbid`, `cl
   **Canonical fault reason vocabulary.** The reason strings are pinned as `pub const` items in `frames.rs`, not free string literals — the conformance corpus matches against the constants, and the operator-facing UX surface localizes off them. The vocabulary:
 
   - `PERMISSION_DENIED: &'static str = "permission-denied"` — OS denied camera access via TCC (macOS) / Privacy Settings (Windows).
-  - `DEVICE_BUSY: &'static str = "device-busy"` — device is held by another application (`AVCaptureDevice.isInUseByAnotherApplication == YES` on macOS; `MF_E_DEVICE_INVALIDATED` mid-stream on Windows).
+  - `DEVICE_BUSY: &'static str = "device-busy"` — device is held by another application (`AVCaptureDevice.isInUseByAnotherApplication == YES` on macOS; on Windows the analogous condition surfaces as a Media Foundation per-source-reader contention error rather than as `MF_E_DEVICE_INVALIDATED`, which §6 + §10 reserve for the privacy-block path → `permission-denied`).
   - `DEVICE_NOT_FOUND: &'static str = "device-not-found"` — persisted device-id no longer enumerable (USB unplug + restart, OS-level removal, etc.).
   - `FORMAT_NOT_SUPPORTED: &'static str = "format-not-supported"` — no overlap between requested and offered formats, OR the negotiated format is `Mjpeg` and JPEG decode is not yet wired.
   - `RECONNECT_EXHAUSTED: &'static str = "reconnect-exhausted"` — `reconnect_attempts × reconnect_interval_ms` window exhausted without re-enumerating the persisted device.
