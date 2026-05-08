@@ -44,7 +44,7 @@
 //! bindings 0 through 4 to the appropriate reactive symbols without
 //! touching the converter's text-rewrite surface.
 //!
-//! Slice 6 (this PR) ships the [`ux_latency`] module — the
+//! Slice 6 (PR #363 / `b2156bb`) shipped the [`ux_latency`] module — the
 //! co-developed §3.3a UX latency measurement harness satisfying
 //! both `EV-AUTHORING-UX-LATENCY` (`docs/26` row 83) and
 //! `EV-DOCS-UX-LATENCY` (row 84) per AO direction "co-develop the

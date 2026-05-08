@@ -7,33 +7,47 @@
 //! mirroring the established `integrations/osc-adapter` /
 //! `integrations/midi-adapter` shape. Cross-platform via the
 //! `nokhwa = "0.10"` abstraction (CoreMediaIO on macOS,
-//! Media Foundation on Windows; macOS + Windows feature flags
-//! ship in subsequent Phase 2 PRs).
+//! Media Foundation on Windows). Texture binding namespace:
+//! `chroma_CameraInput[N]` (N = 0..=3 per ADR-020 §Decision;
+//! mirrors the Shadertoy iChannel range). The render-side
+//! marshalling step lives at `engine/render/src/camera_adapter.rs`
+//! per ADR-020 §7; the engine crate consumes the plain-data
+//! [`CameraFrame`] payloads this crate publishes without taking a
+//! reverse dependency.
 //!
-//! Texture binding namespace: `chroma_CameraInput[N]` (N = 0..=3
-//! per ADR-020 §Decision; mirrors Shadertoy iChannel range).
-//! Render-side wiring (Phase 2 PR 5) marshals [`CameraFrame`] to
-//! the wgpu texture binding.
+//! ## Phase-4a Wave 1c-β camera-arm closure
 //!
-//! ## Phase-2 PR-1 scope
+//! Wave 1c-β closed 2026-05-07 (cluster merge `#406`). The
+//! camera-arm widening of `EV-INTEGRATION-MATRIX` landed across the
+//! following sequenced PRs:
 //!
-//! This PR ships the surface-only scaffold. [`NokhwaInputAdapter`]
-//! returns [`AdapterError::DeviceNotFound`] from [`CameraAdapter::bind`]
-//! and an empty vec from [`CameraAdapter::enumerate`] until the
-//! per-platform backends land:
-//!
-//! * Phase 2 PR 2 wires the macOS CoreMediaIO backend (nokhwa
-//!   `input-avfoundation` feature) + the `NSCameraUsageDescription`
-//!   Info.plist override + the async `AVCaptureDevice.requestAccess`
-//!   permission flow per ADR-020 §5 / `docs/54` Phase-2 lesson 2.
-//! * Phase 2 PR 3 wires the Windows Media Foundation backend
-//!   (nokhwa `input-msmf` feature) + the Privacy Settings
-//!   permission-denial routing.
-//! * Phase 2 PR 4 ships the synthetic T2 corpus (row 78 / row 40 /
+//! * PR `#395` shipped the surface-only adapter scaffold
+//!   ([`CameraAdapter`] trait + [`NokhwaInputAdapter`] +
+//!   [`AdapterError`] + [`CameraFrame`] + [`PixelFormat`] +
+//!   [`defaults`]).
+//! * PR `#397` shipped the macOS CoreMediaIO permission-flow
+//!   surface ([`macos`]) — `NSCameraUsageDescription` Info.plist
+//!   override + `AVCaptureDevice.requestAccess` per ADR-020 §5 /
+//!   `docs/54` Phase-2 lesson 2.
+//! * PR `#399` shipped the Windows Media Foundation
+//!   permission-flow surface ([`windows`]) — Privacy Settings
+//!   probe + canonical HRESULT → fault-reason mapping per
+//!   ADR-020 §5 + §6 "Per-platform notes — Windows".
+//! * PR `#401` shipped the synthetic T2 corpus (row 78 / row 40 /
 //!   row 93 narrowing precedent).
-//! * Phase 2 PR 5 wires `engine/render/src/camera_adapter.rs` and
-//!   closes the `EV-INTEGRATION-MATRIX` camera-arm widening with
-//!   the Wave 1c-β anchor run id.
+//! * PR `#403` wired `engine/render/src/camera_adapter.rs` —
+//!   marshalling [`CameraFrame`] payloads into the wgpu texture
+//!   binding under the `chroma_CameraInput[N]` namespace.
+//!
+//! Synthetic-narrowing posture per the row 78 / row 40 / row 93
+//! precedent: per-platform concrete nokhwa `input-avfoundation` /
+//! `input-msmf` bindings + real hardware validation are documented
+//! follow-ups carried forward per
+//! `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β
+//! closure section. [`NokhwaInputAdapter::bind`] returns
+//! [`AdapterError::DeviceNotFound`] and
+//! [`NokhwaInputAdapter::enumerate`] returns an empty vec until the
+//! deferred concrete-backend wave lands.
 //!
 //! T1 evidence: `EV-INTEGRATION-MATRIX` (camera arm, Phase-4a
 //! Wave 1c-β).
@@ -47,7 +61,8 @@
 //!   stays MVP-free per line 50).
 //! - ADR-013 — networking defaults and security
 //!   (`docs/adr/ADR-013-networking-defaults-and-security.md`).
-//! - ADR-020 — camera adapter (locked contract this PR scaffolds).
+//! - ADR-020 — camera adapter
+//!   (`docs/adr/ADR-020-camera-adapter.md`).
 
 pub mod adapter;
 pub mod defaults;
@@ -64,7 +79,7 @@ pub mod macos;
 /// + §6 "Per-platform notes — Windows". Compiles to a no-op
 /// (empty module) on non-Windows targets; the gating lives at the
 /// module level so the cross-platform [`adapter`] surface stays
-/// uniform. Phase 2 PR 3 ships the trait surface +
+/// uniform. PR `#399` shipped the trait surface +
 /// [`windows::PlaceholderProbe`] concrete impl + canonical HRESULT
 /// → fault-reason mapping; the real Media Foundation / consent-
 /// store binding lands in a follow-up policy-scoped PR per the
