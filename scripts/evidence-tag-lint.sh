@@ -165,7 +165,18 @@ while IFS= read -r line; do
     refs="$(printf '%s\n' "$line" | grep -oE 'EV-[A-Z][A-Z0-9_-]+' || true)"
     while IFS= read -r ref; do
         [ -z "$ref" ] && continue
-        if ! printf '%s\n' "$valid_ids" | grep -qxF "$ref"; then
+        # Use a here-string (`<<<`) instead of `printf | grep -qxF` so
+        # the membership check doesn't fail under `set -o pipefail`
+        # when grep matches early. With the pipe form, grep exits 0
+        # on first match and closes the read end of the pipe before
+        # printf finishes writing; printf gets SIGPIPE (exit 141),
+        # pipefail elevates the pipeline's exit status to 141, and
+        # `if !` then sees a non-zero exit and incorrectly flags the
+        # ref as unknown. The here-string materialises `$valid_ids`
+        # to grep's stdin without a pipeline, so there is no SIGPIPE
+        # path. Surfaced as a transient flake on Linux CI runners
+        # under contention; previously masked by timing.
+        if ! grep -qxF "$ref" <<< "$valid_ids"; then
             unknown_refs="$(printf '%s\n  %s  (cites %s)\n' "$unknown_refs" "$line" "$ref")"
         fi
     done <<EOF
