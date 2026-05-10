@@ -1,0 +1,37 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Quick Start",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Minimal four-control onboarding scene combining a brightness slider, a contrast knob, a saturation slider, and a tint color so newcomers can sweep every primary widget kind in one place.",
+  "TAGS": ["onboarding", "welcome", "controls"],
+  "CATEGORIES": ["BUILT-IN", "WELCOME"],
+  "CONTROLS": [
+    {
+      "NAME": "brightness",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "contrast",
+      "TYPE": "knob",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "saturation",
+      "TYPE": "slider",
+      "DEFAULT": 0.7,
+      "MIN": 0.0,
+      "MAX": 1.5
+    },
+    {
+      "NAME": "tint",
+      "TYPE": "color",
+      "DEFAULT": [0.55, 0.78, 0.92, 1.0]
+    }
+  ],
+  "PASSES": []
+}

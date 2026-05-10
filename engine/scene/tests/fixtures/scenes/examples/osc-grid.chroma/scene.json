@@ -1,0 +1,64 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "OSC Grid",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Multi-cell OSC grid example. Sixteen scalar cells expressed as four routed group sliders plus four toggle gates form a coarse 4x4 mapping surface remote OSC senders can drive simultaneously. Author-facing fixture for grid-routing chrome and OSC route-prefix collision exercises.",
+  "TAGS": ["osc", "example", "grid", "remote"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES", "OSC"],
+  "CONTROLS": [
+    {
+      "NAME": "row_a",
+      "TYPE": "slider",
+      "DEFAULT": 0.0,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "row_b",
+      "TYPE": "slider",
+      "DEFAULT": 0.0,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "row_c",
+      "TYPE": "slider",
+      "DEFAULT": 0.0,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "row_d",
+      "TYPE": "slider",
+      "DEFAULT": 0.0,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "gate_a",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "gate_b",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "gate_c",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "gate_d",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "grid_tint",
+      "TYPE": "color",
+      "DEFAULT": [0.22, 0.62, 0.94, 1.0]
+    }
+  ],
+  "PASSES": []
+}

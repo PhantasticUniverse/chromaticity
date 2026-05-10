@@ -12,7 +12,9 @@ AppBundle at `<AppBundle>/Resources/scenes/welcome/`.
 ## Status
 
 Wave 1d-β PR 1 (2026-05-09) seeded this subdirectory with its first
-clean-room scene under `EV-LIBRARY-CORPUS-MIN`. The subdirectory was
+clean-room scene under `EV-LIBRARY-CORPUS-MIN`. Wave 1d-β PR 2
+(2026-05-10) extends the corpus with three more onboarding-friendly
+scenes, closing `EV-LIBRARY-CORPUS-MIN` to `Pass`. The subdirectory was
 established empty at Wave 4b.1 closure under
 `EV-LIBRARY-BUNDLE-LAYOUT` (`docs/26-evidence-artifact-registry.md`).
 
@@ -23,6 +25,18 @@ established empty at Wave 4b.1 closure under
   (`intro_scale` slider, `drift_speed` slider, `accent` color). Mirrors
   the bundle-port `views/onboard.jsx` copy intent at
   `chromaticity-planning/ui-predev-bundle-v0.2-beta/`.
+- `quick-start.chroma` — minimal four-control onboarding scene
+  combining a brightness slider, a contrast knob, a saturation slider,
+  and a tint color so newcomers can sweep every primary widget kind in
+  one place.
+- `controls-tour.chroma` — comprehensive control-widget showcase
+  exercising every CP-01 input kind (slider, knob, toggle, color, xy,
+  dropdown). Onboarding flows surface every Inspector widget the
+  runtime can render.
+- `first-cue.chroma` — single-cue starter scene illustrating a
+  fade-driven transition from a calm baseline color to an emphasis
+  state, paired with three cue-pacing controls a hotkey or playlist
+  transition can drive.
 
 ## Clean-room provenance
 

@@ -1,0 +1,47 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Controls Tour",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Comprehensive control widget showcase covering every CP-01 input kind: slider, knob, toggle, color, xy, and dropdown. The tour scene helps onboarding flows surface every Inspector widget the runtime can render.",
+  "TAGS": ["onboarding", "welcome", "controls", "showcase"],
+  "CATEGORIES": ["BUILT-IN", "WELCOME"],
+  "CONTROLS": [
+    {
+      "NAME": "amplitude",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "phase",
+      "TYPE": "knob",
+      "DEFAULT": 0.0,
+      "MIN": 0.0,
+      "MAX": 6.283185
+    },
+    {
+      "NAME": "invert",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "highlight",
+      "TYPE": "color",
+      "DEFAULT": [0.94, 0.78, 0.32, 1.0]
+    },
+    {
+      "NAME": "anchor",
+      "TYPE": "xy",
+      "DEFAULT": [0.5, 0.5]
+    },
+    {
+      "NAME": "preset",
+      "TYPE": "dropdown",
+      "DEFAULT": 0.0,
+      "LABELS": ["calm", "warm", "vivid"],
+      "VALUES": [0, 1, 2]
+    }
+  ],
+  "PASSES": []
+}

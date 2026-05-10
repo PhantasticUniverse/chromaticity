@@ -1,0 +1,44 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Bass Pulse",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Single-band bass-driven pulse demo. A bass-gain slider controls the inbound audio sensitivity; a pulse-curve knob shapes the response envelope; an attack and a release slider govern the post-strike settle. Demonstrates the chromaticity-native audio-reactivity surface at its narrowest single-band cross-section.",
+  "TAGS": ["audio", "reactive", "example", "bass"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "bass_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.8,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "pulse_curve",
+      "TYPE": "knob",
+      "DEFAULT": 0.55,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "attack",
+      "TYPE": "slider",
+      "DEFAULT": 0.05,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "release",
+      "TYPE": "slider",
+      "DEFAULT": 0.35,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "pulse_color",
+      "TYPE": "color",
+      "DEFAULT": [0.92, 0.27, 0.45, 1.0]
+    }
+  ],
+  "PASSES": []
+}
