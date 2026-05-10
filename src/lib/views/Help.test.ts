@@ -49,11 +49,12 @@ describe('Help view', () => {
     cleanup();
   });
 
-  it('renders the help title and the two PR-1 page-list entries', () => {
+  it('renders the help title and every page-list entry from the catalog', () => {
     const { getByText, getByRole } = render(Help);
     expect(getByRole('heading', { name: 'Help' })).toBeInTheDocument();
-    expect(getByText('Welcome')).toBeInTheDocument();
-    expect(getByText('About')).toBeInTheDocument();
+    for (const page of HELP_PAGES) {
+      expect(getByText(page.label)).toBeInTheDocument();
+    }
   });
 
   it('marks the currently selected page with aria-current=page', () => {
@@ -95,8 +96,26 @@ describe('Help view', () => {
     expect(getByRole('status')).toHaveTextContent(/mkdocs build/);
   });
 
-  it('exports a HELP_PAGES catalog matching the PR 1 corpus pages', () => {
-    expect(HELP_PAGES.map((p) => p.slug)).toEqual(['index', 'about']);
-    expect(HELP_PAGES.map((p) => p.htmlPath)).toEqual(['help/index.html', 'help/about.html']);
+  it('exports a HELP_PAGES catalog matching the wave 1d-alpha corpus pages', () => {
+    expect(HELP_PAGES.map((p) => p.slug)).toEqual([
+      'index',
+      'perform-mode',
+      'scene-workflow',
+      'library-workflow',
+      'audio-reactivity',
+      'import-shadertoy',
+      'hotkeys-reference',
+      'osc-routes',
+      'chroma-uniforms',
+      'settings-reference',
+      'about',
+    ]);
+    // Every htmlPath must point under the `help/` resource prefix so
+    // it lines up with the per-page `bundle.resources` entries in
+    // `app/shell/tauri.conf.json`.
+    for (const page of HELP_PAGES) {
+      expect(page.htmlPath.startsWith('help/')).toBe(true);
+      expect(page.htmlPath.endsWith('.html')).toBe(true);
+    }
   });
 });
