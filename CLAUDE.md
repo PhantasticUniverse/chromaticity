@@ -45,13 +45,38 @@ the cumulative narrowing axes and milestone commits.
   forward at AO discretion.
 - **Phase 4d** — 5 of 6 rows at `Pass` as of 2026-05-07;
   `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to ~2026-05-20 (14-day soak window).
-- **Wave 1d-α PR 1** — docs corpus scaffold landed 2026-05-08. Establishes
-  `docs-corpus/` mkdocs source tree + `dist/help/` static-HTML build output
-  bundled via Tauri `bundle.resources` + routed `Help` view at
-  `src/lib/views/Help.svelte` reading bundled HTML through Tauri's
-  `convertFileSrc`. Two placeholder pages (Welcome / About) ship at PR 1;
-  real corpus content authoring is PR 2+ scope per `EV-DOCS-CORPUS` (status
-  `Scoped`).
+- **Wave 1d-α (PR 1 + PR 2 + PR 3)** — in-app help corpus closed 2026-05-10.
+  PR 1 (2026-05-08) established `docs-corpus/` mkdocs source tree + `dist/help/`
+  static-HTML build output bundled via Tauri `bundle.resources` + routed `Help`
+  view at `src/lib/views/Help.svelte` reading bundled HTML through Tauri's
+  `convertFileSrc` (two placeholder pages: Welcome / About). PR 2 (`#419`,
+  2026-05-09) shipped 4 first-wave pages (`hotkeys-reference` / `osc-routes` /
+  `chroma-uniforms` / `audio-reactivity`). PR 3 (`#426` / `b57bbfc`,
+  2026-05-10) shipped 5 more pages (`scene-workflow` / `library-workflow` /
+  `perform-mode` / `settings-reference` / `import-shadertoy`) closing the
+  corpus to 11 total pages; `EV-DOCS-CORPUS` now `Pass`.
+- **Wave 1d-β (PR 1 + PR 2)** — bundled scene starter library closed
+  2026-05-10. PR 1 (`#418`) seeded one clean-room scene per remaining empty
+  bundle subdirectory (`welcome/welcome.chroma` + `examples/audio-reactive-demo.chroma`);
+  PR 2 (`#425` / `0f67340`) shipped 10 additional clean-room scenes spanning
+  five feature surfaces (uniforms / control-widget showcase, audio reactivity,
+  OSC routing, hotkey-bound preset cycling, playlist transitions). Total
+  corpus now 12 `.chroma` packages under `engine/scene/tests/fixtures/scenes/`
+  (4 `welcome/` + 8 `examples/` + the 3 pre-existing `library/demo-*`);
+  `EV-LIBRARY-CORPUS-MIN` now `Pass`.
+- **Wave 1e (α + β + γ)** — release pipeline scaffold landed 2026-05-08
+  through 2026-05-10. Wave 1e-α introduced `release-eng/` with stub signing
+  scripts + hardened-runtime `entitlements.plist` + operator runbook; Wave 1e-β
+  (`#416` / `517c37b`) added `tauri-plugin-updater` plugin scaffold (first
+  Tauri 2 plugin precedent in this binary); Wave 1e-γ (`#423` / `ad3c96b`)
+  added `.github/workflows/release.yml` with cross-platform matrix calling the
+  stub scripts. Validated end-to-end via synthetic-signing smoke test
+  (run `25628685936`) after three workflow bug-fix PRs (`#428` / `695c277`
+  for vite-emptyOutDir-vs-`dist/help/` collision; `#429` / `db5b1f5` for
+  `gh release create` asset-name collision; `#430` / `7736bc7` for
+  `upload-artifact` ancestor-stripping). `EV-RELEASE-PIPELINE` stays at
+  `Planned` until production cert procurement (Apple Developer ID + Windows
+  EV + Sparkle 2 EdDSA keypair) which remains AO-gated.
 
 Slice-3 scheduler-tick wave (closing 2026-05-01) shipped
 `engine/runtime/src/scheduler/{mod,observability,audio,render,ipc}.rs` per
@@ -262,8 +287,11 @@ chromaticity/
 ├── .config/hakari.toml   # cargo-hakari config; platforms mirror deny.toml graph.targets
 ├── src/                  # Svelte web root; may migrate under app/ui/ later
 ├── tests/                # workspace-level cross-cutting tests
-├── dist/                 # Vite build output — .gitkeep is load-bearing
+├── dist/                 # Vite build output — .gitkeep is load-bearing; bundled mkdocs help under dist/help/
 ├── docs/                 # normative planning corpus + ADRs
+├── docs-corpus/          # in-app help mkdocs source tree (Wave 1d-α; built into dist/help/)
+├── release-eng/          # signing/notarization/staging-appcast stub scripts (Wave 1e-α; cert-gated)
+├── evidence-runs/        # evidence-run capture artifacts (per-row anchor bundles)
 ├── scripts/              # policy / CI shell helpers
 ├── .github/workflows/    # rust, frontend, sbom, evidence-tag-lint, policy, labels
 ├── Cargo.toml            # workspace root (edition 2024, MSRV 1.85.0)

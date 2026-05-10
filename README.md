@@ -42,9 +42,18 @@ evidence, and CI gates running continuously on `main`. Phased rollup per
 
 V1-RC content closure (Wave 1d: in-app help corpus + bundled scene
 starter library) and Phase-5 release pipeline scaffold (Wave 1e: signing
-script stubs + `tauri-plugin-updater` + `release.yml` workflow) are
-both in flight on `main`. Phase 0 governance and clean-room baseline
-ADRs remain authoritative throughout.
+script stubs + `tauri-plugin-updater` + `release.yml` workflow) both
+landed on `main` 2026-05-10 (PRs `#425`-`#430`). `EV-DOCS-CORPUS` and
+`EV-LIBRARY-CORPUS-MIN` reached `Pass` (11 corpus pages bundled via
+`docs-corpus/` mkdocs source tree; 12 `.chroma` scenes spanning five
+feature surfaces under `engine/scene/tests/fixtures/scenes/`); since
+this morning's fanout `EV-PERF-BUDGETS` also carries forward at `Pass`
+under the per-bench 2x loose-floor + composite-sum 1.25 ms hard-budget
+posture. The `release.yml` workflow validated end-to-end via a
+synthetic-signing smoke test (run `25628685936`); production cert
+procurement remains AO-gated and `EV-RELEASE-PIPELINE` stays at
+`Planned` until then. Phase 0 governance and clean-room baseline ADRs
+remain authoritative throughout.
 
 ## Repository Layout
 
@@ -82,6 +91,7 @@ chromaticity/
 ├── dist/                        # Vite build output + bundled mkdocs help pages (dist/help/)
 ├── third_party/                 # vendored snapshots (lygia trial vendor + Syphon-Framework)
 ├── scripts/                     # policy/evidence automation helpers
+├── evidence-runs/               # evidence-run capture artifacts (per-row anchor bundles)
 ├── docs/                        # normative planning corpus (promoted)
 │   ├── README.md                # document map
 │   └── adr/                     # Architecture Decision Records (MADR 4.0.0)
