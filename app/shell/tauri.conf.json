@@ -25,6 +25,12 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://staging.chromaticity.dev/updates/{{target}}/{{current_version}}"],
+      "pubkey": "PLACEHOLDER-PUBKEY-REPLACE-AT-PRODUCTION-CERT-WIRING-PER-ADR-014"
+    }
+  },
   "bundle": {
     "active": false,
     "targets": "all",

@@ -28,6 +28,7 @@ workspace = true
 bitflags = { version = "2", default-features = false, features = ["serde"] }
 bytemuck = { version = "1", default-features = false, features = ["derive", "extern_crate_alloc", "min_const_generics"] }
 byteorder = { version = "1" }
+futures-core = { version = "0.3", default-features = false, features = ["std"] }
 getrandom = { version = "0.2", default-features = false, features = ["js", "rdrand", "std"] }
 half = { version = "2", default-features = false, features = ["num-traits"] }
 indexmap = { version = "2" }
@@ -43,13 +44,13 @@ regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
 schemars = { version = "0.8", features = ["preserve_order", "url", "uuid1"] }
-semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value", "unbounded_depth"] }
 stable_deref_trait = { version = "1" }
 tauri = { version = "2", features = ["custom-protocol", "test"] }
 tauri-utils = { version = "2", default-features = false, features = ["build", "compression", "resources"] }
+time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 zerocopy = { version = "0.8", default-features = false, features = ["derive", "simd"] }
 
@@ -66,7 +67,6 @@ regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
 schemars = { version = "0.8", features = ["preserve_order", "url", "uuid1"] }
-semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value", "unbounded_depth"] }
@@ -81,21 +81,29 @@ zerocopy = { version = "0.8", default-features = false, features = ["derive", "s
 [target.x86_64-unknown-linux-gnu.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
 either = { version = "1", features = ["use_std"] }
-futures-core = { version = "0.3", default-features = false, features = ["std"] }
+futures-core = { version = "0.3" }
+futures-sink = { version = "0.3" }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
+miniz_oxide = { version = "0.8", features = ["simd"] }
+mio = { version = "1", features = ["net", "os-ext"] }
 nom = { version = "7", default-features = false, features = ["std"] }
 rustc-hash = { version = "1" }
+rustix = { version = "1", features = ["fs"] }
+simd-adler32 = { version = "0.3" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
+tokio = { version = "1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 
 [target.x86_64-unknown-linux-gnu.build-dependencies]
 bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
 either = { version = "1", features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
+miniz_oxide = { version = "0.8", features = ["simd"] }
 nom = { version = "7", default-features = false, features = ["std"] }
 once_cell = { version = "1" }
 rustc-hash = { version = "1" }
+simd-adler32 = { version = "0.3" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 
@@ -105,14 +113,19 @@ core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics-types = { version = "0.2" }
 either = { version = "1", default-features = false, features = ["use_std"] }
+futures-core = { version = "0.3" }
+futures-sink = { version = "0.3" }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
 objc = { version = "0.2", default-features = false, features = ["exception"] }
 objc2 = { version = "0.5" }
-objc2-foundation = { version = "0.2", features = ["NSArray", "NSBundle", "NSCoder", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSGeometry", "NSItemProvider", "NSLocale", "NSObject", "NSString", "NSURL"] }
-smallvec = { version = "1", default-features = false, features = ["const_generics"] }
-time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAccessibilityProtocols", "NSAnimation", "NSAppearance", "NSApplication", "NSAttributedString", "NSButton", "NSCell", "NSColor", "NSColorPanel", "NSControl", "NSController", "NSDragging", "NSEvent", "NSGraphics", "NSImage", "NSInputManager", "NSKeyValueBinding", "NSLayoutManager", "NSMenu", "NSMenuItem", "NSOpenGLView", "NSOpenPanel", "NSPanel", "NSPasteboard", "NSPopover", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScreen", "NSSpellProtocol", "NSText", "NSTextContainer", "NSTextContent", "NSTextFinder", "NSTextInputClient", "NSTextView", "NSUserActivity", "NSUserInterfaceItemIdentification", "NSUserInterfaceValidation", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation", "std"] }
+objc2-foundation-468e82937335b1c9 = { package = "objc2-foundation", version = "0.3" }
+objc2-foundation-6f8ce4dd05d13bba = { package = "objc2-foundation", version = "0.2", features = ["NSArray", "NSBundle", "NSCoder", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSGeometry", "NSItemProvider", "NSLocale", "NSObject", "NSString", "NSURL"] }
+rustix = { version = "1", features = ["fs"] }
+smallvec = { version = "1", default-features = false, features = ["const_new"] }
+tokio = { version = "1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
 bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
@@ -120,7 +133,7 @@ either = { version = "1", default-features = false, features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
-smallvec = { version = "1", default-features = false, features = ["const_generics"] }
+smallvec = { version = "1", default-features = false, features = ["const_new"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
@@ -130,14 +143,19 @@ core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics-types = { version = "0.2" }
 either = { version = "1", default-features = false, features = ["use_std"] }
+futures-core = { version = "0.3" }
+futures-sink = { version = "0.3" }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
 objc = { version = "0.2", default-features = false, features = ["exception"] }
 objc2 = { version = "0.5" }
-objc2-foundation = { version = "0.2", features = ["NSArray", "NSBundle", "NSCoder", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSGeometry", "NSItemProvider", "NSLocale", "NSObject", "NSString", "NSURL"] }
-smallvec = { version = "1", default-features = false, features = ["const_generics"] }
-time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAccessibilityProtocols", "NSAnimation", "NSAppearance", "NSApplication", "NSAttributedString", "NSButton", "NSCell", "NSColor", "NSColorPanel", "NSControl", "NSController", "NSDragging", "NSEvent", "NSGraphics", "NSImage", "NSInputManager", "NSKeyValueBinding", "NSLayoutManager", "NSMenu", "NSMenuItem", "NSOpenGLView", "NSOpenPanel", "NSPanel", "NSPasteboard", "NSPopover", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScreen", "NSSpellProtocol", "NSText", "NSTextContainer", "NSTextContent", "NSTextFinder", "NSTextInputClient", "NSTextView", "NSUserActivity", "NSUserInterfaceItemIdentification", "NSUserInterfaceValidation", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation", "std"] }
+objc2-foundation-468e82937335b1c9 = { package = "objc2-foundation", version = "0.3" }
+objc2-foundation-6f8ce4dd05d13bba = { package = "objc2-foundation", version = "0.2", features = ["NSArray", "NSBundle", "NSCoder", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSGeometry", "NSItemProvider", "NSLocale", "NSObject", "NSString", "NSURL"] }
+rustix = { version = "1", features = ["fs"] }
+smallvec = { version = "1", default-features = false, features = ["const_new"] }
+tokio = { version = "1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 
 [target.x86_64-apple-darwin.build-dependencies]
 bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
@@ -145,19 +163,24 @@ either = { version = "1", default-features = false, features = ["use_std"] }
 libc = { version = "0.2" }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7", default-features = false, features = ["std"] }
-smallvec = { version = "1", default-features = false, features = ["const_generics"] }
+smallvec = { version = "1", default-features = false, features = ["const_new"] }
 syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-pc-windows-msvc.dependencies]
-smallvec = { version = "1", default-features = false, features = ["const_generics", "union"] }
+futures-core = { version = "0.3" }
+futures-sink = { version = "0.3" }
+smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
+tokio = { version = "1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-core = { version = "0.1", default-features = false, features = ["std"] }
 windows-sys-4db8c43aad08e7ae = { package = "windows-sys", version = "0.60", features = ["Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 windows-sys-73dcd821b1037cfd = { package = "windows-sys", version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Time", "Win32_UI_WindowsAndMessaging"] }
-windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Wdk_Foundation", "Wdk_Storage_FileSystem", "Wdk_System_IO", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Networking_WinSock", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.x86_64-pc-windows-msvc.build-dependencies]
-smallvec = { version = "1", default-features = false, features = ["const_generics", "union"] }
+smallvec = { version = "1", default-features = false, features = ["const_new", "union"] }
 windows-sys-73dcd821b1037cfd = { package = "windows-sys", version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Time", "Win32_UI_WindowsAndMessaging"] }
-windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Wdk_Foundation", "Wdk_Storage_FileSystem", "Wdk_System_IO", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Networking_WinSock", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 ### END HAKARI SECTION
