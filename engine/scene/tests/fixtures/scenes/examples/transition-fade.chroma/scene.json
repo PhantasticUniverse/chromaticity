@@ -1,0 +1,42 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Transition Fade",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Smooth-transition example pairing a fade ratio slider with a duration knob and a cue-curve dropdown (linear, ease-in, ease-out, ease-in-out). Author-facing fixture exercising the smooth-transition cue-curve selection surface that the CueTransitionCurve widget renders.",
+  "TAGS": ["transition", "example", "fade", "smooth"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES", "TRANSITION"],
+  "CONTROLS": [
+    {
+      "NAME": "fade_ratio",
+      "TYPE": "slider",
+      "DEFAULT": 0.0,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "duration_seconds",
+      "TYPE": "knob",
+      "DEFAULT": 1.5,
+      "MIN": 0.05,
+      "MAX": 8.0
+    },
+    {
+      "NAME": "cue_curve",
+      "TYPE": "dropdown",
+      "DEFAULT": 3.0,
+      "LABELS": ["linear", "ease-in", "ease-out", "ease-in-out"],
+      "VALUES": [0, 1, 2, 3]
+    },
+    {
+      "NAME": "from_color",
+      "TYPE": "color",
+      "DEFAULT": [0.13, 0.18, 0.27, 1.0]
+    },
+    {
+      "NAME": "to_color",
+      "TYPE": "color",
+      "DEFAULT": [0.95, 0.71, 0.34, 1.0]
+    }
+  ],
+  "PASSES": []
+}

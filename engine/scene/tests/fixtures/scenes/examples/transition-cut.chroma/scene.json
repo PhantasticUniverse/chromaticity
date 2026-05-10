@@ -1,0 +1,45 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Transition Cut",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Hard-transition example with an instantaneous cut between an A-state and a B-state, gated by a state toggle. Pairs the cut surface with a guard delay slider and an emphasis slider for the post-cut hold. Author-facing fixture for the hard-transition CP-09 ingestion path.",
+  "TAGS": ["transition", "example", "cut", "hard"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES", "TRANSITION"],
+  "CONTROLS": [
+    {
+      "NAME": "state",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "guard_delay",
+      "TYPE": "slider",
+      "DEFAULT": 0.0,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "emphasis",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "trigger",
+      "TYPE": "bang",
+      "DEFAULT": 0.0
+    },
+    {
+      "NAME": "a_color",
+      "TYPE": "color",
+      "DEFAULT": [0.18, 0.34, 0.52, 1.0]
+    },
+    {
+      "NAME": "b_color",
+      "TYPE": "color",
+      "DEFAULT": [0.96, 0.34, 0.18, 1.0]
+    }
+  ],
+  "PASSES": []
+}

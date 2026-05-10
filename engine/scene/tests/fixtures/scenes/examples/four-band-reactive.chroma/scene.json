@@ -1,0 +1,63 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Four-Band Reactive",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Four-band audio split (low, low-mid, high-mid, high) feeding distinct color tiles, demonstrating the chromaticity-native 8 -> 4 reduction the AudioReactivity widget consumes. Per-band saturation and per-band lift controls let authors trim each band independently.",
+  "TAGS": ["audio", "reactive", "example", "spectrum"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "low_band_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.7,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "low_mid_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "high_mid_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "high_band_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.55,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "band_lift",
+      "TYPE": "knob",
+      "DEFAULT": 0.3,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "saturation",
+      "TYPE": "slider",
+      "DEFAULT": 0.85,
+      "MIN": 0.0,
+      "MAX": 1.5
+    },
+    {
+      "NAME": "low_color",
+      "TYPE": "color",
+      "DEFAULT": [0.88, 0.21, 0.34, 1.0]
+    },
+    {
+      "NAME": "high_color",
+      "TYPE": "color",
+      "DEFAULT": [0.32, 0.74, 0.92, 1.0]
+    }
+  ],
+  "PASSES": []
+}

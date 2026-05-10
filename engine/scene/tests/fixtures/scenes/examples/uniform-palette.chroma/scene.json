@@ -1,0 +1,52 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Uniform Palette",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Authoring-side palette example exercising every Inspector widget kind in one scene: slider, knob, toggle, color, xy, and dropdown. Useful as a reference fixture when wiring new control types into the runtime or smoke-testing widget rendering.",
+  "TAGS": ["controls", "example", "showcase"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES"],
+  "CONTROLS": [
+    {
+      "NAME": "primary_amount",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "fine_trim",
+      "TYPE": "knob",
+      "DEFAULT": 0.0,
+      "MIN": -1.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "active",
+      "TYPE": "toggle",
+      "DEFAULT": true
+    },
+    {
+      "NAME": "primary_color",
+      "TYPE": "color",
+      "DEFAULT": [0.42, 0.58, 0.94, 1.0]
+    },
+    {
+      "NAME": "secondary_color",
+      "TYPE": "color",
+      "DEFAULT": [0.96, 0.41, 0.36, 1.0]
+    },
+    {
+      "NAME": "focal_point",
+      "TYPE": "xy",
+      "DEFAULT": [0.5, 0.5]
+    },
+    {
+      "NAME": "blend_mode",
+      "TYPE": "dropdown",
+      "DEFAULT": 0.0,
+      "LABELS": ["normal", "additive", "screen", "multiply"],
+      "VALUES": [0, 1, 2, 3]
+    }
+  ],
+  "PASSES": []
+}

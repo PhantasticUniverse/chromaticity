@@ -14,9 +14,13 @@ from the embedded docs (`docs/adr/ADR-010-embedded-docs-generation.md`).
 ## Status
 
 Wave 1d-β PR 1 (2026-05-09) seeded this subdirectory with its first
-clean-room scene under `EV-LIBRARY-CORPUS-MIN`. The subdirectory was
-established empty at Wave 4b.1 closure under
-`EV-LIBRARY-BUNDLE-LAYOUT` (`docs/26-evidence-artifact-registry.md`).
+clean-room scene under `EV-LIBRARY-CORPUS-MIN`. Wave 1d-β PR 2
+(2026-05-10) extends the corpus with seven more feature-demonstration
+scenes spanning audio reactivity, OSC routing, hotkey-bound preset
+cycling, control-widget coverage, and playlist transitions, closing
+`EV-LIBRARY-CORPUS-MIN` to `Pass`. The subdirectory was established
+empty at Wave 4b.1 closure under `EV-LIBRARY-BUNDLE-LAYOUT`
+(`docs/26-evidence-artifact-registry.md`).
 
 ## Scenes
 
@@ -29,15 +33,57 @@ established empty at Wave 4b.1 closure under
   `chroma_AudioRMS` / `chroma_AudioPeak` / `chroma_AudioFFT[8]`
   uniforms per `docs/36` §2.11 lands when the per-pass shader pipeline
   for example scenes ships in a follow-up wave.
+- `bass-pulse.chroma` — single-band bass-driven pulse demo. A
+  bass-gain slider controls inbound audio sensitivity; a pulse-curve
+  knob shapes the response envelope; attack and release sliders govern
+  the post-strike settle. Demonstrates the chromaticity-native
+  audio-reactivity surface at its narrowest single-band cross-section.
+- `four-band-reactive.chroma` — four-band audio split (low, low-mid,
+  high-mid, high) feeding distinct color tiles, demonstrating the
+  chromaticity-native 8 -> 4 reduction the AudioReactivity widget
+  consumes. Per-band saturation and per-band lift controls let authors
+  trim each band independently.
+- `uniform-palette.chroma` — authoring-side palette example exercising
+  every Inspector widget kind in one scene (slider, knob, toggle,
+  color, xy, dropdown). Useful as a reference fixture when wiring new
+  control types or smoke-testing widget rendering.
+- `osc-listener.chroma` — single-channel OSC listener example with
+  three controls routable from external OSC senders under the
+  chromaticity-native `/chroma/` route prefix. Author-facing fixture
+  demonstrating how OSC-bound controls compose into a minimal
+  remote-driven scene.
+- `osc-grid.chroma` — multi-cell OSC grid example. Sixteen scalar
+  cells expressed as four routed group sliders plus four toggle gates
+  form a coarse 4x4 mapping surface remote OSC senders can drive
+  simultaneously. Pairs with grid-routing chrome and OSC route-prefix
+  collision exercises.
+- `hotkey-cycle.chroma` — preset cycling scene driven by hotkey-bound
+  bang controls. Four named bang triggers (next, previous, reset,
+  randomize) advance a four-step preset selector dropdown that
+  downstream cues can read. Demonstrates the hotkey -> bang ->
+  selector pattern.
+- `transition-fade.chroma` — smooth-transition example pairing a fade
+  ratio slider with a duration knob and a cue-curve dropdown (linear,
+  ease-in, ease-out, ease-in-out). Exercises the smooth-transition
+  cue-curve selection surface that the CueTransitionCurve widget
+  renders.
+- `transition-cut.chroma` — hard-transition example with an
+  instantaneous cut between an A-state and a B-state, gated by a state
+  toggle and paired with a guard delay slider and an emphasis slider
+  for the post-cut hold. Demonstrates the hard-transition CP-09
+  ingestion path.
 
 ## Planned content
 
-Per `docs/38` §2.1 cross-reference to the embedded-docs generation flow,
-additional candidate examples in PR 2+ scope include:
+Per `docs/38` §2.1 cross-reference to the embedded-docs generation
+flow, future candidate examples include richer per-pass shader
+pipelines once the per-pass widening of these example scenes ships:
 
-- `multipass-chain.chroma` — pass chaining demo (a clean-room equivalent
-  of the existing T2 fixture under the parent `scenes/` corpus).
-- `transition-hard.chroma` — hard transition sentinel demo.
+- `multipass-chain.chroma` — pass chaining demo (a clean-room
+  equivalent of the existing T2 fixture under the parent `scenes/`
+  corpus).
+- `transition-hard.chroma` — hard transition sentinel demo with
+  structured `HARD_TRANSITIONS` execution.
 - `meta-controls.chroma` — `IS_META: true` ingestion demo.
 
 Examples surfaced here are linked from the embedded docs per

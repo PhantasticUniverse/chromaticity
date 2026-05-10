@@ -1,0 +1,50 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Hotkey Cycle",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Preset cycling scene driven by hotkey-bound bang controls. Four named bang triggers (next, previous, reset, randomize) advance a four-step preset selector dropdown that downstream cues can read. Author-facing fixture demonstrating the hotkey -> bang -> selector pattern.",
+  "TAGS": ["hotkeys", "example", "presets"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES"],
+  "CONTROLS": [
+    {
+      "NAME": "preset_index",
+      "TYPE": "dropdown",
+      "DEFAULT": 0.0,
+      "LABELS": ["one", "two", "three", "four"],
+      "VALUES": [0, 1, 2, 3]
+    },
+    {
+      "NAME": "next_preset",
+      "TYPE": "bang",
+      "DEFAULT": 0.0
+    },
+    {
+      "NAME": "previous_preset",
+      "TYPE": "bang",
+      "DEFAULT": 0.0
+    },
+    {
+      "NAME": "reset_preset",
+      "TYPE": "bang",
+      "DEFAULT": 0.0
+    },
+    {
+      "NAME": "randomize",
+      "TYPE": "bang",
+      "DEFAULT": 0.0
+    },
+    {
+      "NAME": "intensity",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "accent",
+      "TYPE": "color",
+      "DEFAULT": [0.78, 0.92, 0.34, 1.0]
+    }
+  ],
+  "PASSES": []
+}
