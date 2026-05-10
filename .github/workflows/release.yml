@@ -1,0 +1,282 @@
+# SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+# SPDX-FileCopyrightText: 2026 Chromaticity
+#
+# Release pipeline scaffold per docs/adr/ADR-014-signing-notarization-auto-update.md
+# Sec.5 (release-pipeline steps 1-7). Wave 1e-gamma scaffold; production
+# cert procurement (Apple Developer ID, Windows EV cert, Sparkle EdDSA
+# keypair) remains AO-gated per ADR-014 Sec.4 + Sec.6.
+#
+# Triggers on `app/v*` tag pushes (matches the chromaticity-app crate's
+# release tag namespace -- production tags `app/vX.Y.Z`, staging tags
+# `app/vX.Y.Z-staging`). `workflow_dispatch` permits manual smoke runs.
+# Does NOT trigger on `pull_request` or `push: branches` -- the release
+# pipeline only fires on tag pushes.
+#
+# Jobs:
+#   detect-changes - resolves the tag context for downstream jobs. No
+#                    paths-filter; release tags always proceed.
+#   build          - cross-platform matrix (ubuntu-latest + macos-latest +
+#                    windows-latest). Builds the Tauri 2 binary, restores
+#                    the dist/.gitkeep sentinel after vite build (per
+#                    `feedback_vite_build_clobbers_dist_gitkeep`), invokes
+#                    the release-eng/sign-*.sh + notarize.sh stubs from
+#                    Wave 1e-alpha (PR #412). When required env vars are
+#                    unset the stubs print stub-mode notices and exit 0
+#                    so the matrix exercises the scaffold without real
+#                    signing material. Uploads per-platform artifacts.
+#   stage-appcast  - calls release-eng/stage-appcast.sh after the matrix
+#                    completes; assembles the staging appcast feed for
+#                    tauri-plugin-updater (placeholder endpoint per
+#                    Wave 1e-beta; non-resolving in this scaffold).
+#   release        - downloads matrix artifacts; emits a draft GitHub
+#                    Release via `gh release create --draft` so a human
+#                    reviewer can promote the artifacts post-validation.
+#                    Production cert procurement is the gate before any
+#                    non-draft release ships.
+#   release-summary - required-style aggregator mirroring rust.yml +
+#                     sbom.yml. Succeeds when all dependents are
+#                     `success` or `skipped`; fails on `failure` /
+#                     `cancelled`.
+#
+# No run: step consumes untrusted github.event.* input directly. Every
+# event-payload reference (github.event_name, github.ref,
+# github.event.inputs.tag) is bound via step-level env: first per the
+# rust.yml + policy.yml precedent. Workflow injection guidance:
+# https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'app/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. app/v0.0.1-staging)'
+        required: true
+
+permissions:
+  # gh release create requires write access to push the draft release.
+  contents: write
+  # Reserved for future SLSA / build provenance steps under
+  # actions/attest-build-provenance; harmless to grant now.
+  attestations: write
+  # Reserved for OIDC-based signing seams (Sigstore / cosign) per
+  # ADR-014 Sec.4 follow-on work; harmless to grant now.
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Never cancel an in-progress release build -- partial signing
+  # (e.g. macOS signed but notarization aborted mid-stream) is
+  # operationally dangerous. A duplicate tag-push is a re-entry signal
+  # that wants serial execution, not preemption.
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  detect-changes:
+    name: detect-changes
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve tag from event context
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        shell: bash
+        run: |
+          set -u
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            # github.ref on tag push is `refs/tags/app/vX.Y.Z`.
+            tag="${REF#refs/tags/}"
+          fi
+          if [ -z "$tag" ]; then
+            echo "::error::could not resolve tag from event context"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: $tag"
+
+  build:
+    name: build (${{ matrix.os }})
+    needs: detect-changes
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so release-please / sign-*.sh / appcast staging
+          # can read git tag context if needed.
+          fetch-depth: 0
+
+      # Mirror rust.yml's apt-package set on Linux. macOS + Windows
+      # need no extra system deps -- Tauri 2 on macOS uses WKWebView
+      # (system framework); Windows uses WebView2 (system).
+      - name: Install tauri linux deps (cached)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libxdo-dev libasound2-dev build-essential
+          version: 1.0
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Build frontend (vite)
+        run: npm run build
+
+      # `npm run build` (vite build) clobbers dist/.gitkeep when emitting
+      # fresh artifacts; the sentinel is load-bearing for
+      # generate_context!() in cargo check / cargo build. Restore it
+      # before the rust build so the macro expansion succeeds. See
+      # `feedback_vite_build_clobbers_dist_gitkeep` in CLAUDE.md.
+      - name: Restore dist sentinel
+        shell: bash
+        run: |
+          set -u
+          if [ ! -f dist/.gitkeep ]; then
+            touch dist/.gitkeep
+          fi
+
+      - name: Build chromaticity-app (release)
+        run: cargo build --release -p chromaticity-app
+
+      # Per-platform signing via the release-eng/ stubs from Wave
+      # 1e-alpha (PR #412). When the required env vars are unset
+      # (production-cert procurement still AO-gated) the scripts print
+      # a stub-mode notice and exit 0. See release-eng/README.md for
+      # the env-var matrix.
+      #
+      # BUILD_ARTIFACT_PATH points at the binary cargo emitted above;
+      # the stub-mode codepath does not actually consume it (the early
+      # stub-mode return precedes the existence check), but the env
+      # var is plumbed for the eventual real-mode invocation.
+      - name: Sign macOS artifact (stub-mode unless certs present)
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERT_NAME: ${{ secrets.MACOS_CERT_NAME }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUILD_ARTIFACT_PATH: target/release/chromaticity-app
+        shell: bash
+        run: bash release-eng/sign-macos.sh
+
+      - name: Notarize macOS artifact (stub-mode unless creds present)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUILD_ARTIFACT_PATH: target/release/chromaticity-app
+        shell: bash
+        run: bash release-eng/notarize.sh
+
+      - name: Sign Windows artifact (stub-mode unless cert present)
+        if: runner.os == 'Windows'
+        env:
+          WINDOWS_CERT_PATH: ${{ secrets.WINDOWS_CERT_PATH }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+          BUILD_ARTIFACT_PATH: target/release/chromaticity-app.exe
+        shell: bash
+        run: bash release-eng/sign-windows.sh
+
+      # Linux ships unsigned in V1 per ADR-014 (no Sec.1 Linux clause);
+      # no signing step on ubuntu-latest.
+
+      - name: Upload platform artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromaticity-${{ matrix.os }}
+          path: |
+            target/release/chromaticity-app
+            target/release/chromaticity-app.exe
+          if-no-files-found: ignore
+
+  stage-appcast:
+    name: stage-appcast
+    needs: [detect-changes, build]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage appcast entry (stub-mode unless feed configured)
+        env:
+          APPCAST_FEED_URL: ${{ vars.APPCAST_FEED_URL }}
+          RELEASE_VERSION: ${{ needs.detect-changes.outputs.tag }}
+          BUILD_ARTIFACT_PATH: target/release/chromaticity-app
+        shell: bash
+        run: bash release-eng/stage-appcast.sh
+
+  release:
+    name: release
+    needs: [detect-changes, build, stage-appcast]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.detect-changes.outputs.tag }}
+        shell: bash
+        run: |
+          set -u
+          # --draft so a human reviewer promotes post-validation;
+          # production-cert procurement is the gate before any
+          # non-draft release ships.
+          gh release create "$TAG" \
+            --draft \
+            --title "Chromaticity $TAG" \
+            --notes "Staging release scaffold (Wave 1e-gamma). Do not deploy. Production cert procurement remains AO-gated per ADR-014 Sec.4 + Sec.6." \
+            artifacts/**/*
+
+  release-summary:
+    name: release-summary
+    needs: [detect-changes, build, stage-appcast, release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate dependent job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        shell: bash
+        run: |
+          set -u
+          echo "Dependent job results: $RESULTS"
+          fail=0
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *)
+                echo "::error::non-passing dependent result: $r"
+                fail=1
+                ;;
+            esac
+          done
+          exit "$fail"
