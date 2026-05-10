@@ -160,6 +160,29 @@ jobs:
             touch dist/.gitkeep
           fi
 
+      # Wave 1d-beta CI integration per docs-corpus/README.md: vite
+      # build wipes dist/ (default emptyOutDir: true) including the
+      # committed dist/help/ tree referenced by
+      # app/shell/tauri.conf.json bundle.resources. Without
+      # dist/help/*.html on disk at link time, cargo build --release
+      # -p chromaticity-app fails with `resource path
+      # '../../dist/help/<page>.html' doesn't exist`. Re-run mkdocs
+      # build so the corpus repopulates before the tauri-build
+      # resource resolver runs.
+      - name: Set up Python (for mkdocs)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install mkdocs + mkdocs-material
+        shell: bash
+        run: pip install mkdocs mkdocs-material
+
+      - name: Build docs corpus (mkdocs)
+        shell: bash
+        working-directory: docs-corpus
+        run: mkdocs build
+
       - name: Build chromaticity-app (release)
         run: cargo build --release -p chromaticity-app
 
