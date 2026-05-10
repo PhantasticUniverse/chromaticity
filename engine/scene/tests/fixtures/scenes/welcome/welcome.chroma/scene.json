@@ -1,0 +1,30 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Welcome to Chromaticity",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "First-launch onboarding scene with a slow centered gradient, an adjustable accent tint, and an introduction-message scale.",
+  "TAGS": ["onboarding", "welcome"],
+  "CATEGORIES": ["BUILT-IN", "WELCOME"],
+  "CONTROLS": [
+    {
+      "NAME": "intro_scale",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.2,
+      "MAX": 1.4
+    },
+    {
+      "NAME": "drift_speed",
+      "TYPE": "slider",
+      "DEFAULT": 0.15,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "accent",
+      "TYPE": "color",
+      "DEFAULT": [0.42, 0.68, 0.95, 1.0]
+    }
+  ],
+  "PASSES": []
+}

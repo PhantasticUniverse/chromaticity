@@ -1,0 +1,51 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Audio-Reactive Demo",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Minimal radial demonstration scene exercising bass, low-mid, high-mid, and treble bands with per-band size, brightness, hue, and pulse trims.",
+  "TAGS": ["audio", "reactive", "example"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "bass_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.7,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "low_mid_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "high_mid_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "treble_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.55,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "pulse",
+      "TYPE": "knob",
+      "DEFAULT": 0.4,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "tint",
+      "TYPE": "color",
+      "DEFAULT": [0.85, 0.32, 0.71, 1.0]
+    }
+  ],
+  "PASSES": []
+}
