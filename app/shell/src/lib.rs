@@ -74,6 +74,7 @@ const SCHEDULER_TICK_HZ: f64 = 60.0;
 /// command handler that held the state mutex longer than ~16ms).
 pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
         .setup(|app| {
             // (a) Producer-side audio runtime. Falls back to silent
