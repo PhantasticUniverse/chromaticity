@@ -34,12 +34,17 @@ theme:
 
 nav:
   - Welcome: index.md
+  - Guides:
+      - Perform Mode: perform-mode.md
+      - Scene Workflow: scene-workflow.md
+      - Library Workflow: library-workflow.md
+      - Audio Reactivity: audio-reactivity.md
+      - Importing Shadertoy Scenes: import-shadertoy.md
   - Reference:
       - Hotkeys: hotkeys-reference.md
       - OSC Routes: osc-routes.md
       - Uniforms: chroma-uniforms.md
-  - Guides:
-      - Audio Reactivity: audio-reactivity.md
+      - Settings: settings-reference.md
   - About: about.md
 
 # Strict-build flag: surface broken links / orphan pages at corpus-build

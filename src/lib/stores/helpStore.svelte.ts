@@ -10,11 +10,14 @@
 // `convertFileSrc` against the `help/` resource directory bundled by
 // `app/shell/tauri.conf.json` `bundle.resources`.
 //
-// Hardcoded two-entry catalog at PR 1 (matches the PR 1 corpus pages:
-// Welcome / About). PR 2+ widens to dynamic enumeration once the real
-// content lands. The catalog is exported so the Help view + tests can
-// reference the same source-of-truth without duplicating the slug
-// list.
+// Wave 1d-α PR 3 widens the static catalog to the full V1 corpus
+// shipped under `docs-corpus/docs/` and built into `dist/help/`. The
+// list mirrors the `nav:` block in `docs-corpus/mkdocs.yml`; the
+// matching `bundle.resources` entries in `app/shell/tauri.conf.json`
+// resolve each `htmlPath` at `generate_context!()` time. Dynamic
+// enumeration (so the sidebar surfaces new pages without a Rust /
+// TypeScript edit) is still future scope; the catalog stays a
+// hand-maintained source of truth at PR 3.
 //
 // `.svelte.ts` extension lets the Svelte compiler process `$state`
 // outside a `.svelte` component, same as the route store sibling.
@@ -29,6 +32,19 @@ export interface HelpPage {
 
 export const HELP_PAGES: readonly HelpPage[] = [
   { slug: 'index', label: 'Welcome', htmlPath: 'help/index.html' },
+  { slug: 'perform-mode', label: 'Perform Mode', htmlPath: 'help/perform-mode.html' },
+  { slug: 'scene-workflow', label: 'Scene Workflow', htmlPath: 'help/scene-workflow.html' },
+  { slug: 'library-workflow', label: 'Library Workflow', htmlPath: 'help/library-workflow.html' },
+  { slug: 'audio-reactivity', label: 'Audio Reactivity', htmlPath: 'help/audio-reactivity.html' },
+  {
+    slug: 'import-shadertoy',
+    label: 'Importing Shadertoy Scenes',
+    htmlPath: 'help/import-shadertoy.html',
+  },
+  { slug: 'hotkeys-reference', label: 'Hotkeys', htmlPath: 'help/hotkeys-reference.html' },
+  { slug: 'osc-routes', label: 'OSC Routes', htmlPath: 'help/osc-routes.html' },
+  { slug: 'chroma-uniforms', label: 'Uniforms', htmlPath: 'help/chroma-uniforms.html' },
+  { slug: 'settings-reference', label: 'Settings', htmlPath: 'help/settings-reference.html' },
   { slug: 'about', label: 'About', htmlPath: 'help/about.html' },
 ] as const;
 

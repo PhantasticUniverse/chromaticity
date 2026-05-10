@@ -1,0 +1,1031 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="In-app help and reference for the Chromaticity desktop runtime.">
+      
+      
+        <meta name="author" content="Chromaticity">
+      
+      
+      
+        <link rel="prev" href="audio-reactivity.html">
+      
+      
+        <link rel="next" href="hotkeys-reference.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Importing Shadertoy Scenes - Chromaticity Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#importing-shadertoy-scenes" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="Chromaticity Help" class="md-header__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Chromaticity Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Importing Shadertoy Scenes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="Chromaticity Help" class="md-nav__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Chromaticity Help
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="perform-mode.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Perform Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scene-workflow.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scene Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="library-workflow.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="audio-reactivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audio Reactivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing Shadertoy Scenes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="import-shadertoy.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing Shadertoy Scenes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-converter-accepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the converter accepts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-converter-rejects-or-warns-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the converter rejects or warns on
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ichannel-asset-binding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        iChannel asset binding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#after-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After import
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-not-imported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is not imported
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capability-gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capability gating
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="hotkeys-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hotkeys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="osc-routes.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSC Routes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="chroma-uniforms.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uniforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="settings-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="about.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-converter-accepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the converter accepts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-converter-rejects-or-warns-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the converter rejects or warns on
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ichannel-asset-binding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        iChannel asset binding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#after-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After import
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-not-imported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is not imported
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capability-gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capability gating
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<!--
+SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+SPDX-FileCopyrightText: 2026 Chromaticity
+-->
+
+<h1 id="importing-shadertoy-scenes">Importing Shadertoy Scenes</h1>
+<p>Chromaticity ships a one-way Shadertoy-to-<code>.chroma</code> converter that lets
+authors port single-pass Shadertoy fragments directly into the Chromaticity
+authoring environment. The converter wraps the Shadertoy body in a
+chromaticity-native shell, declares the canonical Shadertoy uniforms so
+the body code compiles unchanged, and emits a <code>.chroma</code> package that the
+runtime then loads through the standard scene pipeline.</p>
+<h2 id="what-the-converter-accepts">What the converter accepts</h2>
+<p>The input is a Shadertoy GLSL body containing:</p>
+<pre><code class="language-glsl">void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    // body
+}
+</code></pre>
+<p>The converter wraps the body in a <code>void main()</code> entry that targets the
+naga GLSL frontend used by the engine's render path. The wrapper preamble
+declares the canonical Shadertoy-spelled uniforms so the imported body
+compiles without edits:</p>
+<table>
+<thead>
+<tr>
+<th>Uniform</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>iTime</code></td>
+<td>Seconds since scene start</td>
+</tr>
+<tr>
+<td><code>iResolution</code></td>
+<td>Pixel size of the render target</td>
+</tr>
+<tr>
+<td><code>iTimeDelta</code></td>
+<td>Seconds since the previous frame</td>
+</tr>
+<tr>
+<td><code>iFrame</code></td>
+<td>Frame counter</td>
+</tr>
+<tr>
+<td><code>iMouse</code></td>
+<td>Mouse position and click state, Shadertoy-compatible</td>
+</tr>
+</tbody>
+</table>
+<p>The runtime binding from these Shadertoy spellings to the canonical
+chromaticity-native reactive symbols (<code>TIME</code>, <code>RENDERSIZE</code>, …) is a
+binding-layer concern — the imported scene works in place without
+edits, and authors can migrate to the chromaticity-native symbols
+later if they want.</p>
+<h2 id="what-the-converter-rejects-or-warns-on">What the converter rejects or warns on</h2>
+<p>The converter is strict about features it cannot represent in a
+single-pass <code>mainImage</code> shape. The rejection and warning surface is
+tagged with author-readable diagnostics:</p>
+<ul>
+<li><strong>VR mode (<code>mainVR</code>)</strong> — rejected; no plausible auto-mapping into a
+  single-pass <code>mainImage</code>.</li>
+<li><strong>Cubemap entrypoint (<code>mainCubemap</code>)</strong> — surfaced as
+  <code>Warning::CubemapEntrypointDeferred</code>; deferred to a future
+  multipass-import pathway.</li>
+<li><strong>Webcam iChannel mapping</strong> — surfaced as
+  <code>Warning::WebcamIChannelDeferred</code>; Chromaticity defers webcam binding
+  to post-MVP. The body still compiles; the author can edit the
+  <code>.chroma</code> package post-import to add a real binding.</li>
+<li><strong>Deprecated <code>texture2D(...)</code> calls</strong> — auto-corrected to
+  <code>texture(...)</code> and surfaced as
+  <code>Warning::DeprecatedTexture2DAutoCorrected</code> so the author has a
+  trail of every machine-applied edit.</li>
+</ul>
+<p>The converter is <strong>atomic</strong>: the caller sees either a fully-populated
+<code>&lt;scene_id&gt;.chroma</code> package or no package at all. Cleanup errors from
+a partially-written package are swallowed so the originating I/O
+cause stays surfaced in the diagnostics console.</p>
+<h2 id="ichannel-asset-binding">iChannel asset binding</h2>
+<p>Shadertoy scenes reference up to four <code>iChannel0</code>..<code>iChannel3</code> slots
+backed by textures, cubemaps, video, audio, or the camera. The
+converter accepts a per-channel mapping at import time; each declared
+mapping causes the wrapper preamble to add a chromaticity-native
+binding-slot uniform (<code>chroma_input_&lt;channel&gt;</code>) and to rewrite the
+body's <code>iChannelN</code> references to that slot symbol before naga sees
+the source. Channels referenced by the body but not mapped at import
+emit <code>Warning::MissingIChannelMapping</code> so the author can either add
+the mapping in the converter and re-run, or edit the <code>.chroma</code>
+package post-import to bind the slot.</p>
+<p>The <code>shadertoy-fixtures/</code> subdirectory under
+<code>&lt;AppBundle&gt;/Resources/scenes/</code> ships the iChannel asset corpus the
+import tests draw from — see <a href="library-workflow.html">Library Workflow</a>
+for how that subdirectory is excluded from the launchable scene set.</p>
+<h2 id="after-import">After import</h2>
+<p>The output is a <code>.chroma</code> package matching the same on-disk shape that
+the in-app scaffolder produces. Once written, the package surfaces in
+the library through the standard discovery path and is loadable
+through the standard scene pipeline described in
+<a href="scene-workflow.html">Scene Workflow</a>. Imported scenes carry the format
+tag <code>shadertoy-v1-import</code> so the operator can filter them in the
+<a href="library-workflow.html">library browser</a>.</p>
+<h2 id="what-is-not-imported">What is not imported</h2>
+<p>The Shadertoy import path is intentionally narrow:</p>
+<ul>
+<li><strong>ISF scenes</strong> — imported through a separate ISF-import path that
+  is currently a reject-with-diagnostic surface; native ISF execution
+  is deferred to V2.</li>
+<li><strong>Multi-buffer Shadertoy compositions</strong> — out of scope for the V1
+  import; the multipass-import pathway is a future-wave ADR.</li>
+<li><strong>Sound shaders</strong> — Chromaticity is a visual runtime; Shadertoy
+  sound-shader bodies are rejected.</li>
+</ul>
+<h2 id="capability-gating">Capability gating</h2>
+<p>Shadertoy import is gated by the <code>authoring.import</code> capability. With
+no entitlement token present, the import action is disabled in the
+operator HUD with the standard locked-row affordance; see
+<a href="settings-reference.html">Settings Reference</a> for the entitlement model.</p>
+<hr />
+<!-- Clean-room authored from engine/authoring/src/import_shadertoy.rs module-level doc-prose, docs/38-scene-library-and-import-spec.md sections 5.2 and 5.2a, and the EV-IMPORT-SHADERTOY row in docs/26-evidence-artifact-registry.md; never derived from Contents/ or chromaticity-planning/ per docs/29. -->
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.sections", "search.highlight", "search.suggest"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
