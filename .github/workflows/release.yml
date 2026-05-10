@@ -274,25 +274,49 @@ jobs:
       # stage-appcast have already succeeded. Stage to `staged/` with
       # platform-distinct names before the upload step. Surfaced by the
       # 2026-05-10 smoke-test run #25627779261.
+      #
+      # The exact in-artifact path of the binary varies with how
+      # actions/upload-artifact@v4 collapses the "least common ancestor"
+      # of the requested paths -- with the build job's two-path upload
+      # (target/release/chromaticity-app + chromaticity-app.exe), the
+      # ancestor is target/release/, so the binary lands at the artifact
+      # root after download (artifacts/<name>/chromaticity-app[.exe]).
+      # Use find rather than a hardcoded path so a future single-path
+      # upload that retains the target/release/ prefix would still work.
+      # Surfaced by the 2026-05-10 smoke-test run #25628397646 where
+      # the prior hardcoded `target/release/...` path silently
+      # no-matched and `staged/` shipped empty.
       - name: Stage release assets with platform-distinct names
         shell: bash
         run: |
           set -u
           mkdir -p staged
+          echo "--- artifacts/ tree (diagnostic) ---"
+          find artifacts -maxdepth 4 -type f | sort
+          echo "--- staging ---"
           for dir in artifacts/chromaticity-*-latest/; do
             [ -d "$dir" ] || continue
             platform=$(basename "$dir" | sed 's|^chromaticity-||; s|-latest$||')
-            for src in "$dir"target/release/chromaticity-app "$dir"target/release/chromaticity-app.exe; do
-              [ -f "$src" ] || continue
+            while IFS= read -r src; do
               base=$(basename "$src")
               case "$base" in
                 chromaticity-app)     dst="staged/chromaticity-app-${platform}" ;;
                 chromaticity-app.exe) dst="staged/chromaticity-app-${platform}.exe" ;;
+                *) continue ;;
               esac
               cp "$src" "$dst"
-            done
+              echo "staged: $src -> $dst"
+            done < <(find "$dir" -type f \( -name 'chromaticity-app' -o -name 'chromaticity-app.exe' \))
           done
+          echo "--- staged/ contents ---"
           ls -la staged/
+          # Fail fast if no platform binaries were staged so the
+          # downstream gh release create doesn't have to surface the
+          # underlying problem as a confusing "no matches found" glob.
+          if [ -z "$(ls -A staged/)" ]; then
+            echo "::error::staged/ is empty; expected at least one platform binary"
+            exit 1
+          fi
 
       - name: Create draft release
         env:
