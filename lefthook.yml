@@ -50,7 +50,7 @@ pre-commit:
         fi
 
     trailing-whitespace:
-      glob: '*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json}'
+      glob: '*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json,sh}'
       # Vendored third-party source preserves upstream formatting per
       # docs/29 Sec.Bundled GLSL Library Handling — never rewrite it.
       # `dist/help/**` is the committed mkdocs build output (mkdocs-material
