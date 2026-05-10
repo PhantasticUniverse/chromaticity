@@ -20,12 +20,13 @@
 #     claim to file-level to escape tier validation would otherwise
 #     silently drop coverage.
 #   - **Coverage (§15.4 line 582):** every Rust test file under an
-#     evidence-producing subtree (`engine/**`, `integrations/**`)
-#     that declares a `#[test]` / `#[tokio::test]` function MUST
-#     contain at least one `//! Evidence:` declaration. Absent-tag
-#     files fail the lint. Per-test granularity (vs per-file) lands
-#     with the `#[evidence(...)]` attribute macro; the current
-#     per-file check is the Phase-1 transitional form.
+#     evidence-producing subtree (`engine/**`, `integrations/**`,
+#     `app/shell/tests/**`) that declares a `#[test]` /
+#     `#[tokio::test]` function MUST contain at least one
+#     `//! Evidence:` declaration. Absent-tag files fail the lint.
+#     Per-test granularity (vs per-file) lands with the
+#     `#[evidence(...)]` attribute macro; the current per-file
+#     check is the Phase-1 transitional form.
 #   - **ID validity (§15.4 line 583):** every EV-ID cited in any
 #     `//! Evidence:` tag MUST exist in docs/26. Typos and forgotten
 #     registry updates fail the lint.
@@ -38,12 +39,19 @@
 # it the same as a module-level declaration.
 #
 # Evidence-producing subtrees are the first-party engine and
-# integration crates: `engine/**` and `integrations/**`. App-shell
-# and workspace-hack are infrastructure and are not subject to the
-# coverage check. The per-test attribute macro form
-# (`#[evidence(...)]`) is reserved in §15.2 but not yet implemented;
-# when it ships, the escape hatch form `#[evidence(none = "…")]`
-# will be recognized here.
+# integration crates: `engine/**` and `integrations/**`, plus
+# `app/shell/tests/**` for cross-seam end-to-end corpora that
+# necessarily live in the binary crate (e.g. `tauri::test::mock_app()`
+# harnesses for the audio-uniform IPC bridge, fixture-backed library
+# index / thumbnail / bundle-layout assertions). `app/shell/src/**`
+# and `workspace-hack` remain out-of-scope: source-side T1 drift pins
+# in app-shell live in inline `#[cfg(test)] mod tests` blocks and
+# carry their evidence tags via co-located module-level prose, while
+# workspace-hack is hakari-managed infrastructure with no test
+# surface. The per-test attribute macro form (`#[evidence(...)]`) is
+# reserved in §15.2 but not yet implemented; when it ships, the
+# escape hatch form `#[evidence(none = "…")]` will be recognized
+# here.
 #
 # Deferred scope (not an oversight):
 #
@@ -197,14 +205,26 @@ fi
 
 # --- Coverage (per §15.4 line 582) ---
 
-# DRIFT GUARD: The `$repo/engine` and `$repo/integrations` paths
-# below are the hardcoded coverage scope. The canonical source for
-# "evidence-producing subtree" is docs/12-work-breakdown-estimates.md
-# WP-N Outputs. If a new WP adds an evidence-producing subtree
-# outside these two trees (or retires one of them), this find's
-# root list MUST be updated in the same PR that touches docs/12.
-# Drift here silently gaps coverage. Driving this list from
-# docs/12 at runtime is a tracked follow-up.
+# DRIFT GUARD: The `$repo/engine`, `$repo/integrations`, and
+# `$repo/app/shell/tests` paths below are the hardcoded coverage
+# scope. The canonical source for "evidence-producing subtree" is
+# docs/12-work-breakdown-estimates.md WP-N Outputs. If a new WP adds
+# an evidence-producing subtree outside these three trees (or retires
+# one of them), this find's root list MUST be updated in the same PR
+# that touches docs/12. Drift here silently gaps coverage. Driving
+# this list from docs/12 at runtime is a tracked follow-up.
+#
+# `app/shell/tests/**` was added to the scope (post-Phase-4a drift
+# audit, 2026-05-10) once cross-seam end-to-end corpora began landing
+# in the binary crate (audio-uniform IPC e2e, library index corpus,
+# thumbnail pipeline corpus, bundle layout assertion); each carries a
+# file-level `//! Evidence:` tag. The single carve-out is
+# `app/shell/tests/export_bindings.rs` — a ts-rs binding-emit harness
+# whose `#[test]` function regenerates `src/lib/ipc/bindings/*.ts`
+# and is covered by ts-rs glue rather than a registry row. It is
+# explicitly skipped below so widening the scope does not require
+# minting a synthetic EV-ID for plumbing.
+#
 # `-print0` / `read -d ''` defends against any future filename with
 # whitespace; the prior `-print 2>/dev/null` form would have split
 # such a path across the loop. The per-file grep retains
@@ -216,22 +236,28 @@ fi
 uncovered=""
 while IFS= read -r -d '' file; do
     [ -z "$file" ] && continue
+    # Per-file carve-out: ts-rs binding-emit harness is covered by
+    # ts-rs glue, not a registry row. See DRIFT GUARD note above.
+    case "$file" in
+        */app/shell/tests/export_bindings.rs) continue ;;
+    esac
     if grep -qE '^[[:space:]]*#\[(tokio::)?test\]' "$file" 2>/dev/null; then
         if ! grep -qE '^[[:space:]]*//! Evidence:' "$file" 2>/dev/null; then
             uncovered="$(printf '%s\n  %s\n' "$uncovered" "$file")"
         fi
     fi
-done < <(find "$repo/engine" "$repo/integrations" \
+done < <(find "$repo/engine" "$repo/integrations" "$repo/app/shell/tests" \
     -type d \( -name target -o -name node_modules -o -name dist -o -name .git -o -name Contents -o -name chromaticity-planning \) -prune \
     -o -type f -name '*.rs' -print0)
 
 if [ -n "$uncovered" ]; then
     printf '[evidence-tag-lint] FAIL: test file(s) without any //! Evidence: tag:\n'
     printf '%s\n' "$uncovered" | grep -v '^$'
-    printf '[evidence-tag-lint]        Every Rust source under engine/** or integrations/**\n'
-    printf '[evidence-tag-lint]        that declares a #[test] / #[tokio::test] function\n'
-    printf '[evidence-tag-lint]        must carry at least one //! Evidence: declaration\n'
-    printf '[evidence-tag-lint]        (module-level inside the test module, or file-level).\n'
+    printf '[evidence-tag-lint]        Every Rust source under engine/**, integrations/**,\n'
+    printf '[evidence-tag-lint]        or app/shell/tests/** that declares a\n'
+    printf '[evidence-tag-lint]        #[test] / #[tokio::test] function must carry at least\n'
+    printf '[evidence-tag-lint]        one //! Evidence: declaration (module-level inside the\n'
+    printf '[evidence-tag-lint]        test module, or file-level).\n'
     fail=1
 fi
 

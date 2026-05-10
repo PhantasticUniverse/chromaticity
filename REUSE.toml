@@ -39,6 +39,21 @@ SPDX-FileCopyrightText = "2026 Chromaticity"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 # -----------------------------------------------------------------------------
+# Built mkdocs corpus (Wave 1d-α): the rendered HTML lands at dist/help/ and
+# is committed for tauri-build's generate_context!() resource resolver.
+# Source pages under docs-corpus/docs/ already carry inline SPDX headers; the
+# rendered output is a derivative work and should carry the same CC-BY-4.0
+# license as the docs/ corpus. Without this block, dist/help/** would fall
+# through to the proprietary safety-net annotation, miscategorising the
+# rendered docs.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = "dist/help/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# -----------------------------------------------------------------------------
 # Root repo-policy and governance files are proprietary (authoritative).
 # -----------------------------------------------------------------------------
 [[annotations]]
@@ -55,6 +70,17 @@ path = [
   ".github/**",
   "REUSE.toml",
 ]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Chromaticity"
+SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
+
+# -----------------------------------------------------------------------------
+# release-eng/ ships signing + notarization + appcast-staging shell stubs
+# for the Wave 1e release pipeline. First-party Chromaticity infrastructure;
+# proprietary. Explicit block so the policy posture is readable at a glance.
+# -----------------------------------------------------------------------------
+[[annotations]]
+path = "release-eng/**"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Chromaticity"
 SPDX-License-Identifier = "LicenseRef-Chromaticity-Proprietary"
