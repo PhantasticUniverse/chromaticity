@@ -162,11 +162,37 @@ mod tests {
             .join("../../engine/scene/tests/fixtures/scenes/library")
     }
 
-    /// Repo-resident `welcome/` fixture (a README placeholder; no
-    /// `.chroma` packages — exercises the empty-corpus arm).
-    fn welcome_fixture_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/welcome")
+    /// Allocate a fresh empty scratch directory for the
+    /// empty-user-root test arms.
+    ///
+    /// Uses a process-id-stamped path under [`std::env::temp_dir`]
+    /// (mirroring the temp-file pattern at
+    /// `search_command_handles_invalid_user_root_returns_io_error_string`
+    /// below) so the empty-walk assertions do NOT couple to whichever
+    /// repo-resident `engine/scene/tests/fixtures/scenes/<subdir>/`
+    /// the corpus seeds at any given moment. The previous
+    /// `welcome/`-as-empty-sentinel pattern broke when Wave 1d-β
+    /// PR 1 seeded `welcome/welcome.chroma` under
+    /// `EV-LIBRARY-CORPUS-MIN`. Directories are leaked under the
+    /// process-id namespace; OS temp cleanup reclaims them. The
+    /// helper returns the freshly-created directory path.
+    fn fresh_empty_scratch_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "chromaticity-library-search-empty-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("scratch dir must be created");
+        dir
+    }
+
+    /// Convenience wrapper returning a fresh empty user-root path
+    /// as an owned `String` for the IPC-surface tests.
+    fn empty_user_root() -> String {
+        fresh_empty_scratch_dir().to_string_lossy().into_owned()
     }
 
     #[test]
@@ -174,7 +200,7 @@ mod tests {
         // Hit demo-kaleido via a title substring; the bundled root
         // surfaces three demos so a single hit pins the search axis.
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         let hits = search_scene_library("kaleido".to_string(), user, Some(bundled))
             .expect("search must succeed against the fixture corpus");
         assert_eq!(hits.len(), 1, "exactly one title hit");
@@ -184,7 +210,7 @@ mod tests {
     #[test]
     fn search_command_returns_empty_vec_for_no_match() {
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         let hits = search_scene_library("__no_such_query__".to_string(), user, Some(bundled))
             .expect("no-match search must succeed");
         assert!(hits.is_empty(), "expected empty Vec, got {hits:?}");
@@ -232,7 +258,7 @@ mod tests {
         // Pin the empty-query no-filter degenerate case at the IPC
         // surface — matches `SceneIndex::search`'s contract.
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         let hits = search_scene_library("".to_string(), user, Some(bundled))
             .expect("empty-query search must succeed");
         assert!(
@@ -246,18 +272,19 @@ mod tests {
     fn search_command_without_bundled_root_walks_user_only() {
         // `bundled_root: None` collapses to a user-only walk —
         // exercises the `compose_roots` `None` arm. The user root is
-        // the welcome/ fixture which has no `.chroma` packages, so
-        // the result is the empty corpus.
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        // a fresh empty scratch directory under `std::env::temp_dir`
+        // so the result is the empty corpus regardless of what the
+        // repo-resident `fixtures/scenes/` subdirs hold.
+        let user = empty_user_root();
         let hits = search_scene_library("anything".to_string(), user, None)
             .expect("user-only search must succeed");
-        assert!(hits.is_empty(), "welcome/ has no cards");
+        assert!(hits.is_empty(), "fresh scratch dir → no cards");
     }
 
     #[test]
     fn filter_by_tag_command_returns_matching_cards() {
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         // demo-spectrum carries TAGS ["audio", "reactive"]; the
         // command must surface it via the tag-axis filter.
         let hits = filter_scene_library_by_tag("audio".to_string(), user, Some(bundled))
@@ -272,7 +299,7 @@ mod tests {
     #[test]
     fn filter_by_tag_command_is_case_insensitive() {
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         let lower =
             filter_scene_library_by_tag("audio".to_string(), user.clone(), Some(bundled.clone()))
                 .expect("lower tag filter must succeed");
@@ -289,7 +316,7 @@ mod tests {
     #[test]
     fn filter_by_tag_command_unknown_tag_returns_empty() {
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         let hits = filter_scene_library_by_tag("__no_such_tag__".to_string(), user, Some(bundled))
             .expect("unknown-tag filter must succeed");
         assert!(hits.is_empty());
@@ -298,7 +325,7 @@ mod tests {
     #[test]
     fn filter_by_category_command_returns_matching_cards() {
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         // Every demo carries the BUILT-IN category — the filter must
         // surface all three demos.
         let hits = filter_scene_library_by_category("BUILT-IN".to_string(), user, Some(bundled))
@@ -313,7 +340,7 @@ mod tests {
     #[test]
     fn filter_by_category_command_narrows_to_geometric() {
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         // demo-kaleido carries GEOMETRIC; demo-spectrum does not.
         let hits = filter_scene_library_by_category("geometric".to_string(), user, Some(bundled))
             .expect("category filter must succeed");
@@ -325,7 +352,7 @@ mod tests {
     #[test]
     fn filter_by_category_command_unknown_category_returns_empty() {
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         let hits = filter_scene_library_by_category(
             "__no_such_category__".to_string(),
             user,
@@ -367,7 +394,7 @@ mod tests {
         // assertion that the ids survive a drop of the source roots
         // catches accidental lifetime-shadowing in future refactors.
         let bundled = library_fixture_root().to_string_lossy().into_owned();
-        let user = welcome_fixture_root().to_string_lossy().into_owned();
+        let user = empty_user_root();
         let hits = search_scene_library("demo".to_string(), user, Some(bundled))
             .expect("search must succeed");
         let ids: Vec<String> = hits.into_iter().map(|c| c.id).collect();
