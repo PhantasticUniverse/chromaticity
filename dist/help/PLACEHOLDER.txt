@@ -1,4 +1,0 @@
-Wave 1d-α PR 1 sentinel — keep this directory non-empty so Tauri's
-`bundle.resources` glob `../../dist/help/**` resolves at `cargo check`
-time on fresh clones. Replaced wholesale by `mkdocs build` output
-once the operator builds the Help corpus from `docs-corpus/`.

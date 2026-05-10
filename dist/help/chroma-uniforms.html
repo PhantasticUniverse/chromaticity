@@ -1,0 +1,1026 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="In-app help and reference for the Chromaticity desktop runtime.">
+      
+      
+        <meta name="author" content="Chromaticity">
+      
+      
+      
+        <link rel="prev" href="osc-routes.html">
+      
+      
+        <link rel="next" href="audio-reactivity.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Uniforms - Chromaticity Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#chromaticity-uniform-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="Chromaticity Help" class="md-header__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Chromaticity Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Uniforms
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="Chromaticity Help" class="md-nav__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Chromaticity Help
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="hotkeys-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hotkeys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="osc-routes.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSC Routes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uniforms
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="chroma-uniforms.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uniforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#audio-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audio uniforms
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Audio uniforms">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scalar-audio-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scalar audio uniforms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#array-audio-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Array audio uniforms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sampler-audio-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sampler audio uniforms
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time uniforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authoring-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authoring conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="audio-reactivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audio Reactivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="about.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#audio-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audio uniforms
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Audio uniforms">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scalar-audio-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scalar audio uniforms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#array-audio-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Array audio uniforms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sampler-audio-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sampler audio uniforms
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time uniforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authoring-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authoring conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<!--
+SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+SPDX-FileCopyrightText: 2026 Chromaticity
+-->
+
+<h1 id="chromaticity-uniform-reference">Chromaticity Uniform Reference</h1>
+<p>Chromaticity exposes two uniform namespaces to scene authors:</p>
+<ul>
+<li><code>syn_*</code> — the Synesthesia compatibility namespace (<code>compat-syn-v1</code>).
+  These names exist for parity with reference scenes and are the
+  primary surface authors should reach for when writing scenes that
+  need to load on both runtimes.</li>
+<li><code>chroma_*</code> — the chromaticity-native namespace (<code>native-chroma-v1</code>).
+  These names cover net-new analysis primitives and chromaticity-first
+  surfaces that have no equivalent in the compatibility catalog.</li>
+</ul>
+<p>Authors may mix the two namespaces freely inside a single scene. The
+binding adapter publishes the uniforms in a stable per-pass order; GLSL
+authors declare each uniform with its canonical name and type.</p>
+<h2 id="audio-uniforms">Audio uniforms</h2>
+<p>The audio analysis pipeline produces a per-tick <code>AudioUniformSnapshot</code>
+on the audio-analysis thread, which the audio-to-render adapter
+marshals into the GPU uniform slots below. The slice-1 producer is
+pure-data; the slice-2 BPM estimator carries a history-window
+median-smoother for tempo-following. Uniforms that read zero are the
+documented all-zero baseline for "no audio observed yet"; in
+production, the BPM uniform clamps to the default tempo (120 BPM) on
+the first tick before any analysis history accumulates.</p>
+<h3 id="scalar-audio-uniforms">Scalar audio uniforms</h3>
+<table>
+<thead>
+<tr>
+<th>Uniform</th>
+<th>Type</th>
+<th>Range</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>syn_BPM</code></td>
+<td><code>float</code></td>
+<td><code>[50, 220]</code></td>
+<td>Estimated tempo, clamped to the musical range</td>
+</tr>
+<tr>
+<td><code>syn_BPMConfidence</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Tempo-stability confidence; near 1 when the estimator agrees across the history window</td>
+</tr>
+<tr>
+<td><code>syn_BPMTwitcher</code></td>
+<td><code>float</code></td>
+<td><code>[0, inf)</code></td>
+<td>Exponential "jump" clock; <code>floor</code> is the beat count, <code>fract</code> is the per-beat twitch</td>
+</tr>
+<tr>
+<td><code>syn_BPMSin</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Sine wave at BPM frequency, beat-phase-locked</td>
+</tr>
+<tr>
+<td><code>syn_BPMSin2</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Sine wave at BPM divided by 2</td>
+</tr>
+<tr>
+<td><code>syn_BPMSin4</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Sine wave at BPM divided by 4</td>
+</tr>
+<tr>
+<td><code>syn_BPMTri</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Triangle wave at BPM frequency</td>
+</tr>
+<tr>
+<td><code>syn_BPMTri2</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Triangle wave at BPM divided by 2</td>
+</tr>
+<tr>
+<td><code>syn_BPMTri4</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Triangle wave at BPM divided by 4</td>
+</tr>
+<tr>
+<td><code>syn_InputLevel</code></td>
+<td><code>float</code></td>
+<td><code>[0, inf)</code></td>
+<td>Pre-AGC instantaneous input level, computed as <code>clamp(RMS / AGC_target, 0, inf)</code></td>
+</tr>
+<tr>
+<td><code>syn_RawLevel</code></td>
+<td><code>float</code></td>
+<td><code>[0, inf)</code></td>
+<td>Alias of <code>syn_InputLevel</code> with identical semantics</td>
+</tr>
+<tr>
+<td><code>syn_Threshold</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Operator-settable noise-floor gate; audio hops below this value publish zeroed <code>syn_Level*</code> and <code>syn_*Hits</code></td>
+</tr>
+<tr>
+<td><code>chroma_AudioRMS</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Instantaneous root-mean-square energy of the mono-mixed audio frame</td>
+</tr>
+<tr>
+<td><code>chroma_AudioPeak</code></td>
+<td><code>float</code></td>
+<td><code>[0, 1]</code></td>
+<td>Instantaneous peak magnitude of the mono-mixed audio frame</td>
+</tr>
+</tbody>
+</table>
+<h3 id="array-audio-uniforms">Array audio uniforms</h3>
+<table>
+<thead>
+<tr>
+<th>Uniform</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chroma_AudioFFT[8]</code></td>
+<td><code>float[8]</code></td>
+<td>Eight log-spaced FFT band magnitudes covering 20 Hz to 20 kHz; element 0 is the lowest band, element 7 is the highest</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>chroma_AudioFFT</code> array binding was consolidated from a transitional
+split-vec4 spelling (<code>chroma_AudioFFTLow</code> for bands 0..3,
+<code>chroma_AudioFFTHigh</code> for bands 4..7) once the multipass scheduler grew
+a <code>FloatArray</code> uniform variant. GLSL authors declare the array
+directly:</p>
+<pre><code class="language-glsl">uniform float chroma_AudioFFT[8];
+
+// later in main():
+float bass = chroma_AudioFFT[0] + chroma_AudioFFT[1];
+float treble = chroma_AudioFFT[6] + chroma_AudioFFT[7];
+</code></pre>
+<h3 id="sampler-audio-uniforms">Sampler audio uniforms</h3>
+<table>
+<thead>
+<tr>
+<th>Uniform</th>
+<th>Type</th>
+<th>Channels</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>syn_Spectrum</code></td>
+<td><code>sampler1D</code></td>
+<td><code>r=Raw FFT, g=Juiced, b=Smooth, a=Waveform</code></td>
+<td>Per-frame audio sampler with packed analysis variants</td>
+</tr>
+<tr>
+<td><code>syn_LevelTrail</code></td>
+<td><code>sampler1D</code></td>
+<td><code>r=Whole, g=Bass, b=Mid, a=High</code></td>
+<td>Per-band historical levels over time, newest sample at <code>u=0</code></td>
+</tr>
+</tbody>
+</table>
+<p>The eight-band split that <code>chroma_AudioFFT[8]</code> exposes is a separate
+surface from <code>syn_Spectrum</code>; the sampler retains parity with the
+compatibility catalog while the fixed-size array gives shader authors
+ergonomic indexing without a sampler lookup.</p>
+<h2 id="time-uniforms">Time uniforms</h2>
+<table>
+<thead>
+<tr>
+<th>Uniform</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>syn_Time</code></td>
+<td><code>float</code></td>
+<td>Wallclock seconds since scene start</td>
+</tr>
+<tr>
+<td><code>syn_BassTime</code></td>
+<td><code>float</code></td>
+<td>Time accumulator that accelerates on bass-band hits</td>
+</tr>
+<tr>
+<td><code>syn_MidTime</code></td>
+<td><code>float</code></td>
+<td>Time accumulator that accelerates on mid-band hits</td>
+</tr>
+<tr>
+<td><code>syn_MidHighTime</code></td>
+<td><code>float</code></td>
+<td>Time accumulator that accelerates on mid-high-band hits</td>
+</tr>
+<tr>
+<td><code>syn_HighTime</code></td>
+<td><code>float</code></td>
+<td>Time accumulator that accelerates on high-band hits</td>
+</tr>
+<tr>
+<td><code>syn_CurvedTime</code></td>
+<td><code>float</code></td>
+<td>Same base as <code>syn_Time</code> with exponential acceleration on volume rises</td>
+</tr>
+</tbody>
+</table>
+<h2 id="authoring-conventions">Authoring conventions</h2>
+<p>When a scene needs both raw analysis (the <code>chroma_*</code> audio primitives)
+and the smoothed / normalized parity surface (<code>syn_Level*</code>,
+<code>syn_Spectrum</code>), declare both uniforms; the binding adapter keeps the
+raw and smoothed paths independent so authors can pick the surface that
+matches each visual element. Avoid coining new <code>syn_*</code> names for
+chromaticity-native features — the Synesthesia namespace is reserved
+for compatibility coverage; net-new primitives belong under <code>chroma_*</code>.</p>
+<p>The published GLSL spelling for every uniform on this page is exactly
+the canonical name; the runtime does not perform per-binding casing
+fixups. A typo at the GLSL declaration site silently leaves the
+uniform unbound, which surfaces as a warning at scene load and as a
+zero-valued sample at render time.</p>
+<hr />
+<p><em>Authored from <code>engine/render/src/audio_adapter.rs</code> (canonical
+<code>UNIFORM_NAME_*</code> constants), <code>engine/audio/src/uniforms.rs</code> (producer
+shape and band semantics), <code>docs/36-reactive-symbol-catalog.md</code>
+(reactive symbol catalog), and the
+<code>docs/adr/ADR-019-audio-uniform-ipc-bridge.md</code> IPC contract. Clean-room
+per <code>docs/29-cleanroom-legal-policy-baseline.md</code>.</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.sections", "search.highlight", "search.suggest"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

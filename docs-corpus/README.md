@@ -65,13 +65,16 @@ mkdocs build
 
 For the desktop build to bundle the Help corpus, run `mkdocs build`
 before `cargo tauri build` so the static HTML exists at link time.
-The Tauri config (`app/shell/tauri.conf.json` `bundle.resources`)
-ships a `dist/help/PLACEHOLDER.txt` sentinel at PR 1 so
-`generate_context!()` resolves on a fresh clone before `mkdocs build`
-has run. PR 2 widens the resource map to enumerate the real
-`index.html` / `about.html` (and the rest of the mkdocs output tree)
-once the corpus is large enough that hand-listing is impractical and
-the array-form glob support is verified.
+At Wave 1d-α PR 2, the built `dist/help/` tree is committed to the
+repo verbatim — Tauri's `tauri-build` resource resolver expands
+`bundle.resources` at link time and needs every entry to exist on
+disk; committing the built tree is the simplest forward-compatible
+posture until Wave 1d-β CI integration lands and `mkdocs build` runs
+in CI ahead of `cargo tauri build`. The PR 1 `PLACEHOLDER.txt`
+sentinel has been replaced with explicit per-page entries in
+`bundle.resources` (six HTML pages + 404 + sitemap pair) plus
+directory-walk entries for `assets/` (mkdocs-material CSS/JS) and
+`search/` (lunr index).
 
 ## Where the output goes
 
@@ -81,14 +84,22 @@ the array-form glob support is verified.
 - Surfaced through `src/lib/views/Help.svelte` via Tauri's
   `convertFileSrc` resource resolution.
 
-## Known follow-ups (Wave 1d-α PR 2+)
+## Known follow-ups (Wave 1d-α PR 3+)
 
-- Real corpus content authoring (scene format, hotkeys, MIDI / OSC,
-  troubleshooting). Target ≈ 92 pages to match the V1-RC content gap.
+- Continued corpus content authoring beyond the PR 2 first wave
+  (scene format, MIDI, troubleshooting, settings reference, library
+  workflow, perform mode, onboarding). Target ≈ 92 pages to match
+  the V1-RC content gap.
 - Dynamic page enumeration in `Help.svelte` (drop the hardcoded
-  page-list).
-- Full-text search threaded through to the Help view UI.
+  two-entry page-list so the new pages from PR 2 are sidebar-
+  navigable). PR 2 ships the pages in the bundle but the Help-view
+  sidebar continues to surface only Welcome / About until the store
+  widens.
+- Full-text search threaded through to the Help view UI (the lunr
+  index ships in PR 2's bundle but the sidebar has no search
+  affordance yet).
 - Wave 1d-β CI integration: `mkdocs build` invoked from the
-  release-eng workflow before `cargo tauri build`.
-- `EV-DOCS-CORPUS` row at `docs/26` advances from `Scoped` to
-  `Pass` once the content + CI integration land.
+  release-eng workflow before `cargo tauri build` so authors stop
+  committing the built tree manually.
+- `EV-DOCS-CORPUS` row at `docs/26` advances from `InProgress` to
+  `Pass` once full corpus expansion + CI integration land.

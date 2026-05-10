@@ -1,0 +1,1137 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="In-app help and reference for the Chromaticity desktop runtime.">
+      
+      
+        <meta name="author" content="Chromaticity">
+      
+      
+      
+        <link rel="prev" href="hotkeys-reference.html">
+      
+      
+        <link rel="next" href="chroma-uniforms.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>OSC Routes - Chromaticity Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#osc-route-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="Chromaticity Help" class="md-header__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Chromaticity Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              OSC Routes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="Chromaticity Help" class="md-nav__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Chromaticity Help
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="hotkeys-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hotkeys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSC Routes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="osc-routes.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSC Routes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#defaults-and-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defaults and discovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#top-level-prefixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Top-level prefixes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scene-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scene routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#snap-favslots-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snap (favslots) routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#playlist-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Playlist routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#render-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Render routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audio-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audio routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#controls-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Controls routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plurality-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plurality convention
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="chroma-uniforms.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uniforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="audio-reactivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audio Reactivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="about.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#defaults-and-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defaults and discovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#top-level-prefixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Top-level prefixes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scene-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scene routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#snap-favslots-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snap (favslots) routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#playlist-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Playlist routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#render-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Render routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audio-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audio routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#controls-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Controls routes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plurality-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plurality convention
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<!--
+SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+SPDX-FileCopyrightText: 2026 Chromaticity
+-->
+
+<h1 id="osc-route-reference">OSC Route Reference</h1>
+<p>Chromaticity exposes Open Sound Control (OSC) inbound and outbound
+routes for show-control automation and external surface integration.
+This page enumerates the canonical route taxonomy honoured by the OSC
+adapter at the top-level prefixes the slice-2 route schema declares.</p>
+<h2 id="defaults-and-discovery">Defaults and discovery</h2>
+<p>By default the OSC adapter binds the inbound listener to the loopback
+interface (127.0.0.1) and treats the outbound target as loopback until
+the operator configures a routable address. Exposing the inbound
+listener on a routable interface is an explicit operator opt-in. The
+operator can confirm the bound interface and current rate-limit posture
+through the AdapterPill chrome at the top of any view.</p>
+<p>Two payload-hardening defaults are pinned by the network adapter:</p>
+<ul>
+<li>The maximum accepted OSC packet size is 64 KiB. Oversize packets are
+  rejected with an <code>osc-malformed</code>-class diagnostic and no state
+  mutation.</li>
+<li>The maximum nested OSC bundle depth is 4. Deeper payloads are
+  rejected for the same reason.</li>
+</ul>
+<p>Per-route inbound traffic is rate-limited at a default ceiling of 100
+messages per second per <code>(adapter, route)</code> pair. Over-rate messages are
+dropped with an <code>osc-rate-limited</code> diagnostic emitted no more than once
+per second per route to prevent the diagnostics channel itself from
+saturating.</p>
+<h2 id="top-level-prefixes">Top-level prefixes</h2>
+<p>The slice-2 route schema declares four canonical top-level prefixes;
+addresses outside this set are rejected at parse time.</p>
+<table>
+<thead>
+<tr>
+<th>Prefix</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/controls</code></td>
+<td>Scene-author parameter control (control-bank reads and writes)</td>
+</tr>
+<tr>
+<td><code>/scenes</code></td>
+<td>Scene-selection and scene-launch routes</td>
+</tr>
+<tr>
+<td><code>/audio</code></td>
+<td>Audio-pipeline routes (threshold, level discovery)</td>
+</tr>
+<tr>
+<td><code>/render</code></td>
+<td>Render-loop and resolution control</td>
+</tr>
+</tbody>
+</table>
+<p>Companion route families used by the operator hotkey vocabulary
+(<code>/playlist</code>, <code>/playlists</code>, <code>/favslots</code>, <code>/presets</code>) are part of the
+broader IO surface specified in the integrations document; see the
+plurality and alias rules below.</p>
+<h2 id="scene-routes">Scene routes</h2>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Direction</th>
+<th>Args</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/scenes</code></td>
+<td>outbound</td>
+<td>(list payload)</td>
+<td>Library scene-name listing emitted on bind and on library-change</td>
+</tr>
+<tr>
+<td><code>/scenes/{name} {preset?}</code></td>
+<td>inbound</td>
+<td>scene name; optional preset name</td>
+<td>Launch scene; unsupplied preset resolves to Snap 0 / gold</td>
+</tr>
+<tr>
+<td><code>/scenes/{name}</code></td>
+<td>outbound</td>
+<td>scene name</td>
+<td>Scene-change announcement emitted on every cut or transition completion</td>
+</tr>
+</tbody>
+</table>
+<p>The legacy singular-root forms <code>/scene/{name}</code> and <code>/scene/{name}
+{preset}</code> are accepted as <code>compat-syn-v1</code> aliases. Outbound emission
+during the dual-emit window publishes both the canonical plural form
+and the singular alias.</p>
+<h2 id="snap-favslots-routes">Snap (favslots) routes</h2>
+<p>Snap is the operator-facing name for per-scene quick-recall slots; the
+wire-level literal <code>favslots</code> is retained under <code>compat-syn-v1</code> for
+compatibility.</p>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Direction</th>
+<th>Args</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/favslots/{n}</code></td>
+<td>inbound (apply)</td>
+<td>slot index <code>n</code> in <code>[0, 15]</code></td>
+<td>Recall Snap slot <code>n</code> for the current scene</td>
+</tr>
+<tr>
+<td><code>/favslots/{n}/save</code></td>
+<td>inbound (save)</td>
+<td>slot index <code>n</code></td>
+<td>Overwrite Snap slot <code>n</code> with the current state</td>
+</tr>
+<tr>
+<td><code>/favslots/{n}/clear</code></td>
+<td>inbound (clear)</td>
+<td>slot index <code>n</code></td>
+<td>Delete Snap slot <code>n</code>; the slot returns to unbound</td>
+</tr>
+<tr>
+<td><code>/favslots/{n}/name {string}</code></td>
+<td>outbound</td>
+<td>slot index, name string</td>
+<td>Snap-slot name announcement on show load and after any save or clear</td>
+</tr>
+</tbody>
+</table>
+<p>The apply / save / clear distinction is wire-level explicit through the
+route suffix; there is no implicit mode selection from message
+arguments. The legacy <code>/favslots/{n} {mode}</code> form with a string argument
+of <code>"apply"</code>, <code>"save"</code>, or <code>"clear"</code> is accepted as a <code>compat-syn-v1</code>
+alias.</p>
+<h2 id="playlist-routes">Playlist routes</h2>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Direction</th>
+<th>Args</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/playlists</code></td>
+<td>outbound</td>
+<td>(list payload)</td>
+<td>Show-playlist listing on bind</td>
+</tr>
+<tr>
+<td><code>/playlists/next</code></td>
+<td>inbound</td>
+<td>(none)</td>
+<td>Advance to next scene in playlist</td>
+</tr>
+<tr>
+<td><code>/playlists/previous</code></td>
+<td>inbound</td>
+<td>(none)</td>
+<td>Step back to previous scene in playlist</td>
+</tr>
+<tr>
+<td><code>/playlists/position {i}</code></td>
+<td>inbound</td>
+<td>integer index; negative counts from end</td>
+<td>Jump to absolute playlist position</td>
+</tr>
+<tr>
+<td><code>/playlists/play</code></td>
+<td>inbound</td>
+<td>(none)</td>
+<td>Resume playlist transport</td>
+</tr>
+<tr>
+<td><code>/playlists/toggleplay</code></td>
+<td>inbound</td>
+<td>(none)</td>
+<td>Toggle playlist play / pause</td>
+</tr>
+<tr>
+<td><code>/playlists/select {name}</code></td>
+<td>inbound</td>
+<td>playlist name</td>
+<td>Select a named playlist as the active one</td>
+</tr>
+<tr>
+<td><code>/playlists/current {name}</code></td>
+<td>outbound</td>
+<td>active playlist name</td>
+<td>Emitted on playlist change</td>
+</tr>
+<tr>
+<td><code>/playlists/position {i}</code></td>
+<td>outbound</td>
+<td>current position</td>
+<td>Emitted on every position change</td>
+</tr>
+</tbody>
+</table>
+<p>The singular-root action forms <code>/playlist/next</code>, <code>/playlist/previous</code>,
+<code>/playlist/toggleplay</code> are accepted as <code>compat-syn-v1</code> aliases for the
+plural-root canonical forms. The hotkey overlay surfaces these singular
+forms in its OSC column for compatibility with reference scenes.</p>
+<h2 id="render-routes">Render routes</h2>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Direction</th>
+<th>Args</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/render/enabled {0|1}</code></td>
+<td>inbound</td>
+<td>flag</td>
+<td>Toggle the render loop on or off; the GPU scheduler halts scene rendering while UI and adapter threads stay responsive</td>
+</tr>
+<tr>
+<td><code>/render/resolution {w} {h}</code></td>
+<td>inbound</td>
+<td>width, height</td>
+<td>Resize the render output surface (capability-gated <code>render.custom-resolution</code>)</td>
+</tr>
+<tr>
+<td><code>/render/fps {float}</code></td>
+<td>inbound</td>
+<td>target FPS</td>
+<td>Override the render FPS target</td>
+</tr>
+</tbody>
+</table>
+<p><code>/render/enabled 0</code> is non-destructive: outbound audio, MIDI, and OSC
+state continue to publish, and shader pipelines remain warm so the
+restoration frame on <code>/render/enabled 1</code> is within one frame budget.
+Useful for SMPTE-slaved setups, A/V calibration, and operator-triggered
+"hold current output" cues.</p>
+<h2 id="audio-routes">Audio routes</h2>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Direction</th>
+<th>Args</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/audio/threshold {float}</code></td>
+<td>inbound and outbound</td>
+<td>clamped to <code>[0, 1]</code></td>
+<td>Set or announce the audio noise-floor gate; updates <code>syn_Threshold</code> within one audio hop</td>
+</tr>
+<tr>
+<td><code>/audio/threshold/sample</code></td>
+<td>inbound</td>
+<td>(none)</td>
+<td>Sample the current 200 ms rolling RMS of <code>syn_Level</code> and set the threshold to that value; emits <code>/audio/threshold {float}</code> outbound on completion</td>
+</tr>
+</tbody>
+</table>
+<p>Audio hops with RMS below the threshold publish zeroed <code>syn_Level*</code> and
+<code>syn_*Hits</code> family uniforms; the threshold is the operator's primary
+tool for rejecting room noise and HVAC bleed.</p>
+<h2 id="controls-routes">Controls routes</h2>
+<p>The <code>/controls</code> namespace is the runtime parameter-write surface used
+by external surfaces (TouchOSC, MIDI-to-OSC bridges, custom show
+runners). The canonical shape is <code>/controls/{bank}/{control}</code> followed
+by a typed value argument; the slice-2 router parses these into a
+canonical segment vector for the slice-3 dispatch surface that lands
+the typed-command translation. Author-side scenes declare their
+expected control bank in the scene script; the runtime rejects writes
+to unknown banks with a <code>route-mismatch</code> diagnostic.</p>
+<h2 id="plurality-convention">Plurality convention</h2>
+<p>The collection roots use the plural form (<code>/scenes</code>, <code>/presets</code>,
+<code>/playlists</code>, <code>/favslots</code>, <code>/controls</code>); action verbs and listing
+queries live under the collection root. Chromaticity V1 canonical form
+is plural-root throughout inbound and outbound emission. The singular
+reference-app forms (<code>/scene/{name}</code>, <code>/preset/{name}</code>,
+<code>/playlist/next</code>) are accepted as <code>compat-syn-v1</code> aliases.</p>
+<hr />
+<p><em>Authored from <code>integrations/osc-adapter/src/routes.rs</code> (slice-2
+route-prefix taxonomy) and <code>integrations/osc-adapter/src/defaults.rs</code>
+(network defaults), against
+<code>docs/adr/ADR-013-networking-defaults-and-security.md</code> and the
+<code>docs/08-io-integrations.md</code> OSC sections. Clean-room per
+<code>docs/29-cleanroom-legal-policy-baseline.md</code>.</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.sections", "search.highlight", "search.suggest"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

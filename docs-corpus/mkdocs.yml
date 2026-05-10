@@ -34,6 +34,12 @@ theme:
 
 nav:
   - Welcome: index.md
+  - Reference:
+      - Hotkeys: hotkeys-reference.md
+      - OSC Routes: osc-routes.md
+      - Uniforms: chroma-uniforms.md
+  - Guides:
+      - Audio Reactivity: audio-reactivity.md
   - About: about.md
 
 # Strict-build flag: surface broken links / orphan pages at corpus-build
