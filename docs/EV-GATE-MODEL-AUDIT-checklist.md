@@ -2185,7 +2185,7 @@ token bytes MUST be excluded from any transmitted crash report.
   `engine/observability/tests/crash_payload_redaction_corpus.rs`
   (8 fixtures: per-category arm × 5 + cross-category interaction
   + conservative-by-default-unknown-key + diagnostic-preservation).
-- **PR `#377`** (commit `c57e09b`, anchor run `<anchor>`, this
+- **PR `#377`** (commit `c57e09b`, anchor run `25472250236`, this
   closing PR, landed 2026-05-07) — synthetic crash-payload
   validation harness at `engine/observability/src/crash_harness.rs`.
   Ships `SimulatedCrashClass::{Sigsegv, PanicInRenderThread,
@@ -2206,7 +2206,7 @@ token bytes MUST be excluded from any transmitted crash report.
 ### Per-row verdict (transitioned to Pass under narrowing)
 
 - **`EV-CRASH-PAYLOAD-REDACTION`** — full 2-PR sequence above.
-  Anchor run ids `25415739244` (PR `#346`) + `<anchor>` (PR `#377`;
+  Anchor run ids `25415739244` (PR `#346`) + `25472250236` (PR `#377`;
   primary anchor for `EV-CRASH-PAYLOAD-REDACTION` Pass). Narrowed per the two axes
   recorded in `docs/26` `EV-CRASH-PAYLOAD-REDACTION` description column:
   (1) **synthetic-harness validation** — the harness validates the
@@ -2230,7 +2230,7 @@ token bytes MUST be excluded from any transmitted crash report.
 For row `EV-CRASH-PAYLOAD-REDACTION` transitioning to `Pass`,
 ci-run-url + repo-path + corpus version + drift thresholds
 populate. Anchor run ids cited in this closure section:
-`25415739244` (PR `#346`), `<anchor>` (PR `#377`; primary anchor
+`25415739244` (PR `#346`), `25472250236` (PR `#377`; primary anchor
 for `EV-CRASH-PAYLOAD-REDACTION` Pass).
 
 ### Cumulative session recap
