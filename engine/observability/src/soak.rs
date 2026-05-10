@@ -642,19 +642,27 @@ mod drift_pins {
     }
 
     #[test]
-    fn tick_count_matches_duration_div_interval_within_one_tick() {
-        // 100ms duration / 5ms tick_interval = ~20 ticks. Real
+    fn tick_count_matches_duration_div_interval_within_scheduler_jitter() {
+        // 200ms duration / 5ms tick_interval = ~40 ticks. Real
         // wallclock will be slightly over (the loop terminates at
         // the first tick whose start is past `t0 + duration`); allow
-        // +/-3 ticks of slack to absorb scheduler jitter on shared
-        // CI hardware.
+        // +/-6 ticks of slack to absorb scheduler under-delivery on
+        // shared-CI hardware. The 2026-05-10 macos-nightly run on
+        // `19b6cee` saw 16 of 20 ticks delivered at the prior 100ms
+        // duration (a 4-tick / 20% absolute miss); doubling the
+        // duration drops the same absolute miss to ~10% relative,
+        // and the +/-6 bound = 15% of expected still catches a 50%
+        // slowdown that would drop the runner below ~20 ticks. The
+        // earlier `_within_one_tick` name was a docs-debt artifact
+        // from an even tighter +/-1 bound that never survived first
+        // contact with shared CI.
         let mut workload = ConstantWorkload {
             per_tick: Duration::from_micros(50),
         };
-        let config = fast_config(Duration::from_millis(100));
+        let config = fast_config(Duration::from_millis(200));
         let report = run_soak(&mut workload, &config).unwrap();
         assert!(
-            report.tick_count >= 17 && report.tick_count <= 25,
+            report.tick_count >= 34 && report.tick_count <= 46,
             "tick_count={}",
             report.tick_count
         );
