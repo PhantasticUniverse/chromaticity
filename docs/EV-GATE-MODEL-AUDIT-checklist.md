@@ -1229,7 +1229,7 @@ decisions or the Phase-4 EXIT itself.
 
 ### Sign-off
 
-- [x] Phase-4a EXIT simulation ran to completion at HEAD `<merge-sha>`
+- [x] Phase-4a EXIT simulation ran to completion at HEAD `5acc452`
       (this docs(repo) closing PR's merge commit; pre-merge anchor at
       HEAD `288a214` post-`#334` already carries all 11 rows at
       `Pass`). All 11 Phase-4a EXIT evidence IDs satisfy the Per-Type
@@ -1262,7 +1262,7 @@ decisions or the Phase-4 EXIT itself.
       AO-held milestone with its own gate set per `docs/11`; Phase-4a
       EXIT achievement does not pre-empt the Phase-4b / 4c / 4d
       sub-phase gate decisions. **Phase-4a EXIT achieved 2026-05-03
-      at commit `<merge-sha>`**. Signed by AO `@PhantasticUniverse`
+      at commit `5acc452`**. Signed by AO `@PhantasticUniverse`
       on 2026-05-03.
 
 ## Phase-4a Wave 1c-α closure
@@ -1339,7 +1339,7 @@ snapshot vs synthetic-fallback gate.
 payload-shape contract plus per-side composition; the narrowing is
 recorded in the `EV-AUDIO-UNIFORM-IPC` Description column and recapped here so the
 deferred-axes record stays honest. **Phase-4a Wave 1c-α closure
-achieved 2026-05-03 at commit `<merge-sha>`** (the merge commit of
+achieved 2026-05-03 at commit `1e02a1e`** (the merge commit of
 this docs(repo) closing PR; pre-merge anchor at HEAD `fcb443f`
 post-`#340` already carries the `EV-AUDIO-UNIFORM-IPC` corpus + producer-side T2 +
 T1 pins + consumer-side store + widget retrofits). Phase-4a EXIT
@@ -1492,7 +1492,7 @@ pins (4 ipc.rs pins) stay green and unchanged.
 transitioned `Planned` → `Pass` under narrowing; Wave 1c-α-2
 widens the Pass scope by dropping 3 of the 5 original narrowing
 axes). **Phase-4a Wave 1c-α-2 closure achieved 2026-05-06 at
-commit `<merge-sha>`** (the merge commit of this Bootstrap PR 3
+commit `561b8f2`** (the merge commit of this Bootstrap PR 3
 docs(repo) closing PR; pre-merge anchors at HEAD `9a1131e`
 post-`#344` already carry the producer runtime + Tauri adapter +
 scheduler-tick bootstrap + 14 T1 pins green on `main`). Phase-4a
@@ -1697,7 +1697,7 @@ co-developed Phase-4b/4c synthetic UX-latency harness in PR `#363`.
 
 **Phase-4b cluster (Wave 4b.1 through 4b.6) + Phase-4d Wave
 4d.1 / 4d.2 / 4d.3 partial closure achieved 2026-05-06 at commit
-`<merge-sha>`** (the merge commit of this docs(repo) closing PR).
+`e19efef`** (the merge commit of this docs(repo) closing PR).
 
 Phase-4b EXIT remains AO-held: Wave 4b.7 (`EV-IMPORT-REFERENCE-SHOW`)
 and Wave 4b.8 (`EV-ACCESSIBILITY-AA`) carry forward as future
@@ -1817,7 +1817,7 @@ flip in lockstep — each PR's test job feeds the next anchor.
 ### Verdict
 
 **Phase-4b Wave 4b.7 closure achieved 2026-05-07 at commit
-`<merge-sha>`** (the merge commit of this docs(repo) closing PR).
+`87b1a62`** (the merge commit of this docs(repo) closing PR).
 
 Phase-4b EXIT remains AO-held: Wave 4b.8 (`EV-ACCESSIBILITY-AA`)
 is the only remaining 4b prerequisite and carries forward as a
@@ -1872,7 +1872,7 @@ component-level fixes closing 5 real findings surfaced by PR 1.
 After this closure all 11 Phase-4b EXIT rows are at `Pass` under
 collective narrowings; Phase-4b EXIT is passable at AO discretion
 (the same posture Phase-4a reached prior to AO declaring EXIT
-2026-05-03 at commit `<merge-sha>` per the Phase-4a EXIT closure
+2026-05-03 at commit `5acc452` per the Phase-4a EXIT closure
 section above).
 
 ### Per-PR sequence
@@ -1952,7 +1952,7 @@ next anchor.
 ### Verdict
 
 **Phase-4b Wave 4b.8 closure achieved 2026-05-07 at commit
-`<merge-sha>`** (the merge commit of this docs(repo) closing PR).
+`e751752`** (the merge commit of this docs(repo) closing PR).
 
 After Wave 4b.8 closes, all 11 Phase-4b EXIT rows are at `Pass`
 under collective narrowings: `EV-LIBRARY-BUNDLE-LAYOUT` (Wave
@@ -2105,7 +2105,7 @@ PR's nextest job feeds the next anchor.
 ### Verdict
 
 **Phase-4d Wave 4d.4 closure achieved 2026-05-07 at commit
-`<merge-sha>`** (the merge commit of this docs(repo) closing PR).
+`ca7ddd8`** (the merge commit of this docs(repo) closing PR).
 
 Wave 4d.4 is the Phase-4d capstone closure for the row that was the
 last 4d row needing direct engineering work. After this wave
@@ -2185,7 +2185,7 @@ token bytes MUST be excluded from any transmitted crash report.
   `engine/observability/tests/crash_payload_redaction_corpus.rs`
   (8 fixtures: per-category arm × 5 + cross-category interaction
   + conservative-by-default-unknown-key + diagnostic-preservation).
-- **PR `#377`** (commit `<merge-sha>`, anchor run `<anchor>`, this
+- **PR `#377`** (commit `c57e09b`, anchor run `<anchor>`, this
   closing PR, landed 2026-05-07) — synthetic crash-payload
   validation harness at `engine/observability/src/crash_harness.rs`.
   Ships `SimulatedCrashClass::{Sigsegv, PanicInRenderThread,
@@ -2244,7 +2244,7 @@ auditable anchor.
 ### Verdict
 
 **`EV-CRASH-PAYLOAD-REDACTION` closure achieved 2026-05-07
-at commit `<merge-sha>`** (the merge commit of this PR 2).
+at commit `c57e09b`** (the merge commit of this PR 2).
 
 After this closure 3 Phase-4d open items remain:
 
@@ -2365,7 +2365,7 @@ additive Wave 4d.3 partial-advance pattern, then the cross-class
 ### Verdict
 
 **`EV-CRASH-RESUME` closure achieved 2026-05-07 at commit
-`<merge-sha>`** (the merge commit of this PR 6 of 6). With this
+`23b45ba`** (the merge commit of this PR 6 of 6). With this
 closure 2 Phase-4d open items remain (down from 4 prior to `EV-CRASH-PAYLOAD-REDACTION`'s
 closure earlier on 2026-05-07):
 
@@ -2435,7 +2435,7 @@ aware backend tie-breakers per `cfg(target_os)`.
   the same `rank_synthetic` decision tree against constructed
   `SelectedAdapter` fixtures so the validation lands on CI without
   hardware.
-- **This PR (`<merge-sha>`, landed 2026-05-07)** — synthetic dual-
+- **This PR (`bcc4b5b`, landed 2026-05-07)** — synthetic dual-
   adapter T2 validation corpus inline in the same module under a
   new sibling `mod adapter_selection_t2_corpus` test module
   honouring the `pub(crate) rank_synthetic` slice-boundary signal
@@ -2506,7 +2506,7 @@ the auditable anchor.
 ### Verdict
 
 **`EV-GPU-SELECTION` closure achieved 2026-05-07 at commit
-`<merge-sha>`** (the merge commit of this PR 2 of 2). With this
+`bcc4b5b`** (the merge commit of this PR 2 of 2). With this
 closure 1 Phase-4d open item remains (down from 2 prior to this
 closure):
 
@@ -2586,7 +2586,7 @@ session-reset.
   variant routing, severity classification through the diagnostic
   pipeline). Module prose at lines 24-40 anticipated PR 2 layering
   state-preservation on top without re-shaping the surface.
-- **This PR (`<merge-sha>`, landed 2026-05-07)** — state-preservation
+- **This PR (`2336ef5`, landed 2026-05-07)** — state-preservation
   cross-seam contract extending `engine/authoring/src/live_reload.rs`
   with `PreservedState` (control_values + active_preset + active_snap
   + playlist_position) + `PreservedStateSnapshot` builder +
@@ -2651,7 +2651,7 @@ surface — each PR's workspace nextest job is the auditable anchor.
 ### Verdict
 
 **`EV-AUTHORING-LIVE-RELOAD` closure achieved 2026-05-07 at
-commit `<merge-sha>`** (the merge commit of this PR 2 of 2). With
+commit `2336ef5`** (the merge commit of this PR 2 of 2). With
 this closure 2 Phase-4 EXIT prerequisites remain (down from 3 prior
 to this closure):
 
@@ -2715,7 +2715,7 @@ PR-2 edge-case fixtures.
   fixtures (simple-math, noise-fbm, raymarched-sphere). Module
   prose at line 9 anticipated PR 2 widening the iChannel-fixture-
   pack-resolution path called out by `docs/38` §5.2a.
-- **This PR (`<merge-sha>`, landed 2026-05-07)** — broader corpus +
+- **This PR (`d6b266d`, landed 2026-05-07)** — broader corpus +
   iChannel widening per `docs/38` §5.2a. Adds `IChannelMapping` +
   `IChannelKind` + `Warning` (structured enum) to the public
   surface; `ShadertoyImportConfig::with_ichannel_mappings` builder
@@ -2783,7 +2783,7 @@ PR's workspace nextest job is the auditable anchor.
 ### Verdict
 
 **`EV-IMPORT-SHADERTOY` closure achieved 2026-05-07 at commit
-`<merge-sha>`** (the merge commit of this PR 2 of 2). With this
+`d6b266d`** (the merge commit of this PR 2 of 2). With this
 closure 1 Phase-4 EXIT prerequisite remains (with the parallel
 sibling `EV-AUTHORING-LIVE-RELOAD` PR 2 having landed earlier today):
 
