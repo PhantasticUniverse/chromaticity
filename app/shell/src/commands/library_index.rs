@@ -302,11 +302,33 @@ mod tests {
             .join("../../engine/scene/tests/fixtures/scenes/library")
     }
 
-    /// Repo-resident `welcome/` fixture (a README placeholder; no
-    /// `.chroma` packages yet — exercises the empty-corpus arm).
-    fn welcome_fixture_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/welcome")
+    /// Allocate a fresh empty scratch directory for empty-corpus
+    /// test arms.
+    ///
+    /// Uses a process-id-stamped path under [`std::env::temp_dir`]
+    /// (mirroring the temp-file pattern at
+    /// `library_search.rs::search_command_handles_invalid_user_root_returns_io_error_string`)
+    /// so the empty-corpus assertion does NOT couple to whichever
+    /// repo-resident `engine/scene/tests/fixtures/scenes/<subdir>/`
+    /// the corpus seeds at any given moment. The previous
+    /// `welcome/`-as-empty-sentinel pattern broke when Wave 1d-β
+    /// PR 1 seeded `welcome/welcome.chroma` under
+    /// `EV-LIBRARY-CORPUS-MIN`; routing through scratch means the
+    /// corpus can grow freely without the empty-corpus tests
+    /// regressing. The directory is created and (best-effort)
+    /// removed inside the calling test.
+    fn fresh_empty_scratch_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "chromaticity-library-index-empty-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("scratch dir must be created");
+        dir
     }
 
     #[test]
@@ -315,9 +337,17 @@ mod tests {
         // packages must produce an index whose `cards()` is empty —
         // matches the IPC handler's graceful fallback when the user
         // has not yet authored any scenes.
-        let index = SceneIndex::build(&[(welcome_fixture_root(), SceneSource::Bundled)])
-            .expect("welcome corpus must build");
+        //
+        // Uses a fresh scratch directory under `std::env::temp_dir`
+        // rather than a repo-resident sentinel so the corpus can
+        // grow without breaking this test (the previous
+        // `welcome/`-as-empty-sentinel pattern broke when Wave 1d-β
+        // PR 1 seeded `welcome/welcome.chroma`).
+        let scratch = fresh_empty_scratch_dir("build_with_empty_root");
+        let index = SceneIndex::build(&[(scratch.clone(), SceneSource::Bundled)])
+            .expect("empty corpus must build");
         assert!(index.cards().is_empty(), "no .chroma → no cards");
+        let _ = std::fs::remove_dir_all(&scratch);
     }
 
     #[test]
@@ -413,17 +443,19 @@ mod tests {
     #[test]
     fn filter_by_source_bundled_excludes_user_cards() {
         // Synthesise a mixed-source index by running two builds and
-        // splicing — the simpler in-tree path is to point the user
-        // root at the same library/ fixture but override the source
-        // tag. After PR 1 the index walker takes (path, source)
-        // tuples, so the two roots produce identical paths but
-        // different source tags; the dedup-by-id rule keeps only the
-        // first-seen (Bundled) card. To exercise filter_by_source
-        // properly, point the second root at welcome/ which is empty,
-        // then assert the user filter returns nothing.
+        // splicing — the user root walks a fresh empty scratch dir
+        // (so it produces no cards) while the bundled root walks the
+        // library/ fixture (which surfaces three demos). After PR 1
+        // the index walker takes (path, source) tuples; the User
+        // filter on the resulting index must return empty. The
+        // scratch-dir routing decouples this test from whichever
+        // repo-resident subdir happens to be empty at any given
+        // moment; the previous `welcome/`-as-empty-sentinel pattern
+        // broke when Wave 1d-β PR 1 seeded `welcome/welcome.chroma`.
+        let scratch = fresh_empty_scratch_dir("filter_by_source");
         let index = SceneIndex::build(&[
             (library_fixture_root(), SceneSource::Bundled),
-            (welcome_fixture_root(), SceneSource::User),
+            (scratch.clone(), SceneSource::User),
         ])
         .expect("mixed-source corpus must build");
         let bundled = index.filter_by_source(SceneSource::Bundled);
@@ -435,10 +467,8 @@ mod tests {
         for card in &bundled {
             assert_eq!(card.source, SceneSource::Bundled);
         }
-        assert!(
-            user.is_empty(),
-            "welcome/ has no cards yet → User filter empty"
-        );
+        assert!(user.is_empty(), "fresh scratch dir → User filter empty");
+        let _ = std::fs::remove_dir_all(&scratch);
     }
 
     #[test]
