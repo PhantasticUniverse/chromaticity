@@ -12,23 +12,39 @@ scheduled no earlier than Phase 4c and requires AO-signed approval.
 
 ## Status
 
-**Phase 1, Phase 2, and Phase 3 EXIT all achieved.** The repository carries
-active application and engine code (Tauri 2 + Svelte 5 + TypeScript +
-Rust 2024) with policy, evidence, and CI gates running continuously on
-`main`. Phase 1 EXIT closed at commit `e818752` (W12) with all six Phase 1
-gate evidence rows `Pass` per `docs/26-evidence-artifact-registry.md`.
-Phase 2 EXIT closed 2026-05-01 at commit `d8e92db` with the four
-foundational rows (`EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`,
-`EV-AUDIO-TRACE`, `EV-SANDBOX-SAFETY`) `Pass` against a green workspace
-nextest run. Phase 3 EXIT closed 2026-05-01 at commit `953fd74` with
-seven of the eight Phase-3 gate rows `Pass` (`EV-AUDIO-TRACE`
-re-validated, `EV-AUDIO-ROUTING-MATRIX`, `EV-STATE-REPLAY`,
-`EV-STATE-MIGRATION`, `EV-PRESET-PLAYLIST`, `EV-SHOW-BUNDLE-RECOVERY`,
-`EV-PERF-BUDGETS`); the eighth row `EV-COLOR-MANAGEMENT-SRGB` (`EV-COLOR-MANAGEMENT-SRGB`)
-is explicitly deferred per AO direction sequenced behind a future
-render-HUD-diagnostics PR. Phase 0 governance and clean-room baseline
-ADRs remain established; Phase 4+ entry is a separate AO-held milestone
-per `docs/11-roadmap-phases.md`.
+**Phases 1 through 4a EXIT achieved; Phase 4b passable at AO discretion;
+Phase 4d at 5 of 6.** The repository carries active application and
+engine code (Tauri 2 + Svelte 5 + TypeScript + Rust 2024) with policy,
+evidence, and CI gates running continuously on `main`. Phased rollup per
+`docs/26-evidence-artifact-registry.md`:
+
+- **Phase 1 EXIT** — closed at commit `e818752` (W12, April 2026) with
+  all six gate evidence rows `Pass`.
+- **Phase 2 EXIT** — closed 2026-05-01 at commit `d8e92db` with the four
+  foundational rows (`EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`,
+  `EV-AUDIO-TRACE`, `EV-SANDBOX-SAFETY`) `Pass` against a green
+  workspace nextest run.
+- **Phase 3 EXIT** — closed 2026-05-01 at commit `953fd74` with seven of
+  the eight Phase-3 gate rows `Pass`; the eighth
+  (`EV-COLOR-MANAGEMENT-SRGB`) is explicitly deferred per AO direction
+  sequenced behind a future render-HUD-diagnostics PR.
+- **Phase 4a EXIT** — achieved 2026-05-03. Wave 1c-α-2 production audio
+  bootstrap closure landed 2026-05-06; Wave 1c-β camera + Syphon
+  adapter cluster closure landed 2026-05-07 under synthetic-narrowing
+  (per-platform concrete bindings + hardware validation deferred as
+  known follow-ups).
+- **Phase 4b EXIT** — passable at AO discretion as of 2026-05-07; all
+  eleven Phase-4b rows at `Pass` under collective narrowings (Wave 4b.1
+  through 4b.8 inclusive).
+- **Phase 4c EXIT** — remains AO-held.
+- **Phase 4d** — five of six rows at `Pass`; `EV-ANALYTICS-ZERO-DEFAULT`
+  calendar-gated to ~2026-05-20 closes the sixth.
+
+V1-RC content closure (Wave 1d: in-app help corpus + bundled scene
+starter library) and Phase-5 release pipeline scaffold (Wave 1e: signing
+script stubs + `tauri-plugin-updater` + `release.yml` workflow) are
+both in flight on `main`. Phase 0 governance and clean-room baseline
+ADRs remain authoritative throughout.
 
 ## Repository Layout
 
@@ -36,29 +52,41 @@ per `docs/11-roadmap-phases.md`.
 chromaticity/
 ├── README.md
 ├── CHANGELOG.md                 # release-please-managed release history
-├── LICENSE                    # see §License below
-├── LICENSES/                  # REUSE 3.2 canonical license texts
-├── REUSE.toml                 # per-glob license + copyright defaults
-├── CONTRIBUTING.md            # commit/branch/review conventions
+├── LICENSE                      # see §License below
+├── LICENSES/                    # REUSE 3.2 canonical license texts
+├── REUSE.toml                   # per-glob license + copyright defaults
+├── CONTRIBUTING.md              # commit/branch/review conventions
 ├── CODE_OF_CONDUCT.md
-├── SECURITY.md                # coordinated disclosure
-├── CODEOWNERS                 # subtree review authority
-├── Cargo.toml                 # Rust workspace root
-├── Cargo.lock                 # locked Rust dependency graph
-├── package.json               # frontend workspace scripts and tooling
+├── SECURITY.md                  # coordinated disclosure
+├── CODEOWNERS                   # subtree review authority
+├── Cargo.toml                   # Rust workspace root
+├── Cargo.lock                   # locked Rust dependency graph
+├── rust-toolchain.toml          # MSRV pin (1.85.0)
+├── deny.toml                    # cargo-deny advisories / licenses / bans / sources
+├── package.json                 # frontend workspace scripts and tooling
+├── lefthook.yml                 # pre-commit / pre-push hooks
+├── commitlint.config.cjs        # Conventional Commits enforcement
+├── vitest.config.ts             # Vitest runner (jsdom + Svelte plugin)
 ├── .editorconfig
 ├── .gitattributes
 ├── .gitignore
-├── .github/                   # PR/issue templates, labels, workflows
-├── app/                       # Tauri app shell + app-facing modules
-├── engine/                    # authoring, runtime, scene, audio, observability, render, script, entitlement crates
-├── integrations/              # external protocol adapters (OSC, MIDI, etc.)
-├── scripts/                   # policy/evidence automation helpers
-├── docs/                      # normative planning corpus (promoted)
-│   ├── README.md              # document map
-│   └── adr/                   # Architecture Decision Records (MADR 4.0.0)
-├── src/                       # Svelte UI source
-└── tests/                     # workspace-level policy fixtures (e.g. trailer-check inputs)
+├── .github/                     # PR/issue templates, labels, workflows
+├── app/
+│   ├── shell/                   # Tauri 2 binary (chromaticity-app crate)
+│   └── ui-bridge/               # ts-rs IPC type generator (Rust → TypeScript bindings)
+├── engine/                      # runtime, scene, audio, authoring, observability, render, script, entitlement
+├── integrations/                # osc-adapter, midi-adapter, camera-adapter, syphon-adapter
+├── workspace-hack/              # cargo-hakari managed workspace dep unifier
+├── release-eng/                 # signing/notarization/staging-appcast scripts (stubbed pre-cert)
+├── docs-corpus/                 # in-app help system mkdocs source tree
+├── dist/                        # Vite build output + bundled mkdocs help pages (dist/help/)
+├── third_party/                 # vendored snapshots (lygia trial vendor + Syphon-Framework)
+├── scripts/                     # policy/evidence automation helpers
+├── docs/                        # normative planning corpus (promoted)
+│   ├── README.md                # document map
+│   └── adr/                     # Architecture Decision Records (MADR 4.0.0)
+├── src/                         # Svelte UI source
+└── tests/                       # workspace-level policy fixtures (e.g. trailer-check inputs)
 ```
 
 ### AO-local partitions (not in version control)
@@ -126,9 +154,12 @@ file's SPDX header states otherwise. Bundled third-party material is
 governed by its own license, captured under `/third_party/<origin>/` with
 an `UPSTREAM-VERSION.md` (origin URL + version stamp + drop date), the
 upstream license file (e.g. `LICENSE.md`), and any upstream `README` —
-all reflected in `REUSE.toml`. The current vendor drop is
-`third_party/lygia/` (Lygia v1.1.4 trial, license election deferred per
-`docs/13-risk-register.md` R-37).
+all reflected in `REUSE.toml`. Current vendor drops:
+
+- `third_party/lygia/` — Lygia v1.1.4 trial vendor; license election
+  deferred per `docs/13-risk-register.md` R-37.
+- `third_party/Syphon-Framework/` — BSD-3-Clause clean-room reference
+  for the macOS Syphon producer/consumer surface (`integrations/syphon-adapter`).
 
 REUSE 3.2 compliance is enforced in CI (`reuse lint`). See
 `docs/43-development-standards.md` §10 for the full license/SPDX/SBOM policy.
