@@ -263,6 +263,37 @@ jobs:
         with:
           path: artifacts/
 
+      # actions/download-artifact unpacks each artifact into its own
+      # subdirectory: artifacts/chromaticity-{ubuntu,macos,windows}-latest/.
+      # All three platforms emit a binary named `chromaticity-app`
+      # (Windows additionally with the .exe suffix). `gh release create`
+      # uploads asset files by basename -- without renaming, the Linux
+      # and macOS binaries collide on the asset name `chromaticity-app`,
+      # the second upload trips an HTTP 422 (surfaced by gh CLI as 404),
+      # and the release job fails after the build matrix and
+      # stage-appcast have already succeeded. Stage to `staged/` with
+      # platform-distinct names before the upload step. Surfaced by the
+      # 2026-05-10 smoke-test run #25627779261.
+      - name: Stage release assets with platform-distinct names
+        shell: bash
+        run: |
+          set -u
+          mkdir -p staged
+          for dir in artifacts/chromaticity-*-latest/; do
+            [ -d "$dir" ] || continue
+            platform=$(basename "$dir" | sed 's|^chromaticity-||; s|-latest$||')
+            for src in "$dir"target/release/chromaticity-app "$dir"target/release/chromaticity-app.exe; do
+              [ -f "$src" ] || continue
+              base=$(basename "$src")
+              case "$base" in
+                chromaticity-app)     dst="staged/chromaticity-app-${platform}" ;;
+                chromaticity-app.exe) dst="staged/chromaticity-app-${platform}.exe" ;;
+              esac
+              cp "$src" "$dst"
+            done
+          done
+          ls -la staged/
+
       - name: Create draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -277,7 +308,7 @@ jobs:
             --draft \
             --title "Chromaticity $TAG" \
             --notes "Staging release scaffold (Wave 1e-gamma). Do not deploy. Production cert procurement remains AO-gated per ADR-014 Sec.4 + Sec.6." \
-            artifacts/**/*
+            staged/*
 
   release-summary:
     name: release-summary
