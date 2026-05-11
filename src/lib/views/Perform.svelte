@@ -97,7 +97,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { presetStore } from '../stores/preset.svelte';
   import {
     ControlGroup,
-    CrossFader,
     Fader,
     AudioReactivity,
     Knob,
@@ -107,7 +106,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     Swatch,
     TestCard,
     Toggle,
-    VuStereo,
   } from '../widgets';
   import {
     sceneKindFromMetadata,
@@ -138,8 +136,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let perfMode = $state<'perform' | 'edit'>('perform');
   let railMode = $state<'scenes' | 'presets' | 'edit' | 'add'>('scenes');
   let setlistChoice = $state<string>(SETLIST_OPTIONS[0] ?? 'Demo Scenes');
-  // W23 PR2 frozen-frame: dragging only updates local state, no IPC.
-  let crossfaderPos = $state<number>(0.5);
 
   // W18 PR1 locked: ChromaCtx / entitlement store does not exist yet, so
   // `unlicensed` is hardcoded false. Wire to the entitlement store when
@@ -474,6 +470,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
      is loaded so the existing surface keeps rendering. -->
 
 {#snippet sceneControlsPanel()}
+  <!-- Wave 2.3 Lane Q.2 (G.4) — A/B crossfader removed from this
+       panel. The canonical bundle's `perform.jsx` classic variant
+       does not render a crossfader inside Scene Controls; the W23
+       PR2 placement was a divergence from the wireframe. The
+       `<CrossFader>` widget remains exported from `../widgets` for
+       future re-adoption (Audio Uniforms / dense console variant)
+       but is no longer mounted in this view.
+
+       Wave 2.3 Lane Q.2 (G.7) — Lock-all button + Default + Random
+       chrome was already aligned with the bundle's `perform.jsx`
+       lines 13-17 (`btn ghost` Lock-all with Icon, plus Default and
+       Random). No icon swap needed — the Lock-all button already
+       renders `<Icon name="lock" size={12}>`. -->
   <section class="panel" aria-label="Scene Controls">
     <header class="panel__head">
       <h2 class="panel__title">
@@ -481,17 +490,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <span class="panel__title-name">{sceneTitleName}</span>
       </h2>
       <span class="panel__spacer" aria-hidden="true"></span>
-      <button type="button" class="btn btn--ghost" title="Lock all">
+      <button type="button" class="btn btn--ghost" title="Lock all controls">
         <Icon name="lock" size={12} />
       </button>
-      <button type="button" class="btn btn--ghost">Default</button>
-      <button type="button" class="btn btn--ghost">
+      <button type="button" class="btn btn--ghost" title="Reset to defaults">
+        <Icon name="grid" size={12} /> Default
+      </button>
+      <button type="button" class="btn btn--ghost" title="Randomize">
         <Icon name="random" size={12} /> Random
       </button>
     </header>
-    <div class="scene-controls__xfade">
-      <CrossFader value={crossfaderPos} labels={['A', 'B']} onChange={(v) => (crossfaderPos = v)} />
-    </div>
     <div class="panel__body panel__body--row-scroll">
       {#each sceneControlGroups as group (group.name)}
         {@render controlGroupBlock(group)}
@@ -501,13 +509,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 {/snippet}
 
 {#snippet metaControlsPanel()}
+  <!-- Wave 2.3 Lane Q.2 (G.3) — VuStereo widget removed from this
+       panel's header per the canonical bundle (`perform.jsx` lines
+       42-49 carry only Default + Random in the Meta Controls header).
+       The W23 PR2 placement here duplicated the top-bar VU; the
+       bundle's single-VU posture lives only in the top bar (`Chromaticity.html`
+       lines 220-222), which the Wave 2.1 Lane B.2 transport HUD
+       cluster already ports. -->
   <section class="panel" aria-label="Meta Controls">
     <header class="panel__head">
       <h2 class="panel__title">Meta Controls</h2>
       <span class="panel__spacer" aria-hidden="true"></span>
-      <div class="meta-controls__vu" aria-hidden="false">
-        <VuStereo width={92} />
-      </div>
       <button type="button" class="btn btn--ghost">Default</button>
       <button type="button" class="btn btn--ghost">
         <Icon name="random" size={12} /> Random
@@ -582,6 +594,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   {#if testCardActive}
     <div class="preview preview--test">
       <TestCard label="Test Card" />
+      <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — LIVE indicator + OUT label -->
+      <div class="preview__hud-row preview__hud-row--top">
+        <div class="preview__hud-left">
+          <span class="preview__live-tag" aria-label="Live output">
+            <span class="preview__live-dot" aria-hidden="true"></span>
+            LIVE
+          </span>
+          <span class="preview__scene-label">{sceneTitleName}</span>
+        </div>
+        <div class="preview__hud-right">
+          <span class="preview__out-label">OUT → DISP 2</span>
+        </div>
+      </div>
       {#if unlicensed}
         <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
       {/if}
@@ -594,7 +619,27 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         audio
         ariaLabel={`Live scene preview · ${sceneTitleName}`}
       />
-      <span class="preview__label">{sceneTitleName}</span>
+      <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — Preview HUD chrome ported
+           from the bundle's `<Preview>` primitive (`components.jsx`
+           lines 202-229). Top-left: red LIVE pulse dot + "LIVE" caps
+           label + active scene name. Top-right: "OUT → DISP 2" output
+           routing label. Mirrors the bundle's `hud-row top` chrome at
+           `Chromaticity.html`-rendered scale; the bottom HUD row
+           (resolution / FPS / GPU / frame-time) is intentionally not
+           ported here — that data needs real telemetry IPC which
+           lands with the ADR-011 rendering backend (Wave 2.2+). -->
+      <div class="preview__hud-row preview__hud-row--top">
+        <div class="preview__hud-left">
+          <span class="preview__live-tag" aria-label="Live output">
+            <span class="preview__live-dot" aria-hidden="true"></span>
+            LIVE
+          </span>
+          <span class="preview__scene-label">{sceneTitleName}</span>
+        </div>
+        <div class="preview__hud-right">
+          <span class="preview__out-label">OUT → DISP 2</span>
+        </div>
+      </div>
       {#if unlicensed}
         <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
         <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
@@ -670,6 +715,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <span class="panel__title">{SETLIST_FIXTURE.length} scenes</span>
     </header>
 
+    <!-- Wave 2.3 Lane Q.2 (G.13) — PERFORM/EDIT toggle styling. The
+         bundle (`perform.jsx` lines 120-121) renders Perform as
+         `btn primary` (filled accent) and Edit as bare `btn`. We
+         preserve the perfMode toggle behaviour but ensure the
+         visual contrast holds: active Perform is the primary green
+         fill, Edit is an outlined accent-bordered chip (transparent
+         background + primary-color text + primary-color border) so
+         the two read as "selected vs alternative" at a glance. -->
     <div class="scene-panel__mode">
       <button
         type="button"
@@ -682,7 +735,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </button>
       <button
         type="button"
-        class="btn btn--full"
+        class="btn btn--full btn--outline"
         class:btn--primary={perfMode === 'edit'}
         aria-pressed={perfMode === 'edit' ? 'true' : 'false'}
         onclick={() => (perfMode = 'edit')}
@@ -835,7 +888,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
        display-only — `onchange` is omitted and the widget short-
        circuits its pointer-drag handler. -->
   <div class="cg-wrap">
-    <ControlGroup name={group.name} tint={group.tint}>
+    <ControlGroup name={group.name} tint={group.tint} actions>
       {#each group.controls as ctl, i (i)}
         {#if ctl.kind === 'fader'}
           {#if ctl.controlId !== undefined}
@@ -911,9 +964,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     min-height: 0;
   }
 
-  /* Classic — 2-column (controls / preview+scenes). */
+  /* Classic — 2-column (controls / preview+scenes).
+   *
+   * Wave 2.3 Lane Q.2 (G.5 + G.8 + G.11) — column template flips from
+   * a fluid `1.05fr 1.55fr` split to the bundle's canonical
+   * `minmax(0, 1fr) 420px` (`styles.css` line 667
+   * `.perform{grid-template-columns:minmax(0,1fr) 420px;}`). The left
+   * column expands to fill the full available width so the 5 Scene-
+   * Controls + 6 Meta-Controls groups can all live on a single row
+   * within their respective `panel__body--row-scroll` flex strips,
+   * and the right column fixes at the bundle's 420 px so the scene
+   * list rows can render at their natural 38 px height and surface
+   * ~12 entries above the fold. */
   .perform--classic {
-    grid-template-columns: 1.05fr 1.55fr;
+    grid-template-columns: minmax(0, 1fr) 420px;
     grid-template-areas: 'left right';
   }
 
@@ -1047,31 +1111,35 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     overflow: auto;
   }
 
+  /* Wave 2.3 Lane Q.2 (G.5 + G.8) — control-group row strip. Tighter
+   * inter-group gap (4 px instead of 8) and `flex: 1 1 0` per
+   * wrapper so the 5 (Scene Controls) / 6 (Meta Controls) groups
+   * compress to fit the available width without horizontal scroll.
+   * Each group still respects its inner widget min-widths (40 px
+   * per fader / toggle / knob) so the tightening doesn't compress
+   * the widgets themselves below their hit-target floor. */
   .panel__body--row-scroll {
     overflow-x: auto;
     overflow-y: hidden;
     display: flex;
-    gap: var(--space-md);
-    align-items: flex-start;
+    gap: var(--space-xs);
+    align-items: stretch;
   }
 
   .cg-wrap {
-    flex: 0 0 auto;
+    flex: 1 1 0;
+    min-width: 0;
   }
-
-  /* W23 PR2 — CrossFader sits in its own row inside SceneControls,
-     above the control-group row-scroll. Padding mirrors the panel head. */
-  .scene-controls__xfade {
-    padding: var(--space-sm) var(--space-lg);
-    border-bottom: 1px solid var(--color-line-2);
-    background: var(--color-bg-2);
+  /* Tighter inner widget gap inside ControlGroup body in this dense
+   * row-strip context — the bundle's `.group-grid` uses 6 px gap at
+   * 1440 viewport (`styles.css` line 668 `.perform` 10 px gap implies
+   * 6-8 px inner gaps); compressing to 4 px keeps the 6 Meta-Controls
+   * groups inside the visible width. */
+  .cg-wrap :global(.group) {
+    padding: var(--space-xs) var(--space-sm) var(--space-sm);
   }
-
-  /* W23 PR2 — VuStereo lives in the MetaControls header next to the
-     action buttons; sized to fit the 32px header without crowding. */
-  .meta-controls__vu {
-    display: flex;
-    align-items: center;
+  .cg-wrap :global(.group-grid) {
+    gap: var(--space-sm);
   }
 
   /* ---------------- Buttons ----------------------------------------------- */
@@ -1114,6 +1182,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: var(--color-bg-3);
     border-color: var(--color-line-2);
     color: var(--color-text-0);
+  }
+  /* Wave 2.3 Lane Q.2 (G.13) — outlined-accent variant. Used by the
+   * scene-panel mode toggle's Edit button per the bundle's "Perform
+   * primary / Edit bare-btn" contrast. Transparent fill + primary
+   * accent border + primary accent text colour reads as "outlined
+   * alternative" against the filled primary Perform button. When
+   * the user toggles to edit mode the `btn--primary` class also
+   * applies and overrides this rule (defined after below). */
+  .btn--outline {
+    background: transparent;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+  .btn--outline:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
   .btn--primary {
     background: var(--color-primary);
@@ -1163,10 +1248,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /* ---------------- Media grid -------------------------------------------- */
   /* Per-tile chrome lives inside `MediaCard.svelte` (the widget owns
    * its own scoped styles after the shared-primitive backfill). The
-   * grid-container layout stays here. */
+   * grid-container layout stays here.
+   *
+   * Wave 2.3 Lane Q.2 (G.12) — tile min-width widens from 84 px to
+   * 120 px so the 15-card fixture wraps into a 2-row grid (roughly
+   * 7-8 cards per row at the left column's working width). The bundle
+   * uses `minmax(84px, 1fr)` (`perform.jsx` line 96) at 1440 viewport
+   * width where the perform-left column is significantly wider; the
+   * tighter minmax here yields the visually-equivalent 2-row layout
+   * the wireframe shows. */
   .media-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: var(--space-md);
   }
 
@@ -1190,18 +1283,88 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     height: 100%;
     display: block;
   }
-  .preview__label {
+  /* Wave 2.3 Lane Q.2 (G.9 + G.10) — Preview HUD chrome. Ported from
+   * the bundle's `<Preview>` component (`components.jsx` lines
+   * 207-218) and the bundle's `.monitor`/`.hud-row`/`.monitor-label`
+   * styles. Two clusters ride on the top row: LIVE pulse + scene
+   * name on the left, OUT routing on the right. Both opt out of
+   * pointer events so they don't shadow widget click handlers
+   * elsewhere; absolute-positioned over the SceneCanvas. */
+  .preview__hud-row {
     position: absolute;
-    left: var(--space-sm);
-    bottom: var(--space-sm);
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) var(--space-md);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .preview__hud-row--top {
+    top: 0;
+  }
+  .preview__hud-left,
+  .preview__hud-right {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+  .preview__live-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: color-mix(in oklab, var(--color-bg-0) 70%, transparent);
+    color: var(--color-text-0);
     font-family: var(--font-family-mono);
-    font-size: var(--font-size-caps-md);
+    font-size: var(--font-size-caps-sm, 9px);
+    font-weight: 600;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    letter-spacing: var(--letter-spacing-caps-md);
+    border-radius: var(--radius-xs);
+  }
+  .preview__live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-signal-red, #ff3d5e);
+    box-shadow: 0 0 6px var(--color-signal-red, #ff3d5e);
+    animation: previewLivePulse 1.4s ease-in-out infinite;
+  }
+  @keyframes previewLivePulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .preview__live-dot {
+      animation: none;
+    }
+  }
+  .preview__scene-label {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-md, 10px);
     color: var(--color-text-0);
     background: color-mix(in oklab, var(--color-bg-0) 65%, transparent);
     padding: 2px 6px;
     border-radius: var(--radius-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-md);
+  }
+  .preview__out-label {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm, 9px);
+    color: var(--color-text-1);
+    background: color-mix(in oklab, var(--color-bg-0) 70%, transparent);
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
   .preview__watermark {
     position: absolute;
@@ -1261,18 +1424,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     height: 24px;
   }
 
+  /* Wave 2.3 Lane Q.2 (G.11) — tightened scene-panel header chrome so
+   * the list strip below absorbs more vertical space and surfaces
+   * ~12 SceneRows above the fold (matching the bundle's
+   * `Chromaticity.html`-rendered classic-variant layout where the
+   * 12-row setlist is fully visible). Padding shrinks from
+   * `--space-md --space-lg` (8 / 12 px) to `--space-xs --space-md`
+   * (4 / 8 px), the bundle's actual rhythm at 1440×900. */
   .scene-panel__mode {
     display: flex;
     gap: var(--space-sm);
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-xs) var(--space-md);
     border-bottom: 1px solid var(--color-line-2);
   }
 
   .scene-panel__setlist {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
-    padding: var(--space-sm) var(--space-lg);
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-md);
     border-bottom: 1px solid var(--color-line-2);
   }
   .scene-panel__select-wrap {
@@ -1298,8 +1468,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .scene-panel__nav {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-lg);
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-md);
     border-bottom: 1px solid var(--color-line-2);
   }
   .scene-panel__auto {
@@ -1317,13 +1487,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     flex: 1;
     min-height: 0;
   }
+  /* Wave 2.3 Lane Q.2 (G.11) — compress SceneRow chrome in the
+   * Perform scene panel so more rows fit above the fold. The widget
+   * exposes its inner element classes through scoped child globals;
+   * scope the override here so other consumers (Library / Playlist)
+   * keep their natural row heights. */
+  .scene-panel__list :global(.scene-row) {
+    padding: 2px var(--space-sm);
+  }
+  .scene-panel__list :global(.scene-row__thumb) {
+    width: 56px;
+    height: 30px;
+  }
 
   /* Per-row chrome lives inside `SceneRow.svelte` (the widget owns its
    * own scoped styles after the shared-primitive backfill). */
 
   /* Wave 2.1 Lane A.4 — cue position caption + preset rail chrome. */
   .scene-panel__cue {
-    padding: var(--space-xs) var(--space-lg);
+    padding: 2px var(--space-md);
     color: var(--color-text-3);
     font-size: var(--font-size-caps-sm);
     letter-spacing: var(--letter-spacing-caps-sm);
