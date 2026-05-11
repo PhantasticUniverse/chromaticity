@@ -93,6 +93,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MidiTabId,
   } from '../data/midi-fixtures';
   import Icon from '../Icon.svelte';
+  import { midiLearnStore } from '../stores/midiLearn.svelte';
   import { midiStore } from '../stores/midiStore.svelte';
   import { CuePad, type CuePadCell } from '../widgets';
 
@@ -175,13 +176,67 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // affordance on the toggle button title; toggling learn mode also
   // resets the displayed target to the binding the bundle picks per-tab
   // (`meta.hue` for Global, `${tab}.target` otherwise).
+  //
+  // Wave 2.1 Lane D.2 wiring: toggling the toolbar Learn button starts
+  // a live midir input listener via `midiLearnStore`. The port chosen
+  // is the first allowlisted live device (or the first live device if
+  // none allowlisted); if no live devices exist, the legacy fixture-
+  // driven panel renders (state stays in 'idle' on the store).
   function toggleLearn(): void {
     if (learning) {
       learning = false;
+      void midiLearnStore.stop();
       return;
     }
     learning = true;
     learnTarget = activeTab === 'global' ? MIDI_LEARN_FIXTURE.target : `${activeTab}.target`;
+    // Pick a port to listen on. Prefer an allowlisted device (the
+    // operator's explicit "this is the one to listen to"); fall back
+    // to the first live device. If neither exists, the learn panel
+    // surfaces a "No MIDI devices available" message instead of
+    // invoking IPC.
+    const target =
+      midiStore.devices.find((d) => allowlist.has(d.id)) ?? midiStore.devices[0] ?? null;
+    if (target) {
+      void midiLearnStore.start(target.id);
+    }
+  }
+
+  function startLearnOnDevice(deviceId: string): void {
+    learning = true;
+    learnTarget = activeTab === 'global' ? MIDI_LEARN_FIXTURE.target : `${activeTab}.target`;
+    void midiLearnStore.start(deviceId);
+  }
+
+  function cancelLearn(): void {
+    learning = false;
+    void midiLearnStore.stop();
+  }
+
+  function confirmCapture(): void {
+    midiLearnStore.confirm();
+    learning = false;
+    void midiLearnStore.stop();
+  }
+
+  function recaptureLearn(): void {
+    midiLearnStore.reset();
+  }
+
+  // Display helpers for the captured-message panel.
+  function captureKindLabel(kind: string): string {
+    switch (kind) {
+      case 'NoteOn':
+        return 'note on';
+      case 'NoteOff':
+        return 'note off';
+      case 'ControlChange':
+        return 'control change';
+      case 'PitchBend':
+        return 'pitch bend';
+      default:
+        return 'other';
+    }
   }
 
   function selectTab(id: MidiTabId): void {
@@ -573,6 +628,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                       </span>
                       <button
                         type="button"
+                        class="midi__btn midi__btn--icon"
+                        aria-label="Learn from {d.name}"
+                        title="Start MIDI learn on {d.name}"
+                        data-cap={MIDI_CAPABILITY.learn}
+                        onclick={() => startLearnOnDevice(d.id)}
+                      >
+                        <Icon name="link" size={11} />
+                      </button>
+                      <button
+                        type="button"
                         class="midi__device-settings"
                         aria-label="Device settings — {d.name}"
                         title="Device details"
@@ -848,7 +913,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
        Virtual Pad mirror. -->
   <aside class="midi__side" aria-label="MIDI right column">
     {#if learning}
-      <article class="midi__panel midi__panel--learn">
+      <article class="midi__panel midi__panel--learn" data-midi-learn-state={midiLearnStore.state}>
         <header class="midi__panel-head midi__panel-head--learn">
           <h2 class="midi__panel-title midi__panel-title--learn">
             <Icon name="link" size={14} /> Learn Mode
@@ -857,12 +922,65 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             type="button"
             class="midi__btn midi__btn--icon"
             aria-label="Close learn panel"
-            onclick={() => (learning = false)}
+            onclick={cancelLearn}
           >
             <Icon name="x" size={11} />
           </button>
         </header>
         <div class="midi__panel-body">
+          <!-- Wave 2.1 Lane D.2 live-capture status. State surfaces:
+               'idle'      → no active session, fall through to fixture.
+               'listening' → "waiting for input" + cancel button.
+               'captured'  → captured payload + confirm / recapture / cancel.
+               When no live MIDI devices are available the store stays in
+               'idle' and the fixture panel below renders unchanged. -->
+          {#if midiLearnStore.state === 'listening' && midiLearnStore.captured === null}
+            <div class="midi__learn-row" data-midi-learn-listening>
+              <span class="midi__caps">listening</span>
+              <span class="midi__learn-text mono">
+                waiting for MIDI input on <strong>{midiLearnStore.activePortId ?? '—'}</strong> …
+              </span>
+            </div>
+            <div class="midi__learn-actions">
+              <button
+                type="button"
+                class="midi__btn midi__btn--danger midi__btn--grow"
+                onclick={cancelLearn}
+              >
+                Cancel
+              </button>
+            </div>
+          {:else if midiLearnStore.captured !== null}
+            <div class="midi__learn-row" data-midi-learn-captured>
+              <span class="midi__caps">captured</span>
+              <span class="midi__learn-text mono">
+                {captureKindLabel(midiLearnStore.captured.kind)}
+                {#if midiLearnStore.captured.channel !== null && midiLearnStore.captured.channel !== undefined}
+                  · CH {midiLearnStore.captured.channel}
+                {/if}
+                {#if midiLearnStore.captured.note_or_cc !== null && midiLearnStore.captured.note_or_cc !== undefined}
+                  · #{midiLearnStore.captured.note_or_cc}
+                {/if}
+                {#if midiLearnStore.captured.velocity_or_value !== null && midiLearnStore.captured.velocity_or_value !== undefined}
+                  · v {midiLearnStore.captured.velocity_or_value}
+                {/if}
+              </span>
+            </div>
+            <div class="midi__learn-actions">
+              <button
+                type="button"
+                class="midi__btn midi__btn--primary midi__btn--grow"
+                onclick={confirmCapture}
+              >
+                Confirm
+              </button>
+              <button type="button" class="midi__btn" onclick={recaptureLearn}> Re-capture </button>
+              <button type="button" class="midi__btn midi__btn--danger" onclick={cancelLearn}>
+                Cancel
+              </button>
+            </div>
+          {/if}
+
           <div class="midi__learn-row">
             <span class="midi__caps">target</span>
             <span class="midi__learn-target mono">{learnTarget}</span>
@@ -948,12 +1066,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           </div>
 
           <div class="midi__learn-actions">
-            <button type="button" class="midi__btn midi__btn--primary midi__btn--grow">
+            <button
+              type="button"
+              class="midi__btn midi__btn--primary midi__btn--grow"
+              onclick={confirmCapture}
+              disabled={midiLearnStore.captured === null}
+              title={midiLearnStore.captured === null
+                ? 'Capture a MIDI message first'
+                : 'Save the captured binding'}
+            >
               Bind
             </button>
-            <button type="button" class="midi__btn" onclick={() => (learning = false)}>
-              Skip
-            </button>
+            <button type="button" class="midi__btn" onclick={cancelLearn}> Skip </button>
           </div>
         </div>
       </article>

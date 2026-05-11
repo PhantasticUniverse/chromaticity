@@ -674,6 +674,292 @@ impl From<MidiDevicePayload> for chromaticity_midi_adapter::MidiDeviceDescriptor
     }
 }
 
+/// Coarse classification of a captured MIDI learn-mode message,
+/// mirroring the [`chromaticity_midi_adapter::MidiMessage`] enum
+/// variants the operator-facing learn UI distinguishes between.
+///
+/// Wave 2.1 Lane D.2 ships minimal-viable learn capture: the four
+/// most common channel-voice classes the operator binds against
+/// (NoteOn / NoteOff / ControlChange / PitchBend) plus a single
+/// `Other` catch-all for the rest of the taxonomy (Aftertouch,
+/// ProgramChange, SysEx, system real-time, etc.). The Wave 2.1
+/// scope does NOT widen the operator-facing classification beyond
+/// this set — a future wave that surfaces a more granular
+/// learn-binding UI may grow this enum in lockstep with the engine
+/// `MidiMessage` taxonomy.
+///
+/// ts-rs renders the enum as a flat string union because all
+/// variants are unit-shaped (no payload-bearing variants); the
+/// numeric / channel context flows alongside on
+/// [`MidiLearnEventPayload`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum MidiLearnKindPayload {
+    NoteOn,
+    NoteOff,
+    ControlChange,
+    PitchBend,
+    Other,
+}
+
+impl MidiLearnKindPayload {
+    /// Coarse classifier from the engine [`chromaticity_midi_adapter::MidiMessage`].
+    ///
+    /// Pulled into the bridge layer rather than carried as a `From`
+    /// impl because the engine `MidiMessage` enum is `#[non_exhaustive]`
+    /// — the catch-all `_ => Self::Other` arm honours that.
+    #[must_use]
+    pub fn classify(message: &chromaticity_midi_adapter::MidiMessage) -> Self {
+        use chromaticity_midi_adapter::MidiMessage;
+        match message {
+            MidiMessage::NoteOn { .. } => Self::NoteOn,
+            MidiMessage::NoteOff { .. } => Self::NoteOff,
+            MidiMessage::ControlChange { .. } | MidiMessage::Cc14Bit { .. } => Self::ControlChange,
+            MidiMessage::PitchBend { .. } => Self::PitchBend,
+            _ => Self::Other,
+        }
+    }
+}
+
+/// IPC-facing payload for a single learn-mode MIDI capture, emitted
+/// onto the Tauri event channel as `midi_learn_event` by the
+/// `start_midi_learn` handler in `app/shell/src/commands/midi.rs`.
+///
+/// Wave 2.1 Lane D.2 minimal-viable shape:
+/// - `port_id` — the same `"input-<n>"` identifier
+///   [`MidiDevicePayload::id`] carries, so the consumer can correlate
+///   the captured message back to the device the operator is
+///   listening on.
+/// - `raw_bytes` — the parsed `MidiMessage`'s logical bytes
+///   (status + data) in canonical MIDI 1.0 wire form. For 14-bit
+///   pair-assembled forms (Cc14Bit / Nrpn / Rpn) which the engine
+///   adapter assembles post-pairing, the raw bytes carry the
+///   pre-pairing MSB CC values; the learn UI uses `kind` +
+///   `note_or_cc` / `velocity_or_value` for display rather than
+///   parsing `raw_bytes` directly.
+/// - `kind` — the coarse classification per
+///   [`MidiLearnKindPayload`].
+/// - `channel` / `note_or_cc` / `velocity_or_value` — the
+///   class-specific decode fields. `None` for classifications
+///   without that semantic (e.g. system real-time messages have no
+///   channel; pitch bend has no note/CC number).
+///
+/// **Real binding-to-control assignment is deferred.** Wave 2.1
+/// Lane D.2 stores the captured binding to localStorage under a
+/// fixed key as a "captured most recently" record; the wiring of
+/// this payload to a specific control target (the per-row Bind
+/// button in the MIDI view's binding tables) is a follow-up wave.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct MidiLearnEventPayload {
+    pub port_id: String,
+    pub raw_bytes: Vec<u8>,
+    pub kind: MidiLearnKindPayload,
+    pub channel: Option<u8>,
+    pub note_or_cc: Option<u8>,
+    pub velocity_or_value: Option<u8>,
+}
+
+impl MidiLearnEventPayload {
+    /// Construct a learn-event payload from an engine-side
+    /// [`chromaticity_midi_adapter::MidiMessage`] + the originating
+    /// port id.
+    ///
+    /// Field-population rules per message class:
+    /// - `NoteOn` / `NoteOff` / `PolyAftertouch` — channel + note +
+    ///   velocity/value populated; raw_bytes = `[status, note, velocity]`.
+    /// - `ControlChange` — channel + controller + value populated;
+    ///   raw_bytes = `[status, controller, value]`.
+    /// - `Cc14Bit` — channel + controller_msb + (value14 >> 7 as u8)
+    ///   populated (high 7 bits surface as `velocity_or_value`); the
+    ///   low 7 bits are discarded for the learn UI's coarse display.
+    /// - `PitchBend` — channel populated; `note_or_cc` = LSB byte,
+    ///   `velocity_or_value` = MSB byte; raw_bytes carries both.
+    /// - `Aftertouch` / `ProgramChange` — channel + first data byte;
+    ///   second slot `None`.
+    /// - System messages (Clock / Start / Continue / Stop / SPP /
+    ///   MTC / SysEx / Nrpn / Rpn) — all decode slots `None`;
+    ///   raw_bytes minimal-form. Classification = `Other`.
+    #[must_use]
+    pub fn from_message(port_id: String, message: &chromaticity_midi_adapter::MidiMessage) -> Self {
+        use chromaticity_midi_adapter::MidiMessage;
+        let kind = MidiLearnKindPayload::classify(message);
+        match message {
+            MidiMessage::NoteOn {
+                channel,
+                note,
+                velocity,
+            } => Self {
+                port_id,
+                raw_bytes: vec![0x90 | channel, *note, *velocity],
+                kind,
+                channel: Some(*channel),
+                note_or_cc: Some(*note),
+                velocity_or_value: Some(*velocity),
+            },
+            MidiMessage::NoteOff {
+                channel,
+                note,
+                velocity,
+            } => Self {
+                port_id,
+                raw_bytes: vec![0x80 | channel, *note, *velocity],
+                kind,
+                channel: Some(*channel),
+                note_or_cc: Some(*note),
+                velocity_or_value: Some(*velocity),
+            },
+            MidiMessage::ControlChange {
+                channel,
+                controller,
+                value,
+            } => Self {
+                port_id,
+                raw_bytes: vec![0xB0 | channel, *controller, *value],
+                kind,
+                channel: Some(*channel),
+                note_or_cc: Some(*controller),
+                velocity_or_value: Some(*value),
+            },
+            MidiMessage::Cc14Bit {
+                channel,
+                controller_msb,
+                value14,
+            } => Self {
+                port_id,
+                // `value14` is 14 bits — the high 7 bits are the
+                // pre-pairing MSB value byte the operator's gesture
+                // produced first; surface that as the
+                // velocity_or_value display field.
+                raw_bytes: vec![0xB0 | channel, *controller_msb, (value14 >> 7) as u8 & 0x7F],
+                kind,
+                channel: Some(*channel),
+                note_or_cc: Some(*controller_msb),
+                velocity_or_value: Some((value14 >> 7) as u8 & 0x7F),
+            },
+            MidiMessage::PitchBend { channel, value14 } => {
+                let lsb = (value14 & 0x7F) as u8;
+                let msb = ((value14 >> 7) & 0x7F) as u8;
+                Self {
+                    port_id,
+                    raw_bytes: vec![0xE0 | channel, lsb, msb],
+                    kind,
+                    channel: Some(*channel),
+                    note_or_cc: Some(lsb),
+                    velocity_or_value: Some(msb),
+                }
+            }
+            MidiMessage::Aftertouch { channel, value } => Self {
+                port_id,
+                raw_bytes: vec![0xD0 | channel, *value],
+                kind,
+                channel: Some(*channel),
+                note_or_cc: Some(*value),
+                velocity_or_value: None,
+            },
+            MidiMessage::PolyAftertouch {
+                channel,
+                note,
+                value,
+            } => Self {
+                port_id,
+                raw_bytes: vec![0xA0 | channel, *note, *value],
+                kind,
+                channel: Some(*channel),
+                note_or_cc: Some(*note),
+                velocity_or_value: Some(*value),
+            },
+            MidiMessage::ProgramChange { channel, program } => Self {
+                port_id,
+                raw_bytes: vec![0xC0 | channel, *program],
+                kind,
+                channel: Some(*channel),
+                note_or_cc: Some(*program),
+                velocity_or_value: None,
+            },
+            // System real-time + system common + SysEx + post-assembly
+            // RPN/NRPN forms surface as `Other` with minimal raw_bytes.
+            MidiMessage::MidiClock => Self {
+                port_id,
+                raw_bytes: vec![0xF8],
+                kind,
+                channel: None,
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+            MidiMessage::Start => Self {
+                port_id,
+                raw_bytes: vec![0xFA],
+                kind,
+                channel: None,
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+            MidiMessage::Continue => Self {
+                port_id,
+                raw_bytes: vec![0xFB],
+                kind,
+                channel: None,
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+            MidiMessage::Stop => Self {
+                port_id,
+                raw_bytes: vec![0xFC],
+                kind,
+                channel: None,
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+            MidiMessage::SongPositionPointer { value14 } => Self {
+                port_id,
+                raw_bytes: vec![0xF2, (value14 & 0x7F) as u8, ((value14 >> 7) & 0x7F) as u8],
+                kind,
+                channel: None,
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+            MidiMessage::MtcQuarterFrame { piece } => Self {
+                port_id,
+                raw_bytes: vec![0xF1, *piece],
+                kind,
+                channel: None,
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+            MidiMessage::SysEx {
+                manufacturer_id, ..
+            } => Self {
+                port_id,
+                raw_bytes: vec![0xF0, *manufacturer_id, 0xF7],
+                kind,
+                channel: None,
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+            MidiMessage::Nrpn { channel, .. } | MidiMessage::Rpn { channel, .. } => Self {
+                port_id,
+                raw_bytes: vec![0xB0 | channel],
+                kind,
+                channel: Some(*channel),
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+            // `#[non_exhaustive]` catch-all: future-proofs against
+            // engine-side widening without forcing a coordinated
+            // bridge update.
+            _ => Self {
+                port_id,
+                raw_bytes: Vec::new(),
+                kind: MidiLearnKindPayload::Other,
+                channel: None,
+                note_or_cc: None,
+                velocity_or_value: None,
+            },
+        }
+    }
+}
+
 /// IPC-facing Syphon server identifier, mirroring
 /// `chromaticity_syphon_adapter::SyphonServerId` across the Tauri
 /// command boundary.

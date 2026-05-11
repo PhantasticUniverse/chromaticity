@@ -230,6 +230,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::library_search::filter_scene_library_by_tag,
             commands::library_search::filter_scene_library_by_category,
             commands::midi::list_midi_devices,
+            commands::midi::start_midi_learn,
+            commands::midi::stop_midi_learn,
             commands::osc::osc_health_snapshot,
             commands::picker::pick_folder,
             commands::settings::get_settings,

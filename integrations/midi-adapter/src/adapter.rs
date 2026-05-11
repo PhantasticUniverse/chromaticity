@@ -52,6 +52,17 @@ use midir::{MidiInput, MidiInputConnection};
 use crate::defaults::{DEFAULT_MAX_SYSEX_BYTES, DEFAULT_QUEUE_DEPTH};
 use crate::messages::{MidiMessage, combine_14bit, parse};
 
+/// Default midir port-name prefix surfaced to the OS MIDI subsystem
+/// when opening a transient learn-mode listener.
+///
+/// Wave 2.1 Lane D.2 distinguishes the operator-visible learn-mode
+/// listener name from the long-lived adapter input name
+/// ([`MIDI_PORT_NAME_PREFIX`]) so an operator inspecting their MIDI
+/// host's port list during a learn session sees the role of the
+/// extra connection at a glance. The Tauri shell layer constructs
+/// the full name as `<MIDI_LEARN_PORT_NAME_PREFIX>-<index>`.
+pub const MIDI_LEARN_PORT_NAME_PREFIX: &str = "chromaticity-midi-learn";
+
 /// Default midir client name surfaced to the OS MIDI subsystem.
 ///
 /// CoreMIDI exposes this as the client display name in Audio MIDI
@@ -172,6 +183,135 @@ pub fn list_devices() -> Result<Vec<MidiDeviceDescriptor>, MidiAdapterError> {
         })
         .collect();
     Ok(descriptors)
+}
+
+/// Owns a live midir [`MidiInputConnection`] for the duration of a
+/// transient learn-mode session.
+///
+/// Wave 2.1 Lane D.2 surfaces minimal-viable MIDI learn capture: the
+/// Tauri shell opens a per-session listener via
+/// [`start_input_listen`], stores the returned handle on `AppState`,
+/// and drops it on `stop_midi_learn` (or on app shutdown). midir's
+/// [`MidiInputConnection::drop`] closes the underlying OS port handle
+/// (CoreMIDI / WinMM / ALSA) — the documented contract on midir 0.10
+/// `MidiInputConnection<T>`: "Will close the connection when
+/// dropped". So forgetting to call `close` explicitly is safe; the
+/// handle is RAII.
+///
+/// Multi-message learn (combining multiple CC ranges, etc.) is
+/// deferred per the Wave 2.1 Lane D.2 brief; this handle owns one
+/// active listener at a time. Re-binding the slot on `AppState`
+/// drops the prior handle, which closes the prior listener
+/// deterministically.
+pub struct MidiListenHandle {
+    /// `Some` while the listener is active; `None` post-`close()`
+    /// (the handle is consumed on explicit close).
+    connection: Option<MidiInputConnection<()>>,
+}
+
+impl core::fmt::Debug for MidiListenHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MidiListenHandle")
+            .field("active", &self.connection.is_some())
+            .finish()
+    }
+}
+
+impl MidiListenHandle {
+    /// Construct from a live midir connection. Crate-private — the
+    /// only public producer is [`start_input_listen`], which sets up
+    /// the callback + port-name plumbing.
+    fn from_connection(connection: MidiInputConnection<()>) -> Self {
+        Self {
+            connection: Some(connection),
+        }
+    }
+
+    /// Explicitly close the underlying midir connection.
+    ///
+    /// Idempotent: calling `close()` on an already-closed handle is a
+    /// no-op. The handle's [`Drop`] impl calls this if the operator
+    /// hasn't already, so closure is RAII-guaranteed on AppState
+    /// teardown.
+    pub fn close(&mut self) {
+        if let Some(connection) = self.connection.take() {
+            // midir's `close()` returns the underlying `MidiInput` so
+            // the caller can reuse the client; we drop it. Dropping
+            // the returned tuple releases the OS port handle.
+            let _ = connection.close();
+        }
+    }
+}
+
+impl Drop for MidiListenHandle {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+/// Open a transient midir input listener on `port_index` for
+/// Wave 2.1 Lane D.2 learn-mode capture.
+///
+/// Each parsed [`MidiMessage`] is delivered to `on_message`
+/// synchronously from midir's callback thread. `on_message` MUST NOT
+/// block — it crosses the Tauri event channel (via the shell's
+/// `start_midi_learn` handler) and any back-pressure on that channel
+/// would stall the midir delivery thread. The callback runs until the
+/// returned [`MidiListenHandle`] is dropped (or [`MidiListenHandle::close`]
+/// is called); from then on, midir delivers no further callbacks for
+/// this connection.
+///
+/// **Lifecycle relationship to the long-lived
+/// [`MidirInputAdapter::connect`]**: this is an independent listener.
+/// Wave 2.1 Lane D.2 does not multiplex the long-lived adapter's
+/// callback with the learn-mode callback — opening a learn session
+/// against a port the adapter is also listening on opens a second
+/// midir client (CoreMIDI / WinMM / ALSA all allow this), which is
+/// the per-platform reality at MVP. Future waves that surface a
+/// dispatcher fan-out should replace this duplicate-listener posture
+/// with a single shared midir connection feeding both consumers.
+///
+/// `port_index` is the same midir port-index space [`list_devices`]
+/// emits via the `input-<n>` id; out-of-range indices surface
+/// [`MidiAdapterError::ConnectFailed`]. Hosts without MIDI subsystem
+/// access (CI / headless) likewise surface a connect failure rather
+/// than the empty-vec graceful fallback `list_devices` uses, because
+/// a learn-mode caller has explicitly asked for a live port and
+/// silently no-oping would surprise the operator.
+///
+/// Evidence: `EV-INTEGRATION-MATRIX` (MIDI arm, Wave 2.1 Lane D.2) —
+/// minimal-viable learn-mode capture surface; multi-message learn
+/// deferred to a follow-up wave per the brief.
+pub fn start_input_listen<F>(
+    port_index: usize,
+    on_message: F,
+) -> Result<MidiListenHandle, MidiAdapterError>
+where
+    F: Fn(MidiMessage) + Send + 'static,
+{
+    let midi_input = MidiInput::new(MIDI_CLIENT_NAME)
+        .map_err(|e| MidiAdapterError::ConnectFailed(format!("midi-input init: {e}")))?;
+    let ports = midi_input.ports();
+    let Some(port) = ports.get(port_index) else {
+        return Err(MidiAdapterError::ConnectFailed(format!(
+            "port index {port_index} out of range (have {} ports)",
+            ports.len()
+        )));
+    };
+    let port_name = format!("{MIDI_LEARN_PORT_NAME_PREFIX}-{port_index}");
+    let connection = midi_input
+        .connect(
+            port,
+            &port_name,
+            move |_timestamp, raw, _user| {
+                if let Some(parsed) = parse(raw) {
+                    on_message(parsed);
+                }
+            },
+            (),
+        )
+        .map_err(|e| MidiAdapterError::ConnectFailed(format!("midir learn connect: {e}")))?;
+    Ok(MidiListenHandle::from_connection(connection))
 }
 
 /// MIDI adapter — protocol-abstract trait per ADR-005.
@@ -1150,5 +1290,30 @@ mod drift_pins {
         let res = adapter.inject_mpe_configuration();
         assert!(res.is_err(), "MPE Configuration must reject");
         assert_eq!(adapter.mpe_rejection_count(), 1);
+    }
+
+    #[test]
+    fn start_input_listen_on_out_of_range_index_surfaces_connect_failed() {
+        // Wave 2.1 Lane D.2 invariant: an out-of-range `port_index`
+        // surfaces `ConnectFailed`. On hosts with MIDI subsystem
+        // access this exercises the `ports.get(port_index)` branch;
+        // on hosts without (CI / headless), midir's `MidiInput::new`
+        // fails first and the surfaced error still classifies as
+        // `ConnectFailed` per the function-level contract — both
+        // branches share the same diagnostic surface, which is what
+        // the Tauri shell handler relies on.
+        let result = super::start_input_listen(u16::MAX as usize, |_| {});
+        match result {
+            Err(super::MidiAdapterError::ConnectFailed(_)) => {}
+            Ok(_) => {
+                // A host with an unlikely u16::MAX-port enumeration
+                // would race this test — the handle dropping closes
+                // the listener but the test still fails the
+                // ConnectFailed assertion. Treat the unreachable
+                // path as a soft assert.
+                panic!("expected ConnectFailed on out-of-range index");
+            }
+            Err(other) => panic!("expected ConnectFailed, got {other:?}"),
+        }
     }
 }

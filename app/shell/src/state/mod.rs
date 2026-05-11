@@ -65,6 +65,7 @@
 //! reorder the field declarations without updating the contract above.
 
 use chromaticity_audio::runtime::AudioRuntimeHandle;
+use chromaticity_midi_adapter::MidiListenHandle;
 use chromaticity_runtime::InMemoryBus;
 use chromaticity_runtime::settings::Settings;
 use chromaticity_runtime::state::State;
@@ -205,6 +206,18 @@ pub struct AppState {
     /// signals shutdown + best-effort joins per
     /// [`chromaticity_audio::runtime::AudioRuntimeHandle::drop`].
     pub audio: Mutex<Option<AudioRuntimeHandle>>,
+    /// Active MIDI learn-mode listener handle. `Some` between a
+    /// successful `start_midi_learn` IPC call and the matching
+    /// `stop_midi_learn` (or until AppState teardown). The Wave 2.1
+    /// Lane D.2 minimal-viable learn surface holds at most one active
+    /// listener at a time: starting a new learn session replaces the
+    /// prior handle, whose `Drop` impl closes the OS midir port
+    /// deterministically. App shutdown drops AppState which drops the
+    /// `Option` slot which drops the handle which closes the port —
+    /// midir 0.10 documents [`MidiInputConnection::drop`] as "will
+    /// close the connection when dropped", so no `MidiInputConnection`
+    /// leaks on app exit.
+    pub midi_learn_handle: Mutex<Option<MidiListenHandle>>,
     /// Most recently loaded `.chroma` scene package and its on-disk
     /// path. Wave 2.1 Lane A.1 introduces this as a shell-side
     /// concern: the Library view's double-click handler invokes
@@ -257,6 +270,7 @@ impl AppState {
             settings_path: Mutex::new(None),
             scheduler_thread: Mutex::new(None),
             audio: Mutex::new(None),
+            midi_learn_handle: Mutex::new(None),
             loaded_scene: Mutex::new(None),
         }
     }
@@ -387,6 +401,10 @@ mod app_state_pins {
         let app_state = AppState::new();
         assert!(app_state.audio.lock().unwrap().is_none());
         assert!(app_state.scheduler_thread.lock().unwrap().is_none());
+        // Wave 2.1 Lane D.2 — fresh AppState carries no active
+        // learn-mode listener; the first `start_midi_learn` IPC
+        // call installs one.
+        assert!(app_state.midi_learn_handle.lock().unwrap().is_none());
     }
 
     #[test]

@@ -20,9 +20,10 @@ use chromaticity_ui_bridge::{
     AudioSettingsPayload, AudioUniformSnapshotPayload, CameraDeviceKindPayload,
     CameraDevicePayload, ControlDefaultValuePayload, ControlId, ControlKindPayload,
     ControlSchemaPayload, ControlValue, GeneralSettingsPayload, GraphicsSettingsPayload,
-    LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload, OscHealthSnapshot,
-    OscHealthState, PresetId, SceneCard, SceneSource, SettingsPayload, SnapSlotId,
-    StorageSettingsPayload, SyphonOutputStatusPayload, SyphonServerPayload, ThemePayload,
+    LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload, MidiLearnEventPayload,
+    MidiLearnKindPayload, OscHealthSnapshot, OscHealthState, PresetId, SceneCard, SceneSource,
+    SettingsPayload, SnapSlotId, StorageSettingsPayload, SyphonOutputStatusPayload,
+    SyphonServerPayload, ThemePayload,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -49,6 +50,8 @@ fn export_bindings_to_frontend_tree() {
     CameraDevicePayload::export_all_to(&out_dir).expect("export CameraDevicePayload bindings");
     MidiDeviceKindPayload::export_all_to(&out_dir).expect("export MidiDeviceKindPayload bindings");
     MidiDevicePayload::export_all_to(&out_dir).expect("export MidiDevicePayload bindings");
+    MidiLearnKindPayload::export_all_to(&out_dir).expect("export MidiLearnKindPayload bindings");
+    MidiLearnEventPayload::export_all_to(&out_dir).expect("export MidiLearnEventPayload bindings");
     SyphonServerPayload::export_all_to(&out_dir).expect("export SyphonServerPayload bindings");
     SyphonOutputStatusPayload::export_all_to(&out_dir)
         .expect("export SyphonOutputStatusPayload bindings");
