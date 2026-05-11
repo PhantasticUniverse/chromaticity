@@ -15,18 +15,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Bundle parity (verbatim signature):
   //   <SceneCanvas kind="rings" seed={4} audio dpr={1} />
   //
-  // Frozen-frame contract: synthetic audio level only — no IPC, no
-  // audio-pipeline data. `prefers-reduced-motion: reduce` short-
-  // circuits the rAF loop and pins one frame (t=0, audio=0.5 — same
-  // baseline as `SceneStill`'s `renderStill`) so users with motion
-  // preferences still see a recognisable thumbnail surface.
+  // Wave 2.2 Lane R.1 widens the `audio` arm to read
+  // `audioSnapshotStore.snapshot?.rms` when a live snapshot is
+  // present (BPM-driven engine producer per ADR-019). When the
+  // snapshot is `null` — startup window before the first audio
+  // tick fires, headless / no-input-device fallback, vite-dev mode
+  // without Tauri — the widget keeps its synthetic
+  // sine-pulse for visual continuity. `prefers-reduced-motion:
+  // reduce` still short-circuits the rAF loop and pins one frame
+  // (t=0, audio=0.5 — same baseline as `SceneStill`'s
+  // `renderStill`) so users with motion preferences see a
+  // recognisable thumbnail surface.
   //
-  // Consumers (Perform / Cue preview hero, Author live-preview tile)
-  // can swap from `SceneStill` to `SceneCanvas` when they want a
-  // moving image. The widget is a thin Svelte wrapper around
-  // `<canvas>`: the `$effect` owns the rAF + ResizeObserver and
-  // tears them down on unmount.
+  // Consumers (Perform preview hero, Library hover preview, Author
+  // live-preview tile) can swap from `SceneStill` to `SceneCanvas`
+  // when they want a moving image. The widget is a thin Svelte
+  // wrapper around `<canvas>`: the `$effect` owns the rAF +
+  // ResizeObserver and tears them down on unmount.
   import { RENDERERS, type SceneKind } from './scene-renderers';
+  import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
   type Props = {
     kind?: SceneKind;
@@ -45,6 +52,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let reduceMotion = $state(false);
+
+  // Wave 2.2 Lane R.1 — subscribe to the live audio IPC seam on
+  // mount so the rAF loop's per-frame `lvl` read picks up real RMS
+  // when available. The store call is idempotent (Wave 1c-α
+  // precedent) so multiple SceneCanvas mounts share one listener.
+  $effect(() => {
+    if (!audio) return;
+    void audioSnapshotStore.subscribe();
+  });
 
   $effect(() => {
     if (typeof window === 'undefined') return;
@@ -108,9 +124,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const start = performance.now();
     const loop = (): void => {
       const t = (performance.now() - start) / 1000;
-      const lvl = audio
-        ? (Math.sin(t * 6.28 * 0.8) * 0.5 + 0.5) * 0.7 + Math.sin(t * 6.28 * 2.3) * 0.2
-        : 0.3;
+      // Wave 2.2 Lane R.1 — prefer the live engine RMS when a
+      // snapshot is present; otherwise fall back to the bundle's
+      // synthetic pulse so the no-snapshot startup window + the
+      // no-Tauri-context fallback still animate.
+      let lvl: number;
+      if (audio) {
+        const live = audioSnapshotStore.snapshot;
+        if (live && (live.rms > 0 || live.peak > 0)) {
+          // RMS is already in [0, 1] from the engine producer; clamp
+          // for safety since the wire is `f32`. Add a small peak
+          // contribution so transient hits still register.
+          lvl = Math.max(0, Math.min(1, live.rms + live.peak * 0.25));
+        } else {
+          lvl = (Math.sin(t * 6.28 * 0.8) * 0.5 + 0.5) * 0.7 + Math.sin(t * 6.28 * 2.3) * 0.2;
+        }
+      } else {
+        lvl = 0.3;
+      }
       draw(t, lvl);
       raf = requestAnimationFrame(loop);
     };

@@ -53,8 +53,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/playlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import Icon from '../Icon.svelte';
-  import { CueTransitionCurve } from '../widgets';
+  import { CueTransitionCurve, SceneStill } from '../widgets';
   import type { CueKind } from '../widgets/cue-transition-curve.math';
+  import {
+    sceneKindFromMetadata,
+    sceneSeedFromMetadata,
+  } from '../widgets/scene-kind-from-metadata';
 
   interface CueDraft {
     label: string;
@@ -207,6 +211,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <thead>
           <tr>
             <th scope="col">#</th>
+            <th scope="col" aria-label="thumbnail"></th>
             <th scope="col">name</th>
             <th scope="col">scene</th>
             <th scope="col">dur</th>
@@ -218,6 +223,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           {#each currentCues as cue (cue.index)}
             <tr class:active={cue.index === selectedCueIndex} onclick={() => selectCue(cue.index)}>
               <td class="playlist-view__cue-index">{String(cue.index).padStart(2, '0')}</td>
+              <!-- Wave 2.2 Lane R.1 — per-row procedural scene
+                   thumbnail keyed off the cue's scene-name field.
+                   Real per-cue scene IDs ride the Phase-3+/4a cue
+                   model wiring (`EV-PRESET-PLAYLIST`); until then,
+                   the scene-name string is the only metadata
+                   available for the SceneKind heuristic. -->
+              <td class="playlist-view__cue-thumb" aria-hidden="true">
+                <SceneStill
+                  kind={sceneKindFromMetadata({ title: cue.scene })}
+                  seed={sceneSeedFromMetadata({ id: cue.scene })}
+                  width={60}
+                  height={36}
+                />
+              </td>
               <td class="playlist-view__cue-name">{cue.name}</td>
               <td class="playlist-view__cue-scene">{cue.scene}</td>
               <td class="playlist-view__cue-mono">{cue.duration}</td>
@@ -548,6 +567,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-family: var(--font-family-mono);
     color: var(--color-text-3);
     width: 3ch;
+  }
+  /* Wave 2.2 Lane R.1 — `<SceneStill>` per-row procedural thumbnail
+     surface. Fixed width keeps the rest of the cue table aligned;
+     the canvas bitmap (60 × 36) scales with CSS to fill the cell. */
+  .playlist-view__cue-thumb {
+    width: 64px;
+    padding: 2px 4px;
+  }
+  .playlist-view__cue-thumb :global(canvas.scene-still) {
+    width: 60px;
+    height: 36px;
+    display: block;
+    border-radius: var(--radius-xs);
+    overflow: hidden;
   }
   .playlist-view__cue-name {
     color: var(--color-text-0);

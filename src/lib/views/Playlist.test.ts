@@ -106,6 +106,13 @@ describe('Playlist view (W35 inspector edit-mode)', () => {
     expect(getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
 
+  it('renders a SceneStill canvas thumbnail per cue row (Wave 2.2 R.1)', () => {
+    const { container } = render(Playlist);
+    const thumbs = container.querySelectorAll('.playlist-view__cue-thumb canvas.scene-still');
+    // One thumbnail per visible cue row in the festival fixture.
+    expect(thumbs.length).toBe(10);
+  });
+
   it('switching to an empty playlist hides the inspector form', async () => {
     const { getByRole, getByText, queryByLabelText } = render(Playlist);
     // Inspector form is present at default (Festival Set selected).

@@ -176,6 +176,21 @@ describe('Library view', () => {
     expect(count?.textContent?.trim()).toBe('3 of 3 scenes');
   });
 
+  it('renders a SceneStill canvas thumbnail per scene tile (Wave 2.2 R.1)', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    // Three tiles, three SceneStill canvases keyed off the card metadata.
+    const tiles = container.querySelectorAll('.scene-tile');
+    expect(tiles.length).toBe(3);
+    const thumbs = container.querySelectorAll('.scene-tile__thumbnail canvas.scene-still');
+    expect(thumbs.length).toBe(3);
+  });
+
   it('toolbar search filters the grid by case-insensitive title/credit/tag/description substring', async () => {
     dispatchInvoke({
       default_scene_root: () => '/user-root',

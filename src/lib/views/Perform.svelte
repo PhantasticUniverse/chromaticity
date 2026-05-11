@@ -102,12 +102,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     AudioReactivity,
     Knob,
     MediaCard,
+    SceneCanvas,
     SceneRow,
     Swatch,
     TestCard,
     Toggle,
     VuStereo,
   } from '../widgets';
+  import {
+    sceneKindFromMetadata,
+    sceneSeedFromMetadata,
+  } from '../widgets/scene-kind-from-metadata';
   import type { SceneKind } from '../widgets/scene-renderers';
   import { SCENE_KINDS } from '../widgets/scene-renderers';
 
@@ -227,6 +232,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // loaded scene's display name, falling back to the bundle's
   // canonical "Glitch" fixture string when no scene is loaded.
   const sceneTitleName = $derived(loadedSceneStore.snapshot?.name ?? 'Glitch');
+
+  // Wave 2.2 Lane R.1 — derive a SceneKind + seed for the Preview
+  // hero's `<SceneCanvas>` from the loaded scene's metadata via the
+  // heuristic in `widgets/scene-kind-from-metadata.ts`. When no
+  // scene is loaded the helper returns `rings`; the fallback gives
+  // the preview pane a recognisable animated surface even before
+  // the user picks a scene from Library. The same helper drives
+  // Library scene cards, Playlist cue thumbs and the Author live-
+  // preview tile so the kind ↔ scene pairing is stable across the
+  // app. Note: the preview pattern is illustrative — the
+  // procedural renderers do NOT consume the scene's GLSL or
+  // control schema (real render pipeline is ADR-011 / Phase-2+).
+  const previewKind = $derived<SceneKind>(sceneKindFromMetadata(loadedSceneStore.snapshot));
+  const previewSeed = $derived<number>(sceneSeedFromMetadata(loadedSceneStore.snapshot));
 
   // Wave 2.1 Lane A.1 + A.2: Scene Controls panel body binds to a
   // derived PerformControlGroup[] built from the loaded scene's
@@ -547,10 +566,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 {/snippet}
 
 {#snippet previewHero()}
-  <!-- Preview hero. Default surface is the W18 PR1 gradient-blob
-       substitute for the unported `<Preview>`; W21 PR2 swaps to the
-       static SMPTE test-card pattern when the test-card MediaStrip
-       card is active (calibration / output diagnostic surface). -->
+  <!-- Preview hero. Wave 2.2 Lane R.1 — replaces the W18 PR1
+       gradient-blob substitute with the `<SceneCanvas>` procedural
+       renderer keyed off the loaded scene's metadata. Kind +
+       seed are derived through `sceneKindFromMetadata` /
+       `sceneSeedFromMetadata` so visually-distinct demo scenes
+       (kaleido, glitch, plasma, dunes, ...) render the matching
+       canvas-2d pattern. The W21 PR2 SMPTE test-card branch is
+       preserved for the calibration card. The procedural
+       renderer does NOT consume the scene's GLSL or control
+       schema — dragging a control still fires `set_control` IPC
+       and updates engine state, but the preview pattern does
+       not reflect those changes (real GPU pipeline is
+       ADR-011 / Phase-2+). -->
   {#if testCardActive}
     <div class="preview preview--test">
       <TestCard label="Test Card" />
@@ -559,14 +587,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       {/if}
     </div>
   {:else}
-    <div class="preview" role="img" aria-label="Live scene preview · Glitch (placeholder)">
-      <span class="preview__blob preview__blob--a" aria-hidden="true"></span>
-      <span class="preview__blob preview__blob--b" aria-hidden="true"></span>
-      <span class="preview__blob preview__blob--c" aria-hidden="true"></span>
-      <span class="preview__blob preview__blob--d" aria-hidden="true"></span>
-      <span class="preview__blob preview__blob--e" aria-hidden="true"></span>
-      <span class="preview__overlay" aria-hidden="true"></span>
-      <span class="preview__label">Glitch</span>
+    <div class="preview">
+      <SceneCanvas
+        kind={previewKind}
+        seed={previewSeed}
+        audio
+        dpr={1}
+        ariaLabel={`Live scene preview · ${sceneTitleName}`}
+      />
+      <span class="preview__label">{sceneTitleName}</span>
       {#if unlicensed}
         <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
         <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
@@ -1152,56 +1181,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     overflow: hidden;
     box-shadow: var(--shadow-panel);
   }
-  .preview__blob {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(38px);
-    opacity: calc(0.7 * var(--glow, 1));
-  }
-  .preview__blob--a {
-    width: 65%;
-    height: 65%;
-    top: -10%;
-    left: -10%;
-    background: var(--color-cat-color);
-  }
-  .preview__blob--b {
-    width: 55%;
-    height: 55%;
-    top: 10%;
-    right: -15%;
-    background: var(--color-cat-fx);
-  }
-  .preview__blob--c {
-    width: 50%;
-    height: 50%;
-    bottom: -10%;
-    left: 30%;
-    background: var(--color-cat-motion);
-  }
-  .preview__blob--d {
-    width: 45%;
-    height: 45%;
-    bottom: 5%;
-    right: 5%;
-    background: var(--color-cat-media);
-  }
-  .preview__blob--e {
-    width: 40%;
-    height: 40%;
-    top: 35%;
-    left: 25%;
-    background: var(--color-cat-limit);
-  }
-  .preview__overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      135deg,
-      color-mix(in oklab, var(--color-bg-0) 35%, transparent),
-      transparent 40%,
-      color-mix(in oklab, var(--color-bg-0) 50%, transparent)
-    );
+  /* Wave 2.2 Lane R.1 — `<SceneCanvas>` fills the preview tile.
+     The widget owns its own rAF + ResizeObserver; CSS just sets
+     display + sizing here. The W18 PR1 `preview__blob` /
+     `preview__overlay` rules retired with the gradient-blob
+     stand-in. */
+  .preview :global(canvas.scene-canvas) {
+    width: 100%;
+    height: 100%;
+    display: block;
   }
   .preview__label {
     position: absolute;

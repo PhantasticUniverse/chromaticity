@@ -63,6 +63,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Icon, { type IconName } from '../Icon.svelte';
   import SceneDiff from '../SceneDiff.svelte';
   import Fader from '../widgets/Fader.svelte';
+  import {
+    sceneKindFromMetadata,
+    sceneSeedFromMetadata,
+  } from '../widgets/scene-kind-from-metadata';
+  import SceneCanvas from '../widgets/SceneCanvas.svelte';
   import VuStereo from '../widgets/VuStereo.svelte';
 
   let activeFile = $state<AuthorFileTab>('main.glsl');
@@ -458,11 +463,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   <!-- RIGHT: preview + inspector column -->
   <div class="au-author__right">
-    <!-- Live preview placeholder -->
-    <div class="au-author__preview" role="img" aria-label="Live scene preview (placeholder)">
-      <span class="au-author__preview-blob au-author__preview-blob--a"></span>
-      <span class="au-author__preview-blob au-author__preview-blob--b"></span>
-      <span class="au-author__preview-blob au-author__preview-blob--c"></span>
+    <!-- Live preview tile. Wave 2.2 Lane R.1 — `<SceneCanvas>`
+         procedural renderer keyed off the fixture's title via
+         the `sceneKindFromMetadata` heuristic (e.g. "Smooth
+         Kaleidoscope 2" → `kaleido`). The renderer does NOT
+         consume the buffer's GLSL — the canvas-2d pattern is a
+         stand-in until the GPU rendering backend (ADR-011 /
+         Phase-2+) lands. Authoring still works: edits route
+         through the buffer state + dispatch, but the visual
+         feedback in this tile is symbolic for the slice. The
+         W28 PR2 paused / screenshot-flash chrome still applies
+         over the canvas. -->
+    <div class="au-author__preview">
+      <SceneCanvas
+        kind={sceneKindFromMetadata({ title: AUTHOR_SCENE_META.title })}
+        seed={sceneSeedFromMetadata({ id: AUTHOR_SCENE_META.title })}
+        audio
+        dpr={1}
+        ariaLabel={`Live scene preview · ${AUTHOR_SCENE_META.title} (placeholder canvas-2d pattern)`}
+      />
       <span class="au-author__preview-label mono">{AUTHOR_SCENE_META.title}</span>
       {#if flash}
         <div class="au-author__shot-flash" aria-hidden="true"></div>
@@ -1272,28 +1291,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     overflow: hidden;
     box-shadow: var(--shadow-panel);
   }
-  .au-author__preview-blob {
-    position: absolute;
-    width: 70%;
-    height: 70%;
-    border-radius: 50%;
-    filter: blur(36px);
-    opacity: calc(0.65 * var(--glow, 1));
-  }
-  .au-author__preview-blob--a {
-    top: -10%;
-    left: -10%;
-    background: var(--color-band-bass);
-  }
-  .au-author__preview-blob--b {
-    top: 20%;
-    right: -15%;
-    background: var(--color-band-mid);
-  }
-  .au-author__preview-blob--c {
-    bottom: -10%;
-    left: 20%;
-    background: var(--color-band-high);
+  /* Wave 2.2 Lane R.1 — `<SceneCanvas>` fills the preview tile.
+     Bitmap dimensions scale with the container via the widget's
+     ResizeObserver; CSS just sets display + sizing here. */
+  .au-author__preview :global(canvas.scene-canvas) {
+    width: 100%;
+    height: 100%;
+    display: block;
   }
   .au-author__preview-label {
     position: absolute;

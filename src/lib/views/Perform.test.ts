@@ -240,10 +240,11 @@ describe('Perform view', () => {
 
   it('clicking the test-card media tile swaps the preview to the TestCard surface', async () => {
     const { container } = render(Perform);
-    // Default: gradient-blob preview rendered with the role=img label.
-    expect(
-      container.querySelector('[aria-label="Live scene preview · Glitch (placeholder)"]'),
-    ).not.toBeNull();
+    // Wave 2.2 Lane R.1 — default preview is the `<SceneCanvas>`
+    // procedural surface keyed off the loaded-scene metadata
+    // (fallback "Glitch" title when no scene loaded). The widget
+    // exposes role=img + the derived aria-label.
+    expect(container.querySelector('[aria-label="Live scene preview · Glitch"]')).not.toBeNull();
     const testCardIndex = MEDIA_CARDS.findIndex((c) => c.kind === 'test');
     expect(testCardIndex).toBeGreaterThan(-1);
     const cards = container.querySelectorAll('.media-card');
@@ -252,11 +253,10 @@ describe('Perform view', () => {
     if (!testTile) return;
     await fireEvent.click(testTile);
     expect(testTile).toHaveAttribute('aria-pressed', 'true');
-    // Preview surface flips to the `.preview--test` variant.
+    // Preview surface flips to the `.preview--test` variant; the
+    // SceneCanvas unmounts so its aria-label disappears.
     expect(container.querySelector('.preview--test')).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="Live scene preview · Glitch (placeholder)"]'),
-    ).toBeNull();
+    expect(container.querySelector('[aria-label="Live scene preview · Glitch"]')).toBeNull();
   });
 
   it('clicking a scene row marks it aria-current and renders the pulse marker', async () => {
