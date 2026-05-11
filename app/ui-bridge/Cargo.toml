@@ -34,6 +34,7 @@ workspace = true
 chromaticity-audio = { version = "0.0.0", path = "../../engine/audio" }
 chromaticity-camera-adapter = { version = "0.0.0", path = "../../integrations/camera-adapter" }
 chromaticity-midi-adapter = { version = "0.0.0", path = "../../integrations/midi-adapter" }
+chromaticity-osc-adapter = { version = "0.0.0", path = "../../integrations/osc-adapter" }
 chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }
 # Wave 2.1 Lane A.1: LoadedScenePayload / ControlSchemaPayload /
 # ControlKindPayload / ControlDefaultValuePayload mirror normalized

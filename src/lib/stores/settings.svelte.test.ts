@@ -56,6 +56,12 @@ const SAMPLE_PAYLOAD: SettingsPayload = {
     backup_path: '/tmp/backups',
     backup_retention: 'retain-25',
   },
+  osc: {
+    local_ip: '192.168.1.42',
+    port: 9100,
+    tx_enabled: false,
+    rx_enabled: true,
+  },
 };
 
 describe('settingsStore', () => {

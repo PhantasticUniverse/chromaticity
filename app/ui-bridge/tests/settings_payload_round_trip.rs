@@ -25,11 +25,11 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use chromaticity_runtime::settings::{
-    AudioSettings, GeneralSettings, GraphicsSettings, Settings, StorageSettings, Theme,
+    AudioSettings, GeneralSettings, GraphicsSettings, OscSettings, Settings, StorageSettings, Theme,
 };
 use chromaticity_ui_bridge::{
-    AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload, SettingsPayload,
-    StorageSettingsPayload, ThemePayload,
+    AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload, OscSettingsPayload,
+    SettingsPayload, StorageSettingsPayload, ThemePayload,
 };
 use ts_rs::TS;
 
@@ -76,6 +76,12 @@ fn nonzero_settings() -> Settings {
             backup_path: "/Users/operator/Backups".to_string(),
             backup_retention: "retain-25".to_string(),
         },
+        osc: OscSettings {
+            local_ip: "192.168.1.42".to_string(),
+            port: 9100,
+            tx_enabled: false,
+            rx_enabled: true,
+        },
     }
 }
 
@@ -117,6 +123,12 @@ fn nonzero_payload() -> SettingsPayload {
             scene_folders: vec!["/Users/operator/Scenes".to_string()],
             backup_path: "/Users/operator/Backups".to_string(),
             backup_retention: "retain-25".to_string(),
+        },
+        osc: OscSettingsPayload {
+            local_ip: "192.168.1.42".to_string(),
+            port: 9100,
+            tx_enabled: false,
+            rx_enabled: true,
         },
     }
 }
@@ -262,4 +274,24 @@ fn ts_rs_exported_names_match_committed_bindings() {
         "StorageSettingsPayload"
     );
     assert_eq!(<ThemePayload as TS>::name(), "ThemePayload");
+    assert_eq!(<OscSettingsPayload as TS>::name(), "OscSettingsPayload");
+}
+
+#[test]
+fn osc_settings_engine_to_payload_round_trip() {
+    // Wave 2.1 Lane D.3: pin the OscSettingsPayload field-by-field
+    // mapping so a future shape divergence between
+    // `chromaticity_runtime::settings::OscSettings` and the bridge
+    // mirror surfaces here before the wire shape drifts.
+    let settings = nonzero_settings();
+    let payload: SettingsPayload = settings.clone().into();
+    assert_eq!(payload.osc.local_ip, settings.osc.local_ip);
+    assert_eq!(payload.osc.port, settings.osc.port);
+    assert_eq!(payload.osc.tx_enabled, settings.osc.tx_enabled);
+    assert_eq!(payload.osc.rx_enabled, settings.osc.rx_enabled);
+
+    // Reverse direction.
+    let back: Settings = payload.into();
+    assert_eq!(back.osc.local_ip, settings.osc.local_ip);
+    assert_eq!(back.osc.port, settings.osc.port);
 }
