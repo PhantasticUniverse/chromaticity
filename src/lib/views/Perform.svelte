@@ -93,6 +93,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { dispatchAndRead } from '../stores/control';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { performVariantStore } from '../stores/performVariant.svelte';
+  import { playlistStore } from '../stores/playlist.svelte';
+  import { presetStore } from '../stores/preset.svelte';
   import {
     ControlGroup,
     CrossFader,
@@ -164,9 +166,62 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // rendered (e.g. after route navigation). When no scene is loaded
   // the store stays `null` and the existing fixture-driven UI
   // (SCENE_CONTROL_GROUPS / "Glitch" header) continues to render.
+  //
+  // Wave 2.1 Lane A.4: also hydrate the preset + playlist stores so
+  // the Scene panel's preset rail highlights the engine's current
+  // active preset and the cue position caption reflects the engine's
+  // cursor. In no-Tauri-context environments (vite dev / vitest) the
+  // store hydrators swallow the rejection and the values stay at
+  // their defaults (`null` / `0`).
   $effect(() => {
     void loadedSceneStore.hydrate();
+    void presetStore.refresh();
+    void playlistStore.refresh();
   });
+
+  // Wave 2.1 Lane A.4 — preset + playlist IPC reactive surfaces. The
+  // stores own the canonical state; this view reads `activeId` for
+  // the preset-rail highlight and `position` for the cue caption
+  // (rendered as "Cue {N+1} of {SETLIST}"). The setlist count comes
+  // from the existing fixture pending live setlist persistence (a
+  // future-wave widening).
+  const activePresetId = $derived(presetStore.activeId);
+  const playlistPosition = $derived(playlistStore.position);
+  const setlistCount = $derived(SETLIST_FIXTURE.length);
+
+  /**
+   * Twelve preset slots — bundle parity is the same 4×3 rail
+   * presentation across views; the engine `PresetId` is a transparent
+   * `u32` so the rail is just a numeric strip from 0..11 here. Real
+   * preset capture / authoring is post-MVP per the Phase-3
+   * `EV-PRESET-PLAYLIST` narrowing.
+   */
+  const PRESET_RAIL_IDS = Array.from({ length: 12 }, (_, i) => i);
+
+  function selectPreset(id: number): void {
+    void presetStore.recall(id);
+  }
+
+  function playlistPrevious(): void {
+    void playlistStore.previous();
+  }
+
+  function playlistNext(): void {
+    void playlistStore.next();
+  }
+
+  /**
+   * Shuffle button. The engine's `Command::PlaylistAdvance` carries a
+   * single `i32 step` and saturates at `i64::MAX` / `i64::MIN` per
+   * `engine/runtime/src/state.rs`; there is no engine-side random or
+   * jump-to-index command. MVP ships shuffle as a single forward
+   * step; a future wave widens the engine surface with either a
+   * `Command::PlaylistShuffle` or a playlist-length read so the
+   * frontend can choose a uniform random offset.
+   */
+  function playlistShuffle(): void {
+    void playlistStore.advance(1);
+  }
 
   // Wave 2.1 Lane A.1: Scene Controls header name binds to the
   // loaded scene's display name, falling back to the bundle's
@@ -623,42 +678,85 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </button>
     </div>
 
+    <!-- Wave 2.1 Lane A.4 — Previous / Next / Shuffle buttons
+         dispatch `advance_playlist` through `playlistStore`. The
+         engine's `Command::PlaylistAdvance` carries a single `i32
+         step` with no shuffle / jump-to-index variant; the Shuffle
+         button currently ships as a single forward step (parity with
+         Next) until a future wave widens the engine surface (see the
+         `playlistShuffle` docstring above). -->
     <div class="scene-panel__nav">
-      <button type="button" class="btn btn--full">
+      <button type="button" class="btn btn--full" onclick={playlistPrevious}>
         <Icon name="prev" size={12} /> Previous
       </button>
-      <button type="button" class="btn btn--full">
+      <button type="button" class="btn btn--full" onclick={playlistNext}>
         Next <Icon name="next" size={12} />
       </button>
-      <button type="button" class="btn btn--ghost" title="Shuffle">
+      <button type="button" class="btn btn--ghost" title="Shuffle" onclick={playlistShuffle}>
         <Icon name="shuffle" size={12} />
       </button>
       <span class="mono scene-panel__auto">auto</span>
     </div>
 
-    <ol class="scene-panel__list">
-      {#each SETLIST_FIXTURE as scene (scene.idx)}
-        <li>
-          <!-- Shared-primitive backfill — `SceneRow` widget closes the
-               W18 PR1 inline placeholder. The widget composes the W36
-               `SceneStill` canvas thumbnail in place of the previous
-               hue-rotating gradient surrogate. Kind is coerced from
-               the fixture's free-form string against the bundle's
-               16-name SceneKind family; unknown values fall back to
-               `rings`. -->
-          <SceneRow
-            idx={scene.idx + 1}
-            name={scene.name}
-            tag={scene.tag}
-            dur={scene.duration}
-            kind={asSceneKind(scene.kind)}
-            seed={scene.seed}
-            active={scene.idx === activeScene}
-            onClick={() => selectScene(scene.idx)}
-          />
-        </li>
-      {/each}
-    </ol>
+    <!-- Wave 2.1 Lane A.4 — cue position caption reflecting the
+         engine cursor read-back via `playlistStore.position`. The
+         engine cursor saturates at `i64::MAX` / `i64::MIN` and may
+         go negative on backward advances past zero; the displayed
+         "Cue N" uses `position + 1` for the 1-based label the
+         wireframe expects, surfacing the engine value verbatim when
+         negative (a deliberate signal that the user advanced
+         backward past the playlist start). -->
+    <div class="scene-panel__cue" aria-label="Playlist cue position">
+      <span class="mono">Cue {playlistPosition + 1} of {setlistCount}</span>
+    </div>
+
+    {#if railMode === 'presets'}
+      <!-- Wave 2.1 Lane A.4 — preset rail. Each button dispatches
+           `recall_preset { id }` through `presetStore.recall`; the
+           engine's post-commit read-back updates `activeId` which
+           highlights the active button. Engine `PresetId` is a
+           transparent `u32` newtype; the rail shows 12 numeric slots
+           pending real preset-capture UI (deferred per the Phase-3
+           `EV-PRESET-PLAYLIST` narrowing). -->
+      <div class="scene-panel__preset-rail" role="toolbar" aria-label="Preset slots">
+        {#each PRESET_RAIL_IDS as presetId (presetId)}
+          <button
+            type="button"
+            class="btn btn--ghost preset-slot"
+            class:preset-slot--active={activePresetId === presetId}
+            aria-pressed={activePresetId === presetId ? 'true' : 'false'}
+            title={`Recall preset ${presetId}`}
+            onclick={() => selectPreset(presetId)}
+          >
+            <span class="mono">{presetId}</span>
+          </button>
+        {/each}
+      </div>
+    {:else}
+      <ol class="scene-panel__list">
+        {#each SETLIST_FIXTURE as scene (scene.idx)}
+          <li>
+            <!-- Shared-primitive backfill — `SceneRow` widget closes the
+                 W18 PR1 inline placeholder. The widget composes the W36
+                 `SceneStill` canvas thumbnail in place of the previous
+                 hue-rotating gradient surrogate. Kind is coerced from
+                 the fixture's free-form string against the bundle's
+                 16-name SceneKind family; unknown values fall back to
+                 `rings`. -->
+            <SceneRow
+              idx={scene.idx + 1}
+              name={scene.name}
+              tag={scene.tag}
+              dur={scene.duration}
+              kind={asSceneKind(scene.kind)}
+              seed={scene.seed}
+              active={scene.idx === activeScene}
+              onClick={() => selectScene(scene.idx)}
+            />
+          </li>
+        {/each}
+      </ol>
+    {/if}
   </section>
 {/snippet}
 
@@ -1235,6 +1333,37 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   /* Per-row chrome lives inside `SceneRow.svelte` (the widget owns its
    * own scoped styles after the shared-primitive backfill). */
+
+  /* Wave 2.1 Lane A.4 — cue position caption + preset rail chrome. */
+  .scene-panel__cue {
+    padding: var(--space-xs) var(--space-lg);
+    color: var(--color-text-3);
+    font-size: var(--font-size-caps-sm);
+    letter-spacing: var(--letter-spacing-caps-sm);
+    border-bottom: 1px solid var(--color-line-2);
+  }
+  .scene-panel__preset-rail {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-xs);
+    padding: var(--space-sm) var(--space-lg);
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    align-content: start;
+  }
+  .preset-slot {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-display-sm, 14px);
+  }
+  .preset-slot--active {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    box-shadow: inset 0 0 0 1px var(--color-primary);
+  }
 
   /* ---------------- Utility ----------------------------------------------- */
   .mono {

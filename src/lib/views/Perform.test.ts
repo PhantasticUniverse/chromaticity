@@ -39,6 +39,20 @@ import { within } from '@testing-library/dom';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Wave 2.1 Lane A.4 — invoke mock for the preset-rail click +
+// playlist-nav button assertions below. The view's mount-time
+// `$effect` also calls `presetStore.refresh()` + `playlistStore.refresh()`
+// which would otherwise dynamic-import-fail in vitest jsdom; the
+// mock keeps the in-test invocations observable while the rest of
+// the view's IPC paths (Lane A.1 loaded-scene hydrate, Lane A.2
+// `dispatchAndRead`) swallow their no-runtime errors as before.
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(),
+}));
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}));
+
 import Perform from './Perform.svelte';
 import {
   MEDIA_CARDS,
@@ -48,6 +62,8 @@ import {
 } from '../data/perform-fixtures';
 import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
 import { performVariantStore } from '../stores/performVariant.svelte';
+import { playlistStore } from '../stores/playlist.svelte';
+import { presetStore } from '../stores/preset.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -69,6 +85,15 @@ beforeEach(() => {
   // default before each test so prior cases that switched variant
   // can't leak into the next render.
   performVariantStore.set('classic');
+  // Wave 2.1 Lane A.4 — reset preset + playlist singleton stores and
+  // the invoke mock so prior cases can't leak active-preset /
+  // cursor state into the next render. The default mock returns
+  // `null` so mount-time `refresh()` calls in `$effect` see
+  // "no active preset, cursor=0".
+  invokeMock.mockReset();
+  invokeMock.mockResolvedValue(null);
+  presetStore.reset();
+  playlistStore.reset();
 });
 
 afterEach(() => {
@@ -337,5 +362,124 @@ describe('Perform view', () => {
     // Shuffle button + auto label.
     expect(within(scenesPanel).getByTitle('Shuffle')).toBeInTheDocument();
     expect(within(scenesPanel).getByText('auto')).toBeInTheDocument();
+  });
+
+  // Wave 2.1 Lane A.4 — preset + playlist IPC wiring assertions.
+  // The view binds Previous / Next / Shuffle to `playlistStore` and
+  // the preset rail to `presetStore`. The mount-time `$effect`
+  // refreshes both stores; click handlers dispatch through the
+  // mocked invoke. Cue caption + active-preset highlight react to
+  // the engine read-back.
+
+  /**
+   * The view's click handlers wrap the async store calls with
+   * `void` so the dispatch fires and the UI stays responsive; the
+   * dynamic import inside the store resolves on a later microtask.
+   * Drain a generous number of microtasks before asserting so the
+   * `await import('@tauri-apps/api/core')` + the `invoke()` await
+   * have both settled.
+   */
+  async function flushMicrotasks(): Promise<void> {
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+  }
+
+  it('clicking Next dispatches advance_playlist with step +1', async () => {
+    const { getByLabelText } = render(Perform);
+    // Let the mount-time `$effect` settle (it refreshes the
+    // preset + playlist + loaded-scene stores via the mocked
+    // invoke); only then clear the mock so the click's
+    // `advance_playlist` shows up cleanly.
+    await flushMicrotasks();
+    invokeMock.mockClear();
+    const scenesPanel = getByLabelText('Scenes');
+    const nextBtn = within(scenesPanel).getByRole('button', { name: /Next/ });
+    await fireEvent.click(nextBtn);
+    await flushMicrotasks();
+    // Click triggers `playlistStore.next()` which invokes
+    // `advance_playlist { step: 1 }` followed by `playlist_position`.
+    expect(invokeMock).toHaveBeenCalledWith('advance_playlist', { step: 1 });
+  });
+
+  it('clicking Previous dispatches advance_playlist with step -1', async () => {
+    const { getByLabelText } = render(Perform);
+    await flushMicrotasks();
+    invokeMock.mockClear();
+    const scenesPanel = getByLabelText('Scenes');
+    const prevBtn = within(scenesPanel).getByRole('button', { name: /Previous/ });
+    await fireEvent.click(prevBtn);
+    await flushMicrotasks();
+    expect(invokeMock).toHaveBeenCalledWith('advance_playlist', { step: -1 });
+  });
+
+  it('clicking Shuffle dispatches advance_playlist with step +1 (MVP minimum-viable)', async () => {
+    const { getByLabelText } = render(Perform);
+    await flushMicrotasks();
+    invokeMock.mockClear();
+    const scenesPanel = getByLabelText('Scenes');
+    const shuffleBtn = within(scenesPanel).getByTitle('Shuffle');
+    await fireEvent.click(shuffleBtn);
+    await flushMicrotasks();
+    // Engine has no shuffle / random command; MVP ships a single
+    // forward step (see `playlistShuffle` in Perform.svelte).
+    expect(invokeMock).toHaveBeenCalledWith('advance_playlist', { step: 1 });
+  });
+
+  it('switches to preset rail when railMode is presets and dispatches recall_preset on click', async () => {
+    const { getByLabelText } = render(Perform);
+    await flushMicrotasks();
+    const scenesPanel = getByLabelText('Scenes');
+    // Flip the rail toggle to presets.
+    const rail = within(scenesPanel).getByRole('toolbar', { name: 'Scene panel mode' });
+    await fireEvent.click(within(rail).getByTitle('Presets'));
+    // Preset rail toolbar appears in place of the scene-row list.
+    const presetRail = within(scenesPanel).getByRole('toolbar', { name: 'Preset slots' });
+    expect(presetRail).toBeInTheDocument();
+    // Twelve preset slot buttons.
+    const slots = within(presetRail).getAllByRole('button');
+    expect(slots.length).toBe(12);
+    invokeMock.mockClear();
+    // Click slot 3.
+    const slot3 = slots[3];
+    expect(slot3).toBeDefined();
+    if (!slot3) return;
+    await fireEvent.click(slot3);
+    await flushMicrotasks();
+    expect(invokeMock).toHaveBeenCalledWith('recall_preset', { id: 3 });
+  });
+
+  it('reflects the engine active-preset read-back as the highlighted rail slot', async () => {
+    // Engine reports active preset id 7 on the post-recall read-back.
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'active_preset') return 7;
+      if (cmd === 'playlist_position') return 0;
+      return null;
+    });
+    const { getByLabelText } = render(Perform);
+    const scenesPanel = getByLabelText('Scenes');
+    await fireEvent.click(within(scenesPanel).getByTitle('Presets'));
+    // Recall slot 3; the engine read-back overrides with id 7 so the
+    // active-rail highlight lands on slot 7 (engine-clamp-respecting
+    // posture per the Lane A.2 control-dispatch precedent).
+    const presetRail = within(scenesPanel).getByRole('toolbar', { name: 'Preset slots' });
+    const slots = within(presetRail).getAllByRole('button');
+    const slot3 = slots[3];
+    expect(slot3).toBeDefined();
+    if (!slot3) return;
+    await fireEvent.click(slot3);
+    // Resolve the async chain (recall → refresh → state update).
+    await flushMicrotasks();
+    const slot7 = slots[7];
+    expect(slot7).toBeDefined();
+    expect(slot7).toHaveAttribute('aria-pressed', 'true');
+    expect(slot3).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('renders the cue position caption bound to the playlist store', () => {
+    const { getByLabelText } = render(Perform);
+    const cue = getByLabelText('Playlist cue position');
+    // Default cursor is 0; caption displays "Cue 1 of {SETLIST_FIXTURE.length}".
+    expect(cue.textContent).toContain(`Cue 1 of ${SETLIST_FIXTURE.length}`);
   });
 });
