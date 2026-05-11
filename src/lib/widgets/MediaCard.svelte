@@ -184,20 +184,29 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     padding: 1px 4px;
     border-radius: var(--radius-xs);
   }
+  /* Wave 2.3 Lane Q.2 (Niggle B follow-up) — bottom-left label chip.
+   * Opaque background + bold weight + drop shadow so the label
+   * reads cleanly against bright SceneStill content (the bundle's
+   * fluid / rings / glitch renderers all reach high saturation at
+   * tile centre). Z-index lifts the chip above any sibling
+   * pseudo-elements. */
   .media-card__label {
     position: absolute;
     left: 4px;
     bottom: 4px;
     right: 4px;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.78);
     color: #fff;
     font-size: 9px;
-    padding: 1px 4px;
+    font-weight: 500;
+    padding: 2px 4px;
     border-radius: var(--radius-xs);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: left;
+    z-index: 2;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
   }
   .mono {
     font-family: var(--font-family-mono);

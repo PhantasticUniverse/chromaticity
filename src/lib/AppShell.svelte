@@ -146,7 +146,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     WatermarkOverlay,
   } from './widgets';
 
-  let bannerVisible = $state(true);
+  // Wave 2.3 Lane Q.2 (G.2) — DegradedBanner default visibility flips
+  // from true to false so the unsigned local dev build no longer
+  // surfaces the synthetic "Running on integrated GPU" warning. The
+  // bundle gates the same banner on the dev-only `tweaks.emptyStates`
+  // flag (`Chromaticity.html` lines 261-269), which defaults to false
+  // in `TWEAK_DEFAULTS` (line 54). Real adapter-health probing remains
+  // `EV-INTEGRATION-MATRIX` scope; once that lands the visibility
+  // will read from a capability flag rather than a hardcoded default.
+  let bannerVisible = $state(false);
   let crashResumeVisible = $state(false);
   let commandPaletteOpen = $state(false);
 
@@ -239,7 +247,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         />
       </div>
     {/if}
-    <div class="app-shell__view">
+    <div class="app-shell__view" class:app-shell__view--perform={routeStore.current === 'perform'}>
       {#if routeStore.current === 'perform'}
         <Perform />
       {:else if routeStore.current === 'library'}
@@ -292,9 +300,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <WatermarkOverlay visible={watermarkVisible} />
 
 <style>
+  /* Wave 2.3 Lane Q.2 (G.1) — sidebar column narrows from 76 px to
+   * 52 px so the icon-only `<SidebarRail>` lines up with the bundle's
+   * 48 px rail (`Chromaticity.html` lines 168-179 + `styles.css` line
+   * 197 `.app{grid-template-columns:48px 1fr;}`). We keep a 52 px
+   * column to honour the W12 16-px icon-target + breathing room
+   * around the 36 px button hit-area; reducing further crowds the
+   * focus-ring outline against the right border. */
   .app-shell {
     display: grid;
-    grid-template-columns: 76px 1fr;
+    grid-template-columns: 52px 1fr;
     grid-template-rows: 52px 1fr 28px;
     grid-template-areas:
       'topbar topbar'
@@ -333,6 +348,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     overflow: auto;
     padding: var(--space-3xl) var(--space-4xl);
     min-height: 0;
+  }
+  /* Wave 2.3 Lane Q.2 (G.5 + G.8 + G.11) — Perform-only padding shrink.
+   * The default `--space-3xl --space-4xl` (24 / 32 px) padding eats
+   * 56 px of horizontal space, squeezing the 5-control-group strip
+   * below its fit-without-clip threshold. The bundle's `.view` has
+   * zero padding and `.perform` adds its own 10 px gutter
+   * (`styles.css` line 667). Mirror that here behind a Perform-only
+   * class to avoid disturbing the other routes' typography. */
+  .app-shell__view--perform {
+    padding: var(--space-md);
   }
   .app-shell__banner {
     flex-shrink: 0;

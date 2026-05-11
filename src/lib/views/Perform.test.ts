@@ -192,18 +192,20 @@ describe('Perform view', () => {
 
   it('composes the expected widget primitives (CrossFader · VuStereo · AudioReactivity)', () => {
     // CrossFader + VuStereo render in both variants (Scene + Meta
-    // Controls panels are shared); AudioReactivity only renders in the
-    // console variant per the bundle. Switch to console so all three
-    // primitives are asserted in one render.
+    // Wave 2.3 Lane Q.2 (G.3 + G.4) — CrossFader removed from Scene
+    // Controls and VuStereo removed from Meta Controls per the
+    // canonical `perform.jsx` classic variant. Only AudioReactivity
+    // remains; the chrome assertions now cover the panel presence
+    // (Scene Controls + Meta Controls) plus AudioReactivity. The
+    // CrossFader widget is still exported from `../widgets` for
+    // future re-adoption; the VuStereo widget lives in the top bar
+    // (Wave 2.1 Lane B.2 transport HUD).
     performVariantStore.set('console');
     const { container, getByLabelText } = render(Perform);
-    // CrossFader lives inside the Scene Controls panel header band.
-    const sceneCtrls = getByLabelText('Scene Controls');
-    expect(sceneCtrls.querySelector('.scene-controls__xfade')).not.toBeNull();
-    // VuStereo lives inside the Meta Controls panel header band.
-    const metaCtrls = getByLabelText('Meta Controls');
-    expect(metaCtrls.querySelector('.meta-controls__vu')).not.toBeNull();
-    // AudioReactivity is the only role=img with that aria-label.
+    expect(getByLabelText('Scene Controls')).not.toBeNull();
+    expect(getByLabelText('Meta Controls')).not.toBeNull();
+    // AudioReactivity only renders in the console variant per the
+    // bundle; the panel exposes the canonical class.
     expect(container.querySelector('.audio-reactivity')).not.toBeNull();
   });
 
@@ -350,11 +352,17 @@ describe('Perform view', () => {
 
   it('renders the default Glitch preview label and Previous / Next nav buttons', () => {
     const { container, getByLabelText } = render(Perform);
-    // Preview hero label echoes the active scene name. Scope past the
-    // Scene Controls panel's `<span class="panel__title-name">Glitch</span>`
-    // duplicate by querying the dedicated `.preview__label` slot.
-    const previewLabel = container.querySelector('.preview__label');
-    expect(previewLabel?.textContent?.trim()).toBe('Glitch');
+    // Wave 2.3 Lane Q.2 (G.9 + G.10) — the bottom-left `.preview__label`
+    // chip retired in favour of the bundle-faithful HUD chrome (LIVE
+    // pulse + scene name top-left, OUT routing top-right). The active
+    // scene name now lives inside `.preview__scene-label` adjacent to
+    // the LIVE indicator.
+    const sceneLabel = container.querySelector('.preview__scene-label');
+    expect(sceneLabel?.textContent?.trim()).toBe('Glitch');
+    expect(container.querySelector('.preview__live-tag')).not.toBeNull();
+    expect(container.querySelector('.preview__out-label')?.textContent?.trim()).toBe(
+      'OUT → DISP 2',
+    );
     // Nav row inside the Scenes panel exposes Previous / Next.
     const scenesPanel = getByLabelText('Scenes');
     expect(within(scenesPanel).getByRole('button', { name: /Previous/ })).toBeInTheDocument();
