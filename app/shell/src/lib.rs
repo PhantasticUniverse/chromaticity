@@ -42,6 +42,10 @@ use tauri::Manager;
 /// once the lock is released.
 const SCHEDULER_TICK_HZ: f64 = 60.0;
 
+/// File name (relative to `app.path().app_data_dir()`) for the
+/// Wave 2.1 Lane C.3 persisted operator settings document.
+const SETTINGS_FILE_NAME: &str = "settings.toml";
+
 /// Launch the Tauri application event loop.
 ///
 /// Returns an error if the Tauri runtime fails to start (bad context,
@@ -77,6 +81,33 @@ pub fn run() -> Result<(), tauri::Error> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
         .setup(|app| {
+            // Wave 2.1 Lane C.3 settings persistence — resolve the
+            // app data dir, install the path onto AppState, and load
+            // the existing document (or fall back to default when
+            // no file yet exists). A malformed file is logged + the
+            // default is used so a corrupted settings file never
+            // blocks the app from launching; the operator's next
+            // save overwrites it.
+            if let Ok(data_dir) = app.path().app_data_dir() {
+                let settings_path = data_dir.join(SETTINGS_FILE_NAME);
+                let loaded =
+                    match chromaticity_runtime::settings::Settings::load_or_default(&settings_path)
+                    {
+                        Ok(s) => s,
+                        Err(err) => {
+                            eprintln!(
+                                "chromaticity-app: failed to load settings from {}: {err}; \
+                             using defaults",
+                                settings_path.display()
+                            );
+                            chromaticity_runtime::settings::Settings::default()
+                        }
+                    };
+                let bootstrap_state = app.state::<AppState>();
+                bootstrap_state.install_settings(loaded);
+                bootstrap_state.install_settings_path(settings_path);
+            }
+
             // (a) Producer-side audio runtime. Falls back to silent
             // on CI / headless environments per the PR 1 contract;
             // construction is infallible.
@@ -200,6 +231,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::library_search::filter_scene_library_by_category,
             commands::osc::osc_health_snapshot,
             commands::picker::pick_folder,
+            commands::settings::get_settings,
+            commands::settings::set_settings,
             commands::license::install_license,
             commands::license::remove_license,
             commands::license::request_trial,

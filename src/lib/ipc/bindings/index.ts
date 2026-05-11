@@ -8,6 +8,7 @@
 // -p chromaticity-app` runs; this index stays stable so frontend
 // callers import the IPC vocabulary from a single module path.
 
+export type { AudioSettingsPayload } from './AudioSettingsPayload';
 export type { AudioUniformSnapshotPayload } from './AudioUniformSnapshotPayload';
 export type { CameraDeviceKindPayload } from './CameraDeviceKindPayload';
 export type { CameraDevicePayload } from './CameraDevicePayload';
@@ -16,12 +17,17 @@ export type { ControlId } from './ControlId';
 export type { ControlKindPayload } from './ControlKindPayload';
 export type { ControlSchemaPayload } from './ControlSchemaPayload';
 export type { ControlValue } from './ControlValue';
+export type { GeneralSettingsPayload } from './GeneralSettingsPayload';
+export type { GraphicsSettingsPayload } from './GraphicsSettingsPayload';
 export type { LoadedScenePayload } from './LoadedScenePayload';
 export type { OscHealthSnapshot } from './OscHealthSnapshot';
 export type { OscHealthState } from './OscHealthState';
 export type { PresetId } from './PresetId';
 export type { SceneCard } from './SceneCard';
 export type { SceneSource } from './SceneSource';
+export type { SettingsPayload } from './SettingsPayload';
 export type { SnapSlotId } from './SnapSlotId';
+export type { StorageSettingsPayload } from './StorageSettingsPayload';
 export type { SyphonOutputStatusPayload } from './SyphonOutputStatusPayload';
 export type { SyphonServerPayload } from './SyphonServerPayload';
+export type { ThemePayload } from './ThemePayload';

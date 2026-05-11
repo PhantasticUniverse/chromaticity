@@ -66,8 +66,10 @@
 
 use chromaticity_audio::runtime::AudioRuntimeHandle;
 use chromaticity_runtime::InMemoryBus;
+use chromaticity_runtime::settings::Settings;
 use chromaticity_runtime::state::State;
 use chromaticity_scene::schema::Scene;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -174,6 +176,21 @@ pub struct AppState {
     /// In-memory command bus — the single producer/commit seam the
     /// shell uses to mutate `state`.
     pub bus: InMemoryBus,
+    /// Operator preferences document held behind a mutex so the
+    /// Wave 2.1 Lane C.3 `get_settings` / `set_settings` IPC
+    /// handlers serialise concurrent reads / writes. Defaults to
+    /// [`Settings::default`] in [`AppState::new`]; the Tauri
+    /// bootstrap path replaces the initial default by calling
+    /// [`AppState::install_settings`] after loading the on-disk
+    /// document (or falling back to default when no file yet
+    /// exists).
+    pub settings: Mutex<Settings>,
+    /// Path to the on-disk TOML file backing [`Self::settings`].
+    /// `Some(path)` once the Tauri bootstrap path resolves
+    /// `app.path().app_data_dir()`; `None` in test contexts that
+    /// don't bootstrap persistence (the in-memory mutex still
+    /// works; the write-through file I/O is skipped).
+    pub settings_path: Mutex<Option<PathBuf>>,
     /// Scheduler-tick thread handle. `Some` once the bootstrap path
     /// has spawned the state-commit thread; `None` in test contexts
     /// that construct a runtime-free [`AppState`] via
@@ -236,9 +253,51 @@ impl AppState {
         Self {
             state: Mutex::new(State::default()),
             bus: InMemoryBus::in_memory(),
+            settings: Mutex::new(Settings::default()),
+            settings_path: Mutex::new(None),
             scheduler_thread: Mutex::new(None),
             audio: Mutex::new(None),
             loaded_scene: Mutex::new(None),
+        }
+    }
+
+    /// Replace the in-memory operator preferences document.
+    ///
+    /// Wave 2.1 Lane C.3: called from the Tauri builder's `setup`
+    /// callback after [`Self::new`] is registered with `manage` and
+    /// after the on-disk settings file has been loaded (or
+    /// [`Settings::default`] resolved when no file yet exists).
+    /// Mutex poison-recovery follows the workspace pattern: read
+    /// through `match lock() { Ok(g) => g, Err(p) => p.into_inner() }`
+    /// rather than panicking on a poisoned mutex.
+    pub fn install_settings(&self, settings: Settings) {
+        match self.settings.lock() {
+            Ok(mut guard) => {
+                *guard = settings;
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = settings;
+            }
+        }
+    }
+
+    /// Install the on-disk TOML path backing [`Self::settings`].
+    ///
+    /// Wave 2.1 Lane C.3: called from the Tauri builder's `setup`
+    /// callback once `app.path().app_data_dir()` resolves. After
+    /// install, `set_settings` writes through to this path; before
+    /// install (test contexts), `set_settings` updates the
+    /// in-memory mutex only.
+    pub fn install_settings_path(&self, path: PathBuf) {
+        match self.settings_path.lock() {
+            Ok(mut guard) => {
+                *guard = Some(path);
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = Some(path);
+            }
         }
     }
 

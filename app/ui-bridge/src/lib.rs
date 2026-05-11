@@ -702,6 +702,249 @@ impl SyphonOutputStatusPayload {
     }
 }
 
+/// IPC-facing theme discriminant mirroring
+/// [`chromaticity_runtime::settings::Theme`].
+///
+/// Wave 2.1 Lane C.3 settings persistence bridge: the operator's
+/// three-theme cascade (Pulse / Atelier / Console) round-trips
+/// through the bridge as a flat string union so the Tauri IPC
+/// payload + the frontend `settingsStore` see the same wire shape.
+/// ts-rs renders this as `"Pulse" | "Atelier" | "Console"`;
+/// the engine-side `serde(rename_all = "kebab-case")` lives on
+/// the engine enum where the on-disk TOML representation matters,
+/// so the bridge edge translates between the IPC PascalCase variant
+/// and the engine kebab-case TOML form via the `From` impls.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum ThemePayload {
+    Pulse,
+    Atelier,
+    Console,
+}
+
+impl From<chromaticity_runtime::settings::Theme> for ThemePayload {
+    fn from(theme: chromaticity_runtime::settings::Theme) -> Self {
+        match theme {
+            chromaticity_runtime::settings::Theme::Pulse => Self::Pulse,
+            chromaticity_runtime::settings::Theme::Atelier => Self::Atelier,
+            chromaticity_runtime::settings::Theme::Console => Self::Console,
+        }
+    }
+}
+
+impl From<ThemePayload> for chromaticity_runtime::settings::Theme {
+    fn from(payload: ThemePayload) -> Self {
+        match payload {
+            ThemePayload::Pulse => Self::Pulse,
+            ThemePayload::Atelier => Self::Atelier,
+            ThemePayload::Console => Self::Console,
+        }
+    }
+}
+
+/// IPC-facing audio preferences mirroring
+/// [`chromaticity_runtime::settings::AudioSettings`].
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[ts(export)]
+pub struct AudioSettingsPayload {
+    pub input_device: String,
+    pub output_device: String,
+    pub sample_rate_hz: u32,
+    pub latency_hint: String,
+    pub channel_layout: String,
+    pub channel_left: String,
+    pub channel_right: String,
+    pub input_gain: f32,
+}
+
+impl From<chromaticity_runtime::settings::AudioSettings> for AudioSettingsPayload {
+    fn from(s: chromaticity_runtime::settings::AudioSettings) -> Self {
+        Self {
+            input_device: s.input_device,
+            output_device: s.output_device,
+            sample_rate_hz: s.sample_rate_hz,
+            latency_hint: s.latency_hint,
+            channel_layout: s.channel_layout,
+            channel_left: s.channel_left,
+            channel_right: s.channel_right,
+            input_gain: s.input_gain,
+        }
+    }
+}
+
+impl From<AudioSettingsPayload> for chromaticity_runtime::settings::AudioSettings {
+    fn from(p: AudioSettingsPayload) -> Self {
+        Self {
+            input_device: p.input_device,
+            output_device: p.output_device,
+            sample_rate_hz: p.sample_rate_hz,
+            latency_hint: p.latency_hint,
+            channel_layout: p.channel_layout,
+            channel_left: p.channel_left,
+            channel_right: p.channel_right,
+            input_gain: p.input_gain,
+        }
+    }
+}
+
+/// IPC-facing graphics preferences mirroring
+/// [`chromaticity_runtime::settings::GraphicsSettings`].
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[ts(export)]
+pub struct GraphicsSettingsPayload {
+    pub resolution_preset: String,
+    pub custom_resolution_enabled: bool,
+    pub custom_width: u32,
+    pub custom_height: u32,
+    pub fps_target: String,
+    pub vsync: bool,
+    pub hdr_target: String,
+    pub display: String,
+    pub color_space: String,
+    pub multi_display_mode: String,
+    pub render_scale: f32,
+    pub screen_fitting: String,
+    pub fps_slider_enabled: bool,
+}
+
+impl From<chromaticity_runtime::settings::GraphicsSettings> for GraphicsSettingsPayload {
+    fn from(s: chromaticity_runtime::settings::GraphicsSettings) -> Self {
+        Self {
+            resolution_preset: s.resolution_preset,
+            custom_resolution_enabled: s.custom_resolution_enabled,
+            custom_width: s.custom_width,
+            custom_height: s.custom_height,
+            fps_target: s.fps_target,
+            vsync: s.vsync,
+            hdr_target: s.hdr_target,
+            display: s.display,
+            color_space: s.color_space,
+            multi_display_mode: s.multi_display_mode,
+            render_scale: s.render_scale,
+            screen_fitting: s.screen_fitting,
+            fps_slider_enabled: s.fps_slider_enabled,
+        }
+    }
+}
+
+impl From<GraphicsSettingsPayload> for chromaticity_runtime::settings::GraphicsSettings {
+    fn from(p: GraphicsSettingsPayload) -> Self {
+        Self {
+            resolution_preset: p.resolution_preset,
+            custom_resolution_enabled: p.custom_resolution_enabled,
+            custom_width: p.custom_width,
+            custom_height: p.custom_height,
+            fps_target: p.fps_target,
+            vsync: p.vsync,
+            hdr_target: p.hdr_target,
+            display: p.display,
+            color_space: p.color_space,
+            multi_display_mode: p.multi_display_mode,
+            render_scale: p.render_scale,
+            screen_fitting: p.screen_fitting,
+            fps_slider_enabled: p.fps_slider_enabled,
+        }
+    }
+}
+
+/// IPC-facing storage preferences mirroring
+/// [`chromaticity_runtime::settings::StorageSettings`].
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct StorageSettingsPayload {
+    pub media_folders: Vec<String>,
+    pub scene_folders: Vec<String>,
+    pub backup_path: String,
+    pub backup_retention: String,
+}
+
+impl From<chromaticity_runtime::settings::StorageSettings> for StorageSettingsPayload {
+    fn from(s: chromaticity_runtime::settings::StorageSettings) -> Self {
+        Self {
+            media_folders: s.media_folders,
+            scene_folders: s.scene_folders,
+            backup_path: s.backup_path,
+            backup_retention: s.backup_retention,
+        }
+    }
+}
+
+impl From<StorageSettingsPayload> for chromaticity_runtime::settings::StorageSettings {
+    fn from(p: StorageSettingsPayload) -> Self {
+        Self {
+            media_folders: p.media_folders,
+            scene_folders: p.scene_folders,
+            backup_path: p.backup_path,
+            backup_retention: p.backup_retention,
+        }
+    }
+}
+
+/// IPC-facing general preferences mirroring
+/// [`chromaticity_runtime::settings::GeneralSettings`].
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct GeneralSettingsPayload {
+    pub theme: ThemePayload,
+}
+
+impl From<chromaticity_runtime::settings::GeneralSettings> for GeneralSettingsPayload {
+    fn from(s: chromaticity_runtime::settings::GeneralSettings) -> Self {
+        Self {
+            theme: s.theme.into(),
+        }
+    }
+}
+
+impl From<GeneralSettingsPayload> for chromaticity_runtime::settings::GeneralSettings {
+    fn from(p: GeneralSettingsPayload) -> Self {
+        Self {
+            theme: p.theme.into(),
+        }
+    }
+}
+
+/// IPC-facing operator preferences mirroring
+/// [`chromaticity_runtime::settings::Settings`].
+///
+/// Wave 2.1 Lane C.3 settings persistence bridge: the
+/// `get_settings` / `set_settings` Tauri commands route this payload
+/// across the IPC boundary. Field-by-field shape parity with the
+/// engine type is the load-bearing contract; the bridge mirror lives
+/// in [`chromaticity_ui_bridge`] (this crate) so the engine stays
+/// free of ts-rs / IPC concerns and the frontend bindings under
+/// `src/lib/ipc/bindings/` generate from a single source.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[ts(export)]
+pub struct SettingsPayload {
+    pub general: GeneralSettingsPayload,
+    pub audio: AudioSettingsPayload,
+    pub graphics: GraphicsSettingsPayload,
+    pub storage: StorageSettingsPayload,
+}
+
+impl From<chromaticity_runtime::settings::Settings> for SettingsPayload {
+    fn from(s: chromaticity_runtime::settings::Settings) -> Self {
+        Self {
+            general: s.general.into(),
+            audio: s.audio.into(),
+            graphics: s.graphics.into(),
+            storage: s.storage.into(),
+        }
+    }
+}
+
+impl From<SettingsPayload> for chromaticity_runtime::settings::Settings {
+    fn from(p: SettingsPayload) -> Self {
+        Self {
+            general: p.general.into(),
+            audio: p.audio.into(),
+            graphics: p.graphics.into(),
+            storage: p.storage.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {

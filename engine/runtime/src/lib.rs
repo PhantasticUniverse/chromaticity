@@ -114,6 +114,7 @@ pub mod crash_resume;
 pub mod scheduler;
 #[cfg(feature = "script-bridge")]
 pub mod script_bridge;
+pub mod settings;
 pub mod state;
 pub mod state_migration;
 pub mod state_replay;
