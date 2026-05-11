@@ -47,9 +47,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // — but maps onto AdapterPill's bundle vocabulary at the call-site.
   // Per-adapter live wiring remains `EV-INTEGRATION-MATRIX` scope.
   import Icon from './Icon.svelte';
+  import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { performVariantStore, type PerformVariant } from './stores/performVariant.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
-  import { AdapterPill, Timecode, type AdapterPillState } from './widgets';
+  import { transportStore } from './stores/transport.svelte';
+  import { AdapterPill, BeatDots, VuStereo, type AdapterPillState } from './widgets';
 
   // Wave 2.1 Lane B.1 — STANDARD / CONSOLE segmented toggle. Only
   // visible on the Perform route; click handlers dispatch into the
@@ -62,15 +64,55 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { id: 'console', label: 'CONSOLE' },
   ] as const;
 
-  // Shared-primitive backfill — bundle's session-HUD `<Timecode />`
-  // (`Chromaticity.html` line 204) only mounts on performance-adjacent
-  // views per the bundle's `PERF_VIEWS` set (`perform`, `scene`,
-  // `audio`). The production-side route names map cleanly: `perform`,
-  // `author` (the bundle calls it "scene"), and `audio-uniforms`
-  // (the bundle calls it "audio"). The widget is a 18-LoC primitive
-  // that owns its own rAF lifecycle; this gate keeps the HUD chrome
-  // out of non-performance views per the bundle.
-  const PERF_HUD_ROUTES: ReadonlySet<RouteName> = new Set(['perform', 'author', 'audio-uniforms']);
+  // Wave 2.1 Lane B.2 — top-bar transport HUD elements (timecode, beat
+  // dots, BPM, audio meter, camera button, record button, GPU readout).
+  // Per the canonical bundle (`Chromaticity.html` lines 191-257) and
+  // the AO smoke-test direction the HUD chrome only shows on the
+  // Perform route — the other routes show their view-specific meta
+  // instead (a future enhancement; today other routes simply omit the
+  // HUD cluster).
+  //
+  // Default BPM fallback when no audio snapshot is present matches the
+  // bundle's `BeatDots bpm={128}` (`Chromaticity.html` line 205) and
+  // the AudioReactivity widget's 120-default elsewhere — we use 120 as
+  // the safer pre-IPC value since the bundle's 128 is a fixture-show
+  // tempo.
+  const DEFAULT_BPM = 120;
+
+  // Subscribe to the live audio snapshot store so BPM + VU meter read
+  // engine data when available. No-op outside Tauri (vite dev / Vitest)
+  // where the snapshot stays `null` and consumers fall back to
+  // defaults / synthetic generators.
+  $effect(() => {
+    void audioSnapshotStore.subscribe();
+  });
+
+  // Auto-start the transport clock on TopBar mount and halt it on
+  // unmount. The TopBar lives for the entire app lifetime so this is
+  // effectively "clock runs whenever the app is open", but we honour
+  // the lifecycle contract so test unmounts (and any future TopBar
+  // remount path) don't leak rAF handles. start() is idempotent.
+  $effect(() => {
+    transportStore.start();
+    return () => {
+      transportStore.stop();
+    };
+  });
+
+  // Reactive timecode + BPM readouts. `$derived` re-runs whenever
+  // `transportStore.elapsedMs` or `audioSnapshotStore.snapshot` change,
+  // so the HUD chips repaint on every clock tick / IPC event.
+  const currentTimecode = $derived.by(() => {
+    // Touch elapsedMs so $derived tracks reactivity through the method
+    // call (transportStore.timecode() reads state internally).
+    void transportStore.elapsedMs;
+    return transportStore.timecode();
+  });
+
+  const currentBpm = $derived(audioSnapshotStore.snapshot?.bpm ?? DEFAULT_BPM);
+  // BPM display formatting: bundle renders one decimal place
+  // (`Chromaticity.html` line 208 `128.0`). We mirror that.
+  const bpmDisplay = $derived(currentBpm.toFixed(1));
 
   // Per-route subtitle. Hardcoded for W15; future enhancement could
   // accept a per-view dynamic count via route-store metadata (e.g.
@@ -174,6 +216,33 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           </button>
         {/each}
       </div>
+
+      <!-- Wave 2.1 Lane B.2 — transport HUD cluster (timecode + beat dots
+           + BPM display + stereo VU meter). Mirrors the bundle's
+           `Chromaticity.html` lines 203-222 mount inside the
+           `showSessionHud` branch (Perform / Scene / Audio in the
+           bundle; Perform-only here per Lane B.2 brief direction). The
+           transport clock is driven by `transportStore`; BPM + VU read
+           the live audio snapshot store with documented fallbacks. -->
+      <span
+        class="top-bar__transport-timecode"
+        data-testid="top-bar-timecode"
+        title="Session timecode"
+      >
+        <span class="top-bar__transport-timecode-text" aria-label="Session timecode">
+          {currentTimecode}
+        </span>
+      </span>
+      <span class="top-bar__transport-beat" data-testid="top-bar-beat-dots">
+        <BeatDots bpm={currentBpm} />
+      </span>
+      <span class="top-bar__transport-bpm" data-testid="top-bar-bpm">
+        <span class="top-bar__transport-bpm-key">BPM</span>
+        <span class="top-bar__transport-bpm-value">{bpmDisplay}</span>
+      </span>
+      <span class="top-bar__transport-vu" data-testid="top-bar-vu" aria-label="Audio meter">
+        <VuStereo width={88} />
+      </span>
     {/if}
   </div>
 
@@ -187,24 +256,41 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         />
       {/each}
     </div>
-    {#if PERF_HUD_ROUTES.has(routeStore.current)}
-      <!-- Shared-primitive backfill — bundle session-HUD Timecode mount,
-           gated on performance-adjacent routes per the bundle's
-           `PERF_VIEWS` set. Frozen-frame contract (see Timecode.svelte
-           header): synthetic counter, no IPC, no engine-pacing
-           dependency. -->
-      <span class="top-bar__timecode" title="Session timecode (synthetic)">
-        <Timecode />
-      </span>
-    {/if}
     <span class="top-bar__metric" title="Frames per second (W15+: real telemetry)">
       <span class="top-bar__metric-unit">fps</span>
       <span class="top-bar__metric-value">—</span>
     </span>
-    <span class="top-bar__metric" title="CPU utilization (W15+: real telemetry)">
-      <span class="top-bar__metric-unit">cpu</span>
-      <span class="top-bar__metric-value">—</span>
+    <!-- Wave 2.1 Lane B.2 — GPU readout. Static placeholder matching the
+         bundle's `Chromaticity.html` line 247 (`<span className="v
+         accent">42%</span>`). Real GPU telemetry wires when ADR-011
+         rendering backend lands (Wave 2.2+). -->
+    <span class="top-bar__metric" title="GPU utilization (Wave 2.2+: real telemetry via ADR-011)">
+      <span class="top-bar__metric-unit">gpu</span>
+      <span class="top-bar__metric-value" data-testid="top-bar-gpu-value">42%</span>
     </span>
+    {#if routeStore.current === 'perform'}
+      <!-- Wave 2.1 Lane B.2 — camera + record buttons (visual stubs).
+           Real wiring lands in Wave 2.2. Bundle adoption:
+           `Chromaticity.html` lines 254-255. -->
+      <button
+        type="button"
+        class="top-bar__icon-btn"
+        data-testid="top-bar-camera"
+        aria-label="Camera"
+        title="Camera (Wave 2.2)"
+      >
+        <Icon name="camera" size={14} />
+      </button>
+      <button
+        type="button"
+        class="top-bar__icon-btn"
+        data-testid="top-bar-record"
+        aria-label="Record"
+        title="Record (Wave 2.2)"
+      >
+        <Icon name="record" size={11} />
+      </button>
+    {/if}
     <span class="top-bar__rec" data-state="off" title="Recording (W15+ scope)">
       <span class="top-bar__rec-dot" aria-hidden="true"></span>
       <span>REC</span>
@@ -436,16 +522,90 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     gap: var(--space-xs);
   }
 
-  /* Shared-primitive backfill — bundle session-HUD Timecode wrapper.
-   * Sized to match the adjacent fps / cpu metric chips so the HUD row
-   * keeps a consistent vertical rhythm. The Timecode widget owns its
-   * own font / color tokens. */
-  .top-bar__timecode {
+  /* Wave 2.1 Lane B.2 — transport HUD cluster styles. The four
+   * Perform-only chips (timecode / beat dots / BPM / VU meter) ride
+   * inside `.top-bar__center` alongside the Lane B.1 variant toggle.
+   * Each chip carries its own thin border for visual separation
+   * against the dense central row, mirroring the bundle's `tb-stat` /
+   * `tb-meta` chrome treatment in `Chromaticity.html` lines 203-222. */
+  .top-bar__transport-timecode {
     display: inline-flex;
     align-items: center;
     padding: 2px var(--space-xs);
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-xs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-md);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-1);
+    letter-spacing: 0.04em;
+  }
+
+  .top-bar__transport-timecode-text {
+    font-family: var(--font-family-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .top-bar__transport-beat {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .top-bar__transport-bpm {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 2px var(--space-xs);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+  }
+
+  .top-bar__transport-bpm-key {
+    color: var(--color-text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .top-bar__transport-bpm-value {
+    color: var(--color-primary);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .top-bar__transport-vu {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Wave 2.1 Lane B.2 — camera + record icon buttons in the right HUD
+   * cluster. Visual stubs only; real wiring is Wave 2.2 scope. Match
+   * the bundle's `btn ghost sm` / `btn danger sm` chrome compactly. */
+  .top-bar__icon-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--color-line-2);
+    color: var(--color-text-1);
+    border-radius: var(--radius-xs);
+    padding: 4px 6px;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .top-bar__icon-btn:hover {
+    color: var(--color-text-0);
+    background: var(--color-bg-3);
+  }
+
+  .top-bar__icon-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
 
   .top-bar__rec {
