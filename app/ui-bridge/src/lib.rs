@@ -596,6 +596,84 @@ impl From<CameraDevicePayload> for chromaticity_camera_adapter::DeviceSummary {
     }
 }
 
+/// IPC-facing classification of a MIDI device-port direction,
+/// mirroring [`chromaticity_midi_adapter::MidiDeviceKind`] across the
+/// Tauri command boundary.
+///
+/// Wave 2.1 Lane D.1 ships [`MidiDeviceKindPayload::Input`] only — the
+/// engine-side enum is `#[non_exhaustive]` with `Input` as its sole
+/// variant today; a follow-up wave that adds output enumeration will
+/// widen both the engine enum and this payload mirror in lockstep.
+/// ts-rs renders the enum as a flat string union (`"Input"`) because
+/// there are no payload-bearing variants.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum MidiDeviceKindPayload {
+    Input,
+}
+
+impl From<chromaticity_midi_adapter::MidiDeviceKind> for MidiDeviceKindPayload {
+    fn from(kind: chromaticity_midi_adapter::MidiDeviceKind) -> Self {
+        match kind {
+            chromaticity_midi_adapter::MidiDeviceKind::Input => Self::Input,
+            // Catch-all for the engine-side `#[non_exhaustive]` enum:
+            // any future variant requires a matching ts-rs variant
+            // before the IPC surface widens. Until then the
+            // not-yet-named variants collapse to `Input` at the
+            // boundary (the only wire shape an existing frontend
+            // build knows how to deserialize).
+            _ => Self::Input,
+        }
+    }
+}
+
+impl From<MidiDeviceKindPayload> for chromaticity_midi_adapter::MidiDeviceKind {
+    fn from(payload: MidiDeviceKindPayload) -> Self {
+        match payload {
+            MidiDeviceKindPayload::Input => Self::Input,
+        }
+    }
+}
+
+/// IPC-facing MIDI device descriptor, mirroring
+/// [`chromaticity_midi_adapter::MidiDeviceDescriptor`] across the Tauri
+/// command boundary.
+///
+/// Wave 2.1 Lane D.1: backs the `list_midi_devices` Tauri command
+/// consumed by `src/lib/stores/midiStore.svelte.ts`. Field names mirror
+/// the engine-side struct verbatim (`id` / `name` / `kind`) so the
+/// wire shape is a 1:1 ts-rs export. The id is the per-port stable
+/// identifier (`"input-<index>"` today); the operator-facing MIDI view
+/// uses it as the keyed-each iteration key when rendering the Devices
+/// tab against the live device list.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct MidiDevicePayload {
+    pub id: String,
+    pub name: String,
+    pub kind: MidiDeviceKindPayload,
+}
+
+impl From<chromaticity_midi_adapter::MidiDeviceDescriptor> for MidiDevicePayload {
+    fn from(descriptor: chromaticity_midi_adapter::MidiDeviceDescriptor) -> Self {
+        Self {
+            id: descriptor.id,
+            name: descriptor.name,
+            kind: descriptor.kind.into(),
+        }
+    }
+}
+
+impl From<MidiDevicePayload> for chromaticity_midi_adapter::MidiDeviceDescriptor {
+    fn from(payload: MidiDevicePayload) -> Self {
+        Self {
+            id: payload.id,
+            name: payload.name,
+            kind: payload.kind.into(),
+        }
+    }
+}
+
 /// IPC-facing Syphon server identifier, mirroring
 /// `chromaticity_syphon_adapter::SyphonServerId` across the Tauri
 /// command boundary.

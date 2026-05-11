@@ -4,11 +4,12 @@
 // W62 MIDI view tests — exercise the W18 PR3 + W23 PR3-4 + W24 PR2 routed-
 // view surface (tab vocabulary, learn-mode toggle round-trip, binding table
 // render + filter, snap grid, devices allowlist toggle, virtual pad cycle,
-// BPM sync chain, MTC readout, MPE banner gate). MIDI.svelte is a frozen-
-// fixture port — no IPC, no shared store writes — so the only global stub
-// required is `matchMedia` (per `feedback_vitest_matchmedia_stubglobal.md`)
-// because the view's learn-mode `$effect` queries
-// `prefers-reduced-motion: reduce` on every render.
+// BPM sync chain, MTC readout, MPE banner gate). Wave 2.1 Lane D.1 widens
+// the Devices tab to source the device list from the live `midiStore`
+// (`list_midi_devices` Tauri command) so the suite now mocks `invoke`
+// per the `feedback_vitest_invoke_mock_hoisted.md` user-memory convention
+// and seeds the mock with a fixture-mirrored payload before each render
+// so the row-count and toggle expectations stay deterministic.
 //
 // `afterEach(cleanup)` per `feedback_vitest_svelte_cleanup_required.md`.
 // Most tests stay outside learn mode so the rAF + setInterval pair the
@@ -17,8 +18,16 @@
 // which cancels the rAF and clears the intervals.
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}));
 
 import MIDI from './MIDI.svelte';
 import {
@@ -35,6 +44,23 @@ import {
   MPE_BANNER_COPY,
   RELATIVE_ENCODER_MODES,
 } from '../data/midi-fixtures';
+import type { MidiDevicePayload } from '../ipc/bindings/MidiDevicePayload';
+import { midiStore } from '../stores/midiStore.svelte';
+
+// Mirror the W18 fixture device-name set onto the live IPC wire shape so
+// the Devices-tab row-count + toggle tests retain their pre-Lane-D.1
+// invariants. Allowlist toggle aria-labels still key on the device name
+// (e.g. "Disallow Launchpad X"), so the names match the fixture verbatim;
+// the wire `id` is the live `input-N` shape per the engine adapter
+// contract. Vendor / direction / maps / mpeWarned columns get conservative
+// defaults at the view layer (`vendor='—'`, `direction='in'`, `maps=0`),
+// so tests that inspected those fixture-only fields against named
+// devices have been adjusted accordingly.
+const LIVE_DEVICES_FIXTURE: readonly MidiDevicePayload[] = MIDI_DEVICES.map((d, i) => ({
+  id: `input-${i}`,
+  name: d.name,
+  kind: 'Input' as const,
+}));
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal(
@@ -59,12 +85,20 @@ describe('MIDI view', () => {
     // test toggles learn mode — keeps the suite jsdom-clean and
     // deterministic.
     stubMatchMedia(true);
+    invokeMock.mockReset();
+    // Default: live device enumeration returns the fixture-mirrored
+    // payload so the Devices-tab row-count + toggle tests pass with the
+    // pre-Lane-D.1 invariants. Per-test overrides (e.g. an empty-state
+    // test) re-seed the mock before render.
+    invokeMock.mockResolvedValue([...LIVE_DEVICES_FIXTURE]);
+    midiStore.reset();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     cleanup();
+    midiStore.reset();
   });
 
   it('renders the section landmark, all 7 tabs, and defaults to the global tab', () => {
@@ -120,21 +154,24 @@ describe('MIDI view', () => {
     expect(clearBtn).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('switching to the devices tab renders one allowlist row per fixture device', async () => {
+  it('switching to the devices tab renders one allowlist row per live device', async () => {
     const { container, getByRole } = render(MIDI);
     await fireEvent.click(getByRole('tab', { name: 'Devices' }));
-    const rows = container.querySelectorAll('.midi__device-row');
-    expect(rows.length).toBe(MIDI_DEVICES.length);
-    expect(rows.length).toBe(8);
-    // The MPE-warned Seaboard renders the MPE pill on its name cell.
-    const seab = Array.from(rows).find((r) => r.textContent?.includes('Seaboard'));
-    expect(seab).toBeDefined();
-    expect(seab?.querySelector('.midi__pill--info')?.textContent?.trim()).toBe('MPE');
+    // Live IPC drives the device list; `waitFor` flushes the
+    // `midiStore.refresh()` promise the view's mount-effect fires.
+    await waitFor(() => {
+      const rows = container.querySelectorAll('.midi__device-row');
+      expect(rows.length).toBe(LIVE_DEVICES_FIXTURE.length);
+    });
+    expect(LIVE_DEVICES_FIXTURE.length).toBe(8);
   });
 
   it('clicking a device allowlist toggle flips its aria-pressed state', async () => {
     const { container, getByRole } = render(MIDI);
     await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    await waitFor(() => {
+      expect(container.querySelectorAll('.midi__device-row').length).toBeGreaterThan(0);
+    });
     // First device (Launchpad X) is allowed by default → aria-pressed=true.
     const lpxRow = container.querySelectorAll('.midi__device-row')[0] as HTMLElement;
     expect(lpxRow).not.toBeNull();
@@ -299,8 +336,10 @@ describe('MIDI view', () => {
     expect(padBody).not.toBeNull();
     // Devices rows annotate input capability.
     await fireEvent.click(getByRole('tab', { name: 'Devices' }));
-    const devRows = container.querySelectorAll('.midi__device-row[data-cap="io.midi.input"]');
-    expect(devRows.length).toBe(MIDI_DEVICES.length);
+    await waitFor(() => {
+      const devRows = container.querySelectorAll('.midi__device-row[data-cap="io.midi.input"]');
+      expect(devRows.length).toBe(LIVE_DEVICES_FIXTURE.length);
+    });
   });
 
   // ----------------------------------------------------------------------
@@ -655,37 +694,46 @@ describe('MIDI view', () => {
   it('Devices tab toggle keeps other devices unchanged when one is flipped', async () => {
     const { container, getByRole } = render(MIDI);
     await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    await waitFor(() => {
+      expect(container.querySelectorAll('.midi__device-row').length).toBeGreaterThan(0);
+    });
     const rows = container.querySelectorAll('.midi__device-row');
-    // Flip APC mini Mk2 (index 4, allowed=false in fixture) → on.
+    // Wave 2.1 Lane D.1: live IPC drives the device list; the view's
+    // mount-effect auto-allows every device the FIRST time the store
+    // surfaces it. Flip APC mini Mk2 (index 4) from on → off.
     const apcMiniRow = rows[4] as HTMLElement;
     const toggle = apcMiniRow.querySelector('.midi__device-toggle-btn') as HTMLButtonElement;
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
     await fireEvent.click(toggle);
-    // The flipped row updates; sibling rows preserve their fixture state.
+    // The flipped row updates; sibling rows preserve their state.
     const updated = container.querySelectorAll('.midi__device-row');
     expect(
       (updated[4]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement).getAttribute(
         'aria-pressed',
       ),
-    ).toBe('true');
+    ).toBe('false');
     // Launchpad X (index 0) was true and stays true.
     expect(
       (updated[0]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement).getAttribute(
         'aria-pressed',
       ),
     ).toBe('true');
-    // Seaboard (index 6) was false and stays false.
+    // Push 2 (index 2) stays true.
     expect(
-      (updated[6]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement).getAttribute(
+      (updated[2]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement).getAttribute(
         'aria-pressed',
       ),
-    ).toBe('false');
+    ).toBe('true');
   });
 
   it('Devices tab toggle button aria-label round-trips between Allow/Disallow on flip', async () => {
     const { container, getByRole } = render(MIDI);
     await fireEvent.click(getByRole('tab', { name: 'Devices' }));
-    // Launchpad X (index 0, allowed=true initially) → aria-label "Disallow Launchpad X".
+    await waitFor(() => {
+      expect(container.querySelectorAll('.midi__device-row').length).toBeGreaterThan(0);
+    });
+    // Launchpad X (index 0, allowed=true after the initial refresh
+    // auto-enables every live device) → aria-label "Disallow Launchpad X".
     const lpxToggle = container
       .querySelectorAll('.midi__device-row')[0]
       ?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement;
@@ -720,5 +768,75 @@ describe('MIDI view', () => {
     const { getByRole } = render(MIDI);
     const learnBtn = getByRole('button', { name: /Click to map/ });
     expect(learnBtn.getAttribute('data-cap')).toBe(MIDI_CAPABILITY.learn);
+  });
+
+  // ----------------------------------------------------------------------
+  // Wave 2.1 Lane D.1 — live MIDI device enumeration.
+  //
+  // The Devices tab now sources its device list from the live `midiStore`
+  // backed by the `list_midi_devices` Tauri command. These tests pin the
+  // mount-time refresh contract, the empty-state branch (when no MIDI
+  // devices are detected), the Refresh button round-trip, the
+  // error-banner surface, and the live-vs-fixture row-name parity.
+
+  it('Wave 2.1 Lane D.1 — invokes list_midi_devices on mount', async () => {
+    render(MIDI);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('list_midi_devices');
+    });
+  });
+
+  it('Wave 2.1 Lane D.1 — Devices tab renders empty state when no live devices', async () => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue([]);
+    midiStore.reset();
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    await waitFor(() => {
+      const empty = container.querySelector('.midi__no-rows');
+      expect(empty?.textContent).toContain('No MIDI devices detected');
+    });
+    expect(container.querySelectorAll('.midi__device-row').length).toBe(0);
+  });
+
+  it('Wave 2.1 Lane D.1 — Refresh button re-invokes list_midi_devices', async () => {
+    const { getByRole } = render(MIDI);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('list_midi_devices');
+    });
+    await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    const refresh = await waitFor(() => getByRole('button', { name: /Refresh MIDI device list/i }));
+    const before = invokeMock.mock.calls.length;
+    await fireEvent.click(refresh);
+    await waitFor(() => {
+      expect(invokeMock.mock.calls.length).toBeGreaterThan(before);
+    });
+  });
+
+  it('Wave 2.1 Lane D.1 — surfaces the store error banner when refresh rejects', async () => {
+    invokeMock.mockReset();
+    invokeMock.mockRejectedValue(new Error('midi subsystem unavailable'));
+    midiStore.reset();
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    await waitFor(() => {
+      const banner = container.querySelector('[data-midi-error]');
+      expect(banner).not.toBeNull();
+      expect(banner?.textContent).toContain('midi subsystem unavailable');
+    });
+  });
+
+  it('Wave 2.1 Lane D.1 — live device names render verbatim from the IPC payload', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: 'Devices' }));
+    await waitFor(() => {
+      const rows = container.querySelectorAll('.midi__device-row');
+      expect(rows.length).toBe(LIVE_DEVICES_FIXTURE.length);
+    });
+    const rows = Array.from(container.querySelectorAll('.midi__device-row'));
+    const names = rows.map(
+      (r) => r.querySelector('.midi__device-name .mono')?.textContent?.trim() ?? '',
+    );
+    expect(names).toEqual(LIVE_DEVICES_FIXTURE.map((d) => d.name));
   });
 });

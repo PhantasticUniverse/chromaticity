@@ -20,6 +20,8 @@ export type { ControlValue } from './ControlValue';
 export type { GeneralSettingsPayload } from './GeneralSettingsPayload';
 export type { GraphicsSettingsPayload } from './GraphicsSettingsPayload';
 export type { LoadedScenePayload } from './LoadedScenePayload';
+export type { MidiDeviceKindPayload } from './MidiDeviceKindPayload';
+export type { MidiDevicePayload } from './MidiDevicePayload';
 export type { OscHealthSnapshot } from './OscHealthSnapshot';
 export type { OscHealthState } from './OscHealthState';
 export type { PresetId } from './PresetId';

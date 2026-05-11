@@ -69,6 +69,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     button, BPM-source reorder, snap-mode separators all render
   //     via the W19 PR3 `Icon.svelte` primitive (`x` / `link` / `bang`
   //     / `settings` / `caret` / `chevron`) per `views/midi.jsx`.
+  import { SvelteSet } from 'svelte/reactivity';
+
   import {
     BPM_SYNC_SOURCES,
     MIDI_CAPABILITY,
@@ -91,6 +93,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MidiTabId,
   } from '../data/midi-fixtures';
   import Icon from '../Icon.svelte';
+  import { midiStore } from '../stores/midiStore.svelte';
   import { CuePad, type CuePadCell } from '../widgets';
 
   // Tab state, learn-mode state, snap-mode state, devices allowlist state.
@@ -99,7 +102,74 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let learnTarget = $state<string>(MIDI_LEARN_FIXTURE.target);
   let snapMode = $state<'apply' | 'save' | 'clear'>('apply');
   let routeFilter = $state<string>('');
-  let devices = $state<MidiDevice[]>(MIDI_DEVICES.map((d) => ({ ...d })));
+
+  // Wave 2.1 Lane D.1 — Devices tab device list sources from the live
+  // `midiStore` (`src/lib/stores/midiStore.svelte.ts`) which invokes the
+  // `list_midi_devices` Tauri command (`app/shell/src/commands/midi.rs`).
+  // The pre-W18 fixture `MIDI_DEVICES` continues to back two unwired
+  // surfaces — (a) the M-14 Virtual Pad mirror's pad-controller selector
+  // (the live IPC payload carries no pad-grid metadata yet; output +
+  // pad-capability enumeration is a follow-up wave), and (b) the
+  // MPE-warned Seaboard sentinel that drives the MPE banner gate.
+  // Vendor / direction / maps columns get conservative defaults
+  // (`vendor='—'`, `direction='in'`, `maps=0`) until a richer
+  // MIDI-introspection surface lands. Allowlist toggle state lives in a
+  // `Set<string>` keyed by device id and is initialised to "all live
+  // devices allowed" so a fresh device is enabled by default; the
+  // pre-existing per-device boolean column on the fixture set drives
+  // the legacy rows the test corpus still references.
+  // `allowlist`: device ids the operator has enabled. `everSeen`: every
+  // device id the store has ever surfaced, so an explicit "disallow" by
+  // the operator is preserved across refreshes (without this, a refresh
+  // would re-enable a deliberately-disabled device by re-running the
+  // "auto-enable a never-before-seen device" branch). `SvelteSet` from
+  // `svelte/reactivity` so mutating add/delete drives reactive updates
+  // without re-creating the set wholesale.
+  const allowlist = new SvelteSet<string>();
+  const everSeen = new SvelteSet<string>();
+
+  // `liveDevices` is the wire-shaped list from the store, adapted into
+  // the row shape the Devices tab template iterates against. The adapter
+  // preserves the live `id` (used as the keyed-each iteration key + the
+  // toggle target) and fills the fixture-only columns with conservative
+  // defaults. When the store is empty we render the no-devices empty
+  // state instead.
+  const liveDevices = $derived<readonly MidiDevice[]>(
+    midiStore.devices.map((d) => ({
+      id: d.id,
+      name: d.name,
+      vendor: '—',
+      direction: 'in' as const,
+      allowed: allowlist.has(d.id),
+      maps: 0,
+      mpeWarned: false,
+    })),
+  );
+
+  // The MPE banner gates on the fixture-set Seaboard sentinel until the
+  // live IPC surface carries an MPE-config-seen flag per device. The
+  // fixture-only `mpeWarned` field will retire when that lands.
+  const mpeNotified = $derived(MIDI_DEVICES.some((d) => d.mpeWarned));
+
+  $effect(() => {
+    // Refresh on mount. The store swallows the no-Tauri-context
+    // rejection per its module-level prose, so this is safe in Vitest /
+    // vite-dev-only runs (devices stays `[]` and the empty state fires).
+    void midiStore.refresh();
+  });
+
+  // Auto-enable any device id we've NEVER seen before — fresh plugs
+  // default to "allowed". Devices the operator explicitly disabled
+  // remain in `everSeen` but absent from `allowlist`, so a subsequent
+  // refresh does not re-enable them.
+  $effect(() => {
+    for (const d of midiStore.devices) {
+      if (!everSeen.has(d.id)) {
+        everSeen.add(d.id);
+        allowlist.add(d.id);
+      }
+    }
+  });
 
   // The bundle's 4s learn-idle timer is replaced by a frozen "no signal"
   // affordance on the toggle button title; toggling learn mode also
@@ -119,7 +189,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   function toggleDevice(deviceId: string): void {
-    devices = devices.map((d) => (d.id === deviceId ? { ...d, allowed: !d.allowed } : d));
+    if (allowlist.has(deviceId)) {
+      allowlist.delete(deviceId);
+    } else {
+      allowlist.add(deviceId);
+    }
+  }
+
+  function refreshDevices(): void {
+    void midiStore.refresh();
   }
 
   // M-14 Virtual Pad mirror — W23 PR3 adopts the `CuePad` widget primitive;
@@ -131,8 +209,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // the Launchpad X rainbow palette. Click cycles a cell
   // `idle → armed → playing → idle`; no MIDI IPC dispatch (frozen frame,
   // awaits the integration adapter wiring).
+  // Pad-controller selector continues to source from the fixture set —
+  // the live IPC payload (`MidiDevicePayload`) carries no pad-grid
+  // metadata, and pad-grid introspection is a follow-up wave.
   const padCapableDevices = $derived<readonly MidiDevice[]>(
-    devices.filter((d) => d.padDims !== undefined),
+    MIDI_DEVICES.filter((d) => d.padDims !== undefined),
   );
   let selectedPadDeviceId = $state<string>('dev.lpx');
   const selectedPadDevice = $derived<MidiDevice | undefined>(
@@ -185,8 +266,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       [row.target, row.device, row.msg, row.num].join(' ').toLowerCase().includes(q),
     );
   });
-
-  const mpeNotified = $derived(devices.some((d) => d.mpeWarned));
 
   // Live waveform + history ring buffers — W24 PR2 animates what the
   // W18 port shipped as a static snapshot. The bundle's
@@ -418,72 +497,93 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <header class="midi__panel-head">
               <h2 class="midi__panel-title">Devices · allowlist</h2>
               <span class="midi__panel-sub">M-01 · explicit enable only, no auto-claim</span>
+              <span class="midi__toolbar-spacer" aria-hidden="true"></span>
+              <button
+                type="button"
+                class="midi__btn"
+                aria-label="Refresh MIDI device list"
+                onclick={refreshDevices}
+                disabled={midiStore.isLoading}
+                title="Re-enumerate MIDI input ports"
+              >
+                <Icon name="link" size={11} />
+                {midiStore.isLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
             </header>
-            <div class="midi__devices">
-              <div class="midi__devices-head">
-                <span aria-hidden="true"></span>
-                <span class="midi__caps">name</span>
-                <span class="midi__caps">vendor</span>
-                <span class="midi__caps">ports</span>
-                <span class="midi__caps">maps</span>
-                <span class="midi__caps">allow</span>
-                <span aria-hidden="true"></span>
+            {#if midiStore.error}
+              <div
+                class="midi__banner midi__banner--info midi__banner--midi-error"
+                role="status"
+                data-midi-error
+              >
+                <span class="midi__banner-text">
+                  MIDI enumeration failed: {midiStore.error}
+                </span>
               </div>
-              <ul class="midi__devices-list">
-                {#each devices as d (d.id)}
-                  <li
-                    class="midi__device-row"
-                    class:midi__device-row--off={!d.allowed}
-                    data-cap={MIDI_CAPABILITY.input}
-                  >
-                    <span
-                      class="midi__device-dot"
-                      class:midi__device-dot--on={d.allowed}
-                      aria-hidden="true"
-                    ></span>
-                    <span class="midi__device-name">
-                      <span class="mono">{d.name}</span>
-                      {#if d.mpeWarned}
-                        <span
-                          class="midi__pill midi__pill--info"
-                          title="MPE-configuration message seen — no global state corrupted (MIDI-CONF-18)"
-                        >
-                          MPE
-                        </span>
-                      {/if}
-                    </span>
-                    <span class="midi__device-vendor mono">{d.vendor}</span>
-                    <span class="midi__device-dir mono">{d.direction}</span>
-                    <span
-                      class="midi__device-maps mono"
-                      class:midi__device-maps--zero={d.maps === 0}
+            {/if}
+            {#if liveDevices.length === 0}
+              <p class="midi__no-rows mono">
+                No MIDI devices detected — connect a controller and click Refresh.
+              </p>
+            {:else}
+              <div class="midi__devices">
+                <div class="midi__devices-head">
+                  <span aria-hidden="true"></span>
+                  <span class="midi__caps">name</span>
+                  <span class="midi__caps">vendor</span>
+                  <span class="midi__caps">ports</span>
+                  <span class="midi__caps">maps</span>
+                  <span class="midi__caps">allow</span>
+                  <span aria-hidden="true"></span>
+                </div>
+                <ul class="midi__devices-list">
+                  {#each liveDevices as d (d.id)}
+                    <li
+                      class="midi__device-row"
+                      class:midi__device-row--off={!d.allowed}
+                      data-cap={MIDI_CAPABILITY.input}
                     >
-                      {d.maps}
-                    </span>
-                    <span class="midi__device-toggle">
+                      <span
+                        class="midi__device-dot"
+                        class:midi__device-dot--on={d.allowed}
+                        aria-hidden="true"
+                      ></span>
+                      <span class="midi__device-name">
+                        <span class="mono">{d.name}</span>
+                      </span>
+                      <span class="midi__device-vendor mono">{d.vendor}</span>
+                      <span class="midi__device-dir mono">{d.direction}</span>
+                      <span
+                        class="midi__device-maps mono"
+                        class:midi__device-maps--zero={d.maps === 0}
+                      >
+                        {d.maps}
+                      </span>
+                      <span class="midi__device-toggle">
+                        <button
+                          type="button"
+                          class="midi__device-toggle-btn"
+                          class:midi__device-toggle-btn--on={d.allowed}
+                          aria-pressed={d.allowed ? 'true' : 'false'}
+                          aria-label="{d.allowed ? 'Disallow' : 'Allow'} {d.name}"
+                          onclick={() => toggleDevice(d.id)}
+                        >
+                          <span class="midi__device-toggle-knob" aria-hidden="true"></span>
+                        </button>
+                      </span>
                       <button
                         type="button"
-                        class="midi__device-toggle-btn"
-                        class:midi__device-toggle-btn--on={d.allowed}
-                        aria-pressed={d.allowed ? 'true' : 'false'}
-                        aria-label="{d.allowed ? 'Disallow' : 'Allow'} {d.name}"
-                        onclick={() => toggleDevice(d.id)}
+                        class="midi__device-settings"
+                        aria-label="Device settings — {d.name}"
+                        title="Device details"
                       >
-                        <span class="midi__device-toggle-knob" aria-hidden="true"></span>
+                        <Icon name="settings" size={11} />
                       </button>
-                    </span>
-                    <button
-                      type="button"
-                      class="midi__device-settings"
-                      aria-label="Device settings — {d.name}"
-                      title="Device details"
-                    >
-                      <Icon name="settings" size={11} />
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            </div>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
           </article>
         </div>
       {:else if activeTab === 'snaps'}
