@@ -47,8 +47,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // — but maps onto AdapterPill's bundle vocabulary at the call-site.
   // Per-adapter live wiring remains `EV-INTEGRATION-MATRIX` scope.
   import Icon from './Icon.svelte';
+  import { performVariantStore, type PerformVariant } from './stores/performVariant.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
   import { AdapterPill, Timecode, type AdapterPillState } from './widgets';
+
+  // Wave 2.1 Lane B.1 — STANDARD / CONSOLE segmented toggle. Only
+  // visible on the Perform route; click handlers dispatch into the
+  // module-singleton `performVariantStore` so the Perform view re-
+  // renders the matching layout. Mapping is fixed: STANDARD → classic
+  // (canonical wireframe); CONSOLE → console (3-column dense, the
+  // bundle's "dense" variant).
+  const VARIANT_TOGGLES: ReadonlyArray<{ readonly id: PerformVariant; readonly label: string }> = [
+    { id: 'classic', label: 'STANDARD' },
+    { id: 'console', label: 'CONSOLE' },
+  ] as const;
 
   // Shared-primitive backfill — bundle's session-HUD `<Timecode />`
   // (`Chromaticity.html` line 204) only mounts on performance-adjacent
@@ -143,7 +155,27 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </span>
   </div>
 
-  <div class="top-bar__center" aria-hidden="true"></div>
+  <div class="top-bar__center">
+    {#if routeStore.current === 'perform'}
+      <!-- Wave 2.1 Lane B.1 — Perform variant toggle. Mirrors the
+           bundle's STANDARD / CONSOLE chrome (`Chromaticity.html`
+           lines ~74-88 + perform.jsx variant prop). Hidden on every
+           non-Perform route per the bundle. -->
+      <div class="top-bar__variant" role="group" aria-label="Perform layout variant">
+        {#each VARIANT_TOGGLES as toggle (toggle.id)}
+          <button
+            type="button"
+            class="top-bar__variant-btn"
+            class:top-bar__variant-btn--active={performVariantStore.current === toggle.id}
+            aria-pressed={performVariantStore.current === toggle.id ? 'true' : 'false'}
+            onclick={() => performVariantStore.set(toggle.id)}
+          >
+            {toggle.label}
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
 
   <div class="top-bar__hud">
     <div class="top-bar__pills" role="group" aria-label="Adapter status">
@@ -325,8 +357,69 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     white-space: nowrap;
   }
 
-  /* `.top-bar__center` reserves the middle column for future scene
-     timecode / GO-LIVE countdown chrome. No styles needed in W15. */
+  /* `.top-bar__center` reserves the middle column for the Wave 2.1
+     Lane B.1 Perform variant toggle (STANDARD / CONSOLE) on the
+     Perform route only. Left-aligned so the toggle sits adjacent to
+     the brand mark rather than centered across the full 1fr column.
+     Future B.2 transport HUD elements (timecode / beat dots / BPM /
+     audio meters) compose alongside this toggle. */
+  .top-bar__center {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    justify-self: start;
+  }
+
+  .top-bar__variant {
+    display: inline-flex;
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .top-bar__variant-btn {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 4px var(--space-md);
+    color: var(--color-text-2);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .top-bar__variant-btn:not(:last-child) {
+    border-right: 1px solid var(--color-line-2);
+  }
+
+  .top-bar__variant-btn:hover {
+    color: var(--color-text-0);
+    background: var(--color-bg-3);
+  }
+
+  .top-bar__variant-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    z-index: 1;
+  }
+
+  .top-bar__variant-btn--active {
+    background: var(--color-primary);
+    color: var(--color-on-primary, #fff);
+  }
+
+  .top-bar__variant-btn--active:hover {
+    background: var(--color-primary);
+    color: var(--color-on-primary, #fff);
+    filter: brightness(1.08);
+  }
 
   .top-bar__hud {
     display: flex;

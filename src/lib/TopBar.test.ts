@@ -11,9 +11,10 @@
 // `cleanup()` per `feedback_vitest_svelte_cleanup_required.md`.
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render } from '@testing-library/svelte';
+import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { performVariantStore } from './stores/performVariant.svelte';
 import { routeStore } from './stores/route.svelte';
 import TopBar from './TopBar.svelte';
 
@@ -51,6 +52,7 @@ describe('TopBar shell component', () => {
     // error during the unmount phase.
     cleanup();
     routeStore.set('perform');
+    performVariantStore.set('classic');
     vi.unstubAllGlobals();
   });
 
@@ -126,5 +128,71 @@ describe('TopBar shell component', () => {
     const glyph = button?.querySelector('.top-bar__go-live-glyph svg');
     expect(glyph).not.toBeNull();
     expect(glyph?.getAttribute('width')).toBe('11');
+  });
+
+  // Wave 2.1 Lane B.1 — STANDARD / CONSOLE variant toggle. Renders only
+  // on the Perform route; the active button reflects
+  // `performVariantStore.current`.
+  describe('Perform variant toggle (Lane B.1)', () => {
+    it('renders the STANDARD / CONSOLE toggle when the active route is Perform', () => {
+      routeStore.set('perform');
+      const { container } = render(TopBar);
+      const toggle = container.querySelector('.top-bar__variant');
+      expect(toggle).not.toBeNull();
+      expect(toggle?.getAttribute('role')).toBe('group');
+      expect(toggle?.getAttribute('aria-label')).toBe('Perform layout variant');
+      const buttons = toggle?.querySelectorAll('.top-bar__variant-btn');
+      expect(buttons?.length).toBe(2);
+      expect(buttons?.[0]?.textContent?.trim()).toBe('STANDARD');
+      expect(buttons?.[1]?.textContent?.trim()).toBe('CONSOLE');
+    });
+
+    it('hides the variant toggle on every non-Perform route', () => {
+      routeStore.set('library');
+      const { container } = render(TopBar);
+      expect(container.querySelector('.top-bar__variant')).toBeNull();
+    });
+
+    it('marks STANDARD as active by default (classic variant)', () => {
+      routeStore.set('perform');
+      const { container } = render(TopBar);
+      const buttons = container.querySelectorAll('.top-bar__variant-btn');
+      expect(buttons[0]?.getAttribute('aria-pressed')).toBe('true');
+      expect(buttons[0]).toHaveClass('top-bar__variant-btn--active');
+      expect(buttons[1]?.getAttribute('aria-pressed')).toBe('false');
+      expect(buttons[1]).not.toHaveClass('top-bar__variant-btn--active');
+    });
+
+    it('clicking CONSOLE flips the variant store + active button', async () => {
+      routeStore.set('perform');
+      const { container } = render(TopBar);
+      const buttons = container.querySelectorAll('.top-bar__variant-btn');
+      const consoleBtn = buttons[1];
+      expect(consoleBtn).toBeDefined();
+      if (!consoleBtn) return;
+      await fireEvent.click(consoleBtn);
+      // Store mutates synchronously.
+      expect(performVariantStore.current).toBe('console');
+      // Microtask flush for the reactive class update.
+      await Promise.resolve();
+      expect(consoleBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(consoleBtn).toHaveClass('top-bar__variant-btn--active');
+      expect(buttons[0]?.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('clicking STANDARD flips the variant store back to classic', async () => {
+      routeStore.set('perform');
+      performVariantStore.set('console');
+      const { container } = render(TopBar);
+      const buttons = container.querySelectorAll('.top-bar__variant-btn');
+      const standardBtn = buttons[0];
+      expect(standardBtn).toBeDefined();
+      if (!standardBtn) return;
+      await fireEvent.click(standardBtn);
+      expect(performVariantStore.current).toBe('classic');
+      await Promise.resolve();
+      expect(standardBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(buttons[1]?.getAttribute('aria-pressed')).toBe('false');
+    });
   });
 });

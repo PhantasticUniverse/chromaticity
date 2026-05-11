@@ -47,6 +47,7 @@ import {
   SETLIST_OPTIONS,
 } from '../data/perform-fixtures';
 import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
+import { performVariantStore } from '../stores/performVariant.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -63,21 +64,45 @@ function stubMatchMedia(reduce: boolean): void {
 
 beforeEach(() => {
   stubMatchMedia(false);
+  // Wave 2.1 Lane B.1 — the layout-variant store is a module singleton
+  // (persisted to localStorage). Force it to the bundle/wireframe
+  // default before each test so prior cases that switched variant
+  // can't leak into the next render.
+  performVariantStore.set('classic');
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   cleanup();
+  // Restore the default variant for the next describe block.
+  performVariantStore.set('classic');
 });
 
 describe('Perform view', () => {
-  it('renders the top-level Perform section with three columns', () => {
+  it('renders the classic variant as the 2-column default layout', () => {
     const { container, getByLabelText } = render(Perform);
     expect(getByLabelText('Perform')).toBeInTheDocument();
+    // Classic variant: left + right columns, no middle.
+    expect(container.querySelector('.perform--classic')).not.toBeNull();
+    expect(container.querySelector('.perform--console')).toBeNull();
+    expect(container.querySelector('.perform__col-left')).not.toBeNull();
+    expect(container.querySelector('.perform__col-right')).not.toBeNull();
+    expect(container.querySelector('.perform__col-middle')).toBeNull();
+    // Section carries data-variant for E2E / a11y inspection.
+    expect(getByLabelText('Perform').getAttribute('data-variant')).toBe('classic');
+  });
+
+  it('renders the console variant as a 3-column layout when the store flips', () => {
+    performVariantStore.set('console');
+    const { container, getByLabelText } = render(Perform);
+    expect(getByLabelText('Perform')).toBeInTheDocument();
+    expect(container.querySelector('.perform--console')).not.toBeNull();
+    expect(container.querySelector('.perform--classic')).toBeNull();
     expect(container.querySelector('.perform__col-left')).not.toBeNull();
     expect(container.querySelector('.perform__col-middle')).not.toBeNull();
     expect(container.querySelector('.perform__col-right')).not.toBeNull();
+    expect(getByLabelText('Perform').getAttribute('data-variant')).toBe('console');
   });
 
   it('renders the Scene Controls panel with the Glitch scene name', () => {
@@ -112,7 +137,15 @@ describe('Perform view', () => {
     );
   });
 
-  it('renders the Audio Reactivity panel landmark', () => {
+  it('omits the Audio Reactivity panel in the classic variant', () => {
+    const { queryByLabelText } = render(Perform);
+    // Classic variant matches the bundle's `variant === "classic"`
+    // branch (perform.jsx 149-167) — no Audio Reactivity panel.
+    expect(queryByLabelText('Audio reactivity')).toBeNull();
+  });
+
+  it('renders the Audio Reactivity panel landmark in the console variant', () => {
+    performVariantStore.set('console');
     const { getByLabelText } = render(Perform);
     const panel = getByLabelText('Audio reactivity');
     expect(panel).toBeInTheDocument();
@@ -133,6 +166,11 @@ describe('Perform view', () => {
   });
 
   it('composes the expected widget primitives (CrossFader · VuStereo · AudioReactivity)', () => {
+    // CrossFader + VuStereo render in both variants (Scene + Meta
+    // Controls panels are shared); AudioReactivity only renders in the
+    // console variant per the bundle. Switch to console so all three
+    // primitives are asserted in one render.
+    performVariantStore.set('console');
     const { container, getByLabelText } = render(Perform);
     // CrossFader lives inside the Scene Controls panel header band.
     const sceneCtrls = getByLabelText('Scene Controls');

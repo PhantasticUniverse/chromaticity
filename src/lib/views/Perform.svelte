@@ -9,21 +9,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // prev/recall/next, playlist prev/next, widgets showcase) with the
   // canonical 5-panel layout per the v0.2 bundle JSX
   // (`chromaticity-planning/ui-predev-bundle-v0.2-beta/views/perform.jsx`,
-  // the `PerformView` component, variant === "classic"). Bundle JSX is
-  // the canonical structural reference per the auto-memory
+  // the `PerformView` component). Bundle JSX is the canonical structural
+  // reference per the auto-memory
   // `feedback_wireframes_normative_for_ui_ux.md`; the
   // `v0.2-ui-wireframe-screenshots/pulse/perform.png` capture is the
   // visual confirmation (it renders the same JSX).
   //
-  // Layout: 3-column (W26 PR1). Left column = SceneControls +
-  // MetaControls + MediaStrip stacked vertically. Middle column =
-  // Preview hero + AudioReactivity panel. Right column = ScenePanel
-  // (rail of 4 buttons + Perform/Edit toggle + Setlist selector +
-  // Prev/Next/Shuffle row + scrollable scene list). The W18 PR1 port
-  // shipped 2-column (left controls + right preview/scenes); W25 PR2
-  // added the AudioReactivity panel into the right column with the
-  // column-3 split flagged as deferred. This refactor closes that
-  // deferral and matches the bundle's classic-variant column shape.
+  // Wave 2.1 Lane B.1 — Layout-variant switcher. The view supports two
+  // variants per the bundle's `PerformView` component:
+  //   - `classic` (default): 2-column wireframe layout — controls
+  //     stacked left (SceneControls + MetaControls + MediaStrip),
+  //     preview + scene panel stacked right. Maps to the bundle's
+  //     `variant === "classic"` branch (perform.jsx lines 149-167).
+  //     No AudioReactivity panel — the bundle places the audio readout
+  //     elsewhere (Audio Uniforms view) in classic.
+  //   - `console`: 3-column dense layout — SceneControls / MetaControls /
+  //     MediaStrip stacked left, Preview + AudioReactivity in the
+  //     middle column, ScenePanel on the right. Maps to the bundle's
+  //     `variant === "dense"` branch (perform.jsx lines 170-192).
+  //
+  // The W18 PR1 → W26 PR1 ports hardcoded the 3-column (console) layout
+  // which doesn't match the canonical wireframe; the AO smoke-tested the
+  // 2026-05-11 pre-alpha build and surfaced the mismatch. Lane B.1 ports
+  // the bundle's variant-switcher into Svelte: the variant is held in
+  // `performVariantStore` (persisted to `localStorage`); the TopBar
+  // renders a STANDARD / CONSOLE segmented control when the active route
+  // is Perform.
+  //
+  // Internal componentization: each of the six panels (SceneControls,
+  // MetaControls, MediaStrip, PreviewHero, AudioReactivityPanel,
+  // ScenePanel) is defined once as a `{#snippet}` and rendered through
+  // `{@render}` inside variant-specific layout containers. This keeps
+  // the panel markup DRY across both variants and ensures future
+  // variants don't duplicate the per-panel chrome.
   //
   // Locked W18 PR1 deviations from the bundle:
   //   - The bundle's `<Preview seed={4} kind="glitch" label="Glitch" />`
@@ -70,6 +88,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/perform-fixtures';
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
+  import { performVariantStore } from '../stores/performVariant.svelte';
   import {
     ControlGroup,
     CrossFader,
@@ -96,6 +115,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /** SceneKind for a media card — bundle parity is `rings` when the
    * fixture does not declare one. */
   const MEDIA_DEFAULT_SCENE_KIND: SceneKind = 'rings';
+
+  // Wave 2.1 Lane B.1 — layout variant. Lives in the module-singleton
+  // `performVariantStore` so the TopBar's STANDARD / CONSOLE toggle and
+  // this view share one source of truth without prop drilling.
+  const variant = $derived(performVariantStore.current);
 
   let activeScene = $state<number>(SETLIST_ACTIVE_INDEX);
   let activeMedia = $state<number>(MEDIA_DEFAULT_ACTIVE_INDEX);
@@ -131,270 +155,312 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 </script>
 
-<section class="perform" aria-label="Perform">
-  <div class="perform__col-left">
-    <!-- Scene Controls panel -->
-    <section class="panel" aria-label="Scene Controls">
-      <header class="panel__head">
-        <h2 class="panel__title">
-          Scene Controls <span class="panel__sep" aria-hidden="true">·</span>
-          <span class="panel__title-name">Glitch</span>
-        </h2>
-        <span class="panel__spacer" aria-hidden="true"></span>
-        <button type="button" class="btn btn--ghost" title="Lock all">
-          <Icon name="lock" size={12} />
-        </button>
-        <button type="button" class="btn btn--ghost">Default</button>
-        <button type="button" class="btn btn--ghost">
-          <Icon name="random" size={12} /> Random
-        </button>
-      </header>
-      <div class="scene-controls__xfade">
-        <CrossFader
-          value={crossfaderPos}
-          labels={['A', 'B']}
-          onChange={(v) => (crossfaderPos = v)}
+<!-- Wave 2.1 Lane B.1 — Each of the six panels is defined once as a
+     `{#snippet}` then rendered into variant-specific layout
+     containers. Keeps panel markup DRY across `classic` (2-column) and
+     `console` (3-column) layouts; future variants compose by adding a
+     new layout container that references the same snippet set. -->
+
+{#snippet sceneControlsPanel()}
+  <section class="panel" aria-label="Scene Controls">
+    <header class="panel__head">
+      <h2 class="panel__title">
+        Scene Controls <span class="panel__sep" aria-hidden="true">·</span>
+        <span class="panel__title-name">Glitch</span>
+      </h2>
+      <span class="panel__spacer" aria-hidden="true"></span>
+      <button type="button" class="btn btn--ghost" title="Lock all">
+        <Icon name="lock" size={12} />
+      </button>
+      <button type="button" class="btn btn--ghost">Default</button>
+      <button type="button" class="btn btn--ghost">
+        <Icon name="random" size={12} /> Random
+      </button>
+    </header>
+    <div class="scene-controls__xfade">
+      <CrossFader value={crossfaderPos} labels={['A', 'B']} onChange={(v) => (crossfaderPos = v)} />
+    </div>
+    <div class="panel__body panel__body--row-scroll">
+      {#each SCENE_CONTROL_GROUPS as group (group.name)}
+        {@render controlGroupBlock(group)}
+      {/each}
+    </div>
+  </section>
+{/snippet}
+
+{#snippet metaControlsPanel()}
+  <section class="panel" aria-label="Meta Controls">
+    <header class="panel__head">
+      <h2 class="panel__title">Meta Controls</h2>
+      <span class="panel__spacer" aria-hidden="true"></span>
+      <div class="meta-controls__vu" aria-hidden="false">
+        <VuStereo width={92} />
+      </div>
+      <button type="button" class="btn btn--ghost">Default</button>
+      <button type="button" class="btn btn--ghost">
+        <Icon name="random" size={12} /> Random
+      </button>
+    </header>
+    <div class="panel__body panel__body--row-scroll">
+      {#each META_CONTROL_GROUPS as group (group.name)}
+        {@render controlGroupBlock(group)}
+      {/each}
+    </div>
+  </section>
+{/snippet}
+
+{#snippet mediaStripPanel()}
+  <section class="panel" aria-label="Media">
+    <header class="panel__head">
+      <h2 class="panel__title">Media</h2>
+      <div class="tabs" role="tablist" aria-label="Media filter">
+        {#each MEDIA_TABS as tab (tab)}
+          <button
+            type="button"
+            class="tab"
+            class:tab--active={activeTab === tab}
+            role="tab"
+            aria-selected={activeTab === tab ? 'true' : 'false'}
+            onclick={() => selectTab(tab)}
+          >
+            {tab}
+          </button>
+        {/each}
+      </div>
+      <span class="panel__spacer" aria-hidden="true"></span>
+      <button type="button" class="btn btn--ghost" title="Refresh">
+        <Icon name="refresh" size={12} />
+      </button>
+    </header>
+    <div class="panel__body media-grid">
+      {#each MEDIA_CARDS as card, i (card.id)}
+        <!-- Shared-primitive backfill — `MediaCard` widget closes the
+             W18 PR1 inline `mediaCardBlock` snippet placeholder. The
+             widget composes the W36 `SceneStill` canvas thumbnail
+             for `video` tiles in place of the previous hue-rotating
+             gradient surrogate; `none` / `webcam` / `test` surface
+             treatments stay bundle-faithful. -->
+        <MediaCard
+          label={card.label}
+          kind={card.kind}
+          seed={card.seed}
+          sceneKind={MEDIA_DEFAULT_SCENE_KIND}
+          active={i === activeMedia}
+          onClick={() => selectMedia(i)}
         />
-      </div>
-      <div class="panel__body panel__body--row-scroll">
-        {#each SCENE_CONTROL_GROUPS as group (group.name)}
-          {@render controlGroupBlock(group)}
-        {/each}
-      </div>
-    </section>
+      {/each}
+    </div>
+  </section>
+{/snippet}
 
-    <!-- Meta Controls panel -->
-    <section class="panel" aria-label="Meta Controls">
-      <header class="panel__head">
-        <h2 class="panel__title">Meta Controls</h2>
-        <span class="panel__spacer" aria-hidden="true"></span>
-        <div class="meta-controls__vu" aria-hidden="false">
-          <VuStereo width={92} />
-        </div>
-        <button type="button" class="btn btn--ghost">Default</button>
-        <button type="button" class="btn btn--ghost">
-          <Icon name="random" size={12} /> Random
+{#snippet previewHero()}
+  <!-- Preview hero. Default surface is the W18 PR1 gradient-blob
+       substitute for the unported `<Preview>`; W21 PR2 swaps to the
+       static SMPTE test-card pattern when the test-card MediaStrip
+       card is active (calibration / output diagnostic surface). -->
+  {#if testCardActive}
+    <div class="preview preview--test">
+      <TestCard label="Test Card" />
+      {#if unlicensed}
+        <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
+      {/if}
+    </div>
+  {:else}
+    <div class="preview" role="img" aria-label="Live scene preview · Glitch (placeholder)">
+      <span class="preview__blob preview__blob--a" aria-hidden="true"></span>
+      <span class="preview__blob preview__blob--b" aria-hidden="true"></span>
+      <span class="preview__blob preview__blob--c" aria-hidden="true"></span>
+      <span class="preview__blob preview__blob--d" aria-hidden="true"></span>
+      <span class="preview__blob preview__blob--e" aria-hidden="true"></span>
+      <span class="preview__overlay" aria-hidden="true"></span>
+      <span class="preview__label">Glitch</span>
+      {#if unlicensed}
+        <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
+        <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet audioReactivityPanel()}
+  <!-- Audio Reactivity panel — W25 PR2 ports the bundle's
+       `AudioReactivity` JSX (perform.jsx lines 198-261). Panel chrome
+       matches the existing `.panel` / `.panel__head` shared style; the
+       widget body provides the 4 band tiles + animated 48-bar FFT +
+       tempo strip per the bundle. Renders in the `console` (dense)
+       variant only — the bundle's classic variant places the audio
+       readout in a separate view per perform.jsx lines 149-167. -->
+  <section class="panel" aria-label="Audio reactivity">
+    <header class="panel__head">
+      <h2 class="panel__title">Audio Reactivity</h2>
+    </header>
+    <div class="panel__body">
+      <AudioReactivity />
+    </div>
+  </section>
+{/snippet}
+
+{#snippet scenePanel()}
+  <section class="panel scene-panel" aria-label="Scenes">
+    <header class="panel__head">
+      <div class="rail" role="toolbar" aria-label="Scene panel mode">
+        <button
+          type="button"
+          class="rail-btn"
+          class:rail-btn--active={railMode === 'scenes'}
+          aria-pressed={railMode === 'scenes' ? 'true' : 'false'}
+          title="Scenes"
+          onclick={() => (railMode = 'scenes')}
+        >
+          <Icon name="list" size={13} />
         </button>
-      </header>
-      <div class="panel__body panel__body--row-scroll">
-        {#each META_CONTROL_GROUPS as group (group.name)}
-          {@render controlGroupBlock(group)}
-        {/each}
+        <button
+          type="button"
+          class="rail-btn"
+          class:rail-btn--active={railMode === 'presets'}
+          aria-pressed={railMode === 'presets' ? 'true' : 'false'}
+          title="Presets"
+          onclick={() => (railMode = 'presets')}
+        >
+          <Icon name="grid" size={13} />
+        </button>
+        <button
+          type="button"
+          class="rail-btn"
+          class:rail-btn--active={railMode === 'edit'}
+          aria-pressed={railMode === 'edit' ? 'true' : 'false'}
+          title="Edit"
+          onclick={() => (railMode = 'edit')}
+        >
+          <Icon name="edit" size={13} />
+        </button>
+        <button
+          type="button"
+          class="rail-btn"
+          class:rail-btn--active={railMode === 'add'}
+          aria-pressed={railMode === 'add' ? 'true' : 'false'}
+          title="Add"
+          onclick={() => (railMode = 'add')}
+        >
+          <Icon name="plus" size={13} />
+        </button>
       </div>
-    </section>
+      <span class="panel__spacer" aria-hidden="true"></span>
+      <span class="panel__title">{SETLIST_FIXTURE.length} scenes</span>
+    </header>
 
-    <!-- Media strip panel -->
-    <section class="panel" aria-label="Media">
-      <header class="panel__head">
-        <h2 class="panel__title">Media</h2>
-        <div class="tabs" role="tablist" aria-label="Media filter">
-          {#each MEDIA_TABS as tab (tab)}
-            <button
-              type="button"
-              class="tab"
-              class:tab--active={activeTab === tab}
-              role="tab"
-              aria-selected={activeTab === tab ? 'true' : 'false'}
-              onclick={() => selectTab(tab)}
-            >
-              {tab}
-            </button>
+    <div class="scene-panel__mode">
+      <button
+        type="button"
+        class="btn btn--full"
+        class:btn--primary={perfMode === 'perform'}
+        aria-pressed={perfMode === 'perform' ? 'true' : 'false'}
+        onclick={() => (perfMode = 'perform')}
+      >
+        Perform
+      </button>
+      <button
+        type="button"
+        class="btn btn--full"
+        class:btn--primary={perfMode === 'edit'}
+        aria-pressed={perfMode === 'edit' ? 'true' : 'false'}
+        onclick={() => (perfMode = 'edit')}
+      >
+        Edit
+      </button>
+    </div>
+
+    <div class="scene-panel__setlist">
+      <label class="scene-panel__select-wrap">
+        <span class="visually-hidden">Active setlist</span>
+        <select class="scene-panel__select" bind:value={setlistChoice}>
+          {#each SETLIST_OPTIONS as opt (opt)}
+            <option value={opt}>{opt}</option>
           {/each}
-        </div>
-        <span class="panel__spacer" aria-hidden="true"></span>
-        <button type="button" class="btn btn--ghost" title="Refresh">
-          <Icon name="refresh" size={12} />
-        </button>
-      </header>
-      <div class="panel__body media-grid">
-        {#each MEDIA_CARDS as card, i (card.id)}
-          <!-- Shared-primitive backfill — `MediaCard` widget closes the
-               W18 PR1 inline `mediaCardBlock` snippet placeholder. The
-               widget composes the W36 `SceneStill` canvas thumbnail
-               for `video` tiles in place of the previous hue-rotating
-               gradient surrogate; `none` / `webcam` / `test` surface
-               treatments stay bundle-faithful. -->
-          <MediaCard
-            label={card.label}
-            kind={card.kind}
-            seed={card.seed}
-            sceneKind={MEDIA_DEFAULT_SCENE_KIND}
-            active={i === activeMedia}
-            onClick={() => selectMedia(i)}
+        </select>
+      </label>
+      <span class="mono scene-panel__timecode">00h 00m 00s</span>
+      <button type="button" class="rail-btn rail-btn--small" title="Play setlist">
+        <Icon name="play" size={12} />
+      </button>
+    </div>
+
+    <div class="scene-panel__nav">
+      <button type="button" class="btn btn--full">
+        <Icon name="prev" size={12} /> Previous
+      </button>
+      <button type="button" class="btn btn--full">
+        Next <Icon name="next" size={12} />
+      </button>
+      <button type="button" class="btn btn--ghost" title="Shuffle">
+        <Icon name="shuffle" size={12} />
+      </button>
+      <span class="mono scene-panel__auto">auto</span>
+    </div>
+
+    <ol class="scene-panel__list">
+      {#each SETLIST_FIXTURE as scene (scene.idx)}
+        <li>
+          <!-- Shared-primitive backfill — `SceneRow` widget closes the
+               W18 PR1 inline placeholder. The widget composes the W36
+               `SceneStill` canvas thumbnail in place of the previous
+               hue-rotating gradient surrogate. Kind is coerced from
+               the fixture's free-form string against the bundle's
+               16-name SceneKind family; unknown values fall back to
+               `rings`. -->
+          <SceneRow
+            idx={scene.idx + 1}
+            name={scene.name}
+            tag={scene.tag}
+            dur={scene.duration}
+            kind={asSceneKind(scene.kind)}
+            seed={scene.seed}
+            active={scene.idx === activeScene}
+            onClick={() => selectScene(scene.idx)}
           />
-        {/each}
-      </div>
-    </section>
-  </div>
+        </li>
+      {/each}
+    </ol>
+  </section>
+{/snippet}
 
-  <div class="perform__col-middle">
-    <!-- Preview hero. Default surface is the W18 PR1 gradient-blob
-         substitute for the unported `<Preview>`; W21 PR2 swaps to the
-         static SMPTE test-card pattern when the test-card MediaStrip
-         card is active (calibration / output diagnostic surface). -->
-    {#if testCardActive}
-      <div class="preview preview--test">
-        <TestCard label="Test Card" />
-        {#if unlicensed}
-          <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
-        {/if}
-      </div>
-    {:else}
-      <div class="preview" role="img" aria-label="Live scene preview · Glitch (placeholder)">
-        <span class="preview__blob preview__blob--a" aria-hidden="true"></span>
-        <span class="preview__blob preview__blob--b" aria-hidden="true"></span>
-        <span class="preview__blob preview__blob--c" aria-hidden="true"></span>
-        <span class="preview__blob preview__blob--d" aria-hidden="true"></span>
-        <span class="preview__blob preview__blob--e" aria-hidden="true"></span>
-        <span class="preview__overlay" aria-hidden="true"></span>
-        <span class="preview__label">Glitch</span>
-        {#if unlicensed}
-          <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
-          <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- Audio Reactivity panel — W25 PR2 ports the bundle's
-         `AudioReactivity` JSX (perform.jsx lines 198-261). Panel chrome
-         matches the existing `.panel` / `.panel__head` shared style; the
-         widget body provides the 4 band tiles + animated 48-bar FFT +
-         tempo strip per the bundle. -->
-    <section class="panel" aria-label="Audio reactivity">
-      <header class="panel__head">
-        <h2 class="panel__title">Audio Reactivity</h2>
-      </header>
-      <div class="panel__body">
-        <AudioReactivity />
-      </div>
-    </section>
-  </div>
-
-  <div class="perform__col-right">
-    <!-- Scene panel -->
-    <section class="panel scene-panel" aria-label="Scenes">
-      <header class="panel__head">
-        <div class="rail" role="toolbar" aria-label="Scene panel mode">
-          <button
-            type="button"
-            class="rail-btn"
-            class:rail-btn--active={railMode === 'scenes'}
-            aria-pressed={railMode === 'scenes' ? 'true' : 'false'}
-            title="Scenes"
-            onclick={() => (railMode = 'scenes')}
-          >
-            <Icon name="list" size={13} />
-          </button>
-          <button
-            type="button"
-            class="rail-btn"
-            class:rail-btn--active={railMode === 'presets'}
-            aria-pressed={railMode === 'presets' ? 'true' : 'false'}
-            title="Presets"
-            onclick={() => (railMode = 'presets')}
-          >
-            <Icon name="grid" size={13} />
-          </button>
-          <button
-            type="button"
-            class="rail-btn"
-            class:rail-btn--active={railMode === 'edit'}
-            aria-pressed={railMode === 'edit' ? 'true' : 'false'}
-            title="Edit"
-            onclick={() => (railMode = 'edit')}
-          >
-            <Icon name="edit" size={13} />
-          </button>
-          <button
-            type="button"
-            class="rail-btn"
-            class:rail-btn--active={railMode === 'add'}
-            aria-pressed={railMode === 'add' ? 'true' : 'false'}
-            title="Add"
-            onclick={() => (railMode = 'add')}
-          >
-            <Icon name="plus" size={13} />
-          </button>
-        </div>
-        <span class="panel__spacer" aria-hidden="true"></span>
-        <span class="panel__title">{SETLIST_FIXTURE.length} scenes</span>
-      </header>
-
-      <div class="scene-panel__mode">
-        <button
-          type="button"
-          class="btn btn--full"
-          class:btn--primary={perfMode === 'perform'}
-          aria-pressed={perfMode === 'perform' ? 'true' : 'false'}
-          onclick={() => (perfMode = 'perform')}
-        >
-          Perform
-        </button>
-        <button
-          type="button"
-          class="btn btn--full"
-          class:btn--primary={perfMode === 'edit'}
-          aria-pressed={perfMode === 'edit' ? 'true' : 'false'}
-          onclick={() => (perfMode = 'edit')}
-        >
-          Edit
-        </button>
-      </div>
-
-      <div class="scene-panel__setlist">
-        <label class="scene-panel__select-wrap">
-          <span class="visually-hidden">Active setlist</span>
-          <select class="scene-panel__select" bind:value={setlistChoice}>
-            {#each SETLIST_OPTIONS as opt (opt)}
-              <option value={opt}>{opt}</option>
-            {/each}
-          </select>
-        </label>
-        <span class="mono scene-panel__timecode">00h 00m 00s</span>
-        <button type="button" class="rail-btn rail-btn--small" title="Play setlist">
-          <Icon name="play" size={12} />
-        </button>
-      </div>
-
-      <div class="scene-panel__nav">
-        <button type="button" class="btn btn--full">
-          <Icon name="prev" size={12} /> Previous
-        </button>
-        <button type="button" class="btn btn--full">
-          Next <Icon name="next" size={12} />
-        </button>
-        <button type="button" class="btn btn--ghost" title="Shuffle">
-          <Icon name="shuffle" size={12} />
-        </button>
-        <span class="mono scene-panel__auto">auto</span>
-      </div>
-
-      <ol class="scene-panel__list">
-        {#each SETLIST_FIXTURE as scene (scene.idx)}
-          <li>
-            <!-- Shared-primitive backfill — `SceneRow` widget closes the
-                 W18 PR1 inline placeholder. The widget composes the W36
-                 `SceneStill` canvas thumbnail in place of the previous
-                 hue-rotating gradient surrogate. Kind is coerced from
-                 the fixture's free-form string against the bundle's
-                 16-name SceneKind family; unknown values fall back to
-                 `rings`. -->
-            <SceneRow
-              idx={scene.idx + 1}
-              name={scene.name}
-              tag={scene.tag}
-              dur={scene.duration}
-              kind={asSceneKind(scene.kind)}
-              seed={scene.seed}
-              active={scene.idx === activeScene}
-              onClick={() => selectScene(scene.idx)}
-            />
-          </li>
-        {/each}
-      </ol>
-    </section>
-  </div>
-</section>
+{#if variant === 'classic'}
+  <!-- Classic variant — 2-column wireframe layout per the bundle's
+       `variant === "classic"` branch (perform.jsx lines 149-167):
+       SceneControls + MetaControls + MediaStrip stacked left; Preview
+       hero + Scene panel stacked right. No AudioReactivity panel in
+       this variant. -->
+  <section class="perform perform--classic" aria-label="Perform" data-variant="classic">
+    <div class="perform__col-left">
+      {@render sceneControlsPanel()}
+      {@render metaControlsPanel()}
+      {@render mediaStripPanel()}
+    </div>
+    <div class="perform__col-right">
+      {@render previewHero()}
+      {@render scenePanel()}
+    </div>
+  </section>
+{:else}
+  <!-- Console variant — 3-column dense layout per the bundle's
+       `variant === "dense"` branch (perform.jsx lines 170-192):
+       controls left, preview + AudioReactivity center, ScenePanel
+       right. -->
+  <section class="perform perform--console" aria-label="Perform" data-variant="console">
+    <div class="perform__col-left">
+      {@render sceneControlsPanel()}
+      {@render metaControlsPanel()}
+      {@render mediaStripPanel()}
+    </div>
+    <div class="perform__col-middle">
+      {@render previewHero()}
+      {@render audioReactivityPanel()}
+    </div>
+    <div class="perform__col-right">
+      {@render scenePanel()}
+    </div>
+  </section>
+{/if}
 
 {#snippet controlGroupBlock(group: PerformControlGroup)}
   <div class="cg-wrap">
@@ -415,24 +481,51 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 {/snippet}
 
 <style>
-  /* ---------------- Outer 3-column grid ------------------------------------
-   * Wide (>= 1400px): three columns side-by-side per the bundle classic
-   * variant — controls / preview+audio / scenes (1.05fr 1.55fr 1fr).
-   * Mid (1100-1399px): two columns — left + middle stay separate, the
-   * scene panel wraps below to span both via grid-template-areas.
-   * Narrow (< 1100px): single column stack. */
+  /* ---------------- Outer grid (variant-aware) -----------------------------
+   * Wave 2.1 Lane B.1 — two layout variants:
+   *   - `classic` (default): 2-column wireframe layout. Left column =
+   *     controls (1.05fr); right column = preview + scene panel (1.55fr).
+   *     Maps to the bundle's `variant === "classic"` branch
+   *     (`perform.jsx` lines 149-167).
+   *   - `console`: 3-column dense layout. Left = controls, middle =
+   *     preview + audio reactivity, right = scene panel
+   *     (1.05fr 1.55fr 1fr). Maps to the bundle's `variant === "dense"`
+   *     branch (`perform.jsx` lines 170-192).
+   *
+   * Both variants share the panel-column sub-styles (`__col-left`,
+   * `__col-middle`, `__col-right`); only the outer grid-template
+   * differs. The W34c bundle row-template discipline
+   * (`grid-template-rows: auto auto minmax(0, 1fr)`) is preserved on
+   * each column so the last panel absorbs remaining vertical space.
+   *
+   * Responsive breakpoints:
+   *   - Classic stays 2-column down to 1100px, then collapses to a
+   *     single-column stack.
+   *   - Console keeps its 3-column layout above 1400px, collapses to
+   *     left+middle / right-spans-both at 1100-1399px, and to a
+   *     single-column stack below 1100px. */
   .perform {
     display: grid;
-    grid-template-columns: 1.05fr 1.55fr 1fr;
-    grid-template-areas: 'left middle right';
     gap: var(--space-md);
     align-items: stretch;
     height: 100%;
     min-height: 0;
   }
 
+  /* Classic — 2-column (controls / preview+scenes). */
+  .perform--classic {
+    grid-template-columns: 1.05fr 1.55fr;
+    grid-template-areas: 'left right';
+  }
+
+  /* Console — 3-column (controls / preview+audio / scenes). */
+  .perform--console {
+    grid-template-columns: 1.05fr 1.55fr 1fr;
+    grid-template-areas: 'left middle right';
+  }
+
   @media (max-width: 1399px) {
-    .perform {
+    .perform--console {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       grid-template-areas:
         'left middle'
@@ -441,7 +534,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   @media (max-width: 1100px) {
-    .perform {
+    .perform--classic {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        'left'
+        'right';
+    }
+    .perform--console {
       grid-template-columns: minmax(0, 1fr);
       grid-template-areas:
         'left'
@@ -481,10 +580,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .perform__col-right {
     grid-area: right;
     display: grid;
+    /* Console variant: column hosts the ScenePanel only (1 row fills
+       remaining vertical space). Classic variant overrides below to a
+       Preview hero (auto, aspect-ratio constrained) + ScenePanel
+       (1fr) stack — matches the bundle's `.perform-right` column in
+       perform.jsx variant === "classic". */
     grid-template-rows: minmax(0, 1fr);
     gap: var(--space-md);
     min-width: 0;
     min-height: 0;
+  }
+
+  .perform--classic .perform__col-right {
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   /* ---------------- Panel chrome (shared) ---------------------------------- */
