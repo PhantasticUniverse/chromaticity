@@ -479,7 +479,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         kind={sceneKindFromMetadata({ title: AUTHOR_SCENE_META.title })}
         seed={sceneSeedFromMetadata({ id: AUTHOR_SCENE_META.title })}
         audio
-        dpr={1}
         ariaLabel={`Live scene preview · ${AUTHOR_SCENE_META.title} (placeholder canvas-2d pattern)`}
       />
       <span class="au-author__preview-label mono">{AUTHOR_SCENE_META.title}</span>

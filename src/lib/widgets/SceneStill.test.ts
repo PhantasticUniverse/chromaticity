@@ -81,6 +81,46 @@ describe('renderStill', () => {
   });
 });
 
+describe('RENDERERS audio-reactivity contract (Wave 2.3 Q.1)', () => {
+  // Every renderer must declare and accept a 6-arg signature
+  // `(ctx, t, seed, w, h, lvl)`. Pre-Wave 2.3 Q.1 the `bars` renderer
+  // silently dropped `lvl` from its signature (TypeScript's structural
+  // typing accepted the under-arity function but it was a latent bug
+  // signalled by the AO smoke-test). This guard catches future
+  // regressions.
+  it('every renderer accepts 6 positional arguments', () => {
+    for (const kind of SCENE_KINDS) {
+      const fn = RENDERERS[kind];
+      // `Function.length` reports the count of declared positional
+      // parameters before any with default values. All 16 renderers
+      // share the (ctx, t, seed, w, h, lvl) signature → length 6.
+      expect(fn.length).toBe(6);
+    }
+  });
+
+  it('renderers do not throw when called with lvl=0 (silent audio)', () => {
+    const c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 36;
+    const ctx = c.getContext('2d');
+    if (!ctx) return; // jsdom may stub getContext; skip without throwing.
+    for (const kind of SCENE_KINDS) {
+      expect(() => RENDERERS[kind](ctx, 1.0, 5, 64, 36, 0)).not.toThrow();
+    }
+  });
+
+  it('renderers do not throw when called with lvl=1 (loud audio)', () => {
+    const c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 36;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    for (const kind of SCENE_KINDS) {
+      expect(() => RENDERERS[kind](ctx, 1.0, 5, 64, 36, 1)).not.toThrow();
+    }
+  });
+});
+
 describe('SceneStill widget', () => {
   afterEach(() => {
     cleanup();

@@ -592,7 +592,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         kind={previewKind}
         seed={previewSeed}
         audio
-        dpr={1}
         ariaLabel={`Live scene preview · ${sceneTitleName}`}
       />
       <span class="preview__label">{sceneTitleName}</span>

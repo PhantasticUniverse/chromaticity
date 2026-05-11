@@ -27,6 +27,38 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `renderStill`) so users with motion preferences see a
   // recognisable thumbnail surface.
   //
+  // **Wave 2.3 Q.1 stress-test fixes.** The AO smoke-test of Wave 2.2
+  // R.1 reported the Perform preview pane (driving the `bars`
+  // SceneKind for `library/demo-spectrum.chroma`) as "mostly black
+  // with a static version flashing on and off". Four narrowings:
+  //
+  //   1. **ResizeObserver flicker** — the bundle's `resize()`
+  //      unconditionally reassigns `c.width` / `c.height` on every
+  //      ResizeObserver tick. Per the HTML spec, ANY write to
+  //      `canvas.width` clears the bitmap to transparent — even when
+  //      the new value equals the existing value. When the layout
+  //      reflows faster than rAF (initial mount on macOS + window-
+  //      decoration animations), the bitmap is repeatedly cleared
+  //      between draws. The fix guards the write behind a
+  //      "value actually changed" check.
+  //   2. **DPR=1 default on retina** — the bundle hardcoded `dpr=1`
+  //      because its React surface ran in a Storybook-like demo. On
+  //      a 2x macOS display the bitmap is half the panel's physical
+  //      pixel density and looks visibly soft. Default to
+  //      `window.devicePixelRatio ?? 1` so retina displays render
+  //      sharp out of the box; consumers can still pass an explicit
+  //      `dpr` to override.
+  //   3. **Audio gate too narrow** — the Wave 2.2 R.1 gate
+  //      `live && (live.rms > 0 || live.peak > 0)` falls through to
+  //      the synthetic pulse when the live producer is running but
+  //      the microphone is silent. The intent is "use live when the
+  //      IPC seam is up, synthetic only as a startup fallback"; the
+  //      fix widens the gate to `live !== null`.
+  //   4. **Vignette over-darkening** — the bundle's 0.65 outer-stop
+  //      darkens the edges of wide preview panes into unreadability.
+  //      Soften to 0.45 to match the bundle's intent of a subtle
+  //      CRT-style vignette.
+  //
   // Consumers (Perform preview hero, Library hover preview, Author
   // live-preview tile) can swap from `SceneStill` to `SceneCanvas`
   // when they want a moving image. The widget is a thin Svelte
@@ -42,13 +74,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
      *  when false, the level is fixed at 0.3 (the bundle's no-audio
      *  default). */
     audio?: boolean;
-    /** Device-pixel-ratio multiplier for the bitmap. Default 1. */
+    /** Device-pixel-ratio multiplier for the bitmap. Defaults to
+     *  `window.devicePixelRatio ?? 1` so retina displays render sharp.
+     *  Pass an explicit value to override (e.g., `dpr={1}` for
+     *  performance on dense canvases). */
     dpr?: number;
     /** Optional ARIA description. Default `presentation` (decorative). */
     ariaLabel?: string;
   };
 
-  let { kind = 'rings', seed = 0, audio = true, dpr = 1, ariaLabel }: Props = $props();
+  let { kind = 'rings', seed = 0, audio = true, dpr, ariaLabel }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let reduceMotion = $state(false);
@@ -79,11 +114,29 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const ctx = c.getContext('2d');
     if (!ctx) return;
 
+    // Wave 2.3 Q.1: DPR defaults to the device-pixel-ratio so retina
+    // displays render sharp. Consumers can still pass `dpr={1}` to
+    // override. `typeof window` guard for SSR / Vitest jsdom where
+    // `window.devicePixelRatio` is missing or `undefined`.
+    const effectiveDpr =
+      dpr ??
+      (typeof window !== 'undefined' && typeof window.devicePixelRatio === 'number'
+        ? window.devicePixelRatio
+        : 1);
+
     let raf = 0;
     const resize = (): void => {
       const r = c.getBoundingClientRect();
-      c.width = Math.max(1, Math.round(r.width * (dpr || 1)));
-      c.height = Math.max(1, Math.round(r.height * (dpr || 1)));
+      // Wave 2.3 Q.1: only reassign `c.width` / `c.height` when the
+      // computed bitmap size differs from the current one. Setting
+      // the property always clears the bitmap (HTML spec) even when
+      // the value is unchanged — without the guard, ResizeObserver
+      // firing faster than rAF caused the AO-reported "flashing"
+      // black canvas.
+      const nw = Math.max(1, Math.round(r.width * (effectiveDpr || 1)));
+      const nh = Math.max(1, Math.round(r.height * (effectiveDpr || 1)));
+      if (c.width !== nw) c.width = nw;
+      if (c.height !== nh) c.height = nh;
     };
     resize();
 
@@ -98,7 +151,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const draw = (t: number, lvl: number): void => {
       const r = RENDERERS[kind] ?? RENDERERS.rings;
       r(ctx, t, seed, c.width, c.height, Math.max(0, Math.min(1, lvl)));
-      // Vignette + scanline post-pass per the bundle.
+      // Vignette + scanline post-pass per the bundle. Wave 2.3 Q.1:
+      // softened from 0.65 → 0.45 to keep wide preview panes
+      // readable at the edges.
       const vg = ctx.createRadialGradient(
         c.width / 2,
         c.height / 2,
@@ -108,7 +163,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         Math.max(c.width, c.height) * 0.75,
       );
       vg.addColorStop(0, 'transparent');
-      vg.addColorStop(1, 'rgba(0,0,0,0.65)');
+      vg.addColorStop(1, 'rgba(0,0,0,0.45)');
       ctx.fillStyle = vg;
       ctx.fillRect(0, 0, c.width, c.height);
     };
@@ -124,14 +179,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const start = performance.now();
     const loop = (): void => {
       const t = (performance.now() - start) / 1000;
-      // Wave 2.2 Lane R.1 — prefer the live engine RMS when a
-      // snapshot is present; otherwise fall back to the bundle's
-      // synthetic pulse so the no-snapshot startup window + the
-      // no-Tauri-context fallback still animate.
+      // Wave 2.2 Lane R.1 + Wave 2.3 Q.1 — prefer the live engine
+      // snapshot when present (gate widened from "rms > 0 || peak > 0"
+      // to "snapshot !== null" so silent-microphone audio still drives
+      // the renderer instead of falling through to synthetic). The
+      // synthetic sine-pulse only renders during the no-snapshot
+      // startup window + the no-Tauri-context fallback.
       let lvl: number;
       if (audio) {
         const live = audioSnapshotStore.snapshot;
-        if (live && (live.rms > 0 || live.peak > 0)) {
+        if (live !== null) {
           // RMS is already in [0, 1] from the engine producer; clamp
           // for safety since the wire is `f32`. Add a small peak
           // contribution so transient hits still register.
