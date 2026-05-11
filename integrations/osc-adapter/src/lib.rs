@@ -31,4 +31,5 @@
 
 pub mod adapter;
 pub mod defaults;
+pub mod route_registry;
 pub mod routes;

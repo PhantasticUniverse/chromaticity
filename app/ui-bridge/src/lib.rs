@@ -721,6 +721,40 @@ impl MidiLearnKindPayload {
     }
 }
 
+/// IPC-facing direction discriminant mirroring
+/// [`chromaticity_osc_adapter::route_registry::OscDirection`] across
+/// the Tauri command boundary.
+///
+/// Wave 2.1 Lane D.3: backs the operator-facing route binding view's
+/// direction column. ts-rs renders the enum as a flat string union
+/// (`"In" | "Out" | "Both"`) because there are no payload-bearing
+/// variants. The frontend's `OscDirection` type-import in
+/// `src/lib/data/osc-routes.ts` uses lower-case `'in' | 'out' |
+/// 'both'`; the view's render code lower-cases the PascalCase
+/// IPC string at the seam (`direction.toLowerCase()` is the
+/// existing pattern in `Osc.svelte`).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum OscDirectionPayload {
+    In,
+    Out,
+    Both,
+}
+
+impl From<chromaticity_osc_adapter::route_registry::OscDirection> for OscDirectionPayload {
+    fn from(d: chromaticity_osc_adapter::route_registry::OscDirection) -> Self {
+        match d {
+            chromaticity_osc_adapter::route_registry::OscDirection::In => Self::In,
+            chromaticity_osc_adapter::route_registry::OscDirection::Out => Self::Out,
+            chromaticity_osc_adapter::route_registry::OscDirection::Both => Self::Both,
+            // Catch-all for the engine-side `#[non_exhaustive]` enum:
+            // any future variant flows into `Both` as the safe
+            // fallback until the bridge surface is widened explicitly.
+            _ => Self::Both,
+        }
+    }
+}
+
 /// IPC-facing payload for a single learn-mode MIDI capture, emitted
 /// onto the Tauri event channel as `midi_learn_event` by the
 /// `start_midi_learn` handler in `app/shell/src/commands/midi.rs`.
@@ -956,6 +990,117 @@ impl MidiLearnEventPayload {
                 note_or_cc: None,
                 velocity_or_value: None,
             },
+        }
+    }
+}
+
+impl From<OscDirectionPayload> for chromaticity_osc_adapter::route_registry::OscDirection {
+    fn from(d: OscDirectionPayload) -> Self {
+        match d {
+            OscDirectionPayload::In => Self::In,
+            OscDirectionPayload::Out => Self::Out,
+            OscDirectionPayload::Both => Self::Both,
+        }
+    }
+}
+
+/// IPC-facing route-family classification mirroring
+/// [`chromaticity_osc_adapter::route_registry::OscRouteFamily`] across
+/// the Tauri command boundary.
+///
+/// Wave 2.1 Lane D.3: backs the operator-facing route binding view's
+/// family pill. The seven variants match the engine seed table; new
+/// families MUST land here in lockstep with the engine enum addition
+/// before the IPC surface widens.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum OscRouteFamilyPayload {
+    Control,
+    Scene,
+    Preset,
+    Snap,
+    Playlist,
+    Audio,
+    Reserved,
+}
+
+impl From<chromaticity_osc_adapter::route_registry::OscRouteFamily> for OscRouteFamilyPayload {
+    fn from(f: chromaticity_osc_adapter::route_registry::OscRouteFamily) -> Self {
+        match f {
+            chromaticity_osc_adapter::route_registry::OscRouteFamily::Control => Self::Control,
+            chromaticity_osc_adapter::route_registry::OscRouteFamily::Scene => Self::Scene,
+            chromaticity_osc_adapter::route_registry::OscRouteFamily::Preset => Self::Preset,
+            chromaticity_osc_adapter::route_registry::OscRouteFamily::Snap => Self::Snap,
+            chromaticity_osc_adapter::route_registry::OscRouteFamily::Playlist => Self::Playlist,
+            chromaticity_osc_adapter::route_registry::OscRouteFamily::Audio => Self::Audio,
+            chromaticity_osc_adapter::route_registry::OscRouteFamily::Reserved => Self::Reserved,
+            // Catch-all for the engine-side `#[non_exhaustive]` enum.
+            _ => Self::Reserved,
+        }
+    }
+}
+
+impl From<OscRouteFamilyPayload> for chromaticity_osc_adapter::route_registry::OscRouteFamily {
+    fn from(f: OscRouteFamilyPayload) -> Self {
+        match f {
+            OscRouteFamilyPayload::Control => Self::Control,
+            OscRouteFamilyPayload::Scene => Self::Scene,
+            OscRouteFamilyPayload::Preset => Self::Preset,
+            OscRouteFamilyPayload::Snap => Self::Snap,
+            OscRouteFamilyPayload::Playlist => Self::Playlist,
+            OscRouteFamilyPayload::Audio => Self::Audio,
+            OscRouteFamilyPayload::Reserved => Self::Reserved,
+        }
+    }
+}
+
+/// IPC-facing OSC route entry mirroring
+/// [`chromaticity_osc_adapter::route_registry::OscRouteEntry`] across
+/// the Tauri command boundary.
+///
+/// Wave 2.1 Lane D.3: backs the `osc_routes_snapshot` Tauri command
+/// consumed by `src/lib/stores/osc.svelte.ts`. The shape matches the
+/// frontend's `OscRouteFixture` from `src/lib/data/osc-routes.ts`
+/// (canonical / compat_alias / direction / family / type / range)
+/// with the addition of the optional `bind_target` operator binding.
+/// Field names are snake_case at the wire to match ts-rs's default
+/// rendering + the existing payload precedents on this crate.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct OscRoutePayload {
+    pub canonical: String,
+    pub compat_alias: Option<String>,
+    pub type_tag: String,
+    pub range: String,
+    pub direction: OscDirectionPayload,
+    pub family: OscRouteFamilyPayload,
+    pub bind_target: Option<String>,
+}
+
+impl From<chromaticity_osc_adapter::route_registry::OscRouteEntry> for OscRoutePayload {
+    fn from(entry: chromaticity_osc_adapter::route_registry::OscRouteEntry) -> Self {
+        Self {
+            canonical: entry.canonical,
+            compat_alias: entry.compat_alias,
+            type_tag: entry.type_tag,
+            range: entry.range,
+            direction: entry.direction.into(),
+            family: entry.family.into(),
+            bind_target: entry.bind_target,
+        }
+    }
+}
+
+impl From<OscRoutePayload> for chromaticity_osc_adapter::route_registry::OscRouteEntry {
+    fn from(payload: OscRoutePayload) -> Self {
+        Self {
+            canonical: payload.canonical,
+            compat_alias: payload.compat_alias,
+            type_tag: payload.type_tag,
+            range: payload.range,
+            direction: payload.direction.into(),
+            family: payload.family.into(),
+            bind_target: payload.bind_target,
         }
     }
 }
@@ -1244,6 +1389,46 @@ impl From<StorageSettingsPayload> for chromaticity_runtime::settings::StorageSet
     }
 }
 
+/// IPC-facing OSC operator-network preferences mirroring
+/// [`chromaticity_runtime::settings::OscSettings`].
+///
+/// Wave 2.1 Lane D.3: backs the OSC view's listening (`local_ip` +
+/// `port`) + TX/RX toggle inputs. The frontend's `settingsStore`
+/// reads / writes these via the `get_settings` / `set_settings`
+/// handler pair; the engine-side `Settings` document already
+/// composes [`OscSettings`] as a top-level section so this bridge
+/// extension is purely additive.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct OscSettingsPayload {
+    pub local_ip: String,
+    pub port: u16,
+    pub tx_enabled: bool,
+    pub rx_enabled: bool,
+}
+
+impl From<chromaticity_runtime::settings::OscSettings> for OscSettingsPayload {
+    fn from(s: chromaticity_runtime::settings::OscSettings) -> Self {
+        Self {
+            local_ip: s.local_ip,
+            port: s.port,
+            tx_enabled: s.tx_enabled,
+            rx_enabled: s.rx_enabled,
+        }
+    }
+}
+
+impl From<OscSettingsPayload> for chromaticity_runtime::settings::OscSettings {
+    fn from(p: OscSettingsPayload) -> Self {
+        Self {
+            local_ip: p.local_ip,
+            port: p.port,
+            tx_enabled: p.tx_enabled,
+            rx_enabled: p.rx_enabled,
+        }
+    }
+}
+
 /// IPC-facing general preferences mirroring
 /// [`chromaticity_runtime::settings::GeneralSettings`].
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
@@ -1285,6 +1470,7 @@ pub struct SettingsPayload {
     pub audio: AudioSettingsPayload,
     pub graphics: GraphicsSettingsPayload,
     pub storage: StorageSettingsPayload,
+    pub osc: OscSettingsPayload,
 }
 
 impl From<chromaticity_runtime::settings::Settings> for SettingsPayload {
@@ -1294,6 +1480,7 @@ impl From<chromaticity_runtime::settings::Settings> for SettingsPayload {
             audio: s.audio.into(),
             graphics: s.graphics.into(),
             storage: s.storage.into(),
+            osc: s.osc.into(),
         }
     }
 }
@@ -1305,6 +1492,7 @@ impl From<SettingsPayload> for chromaticity_runtime::settings::Settings {
             audio: p.audio.into(),
             graphics: p.graphics.into(),
             storage: p.storage.into(),
+            osc: p.osc.into(),
         }
     }
 }

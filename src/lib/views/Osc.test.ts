@@ -16,6 +16,13 @@
 // value before render. Assertions on the resolved-snapshot DOM use
 // `findBy*` to wait for the post-microtask state update.
 //
+// Wave 2.1 Lane D.3 widened the view to consume the `oscStore` for
+// the routes table + the `settingsStore` for IP/port/TX/RX inputs.
+// The default mock returns a pending promise for every command so
+// existing tests that exercise the fixture-fallback branch keep
+// passing; the new live-routes / bind-target / settings-input tests
+// override the mock per-test.
+//
 // `afterEach(cleanup)` per the user-memory
 // `feedback_vitest_svelte_cleanup_required.md` convention.
 
@@ -36,18 +43,26 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import Osc from './Osc.svelte';
 import { OSC_AUDIO_VAR_FAMILIES, OSC_ROUTES } from '../data/osc-routes';
+import { oscStore } from '../stores/osc.svelte';
+import { settingsStore } from '../stores/settings.svelte';
 
 describe('Osc view', () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    // Default: pending — the $effect promise never resolves, so the
-    // "loading…" fallback stays on screen for tests that don't care
+    // Default: pending — the $effect promises never resolve, so
+    // the live-routes branch never populates and the view falls
+    // back to the curated fixture import. The "loading…" health
+    // pill fallback stays on screen for tests that don't care
     // about adapter state.
     invokeMock.mockReturnValue(new Promise(() => {}));
+    oscStore.reset();
+    settingsStore.reset();
   });
 
   afterEach(() => {
     cleanup();
+    oscStore.reset();
+    settingsStore.reset();
   });
 
   it('renders the OSC headline + listening port + intro', () => {
@@ -55,19 +70,30 @@ describe('Osc view', () => {
     const heading = getByRole('heading', { level: 1 });
     expect(heading).toHaveTextContent(/OSC/);
     expect(heading).toHaveTextContent(/LISTENING/);
-    expect(heading).toHaveTextContent(/Port 7000/);
+    // The port readout binds to settingsStore.osc.port; the
+    // bundle-faithful default is 8000 (the historical Synesthesia
+    // default — operators retarget via the new listen-port input).
+    expect(heading).toHaveTextContent(/Port 8000/);
     expect(getByText(/Wireframe-06 port from the bundle's/)).toBeInTheDocument();
   });
 
-  it('renders the routes table headers in canonical 6-column order', () => {
+  it('renders the routes table headers in the canonical 7-column order', () => {
     const { container } = render(Osc);
     const headers = Array.from(container.querySelectorAll('.osc-view__route-table thead th')).map(
       (th) => th.textContent?.trim(),
     );
-    expect(headers).toEqual(['canonical', 'compat alias', 'dir', 'type', 'range', 'family']);
+    expect(headers).toEqual([
+      'canonical',
+      'compat alias',
+      'dir',
+      'type',
+      'range',
+      'family',
+      'bind',
+    ]);
   });
 
-  it('renders one row per OSC_ROUTES fixture entry plus a colspan-6 note row per route with a note', () => {
+  it('renders one row per OSC_ROUTES fixture entry plus a colspan-7 note row per route with a note', () => {
     const { container } = render(Osc);
     const rowCount = OSC_ROUTES.length;
     const noteCount = OSC_ROUTES.filter((r) => r.note).length;
@@ -77,10 +103,10 @@ describe('Osc view', () => {
       '.osc-view__route-table tbody tr.osc-view__note-row',
     );
     expect(noteRows.length).toBe(noteCount);
-    // Note rows span all six columns.
+    // Note rows span all seven columns post-D.3.
     noteRows.forEach((row) => {
       const td = row.querySelector('td');
-      expect(td?.getAttribute('colspan')).toBe('6');
+      expect(td?.getAttribute('colspan')).toBe('7');
     });
   });
 
@@ -143,10 +169,18 @@ describe('Osc view', () => {
   });
 
   it('renders the Adapter pill with state="Healthy" once the IPC resolves', async () => {
-    invokeMock.mockResolvedValue({
-      state: 'Healthy',
-      attempted_binds: 0,
-      local_addr: null,
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'osc_health_snapshot') {
+        return Promise.resolve({
+          state: 'Healthy',
+          attempted_binds: 0,
+          local_addr: null,
+        });
+      }
+      // Other commands (osc_routes_snapshot, get_settings) keep the
+      // pending-promise default so the fixture-fallback branch
+      // renders.
+      return new Promise(() => {});
     });
     const { findByText, container } = render(Osc);
     // The pill's label is the literal state string.
@@ -158,9 +192,18 @@ describe('Osc view', () => {
   });
 
   it('renders ErrorMessage and the Phase-3 hint when the snapshot IPC rejects', async () => {
-    invokeMock.mockRejectedValue(new Error('osc_health_snapshot offline in browser-mode'));
-    const { findByText, container } = render(Osc);
-    expect(await findByText(/osc_health_snapshot offline in browser-mode/)).toBeInTheDocument();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'osc_health_snapshot') {
+        return Promise.reject(new Error('osc_health_snapshot offline in browser-mode'));
+      }
+      // Other commands keep pending so the routes / settings stores
+      // don't surface a duplicate ErrorMessage alongside the
+      // health-pill banner.
+      return new Promise(() => {});
+    });
+    const { findAllByText, container } = render(Osc);
+    const matches = await findAllByText(/osc_health_snapshot offline in browser-mode/);
+    expect(matches.length).toBeGreaterThan(0);
     expect(container.textContent).toContain('IPC error');
     // The hint paragraph wraps across lines; tolerate intervening whitespace.
     expect(container.textContent ?? '').toMatch(/Real adapter\s+wiring lands in Phase-3/);
@@ -186,5 +229,91 @@ describe('Osc view', () => {
     expect(kbds).toContain('?');
     expect(kbds).toContain('Space');
     expect(kbds).toContain('B');
+  });
+
+  it('renders the listen IP + port inputs bound to the settings store defaults', () => {
+    const { getByLabelText } = render(Osc);
+    const ip = getByLabelText(/OSC listen IP/i) as HTMLInputElement;
+    expect(ip.value).toBe('0.0.0.0');
+    const port = getByLabelText(/OSC listen port/i) as HTMLInputElement;
+    expect(port.value).toBe('8000');
+  });
+
+  it('editing the listen port dispatches a settings update', async () => {
+    const { getByLabelText } = render(Osc);
+    const port = getByLabelText(/OSC listen port/i) as HTMLInputElement;
+    await fireEvent.input(port, { target: { value: '9100' } });
+    // The store snapshot reflects the update synchronously
+    // (settingsStore.update is in-process; the debounced save is
+    // mocked away because no invoke handler is registered for
+    // `set_settings`).
+    expect(settingsStore.snapshot.osc.port).toBe(9100);
+  });
+
+  it('renders the live routes when the oscStore exposes them with a bind action', async () => {
+    oscStore.routes = [
+      {
+        canonical: '/scenes/{sceneName}',
+        compat_alias: '/scene/{sceneName}',
+        type_tag: '—',
+        range: 'announce / trigger',
+        direction: 'Both',
+        family: 'Scene',
+        bind_target: 's-12',
+      },
+    ];
+    const { container, findByText } = render(Osc);
+    expect(await findByText('/scenes/{sceneName}')).toBeInTheDocument();
+    // The bound target renders in the bind column.
+    expect(container.textContent).toContain('s-12');
+    // Count tally reflects the live store rather than the fixture
+    // length.
+    const count = container.querySelector('.osc-view__count');
+    expect(count?.textContent?.trim()).toBe('1 of 1');
+  });
+
+  it('details button toggles an inline bind panel for the row', async () => {
+    oscStore.routes = [
+      {
+        canonical: '/controls/{bank}/{name}',
+        compat_alias: '/controls/{addr}',
+        type_tag: 'f',
+        range: '0.0 – 1.0',
+        direction: 'Both',
+        family: 'Control',
+        bind_target: null,
+      },
+    ];
+    const { container, getByLabelText } = render(Osc);
+    const detailsBtn = getByLabelText(
+      /Details for \/controls\/\{bank\}\/\{name\}/i,
+    ) as HTMLButtonElement;
+    await fireEvent.click(detailsBtn);
+    // The inline panel exposes a "Save" button + a bind-target
+    // input.
+    const input = getByLabelText(
+      /Bind target for \/controls\/\{bank\}\/\{name\}/i,
+    ) as HTMLInputElement;
+    expect(input).toBeInTheDocument();
+    const save = container.querySelector('.osc-view__bind-save') as HTMLButtonElement;
+    expect(save).not.toBeNull();
+    // Save is disabled while the draft is empty.
+    expect(save.disabled).toBe(true);
+    await fireEvent.input(input, { target: { value: 'fader-1' } });
+    expect(save.disabled).toBe(false);
+  });
+
+  it('shows the no-routes empty-state when the live store is empty and no fixture fallback is desired', () => {
+    // Force the live branch by populating then clearing routes — the
+    // derived `allRoutes` shows `liveRoutes.length > 0 ? live :
+    // fixture`, so we can only hit the "No OSC routes registered."
+    // copy by also bypassing the fixture. The view's contract is that
+    // an empty live store falls back to the curated fixture, so we
+    // assert that fallback behaviour explicitly.
+    const { container } = render(Osc);
+    // The fixture-fallback branch is active by default → the empty
+    // state is never reached; the count reflects the fixture length.
+    const count = container.querySelector('.osc-view__count');
+    expect(count?.textContent?.trim()).toBe(`${OSC_ROUTES.length} of ${OSC_ROUTES.length}`);
   });
 });

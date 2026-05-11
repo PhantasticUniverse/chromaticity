@@ -284,6 +284,55 @@ pub struct GeneralSettings {
     pub theme: Theme,
 }
 
+/// OSC adapter operator-facing network defaults — Wave 2.1 Lane D.3.
+///
+/// `local_ip` carries the bind-side interface (ADR-013 §1 default is
+/// `127.0.0.1` loopback; non-loopback values are an explicit operator
+/// opt-in for routable inbound). `port` carries the bind-side port
+/// (UDP 8000 is the historical Synesthesia default). `tx_enabled`
+/// gates outbound transmission; `rx_enabled` gates inbound packet
+/// processing. Both toggles default to `true` so the bundle-faithful
+/// behaviour matches the v0.2 wireframe-06 read-out "LISTENING /
+/// Port 7000" (the literal port is operator-configurable here; the
+/// frontend reads it back via the settings store).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OscSettings {
+    #[serde(default = "OscSettings::default_local_ip")]
+    pub local_ip: String,
+    #[serde(default = "OscSettings::default_port")]
+    pub port: u16,
+    #[serde(default = "OscSettings::default_tx_enabled")]
+    pub tx_enabled: bool,
+    #[serde(default = "OscSettings::default_rx_enabled")]
+    pub rx_enabled: bool,
+}
+
+impl OscSettings {
+    fn default_local_ip() -> String {
+        "0.0.0.0".to_string()
+    }
+    fn default_port() -> u16 {
+        8000
+    }
+    fn default_tx_enabled() -> bool {
+        true
+    }
+    fn default_rx_enabled() -> bool {
+        true
+    }
+}
+
+impl Default for OscSettings {
+    fn default() -> Self {
+        Self {
+            local_ip: Self::default_local_ip(),
+            port: Self::default_port(),
+            tx_enabled: Self::default_tx_enabled(),
+            rx_enabled: Self::default_rx_enabled(),
+        }
+    }
+}
+
 /// Top-level persisted settings document.
 ///
 /// Per-section grouping mirrors the Settings view's article layout
@@ -303,6 +352,8 @@ pub struct Settings {
     pub graphics: GraphicsSettings,
     #[serde(default)]
     pub storage: StorageSettings,
+    #[serde(default)]
+    pub osc: OscSettings,
 }
 
 /// Failure surfaces for [`Settings::load_from_path`] and
@@ -626,5 +677,63 @@ mod tests {
         // kebab-case discriminants accepted at the deserialise edge.
         let parsed: Settings = toml::from_str("[general]\ntheme = \"atelier\"\n").unwrap();
         assert_eq!(parsed.general.theme, Theme::Atelier);
+    }
+
+    #[test]
+    fn osc_settings_default_matches_bundle_baseline() {
+        // Wave 2.1 Lane D.3: pin the bundle-faithful OSC network
+        // defaults. The frontend reads back these values from the
+        // settings store on view mount and renders them in the OSC
+        // view's listening / send-to readouts.
+        let defaults = Settings::default();
+        assert_eq!(defaults.osc.local_ip, "0.0.0.0");
+        assert_eq!(defaults.osc.port, 8000);
+        assert!(defaults.osc.tx_enabled);
+        assert!(defaults.osc.rx_enabled);
+    }
+
+    #[test]
+    fn osc_settings_round_trip_preserves_operator_values() {
+        // Mutating each OSC field and round-tripping through TOML
+        // pins the field-name + serde-attribute stability of the
+        // [osc] section against future drift.
+        let path = tmp_path("osc-round-trip");
+        let mut settings = Settings::default();
+        settings.osc.local_ip = "192.168.1.42".to_string();
+        settings.osc.port = 9100;
+        settings.osc.tx_enabled = false;
+        settings.osc.rx_enabled = true;
+        settings.save_to_path(&path).unwrap();
+        let loaded = Settings::load_from_path(&path).unwrap();
+        assert_eq!(loaded.osc.local_ip, "192.168.1.42");
+        assert_eq!(loaded.osc.port, 9100);
+        assert!(!loaded.osc.tx_enabled);
+        assert!(loaded.osc.rx_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_toml_without_osc_section_loads_via_serde_default() {
+        // Forward-compat: a settings file written by the W34 C.3
+        // landing (which had no [osc] section) MUST deserialise
+        // cleanly under the Wave 2.1 Lane D.3 release that adds the
+        // section. The missing fields fill via the per-field
+        // `#[serde(default)]` annotations.
+        let path = tmp_path("pre-osc-section");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(b"[general]\ntheme = \"pulse\"\n\n[audio]\nsample_rate_hz = 48000\n")
+                .unwrap();
+        }
+        let loaded = Settings::load_from_path(&path).unwrap();
+        // The OSC section materialises with the per-field defaults.
+        assert_eq!(loaded.osc.local_ip, "0.0.0.0");
+        assert_eq!(loaded.osc.port, 8000);
+        assert!(loaded.osc.tx_enabled);
+        assert!(loaded.osc.rx_enabled);
+        // Other sections still resolve as expected.
+        assert_eq!(loaded.general.theme, Theme::Pulse);
+        assert_eq!(loaded.audio.sample_rate_hz, 48_000);
+        let _ = std::fs::remove_file(&path);
     }
 }

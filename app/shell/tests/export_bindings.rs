@@ -21,7 +21,8 @@ use chromaticity_ui_bridge::{
     CameraDevicePayload, ControlDefaultValuePayload, ControlId, ControlKindPayload,
     ControlSchemaPayload, ControlValue, GeneralSettingsPayload, GraphicsSettingsPayload,
     LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload, MidiLearnEventPayload,
-    MidiLearnKindPayload, OscHealthSnapshot, OscHealthState, PresetId, SceneCard, SceneSource,
+    MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot, OscHealthState,
+    OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId, SceneCard, SceneSource,
     SettingsPayload, SnapSlotId, StorageSettingsPayload, SyphonOutputStatusPayload,
     SyphonServerPayload, ThemePayload,
 };
@@ -73,5 +74,10 @@ fn export_bindings_to_frontend_tree() {
         .expect("export GraphicsSettingsPayload bindings");
     StorageSettingsPayload::export_all_to(&out_dir)
         .expect("export StorageSettingsPayload bindings");
+    OscSettingsPayload::export_all_to(&out_dir).expect("export OscSettingsPayload bindings");
     SettingsPayload::export_all_to(&out_dir).expect("export SettingsPayload bindings");
+    // Wave 2.1 Lane D.3 OSC route binding — registry payloads.
+    OscDirectionPayload::export_all_to(&out_dir).expect("export OscDirectionPayload bindings");
+    OscRouteFamilyPayload::export_all_to(&out_dir).expect("export OscRouteFamilyPayload bindings");
+    OscRoutePayload::export_all_to(&out_dir).expect("export OscRoutePayload bindings");
 }

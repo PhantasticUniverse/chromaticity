@@ -66,6 +66,7 @@
 
 use chromaticity_audio::runtime::AudioRuntimeHandle;
 use chromaticity_midi_adapter::MidiListenHandle;
+use chromaticity_osc_adapter::route_registry::OscRouteRegistry;
 use chromaticity_runtime::InMemoryBus;
 use chromaticity_runtime::settings::Settings;
 use chromaticity_runtime::state::State;
@@ -238,6 +239,25 @@ pub struct AppState {
     /// dispatch refactor against it; at that point the engine surface
     /// widens in a single coordinated PR.
     pub loaded_scene: Mutex<Option<LoadedSceneRecord>>,
+    /// Operator-facing OSC route binding registry.
+    ///
+    /// Wave 2.1 Lane D.3 (`/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`).
+    /// Seeded from
+    /// [`chromaticity_osc_adapter::route_registry::OscRouteRegistry::with_default_seed`]
+    /// in [`Self::new`] so the OSC view's routes table renders against
+    /// the canonical UX subset (matching the v0.2-beta bundle fixture)
+    /// immediately on app launch. The `bind_target` field on each entry
+    /// is mutated by `bind_osc_route` / `unbind_osc_route` IPC handlers;
+    /// the seed table itself is immutable across the registry's lifetime.
+    ///
+    /// **Not persisted in Wave 2.1 Lane D.3.** Bind / unbind survives the
+    /// process lifetime only; restoring bindings across restart is a
+    /// future-wave concern (would extend either the Lane C.3 settings
+    /// document or grow a sibling `osc-bindings.toml` document — the
+    /// shape choice is deferred until the dispatch surface that
+    /// CONSUMES the bind target ships, since persisting an advisory-only
+    /// label between runs has no operator-observable benefit today).
+    pub osc_routes: Mutex<OscRouteRegistry>,
 }
 
 /// Composite record stored on [`AppState::loaded_scene`].
@@ -272,6 +292,7 @@ impl AppState {
             audio: Mutex::new(None),
             midi_learn_handle: Mutex::new(None),
             loaded_scene: Mutex::new(None),
+            osc_routes: Mutex::new(OscRouteRegistry::with_default_seed()),
         }
     }
 

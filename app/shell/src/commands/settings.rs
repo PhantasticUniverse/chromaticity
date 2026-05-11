@@ -106,8 +106,8 @@ mod tests {
     use crate::state::AppState;
     use chromaticity_runtime::settings::Theme;
     use chromaticity_ui_bridge::{
-        AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload, SettingsPayload,
-        StorageSettingsPayload, ThemePayload,
+        AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload, OscSettingsPayload,
+        SettingsPayload, StorageSettingsPayload, ThemePayload,
     };
 
     fn nondefault_payload() -> SettingsPayload {
@@ -145,6 +145,12 @@ mod tests {
                 scene_folders: vec![],
                 backup_path: "/tmp/backups".to_string(),
                 backup_retention: "retain-5".to_string(),
+            },
+            osc: OscSettingsPayload {
+                local_ip: "192.168.1.42".to_string(),
+                port: 9100,
+                tx_enabled: false,
+                rx_enabled: true,
             },
         }
     }

@@ -76,6 +76,12 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     backup_path: '',
     backup_retention: 'retain-10',
   },
+  osc: {
+    local_ip: '0.0.0.0',
+    port: 8000,
+    tx_enabled: true,
+    rx_enabled: true,
+  },
 };
 
 /** Shallow-clone the defaults POJO for the initial `$state` value
@@ -93,6 +99,7 @@ function cloneDefaults(): SettingsPayload {
       media_folders: [...DEFAULT_SETTINGS.storage.media_folders],
       scene_folders: [...DEFAULT_SETTINGS.storage.scene_folders],
     },
+    osc: { ...DEFAULT_SETTINGS.osc },
   };
 }
 
@@ -177,6 +184,7 @@ class SettingsStore {
       audio: { ...this.snapshot.audio, ...(patch.audio ?? {}) },
       graphics: { ...this.snapshot.graphics, ...(patch.graphics ?? {}) },
       storage: { ...this.snapshot.storage, ...(patch.storage ?? {}) },
+      osc: { ...this.snapshot.osc, ...(patch.osc ?? {}) },
     };
     this.snapshot = next;
     this.#scheduleSave();
@@ -249,6 +257,7 @@ export interface SettingsPatch {
   audio?: Partial<SettingsPayload['audio']>;
   graphics?: Partial<SettingsPayload['graphics']>;
   storage?: Partial<SettingsPayload['storage']>;
+  osc?: Partial<SettingsPayload['osc']>;
 }
 
 export const settingsStore = new SettingsStore();

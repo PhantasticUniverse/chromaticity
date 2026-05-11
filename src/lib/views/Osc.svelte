@@ -58,16 +58,80 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/osc-routes';
   import ErrorMessage from '../ErrorMessage.svelte';
   import type { OscHealthSnapshot } from '../ipc/bindings';
+  import type { OscRouteFamilyPayload } from '../ipc/bindings/OscRouteFamilyPayload';
+  import { oscStore } from '../stores/osc.svelte';
+  import { settingsStore } from '../stores/settings.svelte';
   import { toIpcError } from '../types/ipc-error';
 
   let healthSnapshot = $state<OscHealthSnapshot | null>(null);
   let healthError = $state<string | null>(null);
   let routeFilter = $state('');
+  // Inline bind-target editor state — keyed by the canonical
+  // address of the route whose inline panel is open.
+  let openBindFor = $state<string | null>(null);
+  let bindTargetDraft = $state('');
 
-  const filteredRoutes = $derived.by(() => {
+  // Normalise the live store's PascalCase family discriminant
+  // (engine-side enum casing) into the lower-case fixture vocabulary
+  // the existing pills + filter chips read from.
+  const FAMILY_FROM_PAYLOAD: Record<OscRouteFamilyPayload, OscFamily> = {
+    Control: 'control',
+    Scene: 'scene',
+    Preset: 'preset',
+    Snap: 'snap',
+    Playlist: 'playlist',
+    Audio: 'audio',
+    Reserved: 'reserved',
+  };
+
+  // Composed routes vec — prefer the live store's enumeration when it
+  // has resolved against the seeded registry; fall back to the
+  // hardcoded fixture so the view renders the curated UX subset when
+  // running outside Tauri (vite dev, vitest jsdom, browser-only). Both
+  // shapes are mapped to a uniform render row so the rest of the
+  // template stays unchanged.
+  interface RouteRow {
+    canonical: string;
+    compatAlias: string | null;
+    type: string;
+    range: string;
+    direction: 'in' | 'out' | 'both';
+    family: OscFamily;
+    note?: string;
+    bindTarget: string | null;
+  }
+
+  const liveRoutes = $derived.by<RouteRow[]>(() =>
+    oscStore.routes.map((r) => ({
+      canonical: r.canonical,
+      compatAlias: r.compat_alias,
+      type: r.type_tag,
+      range: r.range,
+      direction: r.direction.toLowerCase() as 'in' | 'out' | 'both',
+      family: FAMILY_FROM_PAYLOAD[r.family],
+      bindTarget: r.bind_target,
+    })),
+  );
+
+  const fixtureRoutes = $derived.by<RouteRow[]>(() =>
+    OSC_ROUTES.map((r) => ({
+      canonical: r.canonical,
+      compatAlias: r.compatAlias,
+      type: r.type,
+      range: r.range,
+      direction: r.direction,
+      family: r.family,
+      ...(r.note !== undefined ? { note: r.note } : {}),
+      bindTarget: null,
+    })),
+  );
+
+  const allRoutes = $derived(liveRoutes.length > 0 ? liveRoutes : fixtureRoutes);
+
+  const filteredRoutes = $derived.by<RouteRow[]>(() => {
     const q = routeFilter.trim().toLowerCase();
-    if (!q) return OSC_ROUTES;
-    return OSC_ROUTES.filter((route) => {
+    if (!q) return allRoutes;
+    return allRoutes.filter((route) => {
       const haystack = [route.canonical, route.compatAlias ?? '', route.family, route.range]
         .join(' ')
         .toLowerCase();
@@ -85,7 +149,63 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     })();
   });
 
-  const LISTEN_PORT = 7000;
+  $effect(() => {
+    void oscStore.refresh();
+    void settingsStore.load();
+  });
+
+  // Operator-facing port readout — settings-backed.
+  const listenPort = $derived(settingsStore.snapshot.osc.port);
+  const localIp = $derived(settingsStore.snapshot.osc.local_ip);
+  const txEnabled = $derived(settingsStore.snapshot.osc.tx_enabled);
+  const rxEnabled = $derived(settingsStore.snapshot.osc.rx_enabled);
+
+  function updateLocalIp(event: Event): void {
+    const value = (event.currentTarget as HTMLInputElement).value;
+    settingsStore.update({ osc: { local_ip: value } });
+  }
+
+  function updatePort(event: Event): void {
+    const raw = (event.currentTarget as HTMLInputElement).value;
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 65_535) {
+      settingsStore.update({ osc: { port: parsed } });
+    }
+  }
+
+  function toggleTx(): void {
+    settingsStore.update({ osc: { tx_enabled: !txEnabled } });
+  }
+
+  function toggleRx(): void {
+    settingsStore.update({ osc: { rx_enabled: !rxEnabled } });
+  }
+
+  function openBindPanel(canonical: string, current: string | null): void {
+    if (openBindFor === canonical) {
+      openBindFor = null;
+      return;
+    }
+    openBindFor = canonical;
+    bindTargetDraft = current ?? '';
+  }
+
+  async function saveBind(canonical: string): Promise<void> {
+    const target = bindTargetDraft.trim();
+    if (!target) {
+      // Match the shell-side validation message so the user sees
+      // the exact rejection that would have come from the backend
+      // without a round-trip.
+      return;
+    }
+    await oscStore.bind(canonical, target);
+    openBindFor = null;
+  }
+
+  async function clearBind(canonical: string): Promise<void> {
+    await oscStore.unbind(canonical);
+    openBindFor = null;
+  }
 
   // Family display label per the bundle's `OSC_FAMILY_LABEL` map; the
   // wireframe screenshot renders these uppercased inside the family pill.
@@ -117,7 +237,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             aria-hidden="true"
           ></span>
         {/if}
-        <span class="osc-view__title-port">— Port {LISTEN_PORT}</span>
+        <span class="osc-view__title-port">— Port {listenPort}</span>
       </h1>
       <p class="osc-view__intro">
         OSC adapter health, routes, and live monitor. Wireframe-06 port from the bundle's
@@ -160,15 +280,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <article class="osc-view__settings-form">
       <h2>Operator settings</h2>
       <p class="osc-view__hint">
-        Read-only in W14; mutation lands in W15+ alongside entitlement gating.
+        Persisted via the settings store (Wave 2.1 Lane C.3); changes survive restart. Bind / unbind
+        on individual routes is process-local until a future-wave dispatch surface lands.
       </p>
-      <div class="osc-view__field">
-        <span class="osc-view__caps">listen (inbound)</span>
-        <code>udp://0.0.0.0:7000</code>
-      </div>
-      <div class="osc-view__field">
-        <span class="osc-view__caps">send to (outbound)</span>
-        <code>127.0.0.1:9000</code>
+      <label class="osc-view__field">
+        <span class="osc-view__caps">listen IP</span>
+        <input
+          type="text"
+          class="osc-view__input"
+          value={localIp}
+          oninput={updateLocalIp}
+          aria-label="OSC listen IP"
+        />
+      </label>
+      <label class="osc-view__field">
+        <span class="osc-view__caps">listen port</span>
+        <input
+          type="number"
+          class="osc-view__input"
+          min="0"
+          max="65535"
+          value={listenPort}
+          oninput={updatePort}
+          aria-label="OSC listen port"
+        />
+      </label>
+      <div class="osc-view__field osc-view__field--toggle">
+        <label class="osc-view__toggle">
+          <input type="checkbox" checked={rxEnabled} onchange={toggleRx} />
+          <span>RX (inbound)</span>
+        </label>
+        <label class="osc-view__toggle">
+          <input type="checkbox" checked={txEnabled} onchange={toggleTx} />
+          <span>TX (outbound)</span>
+        </label>
       </div>
       <h3>audio-var families</h3>
       <ul class="osc-view__families">
@@ -205,7 +350,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <header class="osc-view__routes-head">
       <h2>OSC Routes</h2>
       <p class="osc-view__count">
-        {filteredRoutes.length} of {OSC_ROUTES.length}
+        {filteredRoutes.length} of {allRoutes.length}
       </p>
       <input
         type="search"
@@ -215,6 +360,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         aria-label="filter OSC routes"
       />
     </header>
+    {#if oscStore.error}
+      <p class="osc-view__hint">
+        <ErrorMessage error={oscStore.error} />
+      </p>
+    {/if}
     <table class="osc-view__route-table">
       <colgroup>
         <col class="col-canonical" />
@@ -223,6 +373,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <col class="col-type" />
         <col class="col-range" />
         <col class="col-family" />
+        <col class="col-bind" />
       </colgroup>
       <thead>
         <tr>
@@ -232,6 +383,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <th scope="col">type</th>
           <th scope="col">range</th>
           <th scope="col">family</th>
+          <th scope="col">bind</th>
         </tr>
       </thead>
       <!--
@@ -258,17 +410,81 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 {familyLabel(route.family)}
               </span>
             </td>
+            <td class="osc-view__bind-cell">
+              {#if route.bindTarget}
+                <code class="osc-view__bind-target">{route.bindTarget}</code>
+              {:else}
+                <span class="osc-view__muted">—</span>
+              {/if}
+              <button
+                type="button"
+                class="osc-view__bind-toggle"
+                aria-expanded={openBindFor === route.canonical}
+                aria-label={`Details for ${route.canonical}`}
+                onclick={() => openBindPanel(route.canonical, route.bindTarget)}
+              >
+                Details
+              </button>
+            </td>
           </tr>
           {#if route.note}
             <tr class="osc-view__note-row" data-family={route.family}>
-              <td colspan="6"><p class="osc-view__route-note">{route.note}</p></td>
+              <td colspan="7"><p class="osc-view__route-note">{route.note}</p></td>
+            </tr>
+          {/if}
+          {#if openBindFor === route.canonical}
+            <tr class="osc-view__bind-row" data-family={route.family}>
+              <td colspan="7">
+                <div class="osc-view__bind-panel">
+                  <label class="osc-view__bind-label">
+                    <span class="osc-view__caps">bind target</span>
+                    <input
+                      type="text"
+                      class="osc-view__input"
+                      bind:value={bindTargetDraft}
+                      placeholder="control id, scene id, …"
+                      aria-label={`Bind target for ${route.canonical}`}
+                    />
+                  </label>
+                  <div class="osc-view__bind-actions">
+                    <button
+                      type="button"
+                      class="osc-view__bind-save"
+                      disabled={bindTargetDraft.trim().length === 0}
+                      onclick={() => void saveBind(route.canonical)}
+                    >
+                      Save
+                    </button>
+                    {#if route.bindTarget}
+                      <button
+                        type="button"
+                        class="osc-view__bind-clear"
+                        onclick={() => void clearBind(route.canonical)}
+                      >
+                        Unbind
+                      </button>
+                    {/if}
+                    <button
+                      type="button"
+                      class="osc-view__bind-cancel"
+                      onclick={() => (openBindFor = null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </td>
             </tr>
           {/if}
         {/each}
       </tbody>
     </table>
     {#if filteredRoutes.length === 0}
-      <p class="osc-view__empty">No routes match the current filter.</p>
+      {#if allRoutes.length === 0}
+        <p class="osc-view__empty">No OSC routes registered.</p>
+      {:else}
+        <p class="osc-view__empty">No routes match the current filter.</p>
+      {/if}
     {/if}
     <p class="osc-view__hint osc-view__hint--reserved">
       Reserved prefixes per OSC-CONF-16 — inbound rejected with
@@ -650,7 +866,91 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     width: 19%;
   }
   .osc-view__route-table col.col-family {
-    width: 18%;
+    width: 14%;
+  }
+  .osc-view__route-table col.col-bind {
+    width: 12%;
+  }
+
+  .osc-view__input {
+    background: var(--color-bg-2);
+    color: var(--color-text-0);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    padding: var(--space-xs) var(--space-sm);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+    width: 100%;
+  }
+
+  .osc-view__field--toggle {
+    flex-direction: row;
+    gap: var(--space-md);
+  }
+
+  .osc-view__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    color: var(--color-text-1);
+    font-size: var(--font-size-body-xs);
+  }
+
+  .osc-view__bind-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    white-space: nowrap;
+  }
+
+  .osc-view__bind-target {
+    color: var(--color-primary);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+  }
+
+  .osc-view__bind-toggle,
+  .osc-view__bind-save,
+  .osc-view__bind-clear,
+  .osc-view__bind-cancel {
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-2);
+    color: var(--color-text-1);
+    border-radius: var(--radius-xs);
+    padding: 2px var(--space-xs);
+    font-size: var(--font-size-body-xs);
+    font-family: var(--font-family-mono);
+    cursor: pointer;
+  }
+  .osc-view__bind-save {
+    color: var(--color-primary);
+  }
+  .osc-view__bind-clear {
+    color: var(--color-signal-red, var(--color-error));
+  }
+  .osc-view__bind-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .osc-view__bind-row td {
+    background: var(--color-bg-2);
+  }
+  .osc-view__bind-panel {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-md);
+  }
+  .osc-view__bind-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+  }
+  .osc-view__bind-actions {
+    display: inline-flex;
+    gap: var(--space-xs);
   }
 
   .osc-view__route-table th,
