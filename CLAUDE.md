@@ -224,18 +224,131 @@ the additive design — corpora continue to use `commit_all_into` directly with
 - **Post-MVP UX enhancements** — Spectrum widget retrofit + `AudioReactivity`
   48-bar FFT visualiser live wiring (`EV-AUDIO-UNIFORM-IPC` narrowing).
 
-### Live-IPC dispatch verified (Wave 1c-α-2, 2026-05-06)
+### Live cross-seam dispatch verified (Wave 1c-α-2 audio + Wave 2.1 main loop, 2026-05-11)
 
-`engine/audio::AudioRuntime` spawns the producer thread feeding
-`Arc<Mutex<AudioUniformSnapshot>>`; `app/shell::TauriIpcEmitter` is the concrete
-`IpcEmit` adapter; `app/shell/src/lib.rs::run` setup spawns the drift-corrected
-60 Hz scheduler-tick thread that pulls from `MutexAudioPull` and emits via
+**Audio IPC seam (Wave 1c-α-2, 2026-05-06).** `engine/audio::AudioRuntime`
+spawns the producer thread feeding `Arc<Mutex<AudioUniformSnapshot>>`;
+`app/shell::TauriIpcEmitter` is the concrete `IpcEmit` adapter;
+`app/shell/src/lib.rs::run` setup spawns the drift-corrected 60 Hz scheduler-
+tick thread that pulls from `MutexAudioPull` and emits via
 `app.emit("audio_uniform_snapshot_changed", ...)`. Visualizer widgets
 (`AudioReactivity.svelte`, `BpmRing.svelte`, `BeatDots.svelte`) read live IPC in
 production with synthetic fallback retained for the no-snapshot startup window
-per the dual-mode "live snapshot present" gate. The `AudioReactivity` widget's 4
-named band tiles + BPM strip read live via 8 → 4 reduction; the 48-bar FFT
-visualiser stays synthetic-driven (post-MVP).
+per the dual-mode "live snapshot present" gate. The `AudioReactivity` widget's
+4 named band tiles + BPM strip read live via 8 → 4 reduction; the 48-bar FFT
+visualiser stays synthetic-driven (post-MVP). Producer note: cpal binds the
+DEFAULT INPUT device (microphone) on macOS, not system audio output; a virtual
+loopback (BlackHole / Loopback) is the operator path for system-output capture.
+
+**Wave 2.1 main-loop cross-seam activation (2026-05-11).** Pre-alpha smoke
+testing on 2026-05-11 surfaced that ~60% of cross-seam IPC was gapped despite
+the v0.2-beta bundle port shipping a wireframe-faithful surface. Wave 2.1
+landed 11 PRs in a fast parallel sequence (Lane A scene + control + snap +
+preset/playlist; Lane B Perform variant + Top bar HUD; Lane C audio bootstrap
+doc cleanup + Settings persistence; Lane D MIDI device enumeration + learn
+capture + OSC route inspection). All 8 user-story acceptance criteria (load a
+scene, drag a control, save / recall a snap, observe audio reactivity, list
+real MIDI devices, edit + persist OSC IP/port, persist Settings across
+restart, toggle Perform STANDARD/CONSOLE variant) work end-to-end on the
+local unsigned build. Cumulative wiring:
+
+- **Scene load** (Lane A.1, PR `#436` / `8171306`) — `load_scene(path)` Tauri
+  command in `app/shell/src/commands/scene.rs` invokes
+  `engine/scene::loader::load_chroma_dir` + commits a new `Command::SceneLoad`
+  through the runtime command bus; bridge `LoadedScenePayload` (id / name /
+  control schema / metadata) round-trip-tested at `app/ui-bridge/tests/`;
+  frontend `src/lib/ipc/scene.ts` + `src/lib/stores/loadedScene.svelte.ts`
+  drive the Perform Scene Controls header binding off Library's
+  double-click handler.
+- **Control dispatch** (Lane A.2, PR `#441` / `cc12452`) — Fader / Knob /
+  Toggle / Swatch widgets in Perform's Scene Controls + Meta Controls panels
+  attach pointer-drag handlers dispatching
+  `src/lib/stores/control.ts::dispatchAndRead(id, value)` which `invoke`s
+  `set_control` through `app/shell/src/commands/control.rs`; engine commits
+  via command bus; frontend reads back the committed value (existing
+  `set_control` / `get_control` engine surface; no engine change).
+- **Snap recall** (Lane A.3, PR `#442` / `1d2d93b`) — `SnapBar.svelte`
+  click handlers invoke `recall_snap` / `save_snap` / `clear_snap` through
+  `src/lib/ipc/snap.ts` (Cmd-click → save, Alt-click → clear, plain click
+  → recall) backed by `app/shell/src/commands/snap.rs`; active slot reflects
+  the engine snap store.
+- **Preset + playlist** (Lane A.4, PR `#445` / `06d52a8`) — Perform right
+  scene column's Previous / Next / Shuffle buttons invoke
+  `advance_playlist(step)` and the preset rail invokes `recall_preset(id)`
+  via `src/lib/ipc/playlist.ts` + `src/lib/ipc/preset.ts`. Engine
+  `PresetStore` / `PlaylistStore` semantics from Phase-3 are unchanged;
+  Shuffle advances by +1 like Next (engine has no shuffle command —
+  see synthetic-surfaces below).
+- **Perform variant** (Lane B.1, PR `#435` / `95d25cb`) — top bar
+  STANDARD / CONSOLE toggle ported from the bundle's variant-switcher into
+  `src/lib/TopBar.svelte`; `src/lib/stores/performVariant.svelte.ts`
+  carries the choice; classic 2-column layout is the default (matches the
+  canonical wireframe), dense 3-column is opt-in.
+- **Top bar HUD** (Lane B.2, PR `#438` / `838f1ed`) —
+  `src/lib/stores/transport.svelte.ts` ticks at 30 Hz from
+  `performance.now()` driving the transport timecode display; BPM + VU +
+  beat dots read `audioSnapshotStore.snapshot`; Camera / Record buttons
+  ship as visual stubs noting "wiring in Wave 2.2"; FPS readout stays
+  placeholder pending ADR-011.
+- **Settings persistence** (Lane C.3, PR `#440` / `56ea703`) —
+  `engine/runtime/src/settings.rs` `SettingsStore` serialises a TOML
+  document under Tauri's `app_data_dir`; shell commands `get_settings` /
+  `set_settings` in `app/shell/src/commands/settings.rs`; bridge
+  `SettingsPayload` round-trip-tested; `src/lib/views/Settings.svelte`
+  hydrates on mount, invokes `set_settings` on every form change,
+  preferences survive restart.
+- **Audio bootstrap doc cleanup** (Lane C.1, PR `#437` / `41a389c`) —
+  empirical re-verification confirmed the Wave 1c-α-2 producer + emitter
+  chain is live in production; smoke-checklist mic note added covering
+  cpal default-input behaviour + macOS loopback path; no code fix
+  required.
+- **MIDI device listing** (Lane D.1, PR `#439` / `ed0df45`) —
+  `app/shell/src/commands/midi.rs` `list_midi_devices` invokes
+  `integrations/midi-adapter` `enumerate_devices` (midir 0.10
+  cross-platform CoreMIDI / WinMM / ALSA); bridge `MidiDevicePayload`
+  round-trip-tested; `src/lib/stores/midiStore.svelte.ts` +
+  `src/lib/views/MIDI.svelte` Devices tab consume the real device list.
+- **MIDI learn-mode capture** (Lane D.2, PR `#443` / `11839c7`) —
+  `start_midi_learn(target)` Tauri command + `midi_learn_event` channel
+  surface single-message capture from the midir input listener;
+  `src/lib/stores/midiLearn.svelte.ts` drives the Learn button + per-
+  message decode (NoteOn / Off / CC / PitchBend / ProgramChange).
+  Multi-message capture + binding-to-control wire deferred (see
+  synthetic-surfaces).
+- **OSC route inspection + IP/port persistence** (Lane D.3, PR `#444` /
+  `c40e63e`) — `osc_routes_snapshot` / `bind_osc_route` /
+  `unbind_osc_route` Tauri commands in `app/shell/src/commands/osc.rs`
+  wrap the `integrations/osc-adapter` route registry; bridge
+  `OscRoutePayload` round-trip-tested; `src/lib/views/Osc.svelte` Routes
+  table consumes the real store; IP / port inputs persist through the
+  Settings TOML store (C.3 dep) under an OSC section that survives
+  restart.
+
+**What remains synthetic-only.**
+
+- **Live preview render pipeline** — ADR-011 Phase-2+ deferred. Dragging a
+  control fires `set_control` through to the engine but the Perform preview
+  pane stays a gradient placeholder; the scene's loaded GLSL is parsed and
+  the control schema honored, just not rasterised.
+- **Camera real bindings + Syphon `publish_syphon_output` real-impl** —
+  Wave 1c-β follow-ups; per-platform nokhwa concrete bindings + Syphon
+  `Send`-trait reconciliation + `list_syphon_servers`
+  `NSDistributedNotificationCenter` observer all carry forward.
+- **AudioReactivity 48-bar FFT visualiser + AudioUniforms 64-bar Spectrum**
+  — post-MVP UX per the Wave 1c-α-2 narrowing record.
+- **Dual-GPU validation + crash-injection drill** — hardware-gated per
+  the Phase-4d narrowings.
+- **MIDI multi-message learn capture** — Wave 2.1 D.2 ships single-message
+  MVP only; multi-message capture (debounce + abort + composite binding)
+  is Wave 2.2 scope.
+- **MIDI binding-to-control assignment** — D.2 captures the learned event +
+  stores to localStorage but does not yet apply the binding to a specific
+  control id; the wire from learn-store → control-store is Wave 2.2
+  scope.
+- **Shuffle advance** — engine has no shuffle command; the Perform right-
+  column "Shuffle" button advances by +1 like Next (visual-only label).
+- **Top bar Camera / Record buttons** — visual stubs only; real camera +
+  record wiring is Wave 2.2 scope.
 
 ## Fast commands
 
