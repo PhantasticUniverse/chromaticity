@@ -31,6 +31,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     fetchSceneCards,
     getDefaultRoot,
   } from '../stores/library';
+  import { loadedSceneStore } from '../stores/loadedScene.svelte';
+  import { routeStore } from '../stores/route.svelte';
   import { toIpcError } from '../types/ipc-error';
 
   let cards = $state<SceneCard[]>([]);
@@ -170,6 +172,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   function handleGetMoreScenes() {
     console.info('TODO: external link to scene marketplace — Phase-3+');
   }
+
+  // Wave 2.1 Lane A.1: double-click a scene card to load its `.chroma`
+  // package into the runtime and route to the Perform view. The
+  // engine-side `load_scene` IPC parses `scene.json` + stores the
+  // result on the shell-side AppState; on success the Perform view's
+  // Scene Controls header + control-panel surfaces re-render against
+  // the loaded scene's control schema instead of the
+  // `perform-fixtures.ts` placeholder. Errors bubble through
+  // `loadedSceneStore.error` so the UI can surface a non-fatal
+  // banner; the route navigation is gated on a successful load.
+  async function handleSceneOpen(card: SceneCard): Promise<void> {
+    const payload = await loadedSceneStore.load(card.path);
+    if (payload) {
+      routeStore.set('perform');
+    }
+  }
+
+  function handleSceneKeydown(event: KeyboardEvent, card: SceneCard): void {
+    // Mirror the bundle's keyboard-accessibility pattern (Enter +
+    // Space activate). Wave 2.1 only wires Enter; Space-bar
+    // activation is post-MVP UX.
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void handleSceneOpen(card);
+    }
+  }
 </script>
 
 <div class="library-page">
@@ -274,7 +302,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       -->
       <div class="library__grid" data-size={size}>
         {#each filteredCards as card (card.id)}
-          <article class="scene-tile">
+          <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+          <article
+            class="scene-tile"
+            class:scene-tile--active={loadedSceneStore.snapshot?.path === card.path}
+            tabindex="0"
+            role="button"
+            aria-label={`Load scene ${card.title || card.id}`}
+            ondblclick={() => void handleSceneOpen(card)}
+            onkeydown={(e) => handleSceneKeydown(e, card)}
+          >
             <div class="scene-tile__thumbnail" aria-hidden="true">
               <!-- Placeholder thumbnail; EV-LIBRARY-THUMBNAIL is Phase-4b. -->
               <div class="scene-tile__thumbnail-disc"></div>
@@ -598,6 +635,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     flex-direction: column;
     gap: var(--space-sm);
     box-shadow: var(--shadow-panel);
+    cursor: pointer;
+    transition:
+      border-color 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+  .scene-tile:hover {
+    border-color: var(--color-line-3, var(--color-text-3));
+  }
+  .scene-tile:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .scene-tile--active {
+    border-color: var(--color-primary);
+    box-shadow:
+      var(--shadow-panel),
+      inset 0 0 0 1px var(--color-primary);
   }
   .scene-tile__thumbnail {
     aspect-ratio: 16 / 10;

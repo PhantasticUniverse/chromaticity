@@ -34,6 +34,14 @@ workspace = true
 chromaticity-audio = { version = "0.0.0", path = "../../engine/audio" }
 chromaticity-camera-adapter = { version = "0.0.0", path = "../../integrations/camera-adapter" }
 chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }
+# Wave 2.1 Lane A.1: LoadedScenePayload / ControlSchemaPayload /
+# ControlKindPayload / ControlDefaultValuePayload mirror normalized
+# subsets of `chromaticity_scene::schema::{Scene, ControlDecl,
+# ControlKind, ControlValue}` across the Tauri command boundary so
+# the Library view's double-click handler can ship a parsed scene
+# into the Perform view's control-schema source. Engine types stay
+# free of IPC concerns; bridge wrappers carry the From impls.
+chromaticity-scene = { version = "0.0.0", path = "../../engine/scene" }
 serde = { version = "1", features = ["derive"] }
 ts-rs = "10"
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }

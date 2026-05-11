@@ -235,6 +235,190 @@ pub enum OscHealthState {
     Degraded,
 }
 
+/// IPC-facing default-value shape for a single control declared by a
+/// `.chroma` scene's `CONTROLS` array.
+///
+/// Mirrors [`chromaticity_scene::schema::ControlValue`] across the
+/// Tauri command boundary. ts-rs renders an `#[serde(untagged)]` enum
+/// as a TypeScript union of the variant payload types, so the
+/// frontend sees `boolean | number | [number, number] | [number,
+/// number, number] | [number, number, number, number]` — the same
+/// shape the wire format already carries.
+///
+/// Variant order mirrors the engine-side enum: `Bool` first so JSON
+/// `true` / `false` matches before falling through to the numeric
+/// path; the array variants discriminate by length.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[serde(untagged)]
+#[ts(export)]
+pub enum ControlDefaultValuePayload {
+    Bool(bool),
+    Float(f64),
+    Vec2([f64; 2]),
+    Vec3([f64; 3]),
+    Vec4([f64; 4]),
+}
+
+impl From<chromaticity_scene::schema::ControlValue> for ControlDefaultValuePayload {
+    fn from(value: chromaticity_scene::schema::ControlValue) -> Self {
+        match value {
+            chromaticity_scene::schema::ControlValue::Bool(b) => Self::Bool(b),
+            chromaticity_scene::schema::ControlValue::Float(f) => Self::Float(f),
+            chromaticity_scene::schema::ControlValue::Vec2(v) => Self::Vec2(v),
+            chromaticity_scene::schema::ControlValue::Vec3(v) => Self::Vec3(v),
+            chromaticity_scene::schema::ControlValue::Vec4(v) => Self::Vec4(v),
+            // Catch-all for the engine-side `#[non_exhaustive]` enum:
+            // any future variant flows into `Float(0.0)` as the safe
+            // fallback until the bridge surface is widened explicitly.
+            _ => Self::Float(0.0),
+        }
+    }
+}
+
+impl From<ControlDefaultValuePayload> for chromaticity_scene::schema::ControlValue {
+    fn from(payload: ControlDefaultValuePayload) -> Self {
+        match payload {
+            ControlDefaultValuePayload::Bool(b) => Self::Bool(b),
+            ControlDefaultValuePayload::Float(f) => Self::Float(f),
+            ControlDefaultValuePayload::Vec2(v) => Self::Vec2(v),
+            ControlDefaultValuePayload::Vec3(v) => Self::Vec3(v),
+            ControlDefaultValuePayload::Vec4(v) => Self::Vec4(v),
+        }
+    }
+}
+
+/// IPC-facing classification of a control's UI affordance, mirroring
+/// [`chromaticity_scene::schema::ControlKind`] across the Tauri
+/// command boundary.
+///
+/// ts-rs renders the enum as a flat string union
+/// (`"Slider" | "Toggle" | ...`). Mirrors the engine-side enum's
+/// `#[non_exhaustive]` posture by reproducing every existing variant
+/// explicitly; future additions need a matching bridge variant
+/// before the IPC surface widens.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum ControlKindPayload {
+    Slider,
+    Toggle,
+    Color,
+    Xy,
+    Bang,
+    Dropdown,
+    Knob,
+}
+
+impl From<chromaticity_scene::schema::ControlKind> for ControlKindPayload {
+    fn from(kind: chromaticity_scene::schema::ControlKind) -> Self {
+        match kind {
+            chromaticity_scene::schema::ControlKind::Slider => Self::Slider,
+            chromaticity_scene::schema::ControlKind::Toggle => Self::Toggle,
+            chromaticity_scene::schema::ControlKind::Color => Self::Color,
+            chromaticity_scene::schema::ControlKind::Xy => Self::Xy,
+            chromaticity_scene::schema::ControlKind::Bang => Self::Bang,
+            chromaticity_scene::schema::ControlKind::Dropdown => Self::Dropdown,
+            chromaticity_scene::schema::ControlKind::Knob => Self::Knob,
+            // Catch-all for the engine-side `#[non_exhaustive]` enum:
+            // any future variant flows into `Slider` as the safe
+            // fallback until the bridge surface is widened explicitly.
+            _ => Self::Slider,
+        }
+    }
+}
+
+impl From<ControlKindPayload> for chromaticity_scene::schema::ControlKind {
+    fn from(payload: ControlKindPayload) -> Self {
+        match payload {
+            ControlKindPayload::Slider => Self::Slider,
+            ControlKindPayload::Toggle => Self::Toggle,
+            ControlKindPayload::Color => Self::Color,
+            ControlKindPayload::Xy => Self::Xy,
+            ControlKindPayload::Bang => Self::Bang,
+            ControlKindPayload::Dropdown => Self::Dropdown,
+            ControlKindPayload::Knob => Self::Knob,
+        }
+    }
+}
+
+/// IPC-facing single-control declaration, mirroring a normalized
+/// subset of [`chromaticity_scene::schema::ControlDecl`] across the
+/// Tauri command boundary.
+///
+/// Lane A.1 only carries the fields the Perform view's Scene
+/// Controls panel binds against (name + kind + default + min/max +
+/// optional UI grouping label + description). The richer
+/// `LABELS` / `VALUES` / `PARAMS` / `DEF_COLOR` set stays in the
+/// engine-side `ControlDecl::extensions` map and rides forward
+/// when Wave 2.2's control-widget refactor consumes them; mirroring
+/// every field today would widen the bridge surface ahead of any
+/// frontend consumer.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[ts(export)]
+pub struct ControlSchemaPayload {
+    pub name: String,
+    pub kind: Option<ControlKindPayload>,
+    pub default: ControlDefaultValuePayload,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub ui_group: Option<String>,
+    pub description: Option<String>,
+    pub label: Option<String>,
+}
+
+impl From<chromaticity_scene::schema::ControlDecl> for ControlSchemaPayload {
+    fn from(decl: chromaticity_scene::schema::ControlDecl) -> Self {
+        Self {
+            name: decl.name,
+            kind: decl.kind.map(Into::into),
+            default: decl.default.into(),
+            min: decl.min,
+            max: decl.max,
+            ui_group: decl.ui_group,
+            description: decl.description,
+            label: decl.label,
+        }
+    }
+}
+
+/// IPC-facing loaded-scene snapshot returned by the `load_scene`
+/// Tauri command.
+///
+/// One value per `.chroma` package the user has loaded into the
+/// runtime via the Library view's double-click handler. The shape
+/// mirrors the subset of [`chromaticity_scene::schema::Scene`] the
+/// Perform view's Scene Controls header + control-panel surfaces
+/// bind against per Wave 2.1 Lane A.1:
+///
+/// - `id` — file-stem of the `.chroma` directory (matches the
+///   [`SceneCard::id`] surfaced by the library scan).
+/// - `path` — absolute path to the `.chroma` package the runtime
+///   loaded from.
+/// - `name` — author-declared display name (`TITLE`), falling back
+///   to `id` when the wire field is absent.
+/// - `credit` / `description` — author metadata mirroring
+///   [`SceneCard::credit`] / [`SceneCard::description`].
+/// - `controls` — normalized control schema the Perform Scene
+///   Controls panel binds against.
+/// - `schema_version` — the `SCHEMA_VERSION` integer from the
+///   compat-syn-v1 baseline (defaults to `1` when absent per the
+///   engine-side [`SceneHeader::default`] contract).
+///
+/// Lane A.1 does NOT carry passes, transition descriptors, media
+/// bindings, script lifecycle metadata, or the broader
+/// `extensions` map; those ride forward when Wave 2.2's render
+/// pipeline + control dispatch refactor needs them.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[ts(export)]
+pub struct LoadedScenePayload {
+    pub id: String,
+    pub path: String,
+    pub name: String,
+    pub credit: String,
+    pub description: String,
+    pub controls: Vec<ControlSchemaPayload>,
+    pub schema_version: u32,
+}
+
 /// IPC-facing snapshot of OSC adapter health metrics.
 ///
 /// The W14 OSC view reads this on mount to render the adapter

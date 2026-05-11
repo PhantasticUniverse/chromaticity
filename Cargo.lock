@@ -637,6 +637,7 @@ dependencies = [
  "chromaticity-audio",
  "chromaticity-camera-adapter",
  "chromaticity-runtime",
+ "chromaticity-scene",
  "chromaticity-syphon-adapter",
  "serde",
  "serde_json",

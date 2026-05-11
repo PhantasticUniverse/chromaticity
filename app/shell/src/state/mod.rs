@@ -67,6 +67,7 @@
 use chromaticity_audio::runtime::AudioRuntimeHandle;
 use chromaticity_runtime::InMemoryBus;
 use chromaticity_runtime::state::State;
+use chromaticity_scene::schema::Scene;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -187,6 +188,38 @@ pub struct AppState {
     /// signals shutdown + best-effort joins per
     /// [`chromaticity_audio::runtime::AudioRuntimeHandle::drop`].
     pub audio: Mutex<Option<AudioRuntimeHandle>>,
+    /// Most recently loaded `.chroma` scene package and its on-disk
+    /// path. Wave 2.1 Lane A.1 introduces this as a shell-side
+    /// concern: the Library view's double-click handler invokes
+    /// `load_scene(path)`, which parses the `.chroma` directory via
+    /// [`chromaticity_scene::loader::load_chroma_dir`] and stores the
+    /// resulting [`Scene`] here so the Perform view's Scene Controls
+    /// panel can bind to the real control schema instead of the
+    /// `perform-fixtures.ts` placeholder. `None` before the first
+    /// load.
+    ///
+    /// **Not flowing through the canonical command bus on purpose.**
+    /// Lane A.1 keeps the engine [`chromaticity_runtime::Command`]
+    /// envelope frozen — adding a `SceneLoad` variant would touch the
+    /// observability catalog, [`crate::state::AppState`]
+    /// `apply_event` path, multiple drift pins, and the EV-STATE-REPLAY
+    /// / EV-PRESET-PLAYLIST T2 corpora. The loaded scene is a shell-
+    /// side concept until Wave 2.2 wires the render pipeline + control
+    /// dispatch refactor against it; at that point the engine surface
+    /// widens in a single coordinated PR.
+    pub loaded_scene: Mutex<Option<LoadedSceneRecord>>,
+}
+
+/// Composite record stored on [`AppState::loaded_scene`].
+///
+/// Carries the parsed [`Scene`] alongside the absolute path the
+/// runtime loaded it from so the IPC handler can return both the
+/// id (derived from the path's file-stem) and the on-disk location
+/// without re-walking the filesystem.
+#[derive(Debug, Clone)]
+pub struct LoadedSceneRecord {
+    pub scene: Scene,
+    pub path: std::path::PathBuf,
 }
 
 impl AppState {
@@ -205,6 +238,7 @@ impl AppState {
             bus: InMemoryBus::in_memory(),
             scheduler_thread: Mutex::new(None),
             audio: Mutex::new(None),
+            loaded_scene: Mutex::new(None),
         }
     }
 
