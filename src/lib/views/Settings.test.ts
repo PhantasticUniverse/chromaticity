@@ -54,6 +54,7 @@ import {
   RESOLUTION_PRESETS,
   SENDER_NAME_DEFAULT,
 } from '../data/settings-fixtures';
+import { settingsStore } from '../stores/settings.svelte';
 
 function getSection(container: HTMLElement, heading: string): HTMLElement {
   const headings = Array.from(
@@ -74,6 +75,11 @@ describe('Settings view', () => {
     // Reset so subsequent tests start from the bundle default ("pulse"
     // clears the attribute).
     delete document.documentElement.dataset.theme;
+    // Wave 2.1 Lane C.3 — the settingsStore is a module-level singleton
+    // shared across the test suite. Reset its load-idempotency latch +
+    // in-memory snapshot so each test mounts against the bundle-faithful
+    // defaults, just like the previous local-$state-only view.
+    settingsStore.reset();
     cleanup();
   });
 
@@ -459,5 +465,53 @@ describe('Settings view', () => {
     const graphics = getSection(container, 'Graphics / Output');
     const fps = within(graphics).getByLabelText('Target FPS') as HTMLSelectElement;
     expect(fps.querySelectorAll('option').length).toBe(FPS_TARGETS.length);
+  });
+
+  it('mount fires get_settings via the settingsStore IPC seam', async () => {
+    // Wave 2.1 Lane C.3 settings-persistence wiring: the Settings
+    // view's mount $effect calls `settingsStore.load()`, which
+    // invokes `get_settings`. The store catches the rejection (the
+    // jsdom harness has no Tauri runtime + the invokeMock above
+    // returns undefined by default) and renders fall back to the
+    // bundle-faithful defaults so existing assertions keep passing.
+    invokeMock.mockResolvedValue(undefined);
+    render(Settings);
+    // The component's mount `$effect` calls
+    // `settingsStore.load()` which dynamic-imports the IPC module
+    // before invoking. Awaiting the store's load() promise directly
+    // is the cleanest way to settle the entire chain — `load()` is
+    // idempotent so calling it again from the test just returns
+    // the in-flight promise from the mount $effect.
+    await settingsStore.load();
+    expect(invokeMock).toHaveBeenCalledWith('get_settings');
+  });
+
+  it('changing Target FPS dispatches a debounced set_settings IPC call', async () => {
+    // Wave 2.1 Lane C.3 write-through: changing a persisted field
+    // (Target FPS lives under graphics.fps_target) schedules a
+    // debounced set_settings invocation. The store debounce is
+    // ~250ms; fake timers fast-forward past it.
+    vi.useFakeTimers();
+    try {
+      // Settings.svelte mounts and calls load() — let invokeMock
+      // resolve with `undefined` for both get_settings and set_settings.
+      invokeMock.mockResolvedValue(undefined);
+      const { container } = render(Settings);
+      await Promise.resolve();
+      const graphics = getSection(container, 'Graphics / Output');
+      const fps = within(graphics).getByLabelText('Target FPS') as HTMLSelectElement;
+      await fireEvent.change(fps, { target: { value: '120' } });
+      // Advance past the debounce window.
+      await vi.advanceTimersByTimeAsync(300);
+      const setCalls = invokeMock.mock.calls.filter((c) => c[0] === 'set_settings');
+      expect(setCalls.length).toBeGreaterThanOrEqual(1);
+      // The last set_settings carries the updated graphics.fps_target.
+      const lastPayload = setCalls.at(-1)?.[1] as
+        | { settings: { graphics: { fps_target: string } } }
+        | undefined;
+      expect(lastPayload?.settings.graphics.fps_target).toBe('120');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -92,6 +92,14 @@ chromaticity-script = { version = "0.0.0", path = "../script", optional = true }
 # bounded MPMC consumer queue.
 crossbeam-channel = "0.5"
 
+# Wave 2.1 Lane C.3 `EV-INTEGRATION-MATRIX` settings persistence: the
+# `settings` module serialises operator preferences to TOML in the
+# per-user data dir so the Settings view's form state survives
+# restart. serde + toml carry the load-bearing (de)serialisation;
+# both crates are MIT/Apache-2.0 (allow-listed by deny.toml).
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+
 [dev-dependencies]
 # criterion 0.5 backs the Phase-3 wave PR 6 EV-PERF-BUDGETS proxy
 # benches under `benches/budgets.rs`. Path B nightly-only posture: the

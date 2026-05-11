@@ -20,6 +20,7 @@ pub mod picker;
 pub mod playlist;
 pub mod preset;
 pub mod scene;
+pub mod settings;
 pub mod snap;
 pub mod syphon;
 pub mod thumbnail;

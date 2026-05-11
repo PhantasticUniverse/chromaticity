@@ -46,7 +46,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     AUDIO_CHANNEL_RIGHT_OPTIONS,
     AUDIO_INPUT_DEVICES,
     AUDIO_INPUT_GAIN_DB_RANGE_DB,
-    AUDIO_INPUT_GAIN_DEFAULT,
     AUDIO_LATENCY_HINTS,
     AUDIO_METER_BARS,
     AUDIO_METER_LEVEL,
@@ -65,7 +64,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     MIDI_CLOCK_OUTPUT_DEVICES,
     MULTI_DISPLAY_MODE_OPTIONS,
     QUANTIZE_TRANSITION_OPTIONS,
-    RENDER_SCALE_DEFAULT,
     RENDER_SCALE_MAX,
     RENDER_SCALE_MIN,
     RENDER_SCALE_STEP,
@@ -76,13 +74,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type FolderEntry,
     type MultiDisplayModeOption,
     type QuantizeTransitionOption,
-    type ScreenFittingOption,
   } from '../data/settings-fixtures';
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
+  import { settingsStore } from '../stores/settings.svelte';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
   import { ControlGroup, Fader, Meter, OutputRoutingTile, TabSegment } from '../widgets';
   import SceneStill from '../widgets/SceneStill.svelte';
+
+  // Wave 2.1 Lane C.3 — persist Audio / Graphics / General settings
+  // via the `get_settings` / `set_settings` Tauri IPC handlers.
+  // Storage / Live Sources / Tempo & Sync stay local-state-only at
+  // this slice; they round-trip through the bundle-faithful fixture
+  // defaults and don't survive restart yet. Theme persistence is
+  // handled by the existing ThemeSwitcher (localStorage); the
+  // settings document carries a `general.theme` field for future
+  // unification but does NOT override the live ThemeSwitcher today.
+  //
+  // The store loads asynchronously on mount; until it resolves the
+  // form fields render against the bundle-faithful defaults baked
+  // into `settingsStore.snapshot` (which match the fixture defaults
+  // verbatim, so the existing Settings view tests keep passing).
+  $effect(() => {
+    void settingsStore.load();
+  });
+
+  // Pull the audio + graphics + general sections through derived
+  // reads so any store mutation reflects in the UI on next $effect
+  // flush.
+  const audioSnapshot = $derived(settingsStore.snapshot.audio);
+  const graphicsSnapshot = $derived(settingsStore.snapshot.graphics);
 
   // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
   // mirroring `views/settings.jsx` lines 187-194 (the right-column
@@ -104,46 +125,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { key: 'Ableton Link', value: '4 peers · 128.00 BPM' },
   ];
 
-  /* ----- Audio Device state ----- */
-  let audioInput = $state(AUDIO_INPUT_DEVICES[0]?.id ?? 'default');
-  let audioOutput = $state(AUDIO_OUTPUT_DEVICES[0]?.id ?? 'default');
-  let sampleRate = $state(AUDIO_SAMPLE_RATES[1]?.id ?? '48000');
-  let latencyHint = $state(AUDIO_LATENCY_HINTS[1]?.id ?? 'balanced');
-  let channelLayout = $state(AUDIO_CHANNEL_LAYOUTS[1]?.id ?? 'stereo');
+  /* ----- Audio Device — persisted via settingsStore -----
+   * The form fields below read live from `settingsStore.snapshot.audio`
+   * (via the `audioSnapshot` $derived above) and write back through
+   * `settingsStore.update({ audio: { ... } })`. The store debounces
+   * disk persistence so rapid slider drags collapse into one save. */
+  const inputGainDb = $derived((audioSnapshot.input_gain - 0.5) * AUDIO_INPUT_GAIN_DB_RANGE_DB);
+  const inputGainDbLabel = $derived(`${inputGainDb >= 0 ? '+' : ''}${inputGainDb.toFixed(1)} dB`);
 
-  /* ----- Audio routing + gain (W39) ----- */
-  let channelLeft = $state(AUDIO_CHANNEL_LEFT_OPTIONS[0]?.id ?? 'L1');
-  let channelRight = $state(AUDIO_CHANNEL_RIGHT_OPTIONS[0]?.id ?? 'R2');
-  let inputGain = $state(AUDIO_INPUT_GAIN_DEFAULT);
-  /* Symmetric mapping about 0 dB unity at gain=0.5; the ±18 dB span
-   * (range_db / 2) approximates the bundle wireframe's "+3.2 dB" badge
-   * at the ~62% slider mark. */
-  let inputGainDb = $derived((inputGain - 0.5) * AUDIO_INPUT_GAIN_DB_RANGE_DB);
-  let inputGainDbLabel = $derived(`${inputGainDb >= 0 ? '+' : ''}${inputGainDb.toFixed(1)} dB`);
-
-  /* ----- Graphics / Output state ----- */
-  let resolutionPreset = $state(RESOLUTION_PRESETS[1]?.id ?? '1080p');
-  let customResolution = $state(false);
-  let customWidth = $state(1920);
-  let customHeight = $state(1080);
-  let fpsTarget = $state(FPS_TARGETS[1]?.id ?? '60');
-  let vsync = $state(true);
-  let hdrTarget = $state(HDR_TARGETS[0]?.id ?? 'sdr');
-  let display = $state(DISPLAYS[0]?.id ?? 'display-1');
-
-  /* ----- Graphics extensions (W41) -----
-   * Bundle source: views/settings.jsx lines 78-114. The W21 PR1
-   * baseline shipped Render Resolution / Custom Resolution / Target
-   * FPS / V-Sync / HDR Target / Display; W41 adds the wireframe rows
-   * the bundle calls for inside the same Graphics section. Frozen-
-   * frame; the live render-scale + screen-fitting + multi-display
-   * spans land alongside the Phase-3+/4a renderer integration crate. */
-  let colorSpace = $state<ColorSpaceOption['id']>('srgb');
-  let multiDisplayMode = $state<MultiDisplayModeOption['id']>('single');
-  let renderScale = $state(RENDER_SCALE_DEFAULT);
-  let screenFitting = $state<ScreenFittingOption['id']>('fit');
-  let fpsSliderEnabled = $state(false);
-  let renderScaleLabel = $derived(`${renderScale.toFixed(2)}×`);
+  /* ----- Graphics / Output — persisted via settingsStore -----
+   * Same pattern as Audio: read through `graphicsSnapshot` (the
+   * $derived above); write through `settingsStore.update({ graphics })`.
+   * W21 PR1 + W41 cohort fields all flow through the same seam. */
+  const renderScaleLabel = $derived(`${graphicsSnapshot.render_scale.toFixed(2)}×`);
 
   /* ----- Live Sources (W42) -----
    * Bundle source: views/settings.jsx lines 115-124. Five boolean
@@ -301,7 +295,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <div class="settings__form">
         <div class="settings__field">
           <label for="audio-input" class="settings__label">Input Device</label>
-          <select id="audio-input" class="settings__select" bind:value={audioInput}>
+          <select
+            id="audio-input"
+            class="settings__select"
+            value={audioSnapshot.input_device}
+            onchange={(e) =>
+              settingsStore.update({ audio: { input_device: e.currentTarget.value } })}
+          >
             {#each AUDIO_INPUT_DEVICES as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -309,7 +309,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
         <div class="settings__field">
           <label for="audio-output" class="settings__label">Output Device</label>
-          <select id="audio-output" class="settings__select" bind:value={audioOutput}>
+          <select
+            id="audio-output"
+            class="settings__select"
+            value={audioSnapshot.output_device}
+            onchange={(e) =>
+              settingsStore.update({ audio: { output_device: e.currentTarget.value } })}
+          >
             {#each AUDIO_OUTPUT_DEVICES as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -317,7 +323,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
         <div class="settings__field">
           <label for="sample-rate" class="settings__label">Sample Rate</label>
-          <select id="sample-rate" class="settings__select" bind:value={sampleRate}>
+          <select
+            id="sample-rate"
+            class="settings__select"
+            value={String(audioSnapshot.sample_rate_hz)}
+            onchange={(e) =>
+              settingsStore.update({
+                audio: { sample_rate_hz: Number.parseInt(e.currentTarget.value, 10) },
+              })}
+          >
             {#each AUDIO_SAMPLE_RATES as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -325,7 +339,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
         <div class="settings__field">
           <label for="latency-hint" class="settings__label">Latency Hint</label>
-          <select id="latency-hint" class="settings__select" bind:value={latencyHint}>
+          <select
+            id="latency-hint"
+            class="settings__select"
+            value={audioSnapshot.latency_hint}
+            onchange={(e) =>
+              settingsStore.update({ audio: { latency_hint: e.currentTarget.value } })}
+          >
             {#each AUDIO_LATENCY_HINTS as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -333,7 +353,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
         <div class="settings__field">
           <label for="channel-layout" class="settings__label">Channel Layout</label>
-          <select id="channel-layout" class="settings__select" bind:value={channelLayout}>
+          <select
+            id="channel-layout"
+            class="settings__select"
+            value={audioSnapshot.channel_layout}
+            onchange={(e) =>
+              settingsStore.update({ audio: { channel_layout: e.currentTarget.value } })}
+          >
             {#each AUDIO_CHANNEL_LAYOUTS as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -346,7 +372,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <select
               id="channel-left"
               class="settings__select settings__select--compact"
-              bind:value={channelLeft}
+              value={audioSnapshot.channel_left}
+              onchange={(e) =>
+                settingsStore.update({ audio: { channel_left: e.currentTarget.value } })}
             >
               {#each AUDIO_CHANNEL_LEFT_OPTIONS as opt (opt.id)}
                 <option value={opt.id}>{opt.label}</option>
@@ -356,7 +384,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <select
               id="channel-right"
               class="settings__select settings__select--compact"
-              bind:value={channelRight}
+              value={audioSnapshot.channel_right}
+              onchange={(e) =>
+                settingsStore.update({ audio: { channel_right: e.currentTarget.value } })}
             >
               {#each AUDIO_CHANNEL_RIGHT_OPTIONS as opt (opt.id)}
                 <option value={opt.id}>{opt.label}</option>
@@ -375,7 +405,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               min="0"
               max="1"
               step="0.01"
-              bind:value={inputGain}
+              value={audioSnapshot.input_gain}
+              oninput={(e) =>
+                settingsStore.update({
+                  audio: { input_gain: Number.parseFloat(e.currentTarget.value) },
+                })}
               aria-valuetext={inputGainDbLabel}
             />
             <span class="settings__bpm-readout settings__bpm-readout--gain">
@@ -410,8 +444,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <select
             id="resolution-preset"
             class="settings__select"
-            bind:value={resolutionPreset}
-            disabled={customResolution}
+            value={graphicsSnapshot.resolution_preset}
+            onchange={(e) =>
+              settingsStore.update({
+                graphics: { resolution_preset: e.currentTarget.value },
+              })}
+            disabled={graphicsSnapshot.custom_resolution_enabled}
           >
             {#each RESOLUTION_PRESETS as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
@@ -424,10 +462,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <button
               type="button"
               class="settings__pill-toggle"
-              class:on={customResolution}
-              aria-pressed={customResolution}
+              class:on={graphicsSnapshot.custom_resolution_enabled}
+              aria-pressed={graphicsSnapshot.custom_resolution_enabled}
               aria-label="Custom resolution"
-              onclick={() => (customResolution = !customResolution)}
+              onclick={() =>
+                settingsStore.update({
+                  graphics: {
+                    custom_resolution_enabled: !graphicsSnapshot.custom_resolution_enabled,
+                  },
+                })}
             >
               <span class="settings__pill-thumb"></span>
             </button>
@@ -439,8 +482,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               min="320"
               max="7680"
               step="2"
-              bind:value={customWidth}
-              disabled={!customResolution}
+              value={graphicsSnapshot.custom_width}
+              oninput={(e) =>
+                settingsStore.update({
+                  graphics: {
+                    custom_width: Number.parseInt(e.currentTarget.value, 10) || 0,
+                  },
+                })}
+              disabled={!graphicsSnapshot.custom_resolution_enabled}
             />
             <span class="settings__times">×</span>
             <label for="custom-height" class="settings__sublabel">H</label>
@@ -451,14 +500,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               min="240"
               max="4320"
               step="2"
-              bind:value={customHeight}
-              disabled={!customResolution}
+              value={graphicsSnapshot.custom_height}
+              oninput={(e) =>
+                settingsStore.update({
+                  graphics: {
+                    custom_height: Number.parseInt(e.currentTarget.value, 10) || 0,
+                  },
+                })}
+              disabled={!graphicsSnapshot.custom_resolution_enabled}
             />
           </div>
         </div>
         <div class="settings__field">
           <label for="fps-target" class="settings__label">Target FPS</label>
-          <select id="fps-target" class="settings__select" bind:value={fpsTarget}>
+          <select
+            id="fps-target"
+            class="settings__select"
+            value={graphicsSnapshot.fps_target}
+            onchange={(e) =>
+              settingsStore.update({ graphics: { fps_target: e.currentTarget.value } })}
+          >
             {#each FPS_TARGETS as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -469,17 +530,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <button
             type="button"
             class="settings__pill-toggle"
-            class:on={vsync}
-            aria-pressed={vsync}
+            class:on={graphicsSnapshot.vsync}
+            aria-pressed={graphicsSnapshot.vsync}
             aria-label="V-Sync"
-            onclick={() => (vsync = !vsync)}
+            onclick={() => settingsStore.update({ graphics: { vsync: !graphicsSnapshot.vsync } })}
           >
             <span class="settings__pill-thumb"></span>
           </button>
         </div>
         <div class="settings__field" data-cap="render.hdr">
           <label for="hdr-target" class="settings__label">HDR Target</label>
-          <select id="hdr-target" class="settings__select" bind:value={hdrTarget}>
+          <select
+            id="hdr-target"
+            class="settings__select"
+            value={graphicsSnapshot.hdr_target}
+            onchange={(e) =>
+              settingsStore.update({ graphics: { hdr_target: e.currentTarget.value } })}
+          >
             {#each HDR_TARGETS as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -487,7 +554,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
         <div class="settings__field">
           <label for="display" class="settings__label">Display</label>
-          <select id="display" class="settings__select" bind:value={display}>
+          <select
+            id="display"
+            class="settings__select"
+            value={graphicsSnapshot.display}
+            onchange={(e) => settingsStore.update({ graphics: { display: e.currentTarget.value } })}
+          >
             {#each DISPLAYS as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
@@ -498,8 +570,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <div class="settings__field-row">
             <TabSegment
               options={COLOR_SPACE_OPTIONS}
-              value={colorSpace}
-              onChange={(id) => (colorSpace = id as ColorSpaceOption['id'])}
+              value={graphicsSnapshot.color_space as ColorSpaceOption['id']}
+              onChange={(id) =>
+                settingsStore.update({
+                  graphics: { color_space: id as ColorSpaceOption['id'] },
+                })}
               ariaLabel="Color space"
             />
             <span class="settings__hint settings__hint--inline">
@@ -512,8 +587,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <div class="settings__field-row">
             <TabSegment
               options={MULTI_DISPLAY_MODE_OPTIONS}
-              value={multiDisplayMode}
-              onChange={(id) => (multiDisplayMode = id as MultiDisplayModeOption['id'])}
+              value={graphicsSnapshot.multi_display_mode as MultiDisplayModeOption['id']}
+              onChange={(id) =>
+                settingsStore.update({
+                  graphics: { multi_display_mode: id as MultiDisplayModeOption['id'] },
+                })}
               ariaLabel="Multi-display mode"
             />
             <span class="settings__hint settings__hint--inline">
@@ -531,7 +609,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               min={RENDER_SCALE_MIN}
               max={RENDER_SCALE_MAX}
               step={RENDER_SCALE_STEP}
-              bind:value={renderScale}
+              value={graphicsSnapshot.render_scale}
+              oninput={(e) =>
+                settingsStore.update({
+                  graphics: { render_scale: Number.parseFloat(e.currentTarget.value) },
+                })}
               aria-valuetext={renderScaleLabel}
             />
             <span class="settings__bpm-readout settings__bpm-readout--gain">
@@ -544,7 +626,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <select
             id="screen-fitting"
             class="settings__select"
-            bind:value={screenFitting}
+            value={graphicsSnapshot.screen_fitting}
+            onchange={(e) =>
+              settingsStore.update({
+                graphics: { screen_fitting: e.currentTarget.value },
+              })}
             aria-label="Screen fitting"
           >
             {#each SCREEN_FITTING_OPTIONS as opt (opt.id)}
@@ -572,10 +658,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <button
               type="button"
               class="settings__pill-toggle"
-              class:on={fpsSliderEnabled}
-              aria-pressed={fpsSliderEnabled}
+              class:on={graphicsSnapshot.fps_slider_enabled}
+              aria-pressed={graphicsSnapshot.fps_slider_enabled}
               aria-label="FPS slider"
-              onclick={() => (fpsSliderEnabled = !fpsSliderEnabled)}
+              onclick={() =>
+                settingsStore.update({
+                  graphics: {
+                    fps_slider_enabled: !graphicsSnapshot.fps_slider_enabled,
+                  },
+                })}
             >
               <span class="settings__pill-thumb"></span>
             </button>

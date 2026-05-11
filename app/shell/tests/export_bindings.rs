@@ -17,10 +17,12 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use chromaticity_ui_bridge::{
-    AudioUniformSnapshotPayload, CameraDeviceKindPayload, CameraDevicePayload,
-    ControlDefaultValuePayload, ControlId, ControlKindPayload, ControlSchemaPayload, ControlValue,
+    AudioSettingsPayload, AudioUniformSnapshotPayload, CameraDeviceKindPayload,
+    CameraDevicePayload, ControlDefaultValuePayload, ControlId, ControlKindPayload,
+    ControlSchemaPayload, ControlValue, GeneralSettingsPayload, GraphicsSettingsPayload,
     LoadedScenePayload, OscHealthSnapshot, OscHealthState, PresetId, SceneCard, SceneSource,
-    SnapSlotId, SyphonOutputStatusPayload, SyphonServerPayload,
+    SettingsPayload, SnapSlotId, StorageSettingsPayload, SyphonOutputStatusPayload,
+    SyphonServerPayload, ThemePayload,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -53,4 +55,18 @@ fn export_bindings_to_frontend_tree() {
     ControlKindPayload::export_all_to(&out_dir).expect("export ControlKindPayload bindings");
     ControlDefaultValuePayload::export_all_to(&out_dir)
         .expect("export ControlDefaultValuePayload bindings");
+    // Wave 2.1 Lane C.3 settings persistence — SettingsPayload + its
+    // four section sub-payloads + the ThemePayload discriminant. The
+    // typed-newtype cluster carries the operator-preferences IPC
+    // surface backing the `get_settings` / `set_settings` Tauri
+    // commands.
+    ThemePayload::export_all_to(&out_dir).expect("export ThemePayload bindings");
+    GeneralSettingsPayload::export_all_to(&out_dir)
+        .expect("export GeneralSettingsPayload bindings");
+    AudioSettingsPayload::export_all_to(&out_dir).expect("export AudioSettingsPayload bindings");
+    GraphicsSettingsPayload::export_all_to(&out_dir)
+        .expect("export GraphicsSettingsPayload bindings");
+    StorageSettingsPayload::export_all_to(&out_dir)
+        .expect("export StorageSettingsPayload bindings");
+    SettingsPayload::export_all_to(&out_dir).expect("export SettingsPayload bindings");
 }
