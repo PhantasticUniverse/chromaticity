@@ -30,6 +30,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Each name resolves to a 24×24 viewBox stroke icon that inherits
   // `currentColor` from the existing button color cascade, so the
   // Pulse / Atelier / Console theme cycle keeps working unchanged.
+  //
+  // Wave 2.3 Lane Q.2 (G.1): collapse the sidebar to an icon-only rail
+  // matching the bundle's `.rail`/`.rail-btn` chrome (`styles.css` lines
+  // 197-217; bundle width 48px). Labels stay in the DOM for screen
+  // readers + tests but become visually hidden; the existing `title`
+  // attribute drives the on-hover tooltip. AppShell narrows the rail
+  // column from 76px to 52px accordingly. No nav entries are dropped —
+  // the bundle's `VIEWS` array still drives 13 top + 2 bottom (Account
+  // / Help) per Chromaticity.html lines 57-71 / 176-177.
   import Icon, { type IconName } from './Icon.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
 
@@ -153,15 +162,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <style>
   /* Token-driven scoped styles. No new tokens added — `--color-bg-1`
    * (sidebar surface), `--color-bg-3` (hover), `--color-primary` +
-   * `--color-on-primary` (active) cover every state. */
+   * `--color-on-primary` (active) cover every state.
+   *
+   * Wave 2.3 Lane Q.2 (G.1) — icon-only rail mirroring the bundle's
+   * `.rail` chrome (`styles.css` lines 207-217). The bundle rail is
+   * 48 px wide with 36×36 buttons centred horizontally; we match
+   * those dimensions and visually hide the `__label` element so
+   * screen readers + existing widget tests (which query the label
+   * text for ordering / count) keep working. The icon's `title`
+   * attribute on the button still drives native tooltips on hover. */
   .sidebar-rail {
     display: flex;
     flex-direction: column;
+    align-items: center;
     justify-content: space-between;
     background: var(--color-bg-1);
     border-right: 1px solid var(--color-line-2);
     padding: var(--space-sm) 0;
     overflow-y: auto;
+    width: 100%;
   }
   .sidebar-rail__section {
     list-style: none;
@@ -169,28 +188,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-  }
-  .sidebar-rail__btn {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
     align-items: center;
     gap: 2px;
+    width: 100%;
+  }
+  .sidebar-rail__btn {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
     background: transparent;
     color: var(--color-text-2);
     border: none;
-    border-left: 2px solid transparent;
-    padding: var(--space-sm) var(--space-xs);
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-caps-sm);
-    letter-spacing: var(--letter-spacing-caps-sm);
-    text-transform: uppercase;
+    border-radius: var(--radius-sm);
+    padding: 0;
+    position: relative;
     cursor: pointer;
     transition:
       background 0.12s ease,
-      color 0.12s ease,
-      border-color 0.12s ease;
+      color 0.12s ease;
   }
   .sidebar-rail__btn:not(:disabled):hover {
     background: var(--color-bg-3);
@@ -203,7 +219,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .sidebar-rail__btn.active {
     background: var(--color-bg-3);
     color: var(--color-primary);
-    border-left-color: var(--color-primary);
+  }
+  /* Bundle-faithful accent strip on the active icon — `styles.css`
+   * lines 213 `.rail-btn.active::before`. Carves a 2 px primary tick
+   * down the left edge of the active button. */
+  .sidebar-rail__btn.active::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: var(--color-primary);
+    border-radius: 2px;
+    box-shadow: 0 0 calc(8px * var(--glow, 1)) var(--color-primary);
   }
   .sidebar-rail__btn:disabled {
     color: var(--color-text-4);
@@ -211,18 +240,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .sidebar-rail__glyph {
     /* Icon inherits `currentColor` from the surrounding button text
-     * color cascade; the wrapper just provides a centered flex shell
-     * so the SVG sits visually balanced above the label. */
+     * color cascade. */
     display: inline-flex;
     align-items: center;
     justify-content: center;
     line-height: 0;
     color: inherit;
   }
+  /* G.1 — labels stay in the DOM (screen readers + Vitest suites
+   * that query `.sidebar-rail__label` text) but are visually hidden
+   * to match the bundle's icon-only rail. The button's native
+   * `title` attribute provides the hover tooltip. */
   .sidebar-rail__label {
-    font-family: var(--font-family-mono);
-    font-size: 9px;
-    letter-spacing: 0.04em;
-    color: inherit;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>
