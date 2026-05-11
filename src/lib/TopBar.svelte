@@ -256,9 +256,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         />
       {/each}
     </div>
-    <span class="top-bar__metric" title="Frames per second (W15+: real telemetry)">
+    <!-- Wave 2.3 Lane Q.2 (G.14) — bundle-faithful FPS placeholder.
+         The bundle renders `61.0` (Chromaticity.html line 245) until
+         real frame-rate telemetry wires via ADR-011 (Wave 2.2+). The
+         W15 PR1 `—` placeholder made the chrome read as broken; the
+         numeric stub mirrors the bundle so the topbar HUD reads
+         structurally complete. -->
+    <span class="top-bar__metric" title="Frames per second (bundle placeholder)">
       <span class="top-bar__metric-unit">fps</span>
-      <span class="top-bar__metric-value">—</span>
+      <span class="top-bar__metric-value">61.0</span>
     </span>
     <!-- Wave 2.1 Lane B.2 — GPU readout. Static placeholder matching the
          bundle's `Chromaticity.html` line 247 (`<span className="v

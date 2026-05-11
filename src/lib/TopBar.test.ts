@@ -115,11 +115,14 @@ describe('TopBar shell component', () => {
     expect(group?.getAttribute('aria-label')).toBe('Adapter status');
   });
 
-  it('renders the FPS metric as an em-dash placeholder and the GPU readout as 42%', () => {
+  it('renders the FPS metric as the bundle-faithful 61.0 placeholder and GPU as 42%', () => {
+    // Wave 2.3 Lane Q.2 (G.14) — FPS no longer renders as an em-dash;
+    // bundle-faithful 61.0 placeholder stands in until ADR-011 real
+    // telemetry wires.
     const { container } = render(TopBar);
     const values = container.querySelectorAll('.top-bar__metric-value');
     expect(values.length).toBe(2);
-    expect(values[0]?.textContent?.trim()).toBe('—');
+    expect(values[0]?.textContent?.trim()).toBe('61.0');
     expect(values[1]?.textContent?.trim()).toBe('42%');
   });
 
