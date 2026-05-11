@@ -14,8 +14,10 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
 import { performVariantStore } from './stores/performVariant.svelte';
 import { routeStore } from './stores/route.svelte';
+import { transportStore } from './stores/transport.svelte';
 import TopBar from './TopBar.svelte';
 
 // Shared-primitive backfill — TopBar now mounts the `Timecode` widget
@@ -51,6 +53,15 @@ describe('TopBar shell component', () => {
     // that listener handle and surface a "matchMedia is not a function"
     // error during the unmount phase.
     cleanup();
+    // Wave 2.1 Lane B.2 — the TopBar `$effect` block calls
+    // `transportStore.start()` on mount; cleanup() invokes the matching
+    // teardown which calls `stop()`. Reset elapsedMs explicitly to keep
+    // sibling tests deterministic.
+    transportStore.stop();
+    transportStore.reset();
+    // Clear any audio snapshot a test injected so the next test starts
+    // from the default BPM fallback.
+    audioSnapshotStore.snapshot = null;
     routeStore.set('perform');
     performVariantStore.set('classic');
     vi.unstubAllGlobals();
@@ -104,12 +115,17 @@ describe('TopBar shell component', () => {
     expect(group?.getAttribute('aria-label')).toBe('Adapter status');
   });
 
-  it('renders em-dash placeholders for the FPS and CPU metrics', () => {
+  it('renders the FPS metric as an em-dash placeholder and the GPU readout as 42%', () => {
     const { container } = render(TopBar);
     const values = container.querySelectorAll('.top-bar__metric-value');
     expect(values.length).toBe(2);
     expect(values[0]?.textContent?.trim()).toBe('—');
-    expect(values[1]?.textContent?.trim()).toBe('—');
+    expect(values[1]?.textContent?.trim()).toBe('42%');
+  });
+
+  it('exposes the GPU placeholder value via the dedicated test id', () => {
+    const { getByTestId } = render(TopBar);
+    expect(getByTestId('top-bar-gpu-value').textContent?.trim()).toBe('42%');
   });
 
   it('renders the REC indicator with the off data-state default', () => {
@@ -193,6 +209,104 @@ describe('TopBar shell component', () => {
       await Promise.resolve();
       expect(standardBtn.getAttribute('aria-pressed')).toBe('true');
       expect(buttons[1]?.getAttribute('aria-pressed')).toBe('false');
+    });
+  });
+
+  // Wave 2.1 Lane B.2 — top-bar transport HUD elements (timecode + beat
+  // dots + BPM + VU meter + camera + record + GPU readout). Visible on
+  // the Perform route, hidden on non-Perform routes.
+  describe('Transport HUD (Lane B.2)', () => {
+    it('renders the timecode chip on Perform with the HH:MM:SS:FF placeholder', () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      const tc = getByTestId('top-bar-timecode');
+      expect(tc).not.toBeNull();
+      // Clock has not been driven; reads 00:00:00:00 at mount.
+      expect(tc.textContent?.trim()).toBe('00:00:00:00');
+    });
+
+    it('hides the timecode chip on every non-Perform route', () => {
+      routeStore.set('library');
+      const { queryByTestId } = render(TopBar);
+      expect(queryByTestId('top-bar-timecode')).toBeNull();
+    });
+
+    it('renders the beat-dots widget on Perform', () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      const beat = getByTestId('top-bar-beat-dots');
+      expect(beat).not.toBeNull();
+      // BeatDots widget renders four .beat-dots__dot children.
+      expect(beat.querySelectorAll('.beat-dots__dot').length).toBe(4);
+    });
+
+    it('hides the beat dots on every non-Perform route', () => {
+      routeStore.set('osc');
+      const { queryByTestId } = render(TopBar);
+      expect(queryByTestId('top-bar-beat-dots')).toBeNull();
+    });
+
+    it('displays the default 120.0 BPM when no live snapshot is present', () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      const bpm = getByTestId('top-bar-bpm');
+      expect(bpm.textContent).toContain('BPM');
+      expect(bpm.textContent).toContain('120.0');
+    });
+
+    it('reflects the audio snapshot store BPM when a live snapshot is present', async () => {
+      routeStore.set('perform');
+      audioSnapshotStore.snapshot = {
+        bpm: 132.5,
+        rms: 0.4,
+        peak: 0.7,
+        fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      };
+      const { getByTestId } = render(TopBar);
+      // Microtask flush for the $derived recomputation.
+      await Promise.resolve();
+      expect(getByTestId('top-bar-bpm').textContent).toContain('132.5');
+    });
+
+    it('renders the VU stereo meter on Perform', () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      const vu = getByTestId('top-bar-vu');
+      expect(vu).not.toBeNull();
+      // VuStereo widget renders two .vu-row children.
+      expect(vu.querySelectorAll('.vu-row').length).toBe(2);
+    });
+
+    it('renders the camera button with the correct tooltip', () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      const cam = getByTestId('top-bar-camera');
+      expect(cam.tagName).toBe('BUTTON');
+      expect(cam.getAttribute('title')).toBe('Camera (Wave 2.2)');
+      expect(cam.getAttribute('aria-label')).toBe('Camera');
+    });
+
+    it('renders the record button with the correct tooltip', () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      const rec = getByTestId('top-bar-record');
+      expect(rec.tagName).toBe('BUTTON');
+      expect(rec.getAttribute('title')).toBe('Record (Wave 2.2)');
+      expect(rec.getAttribute('aria-label')).toBe('Record');
+    });
+
+    it('hides the camera and record buttons on non-Perform routes', () => {
+      routeStore.set('settings');
+      const { queryByTestId } = render(TopBar);
+      expect(queryByTestId('top-bar-camera')).toBeNull();
+      expect(queryByTestId('top-bar-record')).toBeNull();
+    });
+
+    it('hides the BPM and VU chips on non-Perform routes', () => {
+      routeStore.set('audio-uniforms');
+      const { queryByTestId } = render(TopBar);
+      expect(queryByTestId('top-bar-bpm')).toBeNull();
+      expect(queryByTestId('top-bar-vu')).toBeNull();
     });
   });
 });

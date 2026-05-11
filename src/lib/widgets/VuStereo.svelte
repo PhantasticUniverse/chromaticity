@@ -4,12 +4,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 -->
 
 <script lang="ts">
+  // Wave 2.1 Lane B.2: widened with an optional `snapshot` prop so the
+  // top-bar HUD mount can drive levels from the live audio uniform
+  // store. The payload's `rms` is mono — we mirror it to both L and R
+  // (with a tiny offset for visual separation) until a stereo
+  // uniform-snapshot extension exists. Without a snapshot the widget
+  // falls back to its prior synthetic rAF generator, preserving every
+  // existing call-site's behaviour.
+  import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
+  import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+
   let {
     live = true,
     width = 100,
+    snapshot = undefined,
   }: {
     live?: boolean;
     width?: number;
+    /** Optional explicit snapshot for tests; when omitted the widget
+     * reads from the module-singleton audioSnapshotStore. */
+    snapshot?: AudioUniformSnapshotPayload | null;
   } = $props();
 
   const FROZEN_L = 0.6;
@@ -19,6 +33,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let lvlR = $state(FROZEN_R);
   let peakL = $state(FROZEN_L);
   let peakR = $state(FROZEN_R);
+
+  $effect(() => {
+    void audioSnapshotStore.subscribe();
+  });
+
+  // Effective snapshot: explicit prop wins, otherwise the live store.
+  const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
 
   function clamp(v: number): number {
     return Math.max(0, Math.min(0.995, v));
@@ -34,6 +55,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       lvlR = FROZEN_R;
       peakL = FROZEN_L;
       peakR = FROZEN_R;
+      return;
+    }
+
+    // Live-snapshot dual-mode: when the audio uniform store has emitted
+    // at least one snapshot, drive levels from `rms` / `peak`. The
+    // payload's `rms` is mono per ADR-019; we mirror with a small
+    // offset so the two rows aren't visually identical.
+    if (liveSnapshot) {
+      const rms = clamp(liveSnapshot.rms);
+      const pk = clamp(liveSnapshot.peak);
+      lvlL = rms;
+      lvlR = clamp(rms * 0.94);
+      peakL = pk;
+      peakR = clamp(pk * 0.94);
       return;
     }
 
