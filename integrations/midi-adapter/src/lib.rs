@@ -39,3 +39,5 @@
 pub mod adapter;
 pub mod defaults;
 pub mod messages;
+
+pub use adapter::{MidiDeviceDescriptor, MidiDeviceKind, list_devices};

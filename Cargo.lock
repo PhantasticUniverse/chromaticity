@@ -475,6 +475,7 @@ version = "0.0.0"
 dependencies = [
  "chromaticity-audio",
  "chromaticity-camera-adapter",
+ "chromaticity-midi-adapter",
  "chromaticity-runtime",
  "chromaticity-scene",
  "chromaticity-syphon-adapter",
@@ -638,6 +639,7 @@ version = "0.0.0"
 dependencies = [
  "chromaticity-audio",
  "chromaticity-camera-adapter",
+ "chromaticity-midi-adapter",
  "chromaticity-runtime",
  "chromaticity-scene",
  "chromaticity-syphon-adapter",

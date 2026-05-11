@@ -76,6 +76,104 @@ pub const MIDI_PORT_NAME_PREFIX: &str = "chromaticity-midi";
 /// pending pair stays open waiting for the LSB partner.
 pub const DEFAULT_CC14_PAIR_WINDOW: Duration = Duration::from_millis(50);
 
+/// Coarse classification of a MIDI device-port direction.
+///
+/// Wave 2.1 Lane D.1 ships [`MidiDeviceKind::Input`] only: the Tauri
+/// `list_midi_devices` IPC handler enumerates input ports via
+/// [`MidiInput::ports`] so the operator-facing MIDI view Devices tab
+/// can render real device names rather than the static fixture set
+/// in `src/lib/data/midi-fixtures.ts`. Output enumeration is reserved
+/// for a follow-up wave alongside the per-device allowlist persistence
+/// surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum MidiDeviceKind {
+    /// Inbound MIDI port (Note / CC / Pitch Bend / SysEx / etc.).
+    Input,
+}
+
+/// Static descriptor for a single MIDI port surfaced by
+/// [`list_devices`].
+///
+/// Field shape is intentionally minimal — a stable per-port id (the
+/// midir port index, formatted `"input-<n>"` to namespace away from a
+/// future output enumeration), the human-readable display name midir
+/// returns from [`MidiInput::port_name`], and the direction discriminant.
+/// The midir port name varies by OS-MIDI subsystem (CoreMIDI exposes
+/// the device's display name; ALSA exposes its client / port label;
+/// WinMM exposes a MIDIINCAPS name), so the bridge layer treats the
+/// field as opaque operator-visible text rather than parsing it for
+/// vendor / manufacturer hints. The fixture corpus's
+/// `vendor` / `direction` columns get conservative defaults
+/// (`vendor = "—"`, `direction = "in"`) at the frontend until a richer
+/// MIDI-introspection surface lands.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MidiDeviceDescriptor {
+    /// Stable per-port id. Current shape: `"input-<index>"` against
+    /// the midir port-index ordering at the moment of enumeration.
+    /// The index is not stable across host reconnects (CoreMIDI /
+    /// ALSA / WinMM can renumber when devices are plugged or
+    /// unplugged), so the operator-facing UI should treat this id as
+    /// session-stable only — Wave 2.1 Lane D.1 does not persist it.
+    pub id: String,
+    /// Operator-visible display name from
+    /// [`MidiInput::port_name`]. Falls back to `"Port <index>"` when
+    /// the subsystem refuses to surface the name (e.g. a transient
+    /// disconnection between `ports()` and `port_name()`).
+    pub name: String,
+    /// Direction discriminant. Wave 2.1 Lane D.1 emits
+    /// [`MidiDeviceKind::Input`] for every entry.
+    pub kind: MidiDeviceKind,
+}
+
+/// Enumerate the MIDI input ports currently visible to the host.
+///
+/// Returns one [`MidiDeviceDescriptor`] per port surfaced by a fresh
+/// [`MidiInput`] client. On a host with no MIDI subsystem access
+/// (CI / headless / a Linux box without ALSA), midir's
+/// [`MidiInput::new`] errors at client construction; the function
+/// collapses that error to `Ok(Vec::new())` so the Tauri command
+/// surface treats "no MIDI available" as the same empty-list state
+/// as "MIDI available but no devices connected" — the frontend's
+/// "No MIDI devices detected" empty-state branch fires identically
+/// in both cases. The non-recoverable error path (lock poisoning,
+/// unrecoverable midir failure beyond client construction) currently
+/// has no producer in this function body; the `Result` return type
+/// is forward-compat for the follow-up wave that adds output-device
+/// enumeration plus a more granular failure surface for the
+/// per-platform mid-iteration error classes midir surfaces.
+///
+/// Evidence: `EV-INTEGRATION-MATRIX` (MIDI arm, Wave 2.1 Lane D.1) —
+/// device-listing surface widened from the W18 PR3 fixture-only
+/// posture documented in the `EV-INTEGRATION-MATRIX` Wave 1c-β
+/// closure section of `docs/EV-GATE-MODEL-AUDIT-checklist.md`.
+pub fn list_devices() -> Result<Vec<MidiDeviceDescriptor>, MidiAdapterError> {
+    // Client construction can fail on headless / CI hosts without a
+    // MIDI subsystem. Treat that as the same empty-list state as
+    // "MIDI available but no devices connected" — both surface the
+    // frontend's no-devices empty-state branch.
+    let input = match MidiInput::new(MIDI_CLIENT_NAME) {
+        Ok(input) => input,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let ports = input.ports();
+    let descriptors = ports
+        .iter()
+        .enumerate()
+        .map(|(idx, port)| {
+            let name = input
+                .port_name(port)
+                .unwrap_or_else(|_| format!("Port {idx}"));
+            MidiDeviceDescriptor {
+                id: format!("input-{idx}"),
+                name,
+                kind: MidiDeviceKind::Input,
+            }
+        })
+        .collect();
+    Ok(descriptors)
+}
+
 /// MIDI adapter — protocol-abstract trait per ADR-005.
 ///
 /// `connect` / `disconnect` mirror the OSC adapter's `bind` /
@@ -970,7 +1068,9 @@ mod drift_pins {
 
     use chromaticity_observability::catalog::{OscAdapterState, OscPacketOutcome};
 
-    use super::{InMemoryMidiAdapter, MidiAdapter, MidirInputAdapter};
+    use super::{
+        InMemoryMidiAdapter, MidiAdapter, MidiDeviceKind, MidirInputAdapter, list_devices,
+    };
 
     #[test]
     fn fresh_adapter_has_zero_counters() {
@@ -1019,6 +1119,29 @@ mod drift_pins {
             0,
             "disconnecting an already-disconnected adapter must not record a transition",
         );
+    }
+
+    #[test]
+    fn list_devices_returns_ok_on_any_host_with_input_kind_for_every_entry() {
+        // Wave 2.1 Lane D.1 invariant: `list_devices` MUST NOT panic
+        // and MUST NOT propagate the `MidiInput::new` client-construction
+        // error to the caller. On CI / headless / no-MIDI-subsystem
+        // hosts the function collapses the error to `Ok(Vec::new())`;
+        // on a host that DOES surface ports, every descriptor's `kind`
+        // is `MidiDeviceKind::Input` (output enumeration is reserved
+        // for a follow-up wave) and the `id` carries the `input-`
+        // prefix so a future output enumeration can namespace-separate
+        // without breaking the existing id space.
+        let devices = list_devices().expect("list_devices must not error at the MVP surface");
+        for d in &devices {
+            assert_eq!(d.kind, MidiDeviceKind::Input);
+            assert!(
+                d.id.starts_with("input-"),
+                "expected id to start with `input-`, got {:?}",
+                d.id,
+            );
+            assert!(!d.name.is_empty(), "midir port name must not be empty");
+        }
     }
 
     #[test]
