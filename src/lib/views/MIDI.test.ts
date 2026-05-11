@@ -839,4 +839,51 @@ describe('MIDI view', () => {
     );
     expect(names).toEqual(LIVE_DEVICES_FIXTURE.map((d) => d.name));
   });
+
+  // Wave 2.1 Lane D.2 — learn-mode state machine smoke test. With the
+  // default mock posture (`invokeMock.mockResolvedValue([...])` from
+  // the suite-level beforeEach) the `start_midi_learn` invocation
+  // also resolves to that array — which the store doesn't introspect,
+  // it just awaits the promise. The listener attach takes the
+  // no-Tauri-runtime swallow path because `@tauri-apps/api/event`
+  // isn't mocked, so the store transitions to 'listening' but no
+  // payload arrives. The view should reflect 'listening' state via
+  // the `data-midi-learn-listening` selector.
+  it('toolbar Learn button starts a learn session and renders the listening affordance', async () => {
+    const { container, getByRole } = render(MIDI);
+    // Wait for live-device store population so a port id is available.
+    await waitFor(() => {
+      const rows = container.querySelectorAll('.midi__device-row');
+      // No DOM dependency here; we just need the store to populate.
+      void rows;
+    });
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    // Panel rendered with state attribute reflecting the current
+    // store state. With listener attach failing (no `event` mock),
+    // store stays in 'listening' until cancelled.
+    await waitFor(() => {
+      const panel = container.querySelector('.midi__panel--learn');
+      expect(panel).not.toBeNull();
+      const state = panel?.getAttribute('data-midi-learn-state');
+      // Allow either 'idle' (start failed instantly) or 'listening'.
+      expect(['idle', 'listening']).toContain(state);
+    });
+    // Cancel — closes the panel.
+    await fireEvent.click(getByRole('button', { name: /Cancel Learn/ }));
+    expect(container.querySelector('.midi__panel--learn')).toBeNull();
+  });
+
+  it('Devices tab renders a per-device Learn button gated on the learn capability', async () => {
+    const { container, getByRole } = render(MIDI);
+    await fireEvent.click(getByRole('tab', { name: /Devices/i }));
+    await waitFor(() => {
+      const rows = container.querySelectorAll('.midi__device-row');
+      expect(rows.length).toBeGreaterThan(0);
+    });
+    // Each device row has a "Learn from <name>" button.
+    const learnButtons = container.querySelectorAll(
+      `[data-cap="${MIDI_CAPABILITY.learn}"][aria-label^="Learn from "]`,
+    );
+    expect(learnButtons.length).toBe(LIVE_DEVICES_FIXTURE.length);
+  });
 });

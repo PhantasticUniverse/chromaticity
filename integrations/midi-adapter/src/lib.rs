@@ -40,4 +40,7 @@ pub mod adapter;
 pub mod defaults;
 pub mod messages;
 
-pub use adapter::{MidiDeviceDescriptor, MidiDeviceKind, list_devices};
+pub use adapter::{
+    MidiDeviceDescriptor, MidiDeviceKind, MidiListenHandle, list_devices, start_input_listen,
+};
+pub use messages::MidiMessage;
