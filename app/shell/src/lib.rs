@@ -206,6 +206,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::syphon::list_syphon_servers,
             commands::syphon::publish_syphon_output,
             commands::syphon::unpublish_syphon_output,
+            commands::scene::load_scene,
+            commands::scene::loaded_scene,
         ])
         .run(tauri::generate_context!())
 }

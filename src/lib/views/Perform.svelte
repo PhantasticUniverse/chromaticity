@@ -85,9 +85,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     SETLIST_OPTIONS,
     type MediaTab,
     type PerformControlGroup,
+    type PerformControlSpec,
   } from '../data/perform-fixtures';
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
+  import type { ControlSchemaPayload } from '../ipc/bindings';
+  import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { performVariantStore } from '../stores/performVariant.svelte';
   import {
     ControlGroup,
@@ -153,20 +156,157 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   function selectTab(tab: MediaTab): void {
     activeTab = tab;
   }
+
+  // Wave 2.1 Lane A.1: hydrate the loaded-scene store on mount so the
+  // Scene Controls header + control panel re-bind to a scene that was
+  // loaded from the Library view before this component first
+  // rendered (e.g. after route navigation). When no scene is loaded
+  // the store stays `null` and the existing fixture-driven UI
+  // (SCENE_CONTROL_GROUPS / "Glitch" header) continues to render.
+  $effect(() => {
+    void loadedSceneStore.hydrate();
+  });
+
+  // Wave 2.1 Lane A.1: Scene Controls header name binds to the
+  // loaded scene's display name, falling back to the bundle's
+  // canonical "Glitch" fixture string when no scene is loaded.
+  const sceneTitleName = $derived(loadedSceneStore.snapshot?.name ?? 'Glitch');
+
+  // Wave 2.1 Lane A.1: Scene Controls panel body binds to a derived
+  // PerformControlGroup[] built from the loaded scene's control
+  // schema. The mapper groups controls by `ui_group` (when present)
+  // or under a single "scene" group when absent — same shape the
+  // existing `controlGroupBlock` snippet expects. Lane A.1 only
+  // surfaces the schema source; widget `onChange` dispatch into the
+  // engine command bus is Wave 2.1 Lane A.2 scope.
+  //
+  // Tint cycles through the four canonical category tokens so the
+  // group columns retain visual variety; the cycle is stable across
+  // re-renders (group order preserved from the engine).
+  const GROUP_TINTS = [
+    'var(--color-cat-color)',
+    'var(--color-cat-motion)',
+    'var(--color-cat-fx)',
+    'var(--color-cat-media)',
+  ] as const;
+
+  function controlSpecFromPayload(payload: ControlSchemaPayload): PerformControlSpec | null {
+    // Map the bridge's `ControlKindPayload` discriminant onto the
+    // bundle's widget vocabulary. Unknown / null kinds default to a
+    // slider with the float-cast default value.
+    const def = payload.default;
+    switch (payload.kind) {
+      case 'Toggle': {
+        const on = typeof def === 'boolean' ? def : false;
+        return { kind: 'toggle', label: payload.name, on };
+      }
+      case 'Knob': {
+        const value = typeof def === 'number' ? def : 0;
+        return { kind: 'knob', label: payload.name, value };
+      }
+      case 'Color': {
+        // RGBA / RGB arrays render as a swatch with the leading
+        // three channels packed into a CSS rgb() string. The Color
+        // widget's alpha handling lands in a future wave.
+        if (Array.isArray(def) && def.length >= 3) {
+          const r = Math.round((def[0] ?? 0) * 255);
+          const g = Math.round((def[1] ?? 0) * 255);
+          const b = Math.round((def[2] ?? 0) * 255);
+          return { kind: 'swatch', label: payload.name, color: `rgb(${r}, ${g}, ${b})` };
+        }
+        return { kind: 'swatch', label: payload.name, color: '#ffffff' };
+      }
+      case 'Slider':
+      case 'Bang':
+      case 'Dropdown':
+      case 'Xy':
+      case null:
+      case undefined: {
+        // Slider / Bang / Dropdown / Xy collapse onto a Fader for
+        // Lane A.1's read-only surface. Xy's 2-component default
+        // takes the first component as the fader value; richer
+        // widget mapping rides Wave 2.2.
+        let value = 0;
+        if (typeof def === 'number') {
+          value = def;
+        } else if (Array.isArray(def) && typeof def[0] === 'number') {
+          value = def[0];
+        }
+        // Normalize to [0, 1] when min/max bound the range. The
+        // fader widget itself is range-agnostic; Wave 2.1 doesn't
+        // re-render the widget against custom ranges (that's A.2).
+        if (
+          typeof payload.min === 'number' &&
+          typeof payload.max === 'number' &&
+          payload.max > payload.min
+        ) {
+          value = Math.max(0, Math.min(1, (value - payload.min) / (payload.max - payload.min)));
+        } else {
+          value = Math.max(0, Math.min(1, value));
+        }
+        return { kind: 'fader', label: payload.name, value };
+      }
+      default:
+        return null;
+    }
+  }
+
+  const sceneControlGroups = $derived.by((): readonly PerformControlGroup[] => {
+    const snapshot = loadedSceneStore.snapshot;
+    if (!snapshot) return SCENE_CONTROL_GROUPS;
+
+    // Bucket controls by ui_group; preserve insertion order via a
+    // parallel `order` array (a plain Record + ordering list keeps
+    // the derived computation free of `Map` reactive-class lint
+    // friction). When all controls share `null` ui_group they
+    // collapse to a single "scene" group.
+    const buckets: Record<string, PerformControlSpec[]> = {};
+    const order: string[] = [];
+    for (const ctl of snapshot.controls) {
+      const spec = controlSpecFromPayload(ctl);
+      if (!spec) continue;
+      const groupName = ctl.ui_group ?? 'scene';
+      const bucket = buckets[groupName];
+      if (bucket) {
+        bucket.push(spec);
+      } else {
+        buckets[groupName] = [spec];
+        order.push(groupName);
+      }
+    }
+
+    if (order.length === 0) return SCENE_CONTROL_GROUPS;
+
+    return order.map((name, i): PerformControlGroup => {
+      const controls = buckets[name] ?? [];
+      const tint = GROUP_TINTS[i % GROUP_TINTS.length] ?? GROUP_TINTS[0];
+      return {
+        name,
+        tint,
+        controls,
+      };
+    });
+  });
 </script>
 
 <!-- Wave 2.1 Lane B.1 — Each of the six panels is defined once as a
      `{#snippet}` then rendered into variant-specific layout
      containers. Keeps panel markup DRY across `classic` (2-column) and
      `console` (3-column) layouts; future variants compose by adding a
-     new layout container that references the same snippet set. -->
+     new layout container that references the same snippet set.
+
+     Wave 2.1 Lane A.1 — the Scene Controls header name + control-
+     panel body bind to the loaded-scene store (`sceneTitleName` +
+     `sceneControlGroups` derived above); both fall back to the
+     bundle's "Glitch" + `SCENE_CONTROL_GROUPS` fixture when no scene
+     is loaded so the existing surface keeps rendering. -->
 
 {#snippet sceneControlsPanel()}
   <section class="panel" aria-label="Scene Controls">
     <header class="panel__head">
       <h2 class="panel__title">
         Scene Controls <span class="panel__sep" aria-hidden="true">·</span>
-        <span class="panel__title-name">Glitch</span>
+        <span class="panel__title-name">{sceneTitleName}</span>
       </h2>
       <span class="panel__spacer" aria-hidden="true"></span>
       <button type="button" class="btn btn--ghost" title="Lock all">
@@ -181,7 +321,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <CrossFader value={crossfaderPos} labels={['A', 'B']} onChange={(v) => (crossfaderPos = v)} />
     </div>
     <div class="panel__body panel__body--row-scroll">
-      {#each SCENE_CONTROL_GROUPS as group (group.name)}
+      {#each sceneControlGroups as group (group.name)}
         {@render controlGroupBlock(group)}
       {/each}
     </div>

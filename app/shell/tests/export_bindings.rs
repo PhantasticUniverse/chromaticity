@@ -17,9 +17,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use chromaticity_ui_bridge::{
-    AudioUniformSnapshotPayload, CameraDeviceKindPayload, CameraDevicePayload, ControlId,
-    ControlValue, OscHealthSnapshot, OscHealthState, PresetId, SceneCard, SceneSource, SnapSlotId,
-    SyphonOutputStatusPayload, SyphonServerPayload,
+    AudioUniformSnapshotPayload, CameraDeviceKindPayload, CameraDevicePayload,
+    ControlDefaultValuePayload, ControlId, ControlKindPayload, ControlSchemaPayload, ControlValue,
+    LoadedScenePayload, OscHealthSnapshot, OscHealthState, PresetId, SceneCard, SceneSource,
+    SnapSlotId, SyphonOutputStatusPayload, SyphonServerPayload,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -47,4 +48,9 @@ fn export_bindings_to_frontend_tree() {
     SyphonServerPayload::export_all_to(&out_dir).expect("export SyphonServerPayload bindings");
     SyphonOutputStatusPayload::export_all_to(&out_dir)
         .expect("export SyphonOutputStatusPayload bindings");
+    LoadedScenePayload::export_all_to(&out_dir).expect("export LoadedScenePayload bindings");
+    ControlSchemaPayload::export_all_to(&out_dir).expect("export ControlSchemaPayload bindings");
+    ControlKindPayload::export_all_to(&out_dir).expect("export ControlKindPayload bindings");
+    ControlDefaultValuePayload::export_all_to(&out_dir)
+        .expect("export ControlDefaultValuePayload bindings");
 }

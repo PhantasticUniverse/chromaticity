@@ -11,8 +11,12 @@
 export type { AudioUniformSnapshotPayload } from './AudioUniformSnapshotPayload';
 export type { CameraDeviceKindPayload } from './CameraDeviceKindPayload';
 export type { CameraDevicePayload } from './CameraDevicePayload';
+export type { ControlDefaultValuePayload } from './ControlDefaultValuePayload';
 export type { ControlId } from './ControlId';
+export type { ControlKindPayload } from './ControlKindPayload';
+export type { ControlSchemaPayload } from './ControlSchemaPayload';
 export type { ControlValue } from './ControlValue';
+export type { LoadedScenePayload } from './LoadedScenePayload';
 export type { OscHealthSnapshot } from './OscHealthSnapshot';
 export type { OscHealthState } from './OscHealthState';
 export type { PresetId } from './PresetId';
