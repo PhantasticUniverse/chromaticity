@@ -34,6 +34,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { routeStore } from '../stores/route.svelte';
   import { toIpcError } from '../types/ipc-error';
+  import {
+    sceneKindFromMetadata,
+    sceneSeedFromMetadata,
+  } from '../widgets/scene-kind-from-metadata';
+  import SceneStill from '../widgets/SceneStill.svelte';
 
   let cards = $state<SceneCard[]>([]);
   let loading = $state(true);
@@ -313,8 +318,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             onkeydown={(e) => handleSceneKeydown(e, card)}
           >
             <div class="scene-tile__thumbnail" aria-hidden="true">
-              <!-- Placeholder thumbnail; EV-LIBRARY-THUMBNAIL is Phase-4b. -->
-              <div class="scene-tile__thumbnail-disc"></div>
+              <!-- Wave 2.2 Lane R.1 — `<SceneStill>` procedural
+                   thumbnail keyed off the card's metadata via the
+                   `sceneKindFromMetadata` heuristic. EV-LIBRARY-
+                   THUMBNAIL's deterministic-byte-hash stub renderer
+                   stays the engine-side contract; this is the UI
+                   visual surface, not the engine's rasterised
+                   thumbnail. -->
+              <SceneStill
+                kind={sceneKindFromMetadata(card)}
+                seed={sceneSeedFromMetadata(card)}
+                width={220}
+                height={138}
+              />
             </div>
             <div class="scene-tile__meta">
               <div class="scene-tile__title-row">
@@ -657,15 +673,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     aspect-ratio: 16 / 10;
     background: var(--color-bg-3);
     border-radius: var(--radius-sm);
-    display: grid;
-    place-items: center;
+    overflow: hidden;
   }
-  .scene-tile__thumbnail-disc {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: var(--color-bg-4);
-    border: 1px solid var(--color-line-2);
+  /* Wave 2.2 Lane R.1 — `<SceneStill>` canvas fills the thumbnail
+     container. Bitmap dimensions are explicit-width/height (220 × 138);
+     CSS scales the rendered canvas to fit the grid cell. */
+  .scene-tile__thumbnail :global(canvas.scene-still) {
+    width: 100%;
+    height: 100%;
+    display: block;
   }
   .scene-tile__meta {
     display: flex;
