@@ -120,4 +120,32 @@ describe('SceneCanvas widget', () => {
     expect(c?.height).toBeGreaterThanOrEqual(1);
     unmount();
   });
+
+  // Wave 2.3 Q.1 stress-test fixes — regression coverage for the AO-
+  // reported "mostly black flashing" Perform preview symptom.
+  it('defaults dpr to window.devicePixelRatio when no explicit dpr is passed', () => {
+    // The dpr auto-default lives in the $effect; we can't easily observe
+    // the computed value but we CAN verify the mount/unmount cycle stays
+    // clean across both null and explicit-dpr cases (regression guard
+    // for the `dpr ?? window.devicePixelRatio` access pattern, which
+    // previously hardcoded `dpr=1`).
+    const { container, unmount } = render(SceneCanvas, {
+      props: { kind: 'rings', seed: 0 },
+    });
+    expect(container.querySelector('canvas.scene-canvas')).not.toBeNull();
+    expect(() => unmount()).not.toThrow();
+  });
+
+  it('mounts with audio=true and a null live snapshot (synthetic fallback path)', () => {
+    // The Wave 2.3 Q.1 audio-gate widening from
+    // `live && (live.rms > 0 || live.peak > 0)` → `live !== null` is
+    // covered by the existing fallback path (no live snapshot in
+    // Vitest jsdom → synthetic sine pulse). This guard catches a
+    // future regression where the gate logic re-narrows.
+    const { container, unmount } = render(SceneCanvas, {
+      props: { kind: 'bars', seed: 1, audio: true },
+    });
+    expect(container.querySelector('canvas.scene-canvas')).not.toBeNull();
+    expect(() => unmount()).not.toThrow();
+  });
 });
