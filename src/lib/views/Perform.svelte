@@ -1111,13 +1111,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     overflow: auto;
   }
 
-  /* Wave 2.3 Lane Q.2 (G.5 + G.8) — control-group row strip. Tighter
-   * inter-group gap (4 px instead of 8) and `flex: 1 1 0` per
-   * wrapper so the 5 (Scene Controls) / 6 (Meta Controls) groups
-   * compress to fit the available width without horizontal scroll.
-   * Each group still respects its inner widget min-widths (40 px
-   * per fader / toggle / knob) so the tightening doesn't compress
-   * the widgets themselves below their hit-target floor. */
+  /* Wave 2.3 Lane Q.2 (G.5 + G.8) — control-group row strip. Each
+   * group sizes to content (`flex: 0 0 auto`) so wider groups like
+   * Meta Controls' COLOR (6 controls) get the horizontal space they
+   * need to keep all children inside the bordered box. The
+   * `panel__body--row-scroll` flex container honours the bundle's
+   * `row-scroll` posture: when the combined width exceeds the panel,
+   * the strip scrolls horizontally rather than spilling widgets out
+   * of their group containers. Niggle A fix per the 2026-05-11 AO
+   * follow-up: the previous `flex: 1 1 0` equal-width treatment
+   * forced every group to a single shared width which clipped the
+   * COLOR group's box border around only the first three of its six
+   * children.
+   *
+   * Inner widget gap shrinks to `--space-xs` to keep the 6-widget
+   * COLOR group reasonably narrow while still preserving the 40 px
+   * widget min-width (the fader / toggle / knob hit-target floor). */
   .panel__body--row-scroll {
     overflow-x: auto;
     overflow-y: hidden;
@@ -1127,19 +1136,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   .cg-wrap {
-    flex: 1 1 0;
+    flex: 0 0 auto;
     min-width: 0;
   }
   /* Tighter inner widget gap inside ControlGroup body in this dense
    * row-strip context — the bundle's `.group-grid` uses 6 px gap at
    * 1440 viewport (`styles.css` line 668 `.perform` 10 px gap implies
-   * 6-8 px inner gaps); compressing to 4 px keeps the 6 Meta-Controls
-   * groups inside the visible width. */
+   * 6-8 px inner gaps). */
   .cg-wrap :global(.group) {
     padding: var(--space-xs) var(--space-sm) var(--space-sm);
   }
   .cg-wrap :global(.group-grid) {
-    gap: var(--space-sm);
+    gap: var(--space-xs);
   }
 
   /* ---------------- Buttons ----------------------------------------------- */
@@ -1256,11 +1264,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * uses `minmax(84px, 1fr)` (`perform.jsx` line 96) at 1440 viewport
    * width where the perform-left column is significantly wider; the
    * tighter minmax here yields the visually-equivalent 2-row layout
-   * the wireframe shows. */
+   * the wireframe shows.
+   *
+   * Wave 2.3 Lane Q.2 (Niggle B follow-up) — bump the inter-tile gap
+   * from `--space-md` (8 px) to `--space-lg` (12 px) so adjacent
+   * tiles' SceneStill canvases — which render high-saturation
+   * radial / glow patterns reaching the tile rectangle edge — have
+   * clear visual breathing room. Combined with the per-tile inner
+   * padding override below (4 px between the tile border and the
+   * SceneStill canvas inside `:global(.media-card__thumb)` /
+   * `:global(.media-card__test)`), this resolves the "glow bleeds
+   * into the neighbour" perception the AO surfaced post-Lane-Q.2
+   * initial review. */
   .media-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: var(--space-md);
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    gap: var(--space-lg);
+  }
+  /* Inset the SceneStill / SMPTE-test surfaces by 3 px so the tile's
+   * outer border + background colour provide a clean "matt" frame
+   * around each scene preview. The `.media-card` already carries
+   * `overflow: hidden`; this just adds breathing room INSIDE the
+   * clip rect so the canvas content sits within the visual tile
+   * frame rather than touching its edge. */
+  .media-grid :global(.media-card__thumb),
+  .media-grid :global(.media-card__test) {
+    inset: 3px;
   }
 
   /* ---------------- Preview hero ------------------------------------------ */
