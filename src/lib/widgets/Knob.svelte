@@ -4,25 +4,121 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 -->
 
 <script lang="ts">
-  // Wave-8 visual primitive: rotary knob. Display-only — no drag, no scrub,
-  // no detents. Indicator rotates -135° to +135° (270° sweep). W9 will wire
-  // pointer / IPC behaviour.
+  import type { PointerEventHandler } from 'svelte/elements';
+
+  // Wave-8 visual primitive: rotary knob. Wave 2.1 Lane A.2 wires
+  // pointer-drag scrubbing + an `onchange` callback so the Perform
+  // view's Scene Controls + Meta Controls panels can dispatch
+  // `set_control` IPC as the user scrubs. Indicator sweeps -135° to
+  // +135° (270° total) — matching the W8 visual contract.
+  //
+  // Drag convention: pointerdown captures the start clientY + the
+  // value at press, pointermove maps Δy to Δvalue at SCRUB_PIXELS px
+  // per full sweep (clamped to [0, 1]). Inverts Y so upward drag
+  // increases the value (the natural rotary convention). Mirrors the
+  // W23 PR2 CrossFader pointer-capture lifecycle (setPointerCapture →
+  // pointermove → pointerup) with `touch-action: none`. Calls without
+  // `onchange` and callers passing `disabled=true` short-circuit
+  // before any dispatch.
   let {
     value,
     label,
     showValue = false,
-  }: { value: number; label?: string; showValue?: boolean } = $props();
+    onchange,
+    disabled = false,
+  }: {
+    value: number;
+    label?: string;
+    showValue?: boolean;
+    onchange?: (next: number) => void;
+    disabled?: boolean;
+  } = $props();
+
+  /// Pixels of vertical drag for a full 0 → 1 sweep. 150 px matches
+  /// the bundle's reference DAW knob feel — fine enough for precise
+  /// adjustment, coarse enough that a short drag spans the range.
+  const SCRUB_PIXELS = 150;
+
+  let dialEl = $state<HTMLDivElement | null>(null);
+  let dragging = $state(false);
+  let dragStartY = $state(0);
+  let dragStartValue = $state(0);
 
   const pct = $derived(Math.max(0, Math.min(1, value)));
   const rot = $derived(-135 + pct * 270);
+
+  // Render gate: presence of `onchange` switches to the role="slider"
+  // surface; action gate: `disabled` separately suppresses scrub.
+  // Mirrors `Fader.svelte` + `CrossFader.svelte`.
+  const isSlider = $derived(onchange !== undefined);
+  const actionable = $derived(!disabled && onchange !== undefined);
+
+  const onPointerDown: PointerEventHandler<HTMLDivElement> = (event) => {
+    if (!actionable) return;
+    event.preventDefault();
+    dragging = true;
+    dragStartY = event.clientY;
+    dragStartValue = pct;
+    const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove: PointerEventHandler<HTMLDivElement> = (event) => {
+    if (!dragging || !actionable) return;
+    const delta = (dragStartY - event.clientY) / SCRUB_PIXELS;
+    const next = Math.max(0, Math.min(1, dragStartValue + delta));
+    onchange?.(next);
+  };
+
+  const onPointerUp: PointerEventHandler<HTMLDivElement> = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    const target = event.currentTarget;
+    if (target.hasPointerCapture(event.pointerId)) {
+      target.releasePointerCapture(event.pointerId);
+    }
+  };
 </script>
 
-<div class="knob" role="presentation">
-  <div class="knob-dial" style="--pct: {pct}; --rot: {rot}deg">
-    <div class="knob-arc"></div>
-    <div class="knob-ind"></div>
-    {#if showValue}<div class="knob-val">{value.toFixed(2)}</div>{/if}
-  </div>
+<!-- Interactive (role="slider" + tabindex + aria-value*) vs display-
+     only (role="presentation") branches are duplicated so vite-
+     plugin-svelte's a11y static analysis can verify each
+     independently — the previous ternary form tripped
+     `a11y_no_noninteractive_tabindex`. -->
+<div class="knob" class:knob--disabled={disabled}>
+  {#if isSlider}
+    <div
+      bind:this={dialEl}
+      class="knob-dial"
+      role="slider"
+      tabindex="0"
+      aria-valuemin={0}
+      aria-valuemax={1}
+      aria-valuenow={pct}
+      aria-label={label ?? 'knob'}
+      aria-disabled={disabled ? 'true' : undefined}
+      style="--pct: {pct}; --rot: {rot}deg"
+      onpointerdown={onPointerDown}
+      onpointermove={onPointerMove}
+      onpointerup={onPointerUp}
+      onpointercancel={onPointerUp}
+    >
+      <div class="knob-arc"></div>
+      <div class="knob-ind"></div>
+      {#if showValue}<div class="knob-val">{value.toFixed(2)}</div>{/if}
+    </div>
+  {:else}
+    <div
+      bind:this={dialEl}
+      class="knob-dial"
+      role="presentation"
+      style="--pct: {pct}; --rot: {rot}deg"
+    >
+      <div class="knob-arc"></div>
+      <div class="knob-ind"></div>
+      {#if showValue}<div class="knob-val">{value.toFixed(2)}</div>{/if}
+    </div>
+  {/if}
   {#if label}<div class="knob-label">{label}</div>{/if}
 </div>
 
@@ -33,6 +129,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     align-items: center;
     gap: var(--space-xs);
     min-width: 46px;
+  }
+  .knob--disabled {
+    opacity: 0.5;
+    pointer-events: none;
   }
   .knob-dial {
     width: 48px;
@@ -49,6 +149,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.05),
       inset 0 -2px 4px rgba(0, 0, 0, 0.5);
+    touch-action: none;
+    user-select: none;
+  }
+  .knob-dial[role='slider'] {
+    cursor: ns-resize;
+  }
+  .knob-dial:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
   .knob-arc {
     position: absolute;
@@ -62,6 +171,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     mask: radial-gradient(circle, transparent 52%, #000 54%, #000 60%, transparent 62%);
     -webkit-mask: radial-gradient(circle, transparent 52%, #000 54%, #000 60%, transparent 62%);
     filter: drop-shadow(0 0 calc(4px * var(--glow)) var(--tint, var(--color-primary)));
+    pointer-events: none;
   }
   .knob-ind {
     position: absolute;
@@ -74,6 +184,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     transform-origin: 50% 100%;
     transform: translate(-50%, -100%) rotate(var(--rot, 0deg));
     box-shadow: 0 0 calc(6px * var(--glow)) var(--tint, var(--color-primary));
+    pointer-events: none;
   }
   .knob-val {
     position: absolute;
