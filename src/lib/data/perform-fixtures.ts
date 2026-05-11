@@ -29,12 +29,21 @@
  * each redefine.
  */
 
-/** A single widget row inside a SceneControls / MetaControls ControlGroup. */
+/** A single widget row inside a SceneControls / MetaControls ControlGroup.
+ *
+ * Wave 2.1 Lane A.2 adds the optional `controlId` field — present when
+ * the spec is wired to engine dispatch (Scene Controls panel pulls
+ * scene-schema position-indices; Meta Controls panel pulls fixture-
+ * encoded IDs from the 1000+ offset namespace per Perform.svelte's
+ * `META_CONTROL_ID_BASE`). Absent when the spec is purely display
+ * (legacy SCENE_CONTROL_GROUPS fixture rows that survive when no
+ * scene is loaded). */
 export type PerformControlSpec =
   | {
       readonly kind: 'toggle';
       readonly label: string;
       readonly on: boolean;
+      readonly controlId?: number;
     }
   | {
       readonly kind: 'fader';
@@ -42,16 +51,19 @@ export type PerformControlSpec =
       readonly value: number;
       /** Bundle's `tickAt` mark — drawn as a small mid-track tick. */
       readonly tickAt?: number;
+      readonly controlId?: number;
     }
   | {
       readonly kind: 'knob';
       readonly label: string;
       readonly value: number;
+      readonly controlId?: number;
     }
   | {
       readonly kind: 'swatch';
       readonly label: string;
       readonly color: string;
+      readonly controlId?: number;
     };
 
 /** A control-group column inside a panel body row-scroll layout. */
@@ -108,55 +120,87 @@ export const SCENE_CONTROL_GROUPS: readonly PerformControlGroup[] = [
 ];
 
 /**
+ * Meta-control engine ID base — Wave 2.1 Lane A.2. Meta controls dispatch
+ * through the same `set_control` IPC as scene controls, but live in their
+ * own ID namespace so they don't collide with scene-schema position
+ * indices (which start at 0 and run up to the loaded scene's
+ * `controls.length - 1`). Reserving 1000+ leaves ample headroom for the
+ * scene-schema axis (no real scene approaches 1000 controls).
+ *
+ * The cross-scene Meta vocabulary (brightness / gamma / contrast / hue /
+ * saturation / mirror / media / video flags / limit colors / general)
+ * is wave-stable; future widening (V2 meta controls) appends after the
+ * current high-water mark.
+ *
+ * Engine-side these IDs aren't pre-registered — `set_control` accepts an
+ * arbitrary `ControlId` and stores the committed value in the runtime's
+ * canonical control map. Real meta-control SEMANTICS (e.g. brightness
+ * actually affecting render output) ride forward with the ADR-011
+ * rendering backend; today the dispatch closes the round-trip and the
+ * value is observable via `get_control` but does not yet drive pixels.
+ */
+export const META_CONTROL_ID_BASE = 1000;
+
+/**
  * MetaControls panel rows — bundle JSX lines 50-82.
  * Header reads "Meta Controls" with Default / Random action buttons; body
  * row-scrolls 6 ControlGroups (color, mirror, media, video, limit colors,
  * general).
+ *
+ * Each control carries a stable `controlId` in the 1000+ namespace
+ * (see `META_CONTROL_ID_BASE` above) so cross-scene drag → `set_control`
+ * IPC dispatch round-trips through the engine. IDs are assigned in
+ * panel-reading order (color group first, then mirror / media / video /
+ * limit colors / general); swatches stay display-only because the f32
+ * `ControlValue` channel can't carry RGB-tuple state — a color-picker
+ * follow-up wave widens that.
  */
 export const META_CONTROL_GROUPS: readonly PerformControlGroup[] = [
   {
     name: 'color',
     tint: 'var(--color-cat-color)',
     controls: [
-      { kind: 'toggle', label: 'invert', on: false },
-      { kind: 'fader', label: 'brightness', value: 0.0, tickAt: 0.5 },
-      { kind: 'fader', label: 'gamma', value: 1.0, tickAt: 0.5 },
-      { kind: 'fader', label: 'contrast', value: 1.05, tickAt: 0.5 },
-      { kind: 'fader', label: 'hue', value: 0.38, tickAt: 0.5 },
-      { kind: 'fader', label: 'saturation', value: 0.75, tickAt: 0.5 },
+      { kind: 'toggle', label: 'invert', on: false, controlId: 1000 },
+      { kind: 'fader', label: 'brightness', value: 0.0, tickAt: 0.5, controlId: 1001 },
+      { kind: 'fader', label: 'gamma', value: 1.0, tickAt: 0.5, controlId: 1002 },
+      { kind: 'fader', label: 'contrast', value: 1.05, tickAt: 0.5, controlId: 1003 },
+      { kind: 'fader', label: 'hue', value: 0.38, tickAt: 0.5, controlId: 1004 },
+      { kind: 'fader', label: 'saturation', value: 0.75, tickAt: 0.5, controlId: 1005 },
     ],
   },
   {
     name: 'mirror',
     tint: 'var(--color-cat-motion)',
     controls: [
-      { kind: 'toggle', label: 'vert mirror', on: false },
-      { kind: 'toggle', label: 'hor mirror', on: false },
+      { kind: 'toggle', label: 'vert mirror', on: false, controlId: 1010 },
+      { kind: 'toggle', label: 'hor mirror', on: false, controlId: 1011 },
     ],
   },
   {
     name: 'media',
     tint: 'var(--color-cat-fx)',
     controls: [
-      { kind: 'toggle', label: 'invert media', on: true },
-      { kind: 'toggle', label: 'vert flip', on: false },
-      { kind: 'toggle', label: 'hor flip', on: true },
-      { kind: 'fader', label: 'media contrast', value: 0.18 },
+      { kind: 'toggle', label: 'invert media', on: true, controlId: 1020 },
+      { kind: 'toggle', label: 'vert flip', on: false, controlId: 1021 },
+      { kind: 'toggle', label: 'hor flip', on: true, controlId: 1022 },
+      { kind: 'fader', label: 'media contrast', value: 0.18, controlId: 1023 },
     ],
   },
   {
     name: 'video',
     tint: 'var(--color-cat-media)',
     controls: [
-      { kind: 'toggle', label: 'paused', on: false },
-      { kind: 'fader', label: 'playback speed', value: 0.5, tickAt: 0.5 },
+      { kind: 'toggle', label: 'paused', on: false, controlId: 1030 },
+      { kind: 'fader', label: 'playback speed', value: 0.5, tickAt: 0.5, controlId: 1031 },
     ],
   },
   {
     name: 'limit colors',
     tint: 'var(--color-cat-limit)',
     controls: [
-      { kind: 'toggle', label: 'limit colors', on: false },
+      { kind: 'toggle', label: 'limit colors', on: false, controlId: 1040 },
+      // Swatches stay display-only — `ControlValue` is `f32` only;
+      // RGB-tuple color dispatch waits on a future color-picker wave.
       { kind: 'swatch', label: 'low color', color: '#ff4d5e' },
       { kind: 'swatch', label: 'high color', color: '#ffb64d' },
     ],
@@ -165,8 +209,8 @@ export const META_CONTROL_GROUPS: readonly PerformControlGroup[] = [
     name: 'general',
     tint: 'var(--color-cat-geom)',
     controls: [
-      { kind: 'toggle', label: 'alpha channel', on: false },
-      { kind: 'knob', label: 'transition', value: 0.25 },
+      { kind: 'toggle', label: 'alpha channel', on: false, controlId: 1050 },
+      { kind: 'knob', label: 'transition', value: 0.25, controlId: 1051 },
     ],
   },
 ];

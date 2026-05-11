@@ -90,6 +90,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
   import type { ControlSchemaPayload } from '../ipc/bindings';
+  import { dispatchAndRead } from '../stores/control';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { performVariantStore } from '../stores/performVariant.svelte';
   import {
@@ -172,13 +173,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // canonical "Glitch" fixture string when no scene is loaded.
   const sceneTitleName = $derived(loadedSceneStore.snapshot?.name ?? 'Glitch');
 
-  // Wave 2.1 Lane A.1: Scene Controls panel body binds to a derived
-  // PerformControlGroup[] built from the loaded scene's control
-  // schema. The mapper groups controls by `ui_group` (when present)
-  // or under a single "scene" group when absent — same shape the
-  // existing `controlGroupBlock` snippet expects. Lane A.1 only
-  // surfaces the schema source; widget `onChange` dispatch into the
-  // engine command bus is Wave 2.1 Lane A.2 scope.
+  // Wave 2.1 Lane A.1 + A.2: Scene Controls panel body binds to a
+  // derived PerformControlGroup[] built from the loaded scene's
+  // control schema. The mapper groups controls by `ui_group` (when
+  // present) or under a single "scene" group when absent — same
+  // shape the existing `controlGroupBlock` snippet expects.
+  //
+  // Lane A.1 surfaced the schema source. Lane A.2 closes the loop by
+  // attaching the schema-position `controlId` to each spec so widget
+  // `onchange` callbacks can dispatch `set_control` IPC through
+  // `dispatchAndRead`. The local `controlValues` map records the
+  // last-committed value per ID so re-renders post-drag reflect the
+  // engine-side state; absent entries fall back to the schema default.
   //
   // Tint cycles through the four canonical category tokens so the
   // group columns retain visual variety; the cycle is stable across
@@ -190,24 +196,82 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     'var(--color-cat-media)',
   ] as const;
 
-  function controlSpecFromPayload(payload: ControlSchemaPayload): PerformControlSpec | null {
+  /**
+   * Lane A.2 local control-value map. Keyed by engine-side
+   * `ControlId` (number): scene-schema position indices (0..N-1) for
+   * Scene Controls, the `META_CONTROL_ID_BASE` (1000+) namespace for
+   * Meta Controls. A plain Record-of-state lets Svelte 5's reactivity
+   * track per-ID updates without the `svelte/prefer-svelte-reactivity`
+   * lint friction a `$state(new Map())` would trip.
+   *
+   * Values:
+   *   - faders / knobs store a `[0, 1]`-clamped float.
+   *   - toggles store `0` or `1` (booleans encode as numeric on the
+   *     `set_control` wire — `ControlValue` is `f32`).
+   *
+   * Read-back from `dispatchAndRead` overwrites the local entry on
+   * each commit so the UI reflects the engine-committed value (the
+   * round-trip catches engine-side clamping / quantisation).
+   */
+  let controlValues = $state<Record<number, number>>({});
+
+  /**
+   * Dispatch a single-control update to the engine and update the
+   * local cache with the read-back value. The optimistic local write
+   * keeps the widget responsive during drag; the read-back overwrite
+   * catches engine-side clamping (and would surface any rejection
+   * once that surface widens). Errors swallow silently — vite-dev
+   * and vitest jsdom both run without a Tauri runtime, so the
+   * `dispatchAndRead` import will reject; the optimistic local cache
+   * keeps the UI working in that environment.
+   */
+  function dispatchControl(id: number, value: number): void {
+    controlValues = { ...controlValues, [id]: value };
+    void dispatchAndRead(id, value)
+      .then((readback) => {
+        if (typeof readback === 'number') {
+          controlValues = { ...controlValues, [id]: readback };
+        }
+      })
+      .catch(() => {
+        // No Tauri runtime (vite dev / vitest) — local cache stays
+        // optimistic; the engine round-trip is a no-op in this
+        // environment by design.
+      });
+  }
+
+  function controlSpecFromPayload(
+    payload: ControlSchemaPayload,
+    id: number,
+  ): PerformControlSpec | null {
     // Map the bridge's `ControlKindPayload` discriminant onto the
     // bundle's widget vocabulary. Unknown / null kinds default to a
     // slider with the float-cast default value.
+    //
+    // Wave 2.1 Lane A.2 — each spec carries its engine-side
+    // `controlId` (the schema position) so the widget can wire its
+    // `onchange` to `dispatchControl(controlId, …)`. The value
+    // prefers the live `controlValues[id]` entry (engine-committed)
+    // over the schema default so post-drag re-renders reflect the
+    // user's last input.
     const def = payload.default;
+    const liveNumeric = controlValues[id];
     switch (payload.kind) {
       case 'Toggle': {
-        const on = typeof def === 'boolean' ? def : false;
-        return { kind: 'toggle', label: payload.name, on };
+        const defaultOn = typeof def === 'boolean' ? def : false;
+        const on = typeof liveNumeric === 'number' ? liveNumeric >= 0.5 : defaultOn;
+        return { kind: 'toggle', label: payload.name, on, controlId: id };
       }
       case 'Knob': {
-        const value = typeof def === 'number' ? def : 0;
-        return { kind: 'knob', label: payload.name, value };
+        const defaultValue = typeof def === 'number' ? def : 0;
+        const value = typeof liveNumeric === 'number' ? liveNumeric : defaultValue;
+        return { kind: 'knob', label: payload.name, value, controlId: id };
       }
       case 'Color': {
         // RGBA / RGB arrays render as a swatch with the leading
-        // three channels packed into a CSS rgb() string. The Color
-        // widget's alpha handling lands in a future wave.
+        // three channels packed into a CSS rgb() string. Swatches
+        // stay display-only (`ControlValue` is `f32`); a future
+        // color-picker wave widens the IPC surface to RGB tuples.
         if (Array.isArray(def) && def.length >= 3) {
           const r = Math.round((def[0] ?? 0) * 255);
           const g = Math.round((def[1] ?? 0) * 255);
@@ -222,10 +286,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       case 'Xy':
       case null:
       case undefined: {
-        // Slider / Bang / Dropdown / Xy collapse onto a Fader for
-        // Lane A.1's read-only surface. Xy's 2-component default
-        // takes the first component as the fader value; richer
-        // widget mapping rides Wave 2.2.
+        // Slider / Bang / Dropdown / Xy collapse onto a Fader. Xy's
+        // 2-component default takes the first component as the fader
+        // value; richer widget mapping rides a future wave.
         let value = 0;
         if (typeof def === 'number') {
           value = def;
@@ -233,8 +296,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           value = def[0];
         }
         // Normalize to [0, 1] when min/max bound the range. The
-        // fader widget itself is range-agnostic; Wave 2.1 doesn't
-        // re-render the widget against custom ranges (that's A.2).
+        // fader widget itself is range-agnostic; ID-keyed dispatch
+        // round-trips work in the [0, 1] domain — `set_control`
+        // accepts any `f32` so widening to native ranges is a
+        // post-MVP polish.
         if (
           typeof payload.min === 'number' &&
           typeof payload.max === 'number' &&
@@ -244,7 +309,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         } else {
           value = Math.max(0, Math.min(1, value));
         }
-        return { kind: 'fader', label: payload.name, value };
+        if (typeof liveNumeric === 'number') {
+          value = liveNumeric;
+        }
+        return { kind: 'fader', label: payload.name, value, controlId: id };
       }
       default:
         return null;
@@ -262,9 +330,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     // collapse to a single "scene" group.
     const buckets: Record<string, PerformControlSpec[]> = {};
     const order: string[] = [];
-    for (const ctl of snapshot.controls) {
-      const spec = controlSpecFromPayload(ctl);
-      if (!spec) continue;
+    snapshot.controls.forEach((ctl, idx) => {
+      const spec = controlSpecFromPayload(ctl, idx);
+      if (!spec) return;
       const groupName = ctl.ui_group ?? 'scene';
       const bucket = buckets[groupName];
       if (bucket) {
@@ -273,7 +341,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         buckets[groupName] = [spec];
         order.push(groupName);
       }
-    }
+    });
 
     if (order.length === 0) return SCENE_CONTROL_GROUPS;
 
@@ -285,6 +353,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         tint,
         controls,
       };
+    });
+  });
+
+  /**
+   * Wave 2.1 Lane A.2 — Meta Controls dispatch through the same
+   * `set_control` IPC as scene controls, but use the fixture-encoded
+   * `controlId` in the `META_CONTROL_ID_BASE` (1000+) namespace so
+   * the two ID axes never collide. When the user has not yet dragged
+   * a meta control the fixture default renders; once dragged, the
+   * `controlValues` cache returns the engine-committed value so the
+   * widget reflects the round-trip.
+   *
+   * Swatches stay display-only — their `controlId` is undefined and
+   * the live overlay short-circuits.
+   */
+  const metaControlGroups = $derived.by((): readonly PerformControlGroup[] => {
+    return META_CONTROL_GROUPS.map((group): PerformControlGroup => {
+      const controls = group.controls.map((spec): PerformControlSpec => {
+        if (spec.controlId === undefined) return spec;
+        const live = controlValues[spec.controlId];
+        if (typeof live !== 'number') return spec;
+        if (spec.kind === 'toggle') {
+          return { ...spec, on: live >= 0.5 };
+        }
+        if (spec.kind === 'fader' || spec.kind === 'knob') {
+          return { ...spec, value: live };
+        }
+        return spec;
+      });
+      return { name: group.name, tint: group.tint, controls };
     });
   });
 </script>
@@ -342,7 +440,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </button>
     </header>
     <div class="panel__body panel__body--row-scroll">
-      {#each META_CONTROL_GROUPS as group (group.name)}
+      {#each metaControlGroups as group (group.name)}
         {@render controlGroupBlock(group)}
       {/each}
     </div>
@@ -603,15 +701,50 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 {/if}
 
 {#snippet controlGroupBlock(group: PerformControlGroup)}
+  <!-- Wave 2.1 Lane A.2 — widget `onchange` callbacks dispatch
+       `set_control` IPC via `dispatchControl(controlId, value)` when
+       the spec carries a `controlId`. Specs without `controlId`
+       (legacy fixture rows when no scene is loaded; swatches whose
+       RGB tuple can't ride the `f32` `ControlValue` channel) stay
+       display-only — `onchange` is omitted and the widget short-
+       circuits its pointer-drag handler. -->
   <div class="cg-wrap">
     <ControlGroup name={group.name} tint={group.tint}>
       {#each group.controls as ctl, i (i)}
         {#if ctl.kind === 'fader'}
-          <Fader value={ctl.value} label={ctl.label} />
+          {#if ctl.controlId !== undefined}
+            {@const id = ctl.controlId}
+            <Fader
+              value={ctl.value}
+              label={ctl.label}
+              onchange={(next) => dispatchControl(id, next)}
+            />
+          {:else}
+            <Fader value={ctl.value} label={ctl.label} />
+          {/if}
         {:else if ctl.kind === 'toggle'}
-          <Toggle value={ctl.on} label={ctl.label} />
+          {#if ctl.controlId !== undefined}
+            {@const id = ctl.controlId}
+            <Toggle
+              value={ctl.on}
+              label={ctl.label}
+              onchange={(next) => dispatchControl(id, next ? 1 : 0)}
+            />
+          {:else}
+            <Toggle value={ctl.on} label={ctl.label} />
+          {/if}
         {:else if ctl.kind === 'knob'}
-          <Knob value={ctl.value} label={ctl.label} showValue />
+          {#if ctl.controlId !== undefined}
+            {@const id = ctl.controlId}
+            <Knob
+              value={ctl.value}
+              label={ctl.label}
+              showValue
+              onchange={(next) => dispatchControl(id, next)}
+            />
+          {:else}
+            <Knob value={ctl.value} label={ctl.label} showValue />
+          {/if}
         {:else if ctl.kind === 'swatch'}
           <Swatch color={ctl.color} label={ctl.label} />
         {/if}
