@@ -63,11 +63,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // container into a flex column whose `__view` wrapper owns the
   // padding + overflow:auto so the snap bar can pin to the bottom of
   // the column without being shoved off-screen by the view's scroll.
-  // The local `snapActive` state tracks which slot is highlighted;
-  // deferred wiring onto the engine `SnapSlotId` IPC surface is
-  // `EV-INTEGRATION-MATRIX` scope (the eight perform-time bookmarks
-  // here are a different domain from the sixteen engine slots in
-  // `src/lib/snap.ts`).
+  // Wave 2.1 Lane A.3 wires the SnapBar into the engine `recall_snap`
+  // / `save_snap` / `clear_snap` IPC surface via `snapStore` — the
+  // widget now owns its active-slot state from the store, so the
+  // shell drops its previous local `snapActive` shadowing.
   //
   // Wave-28 PR1 mounts `<DegradedBanner>` directly under the TopBar and
   // above the routed view. Bundle adoption site: `Chromaticity.html`
@@ -147,7 +146,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     WatermarkOverlay,
   } from './widgets';
 
-  let snapActive = $state(2);
   let bannerVisible = $state(true);
   let crashResumeVisible = $state(false);
   let commandPaletteOpen = $state(false);
@@ -274,7 +272,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </div>
     {#if routeStore.current === 'perform'}
       <div class="app-shell__snapbar">
-        <SnapBar active={snapActive} onPick={(slot) => (snapActive = slot)} />
+        <SnapBar />
       </div>
     {/if}
   </main>
