@@ -181,15 +181,30 @@ Aim for ~15–20 minutes end-to-end. File anything that surprises you per
 > AudioUniforms Spectrum widget remain synthetic — see "Known synthetic
 > surfaces".
 
+**Important — what "real audio" means on macOS.** The producer uses
+cpal's default INPUT device (i.e. your microphone), NOT system audio
+output. macOS doesn't expose system-output capture through standard
+audio APIs. To get a meaningful reaction:
+
+- **Easy path**: play music on your computer speakers and let the
+  built-in mic pick it up acoustically. Speak / clap near the mic.
+- **Cleaner path**: install a virtual audio loopback (BlackHole,
+  Loopback, SoundFlower) that routes system output to a virtual
+  input device, then select it as the default input in System
+  Settings → Sound → Input. Most performers prefer this.
+- **No-mic path**: if your machine has no input device at all, the
+  producer falls back to a `SilentSource` and emits all-zero
+  snapshots. Visualizers stay on synthetic fallback — that's
+  expected, not a bug.
+
 - [ ] Open the Audio view.
-- [ ] Confirm the BpmRing widget animates. Without an audio source, it
-      shows synthetic motion; with system audio active (music
-      playing), the ring should react to real beats within a couple
-      seconds.
+- [ ] Confirm the BpmRing widget animates. Without audio at the mic, it
+      shows synthetic motion. Play music near the mic — the ring should
+      react to real beats within a couple seconds.
 - [ ] Confirm BeatDots animate.
 - [ ] Open `examples/four-band-reactive.chroma` from the Library, then
       switch back to the scene preview. The 4 named bands should drive
-      visuals when audio is playing.
+      visuals when audio is reaching the mic.
 - [ ] Open the AudioUniforms view (or Perform view's audio panel) and
       confirm the synthetic 64-bar spectrum renders — this is expected
       synthetic behavior, not a bug.

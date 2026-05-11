@@ -1,26 +1,31 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 //
-// Wave 6 PR 2 audio-uniform IPC consumer store. In-memory `$state`-
-// backed singleton subscribing to the Tauri `audio_uniform_snapshot_changed`
-// event emitted by the producer-side scheduler tick (Wave 6 PR 1, merge
-// `c1d93e8`) per `docs/adr/ADR-019-audio-uniform-ipc-bridge.md` §Decision
-// §1 (push event) and §7 (opt-in listener semantics).
+// Audio-uniform IPC consumer store. In-memory `$state`-backed
+// singleton subscribing to the Tauri `audio_uniform_snapshot_changed`
+// event emitted by the producer-side scheduler tick per
+// `docs/adr/ADR-019-audio-uniform-ipc-bridge.md` §Decision §1 (push
+// event) and §7 (opt-in listener semantics).
 //
 // `.svelte.ts` extension is required for runes-in-module per the
 // `feedback_eslint_svelte_dot_ts_parser.md` user-memory convention; the
-// W33b `capabilities.svelte.ts` sibling is the live precedent for this
+// `capabilities.svelte.ts` sibling is the live precedent for this
 // shape (class-instance singleton + module-level export).
 //
-// **Phase posture.** The Tauri-shell-side concrete `IpcEmit` adapter +
-// scheduler-tick bootstrap + audio-thread bootstrap that would actually
-// fire `audio_uniform_snapshot_changed` events in production are NOT
-// part of Wave 6 PR 2 — they will be addressed in a future "production
-// audio bootstrap" wave. Until then the store stays at `null` and the
-// visualizer widgets fall back to their existing synthetic time-domain
-// generators (per the dual-mode framing consistent with ADR-019
-// §Decision §6 stale-but-last-good error model — when no producer
-// signal exists, the consumer surface degrades gracefully).
+// **Production bootstrap status.** Live in production since Wave
+// 1c-α-2: `engine/audio::AudioRuntime` spawns the producer thread
+// feeding `Arc<Mutex<AudioUniformSnapshot>>`;
+// `app/shell::TauriIpcEmitter` is the concrete `IpcEmit` adapter; the
+// drift-corrected 60 Hz scheduler-tick thread in
+// `app/shell/src/lib.rs::run` pulls from `MutexAudioPull` and emits via
+// `app.emit("audio_uniform_snapshot_changed", ...)`. When `npm run
+// tauri build` produces a binary on a host with a default cpal input
+// device (microphone), this store receives live snapshots on every
+// tick. On hosts without a default input device (CI / headless /
+// device-less), the producer falls back to `SilentSource` and the
+// snapshot stays at the all-zero default — visualizer widgets keep
+// their dual-mode synthetic fallback for that case (per ADR-019
+// §Decision §6 stale-but-last-good).
 //
 // `subscribe()` is idempotent so widgets can call it on every mount
 // without leaking listener registrations. When the import or `listen`
