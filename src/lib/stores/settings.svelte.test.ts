@@ -56,6 +56,14 @@ const SAMPLE_PAYLOAD: SettingsPayload = {
     backup_path: '/tmp/backups',
     backup_retention: 'retain-25',
   },
+  live_sources: {
+    syphon_input_enabled: false,
+    syphon_output_enabled: false,
+    ndi_input_enabled: true,
+    ndi_output_enabled: false,
+    constant_output_resolution: true,
+    sender_name: 'studio-A',
+  },
   osc: {
     local_ip: '192.168.1.42',
     port: 9100,
@@ -244,6 +252,14 @@ describe('settingsStore', () => {
             backup_path: '',
             backup_retention: 'retain-10',
           },
+          live_sources: {
+            syphon_input_enabled: true,
+            syphon_output_enabled: true,
+            ndi_input_enabled: false,
+            ndi_output_enabled: true,
+            constant_output_resolution: false,
+            sender_name: 'chrm',
+          },
           osc: {
             local_ip: '0.0.0.0',
             port: 8000,
@@ -311,6 +327,14 @@ describe('settingsStore', () => {
         scene_folders: [],
         backup_path: '',
         backup_retention: 'retain-10',
+      },
+      live_sources: {
+        syphon_input_enabled: true,
+        syphon_output_enabled: true,
+        ndi_input_enabled: false,
+        ndi_output_enabled: true,
+        constant_output_resolution: false,
+        sender_name: 'chrm',
       },
       osc: {
         local_ip: '0.0.0.0',

@@ -35,10 +35,23 @@ import { within } from '@testing-library/dom';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+const { invokeMock, dialogOpenMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  dialogOpenMock: vi.fn(),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
+}));
+
+// Wave 2.7 SET.B — `pickFolder` first tries
+// `@tauri-apps/plugin-dialog` `open()` then falls back to the legacy
+// `invoke('pick_folder', ...)` IPC. Mock the plugin so tests can
+// either steer it to a directory string (production path) or force
+// `open()` to throw and let the legacy `pick_folder` mock satisfy
+// the assertion.
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: dialogOpenMock,
 }));
 
 import Settings from './Settings.svelte';
@@ -76,6 +89,7 @@ function getSection(container: HTMLElement, heading: string): HTMLElement {
 describe('Settings view', () => {
   afterEach(() => {
     invokeMock.mockReset();
+    dialogOpenMock.mockReset();
     // ThemeSwitcher writes `document.documentElement.dataset.theme` via
     // a `$effect`; cleanup() unmounts but leaves the attribute behind.
     // Reset so subsequent tests start from the bundle default ("pulse"
@@ -437,8 +451,16 @@ describe('Settings view', () => {
     expect(ndiIn).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('Storage renders the bundle default media + scene folders and the backup path', () => {
+  it('Storage renders the bundle default media + scene folders and the backup path', async () => {
+    // Wave 2.7 SET.B: the Storage section now reads from
+    // `settingsStore.snapshot.storage`, which is empty on a fresh
+    // load. The Settings.svelte view's first-launch effect seeds
+    // the bundle-faithful fixture defaults once `settingsStore.load()`
+    // resolves. Drive the load + microtask flush so the assertions
+    // see the seeded state.
     const { container } = render(Settings);
+    await settingsStore.load();
+    await Promise.resolve();
     const storage = getSection(container, 'Storage');
     for (const folder of DEFAULT_MEDIA_FOLDERS) {
       expect(within(storage).getByText(folder.path)).toBeInTheDocument();
@@ -455,11 +477,46 @@ describe('Settings view', () => {
     expect(within(storage).getByRole('heading', { name: 'Cache' })).toBeInTheDocument();
   });
 
-  it('Storage Add-folder browse invokes pick_folder via the IPC mock and appends the row', async () => {
-    // Wave 2.6 Lane AUD.A added a `list_audio_devices` invoke on
-    // Settings mount; route it to an empty array so the once-mock
-    // below only fires for `pick_folder`. Otherwise mount-time
-    // audio enumeration consumes the `mockResolvedValueOnce` value.
+  it('Storage Add-folder browse invokes the dialog plugin and appends the row', async () => {
+    // Wave 2.7 SET.B: `pickFolder` now resolves via
+    // `@tauri-apps/plugin-dialog`'s `open({ directory: true })`. The
+    // dialog mock returns the operator-picked path string; the
+    // Settings.svelte handler pushes the path through
+    // `settingsStore.update({ storage: { media_folders: [..., path] } })`.
+    dialogOpenMock.mockResolvedValue('/Users/operator/Movies/Chromaticity/Loops');
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'list_audio_devices') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    const { container } = render(Settings);
+    // Allow the first-launch storage seed to flush (it runs after
+    // settingsStore.load() resolves) so the default bundle rows are
+    // visible before we add a new one.
+    await settingsStore.load();
+    await Promise.resolve();
+    const storage = getSection(container, 'Storage');
+    const addBtn = within(storage).getByRole('button', { name: 'Add media folder' });
+    await fireEvent.click(addBtn);
+    // Wait for the awaited pickFolder promise + state assignment to
+    // flush. In practice the resolution lands by next microtask.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dialogOpenMock).toHaveBeenCalledWith({
+      directory: true,
+      multiple: false,
+      title: 'Pick a Media folder',
+    });
+    expect(
+      within(storage).getByText('/Users/operator/Movies/Chromaticity/Loops'),
+    ).toBeInTheDocument();
+  });
+
+  it('Storage Add-folder falls back to invoke(pick_folder) when the dialog plugin throws', async () => {
+    // Wave 2.7 SET.B fallback path: when `@tauri-apps/plugin-dialog`
+    // rejects (pre-plugin build, vite-only dev, etc.), `pickFolder`
+    // falls through to the legacy `invoke('pick_folder')` stub. Pin
+    // the fallback so we keep working under either runtime.
+    dialogOpenMock.mockRejectedValue(new Error('plugin unavailable'));
     invokeMock.mockImplementation((command: string) => {
       if (command === 'list_audio_devices') return Promise.resolve([]);
       if (command === 'pick_folder') {
@@ -468,11 +525,11 @@ describe('Settings view', () => {
       return Promise.resolve(undefined);
     });
     const { container } = render(Settings);
+    await settingsStore.load();
+    await Promise.resolve();
     const storage = getSection(container, 'Storage');
     const addBtn = within(storage).getByRole('button', { name: 'Add media folder' });
     await fireEvent.click(addBtn);
-    // Wait for the awaited pickFolder promise + state assignment to
-    // flush. In practice the resolution lands by next microtask.
     await Promise.resolve();
     await Promise.resolve();
     expect(invokeMock).toHaveBeenCalledWith('pick_folder', { title: 'Pick a Media folder' });
@@ -483,6 +540,10 @@ describe('Settings view', () => {
 
   it('Storage remove-folder action filters the row from the media list', async () => {
     const { container } = render(Settings);
+    // Wait for the first-launch seed to populate the bundle defaults
+    // (the engine default is empty; the view hydrates after load).
+    await settingsStore.load();
+    await Promise.resolve();
     const storage = getSection(container, 'Storage');
     const firstFolder = DEFAULT_MEDIA_FOLDERS[0];
     expect(firstFolder).toBeDefined();

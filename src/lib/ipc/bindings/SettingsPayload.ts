@@ -2,6 +2,7 @@
 import type { AudioSettingsPayload } from "./AudioSettingsPayload";
 import type { GeneralSettingsPayload } from "./GeneralSettingsPayload";
 import type { GraphicsSettingsPayload } from "./GraphicsSettingsPayload";
+import type { LiveSourcesSettingsPayload } from "./LiveSourcesSettingsPayload";
 import type { OscSettingsPayload } from "./OscSettingsPayload";
 import type { StorageSettingsPayload } from "./StorageSettingsPayload";
 import type { TempoSettingsPayload } from "./TempoSettingsPayload";
@@ -18,4 +19,4 @@ import type { TempoSettingsPayload } from "./TempoSettingsPayload";
  * free of ts-rs / IPC concerns and the frontend bindings under
  * `src/lib/ipc/bindings/` generate from a single source.
  */
-export type SettingsPayload = { general: GeneralSettingsPayload, audio: AudioSettingsPayload, graphics: GraphicsSettingsPayload, storage: StorageSettingsPayload, osc: OscSettingsPayload, tempo: TempoSettingsPayload, };
+export type SettingsPayload = { general: GeneralSettingsPayload, audio: AudioSettingsPayload, graphics: GraphicsSettingsPayload, storage: StorageSettingsPayload, live_sources: LiveSourcesSettingsPayload, osc: OscSettingsPayload, tempo: TempoSettingsPayload, };

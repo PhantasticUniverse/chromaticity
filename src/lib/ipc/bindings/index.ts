@@ -21,6 +21,7 @@ export type { ControlSchemaPayload } from './ControlSchemaPayload';
 export type { ControlValue } from './ControlValue';
 export type { GeneralSettingsPayload } from './GeneralSettingsPayload';
 export type { GraphicsSettingsPayload } from './GraphicsSettingsPayload';
+export type { LiveSourcesSettingsPayload } from './LiveSourcesSettingsPayload';
 export type { LoadedScenePayload } from './LoadedScenePayload';
 export type { MidiDeviceKindPayload } from './MidiDeviceKindPayload';
 export type { MidiDevicePayload } from './MidiDevicePayload';

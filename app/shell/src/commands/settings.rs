@@ -152,8 +152,9 @@ mod tests {
     use crate::state::AppState;
     use chromaticity_runtime::settings::Theme;
     use chromaticity_ui_bridge::{
-        AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload, OscSettingsPayload,
-        SettingsPayload, StorageSettingsPayload, TempoSettingsPayload, ThemePayload,
+        AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload,
+        LiveSourcesSettingsPayload, OscSettingsPayload, SettingsPayload, StorageSettingsPayload,
+        TempoSettingsPayload, ThemePayload,
     };
 
     fn nondefault_payload() -> SettingsPayload {
@@ -191,6 +192,14 @@ mod tests {
                 scene_folders: vec![],
                 backup_path: "/tmp/backups".to_string(),
                 backup_retention: "retain-5".to_string(),
+            },
+            live_sources: LiveSourcesSettingsPayload {
+                syphon_input_enabled: false,
+                syphon_output_enabled: false,
+                ndi_input_enabled: true,
+                ndi_output_enabled: false,
+                constant_output_resolution: true,
+                sender_name: "studio-A".to_string(),
             },
             osc: OscSettingsPayload {
                 local_ip: "192.168.1.42".to_string(),

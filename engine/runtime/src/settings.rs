@@ -284,6 +284,73 @@ pub struct GeneralSettings {
     pub theme: Theme,
 }
 
+/// Live Sources / Spout-Syphon / NDI operator preferences.
+///
+/// Wave 2.7 SET.B: the engine-side capability gating for Spout / Syphon
+/// / NDI input + output is a Wave 1c-β follow-up (per-platform binding
+/// stubs + Syphon `Send`-trait reconciliation, per
+/// `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β closure
+/// section); the UI toggles + sender name need to persist NOW so
+/// operators don't keep re-flipping the same six prefs across restarts.
+/// This struct carries the persisted preferences only — the cross-seam
+/// IPC that actually publishes / subscribes to the sources rides in
+/// alongside the deferred follow-ups.
+///
+/// Field set mirrors the Live Sources section in
+/// `src/lib/views/Settings.svelte` (six fields total — five booleans +
+/// one short string): Spout / Syphon Input + Output, NDI Input +
+/// Output, Constant Output Resolution, Sender Name. The
+/// `data-cap=...` attributes on the view rows (`io.syphon.input`,
+/// `io.syphon.output`, `io.ndi.input`, `io.ndi.output`,
+/// `render.custom-resolution`) carry forward unchanged; entitlement-
+/// gated enforcement attaches at the future SKU rollout per W15+ work.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveSourcesSettings {
+    #[serde(default = "LiveSourcesSettings::default_syphon_input_enabled")]
+    pub syphon_input_enabled: bool,
+    #[serde(default = "LiveSourcesSettings::default_syphon_output_enabled")]
+    pub syphon_output_enabled: bool,
+    #[serde(default)]
+    pub ndi_input_enabled: bool,
+    #[serde(default = "LiveSourcesSettings::default_ndi_output_enabled")]
+    pub ndi_output_enabled: bool,
+    #[serde(default)]
+    pub constant_output_resolution: bool,
+    #[serde(default = "LiveSourcesSettings::default_sender_name")]
+    pub sender_name: String,
+}
+
+impl LiveSourcesSettings {
+    fn default_syphon_input_enabled() -> bool {
+        true
+    }
+    fn default_syphon_output_enabled() -> bool {
+        true
+    }
+    fn default_ndi_output_enabled() -> bool {
+        true
+    }
+    fn default_sender_name() -> String {
+        // Mirrors `SENDER_NAME_DEFAULT` in
+        // `src/lib/data/settings-fixtures.ts` so the engine-side
+        // default and the bundle-faithful fixture default agree.
+        "chrm".to_string()
+    }
+}
+
+impl Default for LiveSourcesSettings {
+    fn default() -> Self {
+        Self {
+            syphon_input_enabled: Self::default_syphon_input_enabled(),
+            syphon_output_enabled: Self::default_syphon_output_enabled(),
+            ndi_input_enabled: false,
+            ndi_output_enabled: Self::default_ndi_output_enabled(),
+            constant_output_resolution: false,
+            sender_name: Self::default_sender_name(),
+        }
+    }
+}
+
 /// OSC adapter operator-facing network defaults — Wave 2.1 Lane D.3.
 ///
 /// `local_ip` carries the bind-side interface (ADR-013 §1 default is
@@ -459,6 +526,8 @@ pub struct Settings {
     pub graphics: GraphicsSettings,
     #[serde(default)]
     pub storage: StorageSettings,
+    #[serde(default)]
+    pub live_sources: LiveSourcesSettings,
     #[serde(default)]
     pub osc: OscSettings,
     #[serde(default)]
@@ -898,6 +967,46 @@ mod tests {
     }
 
     #[test]
+    fn live_sources_default_matches_bundle_baseline() {
+        // Wave 2.7 SET.B: pin the bundle-faithful Live Sources
+        // defaults. The frontend Settings view reads back these
+        // values on view mount and renders the wireframe-faithful
+        // toggle states (Syphon in/out + NDI out on; NDI in +
+        // Constant Output Resolution off; Sender Name = "chrm").
+        let defaults = Settings::default();
+        assert!(defaults.live_sources.syphon_input_enabled);
+        assert!(defaults.live_sources.syphon_output_enabled);
+        assert!(!defaults.live_sources.ndi_input_enabled);
+        assert!(defaults.live_sources.ndi_output_enabled);
+        assert!(!defaults.live_sources.constant_output_resolution);
+        assert_eq!(defaults.live_sources.sender_name, "chrm");
+    }
+
+    #[test]
+    fn live_sources_round_trip_preserves_operator_values() {
+        // Mutating each Live Sources field and round-tripping through
+        // TOML pins the field-name + serde-attribute stability of the
+        // [live_sources] section against future drift.
+        let path = tmp_path("live-sources-round-trip");
+        let mut settings = Settings::default();
+        settings.live_sources.syphon_input_enabled = false;
+        settings.live_sources.syphon_output_enabled = false;
+        settings.live_sources.ndi_input_enabled = true;
+        settings.live_sources.ndi_output_enabled = false;
+        settings.live_sources.constant_output_resolution = true;
+        settings.live_sources.sender_name = "studio-A".to_string();
+        settings.save_to_path(&path).unwrap();
+        let loaded = Settings::load_from_path(&path).unwrap();
+        assert!(!loaded.live_sources.syphon_input_enabled);
+        assert!(!loaded.live_sources.syphon_output_enabled);
+        assert!(loaded.live_sources.ndi_input_enabled);
+        assert!(!loaded.live_sources.ndi_output_enabled);
+        assert!(loaded.live_sources.constant_output_resolution);
+        assert_eq!(loaded.live_sources.sender_name, "studio-A");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn legacy_toml_without_tempo_section_loads_via_serde_default() {
         // Forward-compat: a settings file written before Wave 2.7
         // Lane SET.A added the [tempo] section MUST deserialise
@@ -923,6 +1032,32 @@ mod tests {
                 "manual".to_string(),
             ]
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_toml_without_live_sources_section_loads_via_serde_default() {
+        // Forward-compat: a settings file written by the Wave 2.1
+        // C.3 release (which had no [live_sources] section) MUST
+        // deserialise cleanly under the Wave 2.7 SET.B release. The
+        // missing fields fill via the per-field `#[serde(default)]`
+        // annotations + the section-level `#[serde(default)]` on
+        // `Settings::live_sources`.
+        let path = tmp_path("pre-live-sources-section");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(b"[general]\ntheme = \"pulse\"\n\n[audio]\nsample_rate_hz = 48000\n")
+                .unwrap();
+        }
+        let loaded = Settings::load_from_path(&path).unwrap();
+        // The Live Sources section materialises with the per-field
+        // defaults.
+        assert!(loaded.live_sources.syphon_input_enabled);
+        assert!(loaded.live_sources.syphon_output_enabled);
+        assert!(!loaded.live_sources.ndi_input_enabled);
+        assert!(loaded.live_sources.ndi_output_enabled);
+        assert!(!loaded.live_sources.constant_output_resolution);
+        assert_eq!(loaded.live_sources.sender_name, "chrm");
         let _ = std::fs::remove_file(&path);
     }
 

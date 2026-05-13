@@ -78,6 +78,7 @@ const SETTINGS_FILE_NAME: &str = "settings.toml";
 /// command handler that held the state mutex longer than ~16ms).
 pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
         .setup(|app| {

@@ -25,12 +25,13 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use chromaticity_runtime::settings::{
-    AudioSettings, GeneralSettings, GraphicsSettings, OscSettings, Settings, StorageSettings,
-    TempoSettings, Theme,
+    AudioSettings, GeneralSettings, GraphicsSettings, LiveSourcesSettings, OscSettings, Settings,
+    StorageSettings, TempoSettings, Theme,
 };
 use chromaticity_ui_bridge::{
-    AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload, OscSettingsPayload,
-    SettingsPayload, StorageSettingsPayload, TempoSettingsPayload, ThemePayload,
+    AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload,
+    LiveSourcesSettingsPayload, OscSettingsPayload, SettingsPayload, StorageSettingsPayload,
+    TempoSettingsPayload, ThemePayload,
 };
 use ts_rs::TS;
 
@@ -76,6 +77,14 @@ fn nonzero_settings() -> Settings {
             scene_folders: vec!["/Users/operator/Scenes".to_string()],
             backup_path: "/Users/operator/Backups".to_string(),
             backup_retention: "retain-25".to_string(),
+        },
+        live_sources: LiveSourcesSettings {
+            syphon_input_enabled: false,
+            syphon_output_enabled: false,
+            ndi_input_enabled: true,
+            ndi_output_enabled: false,
+            constant_output_resolution: true,
+            sender_name: "studio-A".to_string(),
         },
         osc: OscSettings {
             local_ip: "192.168.1.42".to_string(),
@@ -142,6 +151,14 @@ fn nonzero_payload() -> SettingsPayload {
             scene_folders: vec!["/Users/operator/Scenes".to_string()],
             backup_path: "/Users/operator/Backups".to_string(),
             backup_retention: "retain-25".to_string(),
+        },
+        live_sources: LiveSourcesSettingsPayload {
+            syphon_input_enabled: false,
+            syphon_output_enabled: false,
+            ndi_input_enabled: true,
+            ndi_output_enabled: false,
+            constant_output_resolution: true,
+            sender_name: "studio-A".to_string(),
         },
         osc: OscSettingsPayload {
             local_ip: "192.168.1.42".to_string(),
@@ -313,6 +330,10 @@ fn ts_rs_exported_names_match_committed_bindings() {
     assert_eq!(<ThemePayload as TS>::name(), "ThemePayload");
     assert_eq!(<OscSettingsPayload as TS>::name(), "OscSettingsPayload");
     assert_eq!(<TempoSettingsPayload as TS>::name(), "TempoSettingsPayload");
+    assert_eq!(
+        <LiveSourcesSettingsPayload as TS>::name(),
+        "LiveSourcesSettingsPayload"
+    );
 }
 
 #[test]
@@ -367,6 +388,44 @@ fn tempo_settings_engine_to_payload_round_trip() {
         back.tempo.bpm_source_priority,
         settings.tempo.bpm_source_priority
     );
+}
+
+#[test]
+fn live_sources_engine_to_payload_round_trip() {
+    // Wave 2.7 SET.B: pin the LiveSourcesSettingsPayload field-by-
+    // field mapping so a future shape divergence between
+    // `chromaticity_runtime::settings::LiveSourcesSettings` and the
+    // bridge mirror surfaces here before the wire shape drifts.
+    let settings = nonzero_settings();
+    let payload: SettingsPayload = settings.clone().into();
+    assert_eq!(
+        payload.live_sources.syphon_input_enabled,
+        settings.live_sources.syphon_input_enabled
+    );
+    assert_eq!(
+        payload.live_sources.syphon_output_enabled,
+        settings.live_sources.syphon_output_enabled
+    );
+    assert_eq!(
+        payload.live_sources.ndi_input_enabled,
+        settings.live_sources.ndi_input_enabled
+    );
+    assert_eq!(
+        payload.live_sources.ndi_output_enabled,
+        settings.live_sources.ndi_output_enabled
+    );
+    assert_eq!(
+        payload.live_sources.constant_output_resolution,
+        settings.live_sources.constant_output_resolution
+    );
+    assert_eq!(
+        payload.live_sources.sender_name,
+        settings.live_sources.sender_name
+    );
+
+    // Reverse direction.
+    let back: Settings = payload.into();
+    assert_eq!(back.live_sources, settings.live_sources);
 }
 
 #[test]
