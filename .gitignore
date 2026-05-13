@@ -123,3 +123,20 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# -----------------------------------------------------------------------------
+# Operator-local content scaffolds (Wave 2.8 LIB.LOCAL).
+# `scenes-local/` and `media-local/` exist so the AO / pre-alpha testers can
+# drop personal `.chroma` scenes and media assets at the repo root without
+# committing them — useful for materials whose rights are not held by
+# Chromaticity. Only the README and per-directory .gitignore sentinels
+# commit; every other path inside the two directories is ignored. The
+# directories themselves additionally carry their own `.gitignore` sentinels
+# that re-state the rule locally for grep-ability.
+# -----------------------------------------------------------------------------
+scenes-local/*
+!scenes-local/.gitignore
+!scenes-local/README.md
+media-local/*
+!media-local/.gitignore
+!media-local/README.md

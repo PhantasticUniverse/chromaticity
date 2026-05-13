@@ -28,6 +28,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import {
     clearCache,
     fetchBundledSceneCards,
+    fetchCustomSceneCards,
     fetchSceneCards,
     getDefaultRoot,
   } from '../stores/library';
@@ -35,6 +36,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { libraryRecentStore } from '../stores/libraryRecent.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { routeStore } from '../stores/route.svelte';
+  import { settingsStore } from '../stores/settings.svelte';
   import { toIpcError } from '../types/ipc-error';
   import {
     sceneKindFromMetadata,
@@ -212,38 +214,71 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     libraryFavoritesStore.toggle(card.id);
   }
 
-  // W11 PR2: merge bundled (ship-time) + user-staged scene cards.
+  // W11 PR2 / Wave 2.8 LIB.LOCAL: merge bundled (ship-time) + user-
+  // staged scene cards + every custom scene folder the operator has
+  // configured via Settings → Storage → Add Custom Scene Folder
+  // (persisted as `settings.storage.scene_folders`).
+  //
   // `Promise.allSettled` is deliberate — bundled is more reliable
-  // than user (the user root may not exist on a fresh install), so
-  // a failed user-root fetch must not collapse the bundled corpus,
-  // and vice versa. Extracted from the mount-time `$effect` so the
-  // W22 PR3 Refresh CTA can re-invoke it.
+  // than user-default (user root may not exist on fresh install) and
+  // every custom folder is operator-supplied (may point at a removed
+  // external drive). One failed source must not collapse the others;
+  // an error surfaces only when EVERY source failed AND the merged
+  // list is empty. Each custom folder is fetched in parallel rather
+  // than serially so a slow/missing folder doesn't gate the others.
+  //
+  // `customRoots` is captured from `settingsStore.snapshot` at call
+  // time — synchronous, no additional `await` barrier — so the
+  // existing W11 PR2 test sequencing (which assumes
+  // `list_scene_packages` is invoked as soon as `loadCards` runs)
+  // stays valid. The mount-time `$effect` below kicks
+  // `settingsStore.load()` in parallel and re-fires `loadCards()`
+  // when the persisted `scene_folders` array hydrates, so the AO
+  // scenario "drop content in scenes-local, restart, see them on
+  // first Library open" still works without coupling loadCards to a
+  // sync wait on settings.
   async function loadCards() {
     try {
-      const [bundledResult, userResult] = await Promise.allSettled([
+      const customRoots = settingsStore.snapshot.storage.scene_folders;
+      const sources: Array<Promise<SceneCard[]>> = [
         fetchBundledSceneCards(),
         (async () => fetchSceneCards(await getDefaultRoot()))(),
-      ]);
+        ...customRoots.map((root) => fetchCustomSceneCards(root)),
+      ];
+
+      const settled = await Promise.allSettled(sources);
 
       const merged: SceneCard[] = [];
       const errors: string[] = [];
+      // Dedup by id across all sources — a scene that lives in BOTH
+      // the user-default root AND a custom folder must not double-
+      // render in the grid. First-seen wins, matching the bundled-
+      // vs-user precedent the engine `SceneIndex` already pins. A
+      // plain `Record<string, true>` (not `Set`) avoids the
+      // `svelte/prefer-svelte-reactivity` lint friction that a
+      // builtin `Set` would trip; the dedup is purely transient and
+      // does not need to be reactive (mirrors the same pattern at
+      // `Perform.svelte` line 343 / `Library.svelte::filteredCards`
+      // `recencyIndex` already pinned in this file).
+      const seenIds: Record<string, true> = {};
 
-      if (bundledResult.status === 'fulfilled') {
-        merged.push(...bundledResult.value);
-      } else {
-        const reason = bundledResult.reason;
-        errors.push(reason instanceof Error ? reason.message : String(reason));
-      }
-      if (userResult.status === 'fulfilled') {
-        merged.push(...userResult.value);
-      } else {
-        const reason = userResult.reason;
-        errors.push(reason instanceof Error ? reason.message : String(reason));
+      for (const result of settled) {
+        if (result.status === 'fulfilled') {
+          for (const card of result.value) {
+            if (seenIds[card.id]) continue;
+            seenIds[card.id] = true;
+            merged.push(card);
+          }
+        } else {
+          const reason = result.reason;
+          errors.push(reason instanceof Error ? reason.message : String(reason));
+        }
       }
 
       cards = merged;
-      // Only surface an error when both fetches failed — partial
-      // results render as the merged grid.
+      // Only surface an error when EVERY source failed (merged
+      // empty + at least one error) — partial results render as
+      // the merged grid.
       error = merged.length === 0 && errors.length > 0 ? errors.join('; ') : null;
     } catch (err) {
       error = toIpcError(err, 'list_scene_packages').message;
@@ -251,6 +286,51 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   $effect(() => {
+    void (async () => {
+      try {
+        await loadCards();
+      } finally {
+        loading = false;
+      }
+    })();
+  });
+
+  // Wave 2.8 LIB.LOCAL: kick `settingsStore.load()` so the persisted
+  // `storage.scene_folders` array hydrates from the on-disk TOML
+  // store. Idempotent — if Settings.svelte / AudioUniforms.svelte /
+  // ThemeSwitcher already triggered `load()`, this is a no-op against
+  // the cached promise. The hydration re-fires `loadCards` via the
+  // `$effect` below.
+  $effect(() => {
+    void settingsStore.load();
+  });
+
+  // Re-fire `loadCards` whenever the persisted custom-scene-folders
+  // array changes. Covers both (a) the initial settings hydration
+  // after mount (the engine returns a populated `scene_folders` array
+  // some microtasks after `loadCards` has already run with the empty
+  // default), and (b) the operator-adds-folder-via-Settings flow
+  // (the user navigates to Settings → Storage → Add Custom Scene
+  // Folder, picks a path, then returns to Library). Tracks the
+  // serialised array contents (not the array reference) so an
+  // unrelated `settingsStore.update()` that returns the same folders
+  // doesn't trigger an unnecessary re-scan.
+  //
+  // Sentinel `null` = "have not observed any key yet"; the first
+  // observation (mount-time fire of this effect) seeds the sentinel
+  // without re-firing loadCards (the initial-load `$effect` above
+  // already covered it). Subsequent observations re-fire on value
+  // change.
+  let lastCustomRootsKey: string | null = $state(null);
+  $effect(() => {
+    const key = settingsStore.snapshot.storage.scene_folders.join(' ');
+    if (lastCustomRootsKey === null) {
+      lastCustomRootsKey = key;
+      return;
+    }
+    if (key === lastCustomRootsKey) return;
+    lastCustomRootsKey = key;
+    clearCache();
     void (async () => {
       try {
         await loadCards();
