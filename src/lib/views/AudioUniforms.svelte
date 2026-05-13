@@ -54,6 +54,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Icon from '../Icon.svelte';
   import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+  import { settingsStore } from '../stores/settings.svelte';
   import { BpmRing, BeatDots } from '../widgets';
 
   // Wave-23 PR1: synthetic BPM for the hero-block tempo visualizers.
@@ -197,6 +198,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void audioSnapshotStore.subscribe();
   });
 
+  // Wave 2.6 AUD.C — settings hydration for the hero stats source-label
+  // fallback (see derivation block below).
+  $effect(() => {
+    void settingsStore.load();
+  });
+
   const HIT_THRESHOLD = 0.5;
 
   /**
@@ -237,6 +244,42 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     audioSnapshotStore.snapshot
       ? reduceFftToBands(audioSnapshotStore.snapshot)
       : AUDIO_UNIFORMS_FIXTURE.bands,
+  );
+
+  // Wave 2.6 AUD.C — live peak / RMS dB readout in the hero stats strip.
+  // The bundle's static `peakDb` / `rmsDb` fixture is dropped in favour
+  // of a derivation off `audioSnapshotStore.snapshot.peak` /
+  // `.rms` (linear amplitude, 0..1) converted to dBFS via
+  // `20 * log10(x)`. A floor at 1e-3 (-60 dBFS) avoids -Infinity when
+  // the producer reports digital silence (e.g. the `SilentSource`
+  // fallback on hosts without a default cpal input device). Source
+  // label reads `settingsStore.snapshot.audio.input_device` when it
+  // resolves to a non-default device string; the literal sentinel
+  // 'default' (seeded in `DEFAULT_SETTINGS`) falls back to fixture so
+  // the wireframe-faithful "Mic · Yeti" placeholder survives until
+  // Lane AUD.A's live device enumeration populates an authoritative
+  // name. Same dual-mode posture as `AudioReactivity.svelte`.
+  const DB_FLOOR = 1e-3;
+
+  function toDbFs(linear: number): number {
+    return 20 * Math.log10(Math.max(linear, DB_FLOOR));
+  }
+
+  const livePeakDb = $derived<number>(
+    audioSnapshotStore.snapshot
+      ? toDbFs(audioSnapshotStore.snapshot.peak)
+      : AUDIO_UNIFORMS_FIXTURE.peakDb,
+  );
+  const liveRmsDb = $derived<number>(
+    audioSnapshotStore.snapshot
+      ? toDbFs(audioSnapshotStore.snapshot.rms)
+      : AUDIO_UNIFORMS_FIXTURE.rmsDb,
+  );
+  const liveSource = $derived<string>(
+    settingsStore.snapshot.audio.input_device &&
+      settingsStore.snapshot.audio.input_device !== 'default'
+      ? settingsStore.snapshot.audio.input_device
+      : AUDIO_UNIFORMS_FIXTURE.source,
   );
 
   // Sparkline SVG geometry — matches the bundle's 100×32 viewBox / 60-point
@@ -354,9 +397,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <div class="au__hero-head">
           <span class="au__section-label">waveform · spectrum</span>
           <div class="au__hero-stats">
-            <span>peak <b>{AUDIO_UNIFORMS_FIXTURE.peakDb.toFixed(1)} dB</b></span>
-            <span>rms <b>{AUDIO_UNIFORMS_FIXTURE.rmsDb.toFixed(1)} dB</b></span>
-            <span>src <b>{AUDIO_UNIFORMS_FIXTURE.source}</b></span>
+            <span>peak <b>{livePeakDb.toFixed(1)} dB</b></span>
+            <span>rms <b>{liveRmsDb.toFixed(1)} dB</b></span>
+            <span>src <b>{liveSource}</b></span>
           </div>
         </div>
         <div
