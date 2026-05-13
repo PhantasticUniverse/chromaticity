@@ -19,10 +19,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // ported from the bundle's `ControlGroup` (`components.jsx` lines
   // 147-161). Driven by the new `actions` prop (default `false` to
   // preserve the W18 PR1 / Settings-view chrome; Perform's Scene + Meta
-  // panels opt in by passing `actions`). Buttons are visual-only stubs
-  // tracking the same "controls dispatch but visual pattern doesn't
-  // change" posture already in place across Scene Controls — matches
-  // the Wave 2.1 Lane A.2 IPC-vs-render boundary.
+  // panels opt in by passing `actions`).
+  //
+  // Wave 2.4 Lane PERF.A — the three buttons (Lock / Reset / Random)
+  // now accept optional click callbacks so the Perform view can wire
+  // them to `controlLockStore.toggle/lockAll`, default-reset, and
+  // randomise-in-range routines. When `actions` is true and no
+  // handler is wired, the buttons stay clickable but inert (matches
+  // the W23 PR2 visual-stub posture). An additional `locked` boolean
+  // marks the lock icon as "active" when at least one control in the
+  // group is locked — gives the operator a visual cue per group.
   import type { Snippet } from 'svelte';
 
   import Icon from '../Icon.svelte';
@@ -31,8 +37,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     name,
     tint,
     actions = false,
+    locked = false,
+    onLockToggle,
+    onReset,
+    onRandomize,
     children,
-  }: { name: string; tint?: string; actions?: boolean; children: Snippet } = $props();
+  }: {
+    name: string;
+    tint?: string;
+    actions?: boolean;
+    locked?: boolean;
+    onLockToggle?: () => void;
+    onReset?: () => void;
+    onRandomize?: () => void;
+    children: Snippet;
+  } = $props();
 
   const TINTS: Record<string, string> = {
     color: 'var(--color-cat-color)',
@@ -50,7 +69,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <span class="group-name">{name}</span>
     {#if actions}
       <span class="group-actions" aria-hidden="false">
-        <button type="button" class="group-action" title="Lock controls" aria-label="Lock controls">
+        <button
+          type="button"
+          class="group-action"
+          class:group-action--active={locked}
+          title="Lock controls"
+          aria-label="Lock controls"
+          aria-pressed={locked ? 'true' : 'false'}
+          onclick={onLockToggle}
+        >
           <Icon name="lock" size={10} />
         </button>
         <button
@@ -58,10 +85,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           class="group-action"
           title="Reset to defaults"
           aria-label="Reset to defaults"
+          onclick={onReset}
         >
           <Icon name="undo" size={10} />
         </button>
-        <button type="button" class="group-action" title="Randomize" aria-label="Randomize">
+        <button
+          type="button"
+          class="group-action"
+          title="Randomize"
+          aria-label="Randomize"
+          onclick={onRandomize}
+        >
           <Icon name="random" size={10} />
         </button>
       </span>
@@ -125,6 +159,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .group-action:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 1px;
+  }
+  .group-action--active {
+    color: var(--color-primary);
+    background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  }
+  .group-action--active:hover {
+    color: var(--color-primary);
+    background: color-mix(in oklab, var(--color-primary) 28%, transparent);
   }
   .group-grid {
     display: flex;
