@@ -334,6 +334,61 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let midiClockOutEnabled = $state(true);
   let midiClockOutDevice = $state(MIDI_CLOCK_OUTPUT_DEVICES[0]?.id ?? 'iac-1');
   let quantize = $state<QuantizeTransitionOption['id']>('bar');
+
+  /* ----- Wave 2.7 Lane SET.D: Reset-to-Defaults + live About version -----
+   * Reset-to-Defaults surfaces the `reset_settings` Tauri command
+   * through a Maintenance section between Hotkeys and About. A
+   * confirmation modal guards the destructive action; on confirm,
+   * `settingsStore.resetToDefaults()` swaps the in-memory document
+   * AND rewrites the on-disk TOML file with `Settings::default()`.
+   *
+   * About version reads `getVersion()` / `getTauriVersion()` from
+   * `@tauri-apps/api/app` at runtime so the displayed version stays
+   * in sync with `Cargo.toml` / the Tauri runtime — no more hardcoded
+   * `v0.0.0`. Repo + License + Phase lines stay literal (governance
+   * constants, not build artefacts). Falls back to "n/a" when the
+   * `@tauri-apps/api/app` import fails (Vitest jsdom; vite-only dev
+   * server). */
+  let resetConfirmOpen = $state(false);
+  let resetInFlight = $state(false);
+  let appVersion = $state<string>('n/a');
+  let tauriVersion = $state<string>('n/a');
+
+  $effect(() => {
+    void (async () => {
+      try {
+        const { getVersion, getTauriVersion } = await import('@tauri-apps/api/app');
+        const [v, t] = await Promise.all([getVersion(), getTauriVersion()]);
+        appVersion = v;
+        tauriVersion = t;
+      } catch {
+        // Outside Tauri runtime (Vitest jsdom, vite-only dev). The
+        // About section displays the "n/a" fallback so the view
+        // still renders cleanly.
+      }
+    })();
+  });
+
+  function openResetConfirm() {
+    resetConfirmOpen = true;
+  }
+
+  function closeResetConfirm() {
+    if (!resetInFlight) {
+      resetConfirmOpen = false;
+    }
+  }
+
+  async function confirmReset() {
+    if (resetInFlight) return;
+    resetInFlight = true;
+    try {
+      await settingsStore.resetToDefaults();
+    } finally {
+      resetInFlight = false;
+      resetConfirmOpen = false;
+    }
+  }
 </script>
 
 <section class="settings">
@@ -1284,18 +1339,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </article>
 
     <article class="settings__section">
+      <h2>Maintenance</h2>
+      <p class="settings__hint">
+        Reset every operator preference (Audio / Graphics / Storage / OSC / General) to the
+        engine-side <code>Settings::default()</code> shape. The reset writes through to the on-disk TOML
+        file so it survives restart.
+      </p>
+      <div class="settings__row">
+        <button type="button" class="settings__danger" onclick={openResetConfirm}>
+          Reset to Defaults
+        </button>
+      </div>
+    </article>
+
+    <article class="settings__section">
       <h2>About</h2>
       <dl class="settings__about">
         <dt>version</dt>
-        <dd>v0.0.0</dd>
+        <dd>v{appVersion}</dd>
         <dt>phase</dt>
-        <dd>Phase 1 EXIT (6/6 evidence gates Pass)</dd>
+        <dd>Phase 4a EXIT achieved; Wave 2.x in progress</dd>
         <dt>license</dt>
         <dd><code>LicenseRef-Chromaticity-Proprietary</code></dd>
         <dt>repo</dt>
         <dd><code>PhantasticUniverse/chromaticity</code></dd>
         <dt>toolkit</dt>
-        <dd>Tauri 2 + Svelte 5 + Rust 2024 (per ADR-018)</dd>
+        <dd>Tauri {tauriVersion} + Svelte 5 + Rust 2024 (per ADR-018)</dd>
       </dl>
     </article>
   </div>
@@ -1347,6 +1416,41 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </article>
   </aside>
 </section>
+
+{#if resetConfirmOpen}
+  <div
+    class="settings__modal-backdrop"
+    role="presentation"
+    onclick={closeResetConfirm}
+    onkeydown={(e) => {
+      if (e.key === 'Escape') closeResetConfirm();
+    }}
+  ></div>
+  <div
+    class="settings__modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="reset-confirm-title"
+    aria-describedby="reset-confirm-body"
+  >
+    <h2 id="reset-confirm-title" class="settings__modal-title">Reset settings to defaults?</h2>
+    <p id="reset-confirm-body" class="settings__modal-body">
+      This will reset all settings (Audio / Graphics / Storage / OSC / General) to the engine
+      defaults and overwrite the persisted settings file. This cannot be undone.
+    </p>
+    <div class="settings__modal-actions">
+      <button type="button" onclick={closeResetConfirm} disabled={resetInFlight}>Cancel</button>
+      <button
+        type="button"
+        class="settings__danger"
+        onclick={confirmReset}
+        disabled={resetInFlight}
+      >
+        {resetInFlight ? 'Resetting…' : 'Reset'}
+      </button>
+    </div>
+  </div>
+{/if}
 
 <style>
   /* W38 layout: two-column grid (main + rail) on viewports wide enough
@@ -2073,5 +2177,79 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+  }
+
+  /* ----- Wave 2.7 Lane SET.D: Reset-to-Defaults button + confirm modal ----- */
+  .settings__danger {
+    background: var(--color-bg-2);
+    color: var(--color-danger, #d04a4a);
+    border: 1px solid var(--color-danger, #d04a4a);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-md);
+    font-size: var(--font-size-body-sm);
+    cursor: pointer;
+  }
+  .settings__danger:hover:not(:disabled) {
+    background: var(--color-danger, #d04a4a);
+    color: var(--color-bg-0, #fff);
+  }
+  .settings__danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .settings__modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 100;
+  }
+
+  .settings__modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 101;
+    background: var(--color-bg-1);
+    color: var(--color-text-0);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-md, 8px);
+    padding: var(--space-lg) var(--space-xl);
+    width: min(440px, calc(100vw - 2 * var(--space-xl)));
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .settings__modal-title {
+    margin: 0 0 var(--space-md) 0;
+    font-size: var(--font-size-display-sm);
+    font-weight: 600;
+  }
+
+  .settings__modal-body {
+    margin: 0 0 var(--space-lg) 0;
+    color: var(--color-text-1);
+    font-size: var(--font-size-body-sm);
+    line-height: 1.5;
+  }
+
+  .settings__modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+  }
+
+  .settings__modal-actions button {
+    background: var(--color-bg-2);
+    color: var(--color-text-0);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-md);
+    font-size: var(--font-size-body-sm);
+    cursor: pointer;
+  }
+  .settings__modal-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

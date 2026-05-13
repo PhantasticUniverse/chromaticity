@@ -242,6 +242,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::picker::pick_folder,
             commands::settings::get_settings,
             commands::settings::set_settings,
+            commands::settings::reset_settings,
             commands::license::install_license,
             commands::license::remove_license,
             commands::license::request_trial,

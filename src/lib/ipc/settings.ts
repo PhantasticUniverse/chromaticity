@@ -21,6 +21,7 @@ import type { SettingsPayload } from './bindings/SettingsPayload';
 /** Tauri command names surfaced by `app/shell/src/commands/settings.rs`. */
 const GET_SETTINGS_COMMAND = 'get_settings';
 const SET_SETTINGS_COMMAND = 'set_settings';
+const RESET_SETTINGS_COMMAND = 'reset_settings';
 
 /**
  * Read the persisted operator-settings document from the shell. The
@@ -49,4 +50,21 @@ export async function getSettings(): Promise<SettingsPayload> {
  */
 export async function setSettings(settings: SettingsPayload): Promise<void> {
   await invoke(SET_SETTINGS_COMMAND, { settings });
+}
+
+/**
+ * Reset the persisted operator-settings document to the engine's
+ * `Settings::default()` shape, writing the default document through
+ * to the on-disk TOML file. Resolves with the freshly-persisted
+ * payload so the frontend store can hydrate without a follow-on
+ * `getSettings()` round-trip.
+ *
+ * Wave 2.7 Lane SET.D: surfaced through the Settings view's
+ * "Reset to Defaults" button.
+ *
+ * Throws when running outside the Tauri runtime (same fall-back
+ * posture as `getSettings` / `setSettings`).
+ */
+export async function resetSettings(): Promise<SettingsPayload> {
+  return invoke<SettingsPayload>(RESET_SETTINGS_COMMAND);
 }
