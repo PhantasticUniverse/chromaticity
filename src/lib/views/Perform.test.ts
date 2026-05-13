@@ -57,7 +57,10 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import Perform from './Perform.svelte';
 import { MEDIA_CARDS, MEDIA_DEFAULT_ACTIVE_INDEX, MEDIA_TABS } from '../data/perform-fixtures';
-import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
+import { resolveSetlistRowToSceneId } from '../data/perform-setlist-resolver';
+import { SETLIST_FIXTURE } from '../data/setlist-fixtures';
+import { clearCache as clearLibraryCache } from '../stores/library';
+import { loadedSceneStore } from '../stores/loadedScene.svelte';
 import { performVariantStore } from '../stores/performVariant.svelte';
 import { playlistStore } from '../stores/playlist.svelte';
 import { presetStore } from '../stores/preset.svelte';
@@ -91,6 +94,15 @@ beforeEach(() => {
   invokeMock.mockResolvedValue(null);
   presetStore.reset();
   playlistStore.reset();
+  // Wave 2.4 Lane PERF.B — reset the loaded-scene store so the active
+  // setlist row marker starts from the no-snapshot baseline. The
+  // mount-time `loadedSceneStore.hydrate()` then dynamic-imports the
+  // mocked invoke and resolves to `null` (no scene loaded).
+  loadedSceneStore.reset();
+  // Library store keeps a module-level cache; clear it so the
+  // setlist-row click test re-fetches via the mocked invoke instead
+  // of replaying a prior test's `null` cached value.
+  clearLibraryCache();
 });
 
 afterEach(() => {
@@ -258,29 +270,117 @@ describe('Perform view', () => {
     expect(container.querySelector('[aria-label="Live scene preview · Glitch"]')).toBeNull();
   });
 
-  it('clicking a scene row marks it aria-current and renders the pulse marker', async () => {
+  it('marks the setlist row whose resolved scene id matches the loaded snapshot', async () => {
+    // Wave 2.4 Lane PERF.B — the active row is now derived from
+    // `loadedSceneStore.snapshot?.id` rather than local state. Seed
+    // the store with a snapshot whose id matches the "Glassier" row's
+    // resolved scene (`demo-kaleido`) and assert aria-current lands on
+    // that row.
+    const targetIdx = SETLIST_FIXTURE.findIndex((s) => s.name === 'Glassier');
+    expect(targetIdx).toBeGreaterThanOrEqual(0);
+    const resolved = resolveSetlistRowToSceneId(SETLIST_FIXTURE[targetIdx]!);
+    expect(resolved).toBe('demo-kaleido');
+    loadedSceneStore.snapshot = {
+      id: 'demo-kaleido',
+      path: '/fake/Resources/scenes/library/demo-kaleido.chroma',
+      name: 'Demo Kaleido',
+      credit: '',
+      description: '',
+      controls: [],
+      schema_version: 1,
+    };
     const { container } = render(Perform);
     const rows = container.querySelectorAll('.scene-row');
     expect(rows.length).toBe(SETLIST_FIXTURE.length);
-    // Default active row is index 3 ("Glitch") per SETLIST_ACTIVE_INDEX.
-    const defaultActive = rows[SETLIST_ACTIVE_INDEX];
-    expect(defaultActive).toBeDefined();
-    expect(defaultActive).toHaveAttribute('aria-current', 'true');
-    expect(defaultActive?.querySelector('.scene-row__pulse')).not.toBeNull();
-    // Click a different row (index 0, "Quicksand"); aria-current migrates.
-    const target = rows[0] as HTMLButtonElement | undefined;
+    const activeRow = rows[targetIdx];
+    expect(activeRow).toBeDefined();
+    expect(activeRow).toHaveAttribute('aria-current', 'true');
+    expect(activeRow?.querySelector('.scene-row__pulse')).not.toBeNull();
+    // Other rows do NOT carry the active treatment.
+    const otherRow = rows[0];
+    expect(otherRow?.hasAttribute('aria-current')).toBe(false);
+    expect(otherRow?.querySelector('.scene-row__pulse')).toBeNull();
+  });
+
+  it('clicking a resolvable setlist row dispatches load_scene with the bundled card path', async () => {
+    // Wave 2.4 Lane PERF.B acceptance — the right-column scene list
+    // now loads scenes via `load_scene`. The handler fetches the
+    // bundled card list, finds the card whose id matches the row's
+    // resolved scene id, and dispatches `load_scene { path }` through
+    // `loadedSceneStore.load()`.
+    const KALEIDO_PATH = '/fake/Resources/scenes/library/demo-kaleido.chroma';
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === 'list_bundled_scene_packages') {
+        return [
+          {
+            id: 'demo-kaleido',
+            title: 'Demo Kaleido',
+            credit: '',
+            description: '',
+            tags: [],
+            categories: [],
+            path: KALEIDO_PATH,
+            format_tag: 'Native',
+            source: 'Bundled',
+          },
+        ];
+      }
+      if (cmd === 'load_scene') {
+        const { path } = (args ?? {}) as { path?: string };
+        return {
+          id: 'demo-kaleido',
+          path: path ?? KALEIDO_PATH,
+          name: 'Demo Kaleido',
+          credit: '',
+          description: '',
+          controls: [],
+          schema_version: 1,
+        };
+      }
+      return null;
+    });
+
+    const { container } = render(Perform);
+    await flushMicrotasks();
+    invokeMock.mockClear();
+    // Re-arm the implementation (mockClear preserves the impl).
+    const rows = container.querySelectorAll('.scene-row');
+    const glassierIdx = SETLIST_FIXTURE.findIndex((s) => s.name === 'Glassier');
+    expect(glassierIdx).toBeGreaterThanOrEqual(0);
+    const target = rows[glassierIdx] as HTMLButtonElement | undefined;
     expect(target).toBeDefined();
     if (!target) return;
     await fireEvent.click(target);
-    expect(target).toHaveAttribute('aria-current', 'true');
-    // Shared-primitive backfill — `SceneRow` widget elides aria-current
-    // when inactive (per the bundle's `aria-current={active || undefined}`
-    // idiom), so the previously-active row clears the attribute entirely
-    // rather than flipping to "false".
-    expect(defaultActive?.hasAttribute('aria-current')).toBe(false);
-    // Pulse marker follows the active row.
-    expect(target.querySelector('.scene-row__pulse')).not.toBeNull();
-    expect(defaultActive?.querySelector('.scene-row__pulse')).toBeNull();
+    // The click resolves through a multi-await chain
+    // (`fetchBundledSceneCards` dynamic-import + invoke + array
+    // search; `loadedSceneStore.load` dynamic-import + invoke). Drain
+    // microtasks twice to settle both legs.
+    await flushMicrotasks();
+    await flushMicrotasks();
+    expect(invokeMock).toHaveBeenCalledWith('list_bundled_scene_packages');
+    expect(invokeMock).toHaveBeenCalledWith('load_scene', { path: KALEIDO_PATH });
+  });
+
+  it('omits the click handler for setlist rows with no corpus match', async () => {
+    // Rows whose title does not resolve to a bundled `.chroma`
+    // package (e.g. "Quicksand"/dunes — no dunes scene in the
+    // Wave 1d-β corpus) stay display-only: clicking dispatches no
+    // IPC. This guards against the resolver returning a stale id
+    // after a corpus shrink.
+    const { container } = render(Perform);
+    await flushMicrotasks();
+    invokeMock.mockClear();
+    const rows = container.querySelectorAll('.scene-row');
+    const quicksandIdx = SETLIST_FIXTURE.findIndex((s) => s.name === 'Quicksand');
+    expect(quicksandIdx).toBeGreaterThanOrEqual(0);
+    expect(resolveSetlistRowToSceneId(SETLIST_FIXTURE[quicksandIdx]!)).toBeNull();
+    const target = rows[quicksandIdx] as HTMLButtonElement | undefined;
+    expect(target).toBeDefined();
+    if (!target) return;
+    await fireEvent.click(target);
+    await flushMicrotasks();
+    expect(invokeMock).not.toHaveBeenCalledWith('load_scene', expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith('list_bundled_scene_packages', expect.anything());
   });
 
   it('rail-mode buttons toggle aria-pressed (scenes / presets / edit / add)', async () => {

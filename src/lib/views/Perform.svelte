@@ -86,10 +86,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type PerformControlGroup,
     type PerformControlSpec,
   } from '../data/perform-fixtures';
-  import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
+  import { resolveSetlistRowToSceneId } from '../data/perform-setlist-resolver';
+  import { SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
   import type { ControlSchemaPayload } from '../ipc/bindings';
   import { dispatchAndRead } from '../stores/control';
+  import { fetchBundledSceneCards } from '../stores/library';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { performVariantStore } from '../stores/performVariant.svelte';
   import { playlistStore } from '../stores/playlist.svelte';
@@ -129,7 +131,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // this view share one source of truth without prop drilling.
   const variant = $derived(performVariantStore.current);
 
-  let activeScene = $state<number>(SETLIST_ACTIVE_INDEX);
+  // Wave 2.4 Lane PERF.B: the setlist active row is no longer local
+  // UI state — it derives from `loadedSceneStore.snapshot?.id`, the
+  // engine-side scene-load wire-shape. The previous local
+  // `activeScene` index (defaulting to `SETLIST_ACTIVE_INDEX`) was
+  // wireframe-only chrome; clicks now drive a real `load_scene` IPC
+  // through the resolver below, so the active marker reflects the
+  // loaded scene. Until a scene is loaded the active id is `null`
+  // and no row carries the active treatment.
+  const loadedSceneId = $derived(loadedSceneStore.snapshot?.id ?? null);
   let activeMedia = $state<number>(MEDIA_DEFAULT_ACTIVE_INDEX);
   let activeTab = $state<MediaTab>('all');
   let perfMode = $state<'perform' | 'edit'>('perform');
@@ -165,8 +175,35 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // simply re-renders the alternate placeholder surface.
   const testCardActive = $derived(MEDIA_CARDS[activeMedia]?.kind === 'test');
 
-  function selectScene(idx: number): void {
-    activeScene = idx;
+  /**
+   * Wave 2.4 Lane PERF.B — resolve a `SETLIST_FIXTURE` row to a real
+   * bundled `.chroma` package via {@link resolveSetlistRowToSceneId},
+   * then dispatch `load_scene` through `loadedSceneStore.load(path)`.
+   *
+   * Path resolution mirrors the Library view: bundled cards expose an
+   * absolute `path` field resolved server-side from Tauri's
+   * `<AppBundle>/Resources/scenes/` root. We look up the card whose
+   * `id` matches the resolver output, then hand its `path` to the
+   * loaded-scene store.
+   *
+   * In no-Tauri-context environments (vite dev / vitest jsdom) the
+   * `fetchBundledSceneCards()` dynamic-import / IPC call rejects; the
+   * promise resolves silently and no IPC fires. Rows whose title has
+   * no corpus equivalent (resolver returns `null`) stay display-only
+   * — the `each` block attaches no click handler in that case.
+   */
+  async function loadScene(sceneId: string): Promise<void> {
+    try {
+      const cards = await fetchBundledSceneCards();
+      const card = cards.find((c) => c.id === sceneId);
+      if (card) {
+        await loadedSceneStore.load(card.path);
+      }
+    } catch {
+      // Swallow — no Tauri runtime available, or the bundled-scenes
+      // IPC failed. The loaded-scene store stays unchanged and the
+      // active row marker stays where it was (likely null).
+    }
   }
 
   function selectMedia(idx: number): void {
@@ -835,6 +872,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     {:else}
       <ol class="scene-panel__list">
         {#each SETLIST_FIXTURE as scene (scene.idx)}
+          {@const resolvedId = resolveSetlistRowToSceneId(scene)}
           <li>
             <!-- Shared-primitive backfill — `SceneRow` widget closes the
                  W18 PR1 inline placeholder. The widget composes the W36
@@ -842,17 +880,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                  hue-rotating gradient surrogate. Kind is coerced from
                  the fixture's free-form string against the bundle's
                  16-name SceneKind family; unknown values fall back to
-                 `rings`. -->
-            <SceneRow
-              idx={scene.idx + 1}
-              name={scene.name}
-              tag={scene.tag}
-              dur={scene.duration}
-              kind={asSceneKind(scene.kind)}
-              seed={scene.seed}
-              active={scene.idx === activeScene}
-              onClick={() => selectScene(scene.idx)}
-            />
+                 `rings`.
+
+                 Wave 2.4 Lane PERF.B — `active` now reflects the
+                 engine's loaded scene (via `loadedSceneId`); the
+                 `onClick` is conditionally bound only for rows whose
+                 title resolves to a real `.chroma` package, so
+                 fixture-only rows (no corpus match) stay display-only
+                 (the no-op `() => undefined` keeps the SceneRow
+                 widget's button semantics intact under
+                 `exactOptionalPropertyTypes`). -->
+            {#if resolvedId !== null}
+              {@const id = resolvedId}
+              <SceneRow
+                idx={scene.idx + 1}
+                name={scene.name}
+                tag={scene.tag}
+                dur={scene.duration}
+                kind={asSceneKind(scene.kind)}
+                seed={scene.seed}
+                active={id === loadedSceneId}
+                onClick={() => void loadScene(id)}
+              />
+            {:else}
+              <SceneRow
+                idx={scene.idx + 1}
+                name={scene.name}
+                tag={scene.tag}
+                dur={scene.duration}
+                kind={asSceneKind(scene.kind)}
+                seed={scene.seed}
+                active={false}
+              />
+            {/if}
           </li>
         {/each}
       </ol>
