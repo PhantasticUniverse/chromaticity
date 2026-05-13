@@ -36,6 +36,23 @@
 // `Math.random()` appears only in the `glitch` renderer (per the bundle
 // source); it is intentionally non-deterministic — `glitch` is meant to
 // look chaotic. All other renderers are deterministic in (t, seed, lvl).
+//
+// **Wave 2.9 SC.B default-state motion bump.** Pre-alpha smoke test on
+// 2026-05-13 reported the Voronoi `cells` scene in the Perform preview
+// as "static". Diagnostic-agent inspection confirmed the renderer does
+// animate, but at sub-pixel-per-frame on a ~600 px canvas (visually
+// imperceptible at glance). Four renderers shared this property —
+// time coefficients on the dominant motion axis were small enough that
+// half-period motion took >10 s to cover any visible distance, so a
+// still glance read as a frozen image. SC.B bumps the time
+// coefficients ~1.5-2× on `cells` / `ink` / `dunes` / `plasma` /
+// `fluid` so default-state motion registers as alive without the
+// operator needing to drag the `speed` control (the operator-agency
+// path is SC.A's territory). Renderers already visibly moving
+// (`kaleido` / `rings` / `bars` / `glitch` / `noise` / `grid` /
+// `tunnel` / `rain` / `lattice` / `filaments` / `orbit`) stay
+// untouched. Bumps target a 2× change-of-feel ceiling — comfortable,
+// not dizzy.
 
 export type SceneKind =
   | 'rings'
@@ -121,10 +138,13 @@ const fluid: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   // Wave 2.3 Q.1 audio-coupling: blob radius pulses with `lvl` so
   // louder audio inflates the fluid blobs visibly.
   const p = pulse(lvl);
+  // Wave 2.9 SC.B: bump position drift 0.3/0.4 → 0.45/0.6 (~1.5×) and
+  // radius pulse 0.7 → 1.0 so silent-audio blob travel is perceptible
+  // on a 600 px preview.
   for (let i = 0; i < 8; i++) {
-    const x = w * (0.5 + 0.4 * Math.sin(t * 0.3 + i + seed));
-    const y = h * (0.5 + 0.4 * Math.cos(t * 0.4 + i * 1.3 + seed));
-    const r = Math.min(w, h) * (0.25 + 0.15 * Math.sin(t * 0.7 + i + seed)) * p;
+    const x = w * (0.5 + 0.4 * Math.sin(t * 0.45 + i + seed));
+    const y = h * (0.5 + 0.4 * Math.cos(t * 0.6 + i * 1.3 + seed));
+    const r = Math.min(w, h) * (0.25 + 0.15 * Math.sin(t * 1.0 + i + seed)) * p;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, `hsla(${(t * 40 + i * 45 + seed * 30) % 360},90%,60%,0.6)`);
     g.addColorStop(1, 'transparent');
@@ -195,10 +215,14 @@ const cells: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   ctx.fillRect(0, 0, w, h);
   const pts = 14;
   const ps: Array<[number, number]> = [];
+  // Wave 2.9 SC.B: bump voronoi-point drift 0.3/0.4 → 0.7/0.9 (~2×).
+  // The AO-reported "static" Voronoi Cells scene moves sub-pixel-per-
+  // frame at the bundle defaults; this is the load-bearing change that
+  // makes the scene read as alive on a default-state preview.
   for (let i = 0; i < pts; i++) {
     ps.push([
-      w * (0.5 + 0.4 * Math.sin(t * 0.3 + i * 1.7 + seed)),
-      h * (0.5 + 0.4 * Math.cos(t * 0.4 + i * 1.3 + seed * 2)),
+      w * (0.5 + 0.4 * Math.sin(t * 0.7 + i * 1.7 + seed)),
+      h * (0.5 + 0.4 * Math.cos(t * 0.9 + i * 1.3 + seed * 2)),
     ]);
   }
   const step = 6;
@@ -252,13 +276,17 @@ const plasma: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   // Wave 2.3 Q.1 audio-coupling: brighten the plasma's lightness band
   // with `lvl` so silent audio renders muted, loud audio renders vivid.
   const lightnessBoost = lvl * 15;
+  // Wave 2.9 SC.B: bump plasma flow coefficients 1.0/1.3/0.7/2.0 →
+  // 1.5/2.0/1.05/3.0 (~1.5×). The bundle defaults read as a slow
+  // gradient drift on a 600 px preview; the bump makes the four
+  // overlaid sin fields swirl visibly at silent audio.
   for (let y = 0; y < h; y += step) {
     for (let x = 0; x < w; x += step) {
       const v =
-        Math.sin(x * 0.02 + t + seed) +
-        Math.sin(y * 0.02 + t * 1.3) +
-        Math.sin((x + y) * 0.015 + t * 0.7) +
-        Math.sin(Math.sqrt(x * x + y * y) * 0.02 + t * 2);
+        Math.sin(x * 0.02 + t * 1.5 + seed) +
+        Math.sin(y * 0.02 + t * 2.0) +
+        Math.sin((x + y) * 0.015 + t * 1.05) +
+        Math.sin(Math.sqrt(x * x + y * y) * 0.02 + t * 3.0);
       const hue = (v * 60 + t * 40 + seed * 30) % 360;
       ctx.fillStyle = `hsl(${(hue + 360) % 360} 90% ${40 + v * 10 + lightnessBoost}%)`;
       ctx.fillRect(x, y, step, step);
@@ -360,10 +388,13 @@ const ink: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   ctx.fillRect(0, 0, w, h);
   // Wave 2.3 Q.1 audio-coupling: ink-blob radius pulses with `lvl`.
   const p = pulse(lvl);
+  // Wave 2.9 SC.B: bump ink-blob drift 0.2/0.3 → 0.4/0.6 (~2×) and
+  // radius pulse 1.0 → 1.5 so the ink looks like it's spreading
+  // rather than holding still on a default-state preview.
   for (let i = 0; i < 6; i++) {
-    const x = w * (0.5 + 0.3 * Math.sin(t * 0.2 + i + seed));
-    const y = h * (0.5 + 0.3 * Math.cos(t * 0.3 + i + seed));
-    const r = (30 + i * 20 + Math.sin(t + i) * 20) * p;
+    const x = w * (0.5 + 0.3 * Math.sin(t * 0.4 + i + seed));
+    const y = h * (0.5 + 0.3 * Math.cos(t * 0.6 + i + seed));
+    const r = (30 + i * 20 + Math.sin(t * 1.5 + i) * 20) * p;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, `hsla(${(i * 60 + seed * 30) % 360} 80% 40% / 0.8)`);
     g.addColorStop(0.7, `hsla(${(i * 60 + seed * 30 + 40) % 360} 70% 20% / 0.3)`);
@@ -405,6 +436,10 @@ const dunes: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   // Wave 2.3 Q.1 audio-coupling: dune crest amplitude scales with
   // `lvl` so louder audio shows bigger dunes rolling.
   const ampBoost = 1 + lvl * 0.8;
+  // Wave 2.9 SC.B: bump dune-crest drift 0.3 → 0.45 (~1.5×) so the
+  // wave layers visibly roll across the horizon at silent audio.
+  // Keep the second harmonic static to preserve the layered-paper
+  // dune feel (only the slow envelope drifts).
   for (let layer = 0; layer < 4; layer++) {
     ctx.beginPath();
     ctx.moveTo(0, h);
@@ -412,7 +447,7 @@ const dunes: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
       const y =
         h * 0.5 +
         layer * h * 0.1 +
-        Math.sin(x * 0.01 + layer + seed + t * 0.3) * 20 * ampBoost +
+        Math.sin(x * 0.01 + layer + seed + t * 0.45) * 20 * ampBoost +
         Math.sin(x * 0.04 + layer * 2) * 10;
       ctx.lineTo(x, y);
     }
