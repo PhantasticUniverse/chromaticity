@@ -39,6 +39,11 @@ export interface EmptyStateCopy {
   readonly body: string;
   readonly primaryAction?: EmptyStateAction;
   readonly secondaryAction?: EmptyStateAction;
+  /** Optional small monospace footnote rendered below the actions
+   * (mirrors the bundle's `meta` slot on `<EmptyState>`). Used by
+   * Library to surface the supported-formats line per
+   * `empty_states.jsx::EmptyLibrary` line 55. */
+  readonly meta?: string;
 }
 
 export const EMPTY_LIBRARY: EmptyStateCopy = {
@@ -46,6 +51,21 @@ export const EMPTY_LIBRARY: EmptyStateCopy = {
   body: 'Your library is where every scene lives — built-ins, Shadertoy conversions, .chroma packages, and your own Chromaticity drafts. Pull down the built-in pack to get going, or start from scratch.',
   primaryAction: { label: 'Install Built-Ins' },
   secondaryAction: { label: 'New Scene' },
+  meta: 'Supported: .chroma · .chromaPack · .synScene conversion · Shadertoy URL · ISF reject',
+};
+
+/** Wave 2.5 LIB.E — filter-excludes-everything empty state. Reuses
+ * the EmptyState primitive with copy tailored to the "library has
+ * scenes but the current search query or active category filter chips
+ * exclude all of them" case. Mirrors the bundle's per-view empty
+ * pattern; the bundle itself ships only EmptyLibrary (zero-scenes)
+ * since the React surface kept search-empty inline, but the
+ * supported-formats meta line ports across both cases so the operator
+ * can see the format vocabulary at any empty grid. */
+export const EMPTY_LIBRARY_FILTERED: EmptyStateCopy = {
+  title: 'No scenes match',
+  body: 'Clear the search query or deselect category chips to see your full library.',
+  meta: 'Supported: .chroma · .chromaPack · .synScene conversion · Shadertoy URL · ISF reject',
 };
 
 export const EMPTY_PLAYLIST: EmptyStateCopy = {

@@ -16,11 +16,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     body,
     iconName,
     actions,
+    meta,
   }: {
     title: string;
     body?: string;
     iconName?: string;
     actions?: Snippet;
+    // Wave 2.5 LIB.E — optional small mono footnote rendered below
+    // the actions. Mirrors the bundle's `meta` slot on `<EmptyState>`
+    // (`empty_states.jsx` line 39). `string | undefined` rather than
+    // `string` so callers can forward an `EmptyStateCopy.meta` value
+    // straight through under `exactOptionalPropertyTypes: true`
+    // without conditional-spread gymnastics.
+    meta?: string | undefined;
   } = $props();
 </script>
 
@@ -42,6 +50,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   {/if}
   {#if actions}
     <div class="empty-state-actions">{@render actions()}</div>
+  {/if}
+  {#if meta}
+    <p class="empty-state-meta">{meta}</p>
   {/if}
 </div>
 
@@ -103,5 +114,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     gap: var(--space-sm);
     flex-wrap: wrap;
     justify-content: center;
+  }
+  .empty-state-meta {
+    margin: 0;
+    color: var(--color-text-3);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+    line-height: var(--line-height-body);
   }
 </style>
