@@ -51,6 +51,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type FrequencyBandBar,
   } from '../data/audio-uniform-fixtures';
   import Icon from '../Icon.svelte';
+  import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import { BpmRing, BeatDots } from '../widgets';
 
   // Wave-23 PR1: synthetic BPM for the hero-block tempo visualizers.
@@ -196,6 +197,46 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     if (kind === 'hit') return 'HIT';
     return 'PRES';
   }
+
+  // Wave 2.6 AUD.E — frontend-only capture of the current live audio
+  // snapshot to a JSON file. Reads `audioSnapshotStore.snapshot`; no
+  // engine round-trip. The button is ARIA-disabled while the store is
+  // `null` (no live IPC events yet) so this handler's null-guard is a
+  // belt-and-braces no-op for the keyboard path.
+  //
+  // Download path: Blob + URL.createObjectURL + temp anchor with the
+  // `download` attribute. Works equivalently in the vite dev / vitest
+  // browser context and inside Tauri's WebView (no plugin deps required).
+  const hasSnapshot = $derived<boolean>(audioSnapshotStore.snapshot !== null);
+
+  function captureSnapshot(): void {
+    const snap = audioSnapshotStore.snapshot;
+    if (snap === null) return;
+    const capturedAt = new Date().toISOString();
+    const payload = {
+      bpm: snap.bpm,
+      rms: snap.rms,
+      peak: snap.peak,
+      fft_bands: snap.fft_bands,
+      captured_at: capturedAt,
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    // Strip the `:` characters from the ISO timestamp so the filename is
+    // portable across Windows + macOS + Linux.
+    const stamp = capturedAt.replace(/[:.]/g, '-');
+    const filename = `audio-snapshot-${stamp}.json`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 </script>
 
 <section class="au">
@@ -221,9 +262,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <button
           type="button"
           class="au__btn"
-          disabled
+          onclick={captureSnapshot}
+          disabled={!hasSnapshot}
+          aria-disabled={hasSnapshot ? 'false' : 'true'}
           aria-label="Snapshot"
-          title="Snapshot — wired in Phase-3+"
+          title={hasSnapshot
+            ? 'Capture the current audio snapshot as JSON'
+            : 'Snapshot — waiting for live audio data'}
         >
           <Icon name="camera" size={11} /> Snapshot
         </button>
