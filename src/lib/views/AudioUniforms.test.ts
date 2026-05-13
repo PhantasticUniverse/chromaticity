@@ -19,8 +19,9 @@
 // widget probes a canvas; the warnings are inert.
 //
 // The view holds local `$state` only (`streaming`, `docsOpen`, `liveT`,
-// `livePeaks`, `audioReducedMotion`); no IPC, no shared store writes.
-// `cleanup()` alone is sufficient between tests.
+// `livePeaks`, `audioReducedMotion`); per-test `audioSnapshotStore`
+// resets to `null` in `afterEach` so cross-test pollution from the Wave
+// 2.6 AUD.D live-band assertions stays contained.
 
 import '@testing-library/jest-dom/vitest';
 import { within } from '@testing-library/dom';
@@ -33,6 +34,7 @@ import {
   HOW_TO_USE_BLOCKS,
   SPECTRUM_BAR_COUNT,
 } from '../data/audio-uniform-fixtures';
+import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
 import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
@@ -376,5 +378,95 @@ describe('AudioUniforms view', () => {
     expect(container.querySelectorAll('rect.au__spectrum-peak').length).toBe(0);
     // Spectrum bars (frozen fixture path) still render.
     expect(container.querySelectorAll('rect.au__spectrum-bar').length).toBe(SPECTRUM_BAR_COUNT);
+  });
+
+  // ---------------------------------------------------------------------
+  // Wave 2.6 AUD.D — live band-tile wiring. Five fixture tiles now read
+  // live values reduced from `audioSnapshotStore.snapshot.fft_bands` via
+  // the 8 → 5 idiom documented in `AudioUniforms.svelte`:
+  //   bass   ← avg(fft_bands[0], fft_bands[1])
+  //   mid    ← avg(fft_bands[2], fft_bands[3])
+  //   midhi  ← avg(fft_bands[4], fft_bands[5])
+  //   high   ← avg(fft_bands[6], fft_bands[7])
+  //   full   ← avg(fft_bands[0..7])
+  // The store is mutated directly because the view subscribes to the
+  // singleton (no `snapshot` prop on AudioUniforms — divergence from
+  // the AudioReactivity widget surface). `afterEach` resets the
+  // singleton's `snapshot` field to `null` so the synthetic-fallback
+  // tests above keep their default fixture-driven posture.
+
+  // Carefully chosen so the reduced values bracket the HIT_THRESHOLD
+  // (0.5) without ties: bass / mid stay below, midhi / high fire, and
+  // the broadband full lands exactly at 0.5 (not strictly greater, so
+  // no hit). Per-bar `.toFixed(2)` matches the view's value rendering.
+  const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
+    bpm: 120,
+    rms: 0.4,
+    peak: 0.9,
+    fft_bands: [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9],
+  };
+
+  it('reduces 8 fft_bands into the 5 band tiles when audioSnapshotStore.snapshot is set', () => {
+    audioSnapshotStore.snapshot = SAMPLE_SNAPSHOT;
+    const { container } = render(AudioUniforms);
+    const bands = container.querySelectorAll('.au__band');
+    expect(bands.length).toBe(5);
+
+    // Index 0 (bass) / 2 (midhi) / 3 (high) / 4 (full) — exercise the
+    // four frequency-specific pair reductions plus the broadband mean.
+    // Each band's bars are level / hit / presence in template order.
+    const valueAt = (bandIdx: number, barIdx: number): string =>
+      bands[bandIdx]?.querySelectorAll('.au__bar-value')[barIdx]?.textContent?.trim() ?? '';
+
+    // Bass: avg(0.1, 0.2) = 0.15 — below HIT_THRESHOLD, hit = 0 → ○.
+    expect(valueAt(0, 0)).toBe('0.15'); // level
+    expect(valueAt(0, 1)).toBe('○'); // hit indicator (hollow)
+    expect(valueAt(0, 2)).toBe('0.15'); // presence mirrors level
+
+    // Mid-High: avg(0.6, 0.7) = 0.65 — above threshold, hit = 0.30 → ●.
+    expect(valueAt(2, 0)).toBe('0.65');
+    expect(valueAt(2, 1)).toBe('●');
+    expect(valueAt(2, 2)).toBe('0.65');
+
+    // High: avg(0.8, 0.9) = 0.85 — well above threshold, hit = 0.70 → ●.
+    expect(valueAt(3, 0)).toBe('0.85');
+    expect(valueAt(3, 1)).toBe('●');
+    expect(valueAt(3, 2)).toBe('0.85');
+
+    // Full: avg of all eight bins = 0.50 — exactly at threshold, not
+    // strictly greater, hit = 0 → ○.
+    expect(valueAt(4, 0)).toBe('0.50');
+    expect(valueAt(4, 1)).toBe('○');
+    expect(valueAt(4, 2)).toBe('0.50');
+  });
+
+  it('falls back to fixture band values when audioSnapshotStore.snapshot is null', () => {
+    audioSnapshotStore.snapshot = null;
+    const { container } = render(AudioUniforms);
+    const bands = container.querySelectorAll('.au__band');
+    expect(bands.length).toBe(5);
+
+    // Bass fixture: level 0.54, hit 0.04 (→ ○ since ≤ 0.05), presence 0.61.
+    const bassValues = bands[0]?.querySelectorAll('.au__bar-value');
+    expect(bassValues?.[0]?.textContent?.trim()).toBe('0.54');
+    expect(bassValues?.[1]?.textContent?.trim()).toBe('○');
+    expect(bassValues?.[2]?.textContent?.trim()).toBe('0.61');
+
+    // Mid-High fixture: hit value 0.62 → ● (the pre-existing hit-marker
+    // test pins this; restating here against the live-fallback path).
+    const midhiValues = bands[2]?.querySelectorAll('.au__bar-value');
+    expect(midhiValues?.[1]?.textContent?.trim()).toBe('●');
+  });
+
+  it('preserves the fixture band labels / sub-labels under the live reduction', () => {
+    audioSnapshotStore.snapshot = SAMPLE_SNAPSHOT;
+    const { getByText } = render(AudioUniforms);
+    // Labels / sub-labels come from the fixture metadata — only the
+    // per-bar `value` switches to live data, so the visual layout
+    // (Bass / Mid / Mid-High / High / Full) stays stable.
+    for (const band of AUDIO_UNIFORMS_FIXTURE.bands) {
+      expect(getByText(band.label)).toBeInTheDocument();
+      expect(getByText(band.subLabel)).toBeInTheDocument();
+    }
   });
 });
