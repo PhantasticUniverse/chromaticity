@@ -177,6 +177,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
 
     const start = performance.now();
+    // Wave 2.8 Q.1 — persistent `lvl` smoothing state. Without an EMA
+    // the per-frame `lvl` reads bin-level jitter from the engine
+    // producer (background mic noise reports multi-millisecond
+    // bursts), which fed straight into renderer axes like ring stroke
+    // width, particle radius, and lightness boosts — preview tiles
+    // appeared to fidget at silent input. The EMA tracks real audio
+    // onsets in ~80 ms but discards sub-2-frame noise.
+    let smLvl = 0;
+    const LVL_EMA = 0.25;
     const loop = (): void => {
       const t = (performance.now() - start) / 1000;
       // Wave 2.2 Lane R.1 + Wave 2.3 Q.1 — prefer the live engine
@@ -185,21 +194,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       // the renderer instead of falling through to synthetic). The
       // synthetic sine-pulse only renders during the no-snapshot
       // startup window + the no-Tauri-context fallback.
-      let lvl: number;
+      let rawLvl: number;
       if (audio) {
         const live = audioSnapshotStore.snapshot;
         if (live !== null) {
           // RMS is already in [0, 1] from the engine producer; clamp
           // for safety since the wire is `f32`. Add a small peak
           // contribution so transient hits still register.
-          lvl = Math.max(0, Math.min(1, live.rms + live.peak * 0.25));
+          rawLvl = Math.max(0, Math.min(1, live.rms + live.peak * 0.25));
         } else {
-          lvl = (Math.sin(t * 6.28 * 0.8) * 0.5 + 0.5) * 0.7 + Math.sin(t * 6.28 * 2.3) * 0.2;
+          rawLvl = (Math.sin(t * 6.28 * 0.8) * 0.5 + 0.5) * 0.7 + Math.sin(t * 6.28 * 2.3) * 0.2;
         }
       } else {
-        lvl = 0.3;
+        rawLvl = 0.3;
       }
-      draw(t, lvl);
+      smLvl = smLvl + (rawLvl - smLvl) * LVL_EMA;
+      draw(t, smLvl);
       raf = requestAnimationFrame(loop);
     };
     loop();

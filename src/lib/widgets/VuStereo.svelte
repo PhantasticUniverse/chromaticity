@@ -11,6 +11,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // uniform-snapshot extension exists. Without a snapshot the widget
   // falls back to its prior synthetic rAF generator, preserving every
   // existing call-site's behaviour.
+  //
+  // Wave 2.8 Q.1: the live-snapshot and synthetic paths now share one
+  // rAF loop with peak-hold + decay + level-EMA smoothing. Previously
+  // the live-snapshot branch wrote `peakL = liveSnapshot.peak` raw on
+  // every ~60 Hz engine tick, which made the white peak-marker dart
+  // around — visually a flashing meter. The shared rAF + peak-hold +
+  // EMA pattern fixes that while keeping the synthetic fallback intact.
+  // `untrack` shields the rAF closure from Svelte 5 reactivity that
+  // would otherwise re-run the effect on every snapshot write.
+  import { untrack } from 'svelte';
+
   import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
@@ -58,33 +69,55 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       return;
     }
 
-    // Live-snapshot dual-mode: when the audio uniform store has emitted
-    // at least one snapshot, drive levels from `rms` / `peak`. The
-    // payload's `rms` is mono per ADR-019; we mirror with a small
-    // offset so the two rows aren't visually identical.
-    if (liveSnapshot) {
-      const rms = clamp(liveSnapshot.rms);
-      const pk = clamp(liveSnapshot.peak);
-      lvlL = rms;
-      lvlR = clamp(rms * 0.94);
-      peakL = pk;
-      peakR = clamp(pk * 0.94);
-      return;
-    }
-
+    // Wave 2.8 Q.1 — both live-snapshot and synthetic paths share a
+    // single rAF loop with peak-hold + decay state. Prior code wrote
+    // `peakL = liveSnapshot.peak` raw each time the snapshot updated,
+    // which caused the peak marker line to dart with every engine tick
+    // (~60 Hz) — visually that looks like the meter is flashing. With
+    // peak-hold + decay the marker tracks the loudest recent peak and
+    // glides down smoothly, matching the synthetic-path behaviour the
+    // bundle baked in.
+    //
+    // The level (`--lvl`) is smoothed with a brief EMA so the gradient
+    // stripe doesn't fidget on tiny RMS jitter (background mic noise
+    // reports ~0.005-0.01 RMS even with no audible signal — without
+    // smoothing the stripe width oscillates visibly).
     let frame = 0;
     const start = performance.now();
     let pL = 0;
     let pR = 0;
+    let smL = 0;
+    let smR = 0;
+    const LEVEL_EMA = 0.25; // higher = more responsive, lower = more glide
 
     const tick = (now: number) => {
-      const t = (now - start) / 1000;
-      const l = Math.abs(Math.sin(t * 1.7)) * 0.6 + Math.abs(Math.sin(t * 5)) * 0.3;
-      const r = Math.abs(Math.sin(t * 1.5 + 0.3)) * 0.6 + Math.abs(Math.sin(t * 4.7 + 0.2)) * 0.3;
-      pL = Math.max(l, pL - 0.004);
-      pR = Math.max(r, pR - 0.004);
-      lvlL = l;
-      lvlR = r;
+      let rawL: number;
+      let rawR: number;
+      let peakIn: number;
+      // Untrack the live-snapshot read so $effect doesn't re-fire on
+      // every engine tick (which would tear down + recreate the rAF
+      // loop ~60x per second).
+      const liveNow = untrack(() => liveSnapshot);
+      if (liveNow) {
+        // Live snapshot: mono rms / peak mirrored to both rows with a
+        // tiny offset so the two rows aren't visually identical.
+        rawL = clamp(liveNow.rms);
+        rawR = clamp(liveNow.rms * 0.94);
+        peakIn = clamp(liveNow.peak);
+      } else {
+        const t = (now - start) / 1000;
+        rawL = Math.abs(Math.sin(t * 1.7)) * 0.6 + Math.abs(Math.sin(t * 5)) * 0.3;
+        rawR = Math.abs(Math.sin(t * 1.5 + 0.3)) * 0.6 + Math.abs(Math.sin(t * 4.7 + 0.2)) * 0.3;
+        peakIn = Math.max(rawL, rawR);
+      }
+      // EMA smoothing on level
+      smL = smL + (rawL - smL) * LEVEL_EMA;
+      smR = smR + (rawR - smR) * LEVEL_EMA;
+      // Peak hold + decay
+      pL = Math.max(peakIn, pL - 0.004);
+      pR = Math.max(clamp(peakIn * 0.94), pR - 0.004);
+      lvlL = smL;
+      lvlR = smR;
       peakL = pL;
       peakR = pR;
       frame = requestAnimationFrame(tick);
