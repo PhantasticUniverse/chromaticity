@@ -145,7 +145,7 @@ spacing:
 components:
   rail:
     background: '{colors.bg-1}'
-    width: 48px
+    width: 76px
     border-right: '1px solid {colors.line-1}'
   rail-icon:
     size: 36px
@@ -229,7 +229,7 @@ components:
     underline: '2px solid {colors.primary}'
   status-bar:
     background: '{colors.bg-1}'
-    height: 22px
+    height: 28px
     typography: '{typography.mono-sm}'
     color: '{colors.text-2}'
     border-top: '1px solid {colors.line-1}'
@@ -291,10 +291,10 @@ Live numerics use `mono-md` or `timecode` and apply `--glow` per theme. The 9px 
 The shell grid is fixed:
 
 ```
-[ 48px rail | 52px topbar      ]
+[ 76px rail | 52px topbar      ]
 [           | main view (scrolls) ]
 [           | Snap bar (~56px, Perform only) ]
-[           | 22px status bar  ]
+[           | 28px status bar  ]
 ```
 
 The rail is the persistent left navigation. The topbar carries product identity (left), live HUD on Perform/Scene/Audio views (center: timecode / beat dots / BPM / VU stereo), and adapter pills + stats + action cluster (right: Screenshot / Record / GO LIVE, always in that order). Only the main view scrolls.
@@ -343,7 +343,7 @@ Beyond the frontmatter contract, the operator-facing surface includes these prim
 - **VU stereo** — L/R level pair with peak-hold and live animation.
 - **Cue transition curve** — SVG bezier editor; three modes (Cut / Fade / Beat Snap). Respects `prefers-reduced-motion`.
 - **Empty state** — dotted orbit-ring (40s slow rotation, reduce-motion-safe) + accent-glowing icon disc + title + body + action row + mono meta.
-- **Snap panel** — 16-slot grid above status bar, Perform view only. Empty slots `text-4` / `bg-3`. Filled slots `text-1` / `bg-2` with category-colored 2px left accent. Active slot adds a `primary` underline.
+- **Snap panel** — 8-slot grid above status bar, Perform view only. (Engine surface is 16 slots — `SnapSlotId::MAX = 15` — the SnapBar widget trims to the first 8 per the bundle's `extras.jsx` fixture.) Empty slots `text-4` / `bg-3`. Filled slots `text-1` / `bg-2` with category-colored 2px left accent. Active slot adds a `primary` underline. Each slot carries an operator-editable label below the slot number (localStorage-persisted; right-click to rename).
 - **Adapter pill** — six glyphs `○ ◔ ● △ ✕ ⛉` for off / warming / ok / rate-limited / disconnected / blocked.
 - **Feature-locked affordance** — `[data-cap]` declarative selector. MVP is watermark-only; non-watermark locks render under future `[data-cap-enforcement="denied"]` state at 0.68 opacity, desaturated fill, `cursor: not-allowed`, 10px lock glyph injected via `::after`. Unconditionally-free capabilities (`render.pause`, playlist nav, preset recall, Snap slots, `scene.export`, `transitions.off`) must never carry `[data-cap]`.
 
