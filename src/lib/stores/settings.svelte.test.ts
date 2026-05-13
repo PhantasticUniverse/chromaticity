@@ -62,6 +62,19 @@ const SAMPLE_PAYLOAD: SettingsPayload = {
     tx_enabled: false,
     rx_enabled: true,
   },
+  tempo: {
+    ableton_link_enabled: false,
+    start_stop_sync: false,
+    midi_clock_in_enabled: true,
+    midi_clock_in_device: 'midi-port-2',
+    midi_clock_out_enabled: false,
+    midi_clock_out_device: 'midi-port-3',
+    quantize: 'phrase',
+    manual_bpm: 128.5,
+    link_offset_ms: -25,
+    audio_bpm_sensitivity: 80,
+    bpm_source_priority: ['manual', 'midiclock', 'audio', 'link'],
+  },
 };
 
 describe('settingsStore', () => {
@@ -237,6 +250,19 @@ describe('settingsStore', () => {
             tx_enabled: true,
             rx_enabled: true,
           },
+          tempo: {
+            ableton_link_enabled: true,
+            start_stop_sync: true,
+            midi_clock_in_enabled: false,
+            midi_clock_in_device: 'any',
+            midi_clock_out_enabled: true,
+            midi_clock_out_device: 'iac-1',
+            quantize: 'bar',
+            manual_bpm: 120.0,
+            link_offset_ms: 0,
+            audio_bpm_sensitivity: 60,
+            bpm_source_priority: ['audio', 'midiclock', 'link', 'manual'],
+          },
         } satisfies SettingsPayload);
       }
       return Promise.resolve();
@@ -291,6 +317,19 @@ describe('settingsStore', () => {
         port: 8000,
         tx_enabled: true,
         rx_enabled: true,
+      },
+      tempo: {
+        ableton_link_enabled: true,
+        start_stop_sync: true,
+        midi_clock_in_enabled: false,
+        midi_clock_in_device: 'any',
+        midi_clock_out_enabled: true,
+        midi_clock_out_device: 'iac-1',
+        quantize: 'bar',
+        manual_bpm: 120.0,
+        link_offset_ms: 0,
+        audio_bpm_sensitivity: 60,
+        bpm_source_priority: ['audio', 'midiclock', 'link', 'manual'],
       },
     } satisfies SettingsPayload);
     const { settingsStore } = await import('./settings.svelte');

@@ -333,6 +333,113 @@ impl Default for OscSettings {
     }
 }
 
+/// Tempo & Sync operator preferences — Wave 2.7 Lane SET.A.
+///
+/// Mirrors the Settings view's Tempo & Sync section (W22 PR1 + W40
+/// expansion). Carries the field set the operator wires through the
+/// frontend's Tempo controls: Ableton Link toggle + Start/Stop Sync,
+/// MIDI Clock input + output (each toggle + device pick), Quantize
+/// Transitions, Manual BPM, Link offset (ms), Audio BPM sensitivity
+/// (%), and the BPM source priority chain.
+///
+/// `bpm_source_priority` is a ranked list of source-id strings
+/// matching the frontend's `BpmSourceId` union (`"audio"` /
+/// `"midiclock"` / `"link"` / `"manual"`). The fixed W22 order today
+/// is `["audio", "midiclock", "link", "manual"]`; the operator-
+/// reorder + per-source health surfaces ride the Phase-3+ M-10 BPM
+/// resolver (per `chromaticity-planning/ui-predev-bundle-v0.2-beta/views/midi.jsx`).
+/// Live runtime arbitration (Audio estimator, MIDI Clock, Ableton
+/// Link peer discovery) lands alongside that resolver — Wave 2.7
+/// closes only the persistence seam so operator-tuned values
+/// survive restart.
+///
+/// `quantize` carries the QuantizeTransitionOption id ("off" /
+/// "beat" / "bar" / "phrase") matching the frontend's tab-segment
+/// fixture. `manual_bpm` is the operator-entered tap-tempo /
+/// numeric BPM (clamped 20..=300 on the frontend). `link_offset_ms`
+/// is signed (downstream-link latency compensation per the W40
+/// hint copy). `audio_bpm_sensitivity` is the audio onset
+/// estimator's tuning weight as a 0..=100 integer percent — the
+/// frontend's BPM-sense fader maps `[0, 1]` to `[0, 100]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TempoSettings {
+    #[serde(default = "TempoSettings::default_ableton_link_enabled")]
+    pub ableton_link_enabled: bool,
+    #[serde(default = "TempoSettings::default_start_stop_sync")]
+    pub start_stop_sync: bool,
+    #[serde(default)]
+    pub midi_clock_in_enabled: bool,
+    #[serde(default = "TempoSettings::default_midi_clock_in_device")]
+    pub midi_clock_in_device: String,
+    #[serde(default = "TempoSettings::default_midi_clock_out_enabled")]
+    pub midi_clock_out_enabled: bool,
+    #[serde(default = "TempoSettings::default_midi_clock_out_device")]
+    pub midi_clock_out_device: String,
+    #[serde(default = "TempoSettings::default_quantize")]
+    pub quantize: String,
+    #[serde(default = "TempoSettings::default_manual_bpm")]
+    pub manual_bpm: f32,
+    #[serde(default)]
+    pub link_offset_ms: f32,
+    #[serde(default = "TempoSettings::default_audio_bpm_sensitivity")]
+    pub audio_bpm_sensitivity: f32,
+    #[serde(default = "TempoSettings::default_bpm_source_priority")]
+    pub bpm_source_priority: Vec<String>,
+}
+
+impl TempoSettings {
+    fn default_ableton_link_enabled() -> bool {
+        true
+    }
+    fn default_start_stop_sync() -> bool {
+        true
+    }
+    fn default_midi_clock_in_device() -> String {
+        "any".to_string()
+    }
+    fn default_midi_clock_out_enabled() -> bool {
+        true
+    }
+    fn default_midi_clock_out_device() -> String {
+        "iac-1".to_string()
+    }
+    fn default_quantize() -> String {
+        "bar".to_string()
+    }
+    fn default_manual_bpm() -> f32 {
+        120.0
+    }
+    fn default_audio_bpm_sensitivity() -> f32 {
+        60.0
+    }
+    fn default_bpm_source_priority() -> Vec<String> {
+        vec![
+            "audio".to_string(),
+            "midiclock".to_string(),
+            "link".to_string(),
+            "manual".to_string(),
+        ]
+    }
+}
+
+impl Default for TempoSettings {
+    fn default() -> Self {
+        Self {
+            ableton_link_enabled: Self::default_ableton_link_enabled(),
+            start_stop_sync: Self::default_start_stop_sync(),
+            midi_clock_in_enabled: false,
+            midi_clock_in_device: Self::default_midi_clock_in_device(),
+            midi_clock_out_enabled: Self::default_midi_clock_out_enabled(),
+            midi_clock_out_device: Self::default_midi_clock_out_device(),
+            quantize: Self::default_quantize(),
+            manual_bpm: Self::default_manual_bpm(),
+            link_offset_ms: 0.0,
+            audio_bpm_sensitivity: Self::default_audio_bpm_sensitivity(),
+            bpm_source_priority: Self::default_bpm_source_priority(),
+        }
+    }
+}
+
 /// Top-level persisted settings document.
 ///
 /// Per-section grouping mirrors the Settings view's article layout
@@ -354,6 +461,8 @@ pub struct Settings {
     pub storage: StorageSettings,
     #[serde(default)]
     pub osc: OscSettings,
+    #[serde(default)]
+    pub tempo: TempoSettings,
 }
 
 /// Failure surfaces for [`Settings::load_from_path`] and
@@ -709,6 +818,111 @@ mod tests {
         assert_eq!(loaded.osc.port, 9100);
         assert!(!loaded.osc.tx_enabled);
         assert!(loaded.osc.rx_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn tempo_settings_default_matches_bundle_baseline() {
+        // Wave 2.7 Lane SET.A: pin the bundle-faithful Tempo & Sync
+        // defaults. The frontend reads back these values from the
+        // settings store on view mount and renders them in the
+        // Settings view's Tempo & Sync controls.
+        let defaults = Settings::default();
+        assert!(defaults.tempo.ableton_link_enabled);
+        assert!(defaults.tempo.start_stop_sync);
+        assert!(!defaults.tempo.midi_clock_in_enabled);
+        assert_eq!(defaults.tempo.midi_clock_in_device, "any");
+        assert!(defaults.tempo.midi_clock_out_enabled);
+        assert_eq!(defaults.tempo.midi_clock_out_device, "iac-1");
+        assert_eq!(defaults.tempo.quantize, "bar");
+        assert_eq!(defaults.tempo.manual_bpm, 120.0);
+        assert_eq!(defaults.tempo.link_offset_ms, 0.0);
+        assert_eq!(defaults.tempo.audio_bpm_sensitivity, 60.0);
+        assert_eq!(
+            defaults.tempo.bpm_source_priority,
+            vec![
+                "audio".to_string(),
+                "midiclock".to_string(),
+                "link".to_string(),
+                "manual".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn tempo_settings_round_trip_preserves_operator_values() {
+        // Mutating each Tempo field and round-tripping through TOML
+        // pins the field-name + serde-attribute stability of the
+        // [tempo] section against future drift.
+        let path = tmp_path("tempo-round-trip");
+        let mut settings = Settings::default();
+        settings.tempo.ableton_link_enabled = false;
+        settings.tempo.start_stop_sync = false;
+        settings.tempo.midi_clock_in_enabled = true;
+        settings.tempo.midi_clock_in_device = "midi-port-2".to_string();
+        settings.tempo.midi_clock_out_enabled = false;
+        settings.tempo.midi_clock_out_device = "midi-port-3".to_string();
+        settings.tempo.quantize = "phrase".to_string();
+        settings.tempo.manual_bpm = 128.5;
+        settings.tempo.link_offset_ms = -25.0;
+        settings.tempo.audio_bpm_sensitivity = 80.0;
+        settings.tempo.bpm_source_priority = vec![
+            "manual".to_string(),
+            "midiclock".to_string(),
+            "audio".to_string(),
+            "link".to_string(),
+        ];
+
+        settings.save_to_path(&path).unwrap();
+        let loaded = Settings::load_from_path(&path).unwrap();
+        assert!(!loaded.tempo.ableton_link_enabled);
+        assert!(!loaded.tempo.start_stop_sync);
+        assert!(loaded.tempo.midi_clock_in_enabled);
+        assert_eq!(loaded.tempo.midi_clock_in_device, "midi-port-2");
+        assert!(!loaded.tempo.midi_clock_out_enabled);
+        assert_eq!(loaded.tempo.midi_clock_out_device, "midi-port-3");
+        assert_eq!(loaded.tempo.quantize, "phrase");
+        assert_eq!(loaded.tempo.manual_bpm, 128.5);
+        assert_eq!(loaded.tempo.link_offset_ms, -25.0);
+        assert_eq!(loaded.tempo.audio_bpm_sensitivity, 80.0);
+        assert_eq!(
+            loaded.tempo.bpm_source_priority,
+            vec![
+                "manual".to_string(),
+                "midiclock".to_string(),
+                "audio".to_string(),
+                "link".to_string(),
+            ]
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_toml_without_tempo_section_loads_via_serde_default() {
+        // Forward-compat: a settings file written before Wave 2.7
+        // Lane SET.A added the [tempo] section MUST deserialise
+        // cleanly. Missing fields fill from the per-field
+        // `#[serde(default)]` annotations.
+        let path = tmp_path("pre-tempo-section");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(b"[general]\ntheme = \"pulse\"\n\n[audio]\nsample_rate_hz = 48000\n")
+                .unwrap();
+        }
+        let loaded = Settings::load_from_path(&path).unwrap();
+        // The tempo section materialises with the per-field defaults.
+        assert!(loaded.tempo.ableton_link_enabled);
+        assert_eq!(loaded.tempo.quantize, "bar");
+        assert_eq!(loaded.tempo.manual_bpm, 120.0);
+        assert_eq!(
+            loaded.tempo.bpm_source_priority,
+            vec![
+                "audio".to_string(),
+                "midiclock".to_string(),
+                "link".to_string(),
+                "manual".to_string(),
+            ]
+        );
         let _ = std::fs::remove_file(&path);
     }
 

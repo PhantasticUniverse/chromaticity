@@ -1536,6 +1536,68 @@ impl From<OscSettingsPayload> for chromaticity_runtime::settings::OscSettings {
     }
 }
 
+/// IPC-facing tempo & sync preferences mirroring
+/// [`chromaticity_runtime::settings::TempoSettings`].
+///
+/// Wave 2.7 Lane SET.A: backs the Settings view's Tempo & Sync
+/// section (W22 PR1 + W40 expansion). Carries the field set the
+/// operator wires through the frontend's Tempo controls: Ableton
+/// Link toggle + Start/Stop Sync, MIDI Clock input + output (each
+/// toggle + device pick), Quantize Transitions, Manual BPM, Link
+/// offset (ms), Audio BPM sensitivity (%), and the BPM source
+/// priority chain.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[ts(export)]
+pub struct TempoSettingsPayload {
+    pub ableton_link_enabled: bool,
+    pub start_stop_sync: bool,
+    pub midi_clock_in_enabled: bool,
+    pub midi_clock_in_device: String,
+    pub midi_clock_out_enabled: bool,
+    pub midi_clock_out_device: String,
+    pub quantize: String,
+    pub manual_bpm: f32,
+    pub link_offset_ms: f32,
+    pub audio_bpm_sensitivity: f32,
+    pub bpm_source_priority: Vec<String>,
+}
+
+impl From<chromaticity_runtime::settings::TempoSettings> for TempoSettingsPayload {
+    fn from(s: chromaticity_runtime::settings::TempoSettings) -> Self {
+        Self {
+            ableton_link_enabled: s.ableton_link_enabled,
+            start_stop_sync: s.start_stop_sync,
+            midi_clock_in_enabled: s.midi_clock_in_enabled,
+            midi_clock_in_device: s.midi_clock_in_device,
+            midi_clock_out_enabled: s.midi_clock_out_enabled,
+            midi_clock_out_device: s.midi_clock_out_device,
+            quantize: s.quantize,
+            manual_bpm: s.manual_bpm,
+            link_offset_ms: s.link_offset_ms,
+            audio_bpm_sensitivity: s.audio_bpm_sensitivity,
+            bpm_source_priority: s.bpm_source_priority,
+        }
+    }
+}
+
+impl From<TempoSettingsPayload> for chromaticity_runtime::settings::TempoSettings {
+    fn from(p: TempoSettingsPayload) -> Self {
+        Self {
+            ableton_link_enabled: p.ableton_link_enabled,
+            start_stop_sync: p.start_stop_sync,
+            midi_clock_in_enabled: p.midi_clock_in_enabled,
+            midi_clock_in_device: p.midi_clock_in_device,
+            midi_clock_out_enabled: p.midi_clock_out_enabled,
+            midi_clock_out_device: p.midi_clock_out_device,
+            quantize: p.quantize,
+            manual_bpm: p.manual_bpm,
+            link_offset_ms: p.link_offset_ms,
+            audio_bpm_sensitivity: p.audio_bpm_sensitivity,
+            bpm_source_priority: p.bpm_source_priority,
+        }
+    }
+}
+
 /// IPC-facing general preferences mirroring
 /// [`chromaticity_runtime::settings::GeneralSettings`].
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
@@ -1578,6 +1640,7 @@ pub struct SettingsPayload {
     pub graphics: GraphicsSettingsPayload,
     pub storage: StorageSettingsPayload,
     pub osc: OscSettingsPayload,
+    pub tempo: TempoSettingsPayload,
 }
 
 impl From<chromaticity_runtime::settings::Settings> for SettingsPayload {
@@ -1588,6 +1651,7 @@ impl From<chromaticity_runtime::settings::Settings> for SettingsPayload {
             graphics: s.graphics.into(),
             storage: s.storage.into(),
             osc: s.osc.into(),
+            tempo: s.tempo.into(),
         }
     }
 }
@@ -1600,6 +1664,7 @@ impl From<SettingsPayload> for chromaticity_runtime::settings::Settings {
             graphics: p.graphics.into(),
             storage: p.storage.into(),
             osc: p.osc.into(),
+            tempo: p.tempo.into(),
         }
     }
 }

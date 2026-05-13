@@ -25,11 +25,12 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use chromaticity_runtime::settings::{
-    AudioSettings, GeneralSettings, GraphicsSettings, OscSettings, Settings, StorageSettings, Theme,
+    AudioSettings, GeneralSettings, GraphicsSettings, OscSettings, Settings, StorageSettings,
+    TempoSettings, Theme,
 };
 use chromaticity_ui_bridge::{
     AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload, OscSettingsPayload,
-    SettingsPayload, StorageSettingsPayload, ThemePayload,
+    SettingsPayload, StorageSettingsPayload, TempoSettingsPayload, ThemePayload,
 };
 use ts_rs::TS;
 
@@ -82,6 +83,24 @@ fn nonzero_settings() -> Settings {
             tx_enabled: false,
             rx_enabled: true,
         },
+        tempo: TempoSettings {
+            ableton_link_enabled: false,
+            start_stop_sync: false,
+            midi_clock_in_enabled: true,
+            midi_clock_in_device: "midi-port-2".to_string(),
+            midi_clock_out_enabled: false,
+            midi_clock_out_device: "midi-port-3".to_string(),
+            quantize: "phrase".to_string(),
+            manual_bpm: 128.5,
+            link_offset_ms: -25.0,
+            audio_bpm_sensitivity: 80.0,
+            bpm_source_priority: vec![
+                "manual".to_string(),
+                "midiclock".to_string(),
+                "audio".to_string(),
+                "link".to_string(),
+            ],
+        },
     }
 }
 
@@ -129,6 +148,24 @@ fn nonzero_payload() -> SettingsPayload {
             port: 9100,
             tx_enabled: false,
             rx_enabled: true,
+        },
+        tempo: TempoSettingsPayload {
+            ableton_link_enabled: false,
+            start_stop_sync: false,
+            midi_clock_in_enabled: true,
+            midi_clock_in_device: "midi-port-2".to_string(),
+            midi_clock_out_enabled: false,
+            midi_clock_out_device: "midi-port-3".to_string(),
+            quantize: "phrase".to_string(),
+            manual_bpm: 128.5,
+            link_offset_ms: -25.0,
+            audio_bpm_sensitivity: 80.0,
+            bpm_source_priority: vec![
+                "manual".to_string(),
+                "midiclock".to_string(),
+                "audio".to_string(),
+                "link".to_string(),
+            ],
         },
     }
 }
@@ -275,6 +312,61 @@ fn ts_rs_exported_names_match_committed_bindings() {
     );
     assert_eq!(<ThemePayload as TS>::name(), "ThemePayload");
     assert_eq!(<OscSettingsPayload as TS>::name(), "OscSettingsPayload");
+    assert_eq!(<TempoSettingsPayload as TS>::name(), "TempoSettingsPayload");
+}
+
+#[test]
+fn tempo_settings_engine_to_payload_round_trip() {
+    // Wave 2.7 Lane SET.A: pin the TempoSettingsPayload field-by-field
+    // mapping so a future shape divergence between
+    // `chromaticity_runtime::settings::TempoSettings` and the bridge
+    // mirror surfaces here before the wire shape drifts.
+    let settings = nonzero_settings();
+    let payload: SettingsPayload = settings.clone().into();
+    assert_eq!(
+        payload.tempo.ableton_link_enabled,
+        settings.tempo.ableton_link_enabled
+    );
+    assert_eq!(
+        payload.tempo.start_stop_sync,
+        settings.tempo.start_stop_sync
+    );
+    assert_eq!(
+        payload.tempo.midi_clock_in_enabled,
+        settings.tempo.midi_clock_in_enabled
+    );
+    assert_eq!(
+        payload.tempo.midi_clock_in_device,
+        settings.tempo.midi_clock_in_device
+    );
+    assert_eq!(
+        payload.tempo.midi_clock_out_enabled,
+        settings.tempo.midi_clock_out_enabled
+    );
+    assert_eq!(
+        payload.tempo.midi_clock_out_device,
+        settings.tempo.midi_clock_out_device
+    );
+    assert_eq!(payload.tempo.quantize, settings.tempo.quantize);
+    assert_eq!(payload.tempo.manual_bpm, settings.tempo.manual_bpm);
+    assert_eq!(payload.tempo.link_offset_ms, settings.tempo.link_offset_ms);
+    assert_eq!(
+        payload.tempo.audio_bpm_sensitivity,
+        settings.tempo.audio_bpm_sensitivity
+    );
+    assert_eq!(
+        payload.tempo.bpm_source_priority,
+        settings.tempo.bpm_source_priority
+    );
+
+    // Reverse direction.
+    let back: Settings = payload.into();
+    assert_eq!(back.tempo.quantize, settings.tempo.quantize);
+    assert_eq!(back.tempo.manual_bpm, settings.tempo.manual_bpm);
+    assert_eq!(
+        back.tempo.bpm_source_priority,
+        settings.tempo.bpm_source_priority
+    );
 }
 
 #[test]

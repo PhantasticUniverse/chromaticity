@@ -40,4 +40,5 @@ export type { SnapSlotId } from './SnapSlotId';
 export type { StorageSettingsPayload } from './StorageSettingsPayload';
 export type { SyphonOutputStatusPayload } from './SyphonOutputStatusPayload';
 export type { SyphonServerPayload } from './SyphonServerPayload';
+export type { TempoSettingsPayload } from './TempoSettingsPayload';
 export type { ThemePayload } from './ThemePayload';

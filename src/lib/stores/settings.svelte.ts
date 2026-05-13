@@ -82,6 +82,19 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     tx_enabled: true,
     rx_enabled: true,
   },
+  tempo: {
+    ableton_link_enabled: true,
+    start_stop_sync: true,
+    midi_clock_in_enabled: false,
+    midi_clock_in_device: 'any',
+    midi_clock_out_enabled: true,
+    midi_clock_out_device: 'iac-1',
+    quantize: 'bar',
+    manual_bpm: 120.0,
+    link_offset_ms: 0,
+    audio_bpm_sensitivity: 60,
+    bpm_source_priority: ['audio', 'midiclock', 'link', 'manual'],
+  },
 };
 
 /** Shallow-clone the defaults POJO for the initial `$state` value
@@ -100,6 +113,10 @@ function cloneDefaults(): SettingsPayload {
       scene_folders: [...DEFAULT_SETTINGS.storage.scene_folders],
     },
     osc: { ...DEFAULT_SETTINGS.osc },
+    tempo: {
+      ...DEFAULT_SETTINGS.tempo,
+      bpm_source_priority: [...DEFAULT_SETTINGS.tempo.bpm_source_priority],
+    },
   };
 }
 
@@ -185,6 +202,7 @@ class SettingsStore {
       graphics: { ...this.snapshot.graphics, ...(patch.graphics ?? {}) },
       storage: { ...this.snapshot.storage, ...(patch.storage ?? {}) },
       osc: { ...this.snapshot.osc, ...(patch.osc ?? {}) },
+      tempo: { ...this.snapshot.tempo, ...(patch.tempo ?? {}) },
     };
     this.snapshot = next;
     this.#scheduleSave();
@@ -291,6 +309,7 @@ export interface SettingsPatch {
   graphics?: Partial<SettingsPayload['graphics']>;
   storage?: Partial<SettingsPayload['storage']>;
   osc?: Partial<SettingsPayload['osc']>;
+  tempo?: Partial<SettingsPayload['tempo']>;
 }
 
 export const settingsStore = new SettingsStore();
