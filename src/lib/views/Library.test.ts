@@ -42,6 +42,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import Library from './Library.svelte';
 import { clearCache } from '../stores/library';
+import { libraryFavoritesStore } from '../stores/libraryFavorites.svelte';
 import { libraryRecentStore } from '../stores/libraryRecent.svelte';
 import { sceneKindFromMetadata } from '../widgets/scene-kind-from-metadata';
 
@@ -89,6 +90,22 @@ const USER_CARDS = [
   },
 ];
 
+// Wave 2.5 LIB.B — fixture with > TAG_CHIPS_VISIBLE (=3) tags so the
+// "+N more" overflow chip branch is reachable.
+const OVERFLOW_TAG_CARDS = [
+  {
+    id: 'pkg.builtin.many-tags',
+    title: 'Many Tags',
+    credit: 'TagAuthor',
+    description: 'Scene with five tags to exercise the overflow chip',
+    tags: ['alpha', 'beta', 'gamma', 'delta', 'epsilon'],
+    categories: ['Abstract'],
+    path: '/bundle/many-tags.chroma',
+    format_tag: 'native-chroma-scene',
+    source: 'Bundled' as const,
+  },
+];
+
 // Helper: route the three Tauri commands the Library view fires
 // (`default_scene_root`, `list_bundled_scene_packages`,
 // `list_scene_packages`) through a single dispatcher. Returning
@@ -124,6 +141,15 @@ describe('Library view', () => {
     window.localStorage.removeItem(RECENT_STORAGE_KEY);
     libraryRecentStore.reset();
     invokeMock.mockReturnValue(new Promise(() => {}));
+    // Wave 2.5 LIB.B — the favorites store is a module-level
+    // singleton backed by localStorage. Reset both surfaces so each
+    // test starts from the empty baseline regardless of order.
+    libraryFavoritesStore.reset();
+    try {
+      localStorage.removeItem('library-favorites');
+    } catch {
+      // jsdom-safe; no-op on unavailable storage.
+    }
   });
 
   afterEach(() => {
@@ -131,6 +157,12 @@ describe('Library view', () => {
     window.localStorage.removeItem(RECENT_STORAGE_KEY);
     libraryRecentStore.reset();
     cleanup();
+    libraryFavoritesStore.reset();
+    try {
+      localStorage.removeItem('library-favorites');
+    } catch {
+      // jsdom-safe; no-op on unavailable storage.
+    }
   });
 
   it('renders the loading status while the IPC promises stay pending', () => {
@@ -588,5 +620,163 @@ describe('Library view', () => {
     expect(active.length).toBe(1);
     // Active row is the Glitch row (idx 3 in SETLIST_FIXTURE).
     expect(active[0]?.textContent).toContain('Glitch');
+  });
+
+  // ---------------------------------------------------------------
+  // Wave 2.5 LIB.B — tag badges + favorites affordance + favorites
+  // chip filter. Card render block additions (tag chips + heart) +
+  // category chip row addition (FAVORITES chip) + localStorage-backed
+  // `libraryFavoritesStore`.
+  // ---------------------------------------------------------------
+
+  it('renders up to TAG_CHIPS_VISIBLE (3) tag chips on a card + a "+N more" overflow pill', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => OVERFLOW_TAG_CARDS,
+      list_scene_packages: () => [],
+    });
+    const { findByText, container } = render(Library);
+    await findByText('Many Tags');
+    const tile = container.querySelector('.scene-tile') as HTMLElement;
+    expect(tile).not.toBeNull();
+    const tagChips = tile.querySelectorAll('.scene-tile__tag');
+    // 3 visible tags + 1 overflow chip = 4 total span.scene-tile__tag.
+    expect(tagChips.length).toBe(4);
+    const visibleText = Array.from(tagChips)
+      .slice(0, 3)
+      .map((el) => el.textContent?.trim())
+      .join(',');
+    expect(visibleText).toBe('alpha,beta,gamma');
+    const overflow = tile.querySelector('.scene-tile__tag--overflow');
+    expect(overflow?.textContent?.trim()).toBe('+2 more');
+    // Hover-tooltip exposes the full list via title attribute on the
+    // container (accessible name attached to the same element).
+    const tagsContainer = tile.querySelector('.scene-tile__tags') as HTMLElement;
+    expect(tagsContainer.getAttribute('title')).toBe('alpha, beta, gamma, delta, epsilon');
+  });
+
+  it('renders no .scene-tile__tags container when a card has zero tags', async () => {
+    const noTagCards = [
+      {
+        ...OVERFLOW_TAG_CARDS[0],
+        id: 'pkg.builtin.no-tags',
+        title: 'No Tags',
+        tags: [],
+      },
+    ];
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => noTagCards,
+      list_scene_packages: () => [],
+    });
+    const { findByText, container } = render(Library);
+    await findByText('No Tags');
+    const tile = container.querySelector('.scene-tile') as HTMLElement;
+    expect(tile).not.toBeNull();
+    expect(tile.querySelector('.scene-tile__tags')).toBeNull();
+  });
+
+  it('clicking a card heart toggles favorite store + writes through to localStorage', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    // Find the user card's heart (its id is unique → stable target).
+    const tiles = container.querySelectorAll('.scene-tile');
+    const userTile = Array.from(tiles).find((t) => t.textContent?.includes('My Geometric Sketch'));
+    expect(userTile).not.toBeUndefined();
+    const heart = userTile!.querySelector('.scene-tile__fav') as HTMLButtonElement;
+    expect(heart).not.toBeNull();
+    expect(heart.getAttribute('aria-pressed')).toBe('false');
+    expect(libraryFavoritesStore.isFavorite('pkg.user.geo')).toBe(false);
+
+    await fireEvent.click(heart);
+
+    expect(heart.getAttribute('aria-pressed')).toBe('true');
+    expect(heart.classList.contains('active')).toBe(true);
+    expect(libraryFavoritesStore.isFavorite('pkg.user.geo')).toBe(true);
+    // localStorage write-through.
+    const stored = localStorage.getItem('library-favorites');
+    expect(stored).not.toBeNull();
+    expect(JSON.parse(stored!)).toEqual(['pkg.user.geo']);
+
+    // Click again → un-favorite.
+    await fireEvent.click(heart);
+    expect(libraryFavoritesStore.isFavorite('pkg.user.geo')).toBe(false);
+    expect(JSON.parse(localStorage.getItem('library-favorites')!)).toEqual([]);
+  });
+
+  it('clicking the heart does NOT trigger the card-load IPC (no load_scene invoke)', async () => {
+    // Svelte 5 uses event delegation for click — `stopPropagation` in
+    // the heart's delegated handler stops subsequent DELEGATED
+    // handlers from running, but a manual `addEventListener('click')`
+    // on the article will still fire during the native bubble phase
+    // before Svelte's root delegation handler runs. The semantic
+    // contract that matters is: clicking the heart must NOT trigger
+    // the engine-load IPC that `handleSceneOpen` calls. Validate via
+    // the invoke-mock's call log.
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    const tiles = container.querySelectorAll('.scene-tile');
+    const userTile = Array.from(tiles).find((t) =>
+      t.textContent?.includes('My Geometric Sketch'),
+    ) as HTMLElement;
+    expect(userTile).not.toBeUndefined();
+    // Reset the invoke mock's call log so we can isolate clicks that
+    // happen AFTER the initial $effect-driven library scan.
+    invokeMock.mockClear();
+    const heart = userTile.querySelector('.scene-tile__fav') as HTMLButtonElement;
+    await fireEvent.click(heart);
+    // Engine-load IPC must NOT fire from a heart click. The heart's
+    // onclick calls `event.stopPropagation()` defensively so that any
+    // future shift to non-delegated click semantics still keeps the
+    // surrounding card-load handler isolated.
+    const loadSceneCalls = (invokeMock.mock.calls as unknown[][]).filter(
+      (call) => call[0] === 'load_scene',
+    );
+    expect(loadSceneCalls.length).toBe(0);
+    // And the favorite store DID toggle (positive control).
+    expect(libraryFavoritesStore.isFavorite('pkg.user.geo')).toBe(true);
+  });
+
+  it('clicking the FAVORITES chip narrows the grid to favorited cards only', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    // Seed the favorites store BEFORE the chip toggle — only the
+    // Glitch card is favorited.
+    libraryFavoritesStore.toggle('pkg.builtin.glitch');
+
+    const { findByRole, container } = render(Library);
+    // Wait for post-fetch render before targeting the chip row.
+    const favChip = await findByRole('button', { name: 'FAVORITES' });
+    expect(favChip).toHaveAttribute('aria-pressed', 'false');
+    // Pre-toggle: full grid (3 cards).
+    expect(container.querySelectorAll('.scene-tile').length).toBe(3);
+
+    await fireEvent.click(favChip);
+
+    expect(favChip).toHaveAttribute('aria-pressed', 'true');
+    // Only Glitch (favorited) remains.
+    const tiles = container.querySelectorAll('.scene-tile');
+    expect(tiles.length).toBe(1);
+    expect(tiles[0]?.textContent).toContain('Glitch');
+    const count = container.querySelector('.library__count');
+    expect(count?.textContent?.trim()).toBe('1 of 3 scenes');
+
+    // Toggle off → full grid returns.
+    await fireEvent.click(favChip);
+    expect(favChip).toHaveAttribute('aria-pressed', 'false');
+    expect(container.querySelectorAll('.scene-tile').length).toBe(3);
   });
 });

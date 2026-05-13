@@ -31,6 +31,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     fetchSceneCards,
     getDefaultRoot,
   } from '../stores/library';
+  import { libraryFavoritesStore } from '../stores/libraryFavorites.svelte';
   import { libraryRecentStore } from '../stores/libraryRecent.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { routeStore } from '../stores/route.svelte';
@@ -69,6 +70,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // TODO: docs/38 §4 catalog promotion will replace this hardcoded list with
   // a curated base tag vocabulary loaded from the registry.
 
+  // Wave 2.5 LIB.B — the FAVORITES chip lives alongside the category
+  // chip row but is single-select (toggling it on excludes the
+  // category narrowing axis since it's an orthogonal filter). It is
+  // intentionally NOT in the CATEGORIES const because category chips
+  // narrow by `card.categories` membership; the favorites chip
+  // narrows by `libraryFavoritesStore.ids` membership.
+  const FAVORITES_CHIP = 'FAVORITES';
+  let favoritesActive = $state(false);
+
+  // Maximum number of tag chips visible inline on a card; remaining
+  // tags collapse into a "+N more" pill with the full list available
+  // via the title-attribute tooltip.
+  const TAG_CHIPS_VISIBLE = 3;
+
   let query = $state('');
   const activeCategories = new SvelteSet<string>();
   let size = $state<'small' | 'medium' | 'large'>('medium');
@@ -84,26 +99,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // RECENT is a virtual chip — not in the hardcoded CATEGORIES list —
   // because it filters against `libraryRecentStore.ids` instead of
   // the card's `categories` array.
-  //
-  // Sort `favorites` falls back to `id` until Lane LIB.B's
-  // `libraryFavoritesStore` lands. The Library view doesn't import
-  // that store yet; once LIB.B merges, this branch's rebase swaps
-  // the fallback for the real comparator. TODO(wave-2.5-lib-b):
-  // wire `libraryFavoritesStore.has(card.id)` into the favorites
-  // sort once it ships.
   let sourceFilter = $state<'all' | 'built-in' | 'my-scenes'>('all');
   let sortMode = $state<'id' | 'title' | 'recent' | 'favorites'>('id');
   let recentChipActive = $state(false);
 
-  // Hydrate the recent store once at mount + push on every successful
-  // scene load. `loadedSceneStore.snapshot?.id` covers BOTH the
-  // Library view's own double-click handler AND any external loader
-  // (the Perform scene-list click-to-load wire shipped in Wave 2.4
-  // Lane PERF.B), so the recent list reflects every load path.
+  // Hydrate persisted favorites + recent on mount. Both stores are
+  // module-level singletons; the reads are idempotent and the favorites
+  // set + recent list are localStorage-only surfaces (no engine seam).
   $effect(() => {
+    libraryFavoritesStore.hydrate();
     libraryRecentStore.hydrate();
   });
 
+  // Push every successful scene load into the recent store.
+  // `loadedSceneStore.snapshot?.id` covers BOTH the Library view's own
+  // double-click handler AND any external loader (the Perform
+  // scene-list click-to-load wire shipped in Wave 2.4 Lane PERF.B), so
+  // the recent list reflects every load path.
   $effect(() => {
     const id = loadedSceneStore.snapshot?.id;
     if (id) {
@@ -127,6 +139,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       if (activeCategories.size > 0) {
         const matches = card.categories.some((c) => activeCategories.has(c.toUpperCase()));
         if (!matches) return false;
+      }
+      if (favoritesActive && !libraryFavoritesStore.isFavorite(card.id)) {
+        return false;
       }
       return true;
     });
@@ -177,6 +192,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   function toggleRecentChip() {
     recentChipActive = !recentChipActive;
+  }
+
+  function toggleFavoritesChip() {
+    favoritesActive = !favoritesActive;
+  }
+
+  // Click handler for the heart affordance on a scene card. Click
+  // toggles favorite membership; `stopPropagation` prevents the
+  // surrounding card's dblclick / keydown card-load wire from firing
+  // when the operator targets the heart specifically.
+  function handleFavoriteToggle(event: MouseEvent, card: SceneCard): void {
+    event.stopPropagation();
+    libraryFavoritesStore.toggle(card.id);
   }
 
   // W11 PR2: merge bundled (ship-time) + user-staged scene cards.
@@ -354,6 +382,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <div class="library__chips" role="group" aria-label="category filters">
           <button
             type="button"
+            class="library__chip library__chip--favorites"
+            class:active={favoritesActive}
+            aria-pressed={favoritesActive}
+            onclick={toggleFavoritesChip}
+            title="Show only favorited scenes"
+          >
+            {FAVORITES_CHIP}
+          </button>
+          <button
+            type="button"
             class="library__chip"
             class:active={recentChipActive}
             aria-pressed={recentChipActive}
@@ -426,7 +464,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             ondblclick={() => void handleSceneOpen(card)}
             onkeydown={(e) => handleSceneKeydown(e, card)}
           >
-            <div class="scene-tile__thumbnail" aria-hidden="true">
+            <div class="scene-tile__thumbnail">
               <!-- Wave 2.2 Lane R.1 — `<SceneStill>` procedural
                    thumbnail keyed off the card's metadata via the
                    `sceneKindFromMetadata` heuristic. EV-LIBRARY-
@@ -440,6 +478,41 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 width={220}
                 height={138}
               />
+              <!-- Wave 2.5 LIB.B — tag chips overlaid on the
+                   thumbnail (top-left), heart-toggle overlaid on the
+                   top-right. Bundle precedent:
+                   `chromaticity-planning/ui-predev-bundle-v0.2-beta/components.jsx`
+                   `FxTile`. The heart click stops propagation so it
+                   doesn't fire the card's dblclick/Enter load
+                   handlers. -->
+              {#if card.tags.length > 0}
+                <div
+                  class="scene-tile__tags"
+                  title={card.tags.join(', ')}
+                  aria-label={`Tags: ${card.tags.join(', ')}`}
+                >
+                  {#each card.tags.slice(0, TAG_CHIPS_VISIBLE) as tag (tag)}
+                    <span class="scene-tile__tag">{tag}</span>
+                  {/each}
+                  {#if card.tags.length > TAG_CHIPS_VISIBLE}
+                    <span class="scene-tile__tag scene-tile__tag--overflow">
+                      +{card.tags.length - TAG_CHIPS_VISIBLE} more
+                    </span>
+                  {/if}
+                </div>
+              {/if}
+              <button
+                type="button"
+                class="scene-tile__fav"
+                class:active={libraryFavoritesStore.isFavorite(card.id)}
+                aria-pressed={libraryFavoritesStore.isFavorite(card.id)}
+                aria-label={libraryFavoritesStore.isFavorite(card.id)
+                  ? `Remove ${card.title || card.id} from favorites`
+                  : `Add ${card.title || card.id} to favorites`}
+                onclick={(e) => handleFavoriteToggle(e, card)}
+              >
+                <Icon name="heart" size={12} />
+              </button>
             </div>
             <div class="scene-tile__meta">
               <div class="scene-tile__title-row">
@@ -787,6 +860,70 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: var(--color-bg-3);
     border-radius: var(--radius-sm);
     overflow: hidden;
+    position: relative;
+  }
+  /* Wave 2.5 LIB.B — tag/favorite overlay layers on the thumbnail.
+     Bundle precedent: `FxTile` .tag (top-left) + .fav (top-right). */
+  .scene-tile__tags {
+    position: absolute;
+    top: var(--space-xs);
+    left: var(--space-xs);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    max-width: calc(100% - 32px); /* leave room for .scene-tile__fav */
+    pointer-events: none;
+  }
+  .scene-tile__tag {
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-family: var(--font-family-mono);
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+  }
+  .scene-tile__tag--overflow {
+    background: rgba(0, 0, 0, 0.55);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .scene-tile__fav {
+    position: absolute;
+    top: var(--space-xs);
+    right: var(--space-xs);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.4);
+    color: rgba(255, 255, 255, 0.7);
+    border: 0;
+    border-radius: 2px;
+    cursor: pointer;
+    transition:
+      color 0.12s ease,
+      background 0.12s ease;
+  }
+  .scene-tile__fav:hover {
+    background: rgba(0, 0, 0, 0.6);
+    color: rgba(255, 255, 255, 0.95);
+  }
+  .scene-tile__fav.active {
+    color: var(--color-primary);
+  }
+  .scene-tile__fav:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+  .library__chip--favorites {
+    /* Visually distinguish the favorites chip from category chips —
+       it's an orthogonal filter axis. */
+    font-weight: 600;
   }
   /* Wave 2.2 Lane R.1 — `<SceneStill>` canvas fills the thumbnail
      container. Bitmap dimensions are explicit-width/height (220 × 138);
