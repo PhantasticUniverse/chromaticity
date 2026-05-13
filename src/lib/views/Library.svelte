@@ -20,7 +20,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { SvelteSet } from 'svelte/reactivity';
 
   import { EMPTY_LIBRARY, EMPTY_LIBRARY_FILTERED } from '../data/empty-states';
-  import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE, SETLIST_SCENES } from '../data/setlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import ErrorMessage from '../ErrorMessage.svelte';
   import Icon from '../Icon.svelte';
@@ -41,6 +40,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     sceneKindFromMetadata,
     sceneSeedFromMetadata,
   } from '../widgets/scene-kind-from-metadata';
+  import SceneCanvas from '../widgets/SceneCanvas.svelte';
   import SceneStill from '../widgets/SceneStill.svelte';
 
   let cards = $state<SceneCard[]>([]);
@@ -332,6 +332,64 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       void handleSceneOpen(card);
     }
   }
+
+  // Wave 2.5 Lane LIB.A — right-rail preview + metadata + author
+  // handoff. Replaces the W9 hardcoded "Your Setlist" sidebar (a
+  // carry-over from the W9 backbone that doesn't belong in the
+  // canonical Library wireframe per the v0.2-beta bundle
+  // `views/library.jsx`).
+  //
+  // Selection model:
+  //   - `selectedId` holds a single-click selection.
+  //   - The active card is derived: if a scene is loaded, that wins
+  //     (so the rail reflects what the runtime is currently bound
+  //     to); otherwise the user's selection wins; otherwise the
+  //     first card in the filtered list.
+  //   - Single-click on a tile updates `selectedId`; double-click
+  //     still triggers `handleSceneOpen` per Wave 2.1 Lane A.1.
+  let selectedId = $state<string | null>(null);
+
+  const selectedCard = $derived.by<SceneCard | null>(() => {
+    if (filteredCards.length === 0) return null;
+    const loadedId = loadedSceneStore.snapshot?.id;
+    if (loadedId) {
+      const match = cards.find((c) => c.id === loadedId);
+      if (match) return match;
+    }
+    if (selectedId) {
+      const match = filteredCards.find((c) => c.id === selectedId);
+      if (match) return match;
+    }
+    return filteredCards[0] ?? null;
+  });
+
+  function handleSceneSelect(card: SceneCard): void {
+    selectedId = card.id;
+  }
+
+  async function handleLoadSelected(): Promise<void> {
+    if (!selectedCard) return;
+    await handleSceneOpen(selectedCard);
+  }
+
+  function handleOpenInAuthor(): void {
+    // The Author view reads `loadedSceneStore.snapshot` for its
+    // editor binding; clicking "Open in Author" without a loaded
+    // scene first kicks a `load_scene` IPC and only routes on
+    // success, mirroring the double-click handoff semantics.
+    if (!selectedCard) return;
+    const loadedId = loadedSceneStore.snapshot?.id;
+    if (loadedId === selectedCard.id) {
+      routeStore.set('author');
+      return;
+    }
+    void (async () => {
+      const payload = await loadedSceneStore.load(selectedCard.path);
+      if (payload) {
+        routeStore.set('author');
+      }
+    })();
+  }
 </script>
 
 <div class="library-page">
@@ -496,10 +554,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             class="scene-tile"
             class:scene-tile--active={loadedSceneStore.snapshot?.path === card.path}
             class:scene-tile--loading={loadingPath === card.path}
+            class:scene-tile--selected={selectedCard?.id === card.id &&
+              loadedSceneStore.snapshot?.path !== card.path}
             tabindex="0"
             role="button"
-            aria-label={`Load scene ${card.title || card.id}`}
+            aria-label={`Select scene ${card.title || card.id}`}
+            aria-pressed={selectedCard?.id === card.id}
             aria-busy={loadingPath === card.path ? 'true' : undefined}
+            onclick={() => handleSceneSelect(card)}
             ondblclick={() => void handleSceneOpen(card)}
             onkeydown={(e) => handleSceneKeydown(e, card)}
           >
@@ -570,32 +632,99 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     {/if}
   </section>
 
-  <aside class="setlist" aria-label="Setlist">
-    <header class="setlist__head">
-      <span class="setlist__title">Your Setlist</span>
-      <span class="setlist__sep" aria-hidden="true">·</span>
-      <span class="setlist__count">{SETLIST_FIXTURE.length} scenes</span>
-    </header>
-    <ol class="setlist__list">
-      {#each SETLIST_FIXTURE as scene (scene.idx)}
-        <li
-          class="setlist__row"
-          data-tag={scene.tag}
-          class:active={scene.idx === SETLIST_ACTIVE_INDEX}
-        >
-          <span class="setlist__thumb" aria-hidden="true" data-seed={scene.seed}></span>
-          <span class="setlist__name">{scene.name}</span>
-          <span class="setlist__tag" data-tag={scene.tag}>{scene.tag}</span>
-          <span class="setlist__dur">{scene.duration}</span>
-        </li>
-      {/each}
-    </ol>
-    <p class="setlist__hint">
-      Hardcoded fixture mirroring v0.2 bundle <code>views/_data.jsx</code> SCENES (12 scenes
-      repeated to 14 cue slots; row {SETLIST_ACTIVE_INDEX} active per JSX). Real setlist persistence +
-      cue-edit IPC is Phase-3 <code>EV-PRESET-PLAYLIST</code> scope.
-      {SETLIST_SCENES.length} unique scenes in the fixture.
-    </p>
+  <aside class="scene-detail" aria-label="Scene detail">
+    {#if !loading && selectedCard}
+      <!-- Wave 2.5 Lane LIB.A — bundle-faithful right rail
+           (`views/library.jsx` lines 50-62 in the v0.2-beta bundle).
+           Preview pane tops the column, full metadata sits below.
+           SceneCanvas reads metadata via the W36 / Wave 2.2 R.1
+           heuristic — the same wiring Perform's preview hero uses. -->
+      <div class="scene-detail__preview" aria-label="Selected scene preview">
+        <SceneCanvas
+          kind={sceneKindFromMetadata(selectedCard)}
+          seed={sceneSeedFromMetadata(selectedCard)}
+          audio
+          ariaLabel={`Preview of ${selectedCard.title || selectedCard.id}`}
+        />
+      </div>
+      <div class="scene-detail__body">
+        <header class="scene-detail__head">
+          <h3 class="scene-detail__title">{selectedCard.title || selectedCard.id}</h3>
+          <span
+            class="scene-detail__source"
+            class:scene-detail__source--bundled={selectedCard.source === 'Bundled'}
+          >
+            {selectedCard.source === 'Bundled' ? 'BUILT-IN' : 'MY SCENES'}
+          </span>
+        </header>
+        {#if selectedCard.credit}
+          <p class="scene-detail__credit">by {selectedCard.credit}</p>
+        {/if}
+        {#if selectedCard.description}
+          <p class="scene-detail__description">{selectedCard.description}</p>
+        {/if}
+        <dl class="scene-detail__facts">
+          {#if selectedCard.categories.length > 0}
+            <div class="scene-detail__fact-row">
+              <dt class="scene-detail__fact-label">Categories</dt>
+              <dd class="scene-detail__fact-value">
+                <ul class="scene-detail__chips" aria-label="Scene categories">
+                  {#each selectedCard.categories as cat (cat)}
+                    <li class="scene-detail__chip scene-detail__chip--category">{cat}</li>
+                  {/each}
+                </ul>
+              </dd>
+            </div>
+          {/if}
+          {#if selectedCard.tags.length > 0}
+            <div class="scene-detail__fact-row">
+              <dt class="scene-detail__fact-label">Tags</dt>
+              <dd class="scene-detail__fact-value">
+                <ul class="scene-detail__chips" aria-label="Scene tags">
+                  {#each selectedCard.tags as tag (tag)}
+                    <li class="scene-detail__chip">{tag}</li>
+                  {/each}
+                </ul>
+              </dd>
+            </div>
+          {/if}
+          {#if loadedSceneStore.snapshot?.id === selectedCard.id}
+            <div class="scene-detail__fact-row">
+              <dt class="scene-detail__fact-label">Controls</dt>
+              <dd class="scene-detail__fact-value scene-detail__controls-count">
+                {loadedSceneStore.snapshot.controls.length}
+              </dd>
+            </div>
+          {/if}
+        </dl>
+        <div class="scene-detail__actions" role="group" aria-label="Scene actions">
+          <button
+            type="button"
+            class="scene-detail__action scene-detail__action--primary"
+            onclick={handleLoadSelected}
+            disabled={loadedSceneStore.loading}
+            title="Load this scene into the runtime"
+          >
+            <Icon name="play" size={12} />
+            {loadedSceneStore.snapshot?.id === selectedCard.id ? 'Reload' : 'Load'}
+          </button>
+          <button
+            type="button"
+            class="scene-detail__action"
+            onclick={handleOpenInAuthor}
+            disabled={loadedSceneStore.loading}
+            title="Open this scene in the Author view"
+          >
+            <Icon name="edit" size={12} />
+            Open in Author
+          </button>
+        </div>
+      </div>
+    {:else}
+      <div class="scene-detail__empty">
+        <p>Select a scene to preview its details.</p>
+      </div>
+    {/if}
   </aside>
 </div>
 
@@ -616,10 +745,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     gap: var(--space-md);
     min-width: 0;
   }
-  .setlist {
+  .scene-detail {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-md);
     background: var(--color-bg-1);
     border: 1px solid var(--color-line-1);
     border-radius: var(--radius-sm);
@@ -629,98 +758,168 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     max-height: calc(100vh - 200px);
     overflow: hidden;
   }
-  .setlist__head {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-xs);
-    padding-bottom: var(--space-xs);
-    border-bottom: 1px solid var(--color-line-1);
+  .scene-detail__preview {
+    aspect-ratio: 16 / 9;
+    background: var(--color-bg-3);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    flex-shrink: 0;
   }
-  .setlist__title {
+  /* Wave 2.5 Lane LIB.A — SceneCanvas fills its container per the
+     Perform preview tile pattern; the widget's $effect-driven
+     ResizeObserver handles DPR + bitmap sizing. */
+  .scene-detail__preview :global(canvas.scene-canvas) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .scene-detail__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1;
+  }
+  .scene-detail__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-sm);
+  }
+  .scene-detail__title {
+    margin: 0;
     font-size: var(--font-size-body-md);
-    font-weight: 600;
     color: var(--color-text-0);
+    font-weight: 600;
+  }
+  .scene-detail__source {
+    background: var(--color-bg-3);
+    color: var(--color-text-2);
+    border-radius: var(--radius-xs);
+    padding: 1px var(--space-xs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    letter-spacing: var(--letter-spacing-caps-sm);
+    text-transform: uppercase;
+    flex-shrink: 0;
+    align-self: flex-start;
+  }
+  .scene-detail__source--bundled {
+    background: var(--color-cat-general);
+    color: var(--color-on-primary);
+  }
+  .scene-detail__credit {
+    margin: 0;
+    color: var(--color-text-2);
+    font-size: var(--font-size-body-sm);
+    font-style: italic;
+  }
+  .scene-detail__description {
+    margin: 0;
+    color: var(--color-text-1);
+    font-size: var(--font-size-body-sm);
+    line-height: 1.5;
+  }
+  .scene-detail__facts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin: 0;
+  }
+  .scene-detail__fact-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .scene-detail__fact-label {
+    color: var(--color-text-3);
+    font-size: 10px;
+    font-family: var(--font-family-mono);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
-  .setlist__sep {
-    color: var(--color-text-3);
+  .scene-detail__fact-value {
+    margin: 0;
+    color: var(--color-text-1);
+    font-size: var(--font-size-body-sm);
   }
-  .setlist__count {
-    color: var(--color-text-2);
-    font-size: var(--font-size-body-xs);
-    font-family: var(--font-family-mono);
-  }
-  .setlist__list {
+  .scene-detail__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
     list-style: none;
     margin: 0;
     padding: 0;
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
   }
-  .setlist__row {
-    display: grid;
-    grid-template-columns: 24px 1fr max-content max-content;
-    gap: var(--space-xs);
-    align-items: center;
-    padding: var(--space-xs);
-    border-radius: var(--radius-xs);
-    color: var(--color-text-1);
-    font-size: var(--font-size-body-sm);
-    cursor: pointer;
-    transition: background-color 100ms;
-  }
-  .setlist__row:hover {
-    background: var(--color-bg-2);
-  }
-  .setlist__row.active {
+  .scene-detail__chip {
     background: var(--color-bg-3);
-    color: var(--color-text-0);
-    box-shadow: inset 2px 0 0 var(--color-primary);
-  }
-  .setlist__thumb {
-    width: 18px;
-    height: 18px;
+    color: var(--color-text-1);
+    border: 1px solid var(--color-line-2);
     border-radius: var(--radius-xs);
-    background: linear-gradient(135deg, var(--color-primary), var(--color-line-2));
-    opacity: 0.7;
+    padding: 1px var(--space-xs);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    text-transform: lowercase;
   }
-  .setlist__row.active .setlist__thumb {
-    opacity: 1;
-  }
-  .setlist__name {
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .setlist__tag {
+  .scene-detail__chip--category {
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-size: 10px;
-    color: var(--color-text-3);
+  }
+  .scene-detail__controls-count {
     font-family: var(--font-family-mono);
-  }
-  .setlist__tag[data-tag='hot'] {
-    color: var(--color-signal-amber);
-  }
-  .setlist__tag[data-tag='caution'] {
-    color: var(--color-signal-red);
-  }
-  .setlist__dur {
-    color: var(--color-text-3);
-    font-family: var(--font-family-mono);
-    font-size: 10px;
     font-variant-numeric: tabular-nums;
+    color: var(--color-text-0);
   }
-  .setlist__hint {
-    color: var(--color-text-3);
-    font-size: 10px;
-    line-height: 1.4;
-    margin: 0;
+  .scene-detail__actions {
+    display: flex;
+    gap: var(--space-xs);
     padding-top: var(--space-xs);
     border-top: 1px solid var(--color-line-1);
+    margin-top: auto;
+  }
+  .scene-detail__action {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    background: var(--color-bg-3);
+    color: var(--color-text-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--font-size-body-sm);
+    cursor: pointer;
+    transition:
+      background 0.12s ease,
+      color 0.12s ease;
+  }
+  .scene-detail__action:hover:not(:disabled) {
+    background: var(--color-bg-4);
+    color: var(--color-text-0);
+  }
+  .scene-detail__action:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+  .scene-detail__action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .scene-detail__action--primary {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    border-color: var(--color-primary);
+  }
+  .scene-detail__action--primary:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+  .scene-detail__empty {
+    color: var(--color-text-3);
+    font-size: var(--font-size-body-sm);
+    padding: var(--space-md);
+    text-align: center;
   }
   .library__header {
     display: flex;
@@ -901,6 +1100,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .scene-tile--loading {
     opacity: 0.6;
     cursor: progress;
+  }
+  /* Wave 2.5 Lane LIB.A — selected-but-not-loaded treatment uses a
+     softer outline so it reads distinct from the loaded-scene ring
+     above. */
+  .scene-tile--selected {
+    border-color: var(--color-text-2);
+    box-shadow:
+      var(--shadow-panel),
+      inset 0 0 0 1px var(--color-text-2);
   }
   .scene-tile__thumbnail {
     aspect-ratio: 16 / 10;

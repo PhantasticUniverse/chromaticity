@@ -5,9 +5,16 @@
 // surface (header CTAs, toolbar search + category chips + size
 // selector, scene-tile grid render, BUILT-IN provenance chip,
 // EmptyState with disabled actions, ErrorMessage on full-fetch
-// failure, NewSceneModal toggle, setlist sidebar) plus the W11 PR2
+// failure, NewSceneModal toggle) plus the W11 PR2
 // `Promise.allSettled` partial-result behavior (one failed root must
 // not collapse the merged grid).
+//
+// Wave 2.5 Lane LIB.A: the hardcoded "Your Setlist" sidebar was
+// replaced with a bundle-faithful right rail (SceneCanvas preview +
+// metadata detail panel + Load / Open-in-Author action buttons).
+// The setlist-rendering test was retired; new tests cover the
+// single-click selection model, the Load button's `load_scene` IPC
+// dispatch, and the routeStore handoff to the Author view.
 //
 // Library.svelte calls `invoke` indirectly via `src/lib/stores/library`
 // and `src/lib/ipc/library`. Per the
@@ -136,8 +143,26 @@ function dispatchInvoke(handlers: {
   });
 }
 
+// Wave 2.5 Lane LIB.A — SceneCanvas in the right rail reads
+// `prefers-reduced-motion` via `window.matchMedia`. jsdom does not
+// implement it, so stub per the `feedback_vitest_matchmedia_stubglobal.md`
+// user-memory convention.
+function stubMatchMedia(reduce: boolean): void {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: reduce && query.includes('prefers-reduced-motion: reduce'),
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+}
+
 describe('Library view', () => {
   beforeEach(() => {
+    stubMatchMedia(false);
     invokeMock.mockReset();
     // Default: pending forever — keeps the loading state visible for
     // tests that don't care about post-fetch DOM. clearCache() ensures
@@ -156,10 +181,11 @@ describe('Library view', () => {
     } catch {
       // jsdom-safe; no-op on unavailable storage.
     }
-    // Wave 2.5 LIB.E — reset the module-level loaded-scene + route
-    // singletons so a previous test's successful handoff doesn't leak
-    // `routeStore.current = 'perform'` into the next test's
-    // assertions.
+    // Wave 2.5 LIB.A / LIB.E — reset the module-level loaded-scene +
+    // route singletons so a previous test's successful handoff doesn't
+    // leak `routeStore.current = 'perform'` into the next test's
+    // assertions. The right-rail preview + Open-in-Author handoff key
+    // off the same runes singletons.
     loadedSceneStore.reset();
     routeStore.set('library');
   });
@@ -177,6 +203,7 @@ describe('Library view', () => {
     }
     loadedSceneStore.reset();
     routeStore.set('library');
+    vi.unstubAllGlobals();
   });
 
   it('renders the loading status while the IPC promises stay pending', () => {
@@ -285,10 +312,17 @@ describe('Library view', () => {
       list_scene_packages: () => [],
     });
     const start = performance.now();
-    const { findByText, container } = render(Library);
-    await findByText('Perf Card 0');
+    const { container } = render(Library);
+    // `Perf Card 0` also appears in the LIB.A sidebar (bound to the
+    // first card by default), so scope the wait to the grid.
+    await waitFor(() => {
+      const cards = container.querySelectorAll('.library__grid .scene-tile');
+      expect(cards.length).toBe(50);
+    });
     const durationMs = performance.now() - start;
-    const thumbs = container.querySelectorAll('.scene-tile__thumbnail canvas.scene-still');
+    const thumbs = container.querySelectorAll(
+      '.library__grid .scene-tile__thumbnail canvas.scene-still',
+    );
     expect(thumbs.length).toBe(50);
     expect(durationMs).toBeLessThan(100);
   });
@@ -340,7 +374,10 @@ describe('Library view', () => {
       list_scene_packages: () => USER_CARDS,
     });
     const { findByText, container } = render(Library);
-    await findByText('Welcome');
+    // Wave 2.5 Lane LIB.A: "Welcome" now appears in both the grid tile
+    // AND the right-rail sidebar's selected-card title; await the user
+    // card whose title is unique to the grid instead.
+    await findByText('My Geometric Sketch');
     const grid = container.querySelector('.library__grid');
     expect(grid?.getAttribute('data-size')).toBe('medium');
     const select = container.querySelector('.library__size select') as HTMLSelectElement;
@@ -439,8 +476,11 @@ describe('Library view', () => {
     const { findByText, container, queryByRole } = render(Library);
     // Bundled cards land; user-root failure is swallowed (partial-
     // result path explicitly suppresses the error when the merged
-    // list is non-empty).
-    expect(await findByText('Welcome')).toBeInTheDocument();
+    // list is non-empty). Wave 2.5 Lane LIB.A: "Welcome" now also
+    // appears in the right-rail selected-card title; await "Glitch"
+    // (the second bundled card, unique to the grid because the
+    // sidebar binds to the first card by default).
+    expect(await findByText('Glitch')).toBeInTheDocument();
     expect(container.querySelectorAll('.scene-tile').length).toBe(BUNDLED_CARDS.length);
     expect(queryByRole('alert')).toBeNull();
   });
@@ -799,25 +839,118 @@ describe('Library view', () => {
     expect(findUserTile().classList.contains('scene-tile--loading')).toBe(false);
   });
 
-  it('renders the right-rail setlist sidebar with 14 fixture rows and a single active row', async () => {
+  // Wave 2.5 Lane LIB.A — right-rail scene-detail sidebar.
+  it('renders the scene-detail sidebar bound to the first card on initial load', async () => {
     dispatchInvoke({
       default_scene_root: () => '/user-root',
       list_bundled_scene_packages: () => BUNDLED_CARDS,
       list_scene_packages: () => USER_CARDS,
     });
     const { findByText, container } = render(Library);
-    await findByText('Welcome');
-    const setlist = container.querySelector('.setlist') as HTMLElement;
-    expect(setlist).not.toBeNull();
-    expect(within(setlist).getByText('Your Setlist')).toBeInTheDocument();
-    expect(within(setlist).getByText('14 scenes')).toBeInTheDocument();
-    const rows = setlist.querySelectorAll('.setlist__row');
-    expect(rows.length).toBe(14);
-    // Exactly one row is rendered active (SETLIST_ACTIVE_INDEX = 3).
-    const active = setlist.querySelectorAll('.setlist__row.active');
-    expect(active.length).toBe(1);
-    // Active row is the Glitch row (idx 3 in SETLIST_FIXTURE).
-    expect(active[0]?.textContent).toContain('Glitch');
+    await findByText('My Geometric Sketch');
+    const sidebar = container.querySelector('.scene-detail') as HTMLElement;
+    expect(sidebar).not.toBeNull();
+    // Preview pane renders a SceneCanvas <canvas> per the bundle's
+    // right-rail Preview block.
+    expect(sidebar.querySelector('canvas.scene-canvas')).not.toBeNull();
+    // The sidebar's title binds to the first bundled card by default
+    // (no scene loaded, no manual selection).
+    const title = sidebar.querySelector('.scene-detail__title');
+    expect(title?.textContent).toBe(BUNDLED_CARDS[0]?.title);
+    // Action buttons exist with the bundle-faithful labels.
+    expect(within(sidebar).getByRole('button', { name: /^Load$/ })).toBeInTheDocument();
+    expect(within(sidebar).getByRole('button', { name: /Open in Author/ })).toBeInTheDocument();
+  });
+
+  it('single-click on a scene tile re-binds the sidebar to that card', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    // Click the user card's tile.
+    const grid = container.querySelector('.library__grid') as HTMLElement;
+    const userTile = within(grid).getByLabelText(/Select scene My Geometric Sketch/);
+    await fireEvent.click(userTile);
+    // Sidebar title flips to the clicked card.
+    const sidebar = container.querySelector('.scene-detail') as HTMLElement;
+    const title = sidebar.querySelector('.scene-detail__title');
+    expect(title?.textContent).toBe('My Geometric Sketch');
+    // The selected card surfaces its credit + description + tags + categories.
+    expect(within(sidebar).getByText(/by Xavier/)).toBeInTheDocument();
+    expect(within(sidebar).getByText('User-authored geometric piece')).toBeInTheDocument();
+    const chips = sidebar.querySelectorAll('.scene-detail__chip');
+    // 1 category (Geometric) + 1 tag (custom).
+    expect(chips.length).toBe(2);
+  });
+
+  it('clicking Load fires invoke("load_scene") with the selected card path', async () => {
+    // Bundled fetch returns cards; load_scene resolves with a payload
+    // mirroring the user card so the test exercises the live load path.
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === 'default_scene_root') return '/user-root';
+      if (cmd === 'list_bundled_scene_packages') return BUNDLED_CARDS;
+      if (cmd === 'list_scene_packages') return USER_CARDS;
+      if (cmd === 'load_scene') {
+        const a = args as { path: string };
+        return {
+          id: 'pkg.user.geo',
+          path: a.path,
+          name: 'My Geometric Sketch',
+          credit: 'Xavier',
+          description: 'User-authored geometric piece',
+          controls: [],
+          schema_version: 1,
+        };
+      }
+      throw new Error(`unhandled-${cmd}`);
+    });
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    const grid = container.querySelector('.library__grid') as HTMLElement;
+    await fireEvent.click(within(grid).getByLabelText(/Select scene My Geometric Sketch/));
+    const sidebar = container.querySelector('.scene-detail') as HTMLElement;
+    const loadBtn = within(sidebar).getByRole('button', { name: /^Load$/ });
+    await fireEvent.click(loadBtn);
+    // load_scene received the user card's path through the IPC mock.
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('load_scene', { path: '/user/geo.chroma' });
+    });
+  });
+
+  it('clicking Open in Author loads the selected scene and routes to author', async () => {
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === 'default_scene_root') return '/user-root';
+      if (cmd === 'list_bundled_scene_packages') return BUNDLED_CARDS;
+      if (cmd === 'list_scene_packages') return USER_CARDS;
+      if (cmd === 'load_scene') {
+        const a = args as { path: string };
+        return {
+          id: 'pkg.user.geo',
+          path: a.path,
+          name: 'My Geometric Sketch',
+          credit: 'Xavier',
+          description: 'User-authored geometric piece',
+          controls: [],
+          schema_version: 1,
+        };
+      }
+      throw new Error(`unhandled-${cmd}`);
+    });
+    expect(routeStore.current).toBe('library');
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    const grid = container.querySelector('.library__grid') as HTMLElement;
+    await fireEvent.click(within(grid).getByLabelText(/Select scene My Geometric Sketch/));
+    const sidebar = container.querySelector('.scene-detail') as HTMLElement;
+    const openInAuthor = within(sidebar).getByRole('button', { name: /Open in Author/ });
+    await fireEvent.click(openInAuthor);
+    await waitFor(() => {
+      expect(routeStore.current).toBe('author');
+    });
+    expect(invokeMock).toHaveBeenCalledWith('load_scene', { path: '/user/geo.chroma' });
   });
 
   // ---------------------------------------------------------------
@@ -833,9 +966,14 @@ describe('Library view', () => {
       list_bundled_scene_packages: () => OVERFLOW_TAG_CARDS,
       list_scene_packages: () => [],
     });
-    const { findByText, container } = render(Library);
-    await findByText('Many Tags');
-    const tile = container.querySelector('.scene-tile') as HTMLElement;
+    const { container } = render(Library);
+    // Wait for the grid to land — `Many Tags` also appears in the
+    // LIB.A sidebar (bound to the first card by default), so scope
+    // the wait + the lookup to the grid container.
+    await waitFor(() => {
+      expect(container.querySelector('.library__grid .scene-tile')).not.toBeNull();
+    });
+    const tile = container.querySelector('.library__grid .scene-tile') as HTMLElement;
     expect(tile).not.toBeNull();
     const tagChips = tile.querySelectorAll('.scene-tile__tag');
     // 3 visible tags + 1 overflow chip = 4 total span.scene-tile__tag.
@@ -867,9 +1005,12 @@ describe('Library view', () => {
       list_bundled_scene_packages: () => noTagCards,
       list_scene_packages: () => [],
     });
-    const { findByText, container } = render(Library);
-    await findByText('No Tags');
-    const tile = container.querySelector('.scene-tile') as HTMLElement;
+    const { container } = render(Library);
+    // `No Tags` also appears in the LIB.A sidebar; scope to grid.
+    await waitFor(() => {
+      expect(container.querySelector('.library__grid .scene-tile')).not.toBeNull();
+    });
+    const tile = container.querySelector('.library__grid .scene-tile') as HTMLElement;
     expect(tile).not.toBeNull();
     expect(tile.querySelector('.scene-tile__tags')).toBeNull();
   });
