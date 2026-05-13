@@ -31,7 +31,9 @@
 //  11. Scene-row click marks aria-current and pulses the active row
 //  12. Rail mode buttons toggle aria-pressed (scenes / presets / edit / add)
 //  13. Perform / Edit mode toggle marks the primary button
-//  14. Setlist <select> binds to setlistChoice and lists all options
+//  14. Media tab filter — Live shows webcam-kind only, Media excludes
+//      webcam (Wave 2.4 Lane PERF.E); the prior setlist-<select>
+//      coverage retired with the dropdown.
 //  15. Default-paint state matches fixture defaults (active scene/media indices)
 
 import '@testing-library/jest-dom/vitest';
@@ -54,12 +56,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import Perform from './Perform.svelte';
-import {
-  MEDIA_CARDS,
-  MEDIA_DEFAULT_ACTIVE_INDEX,
-  MEDIA_TABS,
-  SETLIST_OPTIONS,
-} from '../data/perform-fixtures';
+import { MEDIA_CARDS, MEDIA_DEFAULT_ACTIVE_INDEX, MEDIA_TABS } from '../data/perform-fixtures';
 import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
 import { performVariantStore } from '../stores/performVariant.svelte';
 import { playlistStore } from '../stores/playlist.svelte';
@@ -333,21 +330,33 @@ describe('Perform view', () => {
     expect(performBtn).not.toHaveClass('btn--primary');
   });
 
-  it('setlist <select> lists all SETLIST_OPTIONS and binds to the chosen value', async () => {
-    const { getByLabelText } = render(Perform);
-    const select = getByLabelText('Active setlist') as HTMLSelectElement;
-    expect(select).toBeInTheDocument();
-    // All option labels exist in the DOM.
-    for (const opt of SETLIST_OPTIONS) {
-      expect(within(select).getByText(opt)).toBeInTheDocument();
-    }
-    // Default value is the first option.
-    expect(select.value).toBe(SETLIST_OPTIONS[0]);
-    const second = SETLIST_OPTIONS[1];
-    expect(second).toBeDefined();
-    if (!second) return;
-    await fireEvent.change(select, { target: { value: second } });
-    expect(select.value).toBe(second);
+  it('clicking the Live media tab filters the grid to live-capture cards (webcam kind)', async () => {
+    // Wave 2.4 Lane PERF.E — tab pills now filter MEDIA_CARDS by `kind`:
+    //   - `all`   → every card
+    //   - `live`  → live-capture sources (`webcam` kind covers
+    //               webcam + display tiles)
+    //   - `media` → non-live (`none` / `video` / `test`)
+    // The bundle's three tabs (`all` / `live` / `media`) map onto the
+    // four fixture kinds per the JSX docstring; the brief's later
+    // `videos / stills / webgl / webcam / test` taxonomy was not the
+    // tree's shape so this lane honours the existing fixture surface.
+    const { container, getByRole } = render(Perform);
+    // Default: all 15 cards render under the `all` tab.
+    expect(container.querySelectorAll('.media-card').length).toBe(MEDIA_CARDS.length);
+    const tablist = getByRole('tablist', { name: 'Media filter' });
+    const liveTab = within(tablist).getByRole('tab', { name: 'live' });
+    await fireEvent.click(liveTab);
+    // Only the 2 webcam-kind cards remain.
+    const webcamCount = MEDIA_CARDS.filter((c) => c.kind === 'webcam').length;
+    expect(webcamCount).toBe(2);
+    expect(container.querySelectorAll('.media-card').length).toBe(webcamCount);
+    // Switch back to `all` — grid restores to the full 15.
+    await fireEvent.click(within(tablist).getByRole('tab', { name: 'all' }));
+    expect(container.querySelectorAll('.media-card').length).toBe(MEDIA_CARDS.length);
+    // Switch to `media` — only non-webcam cards (`none` / `video` / `test`).
+    await fireEvent.click(within(tablist).getByRole('tab', { name: 'media' }));
+    const mediaCount = MEDIA_CARDS.filter((c) => c.kind !== 'webcam').length;
+    expect(container.querySelectorAll('.media-card').length).toBe(mediaCount);
   });
 
   it('renders the default Glitch preview label and Previous / Next nav buttons', () => {
