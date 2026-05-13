@@ -70,12 +70,29 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // each band damps the noise without erasing real audio onsets.
   // Skipped entirely when `bands` is caller-supplied (tests / custom
   // device-driven values) and when there's no snapshot.
+  //
+  // Wave 2.9 SC.C — the smoothed bar *fill width* was stable but the
+  // integer-percent text label still flickered ±1% across consecutive
+  // frames because `Math.round(value * 100)` quantizes the smooth
+  // 21.0-23.4% drift into discrete `46→47→46→45→46` integers. Add a
+  // small hysteresis on the *displayed* integer percent (separate from
+  // the smoothed value driving the bar width) so the label only flips
+  // when the smoothed value crosses ±0.6 past the previous integer
+  // boundary. The fill width stays unchanged so visual responsiveness
+  // is preserved.
   let smoothedBands = $state<readonly number[]>([0, 0, 0, 0]);
+  let displayedBandPct = $state<readonly number[]>([0, 0, 0, 0]);
   $effect(() => {
     if (bands || snapshot !== undefined) return;
     let raf = 0;
     const s = [0, 0, 0, 0];
+    const displayed = [-1, -1, -1, -1]; // -1 sentinel = first observation
     const EMA = 0.25;
+    // Hysteresis margin in percent points. Once a label shows N%, the
+    // smoothed value must move below (N - 0.6) or to or above (N + 1.6)
+    // to flip. With smoothed-frame deltas of ~1% under typical jitter,
+    // this eliminates frame-to-frame label oscillation.
+    const HYST = 0.6;
     const tick = (): void => {
       const snap = untrack(() => audioSnapshotStore.snapshot);
       if (snap) {
@@ -83,8 +100,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         const tiles = [(f[0] + f[1]) / 2, (f[2] + f[3]) / 2, (f[4] + f[5]) / 2, (f[6] + f[7]) / 2];
         for (let i = 0; i < 4; i++) {
           s[i] = (s[i] ?? 0) + ((tiles[i] ?? 0) - (s[i] ?? 0)) * EMA;
+          const pct = (s[i] ?? 0) * 100;
+          const cur = displayed[i] ?? -1;
+          if (cur < 0) {
+            displayed[i] = Math.round(pct);
+          } else if (pct < cur - HYST || pct >= cur + 1 + HYST) {
+            displayed[i] = Math.round(pct);
+          }
         }
         smoothedBands = [s[0] ?? 0, s[1] ?? 0, s[2] ?? 0, s[3] ?? 0];
+        displayedBandPct = [
+          displayed[0] ?? 0,
+          displayed[1] ?? 0,
+          displayed[2] ?? 0,
+          displayed[3] ?? 0,
+        ];
       }
       raf = requestAnimationFrame(tick);
     };
@@ -145,6 +175,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           ? tilesFromValues(smoothedBands)
           : DEFAULT_BANDS),
   );
+
+  // True iff the rAF-smoothing path is active (no caller-supplied
+  // `bands` / `snapshot`, and a live snapshot exists). The hysteresis-
+  // stabilized integer percent in `displayedBandPct` is the label
+  // source only in this path; all other paths keep the synchronous
+  // `Math.round(value * 100)` behaviour so the test contract (the
+  // existing 7 percent-text assertions in `AudioReactivity.test.ts`)
+  // stays exact.
+  const useHystPct = $derived(!bands && snapshot === undefined && liveSnapshot !== null);
 
   const FFT_BAR_COUNT = 48;
   const FFT_VIEW_W = 100;
@@ -223,7 +262,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
 <div class="audio-reactivity" role="img" aria-label="Audio reactivity preview">
   <div class="audio-reactivity__bands">
-    {#each renderBands as band (band.name)}
+    {#each renderBands as band, i (band.name)}
       <div class="audio-reactivity__band">
         <div class="audio-reactivity__band-name">{band.name}</div>
         <div class="audio-reactivity__band-track">
@@ -232,7 +271,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             style="width: {Math.max(0, Math.min(1, band.value)) * 100}%; background: {band.tint};"
           ></div>
         </div>
-        <div class="audio-reactivity__band-pct">{Math.round(band.value * 100)}%</div>
+        <div class="audio-reactivity__band-pct">
+          {useHystPct ? (displayedBandPct[i] ?? 0) : Math.round(band.value * 100)}%
+        </div>
       </div>
     {/each}
   </div>
