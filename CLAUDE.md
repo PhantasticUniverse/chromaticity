@@ -224,7 +224,7 @@ the additive design — corpora continue to use `commit_all_into` directly with
 - **Post-MVP UX enhancements** — Spectrum widget retrofit + `AudioReactivity`
   48-bar FFT visualiser live wiring (`EV-AUDIO-UNIFORM-IPC` narrowing).
 
-### Live cross-seam dispatch verified (Wave 1c-α-2 audio + Wave 2.1 main loop, 2026-05-11)
+### Live cross-seam dispatch verified (Wave 1c-α-2 audio + Wave 2.1 main loop + Wave 2.2/2.3/2.4/2.5 page-by-page solidification, 2026-05-13)
 
 **Audio IPC seam (Wave 1c-α-2, 2026-05-06).** `engine/audio::AudioRuntime`
 spawns the producer thread feeding `Arc<Mutex<AudioUniformSnapshot>>`;
@@ -324,6 +324,152 @@ local unsigned build. Cumulative wiring:
   Settings TOML store (C.3 dep) under an OSC section that survives
   restart.
 
+**Wave 2.2 scene-renderer wiring + shader sourcing research (2026-05-11
+through 2026-05-12).** Two PRs landed under Wave 2.2:
+
+- **SceneCanvas + SceneStill wired into Perform / Library / Playlist /
+  Author preview panes** (Lane R.1, PR `#448` / `c4cb080`) — the 16
+  canvas-2d procedural scene renderers under
+  `src/lib/widgets/scene-renderers.ts` now drive four production preview
+  surfaces. Perform's `previewHero` snippet swaps the 5-blob gradient
+  placeholder for `<SceneCanvas>` keyed off the loaded scene's
+  metadata; Library scene-card thumbnails read `<SceneStill>`;
+  Playlist's cue table gains a thumbnail column; Author's gradient-blob
+  live-preview tile renders `<SceneCanvas>` keyed off
+  `AUTHOR_SCENE_META.title`. Cross-surface consistency comes from a
+  new `src/lib/widgets/scene-kind-from-metadata.ts` priority pipeline
+  resolving any metadata-like shape to one of the 16 SceneKinds. This
+  does NOT bridge the live GPU render pipeline — it's canvas-2d
+  procedural visuals only; ADR-011 Phase-2+ remains the gating gap.
+- **External shader source research catalog** (Lane R.2, PR `#447` /
+  `91d3c80`) — research-only; new `docs/56-shader-sourcing-research.md`
+  surveys 13 candidate sources against `docs/29` distribution policy +
+  `deny.toml` allowlist. Lygia recommendation: continue Phase-3 trial,
+  pre-stage glslify alternatives, AO commercial dialogue at Phase-4
+  EXIT. Final commercial-use election deferred to Phase-5
+  `EV-LICENSE-AUDIT`. No code / vendoring / `deny.toml` edits.
+
+**Wave 2.3 renderer pipeline fixes + Perform layout fidelity
+(2026-05-12).** Two fix PRs surfaced from AO smoke testing of Wave 2.2
+R.1:
+
+- **Renderer signature + composition fixes** (Lane Q.1, PR `#449` /
+  `2dd9c36`) — 11 of 16 renderers had silently dropped the bundle's
+  6th `lvl` parameter from their declarations (TypeScript structural
+  typing accepted the under-arity but left the `lvl` axis
+  unobservable); all 16 now declare `(ctx, t, seed, w, h, lvl)`. Every
+  renderer reads `lvl` for at least one visual axis with coupling
+  envelope `pulse(lvl) = 0.6 + lvl * 0.4` (60% intensity at silent
+  audio). Four SceneCanvas composition narrowings fixed: ResizeObserver
+  no longer races rAF (clear-on-resize debounced), DPR-aware sizing,
+  audio gate against the loaded-scene store, vignette overlay
+  retained.
+- **Perform STANDARD layout fidelity** (Lane Q.2, PR `#450` /
+  `f5154a5`) — 14-gap layout reconciliation against the bundle's
+  `views/perform.jsx` classic variant. Sidebar collapsed to 52 px
+  icon-only rail; integrated-GPU banner default-off; VuStereo
+  duplication removed; A/B CrossFader removed; plus two follow-on
+  niggles (COLOR group overflow + media tile preview clipping).
+
+**Wave 2.4 Perform-page wiring solidification (2026-05-12).** Six PRs
+in parallel closed every remaining cosmetic-chrome surface on Perform:
+
+- **Action buttons** (Lane PERF.A, PR `#453` / `8c7351d`) — six
+  previously-stub buttons wired (Default / Random / Lock-all on both
+  Scene Controls and Meta Controls panels); new
+  `src/lib/stores/controlLock.svelte.ts` `SvelteSet`-backed singleton
+  drives the per-row lock store; `dispatchControl` short-circuits on
+  locked IDs so the engine never sees suppressed values; per-row dim
+  affordance via `data-locked="true"` + scoped CSS.
+- **Scene-list click-to-load** (Lane PERF.B, PR `#455` / `917e7b3`) —
+  Perform right-column scene list dispatches `load_scene` on click; the
+  local `activeScene` index gives way to a derived `loadedSceneId`
+  read from `loadedSceneStore.snapshot?.id`; new
+  `src/lib/data/perform-setlist-resolver.ts` maps the bundle's
+  `SETLIST_FIXTURE` row titles to the Wave 1d-β clean-room corpus (4
+  of 12 rows resolve to closest-kind pairings; the remaining 8 return
+  `null` and stay display-only pending a future-wave corpus widening).
+- **Preset save engine widening** (Lane PERF.C, PR `#456` / `b3eb001`)
+  — closes the "scene-author preset capture" axis the Phase-3
+  `EV-PRESET-PLAYLIST` narrowing deferred. New `Command::PresetSave` +
+  `EventPayload::PresetSaved` variants; `PresetStore` carries a
+  `HashMap`-backed `banks` field keyed by `PresetId`; `State::apply_event`
+  for `PresetSaved` clones `control_store.values` into the bank. Cmd-
+  click on a preset slot saves; click recalls. **In-process snapshot
+  only** — Settings-TOML disk persistence deferred (carries forward as
+  a future-wave concern if user feedback warrants).
+- **Adapter pill liveness** (Lane PERF.D, PR `#454` / `aca28c3`) — the
+  TopBar adapter pills (OUT / MIDI / OSC) wire to live cross-seam state,
+  replacing the hard-coded `STATUS_PILLS` fixture. OUT pill reads
+  `loadedSceneStore.snapshot` (`ok` when a scene is loaded); MIDI pill
+  reads `midiStore.devices` (`ok` when ≥1 device enumerated); OSC pill
+  reads a new `oscHealthStore` polling `osc_health_snapshot` every 5 s.
+- **Media filter + dead-control drop** (Lane PERF.E, PR `#452` /
+  `5e2a1f9`) — Perform's media-tab pills filter the media grid; three
+  dead controls dropped (Setlist dropdown / Play Setlist button / media
+  Refresh). Tabs map `all` / `live` / `media` against the `MediaCardKind`
+  union (`none` / `webcam` / `video` / `test`).
+- **SnapBar slot labels** (Lane PERF.F, PR `#451` / `e0276c5`) —
+  right-click any SnapBar slot to set a custom label ("Intro" / "Drop"
+  / "Outro" etc.). Labels persist in localStorage across restarts via
+  the new `src/lib/stores/snapLabels.svelte.ts` class-instance
+  singleton. **Engine snap state stays binary saved/unsaved** —
+  Settings-TOML disk persistence deferred.
+
+**Wave 2.5 Library-page wiring solidification (2026-05-12 through
+2026-05-13).** Five PRs in parallel closed the remaining drift on the
+Library view:
+
+- **Sidebar preview + metadata + Author handoff** (Lane LIB.A, PR
+  `#461` / `c6f55cc`) — the carry-over `SETLIST_FIXTURE` "Your Setlist"
+  sidebar (a W9 placeholder absent from the canonical wireframe) gives
+  way to the bundle-faithful right pane: a `<SceneCanvas>` preview
+  keyed off scene metadata, a metadata detail column (title / source
+  pill / credit / description / category + tag chips / controls-count
+  badge), and a pair of action buttons that round-trip through the
+  Wave 2.1 A.1 `load_scene` IPC seam. Includes an Open-in-Author
+  handoff.
+- **Tag badges + favorites** (Lane LIB.B, PR `#459` / `3729e6c`) —
+  tag chips overlay each scene card thumbnail (top-left, max 3 visible
+  with a `+N more` overflow pill); heart-icon button overlays top-right
+  toggling localStorage-backed favorite membership via a new
+  `src/lib/stores/libraryFavorites.svelte.ts` `SvelteSet`-of-id
+  singleton; new FAVORITES filter chip narrows the grid to favorited
+  cards only. **Frontend-only** — engine support intentionally
+  deferred per the clean-room scene-write narrowing.
+- **Source filter + recent + sort** (Lane LIB.C, PR `#458` /
+  `e337373`) — three filter / sort axes ported from the bundle's
+  panel-head + toolbar: source `<select>` (`all` / `built-in` /
+  `my-scenes`); new `libraryRecent.svelte.ts` localStorage store
+  (max 20 entries, prepend-on-push with de-dup); `RECENT` chip; sort
+  `<select>` (`id` / `title` / `recent` / `favorites`). **Frontend-
+  only** — engine support intentionally deferred per the clean-room
+  scene-write narrowing.
+- **Card thumbnails fade-in + 50-card budget** (Lane LIB.D, PR `#457`
+  / `85b88f0`) — note: the structural `SceneStill` wiring already
+  shipped in Wave 2.2 R.1 via `sceneKindFromMetadata` /
+  `sceneSeedFromMetadata` against each `SceneCard`; this lane closes
+  the two remaining items — first-paint fade-in CSS animation (240 ms
+  ease-out, suppressed under `prefers-reduced-motion: reduce`) + two
+  synthetic-corpus regression guards (kind-resolution spot-check +
+  50-card mount under 100 ms budget).
+- **Empty state polish + double-click handoff** (Lane LIB.E, PR
+  `#460` / `c67767f`) — `EmptyState.svelte` gains an optional `meta`
+  prop for the supported-formats footnote (".chroma · .chromaPack ·
+  .synScene conversion · Shadertoy URL · ISF reject"); a second copy
+  entry `EMPTY_LIBRARY_FILTERED` covers the search-filter-exclude-all
+  branch; per-card `loadingPath` state renders `aria-busy="true"` on
+  the actively-loading tile (sibling tiles stay unaffected).
+
+**DESIGN.md alignment (PR `#462` / `bd9eb96`, 2026-05-13).** Routine
+token-contract reconciliation against the rendered shell per
+`DESIGN.md`'s own "the shell wins" rule. Four divergences corrected:
+`rail.width` `48px → 76px`; `status-bar.height` `22px → 28px`; ASCII
+layout block updated; Snap panel anatomy "16-slot grid → 8-slot grid"
+(engine has 16, SnapBar trims to 8 per `SNAP_SLOT_COUNT` in
+`snap.svelte.ts`). Snap panel paragraph also gains a one-sentence note
+about the Wave 2.4 PERF.F slot-label affordance.
+
 **What remains synthetic-only.**
 
 - **Live preview render pipeline** — ADR-011 Phase-2+ deferred. Dragging a
@@ -340,15 +486,28 @@ local unsigned build. Cumulative wiring:
   the Phase-4d narrowings.
 - **MIDI multi-message learn capture** — Wave 2.1 D.2 ships single-message
   MVP only; multi-message capture (debounce + abort + composite binding)
-  is Wave 2.2 scope.
+  carries forward as a future-wave follow-up (Wave 2.2 ended up doing
+  scene-renderer wiring + shader sourcing research, not MIDI work).
 - **MIDI binding-to-control assignment** — D.2 captures the learned event +
   stores to localStorage but does not yet apply the binding to a specific
-  control id; the wire from learn-store → control-store is Wave 2.2
-  scope.
+  control id; the wire from learn-store → control-store carries forward
+  as a future-wave follow-up.
 - **Shuffle advance** — engine has no shuffle command; the Perform right-
   column "Shuffle" button advances by +1 like Next (visual-only label).
 - **Top bar Camera / Record buttons** — visual stubs only; real camera +
-  record wiring is Wave 2.2 scope.
+  record wiring rides the Wave 1c-β follow-ups (per-platform `nokhwa`
+  bindings + Syphon `publish_syphon_output`) rather than the Wave 2.x
+  page-by-page series.
+- **Perform preset save disk persistence** — Wave 2.4 PERF.C widened the
+  engine with `Command::PresetSave` for in-process snapshot capture, but
+  Settings-TOML disk persistence is deferred.
+- **SnapBar slot labels disk persistence** — Wave 2.4 PERF.F persists
+  custom slot labels through localStorage only; engine snap state stays
+  binary saved/unsaved with no Settings-TOML disk persistence yet.
+- **Library favorites + recent + source-filter engine support** — Wave 2.5
+  LIB.B / LIB.C ship frontend-only stores (`libraryFavorites.svelte.ts` +
+  `libraryRecent.svelte.ts`) backed by localStorage; engine-side support
+  intentionally deferred per the clean-room scene-write narrowing.
 
 ## Fast commands
 
