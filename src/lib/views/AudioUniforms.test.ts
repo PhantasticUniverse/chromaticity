@@ -33,6 +33,7 @@ import {
   HOW_TO_USE_BLOCKS,
   SPECTRUM_BAR_COUNT,
 } from '../data/audio-uniform-fixtures';
+import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal(
@@ -58,6 +59,10 @@ describe('AudioUniforms view', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    // Reset the shared singleton between tests so the Snapshot-button
+    // suite (which writes a live snapshot) cannot leak state into the
+    // default-null assertions of sibling tests.
+    audioSnapshotStore.snapshot = null;
     cleanup();
   });
 
@@ -79,11 +84,110 @@ describe('AudioUniforms view', () => {
     expect(getByText('Freeze')).toBeInTheDocument();
   });
 
-  it('renders the disabled Snapshot button as a Phase-3+ stub', () => {
+  it('disables the Snapshot button when no live audio snapshot is present', () => {
+    audioSnapshotStore.snapshot = null;
     const { getByRole } = render(AudioUniforms);
     const snap = getByRole('button', { name: 'Snapshot' });
     expect(snap).toBeDisabled();
-    expect(snap).toHaveAttribute('title', expect.stringMatching(/Phase-3/));
+    expect(snap).toHaveAttribute('aria-disabled', 'true');
+    expect(snap.getAttribute('title')).toMatch(/waiting/i);
+  });
+
+  it('enables the Snapshot button when audioSnapshotStore holds a live snapshot', async () => {
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      rms: 0.3,
+      peak: 0.6,
+      fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+    };
+    const { getByRole } = render(AudioUniforms);
+    // Microtask flush for the $derived recomputation.
+    await Promise.resolve();
+    const snap = getByRole('button', { name: 'Snapshot' });
+    expect(snap).not.toBeDisabled();
+    expect(snap).toHaveAttribute('aria-disabled', 'false');
+    expect(snap.getAttribute('title')).toMatch(/capture/i);
+  });
+
+  it('captures the live snapshot as a JSON blob download when clicked', async () => {
+    audioSnapshotStore.snapshot = {
+      bpm: 132.5,
+      rms: 0.42,
+      peak: 0.81,
+      fft_bands: [0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88],
+    };
+    // Capture the Blob handed to URL.createObjectURL so we can read its
+    // text contents back out and verify the JSON payload shape.
+    let capturedBlob: Blob | null = null;
+    const createObjectUrl = vi.fn((blob: Blob): string => {
+      capturedBlob = blob;
+      return 'blob:mock-snapshot-url';
+    });
+    const revokeObjectUrl = vi.fn();
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: createObjectUrl,
+      revokeObjectURL: revokeObjectUrl,
+    });
+    // Intercept the temp anchor's `.click()` so the test does not actually
+    // navigate / trigger a real download in jsdom.
+    const anchorClicks: HTMLAnchorElement[] = [];
+    const originalCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi
+      .spyOn(document, 'createElement')
+      .mockImplementation((tagName: string) => {
+        const el = originalCreateElement(tagName);
+        if (tagName.toLowerCase() === 'a') {
+          const anchor = el as HTMLAnchorElement;
+          anchor.click = (): void => {
+            anchorClicks.push(anchor);
+          };
+        }
+        return el;
+      });
+    const { getByRole } = render(AudioUniforms);
+    await Promise.resolve();
+    const snap = getByRole('button', { name: 'Snapshot' });
+    await fireEvent.click(snap);
+    expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    expect(revokeObjectUrl).toHaveBeenCalledTimes(1);
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:mock-snapshot-url');
+    expect(anchorClicks.length).toBe(1);
+    const anchor = anchorClicks[0];
+    expect(anchor?.getAttribute('href')).toBe('blob:mock-snapshot-url');
+    expect(anchor?.getAttribute('download')).toMatch(/^audio-snapshot-.*\.json$/);
+    expect(capturedBlob).not.toBeNull();
+    if (capturedBlob !== null) {
+      expect((capturedBlob as Blob).type).toBe('application/json');
+      const text = await (capturedBlob as Blob).text();
+      const parsed = JSON.parse(text) as {
+        bpm: number;
+        rms: number;
+        peak: number;
+        fft_bands: number[];
+        captured_at: string;
+      };
+      expect(parsed.bpm).toBe(132.5);
+      expect(parsed.rms).toBeCloseTo(0.42);
+      expect(parsed.peak).toBeCloseTo(0.81);
+      expect(parsed.fft_bands).toEqual([0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88]);
+      // captured_at is an ISO-8601 timestamp emitted at click time.
+      expect(parsed.captured_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    }
+    createElementSpy.mockRestore();
+  });
+
+  it('is a no-op when the Snapshot button is clicked with no live snapshot', async () => {
+    audioSnapshotStore.snapshot = null;
+    const createObjectUrl = vi.fn((): string => 'blob:should-not-be-called');
+    vi.stubGlobal('URL', { ...URL, createObjectURL: createObjectUrl });
+    const { getByRole } = render(AudioUniforms);
+    const snap = getByRole('button', { name: 'Snapshot' });
+    // The button is ARIA-disabled; click handlers can still fire through
+    // fireEvent.click in tests but the guard short-circuits before any
+    // Blob / URL machinery runs.
+    await fireEvent.click(snap);
+    expect(createObjectUrl).not.toHaveBeenCalled();
   });
 
   it('renders the spectrum hero with peak / rms / source stats and 64 SVG bars', () => {
