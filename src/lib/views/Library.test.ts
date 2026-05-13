@@ -44,6 +44,8 @@ import Library from './Library.svelte';
 import { clearCache } from '../stores/library';
 import { libraryFavoritesStore } from '../stores/libraryFavorites.svelte';
 import { libraryRecentStore } from '../stores/libraryRecent.svelte';
+import { loadedSceneStore } from '../stores/loadedScene.svelte';
+import { routeStore } from '../stores/route.svelte';
 import { sceneKindFromMetadata } from '../widgets/scene-kind-from-metadata';
 
 const RECENT_STORAGE_KEY = 'library-recent';
@@ -115,6 +117,7 @@ function dispatchInvoke(handlers: {
   default_scene_root?: () => string | Promise<string>;
   list_bundled_scene_packages?: () => unknown | Promise<unknown>;
   list_scene_packages?: (args: { root: string }) => unknown | Promise<unknown>;
+  load_scene?: (args: { path: string }) => unknown | Promise<unknown>;
 }): void {
   invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
     if (cmd === 'default_scene_root' && handlers.default_scene_root) {
@@ -125,6 +128,9 @@ function dispatchInvoke(handlers: {
     }
     if (cmd === 'list_scene_packages' && handlers.list_scene_packages) {
       return handlers.list_scene_packages(args as { root: string });
+    }
+    if (cmd === 'load_scene' && handlers.load_scene) {
+      return handlers.load_scene(args as { path: string });
     }
     throw new Error(`unhandled-${cmd}`);
   });
@@ -150,6 +156,12 @@ describe('Library view', () => {
     } catch {
       // jsdom-safe; no-op on unavailable storage.
     }
+    // Wave 2.5 LIB.E — reset the module-level loaded-scene + route
+    // singletons so a previous test's successful handoff doesn't leak
+    // `routeStore.current = 'perform'` into the next test's
+    // assertions.
+    loadedSceneStore.reset();
+    routeStore.set('library');
   });
 
   afterEach(() => {
@@ -163,6 +175,8 @@ describe('Library view', () => {
     } catch {
       // jsdom-safe; no-op on unavailable storage.
     }
+    loadedSceneStore.reset();
+    routeStore.set('library');
   });
 
   it('renders the loading status while the IPC promises stay pending', () => {
@@ -361,6 +375,42 @@ describe('Library view', () => {
     expect(container.querySelector('.library__toolbar')).toBeNull();
     expect(container.querySelector('.library__grid')).toBeNull();
     expect(container.querySelector('.library__count')).toBeNull();
+    // Wave 2.5 LIB.E — supported-formats footnote renders below the
+    // action buttons. Mirrors `empty_states.jsx::EmptyLibrary` meta
+    // line 55.
+    const meta = container.querySelector('.empty-state-meta');
+    expect(meta).not.toBeNull();
+    expect(meta?.textContent).toContain('.chroma');
+    expect(meta?.textContent).toContain('.chromaPack');
+    expect(meta?.textContent).toContain('Shadertoy');
+  });
+
+  it('renders the filtered-empty state with the supported-formats footnote when search excludes everything (LIB.E)', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    const { findByLabelText, container } = render(Library);
+    // Wait for the toolbar to land then narrow the grid to zero matches.
+    const search = (await findByLabelText('filter scenes')) as HTMLInputElement;
+    await fireEvent.input(search, { target: { value: 'no-such-scene-token' } });
+    // Filtered-empty state lands with the LIB.E copy.
+    const emptyState = container.querySelector('.empty-state');
+    expect(emptyState).not.toBeNull();
+    expect(emptyState?.querySelector('.empty-state-title')?.textContent).toBe('No scenes match');
+    // Supported-formats meta line ports across the filtered case.
+    const meta = container.querySelector('.empty-state-meta');
+    expect(meta?.textContent).toContain('.chroma');
+    expect(meta?.textContent).toContain('.chromaPack');
+    expect(meta?.textContent).toContain('Shadertoy');
+    // No action buttons in the filtered-empty case (the toolbar above
+    // is the actionable surface — clear query / chips).
+    expect(container.querySelector('.empty-state-actions')).toBeNull();
+    // Grid is hidden while filtered-empty is rendered.
+    expect(container.querySelector('.library__grid')).toBeNull();
+    // Toolbar stays mounted so the operator can clear the filter.
+    expect(container.querySelector('.library__toolbar')).not.toBeNull();
   });
 
   it('renders ErrorMessage when both root fetches reject (full-fetch failure path)', async () => {
@@ -599,6 +649,154 @@ describe('Library view', () => {
     await fireEvent.click(recentChip);
     expect(recentChip).toHaveAttribute('aria-pressed', 'false');
     expect(container.querySelectorAll('.scene-tile').length).toBe(3);
+  });
+
+  // -- Wave 2.5 Lane LIB.E — double-click load handoff --
+
+  it('double-click on a scene tile invokes load_scene and routes to Perform on success (LIB.E)', async () => {
+    const LOADED_PAYLOAD = {
+      id: 'pkg.user.geo',
+      path: '/user/geo.chroma',
+      name: 'My Geometric Sketch',
+      credit: 'Xavier',
+      description: 'User-authored geometric piece',
+      controls: [],
+      schema_version: 1,
+    };
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+      load_scene: () => LOADED_PAYLOAD,
+    });
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    // Initial route is 'library' (set in beforeEach).
+    expect(routeStore.current).toBe('library');
+    // Locate the user-card tile and double-click it.
+    const tiles = container.querySelectorAll('.scene-tile');
+    const userTile = Array.from(tiles).find((t) =>
+      t.textContent?.includes('My Geometric Sketch'),
+    ) as HTMLElement | undefined;
+    expect(userTile).not.toBeUndefined();
+    await fireEvent.dblClick(userTile as HTMLElement);
+    // load_scene was dispatched with the card's path.
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('load_scene', {
+        path: '/user/geo.chroma',
+      });
+    });
+    // Route flipped to Perform.
+    await waitFor(() => {
+      expect(routeStore.current).toBe('perform');
+    });
+    // Loaded-scene store hydrated.
+    expect(loadedSceneStore.snapshot?.path).toBe('/user/geo.chroma');
+    expect(loadedSceneStore.error).toBeNull();
+  });
+
+  it('double-click with load_scene rejection leaves the route on library and surfaces the error (LIB.E)', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+      load_scene: () => Promise.reject(new Error('scene.json malformed')),
+    });
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    expect(routeStore.current).toBe('library');
+    const tiles = container.querySelectorAll('.scene-tile');
+    const userTile = Array.from(tiles).find((t) =>
+      t.textContent?.includes('My Geometric Sketch'),
+    ) as HTMLElement | undefined;
+    expect(userTile).not.toBeUndefined();
+    await fireEvent.dblClick(userTile as HTMLElement);
+    // load_scene was dispatched, but the rejection bounces through
+    // loadedSceneStore.error and the route handoff is gated on the
+    // truthy payload (which is `null` on failure).
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('load_scene', {
+        path: '/user/geo.chroma',
+      });
+    });
+    await waitFor(() => {
+      expect(loadedSceneStore.error).toBe('scene.json malformed');
+    });
+    expect(loadedSceneStore.snapshot).toBeNull();
+    // Route stays on Library — handoff is success-gated.
+    expect(routeStore.current).toBe('library');
+  });
+
+  it('double-clicked tile carries aria-busy="true" while load_scene is in flight (LIB.E)', async () => {
+    let resolveLoad: (payload: unknown) => void = () => {};
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+      load_scene: () =>
+        new Promise((res) => {
+          resolveLoad = res;
+        }),
+    });
+    const { findByText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    // Re-query helper — Svelte 5's `{#each}` block may swap nodes
+    // across re-renders when the `class` directive flips, so we
+    // always re-resolve the user tile from the live DOM instead of
+    // holding a stale reference.
+    const findUserTile = (): HTMLElement => {
+      const tiles = container.querySelectorAll('.scene-tile');
+      const tile = Array.from(tiles).find((t) => t.textContent?.includes('My Geometric Sketch'));
+      expect(tile).not.toBeUndefined();
+      return tile as HTMLElement;
+    };
+    // Pre-click: no aria-busy on any tile.
+    expect(findUserTile().getAttribute('aria-busy')).toBeNull();
+    await fireEvent.dblClick(findUserTile());
+    // In-flight: the clicked tile carries aria-busy="true" + the
+    // dimmed-loading class. Sibling tiles do not. `aria-busy` flips
+    // synchronously with `loadingPath` (set before the `await
+    // loadedSceneStore.load(...)` boundary) so a one-frame `waitFor`
+    // settles immediately.
+    await waitFor(() => {
+      expect(findUserTile().getAttribute('aria-busy')).toBe('true');
+    });
+    expect(findUserTile().classList.contains('scene-tile--loading')).toBe(true);
+    const otherTiles = Array.from(container.querySelectorAll('.scene-tile')).filter(
+      (t) => !t.textContent?.includes('My Geometric Sketch'),
+    );
+    expect(otherTiles.length).toBeGreaterThan(0);
+    for (const t of otherTiles) {
+      expect(t.getAttribute('aria-busy')).toBeNull();
+      expect(t.classList.contains('scene-tile--loading')).toBe(false);
+    }
+    // Wait for the invoke mock to actually receive `load_scene` —
+    // there is a dynamic `import('@tauri-apps/api/core')` microtask
+    // boundary inside `loadedSceneStore.load()` between the
+    // `loadingPath` write (synchronous, what `aria-busy` reads) and
+    // the `invoke()` call (asynchronous, where `resolveLoad` is
+    // captured). Without this wait, `resolveLoad` is still the
+    // initial dummy when we call it below and the load promise
+    // hangs forever.
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('load_scene', {
+        path: '/user/geo.chroma',
+      });
+    });
+    // Resolve the in-flight load; aria-busy + dim class flip off.
+    resolveLoad({
+      id: 'pkg.user.geo',
+      path: '/user/geo.chroma',
+      name: 'My Geometric Sketch',
+      credit: 'Xavier',
+      description: '',
+      controls: [],
+      schema_version: 1,
+    });
+    await waitFor(() => {
+      expect(findUserTile().getAttribute('aria-busy')).toBeNull();
+    });
+    expect(findUserTile().classList.contains('scene-tile--loading')).toBe(false);
   });
 
   it('renders the right-rail setlist sidebar with 14 fixture rows and a single active row', async () => {

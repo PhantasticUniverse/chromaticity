@@ -16,9 +16,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // realize `EV-LIBRARY-DISCOVERY` row 40 (default-root + hardcoded-
   // categories scope; dynamic vocabulary is gated on docs/38 §4 catalog
   // promotion).
+  import { untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
-  import { EMPTY_LIBRARY } from '../data/empty-states';
+  import { EMPTY_LIBRARY, EMPTY_LIBRARY_FILTERED } from '../data/empty-states';
   import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE, SETLIST_SCENES } from '../data/setlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import ErrorMessage from '../ErrorMessage.svelte';
@@ -119,7 +120,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   $effect(() => {
     const id = loadedSceneStore.snapshot?.id;
     if (id) {
-      libraryRecentStore.push(id);
+      // `push()` reads + writes `libraryRecentStore.ids`; without
+      // `untrack` the write re-triggers this effect on the next
+      // microtask, blowing the effect-update-depth budget. Tracking
+      // the snapshot id (the meaningful trigger) is sufficient.
+      untrack(() => libraryRecentStore.push(id));
     }
   });
 
@@ -288,19 +293,33 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     console.info('TODO: external link to scene marketplace — Phase-3+');
   }
 
-  // Wave 2.1 Lane A.1: double-click a scene card to load its `.chroma`
-  // package into the runtime and route to the Perform view. The
-  // engine-side `load_scene` IPC parses `scene.json` + stores the
-  // result on the shell-side AppState; on success the Perform view's
-  // Scene Controls header + control-panel surfaces re-render against
-  // the loaded scene's control schema instead of the
-  // `perform-fixtures.ts` placeholder. Errors bubble through
+  // Wave 2.1 Lane A.1 / 2.5 LIB.E: double-click a scene card to load
+  // its `.chroma` package into the runtime and route to the Perform
+  // view. The engine-side `load_scene` IPC parses `scene.json` +
+  // stores the result on the shell-side AppState; on success the
+  // Perform view's Scene Controls header + control-panel surfaces
+  // re-render against the loaded scene's control schema instead of
+  // the `perform-fixtures.ts` placeholder. Errors bubble through
   // `loadedSceneStore.error` so the UI can surface a non-fatal
-  // banner; the route navigation is gated on a successful load.
+  // banner; the route navigation is gated on a successful load (LIB.E
+  // canonical "load → play" flow for pre-alpha smoke testing).
+  //
+  // `loadingPath` tracks the in-flight card so the tile can render a
+  // dimmed `aria-busy="true"` affordance — `loadedSceneStore.loading`
+  // is global and would dim every tile, which the reviewer flagged as
+  // confusing on a multi-tile grid.
+  let loadingPath = $state<string | null>(null);
+
   async function handleSceneOpen(card: SceneCard): Promise<void> {
-    const payload = await loadedSceneStore.load(card.path);
-    if (payload) {
-      routeStore.set('perform');
+    if (loadingPath !== null) return;
+    loadingPath = card.path;
+    try {
+      const payload = await loadedSceneStore.load(card.path);
+      if (payload) {
+        routeStore.set('perform');
+      }
+    } finally {
+      loadingPath = null;
     }
   }
 
@@ -437,7 +456,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     {:else if error}
       <ErrorMessage {error} />
     {:else if cards.length === 0}
-      <EmptyState title={EMPTY_LIBRARY.title} body={EMPTY_LIBRARY.body} iconName="library">
+      <EmptyState
+        title={EMPTY_LIBRARY.title}
+        body={EMPTY_LIBRARY.body}
+        iconName="library"
+        meta={EMPTY_LIBRARY.meta}
+      >
         {#snippet actions()}
           <button type="button" disabled>{EMPTY_LIBRARY.primaryAction?.label ?? ''}</button>
           {#if EMPTY_LIBRARY.secondaryAction}
@@ -445,6 +469,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           {/if}
         {/snippet}
       </EmptyState>
+    {:else if filteredCards.length === 0}
+      <!-- Wave 2.5 LIB.E — library has scenes but the active search
+           query / category chip combination excludes them all. Show a
+           lighter empty state (no disabled action buttons since the
+           toolbar above is the actionable surface — clear the query
+           or chips). Supported-formats meta line ports per the
+           bundle's empty-state surface. -->
+      <EmptyState
+        title={EMPTY_LIBRARY_FILTERED.title}
+        body={EMPTY_LIBRARY_FILTERED.body}
+        iconName="library"
+        meta={EMPTY_LIBRARY_FILTERED.meta}
+      />
     {:else}
       <!--
         TODO(scale): adopt @tanstack/svelte-virtual (or equivalent) when fixture
@@ -458,9 +495,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <article
             class="scene-tile"
             class:scene-tile--active={loadedSceneStore.snapshot?.path === card.path}
+            class:scene-tile--loading={loadingPath === card.path}
             tabindex="0"
             role="button"
             aria-label={`Load scene ${card.title || card.id}`}
+            aria-busy={loadingPath === card.path ? 'true' : undefined}
             ondblclick={() => void handleSceneOpen(card)}
             onkeydown={(e) => handleSceneKeydown(e, card)}
           >
@@ -854,6 +893,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     box-shadow:
       var(--shadow-panel),
       inset 0 0 0 1px var(--color-primary);
+  }
+  /* Wave 2.5 LIB.E — dim the tile while its `load_scene` IPC is in
+     flight so the operator sees the double-click landed. The cursor
+     flips to `progress`; pointer-events stay enabled so a focus-loss
+     interaction still works. */
+  .scene-tile--loading {
+    opacity: 0.6;
+    cursor: progress;
   }
   .scene-tile__thumbnail {
     aspect-ratio: 16 / 10;
