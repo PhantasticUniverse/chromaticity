@@ -37,6 +37,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // overrides both store and synthetic defaults so tests / future
   // device-driven values keep working.
 
+  import { untrack } from 'svelte';
+
   import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
@@ -59,6 +61,37 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
   const liveBpm = $derived(liveSnapshot?.bpm ?? bpm);
 
+  // Wave 2.8 Q.1 — smooth the per-band FFT values before they drive
+  // the 4 named tiles. The engine producer emits a fresh snapshot
+  // ~60 Hz with bin-level jitter (background mic noise reports
+  // multi-millisecond bursts even when the room is quiet), and the
+  // band-fill `transition: width 120ms ease` on top of every-frame %
+  // writes amplifies that into a perceptible flicker. A short EMA on
+  // each band damps the noise without erasing real audio onsets.
+  // Skipped entirely when `bands` is caller-supplied (tests / custom
+  // device-driven values) and when there's no snapshot.
+  let smoothedBands = $state<readonly number[]>([0, 0, 0, 0]);
+  $effect(() => {
+    if (bands || snapshot !== undefined) return;
+    let raf = 0;
+    const s = [0, 0, 0, 0];
+    const EMA = 0.25;
+    const tick = (): void => {
+      const snap = untrack(() => audioSnapshotStore.snapshot);
+      if (snap) {
+        const f = snap.fft_bands;
+        const tiles = [(f[0] + f[1]) / 2, (f[2] + f[3]) / 2, (f[4] + f[5]) / 2, (f[6] + f[7]) / 2];
+        for (let i = 0; i < 4; i++) {
+          s[i] = (s[i] ?? 0) + ((tiles[i] ?? 0) - (s[i] ?? 0)) * EMA;
+        }
+        smoothedBands = [s[0] ?? 0, s[1] ?? 0, s[2] ?? 0, s[3] ?? 0];
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  });
+
   // Default band tiles match the bundle's `AudioReactivity` JSX values.
   // Pass `bands` to override (tests / future device-driven values).
   const DEFAULT_BANDS: ReadonlyArray<{
@@ -77,22 +110,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * tiles by averaging adjacent pairs (8 → 4). Preserves the bundle's
    * tile name + tint mapping so the visual layout never drifts; only
    * the per-tile `value` switches to live data.
+   *
+   * Wave 2.8 Q.1: callers now pass a pre-smoothed values array
+   * (`smoothedBands` rAF state) instead of the raw snapshot, so the
+   * tile values are stable across engine ticks. The bundle's tile
+   * `name + tint` mapping is preserved verbatim.
    */
-  function reduceFftToTiles(
-    payload: AudioUniformSnapshotPayload,
+  function tilesFromValues(
+    values: readonly number[],
   ): ReadonlyArray<{ readonly name: string; readonly value: number; readonly tint: string }> {
-    const f = payload.fft_bands;
-    const avg = (a: number, b: number): number => (a + b) / 2;
     return [
-      { name: 'BASS', value: avg(f[0], f[1]), tint: 'var(--color-band-bass)' },
-      { name: 'LOW MID', value: avg(f[2], f[3]), tint: 'var(--color-band-mid)' },
-      { name: 'HIGH MID', value: avg(f[4], f[5]), tint: 'var(--color-band-midhi)' },
-      { name: 'HIGH', value: avg(f[6], f[7]), tint: 'var(--color-band-high)' },
+      { name: 'BASS', value: values[0] ?? 0, tint: 'var(--color-band-bass)' },
+      { name: 'LOW MID', value: values[1] ?? 0, tint: 'var(--color-band-mid)' },
+      { name: 'HIGH MID', value: values[2] ?? 0, tint: 'var(--color-band-midhi)' },
+      { name: 'HIGH', value: values[3] ?? 0, tint: 'var(--color-band-high)' },
     ];
   }
 
+  // When a caller supplies `snapshot` directly (tests / parametric
+  // mounts), bypass the rAF-smoothing path and pull values straight
+  // off the supplied payload so deterministic test fixtures stay
+  // exact. Otherwise consume the locally-smoothed values driven by
+  // the rAF $effect above.
   const renderBands = $derived(
-    bands ?? (liveSnapshot ? reduceFftToTiles(liveSnapshot) : DEFAULT_BANDS),
+    bands ??
+      (snapshot
+        ? tilesFromValues([
+            (snapshot.fft_bands[0] + snapshot.fft_bands[1]) / 2,
+            (snapshot.fft_bands[2] + snapshot.fft_bands[3]) / 2,
+            (snapshot.fft_bands[4] + snapshot.fft_bands[5]) / 2,
+            (snapshot.fft_bands[6] + snapshot.fft_bands[7]) / 2,
+          ])
+        : liveSnapshot
+          ? tilesFromValues(smoothedBands)
+          : DEFAULT_BANDS),
   );
 
   const FFT_BAR_COUNT = 48;

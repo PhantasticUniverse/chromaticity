@@ -241,10 +241,84 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     });
   }
 
+  // Wave 2.8 Q.1 — the engine producer emits a fresh snapshot ~60 Hz
+  // and its `peak` / `rms` / `fft_bands` values carry bin-level jitter
+  // even when the room is quiet (background mic noise reports ~0.005
+  // RMS with several-millisecond bursts). Re-deriving the band tiles +
+  // hero dB readout off the raw snapshot once per frame made the band
+  // values and the dB text flicker visibly. Smooth them with a short
+  // EMA + peak-hold so the displayed values track the audible signal
+  // instead of the noise floor.
+  //
+  // The smoother runs in a `$effect` that observes the snapshot store
+  // directly — every snapshot write advances the smoother synchronously
+  // before the next paint, so deterministic tests that mutate
+  // `audioSnapshotStore.snapshot` then read the DOM still see the
+  // raw values applied (the first observation seeds the smoother, no
+  // EMA blending on frame 1). The smoother state is mirrored to a
+  // separate `smoothedSnapshot` `$state` so downstream `$derived`
+  // tile / dB readout consumers re-evaluate on every advance.
+  // Initial value seeded synchronously off the current store snapshot
+  // so first-paint reads it BEFORE the `$effect` flush. This preserves
+  // the deterministic test contract that `audioSnapshotStore.snapshot
+  // = {...}; render(...); querySelector(...)` sees the raw values
+  // without an awaited tick.
+  const _initialSnap = audioSnapshotStore.snapshot;
+  let smoothedSnapshot = $state<AudioUniformSnapshotPayload | null>(
+    _initialSnap ? { ..._initialSnap, fft_bands: [..._initialSnap.fft_bands] } : null,
+  );
+  // EMA factor 0.25 means ~5-tick half-life (~80 ms at 60 Hz) — fast
+  // enough to track real onsets, slow enough to discard noise-floor
+  // bursts. Peak holds with 0.004 decay to mirror the VuStereo path.
+  const LEVEL_EMA = 0.25;
+  const PEAK_DECAY = 0.004;
+  let _smInit = _initialSnap !== null;
+  let _smRms = _initialSnap?.rms ?? 0;
+  let _smPeak = _initialSnap?.peak ?? 0;
+  const _smFft: number[] = _initialSnap
+    ? [..._initialSnap.fft_bands]
+    : new Array<number>(8).fill(0);
+  $effect(() => {
+    const snap = audioSnapshotStore.snapshot;
+    if (!snap) {
+      _smInit = false;
+      smoothedSnapshot = null;
+      return;
+    }
+    if (!_smInit) {
+      _smInit = true;
+      _smRms = snap.rms;
+      _smPeak = snap.peak;
+      for (let i = 0; i < 8; i++) {
+        _smFft[i] = snap.fft_bands[i] ?? 0;
+      }
+    } else {
+      _smRms = _smRms + (snap.rms - _smRms) * LEVEL_EMA;
+      _smPeak = Math.max(snap.peak, _smPeak - PEAK_DECAY);
+      for (let i = 0; i < 8; i++) {
+        const raw = snap.fft_bands[i] ?? 0;
+        _smFft[i] = (_smFft[i] ?? 0) + (raw - (_smFft[i] ?? 0)) * LEVEL_EMA;
+      }
+    }
+    smoothedSnapshot = {
+      bpm: snap.bpm,
+      rms: _smRms,
+      peak: _smPeak,
+      fft_bands: [
+        _smFft[0] ?? 0,
+        _smFft[1] ?? 0,
+        _smFft[2] ?? 0,
+        _smFft[3] ?? 0,
+        _smFft[4] ?? 0,
+        _smFft[5] ?? 0,
+        _smFft[6] ?? 0,
+        _smFft[7] ?? 0,
+      ],
+    };
+  });
+
   const liveBands = $derived<readonly FrequencyBand[]>(
-    audioSnapshotStore.snapshot
-      ? reduceFftToBands(audioSnapshotStore.snapshot)
-      : AUDIO_UNIFORMS_FIXTURE.bands,
+    smoothedSnapshot ? reduceFftToBands(smoothedSnapshot) : AUDIO_UNIFORMS_FIXTURE.bands,
   );
 
   // Wave 2.6 AUD.C — live peak / RMS dB readout in the hero stats strip.
@@ -260,6 +334,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // the wireframe-faithful "Mic · Yeti" placeholder survives until
   // Lane AUD.A's live device enumeration populates an authoritative
   // name. Same dual-mode posture as `AudioReactivity.svelte`.
+  //
+  // Wave 2.8 Q.1: dB readout reads the smoothed snapshot above, not
+  // the raw store, so the displayed text doesn't churn 2-3 dB per
+  // frame on tiny noise-floor variations.
   const DB_FLOOR = 1e-3;
 
   function toDbFs(linear: number): number {
@@ -267,14 +345,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   const livePeakDb = $derived<number>(
-    audioSnapshotStore.snapshot
-      ? toDbFs(audioSnapshotStore.snapshot.peak)
-      : AUDIO_UNIFORMS_FIXTURE.peakDb,
+    smoothedSnapshot ? toDbFs(smoothedSnapshot.peak) : AUDIO_UNIFORMS_FIXTURE.peakDb,
   );
   const liveRmsDb = $derived<number>(
-    audioSnapshotStore.snapshot
-      ? toDbFs(audioSnapshotStore.snapshot.rms)
-      : AUDIO_UNIFORMS_FIXTURE.rmsDb,
+    smoothedSnapshot ? toDbFs(smoothedSnapshot.rms) : AUDIO_UNIFORMS_FIXTURE.rmsDb,
   );
   const liveSource = $derived<string>(
     settingsStore.snapshot.audio.input_device &&

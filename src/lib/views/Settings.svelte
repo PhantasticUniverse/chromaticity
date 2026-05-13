@@ -40,6 +40,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // variable so the controls feel live (selects update, toggles flip,
   // folder rows append on Browse) but no value is persisted across a
   // reload. Persistence + IPC wiring tracks the evidence-matrix slice.
+  import { untrack } from 'svelte';
+
   import { HOTKEYS } from '../data/hotkeys';
   import {
     ABLETON_LINK_PEER_FIXTURE,
@@ -149,9 +151,48 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void audioSnapshotStore.subscribe();
   });
 
-  const liveAudioSnapshot = $derived(audioSnapshotStore.snapshot);
-  const meterLevel = $derived(liveAudioSnapshot?.rms ?? AUDIO_METER_LEVEL);
-  const meterPeak = $derived(liveAudioSnapshot?.peak ?? AUDIO_METER_PEAK);
+  // Wave 2.8 Q.1 — the raw `peak` value from the engine producer updates
+  // at ~60 Hz with bin-level jitter, so passing it directly to <Meter>
+  // makes the held-peak LED dart from segment to segment each tick.
+  // Apply a peak-hold + decay envelope (mirrors the VuStereo synthetic
+  // path) plus a brief EMA on `level` so the segments don't fidget on
+  // tiny background-noise RMS variations.
+  //
+  // Pattern: synchronous seed off the current store snapshot for
+  // first-paint, then a `$effect` watching `audioSnapshotStore.snapshot`
+  // advances the smoother per-snapshot-write. Each engine tick
+  // synchronously re-runs the effect (no rAF in the loop) so the
+  // displayed values track the producer cadence without an external
+  // animation frame.
+  const _initialAudioSnap = audioSnapshotStore.snapshot;
+  let smoothedLevel = $state<number>(_initialAudioSnap?.rms ?? AUDIO_METER_LEVEL);
+  let smoothedPeak = $state<number>(_initialAudioSnap?.peak ?? AUDIO_METER_PEAK);
+  let _meterInit = _initialAudioSnap !== null;
+  $effect(() => {
+    const LEVEL_EMA = 0.25;
+    const PEAK_DECAY = 0.004;
+    const snap = audioSnapshotStore.snapshot;
+    if (!snap) {
+      _meterInit = false;
+      smoothedLevel = AUDIO_METER_LEVEL;
+      smoothedPeak = AUDIO_METER_PEAK;
+      return;
+    }
+    const rms = Math.max(0, Math.min(1, snap.rms));
+    const pk = Math.max(0, Math.min(1, snap.peak));
+    if (!_meterInit) {
+      _meterInit = true;
+      smoothedLevel = rms;
+      smoothedPeak = pk;
+    } else {
+      const l = untrack(() => smoothedLevel);
+      const p = untrack(() => smoothedPeak);
+      smoothedLevel = l + (rms - l) * LEVEL_EMA;
+      smoothedPeak = Math.max(pk, p - PEAK_DECAY);
+    }
+  });
+  const meterLevel = $derived(smoothedLevel);
+  const meterPeak = $derived(smoothedPeak);
 
   // Wave 2.6 Lane AUD.A — derive the Input Device dropdown option set
   // from `audioDevicesStore.devices`. Empty live list falls back to
