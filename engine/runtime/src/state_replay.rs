@@ -142,6 +142,17 @@ fn default_buffer_capacity(state: &State) -> usize {
 ///   by [`crate::crash_resume::restore_class_d`] only; adapter-
 ///   side rebinding lives outside the canonical-binary
 ///   contract.
+/// - `preset_store.banks` (Wave 2.4 PERF.C): in-process preset
+///   bank snapshots; preset-bank durability + on-disk persistence
+///   remain Wave 2.5+ scope per the Phase-3 `EV-PRESET-PLAYLIST`
+///   narrowing. Encoding the banks would drift the row 32 / row
+///   34 / row 33 goldens under the additive widening; the
+///   `PresetRecall` apply-event path restores controls from the
+///   bank in-process and the resulting `ControlStore` mutation
+///   IS observed by the canonical encoder, so any test that
+///   exercises the save+recall round-trip sees a meaningful
+///   downstream hash change without the bank itself being on the
+///   canonical wire.
 pub(crate) fn encode_state_canonical(state: &State, out: &mut Vec<u8>) {
     // be_u64(frame).
     out.extend_from_slice(&state.frame.to_be_bytes());

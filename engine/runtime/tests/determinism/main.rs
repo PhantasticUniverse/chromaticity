@@ -98,6 +98,17 @@ mod fixtures {
                 out.push(0x02);
                 out.extend_from_slice(&id.0.to_be_bytes());
             }
+            EventPayload::PresetSaved { id } => {
+                // Wave 2.4 PERF.C — tag byte 0x08 (next free in
+                // declaration order after 0x07 SnapCleared). The
+                // existing `sample_command` modulo-7 distribution
+                // does NOT produce `PresetSave`, so the determinism
+                // corpus goldens remain invariant under this
+                // addition; the tag is reserved for future fixtures
+                // that exercise the save path.
+                out.push(0x08);
+                out.extend_from_slice(&id.0.to_be_bytes());
+            }
             EventPayload::PlaylistAdvanced { step } => {
                 out.push(0x03);
                 out.extend_from_slice(&step.to_be_bytes());

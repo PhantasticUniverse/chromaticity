@@ -148,6 +148,13 @@ pub enum Command {
     ControlSet { id: ControlId, value: ControlValue },
     /// Recall a preset by identifier.
     PresetRecall { id: PresetId },
+    /// Save the current `ControlStore` snapshot into the preset bank
+    /// keyed by `id`. Wave 2.4 PERF.C scope: closes the "scene-author
+    /// preset capture" axis the Phase-3 `EV-PRESET-PLAYLIST` narrowing
+    /// deferred (preset-bank durability + on-disk persistence remain
+    /// Wave 2.5+ scope). In-process only — the bank does not survive
+    /// process restart.
+    PresetSave { id: PresetId },
     /// Advance the active playlist by `step` entries; negative values
     /// move backward.
     PlaylistAdvance { step: i32 },
@@ -179,6 +186,15 @@ pub enum EventPayload {
     PresetRecalled {
         id: PresetId,
     },
+    /// Mirror of [`Command::PresetSave`] (Wave 2.4 PERF.C). The
+    /// `ControlStore` snapshot lives state-side; the event carries only
+    /// the target `PresetId` so the payload shape stays uniform with
+    /// `PresetRecalled` / `SnapSaved` (the slot recipient pattern).
+    /// `State::apply_event` reads the live `control_store.values` at
+    /// commit time to populate the bank.
+    PresetSaved {
+        id: PresetId,
+    },
     PlaylistAdvanced {
         step: i32,
     },
@@ -205,6 +221,7 @@ impl EventPayload {
                 new_value: value,
             },
             Command::PresetRecall { id } => Self::PresetRecalled { id },
+            Command::PresetSave { id } => Self::PresetSaved { id },
             Command::PlaylistAdvance { step } => Self::PlaylistAdvanced { step },
             Command::SnapRecall { slot } => Self::SnapRecalled { slot },
             Command::SnapSave { slot } => Self::SnapSaved { slot },
@@ -388,6 +405,7 @@ pub struct InMemoryBus {
 struct CommandKindCounts {
     control_set: AtomicU64,
     preset_recall: AtomicU64,
+    preset_save: AtomicU64,
     playlist_advance: AtomicU64,
     snap_recall: AtomicU64,
     snap_save: AtomicU64,
@@ -401,6 +419,7 @@ struct CommandKindCounts {
 struct EventKindCounts {
     control_changed: AtomicU64,
     preset_recalled: AtomicU64,
+    preset_saved: AtomicU64,
     playlist_advanced: AtomicU64,
     snap_recalled: AtomicU64,
     snap_saved: AtomicU64,
@@ -429,6 +448,7 @@ fn command_kind(command: &Command) -> CommandKind {
     match command {
         Command::ControlSet { .. } => CommandKind::ControlSet,
         Command::PresetRecall { .. } => CommandKind::PresetRecall,
+        Command::PresetSave { .. } => CommandKind::PresetSave,
         Command::PlaylistAdvance { .. } => CommandKind::PlaylistAdvance,
         Command::SnapRecall { .. } => CommandKind::SnapRecall,
         Command::SnapSave { .. } => CommandKind::SnapSave,
@@ -443,6 +463,7 @@ fn event_kind(payload: &EventPayload) -> EventKind {
     match payload {
         EventPayload::ControlChanged { .. } => EventKind::ControlChanged,
         EventPayload::PresetRecalled { .. } => EventKind::PresetRecalled,
+        EventPayload::PresetSaved { .. } => EventKind::PresetSaved,
         EventPayload::PlaylistAdvanced { .. } => EventKind::PlaylistAdvanced,
         EventPayload::SnapRecalled { .. } => EventKind::SnapRecalled,
         EventPayload::SnapSaved { .. } => EventKind::SnapSaved,
@@ -531,6 +552,7 @@ impl InMemoryBus {
         match kind {
             CommandKind::ControlSet => self.command_counts.control_set.load(Ordering::Relaxed),
             CommandKind::PresetRecall => self.command_counts.preset_recall.load(Ordering::Relaxed),
+            CommandKind::PresetSave => self.command_counts.preset_save.load(Ordering::Relaxed),
             CommandKind::PlaylistAdvance => {
                 self.command_counts.playlist_advance.load(Ordering::Relaxed)
             }
@@ -551,6 +573,7 @@ impl InMemoryBus {
         match kind {
             EventKind::ControlChanged => self.event_counts.control_changed.load(Ordering::Relaxed),
             EventKind::PresetRecalled => self.event_counts.preset_recalled.load(Ordering::Relaxed),
+            EventKind::PresetSaved => self.event_counts.preset_saved.load(Ordering::Relaxed),
             EventKind::PlaylistAdvanced => {
                 self.event_counts.playlist_advanced.load(Ordering::Relaxed)
             }
@@ -602,6 +625,7 @@ impl InMemoryBus {
         let counter = match kind {
             CommandKind::ControlSet => &self.command_counts.control_set,
             CommandKind::PresetRecall => &self.command_counts.preset_recall,
+            CommandKind::PresetSave => &self.command_counts.preset_save,
             CommandKind::PlaylistAdvance => &self.command_counts.playlist_advance,
             CommandKind::SnapRecall => &self.command_counts.snap_recall,
             CommandKind::SnapSave => &self.command_counts.snap_save,
@@ -619,6 +643,7 @@ impl InMemoryBus {
         let counter = match kind {
             EventKind::ControlChanged => &self.event_counts.control_changed,
             EventKind::PresetRecalled => &self.event_counts.preset_recalled,
+            EventKind::PresetSaved => &self.event_counts.preset_saved,
             EventKind::PlaylistAdvanced => &self.event_counts.playlist_advanced,
             EventKind::SnapRecalled => &self.event_counts.snap_recalled,
             EventKind::SnapSaved => &self.event_counts.snap_saved,

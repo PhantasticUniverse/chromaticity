@@ -566,6 +566,28 @@ describe('Perform view', () => {
     expect(invokeMock).toHaveBeenCalledWith('recall_preset', { id: 3 });
   });
 
+  it('Cmd-click on a preset slot dispatches save_preset (Wave 2.4 PERF.C)', async () => {
+    // Wave 2.4 PERF.C — Cmd-click (macOS) / Ctrl-click on a preset
+    // rail slot saves the current control snapshot into the slot.
+    // Mirrors the SnapBar Cmd-click-saves convention.
+    const { getByLabelText } = render(Perform);
+    await flushMicrotasks();
+    const scenesPanel = getByLabelText('Scenes');
+    const rail = within(scenesPanel).getByRole('toolbar', { name: 'Scene panel mode' });
+    await fireEvent.click(within(rail).getByTitle('Presets'));
+    const presetRail = within(scenesPanel).getByRole('toolbar', { name: 'Preset slots' });
+    const slots = within(presetRail).getAllByRole('button');
+    invokeMock.mockClear();
+    const slot5 = slots[5];
+    expect(slot5).toBeDefined();
+    if (!slot5) return;
+    await fireEvent.click(slot5, { metaKey: true });
+    await flushMicrotasks();
+    expect(invokeMock).toHaveBeenCalledWith('save_preset', { id: 5 });
+    // Sanity: plain recall must not have fired alongside the save.
+    expect(invokeMock).not.toHaveBeenCalledWith('recall_preset', { id: 5 });
+  });
+
   it('reflects the engine active-preset read-back as the highlighted rail slot', async () => {
     // Engine reports active preset id 7 on the post-recall read-back.
     invokeMock.mockImplementation(async (cmd: string) => {

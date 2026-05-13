@@ -76,6 +76,27 @@ class PresetStore {
     }
   }
 
+  /**
+   * Wave 2.4 PERF.C — save the current control snapshot into preset
+   * slot `id`. The engine snapshots `ControlStore.values` and also
+   * activates the preset at `State::apply_event` time, so the
+   * post-save refresh picks up `id` as the new `activeId` (mirrors
+   * the `recall()` post-commit refresh pattern).
+   *
+   * No-Tauri-context behaviour: same fallback path as `recall()`.
+   */
+  async save(id: PresetId): Promise<void> {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke<void>('save_preset', { id });
+      await this.refresh();
+    } catch {
+      // Swallow — no Tauri runtime available; `activeId` stays at
+      // its previous value. Vite dev / vitest jsdom both hit this
+      // path by design.
+    }
+  }
+
   /** Reset the store to the no-preset baseline (test harness). */
   reset(): void {
     this.activeId = null;
