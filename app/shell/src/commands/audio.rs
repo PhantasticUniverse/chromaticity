@@ -1,51 +1,39 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
-//! Audio device-enumeration IPC handler — Wave 2.6 Lane AUD.A.
+//! Audio device-enumeration IPC handlers — Wave 2.6 Lane AUD.A
+//! (input) + Wave 2.7 Lane SET.C (output).
 //!
-//! Surfaces the [`chromaticity_audio::enumerate_input_devices`] result
-//! across the Tauri command boundary so the operator-facing
-//! Settings → Audio Device → Input Device dropdown in
-//! `src/lib/views/Settings.svelte` can render the host's real input
+//! Surfaces the [`chromaticity_audio::enumerate_input_devices`] +
+//! [`chromaticity_audio::enumerate_output_devices`] results across
+//! the Tauri command boundary so the operator-facing
+//! Settings → Audio Device → Input Device / Output Device dropdowns
+//! in `src/lib/views/Settings.svelte` can render the host's real
 //! devices (rather than the W21 PR1 fixture-only `AUDIO_INPUT_DEVICES`
-//! set defined in `src/lib/data/settings-fixtures.ts`).
-//!
-//! ## Lane AUD.A scope narrowing — input-only
-//!
-//! Wave 2.6 Lane AUD.A ships INPUT device enumeration only — output
-//! enumeration is reserved for a follow-up wave alongside the
-//! per-device routing surface. The engine adapter's
-//! [`chromaticity_audio::AudioDeviceKind`] enum is `#[non_exhaustive]`
-//! with `Input` as its sole variant today; output enumeration widens
-//! both the engine enum and the bridge
-//! [`AudioDeviceKindPayload`] mirror in lockstep when it lands. The
-//! bridge already scaffolds an `Output` variant on
-//! [`AudioDeviceKindPayload`] so the wire shape doesn't churn at that
-//! point.
+//! / `AUDIO_OUTPUT_DEVICES` sets defined in
+//! `src/lib/data/settings-fixtures.ts`).
 //!
 //! ## Error model
 //!
-//! The underlying [`chromaticity_audio::enumerate_input_devices`]
-//! collapses the [`cpal::Host::input_devices`] failure (the only error
-//! class today: CI / headless / no-audio-subsystem hosts) into
-//! `Ok(Vec::new())` so the operator-facing fixture-fallback branch
-//! fires identically for "audio available but no devices connected"
-//! and "audio subsystem unavailable". This handler therefore returns
-//! `Err(String)` only for the genuinely unrecoverable error class —
-//! there are no producers of that branch in Wave 2.6 Lane AUD.A, but
-//! the return type stays `Result<_, String>` to match the project's
-//! existing Tauri command shape (see `commands::midi::list_midi_devices`
-//! for the parallel precedent) and so the follow-up output-enumeration
-//! wave can introduce real error producers without churning the IPC
-//! contract.
+//! Both underlying engine surfaces collapse the
+//! [`cpal::Host::input_devices`] / [`cpal::Host::output_devices`]
+//! failure (the only error class today: CI / headless / no-audio-
+//! subsystem hosts) into `Ok(Vec::new())` so the operator-facing
+//! fixture-fallback branch fires identically for "audio available but
+//! no devices connected" and "audio subsystem unavailable". Both
+//! handlers therefore return `Err(String)` only for the genuinely
+//! unrecoverable error class — there are no producers of that branch
+//! today, but the return type stays `Result<_, String>` to match the
+//! project's existing Tauri command shape (see
+//! `commands::midi::list_midi_devices` for the parallel precedent).
 //!
 //! T1 evidence: `EV-INTEGRATION-MATRIX` (audio arm, Wave 2.6 Lane
-//! AUD.A) — device-listing surface widened from the W21 PR1
-//! fixture-only posture documented in
-//! `src/lib/data/settings-fixtures.ts`.
+//! AUD.A + Wave 2.7 Lane SET.C) — input + output device-listing
+//! surfaces widened from the W21 PR1 fixture-only posture documented
+//! in `src/lib/data/settings-fixtures.ts`.
 
-use chromaticity_audio::enumerate_input_devices;
-use chromaticity_ui_bridge::AudioDevicePayload;
+use chromaticity_audio::{enumerate_input_devices, enumerate_output_devices};
+use chromaticity_ui_bridge::{AudioDeviceKindPayload, AudioDevicePayload};
 
 /// Enumerate the cpal input devices currently visible to the host.
 ///
@@ -64,6 +52,40 @@ use chromaticity_ui_bridge::AudioDevicePayload;
 pub fn list_audio_devices() -> Result<Vec<AudioDevicePayload>, String> {
     let infos = enumerate_input_devices().map_err(|e| format!("audio enumeration failed: {e}"))?;
     Ok(infos.into_iter().map(AudioDevicePayload::from).collect())
+}
+
+/// Enumerate the cpal output devices currently visible to the host.
+///
+/// Returns one [`AudioDevicePayload`] per device surfaced by a fresh
+/// [`chromaticity_audio::enumerate_output_devices`] call, with the
+/// payload `kind` field set to [`AudioDeviceKindPayload::Output`]
+/// (the engine [`chromaticity_audio::AudioDeviceInfo`] is direction-
+/// agnostic; the bridge re-attaches the discriminant at this command
+/// callsite — the [`From<AudioDeviceInfo>`] impl defaults to `Input`,
+/// so this command constructs the payload by hand).
+///
+/// Mirrors [`list_audio_devices`]: on CI / headless / no-audio-
+/// subsystem hosts the engine adapter returns an empty vec (rather
+/// than erroring) so the frontend's fixture-fallback branch fires
+/// uniformly across the two "nothing-to-show" causes.
+///
+/// Sync (not `async`) per the project's existing Tauri command shape
+/// — the underlying call is a fast cpal host enumeration (CoreAudio /
+/// WASAPI / ALSA), not a per-frame poll path.
+///
+/// [`From<AudioDeviceInfo>`]: chromaticity_ui_bridge::AudioDevicePayload
+#[tauri::command]
+pub fn list_audio_output_devices() -> Result<Vec<AudioDevicePayload>, String> {
+    let infos =
+        enumerate_output_devices().map_err(|e| format!("audio output enumeration failed: {e}"))?;
+    Ok(infos
+        .into_iter()
+        .map(|info| AudioDevicePayload {
+            id: info.id,
+            name: info.name,
+            kind: AudioDeviceKindPayload::Output,
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -98,6 +120,32 @@ mod tests {
                 d.id,
             );
             assert!(!d.name.is_empty(), "cpal device name must not be empty");
+        }
+    }
+
+    #[test]
+    fn list_audio_output_devices_does_not_error_on_any_host() {
+        // Wave 2.7 Lane SET.C: mirrors `list_audio_devices_does_not_error_on_any_host`
+        // for the output direction. Same three-case coverage (no
+        // audio subsystem / no devices connected / devices present).
+        // Each payload MUST carry the `output-` id prefix +
+        // `AudioDeviceKindPayload::Output` discriminant.
+        let result = list_audio_output_devices()
+            .expect("list_audio_output_devices must not error at MVP surface");
+        for d in &result {
+            assert!(
+                d.id.starts_with("output-"),
+                "expected id to start with `output-`, got {:?}",
+                d.id,
+            );
+            assert!(!d.name.is_empty(), "cpal device name must not be empty");
+            assert_eq!(
+                d.kind,
+                chromaticity_ui_bridge::AudioDeviceKindPayload::Output,
+                "expected Output kind on every payload, got {:?} for id {:?}",
+                d.kind,
+                d.id,
+            );
         }
     }
 }
