@@ -34,12 +34,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // because Svelte's `*.svelte` TS shim only re-exports the default —
   // named exports from `<script module>` are unreachable to consumers,
   // same constraint that put `CuePadCell` in `widgets/index.ts`.
-  import { onMount } from 'svelte';
+  //
+  // Wave 2.4 Lane PERF.F adds right-click contextmenu inline-rename of
+  // per-slot labels backed by `snapLabelsStore` (localStorage). Engine
+  // snap state remains binary saved / unsaved — labels are frontend-
+  // only until a future Settings TOML migration. The rendered label
+  // prefers the operator override over the bundle fixture's
+  // `slot.name`; falling back to the fixture name when no override is
+  // set keeps the wireframe-faithful default visible on first launch.
+  import { onMount, tick } from 'svelte';
 
   import Icon from '../Icon.svelte';
   import SceneStill from './SceneStill.svelte';
   import { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
   import { snapStore } from '../stores/snap.svelte';
+  import { snapLabelsStore } from '../stores/snapLabels.svelte';
 
   let {
     slots = DEFAULT_SNAP_SLOTS,
@@ -55,7 +64,60 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // engine's truth (idempotent + swallows no-Tauri rejection).
   onMount(() => {
     void snapStore.refresh();
+    snapLabelsStore.hydrate();
   });
+
+  // Tracks which slot (if any) is currently in inline-rename mode.
+  // `null` when no rename is active; otherwise the 1-indexed slot id
+  // whose `.snap-slot__name` is replaced by the rename input.
+  let renamingSlot: number | null = $state(null);
+  let renameDraft: string = $state('');
+  let renameInputEl: HTMLInputElement | null = $state(null);
+
+  function labelFor(slot: SnapSlot): string {
+    return snapLabelsStore.label(slot.i, slot.name);
+  }
+
+  async function startRename(slot: SnapSlot): Promise<void> {
+    renamingSlot = slot.i;
+    renameDraft = labelFor(slot);
+    await tick();
+    renameInputEl?.focus();
+    renameInputEl?.select();
+  }
+
+  function commitRename(): void {
+    if (renamingSlot === null) return;
+    snapLabelsStore.set(renamingSlot, renameDraft);
+    renamingSlot = null;
+    renameDraft = '';
+  }
+
+  function cancelRename(): void {
+    renamingSlot = null;
+    renameDraft = '';
+  }
+
+  function handleContextMenu(event: MouseEvent, slot: SnapSlot): void {
+    event.preventDefault();
+    void startRename(slot);
+  }
+
+  function handleRenameKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      commitRename();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelRename();
+    } else if (event.key === ' ') {
+      // Space is the SnapBar's recall hotkey on a focused slot; while
+      // the rename input is open it should insert a literal space.
+      event.stopPropagation();
+    }
+  }
 
   // The widget-facing active slot is the caller's `active` prop when
   // supplied (test fixtures, AppShell legacy prop), else the store's
@@ -68,6 +130,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   function handleClick(event: MouseEvent, slot: number): void {
+    // Suppress recall / save / clear while an inline rename is open
+    // for any slot — the rename input owns input focus and click
+    // dispatch should not double-fire engine snap IPC.
+    if (renamingSlot !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (onPick) {
       onPick(slot);
       return;
@@ -82,6 +152,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   function handleKeydown(event: KeyboardEvent, slot: number): void {
+    if (renamingSlot !== null) {
+      return;
+    }
     if (event.key !== 'Enter' && event.key !== ' ') {
       return;
     }
@@ -109,10 +182,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       class:snap-slot--on={activeSlot === slot.i}
       class:snap-slot--saved={isSaved(slot.i)}
       class:snap-slot--empty={!isSaved(slot.i) && activeSlot !== slot.i}
+      class:snap-slot--renaming={renamingSlot === slot.i}
       style="--tint: {slot.tint};"
       onclick={(event) => handleClick(event, slot.i)}
       onkeydown={(event) => handleKeydown(event, slot.i)}
-      title={`${slot.name} · ${slot.scene}  (press ${slot.i}; Cmd-click to save, Alt-click to clear)`}
+      oncontextmenu={(event) => handleContextMenu(event, slot)}
+      title={`${labelFor(slot)} · ${slot.scene}  (press ${slot.i}; Cmd-click to save, Alt-click to clear, right-click to rename)`}
       aria-pressed={activeSlot === slot.i}
     >
       <span class="snap-slot__thumb" aria-hidden="true">
@@ -120,7 +195,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </span>
       <span class="snap-slot__meta">
         <span class="snap-slot__num">{slot.i}</span>
-        <span class="snap-slot__name">{slot.name}</span>
+        {#if renamingSlot === slot.i}
+          <input
+            class="snap-slot__rename"
+            type="text"
+            bind:value={renameDraft}
+            bind:this={renameInputEl}
+            onkeydown={handleRenameKeydown}
+            onblur={commitRename}
+            onclick={(event) => event.stopPropagation()}
+            aria-label={`Rename Snap slot ${slot.i}`}
+          />
+        {:else}
+          <span class="snap-slot__name">{labelFor(slot)}</span>
+        {/if}
       </span>
     </button>
   {/each}
@@ -238,6 +326,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Inline rename input — sized to fit inside the slot's meta strip
+   * without enlarging the slot. Matches `.snap-slot__name` typography. */
+  .snap-slot__rename {
+    flex: 1;
+    min-width: 0;
+    padding: 0 var(--space-xs);
+    margin: 0;
+    background: rgba(0, 0, 0, 0.65);
+    border: 1px solid var(--tint, var(--color-primary));
+    border-radius: var(--radius-xs, 2px);
+    color: var(--color-text-0);
+    font-family: inherit;
+    font-size: var(--font-size-caps-sm);
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+    outline: none;
+  }
+  .snap-slot--renaming {
+    border-color: var(--tint, var(--color-primary));
   }
   .snap-slot--on .snap-slot__name {
     font-weight: var(--font-weight-display);
