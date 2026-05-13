@@ -119,6 +119,29 @@ impl State {
             }
             EventPayload::PresetRecalled { id } => {
                 self.preset_store.active = Some(id);
+                // Wave 2.4 PERF.C: restore the bank's `ControlStore`
+                // snapshot if `id` has been saved. Recalling an
+                // unsaved preset leaves the control store untouched
+                // (no-op restoration) — that's the Phase-3 baseline
+                // behaviour every prior corpus + golden pinned and
+                // remains the contract here.
+                if let Some(snapshot) = self.preset_store.banks.get(&id) {
+                    self.control_store.values = snapshot.clone();
+                }
+            }
+            EventPayload::PresetSaved { id } => {
+                // Wave 2.4 PERF.C: capture the current control-store
+                // snapshot into the bank keyed by `id`. Saving also
+                // activates the preset (mirrors `SnapSaved` which
+                // sets `active = Some(slot)` and `recall_preset`
+                // already overwriting `active`). The clone is an
+                // in-process HashMap copy (no IO); preset-bank
+                // durability + on-disk persistence remain Wave 2.5+
+                // scope.
+                self.preset_store
+                    .banks
+                    .insert(id, self.control_store.values.clone());
+                self.preset_store.active = Some(id);
             }
             EventPayload::PlaylistAdvanced { step } => {
                 // Saturate at i64 bounds to prevent silent two's-complement
@@ -283,9 +306,29 @@ pub(crate) struct ControlStore {
 }
 
 /// Preset store. See [`ControlStore`].
+///
+/// Wave 2.4 PERF.C extends the store with an in-process preset bank
+/// keyed by [`PresetId`]. Each entry holds a snapshot of
+/// [`ControlStore::values`] captured at
+/// [`EventPayload::PresetSaved`]-apply time. The bank is purely
+/// in-memory — preset-bank durability + on-disk persistence remain
+/// Wave 2.5+ scope per the Phase-3 `EV-PRESET-PLAYLIST` narrowing.
+/// `PresetRecalled` restores controls from the bank IF a matching
+/// entry exists; recalling an unsaved preset leaves the control
+/// store untouched (matching the existing Phase-3 semantics that
+/// every prior corpus + golden hash pins).
+///
+/// The `banks` field is intentionally NOT observed by
+/// [`crate::state_replay::encode_state_canonical`] for the same
+/// reason as [`State::latest_audio_snapshot`] and
+/// [`State::session_bindings`]: keeping the canonical-binary
+/// encoder a frozen-shape function of the Phase-3 baseline so the
+/// EV-STATE-REPLAY (row 32) and EV-PRESET-PLAYLIST (row 34)
+/// goldens remain invariant under the bank widening.
 #[derive(Debug, Default)]
 pub(crate) struct PresetStore {
     pub(crate) active: Option<PresetId>,
+    pub(crate) banks: HashMap<PresetId, HashMap<ControlId, ControlValue>>,
 }
 
 /// Playlist store. See [`ControlStore`].
@@ -427,6 +470,76 @@ mod tests {
         };
         state.apply_event(&event);
         assert_eq!(state.playlist_position(), i64::MAX);
+    }
+
+    #[test]
+    fn save_recall_roundtrip() {
+        // Wave 2.4 PERF.C T1 round-trip pin: set a control →
+        // dispatch PresetSave(0) → change the control → dispatch
+        // PresetRecall(0) → assert the control reverted to the
+        // saved value. Closes the "scene-author preset capture"
+        // axis the Phase-3 EV-PRESET-PLAYLIST narrowing deferred
+        // (preset-bank durability + on-disk persistence remain
+        // Wave 2.5+ scope).
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+        let control = ControlId(11);
+        let saved_value = ControlValue(0.25);
+        let mutated_value = ControlValue(0.95);
+
+        // Set the control then save preset 0 — snapshot captures
+        // `saved_value`.
+        bus.dispatch(Command::ControlSet {
+            id: control,
+            value: saved_value,
+        })
+        .expect("control command must dispatch");
+        bus.dispatch(Command::PresetSave { id: PresetId(0) })
+            .expect("preset save command must dispatch");
+        bus.commit_all_into(&mut state);
+        assert_eq!(state.control_value(control), Some(saved_value));
+        assert_eq!(state.active_preset(), Some(PresetId(0)));
+
+        // Mutate the control past the saved value.
+        bus.dispatch(Command::ControlSet {
+            id: control,
+            value: mutated_value,
+        })
+        .expect("control command must dispatch");
+        bus.commit_all_into(&mut state);
+        assert_eq!(state.control_value(control), Some(mutated_value));
+
+        // Recall preset 0 — control restores to `saved_value`.
+        bus.dispatch(Command::PresetRecall { id: PresetId(0) })
+            .expect("preset recall command must dispatch");
+        bus.commit_all_into(&mut state);
+        assert_eq!(state.control_value(control), Some(saved_value));
+        assert_eq!(state.active_preset(), Some(PresetId(0)));
+    }
+
+    #[test]
+    fn recall_unsaved_preset_leaves_controls_untouched() {
+        // Phase-3 baseline pin (re-affirmed under the Wave 2.4
+        // PERF.C widening): recalling a preset that has never
+        // been saved must NOT mutate the control store. This is
+        // the invariant that keeps the EV-PRESET-PLAYLIST (row
+        // 34) T2 corpus + EV-STATE-REPLAY (row 32) goldens
+        // invariant — every prior corpus dispatches PresetRecall
+        // against an empty bank and expects controls to stay at
+        // whatever the prior ControlSet sequence left them.
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+        let control = ControlId(7);
+        let value = ControlValue(0.5);
+
+        bus.dispatch(Command::ControlSet { id: control, value })
+            .expect("control command must dispatch");
+        bus.dispatch(Command::PresetRecall { id: PresetId(99) })
+            .expect("preset recall command must dispatch");
+        bus.commit_all_into(&mut state);
+
+        assert_eq!(state.control_value(control), Some(value));
+        assert_eq!(state.active_preset(), Some(PresetId(99)));
     }
 
     #[test]

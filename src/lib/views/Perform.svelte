@@ -253,7 +253,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    */
   const PRESET_RAIL_IDS = Array.from({ length: 12 }, (_, i) => i);
 
-  function selectPreset(id: number): void {
+  /**
+   * Wave 2.4 PERF.C — preset rail click handler. Plain click recalls
+   * the preset; Cmd-click (macOS) / Ctrl-click (Windows / Linux) saves
+   * the current control snapshot into the addressed slot. Mirrors the
+   * `SnapBar` 3-click convention (plain recall / Cmd save / Alt
+   * clear); the preset rail does not yet surface a clear action — that
+   * lands once the engine grows a `Command::PresetClear` variant in a
+   * future wave.
+   */
+  function selectPreset(id: number, event?: MouseEvent): void {
+    if (event && (event.metaKey || event.ctrlKey)) {
+      void presetStore.save(id);
+      return;
+    }
     void presetStore.recall(id);
   }
 
@@ -1180,8 +1193,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             class="btn btn--ghost preset-slot"
             class:preset-slot--active={activePresetId === presetId}
             aria-pressed={activePresetId === presetId ? 'true' : 'false'}
-            title={`Recall preset ${presetId}`}
-            onclick={() => selectPreset(presetId)}
+            title={`Recall preset ${presetId} (Cmd/Ctrl-click to save current controls)`}
+            onclick={(event: MouseEvent) => selectPreset(presetId, event)}
           >
             <span class="mono">{presetId}</span>
           </button>

@@ -79,6 +79,10 @@ pub enum RuntimeLifecycleState {
 pub enum CommandKind {
     ControlSet,
     PresetRecall,
+    /// Wave 2.4 PERF.C — preset save (`docs/31` label `preset_save`).
+    /// Closes the "scene-author preset capture" axis the Phase-3
+    /// `EV-PRESET-PLAYLIST` narrowing deferred.
+    PresetSave,
     PlaylistAdvance,
     SnapRecall,
     SnapSave,
@@ -95,6 +99,9 @@ pub enum CommandKind {
 pub enum EventKind {
     ControlChanged,
     PresetRecalled,
+    /// Wave 2.4 PERF.C — mirror of [`CommandKind::PresetSave`]
+    /// (`docs/31` label `preset_saved`).
+    PresetSaved,
     PlaylistAdvanced,
     SnapRecalled,
     SnapSaved,
@@ -687,6 +694,7 @@ mod catalog_conformance {
     const EXPECTED_RUNTIME_COMMAND_KIND_LABELS: &[&str] = &[
         "control_set",
         "preset_recall",
+        "preset_save",
         "playlist_advance",
         "snap_recall",
         "snap_save",
@@ -699,6 +707,7 @@ mod catalog_conformance {
     const EXPECTED_RUNTIME_EVENT_KIND_LABELS: &[&str] = &[
         "control_changed",
         "preset_recalled",
+        "preset_saved",
         "playlist_advanced",
         "snap_recalled",
         "snap_saved",
@@ -837,6 +846,7 @@ mod catalog_conformance {
         let variants = vec![
             CommandKind::ControlSet,
             CommandKind::PresetRecall,
+            CommandKind::PresetSave,
             CommandKind::PlaylistAdvance,
             CommandKind::SnapRecall,
             CommandKind::SnapSave,
@@ -847,6 +857,7 @@ mod catalog_conformance {
             match kind {
                 CommandKind::ControlSet
                 | CommandKind::PresetRecall
+                | CommandKind::PresetSave
                 | CommandKind::PlaylistAdvance
                 | CommandKind::SnapRecall
                 | CommandKind::SnapSave
@@ -866,6 +877,7 @@ mod catalog_conformance {
         let variants = vec![
             EventKind::ControlChanged,
             EventKind::PresetRecalled,
+            EventKind::PresetSaved,
             EventKind::PlaylistAdvanced,
             EventKind::SnapRecalled,
             EventKind::SnapSaved,
@@ -876,6 +888,7 @@ mod catalog_conformance {
             match kind {
                 EventKind::ControlChanged
                 | EventKind::PresetRecalled
+                | EventKind::PresetSaved
                 | EventKind::PlaylistAdvanced
                 | EventKind::SnapRecalled
                 | EventKind::SnapSaved
@@ -890,6 +903,7 @@ mod catalog_conformance {
         match kind {
             CommandKind::ControlSet => "control_set",
             CommandKind::PresetRecall => "preset_recall",
+            CommandKind::PresetSave => "preset_save",
             CommandKind::PlaylistAdvance => "playlist_advance",
             CommandKind::SnapRecall => "snap_recall",
             CommandKind::SnapSave => "snap_save",
@@ -902,6 +916,7 @@ mod catalog_conformance {
         match kind {
             EventKind::ControlChanged => "control_changed",
             EventKind::PresetRecalled => "preset_recalled",
+            EventKind::PresetSaved => "preset_saved",
             EventKind::PlaylistAdvanced => "playlist_advanced",
             EventKind::SnapRecalled => "snap_recalled",
             EventKind::SnapSaved => "snap_saved",

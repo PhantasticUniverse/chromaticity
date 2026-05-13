@@ -18,6 +18,14 @@ export async function recallPreset(id: PresetId): Promise<void> {
   await invoke<void>('recall_preset', { id });
 }
 
+/// Wave 2.4 PERF.C — save the current control snapshot into the preset
+/// slot identified by `id`. Resolves once the runtime has applied the
+/// committed event (the engine snapshots `ControlStore.values` at
+/// `State::apply_event` time and also activates the preset).
+export async function savePreset(id: PresetId): Promise<void> {
+  await invoke<void>('save_preset', { id });
+}
+
 /// Read the active preset id, or `null` when no preset has been
 /// recalled.
 export async function activePreset(): Promise<PresetId | null> {

@@ -101,6 +101,34 @@ describe('presetStore', () => {
     expect(presetStore.activeId).toBeNull();
   });
 
+  it('save() invokes save_preset with id then refreshes activeId (Wave 2.4 PERF.C)', async () => {
+    const calls: Array<[string, unknown]> = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      calls.push([cmd, args]);
+      if (cmd === 'save_preset') return undefined;
+      if (cmd === 'active_preset') return 4;
+      throw new Error(`unhandled-${cmd}`);
+    });
+    const { presetStore } = await import('./preset.svelte');
+    presetStore.reset();
+
+    await presetStore.save(4);
+
+    expect(calls.length).toBe(2);
+    expect(calls[0]).toEqual(['save_preset', { id: 4 }]);
+    expect(calls[1]?.[0]).toBe('active_preset');
+    expect(presetStore.activeId).toBe(4);
+  });
+
+  it('save() swallows invoke rejection and leaves activeId unchanged', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('not running in tauri'));
+    const { presetStore } = await import('./preset.svelte');
+    presetStore.reset();
+
+    await expect(presetStore.save(5)).resolves.toBeUndefined();
+    expect(presetStore.activeId).toBeNull();
+  });
+
   it('reset() returns activeId to the baseline null', async () => {
     invokeMock.mockResolvedValueOnce(9);
     const { presetStore } = await import('./preset.svelte');

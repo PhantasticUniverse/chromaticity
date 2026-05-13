@@ -39,6 +39,23 @@ fn recall_preset_impl(app: &AppState, id: u32) -> Result<(), String> {
     Ok(())
 }
 
+fn save_preset_impl(app: &AppState, id: u32) -> Result<(), String> {
+    // Wave 2.4 PERF.C: dispatch `Command::PresetSave { id }` and let
+    // the canonical state commit thread snapshot the current
+    // `ControlStore` into the preset bank via `State::apply_event`.
+    // Mirrors `recall_preset_impl`'s `dispatch → lock → commit_one_into`
+    // chain.
+    app.bus
+        .dispatch(Command::PresetSave { id: PresetId(id) })
+        .map_err(|err| err.to_string())?;
+    let mut state = app
+        .state
+        .lock()
+        .map_err(|err| format!("state mutex poisoned: {err}"))?;
+    let _ = app.bus.commit_one_into(&mut state);
+    Ok(())
+}
+
 fn active_preset_impl(app: &AppState) -> Result<Option<u32>, String> {
     let state = app
         .state
@@ -52,6 +69,17 @@ fn active_preset_impl(app: &AppState) -> Result<Option<u32>, String> {
 #[tauri::command]
 pub fn recall_preset(app_state: State<'_, AppState>, id: u32) -> Result<(), String> {
     recall_preset_impl(app_state.inner(), id)
+}
+
+/// Wave 2.4 PERF.C — save the current `ControlStore` snapshot into the
+/// preset bank keyed by `id`. The save also activates the preset
+/// (matching the `SnapSave` precedent of setting `active = Some(slot)`
+/// at apply time). In-process only; preset-bank durability + on-disk
+/// persistence remain Wave 2.5+ scope per the Phase-3
+/// `EV-PRESET-PLAYLIST` narrowing.
+#[tauri::command]
+pub fn save_preset(app_state: State<'_, AppState>, id: u32) -> Result<(), String> {
+    save_preset_impl(app_state.inner(), id)
 }
 
 /// Return the active preset id, or `None` when no preset has been
@@ -69,7 +97,7 @@ mod tests {
     //! `PresetId` is a transparent `u32` newtype with no validator, so
     //! there is no invalid-input test to write.
 
-    use super::{active_preset_impl, recall_preset_impl};
+    use super::{active_preset_impl, recall_preset_impl, save_preset_impl};
     use crate::state::AppState;
 
     #[test]
@@ -91,5 +119,15 @@ mod tests {
         recall_preset_impl(&app, 1).unwrap();
         recall_preset_impl(&app, 2).unwrap();
         assert_eq!(active_preset_impl(&app).unwrap(), Some(2));
+    }
+
+    #[test]
+    fn save_preset_then_active_preset_round_trip() {
+        // Wave 2.4 PERF.C — saving a preset activates it on the
+        // canonical-state side. Mirrors `recall_preset_then_active`
+        // shape.
+        let app = AppState::new();
+        save_preset_impl(&app, 5).unwrap();
+        assert_eq!(active_preset_impl(&app).unwrap(), Some(5));
     }
 }
