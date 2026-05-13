@@ -24,6 +24,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import SnapBar from './SnapBar.svelte';
 import { snapStore } from '../stores/snap.svelte';
+import { snapLabelsStore } from '../stores/snapLabels.svelte';
 
 describe('SnapBar widget — rendering surface (W43 baseline)', () => {
   beforeEach(() => {
@@ -285,5 +286,141 @@ describe('SnapBar widget — visual state indicators', () => {
     const slots = container.querySelectorAll('.snap-slot:not(.snap-slot--add)');
     expect((slots[1] as HTMLElement).getAttribute('aria-pressed')).toBe('true');
     expect((slots[0] as HTMLElement).getAttribute('aria-pressed')).toBe('false');
+  });
+});
+
+describe('snapLabelsStore — localStorage round-trip (Wave 2.4 PERF.F)', () => {
+  beforeEach(() => {
+    snapLabelsStore.reset();
+    localStorage.removeItem('snap-labels');
+  });
+
+  afterEach(() => {
+    snapLabelsStore.reset();
+    localStorage.removeItem('snap-labels');
+  });
+
+  it('persists a label across hydrate (set → reset → hydrate → label)', () => {
+    snapLabelsStore.set(1, 'Intro');
+    expect(snapLabelsStore.label(1)).toBe('Intro');
+
+    // Drop the in-memory state and re-read from localStorage; the
+    // label should come back.
+    snapLabelsStore.reset();
+    expect(snapLabelsStore.label(1)).toBe('1');
+
+    snapLabelsStore.hydrate();
+    expect(snapLabelsStore.label(1)).toBe('Intro');
+  });
+
+  it('falls back to the supplied fallback when no label is set', () => {
+    expect(snapLabelsStore.label(3, 'Break')).toBe('Break');
+  });
+
+  it('falls back to the slot id as a string when no label and no fallback', () => {
+    expect(snapLabelsStore.label(7)).toBe('7');
+  });
+
+  it('trims whitespace before persisting', () => {
+    snapLabelsStore.set(2, '  Drop  ');
+    expect(snapLabelsStore.label(2)).toBe('Drop');
+    snapLabelsStore.reset();
+    snapLabelsStore.hydrate();
+    expect(snapLabelsStore.label(2)).toBe('Drop');
+  });
+
+  it('removes the entry when set with an empty / whitespace-only label', () => {
+    snapLabelsStore.set(4, 'Bass');
+    expect(snapLabelsStore.label(4)).toBe('Bass');
+    snapLabelsStore.set(4, '   ');
+    expect(snapLabelsStore.label(4, 'fallback')).toBe('fallback');
+  });
+
+  it('survives corrupt JSON in localStorage (hydrate is no-op on parse failure)', () => {
+    localStorage.setItem('snap-labels', '{not-json');
+    snapLabelsStore.hydrate();
+    expect(snapLabelsStore.label(1, 'def')).toBe('def');
+  });
+});
+
+describe('SnapBar widget — slot label rename (Wave 2.4 PERF.F)', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
+    snapStore.reset();
+    snapLabelsStore.reset();
+    localStorage.removeItem('snap-labels');
+  });
+
+  afterEach(() => {
+    cleanup();
+    snapLabelsStore.reset();
+    localStorage.removeItem('snap-labels');
+  });
+
+  it('renders the fixture name when no override is set', () => {
+    const { container } = render(SnapBar);
+    const slot1 = container.querySelectorAll('.snap-slot:not(.snap-slot--add)')[0] as HTMLElement;
+    expect(slot1.querySelector('.snap-slot__name')?.textContent).toBe('Intro');
+  });
+
+  it('renders the operator override label when set in the store', () => {
+    snapLabelsStore.set(1, 'Verse');
+    const { container } = render(SnapBar);
+    const slot1 = container.querySelectorAll('.snap-slot:not(.snap-slot--add)')[0] as HTMLElement;
+    expect(slot1.querySelector('.snap-slot__name')?.textContent).toBe('Verse');
+  });
+
+  it('right-click opens an inline rename input', async () => {
+    const { container } = render(SnapBar);
+    const slot1 = container.querySelectorAll('.snap-slot:not(.snap-slot--add)')[0] as HTMLElement;
+    expect(container.querySelector('.snap-slot__rename')).toBeNull();
+    await fireEvent.contextMenu(slot1);
+    expect(container.querySelector('.snap-slot__rename')).not.toBeNull();
+  });
+
+  it('right-click → type → Enter persists the label and closes the input', async () => {
+    const { container } = render(SnapBar);
+    const slot1 = container.querySelectorAll('.snap-slot:not(.snap-slot--add)')[0] as HTMLElement;
+    await fireEvent.contextMenu(slot1);
+    const input = container.querySelector('.snap-slot__rename') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    await fireEvent.input(input, { target: { value: 'Intro' } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    expect(container.querySelector('.snap-slot__rename')).toBeNull();
+    expect(snapLabelsStore.label(1)).toBe('Intro');
+    const refreshedSlot1 = container.querySelectorAll(
+      '.snap-slot:not(.snap-slot--add)',
+    )[0] as HTMLElement;
+    expect(refreshedSlot1.querySelector('.snap-slot__name')?.textContent).toBe('Intro');
+  });
+
+  it('Escape cancels the rename without persisting', async () => {
+    snapLabelsStore.set(1, 'Old');
+    const { container } = render(SnapBar);
+    const slot1 = container.querySelectorAll('.snap-slot:not(.snap-slot--add)')[0] as HTMLElement;
+    await fireEvent.contextMenu(slot1);
+    const input = container.querySelector('.snap-slot__rename') as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: 'New' } });
+    await fireEvent.keyDown(input, { key: 'Escape' });
+    expect(container.querySelector('.snap-slot__rename')).toBeNull();
+    expect(snapLabelsStore.label(1)).toBe('Old');
+  });
+
+  it('suppresses recall_snap dispatch while a rename is open', async () => {
+    const { container } = render(SnapBar);
+    const slots = container.querySelectorAll('.snap-slot:not(.snap-slot--add)');
+    // Wait out the onMount refresh() so its calls do not pollute the
+    // interaction count.
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    invokeMock.mockClear();
+
+    await fireEvent.contextMenu(slots[0] as Element);
+    // Click another slot while the rename is open — recall_snap MUST
+    // NOT fire on either the renaming slot or its neighbour.
+    await fireEvent.click(slots[2] as Element);
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    const recallCalls = invokeMock.mock.calls.filter((c) => c[0] === 'recall_snap');
+    expect(recallCalls.length).toBe(0);
   });
 });
