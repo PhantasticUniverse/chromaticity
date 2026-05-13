@@ -247,9 +247,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /**
    * Twelve preset slots — bundle parity is the same 4×3 rail
    * presentation across views; the engine `PresetId` is a transparent
-   * `u32` so the rail is just a numeric strip from 0..11 here. Real
-   * preset capture / authoring is post-MVP per the Phase-3
-   * `EV-PRESET-PLAYLIST` narrowing.
+   * `u32` so the rail is just a numeric strip from 0..11 here. Preset
+   * save engine-side wired per Wave 2.4 PERF.C — in-process snapshot
+   * only; preset-bank disk durability + scene-author preset capture
+   * remain post-MVP.
    */
   const PRESET_RAIL_IDS = Array.from({ length: 12 }, (_, i) => i);
 

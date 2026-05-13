@@ -19,17 +19,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //
   // Locked W17 PR3 deviations from the bundle:
   //   - The bundle's `requestAnimationFrame` driver and signal generators
-  //     are gone; this view renders a frozen-frame snapshot sampled at
-  //     `t ≈ 17 s` so the static page matches the wireframe screenshot.
-  //     Real-time refresh waits for the audio adapter wiring landing in
-  //     Phase-3+/4a `EV-INTEGRATION-MATRIX` scope (per docs/26).
+  //     are gone; live snapshots arrive via the Wave 1c-α-2 audio IPC seam
+  //     (`audio_uniform_snapshot_changed`) and drive the band tiles + BPM
+  //     strip; the 64-bar Spectrum + 48-bar FFT visualisers remain
+  //     synthetic-driven per the `EV-AUDIO-UNIFORM-IPC` post-MVP narrowing.
   //   - The bundle's `<Spectrum>`, `<Preview>`, and `<Sparkline>` shared
   //     primitives are not yet ported as Svelte widgets; this view inlines
   //     SVG renderings of each. No new icon / canvas primitives are
   //     introduced — the brief constraint and the project's "three similar
   //     lines beats a premature abstraction" anti-pattern both apply.
-  //   - Streaming / Pause buttons are visual stubs; toggling `streaming`
-  //     locally is fine, but no IPC is wired (Phase-3+/4a scope).
+  //   - Streaming / Pause buttons toggle the local `streaming` flag so the
+  //     band tiles can freeze on a captured frame; the underlying IPC
+  //     subscription stays live (no engine-side pause command is wired).
   //   - The `Live Visualizer` preview placeholder is a static gradient blob
   //     field — same approach the W16 PR3 Welcome view took for its
   //     `<Preview>` substitution, for the same reason (runtime / scene

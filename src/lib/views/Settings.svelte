@@ -10,8 +10,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // (`/tmp/feature-parity-report.md`):
   //
   //   1. Audio Device — input/output picker, sample rate, latency hint,
-  //      channel layout. Visual stub; live cpal device enumeration is
-  //      Phase-3+/4a `EV-INTEGRATION-MATRIX` scope.
+  //      channel layout. Input device enumeration live-wired per Wave 2.6
+  //      AUD.A; output device + sample rate / latency / channel layout /
+  //      channel mapping persist via TOML but real engine apply is
+  //      deferred.
   //   2. Graphics / Output — render resolution preset + custom WxH,
   //      target FPS, V-Sync toggle, HDR target, display assignment.
   //   3. Storage — Media folders + Custom scene folders + Backups path

@@ -25,21 +25,26 @@ covers the **pre-cert pre-alpha** path.
 ## Repository state baseline
 
 - Branch: `main` at the time of build.
-- Recent landings (2026-05-12 through 2026-05-13): the Wave 2.5 Library
-  page-by-page wiring (5 PRs) closed at HEAD `bd9eb96` after the
-  DESIGN.md token reconciliation. Wave 2.5: `#457` (card thumbnails
-  fade-in + 50-card budget), `#458` (source/recent/sort filters),
-  `#459` (tag badges + favorites), `#460` (empty state polish + handoff),
-  `#461` (sidebar preview + metadata + Author handoff). Wave 2.4
-  Perform: `#451` (snap labels), `#452` (media filter), `#453` (action
-  buttons), `#454` (adapter pills), `#455` (scene list load), `#456`
-  (preset save engine widening). Wave 2.3: `#449` (Q.1 renderer
-  signatures + composition), `#450` (Q.2 Perform layout fidelity).
-  Wave 2.2: `#447` (R.2 shader sourcing research catalog), `#448`
-  (R.1 SceneCanvas + SceneStill wired into Perform / Library /
-  Playlist / Author preview panes). DESIGN.md alignment: `#462`
-  (rail.width 48→76, status-bar.height 22→28, snap slot count
-  16→8, snap labels anatomy note).
+- Recent landings (2026-05-12 through 2026-05-13): the Wave 2.6 Audio
+  page-by-page wiring (5 PRs) closed at HEAD `ea9331a` after the
+  narrative refresh + README catch-up. Wave 2.6: `#463` (AUD.E
+  snapshot capture), `#464` (AUD.D 8→5 FFT reduction band tiles),
+  `#465` (AUD.C live peak/rms dB readout), `#467` (AUD.B live
+  monitoring meter), `#469` (AUD.A live audio device enumeration).
+  Wave 2.5 Library: `#457` (card thumbnails fade-in + 50-card budget),
+  `#458` (source/recent/sort filters), `#459` (tag badges + favorites),
+  `#460` (empty state polish + handoff), `#461` (sidebar preview +
+  metadata + Author handoff). Wave 2.4 Perform: `#451` (snap labels),
+  `#452` (media filter), `#453` (action buttons), `#454` (adapter
+  pills), `#455` (scene list load), `#456` (preset save engine
+  widening). Wave 2.3: `#449` (Q.1 renderer signatures + composition),
+  `#450` (Q.2 Perform layout fidelity). Wave 2.2: `#447` (R.2 shader
+  sourcing research catalog), `#448` (R.1 SceneCanvas + SceneStill
+  wired into Perform / Library / Playlist / Author preview panes).
+  DESIGN.md alignment: `#462` (rail.width 48→76, status-bar.height
+  22→28, snap slot count 16→8, snap labels anatomy note). Narrative
+  refresh: `#468` (CLAUDE.md Wave 2.2-2.5 catch-up). README
+  catch-up: `#466`.
 - Prior landings (2026-05-11): the 11-PR Wave 2.1 cross-seam activation
   sequence closed at HEAD `c40e63e`. Lane A: `#436` (scene load), `#441`
   (control dispatch), `#442` (snap), `#445` (preset+playlist). Lane B:
