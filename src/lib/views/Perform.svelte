@@ -82,7 +82,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     MEDIA_TABS,
     META_CONTROL_GROUPS,
     SCENE_CONTROL_GROUPS,
-    SETLIST_OPTIONS,
     type MediaTab,
     type PerformControlGroup,
     type PerformControlSpec,
@@ -135,7 +134,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let activeTab = $state<MediaTab>('all');
   let perfMode = $state<'perform' | 'edit'>('perform');
   let railMode = $state<'scenes' | 'presets' | 'edit' | 'add'>('scenes');
-  let setlistChoice = $state<string>(SETLIST_OPTIONS[0] ?? 'Demo Scenes');
+
+  // Wave 2.4 Lane PERF.E — Media-tab pills now filter the media grid by
+  // card `kind`. The bundle's three tabs map onto the four fixture kinds
+  // (`none` / `webcam` / `video` / `test`) as:
+  //   - `all`   → every card
+  //   - `live`  → live-capture sources (`webcam` covers webcam + display)
+  //   - `media` → static / playable media (`none`, `video`, `test`)
+  // The test-card tile stays special-cased in the preview pane (Wave 2.3
+  // Lane Q.2 G.9) — that lives in `testCardActive` below and is
+  // independent of which filter tab is active.
+  const filteredMediaCards = $derived(
+    MEDIA_CARDS.filter((card) => {
+      if (activeTab === 'all') return true;
+      if (activeTab === 'live') return card.kind === 'webcam';
+      // 'media' — non-live cards.
+      return card.kind !== 'webcam';
+    }),
+  );
 
   // W18 PR1 locked: ChromaCtx / entitlement store does not exist yet, so
   // `unlicensed` is hardcoded false. Wire to the entitlement store when
@@ -552,12 +568,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         {/each}
       </div>
       <span class="panel__spacer" aria-hidden="true"></span>
-      <button type="button" class="btn btn--ghost" title="Refresh">
-        <Icon name="refresh" size={12} />
-      </button>
+      <!-- Wave 2.4 Lane PERF.E — Refresh button removed: no handler
+           and no engine media-index surface yet. Library-driven media
+           refresh is Wave 2.5+ scope. -->
     </header>
     <div class="panel__body media-grid">
-      {#each MEDIA_CARDS as card, i (card.id)}
+      <!-- Wave 2.4 Lane PERF.E — render `filteredMediaCards` (filtered by
+           the active media-tab kind) but key + select by each card's
+           original MEDIA_CARDS index so `activeMedia` semantics stay
+           stable across tab switches. -->
+      {#each filteredMediaCards as card (card.id)}
+        {@const originalIdx = MEDIA_CARDS.indexOf(card)}
         <!-- Shared-primitive backfill — `MediaCard` widget closes the
              W18 PR1 inline `mediaCardBlock` snippet placeholder. The
              widget composes the W36 `SceneStill` canvas thumbnail
@@ -569,8 +590,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           kind={card.kind}
           seed={card.seed}
           sceneKind={MEDIA_DEFAULT_SCENE_KIND}
-          active={i === activeMedia}
-          onClick={() => selectMedia(i)}
+          active={originalIdx === activeMedia}
+          onClick={() => selectMedia(originalIdx)}
         />
       {/each}
     </div>
@@ -744,19 +765,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </button>
     </div>
 
+    <!-- Wave 2.4 Lane PERF.E — Setlist dropdown + Play Setlist button
+         removed: the engine has no "named setlist" concept (real
+         Library-driven setlist persistence is Wave 2.5+ scope) and the
+         Play button had no handler / engine transport surface. The
+         remaining static label reflects the bundle's first option
+         ("Demo Scenes") as a placeholder until a real setlist concept
+         lands. The timecode display stays as a fixture per the wider
+         "FIXTURE" inventory in the Wave 2.4 plan. -->
     <div class="scene-panel__setlist">
-      <label class="scene-panel__select-wrap">
-        <span class="visually-hidden">Active setlist</span>
-        <select class="scene-panel__select" bind:value={setlistChoice}>
-          {#each SETLIST_OPTIONS as opt (opt)}
-            <option value={opt}>{opt}</option>
-          {/each}
-        </select>
-      </label>
+      <span class="scene-panel__label">Demo Scenes</span>
       <span class="mono scene-panel__timecode">00h 00m 00s</span>
-      <button type="button" class="rail-btn rail-btn--small" title="Play setlist">
-        <Icon name="play" size={12} />
-      </button>
     </div>
 
     <!-- Wave 2.1 Lane A.4 — Previous / Next / Shuffle buttons
@@ -1448,10 +1467,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     color: var(--color-primary);
     box-shadow: 0 0 calc(8px * var(--glow, 1)) var(--color-primary);
   }
-  .rail-btn--small {
-    width: 24px;
-    height: 24px;
-  }
+  /* Wave 2.4 Lane PERF.E — `.rail-btn--small` retired alongside the
+     "Play setlist" button that was its only consumer. */
 
   /* Wave 2.3 Lane Q.2 (G.11) — tightened scene-panel header chrome so
    * the list strip below absorbs more vertical space and surfaces
@@ -1474,19 +1491,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     padding: var(--space-xs) var(--space-md);
     border-bottom: 1px solid var(--color-line-2);
   }
-  .scene-panel__select-wrap {
+  /* Wave 2.4 Lane PERF.E — Setlist label replaces the dropdown until
+     real Library-driven setlists land. Static colour matches the
+     dropdown's prior text colour so the visual rhythm is preserved. */
+  .scene-panel__label {
     flex: 1;
     min-width: 0;
-  }
-  .scene-panel__select {
-    width: 100%;
-    background: var(--color-bg-3);
     color: var(--color-text-0);
-    border: 1px solid var(--color-line-2);
-    border-radius: var(--radius-xs);
-    padding: 2px var(--space-sm);
     font-family: var(--font-family-sans);
     font-size: var(--font-size-body-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .scene-panel__timecode {
     color: var(--color-text-3);
@@ -1566,16 +1582,5 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /* ---------------- Utility ----------------------------------------------- */
   .mono {
     font-family: var(--font-family-mono);
-  }
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 </style>
