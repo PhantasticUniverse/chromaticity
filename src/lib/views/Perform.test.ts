@@ -58,7 +58,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 import Perform from './Perform.svelte';
 import { MEDIA_CARDS, MEDIA_DEFAULT_ACTIVE_INDEX, MEDIA_TABS } from '../data/perform-fixtures';
 import { resolveSetlistRowToSceneId } from '../data/perform-setlist-resolver';
-import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
+import { SETLIST_FIXTURE } from '../data/setlist-fixtures';
 import { clearCache as clearLibraryCache } from '../stores/library';
 import { loadedSceneStore } from '../stores/loadedScene.svelte';
 import { performVariantStore } from '../stores/performVariant.svelte';
