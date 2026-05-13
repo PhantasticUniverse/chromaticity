@@ -48,9 +48,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     SPECTRUM_BAR_COUNT,
     buildSparkline,
     spectrumBarValue,
+    type FrequencyBand,
     type FrequencyBandBar,
   } from '../data/audio-uniform-fixtures';
   import Icon from '../Icon.svelte';
+  import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import { BpmRing, BeatDots } from '../widgets';
 
@@ -165,6 +167,77 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   function spectrumPeakY(peak: number): number {
     return SPECTRUM_VIEW_H - peak * (SPECTRUM_VIEW_H - 1);
   }
+
+  // ---------------------------------------------------------------------
+  // Wave 2.6 AUD.D — live band-tile wiring. The five fixture band tiles
+  // (Bass / Mid / Mid-High / High / Full) read live values reduced from
+  // the engine's 8 log-spaced FFT bands carried over the
+  // `audio_uniform_snapshot_changed` Tauri event per
+  // `docs/adr/ADR-019-audio-uniform-ipc-bridge.md`. Mirrors the
+  // `AudioReactivity` widget's 8 → 4 idiom from Wave 1c-α (PR `#340`),
+  // extended to 5 tiles by pairing adjacent fft bins for the four
+  // frequency-specific tiles and averaging all eight for the broadband
+  // `Full` tile:
+  //   bass    ← avg(fft_bands[0], fft_bands[1])
+  //   mid     ← avg(fft_bands[2], fft_bands[3])
+  //   mid-hi  ← avg(fft_bands[4], fft_bands[5])
+  //   high    ← avg(fft_bands[6], fft_bands[7])
+  //   full    ← avg(fft_bands[0..7])
+  //
+  // Each tile renders three bars (level / hit / presence). The reduced
+  // value drives `level` directly; `hit` is a simple above-threshold
+  // flash so the `●`/`○` indicator still reacts to onsets; `presence`
+  // mirrors level (the visual just needs to react to the engine value
+  // — proper peak-hold smoothing is post-MVP UX). Dual-mode fallback:
+  // when `audioSnapshotStore.snapshot === null` (no Tauri runtime, or
+  // pre-bootstrap startup window) the frozen-frame fixture values
+  // render, matching the Wave 1c-α-2 posture for the visualizer widgets.
+
+  $effect(() => {
+    void audioSnapshotStore.subscribe();
+  });
+
+  const HIT_THRESHOLD = 0.5;
+
+  /**
+   * Reduce the engine's 8-band FFT array into the bundle's 5 named
+   * tiles (Bass / Mid / Mid-High / High / Full). The four
+   * frequency-specific tiles average adjacent pairs (8 → 4); the
+   * broadband `Full` tile averages all eight bins. Per-tile bar
+   * derivations are kept simple: level = reduced value, hit = step
+   * flash above `HIT_THRESHOLD`, presence = reduced value (mirrors
+   * level — proper peak-hold is post-MVP UX). Preserves the fixture's
+   * tile id / label / sub-label / tint / bar-key shape so the visual
+   * layout never drifts; only the per-bar `value` switches to live data.
+   */
+  function reduceFftToBands(payload: AudioUniformSnapshotPayload): readonly FrequencyBand[] {
+    const f = payload.fft_bands;
+    const avg2 = (a: number, b: number): number => (a + b) / 2;
+    const avgAll = (f[0] + f[1] + f[2] + f[3] + f[4] + f[5] + f[6] + f[7]) / 8;
+    const reducedByBandId: Readonly<Record<string, number>> = {
+      bass: avg2(f[0], f[1]),
+      mid: avg2(f[2], f[3]),
+      midhi: avg2(f[4], f[5]),
+      high: avg2(f[6], f[7]),
+      full: avgAll,
+    };
+    return AUDIO_UNIFORMS_FIXTURE.bands.map((band) => {
+      const v = reducedByBandId[band.id] ?? 0;
+      const hit = v > HIT_THRESHOLD ? Math.min(1, (v - HIT_THRESHOLD) * 2) : 0;
+      const bars: readonly FrequencyBandBar[] = band.bars.map((bar) => {
+        if (bar.kind === 'level') return { key: bar.key, kind: bar.kind, value: v };
+        if (bar.kind === 'hit') return { key: bar.key, kind: bar.kind, value: hit };
+        return { key: bar.key, kind: bar.kind, value: v };
+      });
+      return { ...band, bars };
+    });
+  }
+
+  const liveBands = $derived<readonly FrequencyBand[]>(
+    audioSnapshotStore.snapshot
+      ? reduceFftToBands(audioSnapshotStore.snapshot)
+      : AUDIO_UNIFORMS_FIXTURE.bands,
+  );
 
   // Sparkline SVG geometry — matches the bundle's 100×32 viewBox / 60-point
   // window so the existing fixture sample arrays drop straight in.
@@ -338,7 +411,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <span class="au__section-sub">smoothed · hits · presence per band</span>
         </header>
         <div class="au__bands">
-          {#each AUDIO_UNIFORMS_FIXTURE.bands as band (band.id)}
+          {#each liveBands as band (band.id)}
             <div class="au__band" style="--band-tint: {band.tint};">
               <div class="au__band-head">
                 <span class="au__band-name">{band.label}</span>
