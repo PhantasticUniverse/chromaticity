@@ -81,9 +81,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     dpr?: number;
     /** Optional ARIA description. Default `presentation` (decorative). */
     ariaLabel?: string;
+    /** Wave 2.9 SC.A — optional name-keyed control snapshot from the
+     *  loaded scene's schema. Recognised common-axis keys:
+     *  `speed` (Slider in `[0, 1]`, 0.5 nominal) pre-multiplies the
+     *  renderer's time arg so `0.0` freezes and `1.0` runs at 2x;
+     *  `intensity` (Slider in `[0, 1]`, 0.5 nominal) pre-multiplies
+     *  the renderer's `lvl` arg with the same 2x scaling so the silent-
+     *  audio fallback (`pulse = 0.6 + lvl * 0.4`) still has headroom;
+     *  `tint` (Vec3 or Vec4 of `[r, g, b, (a)]`, channels in `[0, 1]`)
+     *  draws a translucent overlay over the vignette post-pass at 20%
+     *  of the supplied alpha. Missing keys default to nominal so
+     *  scenes without these axes render identically to pre-Wave-2.9
+     *  behaviour. The renderer signatures stay 6-arg
+     *  (`ctx, t, seed, w, h, lvl`); adapter pre-multiplies at the
+     *  `draw()` boundary. Tied to Wave 2.10+ for the remaining axes
+     *  (warp / invert / focus / gamma / mirror). */
+    controls?: Record<string, number | readonly number[]>;
   };
 
-  let { kind = 'rings', seed = 0, audio = true, dpr, ariaLabel }: Props = $props();
+  let { kind = 'rings', seed = 0, audio = true, dpr, ariaLabel, controls }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let reduceMotion = $state(false);
@@ -148,9 +164,27 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       ro.observe(c);
     }
 
-    const draw = (t: number, lvl: number): void => {
+    const draw = (
+      t: number,
+      lvl: number,
+      ctrls?: Record<string, number | readonly number[]>,
+    ): void => {
+      // Wave 2.9 SC.A — pre-multiply common-axis controls at the
+      // adapter boundary so the 16 renderer functions stay 6-arg.
+      // `speed` (0.5 nominal, 1.0 = 2x, 0.0 = frozen) scales `t`;
+      // `intensity` (0.5 nominal) scales `lvl`. The `* 2` factor
+      // maps the `[0, 1]` Slider range onto a `[0, 2]` multiplier so
+      // the nominal 0.5 reproduces the pre-Wave-2.9 baseline.
+      const speedRaw = ctrls?.speed;
+      const speed = typeof speedRaw === 'number' ? speedRaw : 0.5;
+      const effectiveT = t * (speed * 2);
+
+      const intensityRaw = ctrls?.intensity;
+      const intensity = typeof intensityRaw === 'number' ? intensityRaw : 0.5;
+      const effectiveLvl = Math.max(0, Math.min(1, lvl * intensity * 2));
+
       const r = RENDERERS[kind] ?? RENDERERS.rings;
-      r(ctx, t, seed, c.width, c.height, Math.max(0, Math.min(1, lvl)));
+      r(ctx, effectiveT, seed, c.width, c.height, effectiveLvl);
       // Vignette + scanline post-pass per the bundle. Wave 2.3 Q.1:
       // softened from 0.65 → 0.45 to keep wide preview panes
       // readable at the edges.
@@ -166,11 +200,34 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       vg.addColorStop(1, 'rgba(0,0,0,0.45)');
       ctx.fillStyle = vg;
       ctx.fillRect(0, 0, c.width, c.height);
+
+      // Wave 2.9 SC.A — `tint` overlay post-vignette so the colour
+      // wash sits on top of the procedural pattern + the soft edge.
+      // The `Vec3` shape carries RGB only (alpha defaults to 1.0);
+      // the `Vec4` shape carries RGBA. Overlay alpha is scaled by 0.2
+      // so a fully-saturated tint still reads as a translucent wash,
+      // not an opaque cover. Missing or non-array `tint` keys skip
+      // the overlay entirely (the pre-Wave-2.9 visual baseline).
+      const tint = ctrls?.tint;
+      if (Array.isArray(tint) && tint.length >= 3) {
+        const tr = typeof tint[0] === 'number' ? tint[0] : 0;
+        const tg = typeof tint[1] === 'number' ? tint[1] : 0;
+        const tb = typeof tint[2] === 'number' ? tint[2] : 0;
+        const taRaw = tint.length >= 4 && typeof tint[3] === 'number' ? tint[3] : 1.0;
+        const overlayAlpha = Math.max(0, Math.min(1, taRaw * 0.2));
+        if (overlayAlpha > 0) {
+          const rr = Math.round(Math.max(0, Math.min(1, tr)) * 255);
+          const gg = Math.round(Math.max(0, Math.min(1, tg)) * 255);
+          const bb = Math.round(Math.max(0, Math.min(1, tb)) * 255);
+          ctx.fillStyle = `rgba(${rr}, ${gg}, ${bb}, ${overlayAlpha})`;
+          ctx.fillRect(0, 0, c.width, c.height);
+        }
+      }
     };
 
     if (reduceMotion) {
       // Static frame — equivalent to a SceneStill emit.
-      draw(seed * 13.7, 0.5);
+      draw(seed * 13.7, 0.5, controls);
       return () => {
         ro?.disconnect();
       };
@@ -209,7 +266,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         rawLvl = 0.3;
       }
       smLvl = smLvl + (rawLvl - smLvl) * LVL_EMA;
-      draw(t, smLvl);
+      draw(t, smLvl, controls);
       raf = requestAnimationFrame(loop);
     };
     loop();

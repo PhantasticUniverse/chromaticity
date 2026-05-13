@@ -17,6 +17,33 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Wave 2.9 SC.A — `vi.hoisted` lifts the renderer-args recorder so the
+// `vi.mock` factory below can populate it before any module under test
+// imports `./scene-renderers`. Per the user-memory
+// `feedback_vitest_invoke_mock_hoisted.md` pattern: `const rendererSpy
+// = vi.fn()` referenced from `vi.mock` throws ReferenceError; the
+// hoisted form is the only way to retain spy access across the
+// boundary.
+const { rendererSpy } = vi.hoisted(() => ({ rendererSpy: vi.fn() }));
+
+// Mock the renderer registry to a single recording spy keyed across
+// every SceneKind. The vignette post-pass + tint overlay still call
+// `ctx.createRadialGradient` / `ctx.fillRect` on the real canvas
+// context (jsdom returns a no-op stub) — only the per-kind procedural
+// draw is intercepted. `renderStill` / `SCENE_KINDS` / `SceneKind` /
+// `SceneRenderer` type re-exports stay untouched since they're imported
+// by other widgets too.
+vi.mock('./scene-renderers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./scene-renderers')>();
+  const kinds = actual.SCENE_KINDS;
+  const stub: Record<string, typeof rendererSpy> = {};
+  for (const k of kinds) stub[k] = rendererSpy;
+  return {
+    ...actual,
+    RENDERERS: stub,
+  };
+});
+
 import { SCENE_KINDS } from './scene-renderers';
 import SceneCanvas from './SceneCanvas.svelte';
 
@@ -33,8 +60,53 @@ function stubMatchMedia(reduce: boolean): void {
   }));
 }
 
+// jsdom does not implement `HTMLCanvasElement.getContext`; without a
+// stub the `SceneCanvas` effect short-circuits at the `if (!ctx) return`
+// guard and the renderer pre-multiplier path is never exercised. The
+// stub records every `fillStyle` write so the tint-overlay assertion
+// can search for the `rgba(...)` string the adapter paints.
+type FillStyleRecord = { styles: string[] };
+function stubCanvasContext(record: FillStyleRecord): () => void {
+  const orig = HTMLCanvasElement.prototype.getContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (HTMLCanvasElement.prototype as any).getContext = function getContext(
+    this: HTMLCanvasElement,
+    type: string,
+  ) {
+    if (type !== '2d') return null;
+    const ctx = {
+      fillStyle: '' as string | CanvasGradient,
+      createRadialGradient: (): CanvasGradient => {
+        const stops: Array<[number, string]> = [];
+        const grad = {
+          addColorStop: (off: number, color: string): void => {
+            stops.push([off, color]);
+          },
+        } as unknown as CanvasGradient;
+        return grad;
+      },
+      fillRect: vi.fn(),
+    };
+    return new Proxy(ctx, {
+      set(target, prop, value): boolean {
+        if (prop === 'fillStyle' && typeof value === 'string') {
+          record.styles.push(value);
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (target as any)[prop] = value;
+        return true;
+      },
+    });
+  };
+  return () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (HTMLCanvasElement.prototype as any).getContext = orig;
+  };
+}
+
 beforeEach(() => {
   stubMatchMedia(false);
+  rendererSpy.mockClear();
 });
 
 afterEach(() => {
@@ -147,5 +219,173 @@ describe('SceneCanvas widget', () => {
     });
     expect(container.querySelector('canvas.scene-canvas')).not.toBeNull();
     expect(() => unmount()).not.toThrow();
+  });
+
+  // Wave 2.9 SC.A — controls pre-multiplier coverage. The reduce-motion
+  // branch draws exactly one static frame inside the `$effect` so the
+  // recorded renderer args are deterministic; the rAF loop path is
+  // exercised by mount-and-unmount checks (per the rAF lifecycle
+  // memory note above). Static-frame `t = seed * 13.7`. Tests stub
+  // `HTMLCanvasElement.getContext('2d')` because jsdom's default
+  // returns null and the SceneCanvas effect short-circuits before
+  // `draw()` runs without it.
+
+  it('pre-multiplies t by speed: speed=0 freezes t at 0', () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      render(SceneCanvas, {
+        props: { kind: 'rings', seed: 4, controls: { speed: 0 } },
+      });
+      expect(rendererSpy).toHaveBeenCalled();
+      const call = rendererSpy.mock.calls[0];
+      expect(call).toBeDefined();
+      // Args: (ctx, t, seed, w, h, lvl); freeze drops t to 0.
+      expect(call?.[1]).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it('pre-multiplies t by speed: speed=1.0 scales t by 2', () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      render(SceneCanvas, {
+        props: { kind: 'rings', seed: 4, controls: { speed: 1 } },
+      });
+      const call = rendererSpy.mock.calls[0];
+      expect(call).toBeDefined();
+      // seed=4 → static-frame t = 4 * 13.7 = 54.8; speed=1 → effectiveT = 109.6.
+      expect(call?.[1]).toBeCloseTo(54.8 * 2, 5);
+    } finally {
+      restore();
+    }
+  });
+
+  it('defaults speed to nominal 0.5 when controls.speed is absent (effectiveT = t)', () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      render(SceneCanvas, {
+        props: { kind: 'rings', seed: 4 },
+      });
+      const call = rendererSpy.mock.calls[0];
+      expect(call).toBeDefined();
+      // Nominal speed=0.5 → effectiveT = t * (0.5 * 2) = t. Pre-Wave-2.9 baseline.
+      expect(call?.[1]).toBeCloseTo(54.8, 5);
+    } finally {
+      restore();
+    }
+  });
+
+  it('pre-multiplies lvl by intensity: intensity=0 zeroes effectiveLvl', () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      render(SceneCanvas, {
+        props: { kind: 'rings', seed: 0, controls: { intensity: 0 } },
+      });
+      const call = rendererSpy.mock.calls[0];
+      expect(call).toBeDefined();
+      // Args: (ctx, t, seed, w, h, lvl). Static-frame lvl=0.5; intensity=0 → 0.
+      expect(call?.[5]).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it('pre-multiplies lvl by intensity: intensity=1.0 scales lvl by 2 (clamped)', () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      render(SceneCanvas, {
+        props: { kind: 'rings', seed: 0, controls: { intensity: 1 } },
+      });
+      const call = rendererSpy.mock.calls[0];
+      expect(call).toBeDefined();
+      // lvl=0.5 * intensity=1 * 2 = 1.0 (clamped at upper bound).
+      expect(call?.[5]).toBe(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it('defaults intensity to nominal 0.5 when controls.intensity is absent', () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      render(SceneCanvas, {
+        props: { kind: 'rings', seed: 0 },
+      });
+      const call = rendererSpy.mock.calls[0];
+      expect(call).toBeDefined();
+      // Nominal intensity=0.5 → effectiveLvl = 0.5 * 0.5 * 2 = 0.5 (pre-Wave-2.9 baseline).
+      expect(call?.[5]).toBeCloseTo(0.5, 5);
+    } finally {
+      restore();
+    }
+  });
+
+  it('ignores non-numeric speed / intensity values (defaults to nominal)', () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      render(SceneCanvas, {
+        // Cast through unknown to feed the runtime guard a non-number value.
+        // The widget's `typeof === 'number'` check should fall through to
+        // the 0.5 default.
+        props: {
+          kind: 'rings',
+          seed: 4,
+          controls: { speed: [0, 0] as unknown as number, intensity: [0, 0] as unknown as number },
+        },
+      });
+      const call = rendererSpy.mock.calls[0];
+      expect(call).toBeDefined();
+      expect(call?.[1]).toBeCloseTo(54.8, 5);
+      expect(call?.[5]).toBeCloseTo(0.5, 5);
+    } finally {
+      restore();
+    }
+  });
+
+  it('paints tint overlay (Vec4) post-vignette with alpha = ta * 0.2', () => {
+    stubMatchMedia(true);
+    const record: FillStyleRecord = { styles: [] };
+    const restore = stubCanvasContext(record);
+    try {
+      render(SceneCanvas, {
+        props: {
+          kind: 'rings',
+          seed: 0,
+          controls: { tint: [1, 0, 0, 1] },
+        },
+      });
+      // Expect a rgba(...) entry with red colour + alpha=0.2.
+      const tintFill = record.styles.find((s) => /rgba\(255,\s*0,\s*0,\s*0\.2\)/.test(s));
+      expect(tintFill).toBeDefined();
+    } finally {
+      restore();
+    }
+  });
+
+  it('skips tint overlay when controls.tint is absent (no rgba(...) fill)', () => {
+    stubMatchMedia(true);
+    const record: FillStyleRecord = { styles: [] };
+    const restore = stubCanvasContext(record);
+    try {
+      render(SceneCanvas, {
+        props: { kind: 'rings', seed: 0 },
+      });
+      // Absent tint → only the vignette `CanvasGradient` is assigned as
+      // `fillStyle`; the recorder only logs string assignments, so no
+      // entries should be present. (Empty array is a strong signal the
+      // tint branch was not taken.)
+      expect(record.styles).toEqual([]);
+      expect(rendererSpy).toHaveBeenCalled();
+    } finally {
+      restore();
+    }
   });
 });
