@@ -8,6 +8,8 @@
 // -p chromaticity-app` runs; this index stays stable so frontend
 // callers import the IPC vocabulary from a single module path.
 
+export type { AudioDeviceKindPayload } from './AudioDeviceKindPayload';
+export type { AudioDevicePayload } from './AudioDevicePayload';
 export type { AudioSettingsPayload } from './AudioSettingsPayload';
 export type { AudioUniformSnapshotPayload } from './AudioUniformSnapshotPayload';
 export type { CameraDeviceKindPayload } from './CameraDeviceKindPayload';

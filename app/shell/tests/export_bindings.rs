@@ -17,14 +17,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use chromaticity_ui_bridge::{
-    AudioSettingsPayload, AudioUniformSnapshotPayload, CameraDeviceKindPayload,
-    CameraDevicePayload, ControlDefaultValuePayload, ControlId, ControlKindPayload,
-    ControlSchemaPayload, ControlValue, GeneralSettingsPayload, GraphicsSettingsPayload,
-    LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload, MidiLearnEventPayload,
-    MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot, OscHealthState,
-    OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId, SceneCard, SceneSource,
-    SettingsPayload, SnapSlotId, StorageSettingsPayload, SyphonOutputStatusPayload,
-    SyphonServerPayload, ThemePayload,
+    AudioDeviceKindPayload, AudioDevicePayload, AudioSettingsPayload, AudioUniformSnapshotPayload,
+    CameraDeviceKindPayload, CameraDevicePayload, ControlDefaultValuePayload, ControlId,
+    ControlKindPayload, ControlSchemaPayload, ControlValue, GeneralSettingsPayload,
+    GraphicsSettingsPayload, LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload,
+    MidiLearnEventPayload, MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot,
+    OscHealthState, OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId,
+    SceneCard, SceneSource, SettingsPayload, SnapSlotId, StorageSettingsPayload,
+    SyphonOutputStatusPayload, SyphonServerPayload, ThemePayload,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -46,6 +46,10 @@ fn export_bindings_to_frontend_tree() {
     OscHealthSnapshot::export_all_to(&out_dir).expect("export OscHealthSnapshot bindings");
     AudioUniformSnapshotPayload::export_all_to(&out_dir)
         .expect("export AudioUniformSnapshotPayload bindings");
+    // Wave 2.6 Lane AUD.A: live cpal input-device enumeration bridge.
+    AudioDeviceKindPayload::export_all_to(&out_dir)
+        .expect("export AudioDeviceKindPayload bindings");
+    AudioDevicePayload::export_all_to(&out_dir).expect("export AudioDevicePayload bindings");
     CameraDeviceKindPayload::export_all_to(&out_dir)
         .expect("export CameraDeviceKindPayload bindings");
     CameraDevicePayload::export_all_to(&out_dir).expect("export CameraDevicePayload bindings");

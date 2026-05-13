@@ -9,6 +9,7 @@
 //! round-trip in [`playlist`]. Subsequent slices grow this surface
 //! with observability bridges.
 
+pub mod audio;
 pub mod camera;
 pub mod control;
 pub mod library;

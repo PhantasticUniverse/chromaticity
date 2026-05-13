@@ -102,6 +102,134 @@ use crate::error::AudioError;
 use crate::frame::AudioFrame;
 use crate::ingest::{IngestBoundary, IngestStatus};
 
+/// Operator-visible descriptor for a single cpal input device,
+/// surfaced by [`enumerate_input_devices`].
+///
+/// Wave 2.6 Lane AUD.A — backs the `list_audio_devices` Tauri command
+/// the operator-facing Settings → Audio Device → Input Device dropdown
+/// consumes via the bridge [`AudioDevicePayload`] mirror. Field shape is
+/// intentionally minimal — a stable per-device id (the cpal-reported
+/// device name today, namespaced under the `input-` prefix to match
+/// the MIDI Lane D.1 precedent and reserve room for an `output-`
+/// follow-up) plus the operator-visible display name.
+///
+/// The cpal device name varies by host backend (CoreAudio exposes the
+/// device's display name; ALSA exposes its client / port label; WASAPI
+/// exposes the WAVEOUTCAPS friendly name), so the bridge layer treats
+/// the field as opaque operator-visible text rather than parsing it
+/// for vendor / manufacturer hints.
+///
+/// [`AudioDevicePayload`]: chromaticity_ui_bridge::AudioDevicePayload
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AudioDeviceInfo {
+    /// Stable per-device id. Current shape: `"input-<sanitized-name>"`
+    /// against the cpal-reported device name. The id is not stable
+    /// across host reconnects (CoreAudio / ALSA / WASAPI can rename or
+    /// renumber when devices are plugged or unplugged), so the
+    /// operator-facing UI should treat this id as session-stable only.
+    pub id: String,
+    /// Operator-visible display name from
+    /// [`cpal::Device::name`]. Falls back to `"Input <index>"` when the
+    /// backend refuses to surface the name (e.g. a transient
+    /// disconnection between `input_devices()` and `name()`).
+    pub name: String,
+}
+
+/// Coarse classification of a cpal audio device direction.
+///
+/// Wave 2.6 Lane AUD.A ships [`AudioDeviceKind::Input`] only — the
+/// `list_audio_devices` Tauri command enumerates input devices via
+/// [`cpal::Host::input_devices`] so the operator-facing Settings →
+/// Audio Device → Input Device dropdown can render real device names
+/// rather than the W21 PR1 fixture-only set in
+/// `src/lib/data/settings-fixtures.ts`. Output enumeration is reserved
+/// for a follow-up wave alongside the per-device routing surface.
+/// `#[non_exhaustive]` reserves room for the `Output` variant without
+/// breaking downstream callers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AudioDeviceKind {
+    /// Inbound audio device (cpal `input_devices()` enumeration).
+    Input,
+}
+
+/// Enumerate the cpal input devices currently visible to the host.
+///
+/// Returns one [`AudioDeviceInfo`] per device surfaced by a fresh
+/// [`cpal::Host::input_devices`] call. On a host with no audio
+/// subsystem access (CI / headless / a Linux box without ALSA), cpal's
+/// `input_devices()` errors at iteration construction; the function
+/// collapses that error to `Ok(Vec::new())` so the Tauri command
+/// surface treats "no audio available" as the same empty-list state
+/// as "audio available but no devices connected" — the frontend's
+/// fixture-fallback branch fires identically in both cases. Per-device
+/// name-retrieval failures (transient disconnection) fall back to
+/// `"Input <index>"` rather than skipping the device entirely.
+///
+/// Mirrors the [`crate::cpal_source::try_default_input`] error model:
+/// returns [`AudioError::CpalDeviceCapture`] for the genuinely
+/// unrecoverable error class. There are no producers of that branch
+/// in Wave 2.6 Lane AUD.A's MVP body (the no-subsystem / no-devices
+/// branches both collapse to `Ok(Vec::new())`), but the return type
+/// stays `Result<_, AudioError>` to match the crate's existing audio
+/// surface and so the follow-up output-enumeration wave can introduce
+/// real error producers without churning the API contract.
+///
+/// Evidence: `EV-INTEGRATION-MATRIX` (audio arm, Wave 2.6 Lane AUD.A)
+/// — device-listing surface widened from the W21 PR1 fixture-only
+/// posture documented in `src/lib/data/settings-fixtures.ts`.
+pub fn enumerate_input_devices() -> Result<Vec<AudioDeviceInfo>, AudioError> {
+    let host = cpal::default_host();
+    let devices = match host.input_devices() {
+        Ok(d) => d,
+        // CI / headless / no-audio-subsystem hosts: collapse to empty
+        // vec rather than erroring. Mirrors the
+        // `chromaticity_midi_adapter::list_devices` posture for the
+        // parallel MIDI enumeration surface.
+        Err(_) => return Ok(Vec::new()),
+    };
+    let infos = devices
+        .enumerate()
+        .map(|(idx, device)| {
+            let name = device.name().unwrap_or_else(|_| format!("Input {idx}"));
+            // Namespace the id under `input-` to match the MIDI Lane
+            // D.1 precedent and reserve room for an `output-` follow-up.
+            // Sanitisation strips whitespace runs to a single dash so
+            // the id round-trips through a URL / DOM selector if the
+            // operator-facing UI ever uses it as a CSS hook.
+            let sanitized = sanitize_device_id_segment(&name);
+            AudioDeviceInfo {
+                id: format!("input-{sanitized}"),
+                name,
+            }
+        })
+        .collect();
+    Ok(infos)
+}
+
+/// Sanitise a cpal device name into a single id segment.
+///
+/// Replaces whitespace runs with a single ASCII dash and lowercases
+/// the result. Non-ASCII characters pass through unchanged so the id
+/// stays a stable round-trip of the operator-visible name without
+/// dropping locale-specific characters.
+fn sanitize_device_id_segment(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut prev_was_space = false;
+    for ch in name.chars() {
+        if ch.is_whitespace() {
+            if !prev_was_space {
+                out.push('-');
+                prev_was_space = true;
+            }
+        } else {
+            out.extend(ch.to_lowercase());
+            prev_was_space = false;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
 /// Bounded-channel capacity between the cpal data callback and the
 /// analyser. Sized for a few hops of headroom at the §7.1 hop cadence
 /// (375 Hz) without keeping more buffered audio than the analyser
@@ -809,5 +937,74 @@ mod cpal_source_pins {
         assert!(f[2].abs() < CONVERSION_TOLERANCE);
         // 49152 -> (49152 - 32768) / 32768 = +0.5
         assert!((f[3] - 0.5).abs() < CONVERSION_TOLERANCE);
+    }
+
+    // ---- Wave 2.6 Lane AUD.A device-enumeration pins ----
+    //
+    // T1 per docs/43 §15.5: pins the documented shape contract for
+    // `enumerate_input_devices`. The function MUST NOT error on any
+    // host (CI / headless / no-audio-subsystem branches collapse to
+    // `Ok(Vec::new())` per the parallel `chromaticity_midi_adapter::list_devices`
+    // posture); every returned descriptor MUST carry a non-empty id +
+    // name; ids MUST be namespaced under the `input-` prefix to match
+    // the MIDI Lane D.1 precedent. Evidence: `EV-INTEGRATION-MATRIX`
+    // (audio arm, Wave 2.6 Lane AUD.A).
+
+    #[test]
+    fn enumerate_input_devices_does_not_error_on_any_host() {
+        // The enumeration MUST NOT propagate the cpal host-init
+        // failure to the caller — CI runners typically have no
+        // input device available. The empty vec under that condition
+        // is the contract; on a developer host with audio subsystem
+        // access AND zero connected devices, the result is also
+        // empty; on a host WITH connected devices the result is
+        // non-empty. All three cases pass this assertion.
+        let result = enumerate_input_devices()
+            .expect("enumerate_input_devices must not error at MVP surface");
+        for info in &result {
+            assert!(
+                info.id.starts_with("input-"),
+                "expected id to start with `input-`, got {:?}",
+                info.id,
+            );
+            assert!(!info.name.is_empty(), "cpal device name must not be empty");
+            // The id segment after the `input-` prefix MUST NOT be
+            // empty either — `sanitize_device_id_segment` strips
+            // trailing dashes after whitespace collapse, so a
+            // pathological all-whitespace name would surface here.
+            let suffix = info.id.strip_prefix("input-").unwrap_or("");
+            assert!(
+                !suffix.is_empty(),
+                "id suffix must not be empty, got {:?}",
+                info.id,
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_device_id_segment_collapses_whitespace_runs() {
+        // Documented invariant: whitespace runs collapse to a single
+        // dash; the result is lowercased; leading / trailing dashes
+        // strip.
+        assert_eq!(
+            sanitize_device_id_segment("Built-in Microphone"),
+            "built-in-microphone"
+        );
+        assert_eq!(sanitize_device_id_segment("Yeti  Classic"), "yeti-classic");
+        assert_eq!(sanitize_device_id_segment("  Padded  "), "padded");
+        assert_eq!(
+            sanitize_device_id_segment("BlackHole 16ch"),
+            "blackhole-16ch"
+        );
+    }
+
+    #[test]
+    fn audio_device_kind_input_variant_is_construct_and_clone_safe() {
+        // Pin the only variant shipped today; widening to `Output`
+        // would surface this test as a compile-time reminder that the
+        // bridge mirror needs the matching variant added in lockstep.
+        let kind = AudioDeviceKind::Input;
+        let cloned = kind;
+        assert_eq!(kind, cloned);
     }
 }

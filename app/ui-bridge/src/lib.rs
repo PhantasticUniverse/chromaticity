@@ -596,6 +596,107 @@ impl From<CameraDevicePayload> for chromaticity_camera_adapter::DeviceSummary {
     }
 }
 
+/// IPC-facing classification of a cpal audio device direction,
+/// mirroring [`chromaticity_audio::AudioDeviceKind`] across the
+/// Tauri command boundary.
+///
+/// Wave 2.6 Lane AUD.A ships [`AudioDeviceKindPayload::Input`] only —
+/// the engine-side enum is `#[non_exhaustive]` with `Input` as its sole
+/// variant today; the bridge mirror scaffolds an `Output` variant for
+/// symmetry with the planned follow-up wave so the wire shape can
+/// widen without churning the consumer-side type imports. ts-rs renders
+/// the enum as a flat string union (`"Input" | "Output"`) because
+/// there are no payload-bearing variants. The `From<AudioDeviceKind>`
+/// catch-all coerces any future engine-side variant to `Input` until
+/// the bridge surface is widened explicitly.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum AudioDeviceKindPayload {
+    Input,
+    Output,
+}
+
+impl From<chromaticity_audio::AudioDeviceKind> for AudioDeviceKindPayload {
+    fn from(kind: chromaticity_audio::AudioDeviceKind) -> Self {
+        match kind {
+            chromaticity_audio::AudioDeviceKind::Input => Self::Input,
+            // Catch-all for the engine-side `#[non_exhaustive]` enum:
+            // any future variant requires a matching ts-rs variant
+            // before the IPC surface widens. Until then the
+            // not-yet-named variants collapse to `Input` (the only
+            // engine-side variant the audio crate exposes today).
+            _ => Self::Input,
+        }
+    }
+}
+
+impl From<AudioDeviceKindPayload> for chromaticity_audio::AudioDeviceKind {
+    fn from(payload: AudioDeviceKindPayload) -> Self {
+        match payload {
+            AudioDeviceKindPayload::Input => Self::Input,
+            // The bridge-side `Output` variant has no engine-side peer
+            // yet; the safe round-trip on the way back to the engine
+            // collapses it to `Input` so the typed-newtype seam stays
+            // total. The follow-up output-enumeration wave adds the
+            // engine-side `Output` variant and removes this collapse.
+            AudioDeviceKindPayload::Output => Self::Input,
+        }
+    }
+}
+
+/// IPC-facing cpal audio device descriptor, mirroring
+/// [`chromaticity_audio::AudioDeviceInfo`] across the Tauri command
+/// boundary.
+///
+/// Wave 2.6 Lane AUD.A: backs the `list_audio_devices` Tauri command
+/// consumed by `src/lib/stores/audioDevices.svelte.ts`. Field names
+/// mirror the engine-side struct verbatim (`id` / `name`) plus the
+/// bridge-mirrored `kind` discriminant so the wire shape is a 1:1
+/// ts-rs export. The id is the per-device session-stable identifier
+/// (`"input-<sanitized-name>"` today); the operator-facing Settings
+/// dropdown uses it as the keyed-each iteration key and as the
+/// `audio.input_device` value persisted through
+/// [`SettingsPayload`].
+///
+/// `kind` is filled at the bridge seam — the engine-side
+/// [`chromaticity_audio::enumerate_input_devices`] only enumerates
+/// input devices today (output enumeration is a follow-up wave), so
+/// every payload constructed via the
+/// [`From<AudioDeviceInfo>`] impl carries
+/// [`AudioDeviceKindPayload::Input`].
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct AudioDevicePayload {
+    pub id: String,
+    pub name: String,
+    pub kind: AudioDeviceKindPayload,
+}
+
+impl From<chromaticity_audio::AudioDeviceInfo> for AudioDevicePayload {
+    fn from(info: chromaticity_audio::AudioDeviceInfo) -> Self {
+        Self {
+            id: info.id,
+            name: info.name,
+            // Wave 2.6 Lane AUD.A only enumerates inputs; the engine
+            // descriptor doesn't yet carry a kind field of its own
+            // (it would be redundant when every entry is an input).
+            // The bridge seam attaches the discriminant so the wire
+            // shape stays symmetric with the planned output
+            // enumeration follow-up.
+            kind: AudioDeviceKindPayload::Input,
+        }
+    }
+}
+
+impl From<AudioDevicePayload> for chromaticity_audio::AudioDeviceInfo {
+    fn from(payload: AudioDevicePayload) -> Self {
+        Self {
+            id: payload.id,
+            name: payload.name,
+        }
+    }
+}
+
 /// IPC-facing classification of a MIDI device-port direction,
 /// mirroring [`chromaticity_midi_adapter::MidiDeviceKind`] across the
 /// Tauri command boundary.
