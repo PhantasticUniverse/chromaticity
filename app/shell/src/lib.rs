@@ -112,7 +112,23 @@ pub fn run() -> Result<(), tauri::Error> {
             // (a) Producer-side audio runtime. Falls back to silent
             // on CI / headless environments per the PR 1 contract;
             // construction is infallible.
-            let runtime = AudioRuntime::new(AudioRuntimeConfig::default());
+            //
+            // Wave 2.8 Lane AUD.SRC: honour the persisted operator
+            // device preference from `settings.audio.input_device`.
+            // Unresolvable preferences (operator unplugged BlackHole
+            // between sessions, etc.) fall back to the host default
+            // with a one-shot stderr warning per `try_input_by_preference`.
+            let preferred_input = {
+                let bootstrap_state = app.state::<AppState>();
+                match bootstrap_state.settings.lock() {
+                    Ok(guard) => Some(guard.audio.input_device.clone()),
+                    Err(poisoned) => Some(poisoned.into_inner().audio.input_device.clone()),
+                }
+            };
+            let runtime = AudioRuntime::with_preferred_device(
+                preferred_input.as_deref(),
+                AudioRuntimeConfig::default(),
+            );
             let snapshot_handle = runtime.snapshot_handle();
             let audio_handle = runtime.spawn();
 

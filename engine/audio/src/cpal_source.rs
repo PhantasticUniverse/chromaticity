@@ -533,6 +533,213 @@ pub fn try_default_input() -> Result<CpalSource, AudioError> {
 /// rate / channel count for a host-thread-readable surface.
 struct StreamSetup;
 
+/// Open a host input device by `preference` and start a `cpal::Stream`
+/// feeding [`CpalSource`]. Mirrors [`try_default_input`] in every
+/// respect except the device-resolution step.
+///
+/// `preference` is the persisted operator selection from
+/// `settings.audio.input_device` (Wave 2.1 Lane C.3 / Wave 2.6 Lane
+/// AUD.A). Two forms are accepted: a sanitised id matching the
+/// `enumerate_input_devices` output (e.g. `"input-blackhole-16ch"`,
+/// case-insensitive on the suffix), or the cpal-reported device name
+/// verbatim (case-insensitive, whitespace-tolerant). The string
+/// `"default"` (Wave 2.1 sentinel) routes to [`try_default_input`].
+///
+/// When the saved preference fails to resolve against the current
+/// host (operator unplugged BlackHole between sessions, renamed the
+/// device, switched audio profiles, etc.), this function logs a
+/// warning to stderr and falls back to [`try_default_input`]. The
+/// fallback warning is the only operator-visible signal that the
+/// saved choice was honoured-then-degraded; surfacing the warning to
+/// the UI is a follow-up lane (the producer-thread restart semantics
+/// plus 60 Hz scheduler-tick coordination needed for "apply now
+/// without restart" land alongside that surface).
+///
+/// Evidence: `EV-INTEGRATION-MATRIX` (audio arm, Wave 2.8 Lane AUD.SRC)
+/// — closes the cosmetic-only gap on the Wave 2.6 Lane AUD.A Input
+/// Device dropdown surfaced by the AO during pre-alpha smoke testing
+/// (2026-05-13).
+pub fn try_input_by_preference(preference: Option<&str>) -> Result<CpalSource, AudioError> {
+    // Resolve the operator preference to a concrete cpal device before
+    // entering the owner-thread setup; on no-match this returns `None`
+    // and the caller falls back to the default-input path.
+    let resolved_name = match preference {
+        None => None,
+        Some(pref) => resolve_preferred_input_device_name(pref),
+    };
+    let Some(device_name) = resolved_name else {
+        // No preference, sentinel "default", or unresolvable name —
+        // emit a one-shot warning only on the unresolvable branch
+        // (the operator-visible path that says "I picked BlackHole
+        // and got the mic instead"), then fall through to the
+        // default-input path.
+        if let Some(pref) = preference {
+            if !is_default_preference(pref) {
+                eprintln!(
+                    "chromaticity-audio: preferred input device {pref:?} did not match any current \
+                     cpal device; falling back to the host default input"
+                );
+            }
+        }
+        return try_default_input();
+    };
+    try_input_by_device_name(&device_name)
+}
+
+/// Resolve a persisted preference string to a concrete cpal device
+/// name from the current host enumeration, returning `None` if no
+/// device matches. Sanitised-id form (`input-<sanitised>`) and raw
+/// device-name form both pass through here.
+///
+/// Public-but-`pub(crate)` — exposed so the T1 drift pins can
+/// exercise the matching logic on a host with no audio subsystem
+/// (CI / headless) without opening a real cpal stream. The match is
+/// case-insensitive on both sides; whitespace and dashes inside the
+/// candidate id are tolerated through the
+/// [`sanitize_device_id_segment`] normaliser.
+pub(crate) fn resolve_preferred_input_device_name(preference: &str) -> Option<String> {
+    if is_default_preference(preference) {
+        return None;
+    }
+    let host = cpal::default_host();
+    let devices = host.input_devices().ok()?;
+    // Strip the `input-` namespace prefix if present (sanitised-id
+    // form). The bare-name form is matched directly.
+    let needle_raw = preference.strip_prefix("input-").unwrap_or(preference);
+    let needle = sanitize_device_id_segment(needle_raw);
+    for device in devices {
+        let Ok(name) = device.name() else { continue };
+        if sanitize_device_id_segment(&name) == needle {
+            return Some(name);
+        }
+    }
+    None
+}
+
+/// True when `preference` is the Wave 2.1 sentinel that routes to
+/// `cpal::Host::default_input_device`. Matches the AudioSettings
+/// `default_input_device` literal plus the empty string (defensive —
+/// a future deserialiser quirk produces empty rather than the
+/// sentinel).
+pub(crate) fn is_default_preference(preference: &str) -> bool {
+    preference.is_empty() || preference.eq_ignore_ascii_case("default")
+}
+
+/// Open a specific cpal input device by exact (cpal-reported) name
+/// and start a `cpal::Stream` feeding [`CpalSource`]. Used by
+/// [`try_input_by_preference`] after the preference is resolved to a
+/// concrete device name on the current host.
+fn try_input_by_device_name(name: &str) -> Result<CpalSource, AudioError> {
+    let (sender, consumer) = bounded::<AudioFrame>(CHANNEL_CAPACITY);
+    let closed = Arc::new(AtomicBool::new(false));
+
+    let (build_tx, build_rx) = bounded::<Result<StreamSetup, AudioError>>(1);
+    let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
+
+    let state = Arc::new(CallbackState {
+        sender,
+        closed: closed.clone(),
+        config: std::sync::Mutex::new(StreamFormat {
+            sample_rate_hz: 0,
+            channels: 0,
+        }),
+    });
+    let state_for_owner = state.clone();
+    let name_for_owner = name.to_string();
+
+    let owner = thread::Builder::new()
+        .name("chromaticity-cpal-owner".into())
+        .spawn(move || {
+            run_named_stream_owner(state_for_owner, name_for_owner, build_tx, shutdown_rx);
+        })
+        .map_err(|e| AudioError::CpalDeviceCapture {
+            reason: format!("failed to spawn cpal-owner thread: {e}"),
+        })?;
+
+    let setup = match build_rx.recv() {
+        Ok(result) => result,
+        Err(_) => Err(AudioError::CpalDeviceCapture {
+            reason: "cpal-owner thread exited before reporting build outcome".into(),
+        }),
+    };
+
+    match setup {
+        Ok(_) => Ok(CpalSource::from_parts(
+            consumer,
+            closed,
+            Box::new(CpalStreamGuard {
+                shutdown: Some(shutdown_tx),
+                owner: Some(owner),
+            }),
+        )),
+        Err(err) => {
+            drop(shutdown_tx);
+            let _ = owner.join();
+            Err(err)
+        }
+    }
+}
+
+/// Owner-thread entrypoint for the by-name resolution path.
+/// Builds the cpal stream against the named device, starts it,
+/// reports the outcome, then blocks on the shutdown channel.
+fn run_named_stream_owner(
+    state: Arc<CallbackState>,
+    device_name: String,
+    build_tx: Sender<Result<StreamSetup, AudioError>>,
+    shutdown_rx: Receiver<()>,
+) {
+    let stream = match build_named_input_stream(&state, &device_name) {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = build_tx.send(Err(e));
+            return;
+        }
+    };
+    if let Err(e) = stream.play() {
+        let _ = build_tx.send(Err(AudioError::CpalDeviceCapture {
+            reason: format!("stream.play() failed: {e}"),
+        }));
+        return;
+    }
+    if build_tx.send(Ok(StreamSetup)).is_err() {
+        return;
+    }
+    let _ = shutdown_rx.recv();
+    let _ = stream.pause();
+    drop(stream);
+}
+
+/// Resolve the named cpal input device on the current host and build
+/// the per-format input stream. Mirrors [`build_default_input_stream`]
+/// in every respect except the device-resolution step (which scans
+/// `host.input_devices()` for a case-insensitive name match rather
+/// than calling `host.default_input_device()`).
+fn build_named_input_stream(
+    state: &Arc<CallbackState>,
+    device_name: &str,
+) -> Result<cpal::Stream, AudioError> {
+    let host = cpal::default_host();
+    let devices = host
+        .input_devices()
+        .map_err(|e| AudioError::CpalDeviceCapture {
+            reason: format!("input_devices enumeration failed: {e}"),
+        })?;
+    let needle = sanitize_device_id_segment(device_name);
+    let mut chosen: Option<cpal::Device> = None;
+    for device in devices {
+        let Ok(name) = device.name() else { continue };
+        if sanitize_device_id_segment(&name) == needle {
+            chosen = Some(device);
+            break;
+        }
+    }
+    let device = chosen.ok_or_else(|| AudioError::CpalDeviceCapture {
+        reason: format!("named input device {device_name:?} not found"),
+    })?;
+    build_stream_against_device(state, &device)
+}
+
 /// Owner-thread entrypoint. Builds the cpal stream, starts it,
 /// reports the outcome, then blocks on the shutdown channel.
 fn run_stream_owner(
@@ -580,6 +787,17 @@ fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream
         .ok_or_else(|| AudioError::CpalDeviceCapture {
             reason: "no default input device".into(),
         })?;
+    build_stream_against_device(state, &device)
+}
+
+/// Per-format dispatch + stream-build for a resolved `cpal::Device`.
+/// Shared between [`build_default_input_stream`] and
+/// [`build_named_input_stream`]; the only difference between the two
+/// is the device-resolution step.
+fn build_stream_against_device(
+    state: &Arc<CallbackState>,
+    device: &cpal::Device,
+) -> Result<cpal::Stream, AudioError> {
     let supported_config =
         device
             .default_input_config()
@@ -1101,5 +1319,40 @@ mod cpal_source_pins {
         let cloned = kind;
         assert_eq!(kind, cloned);
         assert_ne!(kind, AudioDeviceKind::Input);
+    }
+
+    #[test]
+    fn is_default_preference_matches_sentinel_and_empty() {
+        // Wave 2.8 Lane AUD.SRC: the sentinel + empty string both
+        // route to the host default input.
+        assert!(is_default_preference(""));
+        assert!(is_default_preference("default"));
+        assert!(is_default_preference("DEFAULT"));
+        assert!(is_default_preference("Default"));
+        assert!(!is_default_preference("BlackHole 16ch"));
+        assert!(!is_default_preference("input-blackhole-16ch"));
+    }
+
+    #[test]
+    fn resolve_preferred_input_device_name_short_circuits_on_default() {
+        // Wave 2.8 Lane AUD.SRC: the sentinel path returns `None`
+        // without enumerating, so test hosts with no audio subsystem
+        // exercise the early-out without hitting `cpal::default_host`.
+        assert!(resolve_preferred_input_device_name("default").is_none());
+        assert!(resolve_preferred_input_device_name("").is_none());
+    }
+
+    #[test]
+    fn try_input_by_preference_falls_back_on_none() {
+        // Wave 2.8 Lane AUD.SRC: `None` preference is the equivalent
+        // of pre-Wave-2.8 behaviour — call site mirrors
+        // `try_default_input`. The test tolerates either Ok or the
+        // headless `CpalDeviceCapture` error per the existing
+        // `try_default_input` smoke test posture.
+        let _serialize = observability::test_serialize_lock();
+        match try_input_by_preference(None) {
+            Ok(_) | Err(AudioError::CpalDeviceCapture { .. }) => {}
+            other => panic!("unexpected result from try_input_by_preference(None): {other:?}"),
+        }
     }
 }

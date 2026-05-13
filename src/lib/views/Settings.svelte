@@ -481,6 +481,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <option value={opt.id}>{opt.label}</option>
             {/each}
           </select>
+          <p class="settings__hint">
+            Restart to apply audio device changes. On macOS, system audio output isn't directly
+            capturable — install <a
+              href="https://existential.audio/blackhole/"
+              target="_blank"
+              rel="noopener noreferrer">BlackHole</a
+            >
+            (free, MIT) or
+            <a href="https://rogueamoeba.com/loopback/" target="_blank" rel="noopener noreferrer"
+              >Loopback</a
+            > and select it here to route system audio into Chromaticity.
+          </p>
         </div>
         <div class="settings__field">
           <label for="audio-output" class="settings__label">Output Device</label>
