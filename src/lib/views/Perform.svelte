@@ -91,6 +91,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Icon from '../Icon.svelte';
   import type { ControlSchemaPayload } from '../ipc/bindings';
   import { dispatchAndRead } from '../stores/control';
+  import { controlLockStore } from '../stores/controlLock.svelte';
   import { fetchBundledSceneCards } from '../stores/library';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { performVariantStore } from '../stores/performVariant.svelte';
@@ -347,8 +348,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * and vitest jsdom both run without a Tauri runtime, so the
    * `dispatchAndRead` import will reject; the optimistic local cache
    * keeps the UI working in that environment.
+   *
+   * Wave 2.4 Lane PERF.A — `controlLockStore.isLocked(id)` guards
+   * the dispatch. Locked rows short-circuit before any `set_control`
+   * IPC or local-cache mutation, so per-row Lock + Lock-all pin the
+   * current value across pointer-drag, Default-reset, and Random
+   * sweeps. The guard fires whether the value originates from a
+   * widget drag, a Default-button reset, or a Random-button sweep —
+   * all three paths route through this helper.
    */
   function dispatchControl(id: number, value: number): void {
+    if (controlLockStore.isLocked(id)) return;
     controlValues = { ...controlValues, [id]: value };
     void dispatchAndRead(id, value)
       .then((readback) => {
@@ -361,6 +371,275 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         // optimistic; the engine round-trip is a no-op in this
         // environment by design.
       });
+  }
+
+  /**
+   * Wave 2.4 Lane PERF.A — normalise a `ControlDefaultValuePayload`
+   * onto the `f32` `set_control` wire. Booleans encode as 0 / 1
+   * (matching the existing toggle dispatch convention); numbers pass
+   * through; array variants (Xy / Color) take the first component
+   * for f32-channel parity. Returns `null` when the payload is
+   * non-numeric and has no leading numeric component — caller skips
+   * dispatch in that case.
+   */
+  function defaultValueToFloat(
+    def: ControlSchemaPayload['default'],
+    min: number | null,
+    max: number | null,
+  ): number | null {
+    let raw: number | null = null;
+    if (typeof def === 'boolean') {
+      raw = def ? 1 : 0;
+    } else if (typeof def === 'number') {
+      raw = def;
+    } else if (Array.isArray(def) && typeof def[0] === 'number') {
+      raw = def[0];
+    }
+    if (raw === null) return null;
+    // Match the same [0, 1] normalisation `controlSpecFromPayload`
+    // applies for fader / knob defaults so the round-trip lands on
+    // the same value the widget renders when no live value exists.
+    if (typeof min === 'number' && typeof max === 'number' && max > min) {
+      raw = (raw - min) / (max - min);
+    }
+    return Math.max(0, Math.min(1, raw));
+  }
+
+  /**
+   * Wave 2.4 Lane PERF.A — dispatch every scene control back to its
+   * bundle-declared default value. Reads the loaded scene's schema
+   * for canonical defaults; falls back to the fixture's
+   * `SCENE_CONTROL_GROUPS` when no scene is loaded so the button is
+   * useful in the pre-load / vite-dev jsdom paths too.
+   */
+  function resetSceneControlsToDefaults(): void {
+    const snapshot = loadedSceneStore.snapshot;
+    if (snapshot) {
+      snapshot.controls.forEach((ctl, idx) => {
+        const value = defaultValueToFloat(ctl.default, ctl.min, ctl.max);
+        if (value !== null) {
+          dispatchControl(idx, value);
+        }
+      });
+      return;
+    }
+    // No scene loaded — sweep the fixture rows. Fixture rows lack
+    // `controlId` so they have no engine route; the dispatch is a
+    // no-op against the engine but flips the local visual.
+    for (const group of SCENE_CONTROL_GROUPS) {
+      for (const ctl of group.controls) {
+        if (ctl.kind === 'toggle' && 'controlId' in ctl && ctl.controlId !== undefined) {
+          dispatchControl(ctl.controlId, ctl.on ? 1 : 0);
+        } else if (
+          (ctl.kind === 'fader' || ctl.kind === 'knob') &&
+          'controlId' in ctl &&
+          ctl.controlId !== undefined
+        ) {
+          dispatchControl(ctl.controlId, ctl.value);
+        }
+      }
+    }
+  }
+
+  /**
+   * Wave 2.4 Lane PERF.A — dispatch every meta control back to its
+   * fixture-declared default value. Mirrors `resetSceneControlsToDefaults`
+   * for the 1000+ namespace; swatches stay display-only (no controlId).
+   */
+  function resetMetaControlsToDefaults(): void {
+    for (const group of META_CONTROL_GROUPS) {
+      for (const ctl of group.controls) {
+        if (ctl.kind === 'swatch') continue;
+        if (ctl.controlId === undefined) continue;
+        if (ctl.kind === 'toggle') {
+          dispatchControl(ctl.controlId, ctl.on ? 1 : 0);
+        } else if (ctl.kind === 'fader' || ctl.kind === 'knob') {
+          dispatchControl(ctl.controlId, ctl.value);
+        }
+      }
+    }
+  }
+
+  /**
+   * Wave 2.4 Lane PERF.A — uniform random in [min, max] for each
+   * scene control with a numeric range. Booleans (toggles) flip to a
+   * uniform random 0 / 1; numeric controls sample uniformly over the
+   * declared range, falling back to [0, 1] when min/max are absent.
+   * Skips swatches (no `controlId`).
+   */
+  function randomizeSceneControls(): void {
+    const snapshot = loadedSceneStore.snapshot;
+    if (snapshot) {
+      snapshot.controls.forEach((ctl, idx) => {
+        const value = randomValueForSchema(ctl);
+        if (value !== null) {
+          dispatchControl(idx, value);
+        }
+      });
+      return;
+    }
+    for (const group of SCENE_CONTROL_GROUPS) {
+      for (const ctl of group.controls) {
+        randomizeFixtureControl(ctl);
+      }
+    }
+  }
+
+  /**
+   * Wave 2.4 Lane PERF.A — uniform random in [0, 1] for each meta
+   * control with a `controlId`. Meta controls have no min/max in
+   * the fixture (the 1000+ namespace is engine-scoped), so the [0, 1]
+   * range matches the fader / knob domain.
+   */
+  function randomizeMetaControls(): void {
+    for (const group of META_CONTROL_GROUPS) {
+      for (const ctl of group.controls) {
+        randomizeFixtureControl(ctl);
+      }
+    }
+  }
+
+  /** Pick a uniform-random value in `[min, max]` for a schema control,
+   *  or `null` when the kind has no f32 representation (Color). */
+  function randomValueForSchema(ctl: ControlSchemaPayload): number | null {
+    if (ctl.kind === 'Color') return null; // f32 channel can't carry RGB tuples.
+    if (ctl.kind === 'Toggle') return Math.random() < 0.5 ? 0 : 1;
+    const min = typeof ctl.min === 'number' ? ctl.min : 0;
+    const max = typeof ctl.max === 'number' ? ctl.max : 1;
+    if (max <= min) return Math.max(0, Math.min(1, min));
+    const raw = min + Math.random() * (max - min);
+    // Normalise back into [0, 1] to match `controlSpecFromPayload`'s
+    // domain — the widget renders against [0, 1] and the round-trip
+    // would otherwise mismatch the fader visual.
+    return Math.max(0, Math.min(1, (raw - min) / (max - min)));
+  }
+
+  /** Apply a uniform-random dispatch to a single fixture row.
+   *  Swatches skip (no `controlId`); toggles flip 0/1; numeric kinds
+   *  sample in [0, 1]. */
+  function randomizeFixtureControl(ctl: PerformControlSpec): void {
+    if (ctl.kind === 'swatch') return;
+    if (ctl.controlId === undefined) return;
+    if (ctl.kind === 'toggle') {
+      dispatchControl(ctl.controlId, Math.random() < 0.5 ? 0 : 1);
+    } else if (ctl.kind === 'fader' || ctl.kind === 'knob') {
+      dispatchControl(ctl.controlId, Math.random());
+    }
+  }
+
+  /** Collect every dispatchable `controlId` visible inside a derived
+   *  `PerformControlGroup[]` (scene or meta). Swatches + fixture rows
+   *  without `controlId` are skipped — the lock store has nothing to
+   *  pin for them. */
+  function collectControlIds(groups: readonly PerformControlGroup[]): number[] {
+    const ids: number[] = [];
+    for (const group of groups) {
+      for (const ctl of group.controls) {
+        if (ctl.kind === 'swatch') continue;
+        if (ctl.controlId !== undefined) {
+          ids.push(ctl.controlId);
+        }
+      }
+    }
+    return ids;
+  }
+
+  /** Scene panel header "Lock all" — locks every scene control or
+   *  unlocks them all if any are already locked. Toggle semantics
+   *  match the bundle's expectation that a second click clears the
+   *  lock state rather than re-locking. */
+  function toggleLockAllScene(): void {
+    const ids = collectControlIds(sceneControlGroups);
+    const anyLocked = ids.some((id) => controlLockStore.isLocked(id));
+    if (anyLocked) {
+      controlLockStore.unlockAll(ids);
+    } else {
+      controlLockStore.lockAll(ids);
+    }
+  }
+
+  /** Meta panel header "Lock all" — mirrors `toggleLockAllScene` over
+   *  the meta-control 1000+ namespace. */
+  function toggleLockAllMeta(): void {
+    const ids = collectControlIds(metaControlGroups);
+    const anyLocked = ids.some((id) => controlLockStore.isLocked(id));
+    if (anyLocked) {
+      controlLockStore.unlockAll(ids);
+    } else {
+      controlLockStore.lockAll(ids);
+    }
+  }
+
+  /** True when at least one scene control in the visible panel is
+   *  locked — drives the header lock button's `aria-pressed`. */
+  const sceneAnyLocked = $derived.by((): boolean => {
+    return collectControlIds(sceneControlGroups).some((id) => controlLockStore.isLocked(id));
+  });
+
+  /** True when at least one meta control is locked. */
+  const metaAnyLocked = $derived.by((): boolean => {
+    return collectControlIds(metaControlGroups).some((id) => controlLockStore.isLocked(id));
+  });
+
+  /** Per-group Lock-icon callbacks — toggle every control in that
+   *  group between locked and unlocked. */
+  function toggleLockGroup(group: PerformControlGroup): void {
+    const ids: number[] = [];
+    for (const ctl of group.controls) {
+      if (ctl.kind === 'swatch') continue;
+      if (ctl.controlId !== undefined) ids.push(ctl.controlId);
+    }
+    const anyLocked = ids.some((id) => controlLockStore.isLocked(id));
+    if (anyLocked) {
+      controlLockStore.unlockAll(ids);
+    } else {
+      controlLockStore.lockAll(ids);
+    }
+  }
+
+  /** Per-group Reset-icon callback — dispatch every numeric control
+   *  in the group back to its fixture / schema-declared default. */
+  function resetGroup(group: PerformControlGroup, isScene: boolean): void {
+    if (isScene && loadedSceneStore.snapshot) {
+      // Map group → schema indices via the same bucketing the derived
+      // `sceneControlGroups` applies. Re-walk the schema to find
+      // controls whose `ui_group` matches.
+      const snapshot = loadedSceneStore.snapshot;
+      snapshot.controls.forEach((ctl, idx) => {
+        const bucketName = ctl.ui_group ?? 'scene';
+        if (bucketName !== group.name) return;
+        const value = defaultValueToFloat(ctl.default, ctl.min, ctl.max);
+        if (value !== null) dispatchControl(idx, value);
+      });
+      return;
+    }
+    for (const ctl of group.controls) {
+      if (ctl.kind === 'swatch') continue;
+      if (ctl.controlId === undefined) continue;
+      if (ctl.kind === 'toggle') {
+        dispatchControl(ctl.controlId, ctl.on ? 1 : 0);
+      } else if (ctl.kind === 'fader' || ctl.kind === 'knob') {
+        dispatchControl(ctl.controlId, ctl.value);
+      }
+    }
+  }
+
+  /** Per-group Random-icon callback — uniform random over each
+   *  control's range. */
+  function randomizeGroup(group: PerformControlGroup, isScene: boolean): void {
+    if (isScene && loadedSceneStore.snapshot) {
+      const snapshot = loadedSceneStore.snapshot;
+      snapshot.controls.forEach((ctl, idx) => {
+        const bucketName = ctl.ui_group ?? 'scene';
+        if (bucketName !== group.name) return;
+        const value = randomValueForSchema(ctl);
+        if (value !== null) dispatchControl(idx, value);
+      });
+      return;
+    }
+    for (const ctl of group.controls) {
+      randomizeFixtureControl(ctl);
+    }
   }
 
   function controlSpecFromPayload(
@@ -543,19 +822,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <span class="panel__title-name">{sceneTitleName}</span>
       </h2>
       <span class="panel__spacer" aria-hidden="true"></span>
-      <button type="button" class="btn btn--ghost" title="Lock all controls">
+      <button
+        type="button"
+        class="btn btn--ghost"
+        class:btn--active={sceneAnyLocked}
+        title={sceneAnyLocked ? 'Unlock all controls' : 'Lock all controls'}
+        aria-pressed={sceneAnyLocked ? 'true' : 'false'}
+        onclick={toggleLockAllScene}
+      >
         <Icon name="lock" size={12} />
       </button>
-      <button type="button" class="btn btn--ghost" title="Reset to defaults">
+      <button
+        type="button"
+        class="btn btn--ghost"
+        title="Reset to defaults"
+        onclick={resetSceneControlsToDefaults}
+      >
         <Icon name="grid" size={12} /> Default
       </button>
-      <button type="button" class="btn btn--ghost" title="Randomize">
+      <button
+        type="button"
+        class="btn btn--ghost"
+        title="Randomize"
+        onclick={randomizeSceneControls}
+      >
         <Icon name="random" size={12} /> Random
       </button>
     </header>
     <div class="panel__body panel__body--row-scroll">
       {#each sceneControlGroups as group (group.name)}
-        {@render controlGroupBlock(group)}
+        {@render controlGroupBlock(group, true)}
       {/each}
     </div>
   </section>
@@ -573,14 +869,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <header class="panel__head">
       <h2 class="panel__title">Meta Controls</h2>
       <span class="panel__spacer" aria-hidden="true"></span>
-      <button type="button" class="btn btn--ghost">Default</button>
-      <button type="button" class="btn btn--ghost">
+      <button
+        type="button"
+        class="btn btn--ghost"
+        class:btn--active={metaAnyLocked}
+        title={metaAnyLocked ? 'Unlock all controls' : 'Lock all controls'}
+        aria-pressed={metaAnyLocked ? 'true' : 'false'}
+        onclick={toggleLockAllMeta}
+      >
+        <Icon name="lock" size={12} />
+      </button>
+      <button
+        type="button"
+        class="btn btn--ghost"
+        title="Reset to defaults"
+        onclick={resetMetaControlsToDefaults}
+      >
+        Default
+      </button>
+      <button
+        type="button"
+        class="btn btn--ghost"
+        title="Randomize"
+        onclick={randomizeMetaControls}
+      >
         <Icon name="random" size={12} /> Random
       </button>
     </header>
     <div class="panel__body panel__body--row-scroll">
       {#each metaControlGroups as group (group.name)}
-        {@render controlGroupBlock(group)}
+        {@render controlGroupBlock(group, false)}
       {/each}
     </div>
   </section>
@@ -958,54 +1276,85 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   </section>
 {/if}
 
-{#snippet controlGroupBlock(group: PerformControlGroup)}
+{#snippet controlGroupBlock(group: PerformControlGroup, isScene: boolean)}
   <!-- Wave 2.1 Lane A.2 — widget `onchange` callbacks dispatch
        `set_control` IPC via `dispatchControl(controlId, value)` when
        the spec carries a `controlId`. Specs without `controlId`
        (legacy fixture rows when no scene is loaded; swatches whose
        RGB tuple can't ride the `f32` `ControlValue` channel) stay
        display-only — `onchange` is omitted and the widget short-
-       circuits its pointer-drag handler. -->
+       circuits its pointer-drag handler.
+       Wave 2.4 Lane PERF.A — per-row Lock visual + dispatch guard.
+       The wrapping `<div>` carries `data-locked="true"` when the
+       row's `controlId` is locked in `controlLockStore`; the CSS
+       below dims locked rows so the operator sees which rows the
+       Random / Default sweep will skip. The dispatch-side guard
+       lives in `dispatchControl` itself, so the visual + the
+       behaviour stay aligned without re-implementing the check at
+       every widget callsite. The group-level Lock / Reset / Random
+       icons in the ControlGroup header wire to the lock store + the
+       per-group reset / randomise helpers. -->
+  {@const groupLocked =
+    group.controls.length > 0 &&
+    group.controls.every(
+      (c) =>
+        c.kind === 'swatch' ||
+        (c.controlId !== undefined && controlLockStore.isLocked(c.controlId)),
+    )}
   <div class="cg-wrap">
-    <ControlGroup name={group.name} tint={group.tint} actions>
+    <ControlGroup
+      name={group.name}
+      tint={group.tint}
+      actions
+      locked={groupLocked}
+      onLockToggle={() => toggleLockGroup(group)}
+      onReset={() => resetGroup(group, isScene)}
+      onRandomize={() => randomizeGroup(group, isScene)}
+    >
       {#each group.controls as ctl, i (i)}
-        {#if ctl.kind === 'fader'}
-          {#if ctl.controlId !== undefined}
-            {@const id = ctl.controlId}
-            <Fader
-              value={ctl.value}
-              label={ctl.label}
-              onchange={(next) => dispatchControl(id, next)}
-            />
-          {:else}
-            <Fader value={ctl.value} label={ctl.label} />
+        {@const rowLocked =
+          ctl.kind !== 'swatch' &&
+          ctl.controlId !== undefined &&
+          controlLockStore.isLocked(ctl.controlId)}
+        <div class="cg-row" data-locked={rowLocked ? 'true' : 'false'}>
+          {#if ctl.kind === 'fader'}
+            {#if ctl.controlId !== undefined}
+              {@const id = ctl.controlId}
+              <Fader
+                value={ctl.value}
+                label={ctl.label}
+                onchange={(next) => dispatchControl(id, next)}
+              />
+            {:else}
+              <Fader value={ctl.value} label={ctl.label} />
+            {/if}
+          {:else if ctl.kind === 'toggle'}
+            {#if ctl.controlId !== undefined}
+              {@const id = ctl.controlId}
+              <Toggle
+                value={ctl.on}
+                label={ctl.label}
+                onchange={(next) => dispatchControl(id, next ? 1 : 0)}
+              />
+            {:else}
+              <Toggle value={ctl.on} label={ctl.label} />
+            {/if}
+          {:else if ctl.kind === 'knob'}
+            {#if ctl.controlId !== undefined}
+              {@const id = ctl.controlId}
+              <Knob
+                value={ctl.value}
+                label={ctl.label}
+                showValue
+                onchange={(next) => dispatchControl(id, next)}
+              />
+            {:else}
+              <Knob value={ctl.value} label={ctl.label} showValue />
+            {/if}
+          {:else if ctl.kind === 'swatch'}
+            <Swatch color={ctl.color} label={ctl.label} />
           {/if}
-        {:else if ctl.kind === 'toggle'}
-          {#if ctl.controlId !== undefined}
-            {@const id = ctl.controlId}
-            <Toggle
-              value={ctl.on}
-              label={ctl.label}
-              onchange={(next) => dispatchControl(id, next ? 1 : 0)}
-            />
-          {:else}
-            <Toggle value={ctl.on} label={ctl.label} />
-          {/if}
-        {:else if ctl.kind === 'knob'}
-          {#if ctl.controlId !== undefined}
-            {@const id = ctl.controlId}
-            <Knob
-              value={ctl.value}
-              label={ctl.label}
-              showValue
-              onchange={(next) => dispatchControl(id, next)}
-            />
-          {:else}
-            <Knob value={ctl.value} label={ctl.label} showValue />
-          {/if}
-        {:else if ctl.kind === 'swatch'}
-          <Swatch color={ctl.color} label={ctl.label} />
-        {/if}
+        </div>
       {/each}
     </ControlGroup>
   </div>
@@ -1218,6 +1567,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     flex: 0 0 auto;
     min-width: 0;
   }
+  /* Wave 2.4 Lane PERF.A — per-row dim affordance. The cg-row wraps a
+   * single widget cell (Fader / Knob / Toggle / Swatch) and carries
+   * `data-locked="true"` when the row's controlId is locked in
+   * `controlLockStore`. Visual treatment matches the bundle's
+   * "muted control" posture — reduced opacity + no pointer events on
+   * the inner widget so drag handlers stay neutralised. The header
+   * Lock affordance + the `dispatchControl` guard back the
+   * UI-affordance and the dispatch-side check respectively. */
+  .cg-row {
+    display: contents;
+  }
+  .cg-row[data-locked='true'] :global(.fader),
+  .cg-row[data-locked='true'] :global(.knob),
+  .cg-row[data-locked='true'] :global(.toggle),
+  .cg-row[data-locked='true'] :global(.swatch-wrap) {
+    opacity: 0.45;
+  }
   /* Tighter inner widget gap inside ControlGroup body in this dense
    * row-strip context — the bundle's `.group-grid` uses 6 px gap at
    * 1440 viewport (`styles.css` line 668 `.perform` 10 px gap implies
@@ -1269,6 +1635,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: var(--color-bg-3);
     border-color: var(--color-line-2);
     color: var(--color-text-0);
+  }
+  /* Wave 2.4 Lane PERF.A — header Lock-all toggle "active" treatment.
+   * When the panel has at least one locked control the Lock-all
+   * button reads as the primary accent (matches the bundle's
+   * "active toggle" posture on ghost buttons). */
+  .btn--active {
+    color: var(--color-primary);
+    border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+    background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  }
+  .btn--active:hover:not(:disabled) {
+    color: var(--color-primary);
+    background: color-mix(in oklab, var(--color-primary) 22%, transparent);
   }
   /* Wave 2.3 Lane Q.2 (G.13) — outlined-accent variant. Used by the
    * scene-panel mode toggle's Edit button per the bundle's "Perform
