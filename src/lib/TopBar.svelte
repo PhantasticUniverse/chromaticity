@@ -42,12 +42,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Wave-34a swaps the W15 PR1 inline `top-bar__pill` placeholder for
   // the bundle-faithful `<AdapterPill>` widget (`v02_supplement.jsx`
   // lines 20-44; bundle adoption at `Chromaticity.html` lines 228-230).
-  // The `STATUS_PILLS` data shape stays — it still uses W4
-  // `OscHealthState` semantics (`healthy` / `recovering` / `degraded`)
-  // — but maps onto AdapterPill's bundle vocabulary at the call-site.
-  // Per-adapter live wiring remains `EV-INTEGRATION-MATRIX` scope.
+  //
+  // Wave 2.4 Lane PERF.D replaces the previous hard-coded
+  // `STATUS_PILLS` fixture with live store reads. Each of the three
+  // pills now reflects real cross-seam state:
+  //
+  //   - **OUT pill** — derived from `loadedSceneStore.snapshot` (a
+  //     scene is loaded ⇒ the engine could output if the render
+  //     backend were live). Real Syphon / Spout / NDI / Display
+  //     wiring is a Wave 1c-β follow-up; until that lands the OUT
+  //     pill is a UI proxy.
+  //   - **MIDI pill** — derived from `midiStore.devices` length;
+  //     the store hydrates on TopBar mount and re-polls on focus
+  //     events; this is the same enumeration that powers the MIDI
+  //     view Devices tab (Wave 2.1 D.1).
+  //   - **OSC pill** — driven by the new `oscHealthStore` which polls
+  //     the `osc_health_snapshot` Tauri command every 5 s (Wave 2.1
+  //     D.3 shipped the command + bridge type).
   import Icon from './Icon.svelte';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
+  import { loadedSceneStore } from './stores/loadedScene.svelte';
+  import { midiStore } from './stores/midiStore.svelte';
+  import { oscHealthStore } from './stores/oscHealth.svelte';
   import { performVariantStore, type PerformVariant } from './stores/performVariant.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
   import { transportStore } from './stores/transport.svelte';
@@ -143,49 +159,94 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //
   // The OUT pill is a roll-up of all output adapters (Syphon / Spout /
   // NDI / Display) per the v0.2 abstraction; per-adapter detail goes
-  // into Settings → Diagnostics. The status word ("OK" / "WARNING" /
-  // "OFF") sits next to the label; the dot color reflects the W4
-  // `OscHealthState` mapping (healthy = green, recovering = amber,
-  // degraded = red).
+  // into Settings → Diagnostics. Wave 2.4 PERF.D uses the loaded-scene
+  // store as the pre-alpha proxy for "engine has a scene loaded and
+  // could output if the render backend were live" — real Syphon /
+  // NDI wiring is a Wave 1c-β follow-up.
   //
-  // W15 PR1 scope: pill states are HARDCODED placeholders. Real wiring
-  // is W15+ once the OSC adapter is plumbed into AppState (W14 PR4
-  // shipped the IPC contract; AppState wiring is Phase-3 scope) and
-  // the MIDI / output adapters land.
-  type OscHealth = 'healthy' | 'recovering' | 'degraded' | 'off';
+  // The MIDI pill reflects the live device enumeration powering the
+  // MIDI view Devices tab (Wave 2.1 D.1). At least one enumerated
+  // device flips the pill to `ok`; otherwise the pill renders `off`.
+  //
+  // The OSC pill reads from `oscHealthStore`, polling the
+  // `osc_health_snapshot` Tauri command every 5 s. Mapping:
+  //   - `Healthy`    → `ok`
+  //   - `Recovering` → `warming`
+  //   - `Degraded`   → `disconnected`
+  //   - `null` (no snapshot yet / poll failed) → `off`
 
-  const STATUS_PILLS: ReadonlyArray<{
-    readonly id: string;
-    readonly label: string;
-    readonly status: OscHealth;
-    readonly detail: string;
-  }> = [
-    { id: 'out', label: 'OUT', status: 'healthy', detail: 'DISP 2 · 1920×1080 @ 60' },
-    { id: 'midi', label: 'MIDI', status: 'healthy', detail: 'LPX · 64 maps' },
-    { id: 'osc', label: 'OSC', status: 'recovering', detail: 'binding udp:7000…' },
-  ] as const;
+  // Subscribe to MIDI enumeration on TopBar mount so the pill reflects
+  // the current device count from app launch. `refresh()` is on
+  // demand (pull-model) and swallows the `invoke` rejection that
+  // fires outside Tauri.
+  $effect(() => {
+    void midiStore.refresh();
+  });
+
+  // Start the OSC health polling loop on TopBar mount; halt on
+  // unmount. `start()` is idempotent so re-mounts don't leak timers.
+  $effect(() => {
+    oscHealthStore.start();
+    return () => {
+      oscHealthStore.stop();
+    };
+  });
 
   /**
    * Map the W4 `OscHealthState`-shaped state vocabulary onto
    * AdapterPill's bundle vocabulary. The bundle has six states
    * (`off / warming / ok / rate-limited / disconnected / blocked`);
-   * the OSC adapter today only emits four of those semantics, and
-   * the W4 vocabulary collapses them to three (plus `off`). When the
-   * OSC adapter learns to distinguish rate-limit + blocked states,
-   * this mapping widens at the source rather than here.
+   * the OSC adapter today only emits three of those semantics. A
+   * `null` snapshot (no poll yet, or poll failed under no-Tauri
+   * context) collapses to `off`. When the OSC adapter learns to
+   * distinguish rate-limit + blocked states, this mapping widens at
+   * the source rather than here.
    */
-  function mapHealthToPillState(h: OscHealth): AdapterPillState {
-    switch (h) {
-      case 'healthy':
+  function mapOscHealthToPillState(
+    state: 'Healthy' | 'Recovering' | 'Degraded' | null,
+  ): AdapterPillState {
+    switch (state) {
+      case 'Healthy':
         return 'ok';
-      case 'recovering':
+      case 'Recovering':
         return 'warming';
-      case 'degraded':
+      case 'Degraded':
         return 'disconnected';
-      case 'off':
+      case null:
         return 'off';
     }
   }
+
+  /** OUT pill state — `ok` whenever a scene is loaded into the runtime. */
+  const outState: AdapterPillState = $derived(loadedSceneStore.snapshot !== null ? 'ok' : 'off');
+
+  /** MIDI pill state — `ok` when at least one enumerated MIDI device is present. */
+  const midiState: AdapterPillState = $derived(midiStore.devices.length > 0 ? 'ok' : 'off');
+
+  /** OSC pill state — derived from the polling store snapshot. */
+  const oscState: AdapterPillState = $derived(
+    mapOscHealthToPillState(oscHealthStore.snapshot?.state ?? null),
+  );
+
+  /** OUT pill tooltip detail — scene name when loaded; placeholder otherwise. */
+  const outDetail = $derived(
+    loadedSceneStore.snapshot ? `Scene: ${loadedSceneStore.snapshot.name}` : 'No scene loaded',
+  );
+
+  /** MIDI pill tooltip detail — device count summary. */
+  const midiDetail = $derived(
+    midiStore.devices.length > 0
+      ? `${midiStore.devices.length} device${midiStore.devices.length === 1 ? '' : 's'}`
+      : 'No MIDI devices',
+  );
+
+  /** OSC pill tooltip detail — local address when bound; state word otherwise. */
+  const oscDetail = $derived.by(() => {
+    const snap = oscHealthStore.snapshot;
+    if (!snap) return 'OSC adapter offline';
+    if (snap.local_addr) return `Listening · ${snap.local_addr}`;
+    return `Unbound · ${snap.attempted_binds} attempts`;
+  });
 </script>
 
 <header class="top-bar">
@@ -248,13 +309,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   <div class="top-bar__hud">
     <div class="top-bar__pills" role="group" aria-label="Adapter status">
-      {#each STATUS_PILLS as pill (pill.id)}
-        <AdapterPill
-          kind={pill.label}
-          state={mapHealthToPillState(pill.status)}
-          detail={pill.detail}
-        />
-      {/each}
+      <AdapterPill kind="OUT" state={outState} detail={outDetail} />
+      <AdapterPill kind="MIDI" state={midiState} detail={midiDetail} />
+      <AdapterPill kind="OSC" state={oscState} detail={oscDetail} />
     </div>
     <!-- Wave 2.3 Lane Q.2 (G.14) — bundle-faithful FPS placeholder.
          The bundle renders `61.0` (Chromaticity.html line 245) until

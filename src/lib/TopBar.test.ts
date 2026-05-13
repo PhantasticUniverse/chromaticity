@@ -3,10 +3,15 @@
 //
 // W49 TopBar shell tests — exercises the W15 PR1 / W34a top bar shell.
 // Covers the brand wordmark + per-route subtitle, the three adapter
-// pills (OUT / MIDI / OSC mapped through `mapHealthToPillState`), the
-// FPS / CPU em-dash placeholders, the REC indicator's default off
-// state, and the GO LIVE button. `routeStore` is reset to `'perform'`
-// in `afterEach` so cross-test state cannot leak.
+// pills (OUT / MIDI / OSC, post-Wave-2.4-PERF.D bound to live store
+// state), the FPS / CPU em-dash placeholders, the REC indicator's
+// default off state, and the GO LIVE button. `routeStore` is reset
+// to `'perform'` in `afterEach` so cross-test state cannot leak.
+//
+// Wave 2.4 Lane PERF.D added store-driven adapter pill cases; the
+// `invokeMock` is hoisted per `feedback_vitest_invoke_mock_hoisted.md`
+// so the `@tauri-apps/api/core` mock can route both the
+// `osc_health_snapshot` poll and the `list_midi_devices` enumeration.
 //
 // `cleanup()` per `feedback_vitest_svelte_cleanup_required.md`.
 
@@ -14,11 +19,26 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { MidiDevicePayload, OscHealthSnapshot } from './ipc/bindings';
 import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
+import { loadedSceneStore } from './stores/loadedScene.svelte';
+import { midiStore } from './stores/midiStore.svelte';
+import { oscHealthStore } from './stores/oscHealth.svelte';
 import { performVariantStore } from './stores/performVariant.svelte';
 import { routeStore } from './stores/route.svelte';
 import { transportStore } from './stores/transport.svelte';
 import TopBar from './TopBar.svelte';
+
+// Hoisted `invoke` mock per `feedback_vitest_invoke_mock_hoisted.md`.
+// Default behaviour rejects (no Tauri context) so default-render tests
+// observe the stores in their "no-data" baseline state; per-test
+// overrides via `invokeMock.mockResolvedValue(...)` exercise the live
+// branches.
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}));
 
 // Shared-primitive backfill — TopBar now mounts the `Timecode` widget
 // when the active route is performance-adjacent (perform / author /
@@ -43,6 +63,15 @@ function stubMatchMedia(reduce = false): void {
 describe('TopBar shell component', () => {
   beforeEach(() => {
     stubMatchMedia();
+    // Default: every invoke rejects (no Tauri context). Stores stay in
+    // their no-data baseline. Per-test calls of
+    // `invokeMock.mockImplementation(...)` route specific commands.
+    invokeMock.mockReset();
+    invokeMock.mockRejectedValue(new Error('no Tauri context in test'));
+    // Replace setInterval with a no-op so the OSC poll loop doesn't
+    // actually schedule recurring work across tests. The mount-time
+    // `refresh()` call still runs and routes through the invoke mock.
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
@@ -62,8 +91,14 @@ describe('TopBar shell component', () => {
     // Clear any audio snapshot a test injected so the next test starts
     // from the default BPM fallback.
     audioSnapshotStore.snapshot = null;
+    // Wave 2.4 Lane PERF.D — reset the three pill-driving stores so
+    // a snapshot leak from one test doesn't bleed into the next.
+    loadedSceneStore.reset();
+    midiStore.reset();
+    oscHealthStore.reset();
     routeStore.set('perform');
     performVariantStore.set('classic');
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -100,12 +135,14 @@ describe('TopBar shell component', () => {
     expect(kinds).toEqual(['OUT', 'MIDI', 'OSC']);
   });
 
-  it('maps the OSC pill recovering health to the AdapterPill warming state', () => {
+  it('defaults all three adapter pills to off when no live data is present', () => {
+    // Wave 2.4 Lane PERF.D — without a loaded scene, MIDI devices, or
+    // an OSC health snapshot, every pill renders the off baseline.
     const { container } = render(TopBar);
     const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-    expect(pills[0]?.getAttribute('data-state')).toBe('ok');
-    expect(pills[1]?.getAttribute('data-state')).toBe('ok');
-    expect(pills[2]?.getAttribute('data-state')).toBe('warming');
+    expect(pills[0]?.getAttribute('data-state')).toBe('off');
+    expect(pills[1]?.getAttribute('data-state')).toBe('off');
+    expect(pills[2]?.getAttribute('data-state')).toBe('off');
   });
 
   it('groups the adapter pills under an Adapter status aria-label', () => {
@@ -310,6 +347,98 @@ describe('TopBar shell component', () => {
       const { queryByTestId } = render(TopBar);
       expect(queryByTestId('top-bar-bpm')).toBeNull();
       expect(queryByTestId('top-bar-vu')).toBeNull();
+    });
+  });
+
+  // Wave 2.4 Lane PERF.D — live adapter pill bindings. Each pill reads
+  // from a different store; tests exercise the three healthy / off
+  // branches plus the OSC pill's recovering / degraded mappings.
+  describe('Adapter pill live bindings (Lane PERF.D)', () => {
+    it('flips the OUT pill to ok when a scene is loaded', async () => {
+      loadedSceneStore.snapshot = {
+        id: 'scene-fixture',
+        path: '/fake/scene-fixture.chroma',
+        name: 'Test Scene',
+        credit: '',
+        description: '',
+        controls: [],
+        schema_version: 1,
+      };
+      const { container } = render(TopBar);
+      await Promise.resolve();
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[0]?.getAttribute('data-state')).toBe('ok');
+      expect(pills[0]?.getAttribute('title')).toContain('Test Scene');
+    });
+
+    it('keeps the OUT pill off when no scene is loaded', () => {
+      const { container } = render(TopBar);
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[0]?.getAttribute('data-state')).toBe('off');
+      expect(pills[0]?.getAttribute('title')).toContain('No scene loaded');
+    });
+
+    it('flips the MIDI pill to ok when at least one device is enumerated', async () => {
+      const devices: MidiDevicePayload[] = [{ id: 'input-0', name: 'Launchpad X', kind: 'Input' }];
+      midiStore.devices = devices;
+      const { container } = render(TopBar);
+      await Promise.resolve();
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[1]?.getAttribute('data-state')).toBe('ok');
+      expect(pills[1]?.getAttribute('title')).toContain('1 device');
+    });
+
+    it('keeps the MIDI pill off when no devices are enumerated', () => {
+      midiStore.devices = [];
+      const { container } = render(TopBar);
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[1]?.getAttribute('data-state')).toBe('off');
+      expect(pills[1]?.getAttribute('title')).toContain('No MIDI devices');
+    });
+
+    it('maps OSC Healthy snapshot to the ok pill state', async () => {
+      const snapshot: OscHealthSnapshot = {
+        state: 'Healthy',
+        attempted_binds: 1,
+        local_addr: '127.0.0.1:7000',
+      };
+      oscHealthStore.snapshot = snapshot;
+      const { container } = render(TopBar);
+      await Promise.resolve();
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[2]?.getAttribute('data-state')).toBe('ok');
+      expect(pills[2]?.getAttribute('title')).toContain('127.0.0.1:7000');
+    });
+
+    it('maps OSC Recovering snapshot to the warming pill state', async () => {
+      oscHealthStore.snapshot = {
+        state: 'Recovering',
+        attempted_binds: 3,
+        local_addr: null,
+      };
+      const { container } = render(TopBar);
+      await Promise.resolve();
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[2]?.getAttribute('data-state')).toBe('warming');
+    });
+
+    it('maps OSC Degraded snapshot to the disconnected pill state', async () => {
+      oscHealthStore.snapshot = {
+        state: 'Degraded',
+        attempted_binds: 17,
+        local_addr: null,
+      };
+      const { container } = render(TopBar);
+      await Promise.resolve();
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[2]?.getAttribute('data-state')).toBe('disconnected');
+    });
+
+    it('renders the OSC pill in the off state when no snapshot has arrived', () => {
+      const { container } = render(TopBar);
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[2]?.getAttribute('data-state')).toBe('off');
+      expect(pills[2]?.getAttribute('title')).toContain('offline');
     });
   });
 });
