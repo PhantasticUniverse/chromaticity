@@ -77,6 +77,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/settings-fixtures';
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
+  import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import { settingsStore } from '../stores/settings.svelte';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
   import { ControlGroup, Fader, Meter, OutputRoutingTile, TabSegment } from '../widgets';
@@ -104,6 +105,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // flush.
   const audioSnapshot = $derived(settingsStore.snapshot.audio);
   const graphicsSnapshot = $derived(settingsStore.snapshot.graphics);
+
+  // Wave 2.6 AUD.B — live audio monitoring meter wiring.
+  // Subscribe to the audio-uniform IPC store on mount so the
+  // Monitoring meter in the Audio Device section reads live
+  // `rms` / `peak` from the engine producer (Wave 1c-α-2). The
+  // subscription is idempotent across widgets; calling it here
+  // simply joins the in-flight latch the visualizer widgets
+  // already share. When no snapshot has arrived (running outside
+  // Tauri / CI / device-less hosts), the meter falls back to the
+  // bundle-faithful frozen-frame fixtures per the dual-mode posture
+  // established by `AudioReactivity.svelte`.
+  $effect(() => {
+    void audioSnapshotStore.subscribe();
+  });
+
+  const liveAudioSnapshot = $derived(audioSnapshotStore.snapshot);
+  const meterLevel = $derived(liveAudioSnapshot?.rms ?? AUDIO_METER_LEVEL);
+  const meterPeak = $derived(liveAudioSnapshot?.peak ?? AUDIO_METER_PEAK);
 
   // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
   // mirroring `views/settings.jsx` lines 187-194 (the right-column
@@ -421,8 +440,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <span class="settings__label">Monitoring</span>
           <div class="settings__field-row settings__field-row--meter">
             <Meter
-              level={AUDIO_METER_LEVEL}
-              peak={AUDIO_METER_PEAK}
+              level={meterLevel}
+              peak={meterPeak}
               bars={AUDIO_METER_BARS}
               ariaLabel="Audio input monitor"
             />
@@ -431,8 +450,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </div>
       <p class="settings__hint">
         Visual stub — live cpal device enumeration arrives in Phase-3+/4a per
-        <code>EV-INTEGRATION-MATRIX</code>. The Monitoring meter is frozen-frame; live RMS /
-        peak-hold ride in alongside the audio capture loop per <code>EV-OBSERVABILITY</code>.
+        <code>EV-INTEGRATION-MATRIX</code>. The Monitoring meter reads live RMS / peak from the Wave
+        1c-α-2 audio-uniform IPC seam when a snapshot is present, falling back to a frozen-frame
+        fixture during the no-snapshot startup window.
       </p>
     </article>
 

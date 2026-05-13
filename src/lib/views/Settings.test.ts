@@ -44,6 +44,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 import Settings from './Settings.svelte';
 import {
   AUDIO_INPUT_DEVICES,
+  AUDIO_METER_BARS,
+  AUDIO_METER_LEVEL,
   AUDIO_SAMPLE_RATES,
   COLOR_SPACE_OPTIONS,
   DEFAULT_MEDIA_FOLDERS,
@@ -54,6 +56,7 @@ import {
   RESOLUTION_PRESETS,
   SENDER_NAME_DEFAULT,
 } from '../data/settings-fixtures';
+import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 import { settingsStore } from '../stores/settings.svelte';
 
 function getSection(container: HTMLElement, heading: string): HTMLElement {
@@ -80,6 +83,10 @@ describe('Settings view', () => {
     // in-memory snapshot so each test mounts against the bundle-faithful
     // defaults, just like the previous local-$state-only view.
     settingsStore.reset();
+    // Wave 2.6 AUD.B — the audioSnapshotStore is also a module-level
+    // singleton; clear any test-injected snapshot so the next render
+    // starts in the no-snapshot (synthetic fallback) state.
+    audioSnapshotStore.unsubscribe();
     cleanup();
   });
 
@@ -159,6 +166,36 @@ describe('Settings view', () => {
     const { container } = render(Settings);
     const audio = getSection(container, 'Audio Device');
     expect(within(audio).getByLabelText('Audio input monitor')).toBeInTheDocument();
+  });
+
+  it('Audio Device monitoring meter reflects audioSnapshotStore.snapshot.rms', async () => {
+    // Wave 2.6 AUD.B dual-mode posture: with no live snapshot, the
+    // Meter falls back to the bundle-faithful fixture (`rms = 0.68`,
+    // `peak = 0.82`). Injecting a snapshot directly on the singleton
+    // store flips the derived `meterLevel` / `meterPeak`, and the
+    // Meter widget's `level * bars` segment classification reflects
+    // the change. Asserts at the segment-count level rather than
+    // string-content because Meter exposes its level through the
+    // LED-segment `.on` class density, not text content.
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const meter = within(audio).getByLabelText('Audio input monitor');
+    // Baseline: fixture-driven (`AUDIO_METER_LEVEL = 0.68` → floor(0.68 * 28) = 19 on-segments).
+    const fixtureOnCount = Math.floor(AUDIO_METER_LEVEL * AUDIO_METER_BARS);
+    const baselineOn = meter.querySelectorAll('.meter-bar.on, .meter-bar.clip').length;
+    expect(baselineOn).toBe(fixtureOnCount);
+    // Inject a live snapshot with a distinct rms value and re-assert.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      rms: 0.25,
+      peak: 0.45,
+      fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+    };
+    // Allow Svelte to flush the $derived re-evaluation.
+    await Promise.resolve();
+    const liveOn = meter.querySelectorAll('.meter-bar.on, .meter-bar.clip').length;
+    expect(liveOn).toBe(Math.floor(0.25 * AUDIO_METER_BARS));
+    expect(liveOn).not.toBe(fixtureOnCount);
   });
 
   it('Graphics / Output renders all expected rows including the W41 expansion', () => {
