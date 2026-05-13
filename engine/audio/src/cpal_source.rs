@@ -137,20 +137,20 @@ pub struct AudioDeviceInfo {
 
 /// Coarse classification of a cpal audio device direction.
 ///
-/// Wave 2.6 Lane AUD.A ships [`AudioDeviceKind::Input`] only — the
-/// `list_audio_devices` Tauri command enumerates input devices via
-/// [`cpal::Host::input_devices`] so the operator-facing Settings →
-/// Audio Device → Input Device dropdown can render real device names
-/// rather than the W21 PR1 fixture-only set in
-/// `src/lib/data/settings-fixtures.ts`. Output enumeration is reserved
-/// for a follow-up wave alongside the per-device routing surface.
-/// `#[non_exhaustive]` reserves room for the `Output` variant without
-/// breaking downstream callers.
+/// Wave 2.6 Lane AUD.A shipped [`AudioDeviceKind::Input`]; Wave 2.7
+/// Lane SET.C widens the enum with [`AudioDeviceKind::Output`] so the
+/// `list_audio_output_devices` Tauri command can enumerate output
+/// devices via [`cpal::Host::output_devices`] for the operator-facing
+/// Settings → Audio Device → Output Device dropdown. `#[non_exhaustive]`
+/// stays in place so future variants (e.g. a loopback discriminant)
+/// remain a non-breaking widening.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AudioDeviceKind {
     /// Inbound audio device (cpal `input_devices()` enumeration).
     Input,
+    /// Outbound audio device (cpal `output_devices()` enumeration).
+    Output,
 }
 
 /// Enumerate the cpal input devices currently visible to the host.
@@ -200,6 +200,53 @@ pub fn enumerate_input_devices() -> Result<Vec<AudioDeviceInfo>, AudioError> {
             let sanitized = sanitize_device_id_segment(&name);
             AudioDeviceInfo {
                 id: format!("input-{sanitized}"),
+                name,
+            }
+        })
+        .collect();
+    Ok(infos)
+}
+
+/// Enumerate the cpal output devices currently visible to the host.
+///
+/// Returns one [`AudioDeviceInfo`] per device surfaced by a fresh
+/// [`cpal::Host::output_devices`] call. Mirrors the
+/// [`enumerate_input_devices`] empty-vec graceful-fallback posture: on
+/// a host with no audio subsystem access (CI / headless / a Linux box
+/// without ALSA), cpal's `output_devices()` errors at iteration
+/// construction; the function collapses that error to `Ok(Vec::new())`
+/// so the Tauri command surface treats "no audio available" as the
+/// same empty-list state as "audio available but no devices
+/// connected" — the frontend's fixture-fallback branch fires
+/// identically in both cases. Per-device name-retrieval failures
+/// (transient disconnection) fall back to `"Output <index>"` rather
+/// than skipping the device entirely.
+///
+/// The id is namespaced under the `output-` prefix to match the
+/// [`enumerate_input_devices`] `input-` precedent and so a payload
+/// id alone is sufficient to disambiguate the device direction without
+/// inspecting the surrounding [`AudioDeviceKind`] discriminant.
+///
+/// Evidence: `EV-INTEGRATION-MATRIX` (audio arm, Wave 2.7 Lane SET.C)
+/// — output device-listing surface widened from the W21 PR1
+/// fixture-only posture documented in
+/// `src/lib/data/settings-fixtures.ts`.
+pub fn enumerate_output_devices() -> Result<Vec<AudioDeviceInfo>, AudioError> {
+    let host = cpal::default_host();
+    let devices = match host.output_devices() {
+        Ok(d) => d,
+        // CI / headless / no-audio-subsystem hosts: collapse to empty
+        // vec rather than erroring. Mirrors the Wave 2.6 Lane AUD.A
+        // `enumerate_input_devices` posture.
+        Err(_) => return Ok(Vec::new()),
+    };
+    let infos = devices
+        .enumerate()
+        .map(|(idx, device)| {
+            let name = device.name().unwrap_or_else(|_| format!("Output {idx}"));
+            let sanitized = sanitize_device_id_segment(&name);
+            AudioDeviceInfo {
+                id: format!("output-{sanitized}"),
                 name,
             }
         })
@@ -1000,11 +1047,59 @@ mod cpal_source_pins {
 
     #[test]
     fn audio_device_kind_input_variant_is_construct_and_clone_safe() {
-        // Pin the only variant shipped today; widening to `Output`
-        // would surface this test as a compile-time reminder that the
-        // bridge mirror needs the matching variant added in lockstep.
+        // Pin the Wave 2.6 Lane AUD.A variant; Wave 2.7 Lane SET.C
+        // widens with `Output` (covered in the sibling pin below).
         let kind = AudioDeviceKind::Input;
         let cloned = kind;
         assert_eq!(kind, cloned);
+    }
+
+    // ---- Wave 2.7 Lane SET.C output-enumeration pins ----
+    //
+    // T1 per docs/43 §15.5: pins the documented shape contract for
+    // `enumerate_output_devices`. The function MUST NOT error on any
+    // host (CI / headless / no-audio-subsystem branches collapse to
+    // `Ok(Vec::new())` per the Wave 2.6 Lane AUD.A `enumerate_input_devices`
+    // precedent); every returned descriptor MUST carry a non-empty id +
+    // name; ids MUST be namespaced under the `output-` prefix to match
+    // the `input-` precedent and so the operator-facing payload id
+    // alone is sufficient to disambiguate the device direction.
+    // Evidence: `EV-INTEGRATION-MATRIX` (audio arm, Wave 2.7 Lane SET.C).
+
+    #[test]
+    fn enumerate_output_devices_does_not_error_on_any_host() {
+        // Same three-case coverage as the Wave 2.6 Lane AUD.A input
+        // pin: no-audio-subsystem hosts collapse to `Ok(Vec::new())`;
+        // hosts with audio access AND zero output devices return
+        // empty; hosts WITH connected output devices return non-empty.
+        // All three cases pass this assertion.
+        let result = enumerate_output_devices()
+            .expect("enumerate_output_devices must not error at MVP surface");
+        for info in &result {
+            assert!(
+                info.id.starts_with("output-"),
+                "expected id to start with `output-`, got {:?}",
+                info.id,
+            );
+            assert!(!info.name.is_empty(), "cpal device name must not be empty");
+            let suffix = info.id.strip_prefix("output-").unwrap_or("");
+            assert!(
+                !suffix.is_empty(),
+                "id suffix must not be empty, got {:?}",
+                info.id,
+            );
+        }
+    }
+
+    #[test]
+    fn audio_device_kind_output_variant_is_construct_and_clone_safe() {
+        // Wave 2.7 Lane SET.C widens the `#[non_exhaustive]` enum
+        // with the `Output` variant; the bridge mirror's `Output`
+        // variant pre-existed as a scaffold (Wave 2.6 Lane AUD.A)
+        // so the wire shape is unchanged.
+        let kind = AudioDeviceKind::Output;
+        let cloned = kind;
+        assert_eq!(kind, cloned);
+        assert_ne!(kind, AudioDeviceKind::Input);
     }
 }

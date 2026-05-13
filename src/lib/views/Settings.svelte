@@ -114,6 +114,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void audioDevicesStore.refresh();
   });
 
+  // Wave 2.7 Lane SET.C — Output Device dropdown mirror of the AUD.A
+  // input enumeration. Same fixture-fallback posture under the no-
+  // audio-subsystem / no-Tauri-context branches; empty live list
+  // collapses to `AUDIO_OUTPUT_DEVICES`.
+  $effect(() => {
+    void audioDevicesStore.refreshOutput();
+  });
+
   // Pull the audio + graphics + general sections through derived
   // reads so any store mutation reflects in the UI on next $effect
   // flush.
@@ -147,6 +155,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   );
   const audioInputOptions = $derived(
     liveAudioInputOptions.length > 0 ? liveAudioInputOptions : AUDIO_INPUT_DEVICES,
+  );
+
+  // Wave 2.7 Lane SET.C — same dual-mode pattern for Output Device.
+  const liveAudioOutputOptions = $derived(
+    audioDevicesStore.outputDevices.map((d) => ({ id: d.id, label: d.name })),
+  );
+  const audioOutputOptions = $derived(
+    liveAudioOutputOptions.length > 0 ? liveAudioOutputOptions : AUDIO_OUTPUT_DEVICES,
   );
 
   // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
@@ -360,7 +376,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             onchange={(e) =>
               settingsStore.update({ audio: { output_device: e.currentTarget.value } })}
           >
-            {#each AUDIO_OUTPUT_DEVICES as opt (opt.id)}
+            {#each audioOutputOptions as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
           </select>

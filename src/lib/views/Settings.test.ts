@@ -46,6 +46,7 @@ import {
   AUDIO_INPUT_DEVICES,
   AUDIO_METER_BARS,
   AUDIO_METER_LEVEL,
+  AUDIO_OUTPUT_DEVICES,
   AUDIO_SAMPLE_RATES,
   COLOR_SPACE_OPTIONS,
   DEFAULT_MEDIA_FOLDERS,
@@ -186,6 +187,51 @@ describe('Settings view', () => {
     const options = Array.from(input.querySelectorAll('option'));
     expect(options.length).toBe(AUDIO_INPUT_DEVICES.length);
     expect(options.map((o) => o.value)).toEqual(AUDIO_INPUT_DEVICES.map((d) => d.id));
+  });
+
+  it('Output Device dropdown shows enumerated output devices when audioDevicesStore.outputDevices populated', () => {
+    // Wave 2.7 Lane SET.C — Output dropdown counterpart to the
+    // AUD.A Input dropdown enumeration pin. When
+    // `audioDevicesStore.outputDevices` carries a non-empty live list
+    // (engine `list_audio_output_devices` returned host output
+    // devices), the dropdown options come from the live list rather
+    // than the W21 PR1 `AUDIO_OUTPUT_DEVICES` fixture. Seed BEFORE
+    // rendering so the derived options reflect the live list on first
+    // render.
+    const live: AudioDevicePayload[] = [
+      {
+        id: 'output-built-in-output',
+        name: 'Built-in Output',
+        kind: 'Output',
+      },
+      {
+        id: 'output-external-interface',
+        name: 'External Audio Interface',
+        kind: 'Output',
+      },
+    ];
+    audioDevicesStore.outputDevices = live;
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const output = within(audio).getByLabelText('Output Device') as HTMLSelectElement;
+    const options = Array.from(output.querySelectorAll('option'));
+    expect(options.length).toBe(live.length);
+    expect(options.map((o) => o.value)).toEqual(live.map((d) => d.id));
+    expect(options.map((o) => o.textContent?.trim())).toEqual(live.map((d) => d.name));
+  });
+
+  it('Output Device dropdown falls back to the fixture when audioDevicesStore.outputDevices is empty', () => {
+    // Mirror of the Input fallback pin: the no-Tauri / no-audio /
+    // no-devices-connected branches all collapse to an empty
+    // `outputDevices` vec; the dropdown then renders the W21 PR1
+    // `AUDIO_OUTPUT_DEVICES` fixture.
+    audioDevicesStore.reset();
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const output = within(audio).getByLabelText('Output Device') as HTMLSelectElement;
+    const options = Array.from(output.querySelectorAll('option'));
+    expect(options.length).toBe(AUDIO_OUTPUT_DEVICES.length);
+    expect(options.map((o) => o.value)).toEqual(AUDIO_OUTPUT_DEVICES.map((d) => d.id));
   });
 
   it('Audio Device input-gain slider updates the dB readout aria-valuetext', async () => {

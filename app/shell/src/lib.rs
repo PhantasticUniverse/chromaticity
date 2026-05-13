@@ -211,6 +211,7 @@ pub fn run() -> Result<(), tauri::Error> {
         })
         .invoke_handler(tauri::generate_handler![
             commands::audio::list_audio_devices,
+            commands::audio::list_audio_output_devices,
             commands::camera::list_camera_devices,
             commands::control::set_control,
             commands::control::get_control,

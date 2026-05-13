@@ -103,13 +103,15 @@ fn kind_payload_json_renders_as_flat_string() {
 }
 
 #[test]
-fn output_variant_round_trips_to_engine_input() {
-    // Documented narrowing: the bridge-side `Output` variant has no
-    // engine-side peer yet; the safe round-trip on the way back to
-    // the engine collapses it to `Input` so the typed-newtype seam
-    // stays total. The follow-up output-enumeration wave adds the
-    // engine-side `Output` variant and removes this collapse — at
-    // which point this pin updates in lockstep.
+fn output_kind_round_trips_to_engine_output() {
+    // Wave 2.7 Lane SET.C widens the engine `AudioDeviceKind` with
+    // the `Output` variant; the bridge round-trip now preserves the
+    // discriminant verbatim across the kind enum's `From` impls. The
+    // `AudioDevicePayload` -> `AudioDeviceInfo` conversion still drops
+    // the kind field (the engine `AudioDeviceInfo` is direction-
+    // agnostic — its id prefix is the load-bearing discriminator on
+    // the engine side; the bridge re-attaches the kind discriminant
+    // when re-marshalling outbound).
     let payload = AudioDevicePayload {
         id: "output-built-in-speaker".to_string(),
         name: "Built-in Speaker".to_string(),
@@ -118,6 +120,14 @@ fn output_variant_round_trips_to_engine_input() {
     let info: AudioDeviceInfo = payload.clone().into();
     assert_eq!(info.id, payload.id);
     assert_eq!(info.name, payload.name);
+    // Kind round-trip across the discriminant enum, independent of
+    // the `AudioDeviceInfo` payload (which is kind-less). Wave 2.7
+    // Lane SET.C: `Output` payload kind now maps to the engine-side
+    // `AudioDeviceKind::Output` rather than collapsing to `Input`.
+    let kind_round: chromaticity_audio::AudioDeviceKind = AudioDeviceKindPayload::Output.into();
+    assert_eq!(kind_round, chromaticity_audio::AudioDeviceKind::Output);
+    let payload_round: AudioDeviceKindPayload = chromaticity_audio::AudioDeviceKind::Output.into();
+    assert_eq!(payload_round, AudioDeviceKindPayload::Output);
 }
 
 #[test]

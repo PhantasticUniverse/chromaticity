@@ -7,20 +7,26 @@ import type { AudioDeviceKindPayload } from "./AudioDeviceKindPayload";
  * boundary.
  *
  * Wave 2.6 Lane AUD.A: backs the `list_audio_devices` Tauri command
- * consumed by `src/lib/stores/audioDevices.svelte.ts`. Field names
+ * consumed by `src/lib/stores/audioDevices.svelte.ts`; Wave 2.7 Lane
+ * SET.C: backs the parallel `list_audio_output_devices` command for
+ * the Settings → Audio Device → Output Device dropdown. Field names
  * mirror the engine-side struct verbatim (`id` / `name`) plus the
  * bridge-mirrored `kind` discriminant so the wire shape is a 1:1
  * ts-rs export. The id is the per-device session-stable identifier
- * (`"input-<sanitized-name>"` today); the operator-facing Settings
- * dropdown uses it as the keyed-each iteration key and as the
- * `audio.input_device` value persisted through
- * [`SettingsPayload`].
+ * (`"input-<sanitized-name>"` for inputs / `"output-<sanitized-name>"`
+ * for outputs); the operator-facing Settings dropdown uses it as the
+ * keyed-each iteration key and as the `audio.input_device` /
+ * `audio.output_device` value persisted through [`SettingsPayload`].
  *
  * `kind` is filled at the bridge seam — the engine-side
- * [`chromaticity_audio::enumerate_input_devices`] only enumerates
- * input devices today (output enumeration is a follow-up wave), so
- * every payload constructed via the
- * [`From<AudioDeviceInfo>`] impl carries
- * [`AudioDeviceKindPayload::Input`].
+ * [`chromaticity_audio::AudioDeviceInfo`] is direction-agnostic (its
+ * id prefix is the load-bearing discriminator on the engine side); the
+ * bridge re-attaches the kind discriminant at the Tauri command
+ * callsite (`list_audio_devices` constructs payloads with
+ * [`AudioDeviceKindPayload::Input`]; `list_audio_output_devices`
+ * constructs with [`AudioDeviceKindPayload::Output`]). The
+ * [`From<AudioDeviceInfo>`] impl defaults to `Input` for ergonomic
+ * reasons — callsites that need `Output` construct the payload by
+ * hand.
  */
 export type AudioDevicePayload = { id: string, name: string, kind: AudioDeviceKindPayload, };

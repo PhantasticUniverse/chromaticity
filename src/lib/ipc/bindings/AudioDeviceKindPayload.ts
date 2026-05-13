@@ -5,14 +5,14 @@
  * mirroring [`chromaticity_audio::AudioDeviceKind`] across the
  * Tauri command boundary.
  *
- * Wave 2.6 Lane AUD.A ships [`AudioDeviceKindPayload::Input`] only —
- * the engine-side enum is `#[non_exhaustive]` with `Input` as its sole
- * variant today; the bridge mirror scaffolds an `Output` variant for
- * symmetry with the planned follow-up wave so the wire shape can
- * widen without churning the consumer-side type imports. ts-rs renders
- * the enum as a flat string union (`"Input" | "Output"`) because
- * there are no payload-bearing variants. The `From<AudioDeviceKind>`
- * catch-all coerces any future engine-side variant to `Input` until
- * the bridge surface is widened explicitly.
+ * Wave 2.6 Lane AUD.A scaffolded both variants on the bridge side
+ * (`Input` actively used, `Output` reserved for the follow-up wave);
+ * Wave 2.7 Lane SET.C activates the `Output` arm by widening the
+ * engine-side `AudioDeviceKind` to match, backing the new
+ * `list_audio_output_devices` Tauri command. ts-rs renders the enum
+ * as a flat string union (`"Input" | "Output"`) because there are no
+ * payload-bearing variants. The `From<AudioDeviceKind>` catch-all
+ * coerces any future engine-side variant to `Input` until the bridge
+ * surface is widened explicitly.
  */
 export type AudioDeviceKindPayload = "Input" | "Output";
