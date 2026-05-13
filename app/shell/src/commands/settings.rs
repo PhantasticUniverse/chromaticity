@@ -64,6 +64,36 @@ fn set_settings_impl(app: &AppState, settings: SettingsPayload) -> Result<(), St
     Ok(())
 }
 
+/// Inner implementation invoked by both the Tauri wrapper and unit
+/// tests; takes a borrowed [`AppState`] directly. Replaces the
+/// in-memory settings document with
+/// [`chromaticity_runtime::settings::Settings::default`] AND writes
+/// the default document through to the on-disk TOML file (when
+/// [`AppState::settings_path`] is set). Returns the resulting
+/// [`SettingsPayload`] so the frontend can hydrate its store from
+/// the same canonical shape the engine just persisted.
+fn reset_settings_impl(app: &AppState) -> Result<SettingsPayload, String> {
+    let defaults = chromaticity_runtime::settings::Settings::default();
+    // Resolve the persistence target BEFORE acquiring the mutex so
+    // the file I/O (which can be slow) doesn't hold the lock — same
+    // ordering as `set_settings_impl` above.
+    let path_guard = match app.settings_path.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    let path = path_guard.clone();
+    drop(path_guard);
+    if let Some(path) = path.as_ref() {
+        defaults.save_to_path(path).map_err(|err| err.to_string())?;
+    }
+    let mut guard = match app.settings.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    *guard = defaults.clone();
+    Ok(defaults.into())
+}
+
 /// Read the current persisted operator settings document.
 ///
 /// Wave 2.1 Lane C.3: returns the in-memory
@@ -91,6 +121,22 @@ pub fn set_settings(
     set_settings_impl(app_state.inner(), settings)
 }
 
+/// Reset persisted operator settings to
+/// [`chromaticity_runtime::settings::Settings::default`].
+///
+/// Wave 2.7 Lane SET.D: surfaced through the Settings view's
+/// "Reset to Defaults" button (with operator-confirmation modal).
+/// Same write-through semantics as [`set_settings`]: the in-memory
+/// mutex is swapped to the default document AND the on-disk TOML
+/// file at [`AppState::settings_path`] is rewritten with the
+/// default document so the reset survives restart. Returns the
+/// resulting [`SettingsPayload`] so the frontend store can hydrate
+/// without a follow-on `get_settings` round-trip.
+#[tauri::command]
+pub fn reset_settings(app_state: State<'_, AppState>) -> Result<SettingsPayload, String> {
+    reset_settings_impl(app_state.inner())
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
@@ -102,7 +148,7 @@ mod tests {
     //! `Mutex::lock → save_to_path → in-memory swap` chain that is
     //! otherwise only exercised end-to-end through Tauri.
 
-    use super::{get_settings_impl, set_settings_impl};
+    use super::{get_settings_impl, reset_settings_impl, set_settings_impl};
     use crate::state::AppState;
     use chromaticity_runtime::settings::Theme;
     use chromaticity_ui_bridge::{
@@ -204,6 +250,62 @@ mod tests {
         // translation.
         let reload = chromaticity_runtime::settings::Settings::load_from_path(&path).unwrap();
         assert_eq!(reload.general.theme, Theme::Console);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn reset_settings_swaps_in_memory_document_to_default() {
+        // Wave 2.7 SET.D: with no on-disk path installed (test
+        // context) the reset is in-memory-only — the mutex is
+        // swapped to `Settings::default()` and the returned payload
+        // matches the default shape.
+        let app = AppState::new();
+        // Seed a non-default document so the swap is observable.
+        let mut document = chromaticity_runtime::settings::Settings::default();
+        document.general.theme = Theme::Console;
+        document.audio.sample_rate_hz = 96_000;
+        app.install_settings(document);
+
+        let returned = reset_settings_impl(&app).unwrap();
+        assert_eq!(returned.general.theme, ThemePayload::Pulse);
+        assert_eq!(returned.audio.sample_rate_hz, 48_000);
+        // And the in-memory mutex now reads back as default.
+        let after = get_settings_impl(&app).unwrap();
+        assert_eq!(after, returned);
+    }
+
+    #[test]
+    fn reset_settings_writes_default_through_to_disk_when_path_is_installed() {
+        // Wave 2.7 SET.D: when a path is installed, the reset
+        // overwrites the on-disk TOML file with the default
+        // document so the reset survives restart. Reload from disk
+        // through the engine and confirm the file contents match
+        // `Settings::default()`.
+        let app = AppState::new();
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "chromaticity-reset-settings-handler-{}-{}.toml",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+        ));
+        app.install_settings_path(path.clone());
+
+        // First, persist a non-default document so the file exists
+        // with operator state.
+        let payload = nondefault_payload();
+        set_settings_impl(&app, payload).unwrap();
+
+        // Now reset and confirm the file contents flipped back to
+        // the default shape.
+        let returned = reset_settings_impl(&app).unwrap();
+        let loaded = chromaticity_runtime::settings::Settings::load_from_path(&path).unwrap();
+        assert_eq!(loaded, chromaticity_runtime::settings::Settings::default());
+        let loaded_payload: SettingsPayload = loaded.into();
+        assert_eq!(loaded_payload, returned);
 
         let _ = std::fs::remove_file(&path);
     }

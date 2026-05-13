@@ -105,14 +105,17 @@ describe('Settings view', () => {
     expect(getByText(/Operator preferences, devices, output, storage/)).toBeInTheDocument();
   });
 
-  it('renders all eight settings sections in document order', () => {
+  it('renders all settings sections in document order', () => {
     const { container } = render(Settings);
     const headings = Array.from(
       container.querySelectorAll<HTMLHeadingElement>('article.settings__section > h2'),
     ).map((h) => h.textContent?.trim());
-    // Six "operator" sub-sections plus Hotkeys, About, and the right-
-    // rail Diagnostics article. Order is bundle-faithful with operator
-    // infra ABOVE the W14-banked General row pair.
+    // Six "operator" sub-sections plus Hotkeys, the Wave 2.7 SET.D
+    // Maintenance section, About, and the right-rail Diagnostics
+    // article. Order is bundle-faithful with operator infra ABOVE
+    // the W14-banked General row pair; Maintenance sits between
+    // Hotkeys and About per the SET.D placement (destructive action,
+    // bottom-of-view treatment).
     expect(headings).toEqual([
       'Audio Device',
       'Graphics / Output',
@@ -121,6 +124,7 @@ describe('Settings view', () => {
       'Tempo & Sync',
       'General',
       'Hotkeys',
+      'Maintenance',
       'About',
       'Diagnostics',
     ]);
@@ -630,6 +634,100 @@ describe('Settings view', () => {
     // the in-flight promise from the mount $effect.
     await settingsStore.load();
     expect(invokeMock).toHaveBeenCalledWith('get_settings');
+  });
+
+  it('Reset to Defaults button opens a confirmation modal', async () => {
+    // Wave 2.7 Lane SET.D: clicking the Reset button in the
+    // Maintenance section opens a confirmation modal; the modal
+    // body explains the destructive nature of the action.
+    invokeMock.mockResolvedValue(undefined);
+    const { getByRole, queryByRole } = render(Settings);
+    // No modal at mount.
+    expect(queryByRole('dialog', { name: /reset settings to defaults/i })).toBeNull();
+    const resetButton = getByRole('button', { name: /reset to defaults/i });
+    await fireEvent.click(resetButton);
+    const modal = getByRole('dialog', { name: /reset settings to defaults/i });
+    expect(modal).toBeInTheDocument();
+    // Cancel + Reset buttons live inside the modal.
+    expect(within(modal).getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    expect(within(modal).getByRole('button', { name: /^reset$/i })).toBeInTheDocument();
+  });
+
+  it('confirming the reset modal invokes reset_settings', async () => {
+    // Wave 2.7 Lane SET.D: clicking Reset inside the confirmation
+    // modal invokes the `reset_settings` Tauri command and closes
+    // the modal on success.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'reset_settings') {
+        return Promise.resolve({
+          general: { theme: 'Pulse' },
+          audio: {
+            input_device: 'default',
+            output_device: 'default',
+            sample_rate_hz: 48_000,
+            latency_hint: 'balanced',
+            channel_layout: 'stereo',
+            channel_left: 'L1',
+            channel_right: 'R2',
+            input_gain: 0.59,
+          },
+          graphics: {
+            resolution_preset: '1080p',
+            custom_resolution_enabled: false,
+            custom_width: 1920,
+            custom_height: 1080,
+            fps_target: '60',
+            vsync: true,
+            hdr_target: 'sdr',
+            display: 'display-1',
+            color_space: 'srgb',
+            multi_display_mode: 'single',
+            render_scale: 1.0,
+            screen_fitting: 'fit',
+            fps_slider_enabled: false,
+          },
+          storage: {
+            media_folders: [],
+            scene_folders: [],
+            backup_path: '',
+            backup_retention: 'retain-10',
+          },
+          osc: {
+            local_ip: '0.0.0.0',
+            port: 8000,
+            tx_enabled: true,
+            rx_enabled: true,
+          },
+        });
+      }
+      return Promise.resolve();
+    });
+    const { getByRole, queryByRole } = render(Settings);
+    await fireEvent.click(getByRole('button', { name: /reset to defaults/i }));
+    const modal = getByRole('dialog', { name: /reset settings to defaults/i });
+    await fireEvent.click(within(modal).getByRole('button', { name: /^reset$/i }));
+    // Pump the promise chain (resetToDefaults dynamic-imports the
+    // IPC module, then awaits the invoke). Settle by directly
+    // awaiting the store's IPC seam through the invokeMock.
+    await vi.waitFor(() => {
+      const resetCalls = invokeMock.mock.calls.filter((c) => c[0] === 'reset_settings');
+      expect(resetCalls.length).toBe(1);
+    });
+    // Modal closes after the reset settles.
+    await vi.waitFor(() => {
+      expect(queryByRole('dialog', { name: /reset settings to defaults/i })).toBeNull();
+    });
+  });
+
+  it('Cancel button in the reset modal closes without invoking reset_settings', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const { getByRole, queryByRole } = render(Settings);
+    await fireEvent.click(getByRole('button', { name: /reset to defaults/i }));
+    const modal = getByRole('dialog', { name: /reset settings to defaults/i });
+    await fireEvent.click(within(modal).getByRole('button', { name: /cancel/i }));
+    expect(queryByRole('dialog', { name: /reset settings to defaults/i })).toBeNull();
+    const resetCalls = invokeMock.mock.calls.filter((c) => c[0] === 'reset_settings');
+    expect(resetCalls.length).toBe(0);
   });
 
   it('changing Target FPS dispatches a debounced set_settings IPC call', async () => {

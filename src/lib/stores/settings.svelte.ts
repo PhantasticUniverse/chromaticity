@@ -234,6 +234,39 @@ class SettingsStore {
   }
 
   /**
+   * Reset persisted settings to engine defaults.
+   *
+   * Wave 2.7 Lane SET.D: invokes the `reset_settings` Tauri command
+   * which swaps the in-memory document to `Settings::default()` AND
+   * writes the default document through to the on-disk TOML file.
+   * Hydrates the local snapshot from the returned payload so the
+   * Settings view re-renders without a follow-on `load()` round-trip.
+   *
+   * Cancels any pending debounced save (the in-flight write would
+   * race the reset write and clobber it). Errors are recorded onto
+   * `error` and the snapshot stays at its current state so the UI
+   * can surface a banner without the reset half-applying.
+   */
+  async resetToDefaults(): Promise<void> {
+    if (this.#saveTimer !== null) {
+      clearTimeout(this.#saveTimer);
+      this.#saveTimer = null;
+    }
+    try {
+      const { resetSettings } = await import('../ipc/settings');
+      const fresh = await resetSettings();
+      if (fresh && typeof fresh === 'object' && 'audio' in fresh && 'graphics' in fresh) {
+        this.snapshot = fresh;
+        this.error = null;
+      } else {
+        this.error = 'reset_settings returned a malformed payload';
+      }
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  /**
    * Test-harness reset. Clears the snapshot to defaults, cancels
    * the pending save, drops the load-idempotency latch.
    */

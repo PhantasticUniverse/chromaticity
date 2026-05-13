@@ -194,6 +194,129 @@ describe('settingsStore', () => {
     expect(settingsStore.error).toBe('disk full');
   });
 
+  it('resetToDefaults() invokes reset_settings and hydrates from the returned payload', async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'reset_settings') {
+        // Engine-side reset hands back the defaults payload.
+        return Promise.resolve({
+          general: { theme: 'Pulse' },
+          audio: {
+            input_device: 'default',
+            output_device: 'default',
+            sample_rate_hz: 48_000,
+            latency_hint: 'balanced',
+            channel_layout: 'stereo',
+            channel_left: 'L1',
+            channel_right: 'R2',
+            input_gain: 0.59,
+          },
+          graphics: {
+            resolution_preset: '1080p',
+            custom_resolution_enabled: false,
+            custom_width: 1920,
+            custom_height: 1080,
+            fps_target: '60',
+            vsync: true,
+            hdr_target: 'sdr',
+            display: 'display-1',
+            color_space: 'srgb',
+            multi_display_mode: 'single',
+            render_scale: 1.0,
+            screen_fitting: 'fit',
+            fps_slider_enabled: false,
+          },
+          storage: {
+            media_folders: [],
+            scene_folders: [],
+            backup_path: '',
+            backup_retention: 'retain-10',
+          },
+          osc: {
+            local_ip: '0.0.0.0',
+            port: 8000,
+            tx_enabled: true,
+            rx_enabled: true,
+          },
+        } satisfies SettingsPayload);
+      }
+      return Promise.resolve();
+    });
+    const { settingsStore, DEFAULT_SETTINGS } = await import('./settings.svelte');
+    settingsStore.reset();
+    // Mutate the snapshot first so the reset effect is observable.
+    settingsStore.update({ general: { theme: 'Console' } });
+    expect(settingsStore.snapshot.general.theme).toBe('Console');
+    await settingsStore.resetToDefaults();
+    expect(invokeMock).toHaveBeenCalledWith('reset_settings');
+    expect(settingsStore.snapshot).toEqual(DEFAULT_SETTINGS);
+    expect(settingsStore.error).toBeNull();
+  });
+
+  it('resetToDefaults() cancels a pending debounced save', async () => {
+    invokeMock.mockResolvedValue({
+      general: { theme: 'Pulse' },
+      audio: {
+        input_device: 'default',
+        output_device: 'default',
+        sample_rate_hz: 48_000,
+        latency_hint: 'balanced',
+        channel_layout: 'stereo',
+        channel_left: 'L1',
+        channel_right: 'R2',
+        input_gain: 0.59,
+      },
+      graphics: {
+        resolution_preset: '1080p',
+        custom_resolution_enabled: false,
+        custom_width: 1920,
+        custom_height: 1080,
+        fps_target: '60',
+        vsync: true,
+        hdr_target: 'sdr',
+        display: 'display-1',
+        color_space: 'srgb',
+        multi_display_mode: 'single',
+        render_scale: 1.0,
+        screen_fitting: 'fit',
+        fps_slider_enabled: false,
+      },
+      storage: {
+        media_folders: [],
+        scene_folders: [],
+        backup_path: '',
+        backup_retention: 'retain-10',
+      },
+      osc: {
+        local_ip: '0.0.0.0',
+        port: 8000,
+        tx_enabled: true,
+        rx_enabled: true,
+      },
+    } satisfies SettingsPayload);
+    const { settingsStore } = await import('./settings.svelte');
+    settingsStore.reset();
+    // Schedule a debounced save then immediately reset — the save
+    // MUST NOT fire (it would race the reset write).
+    settingsStore.update({ general: { theme: 'Console' } });
+    await settingsStore.resetToDefaults();
+    // Advance past the debounce window to confirm no set_settings
+    // call leaked through.
+    await vi.advanceTimersByTimeAsync(300);
+    const setCalls = invokeMock.mock.calls.filter((c) => c[0] === 'set_settings');
+    expect(setCalls.length).toBe(0);
+  });
+
+  it('resetToDefaults() records the error when reset_settings rejects', async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'reset_settings') return Promise.reject(new Error('disk full'));
+      return Promise.resolve();
+    });
+    const { settingsStore } = await import('./settings.svelte');
+    settingsStore.reset();
+    await settingsStore.resetToDefaults();
+    expect(settingsStore.error).toBe('disk full');
+  });
+
   it('reset() clears state for sibling test isolation', async () => {
     invokeMock.mockResolvedValue(SAMPLE_PAYLOAD);
     const { settingsStore, DEFAULT_SETTINGS } = await import('./settings.svelte');
