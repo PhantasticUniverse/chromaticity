@@ -31,6 +31,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     fetchSceneCards,
     getDefaultRoot,
   } from '../stores/library';
+  import { libraryRecentStore } from '../stores/libraryRecent.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { routeStore } from '../stores/route.svelte';
   import { toIpcError } from '../types/ipc-error';
@@ -72,21 +73,98 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const activeCategories = new SvelteSet<string>();
   let size = $state<'small' | 'medium' | 'large'>('medium');
 
+  // Wave 2.5 Lane LIB.C — source filter (panel head) + RECENT chip
+  // (category row) + sort axis (toolbar).
+  //
+  // The bundle's panel-head `<select>` exposes `built-in / my scenes /
+  // all` per `chromaticity-planning/ui-predev-bundle-v0.2-beta/views/
+  // library.jsx` line 25-29; we default to `all` so a fresh open
+  // shows the merged corpus.
+  //
+  // RECENT is a virtual chip — not in the hardcoded CATEGORIES list —
+  // because it filters against `libraryRecentStore.ids` instead of
+  // the card's `categories` array.
+  //
+  // Sort `favorites` falls back to `id` until Lane LIB.B's
+  // `libraryFavoritesStore` lands. The Library view doesn't import
+  // that store yet; once LIB.B merges, this branch's rebase swaps
+  // the fallback for the real comparator. TODO(wave-2.5-lib-b):
+  // wire `libraryFavoritesStore.has(card.id)` into the favorites
+  // sort once it ships.
+  let sourceFilter = $state<'all' | 'built-in' | 'my-scenes'>('all');
+  let sortMode = $state<'id' | 'title' | 'recent' | 'favorites'>('id');
+  let recentChipActive = $state(false);
+
+  // Hydrate the recent store once at mount + push on every successful
+  // scene load. `loadedSceneStore.snapshot?.id` covers BOTH the
+  // Library view's own double-click handler AND any external loader
+  // (the Perform scene-list click-to-load wire shipped in Wave 2.4
+  // Lane PERF.B), so the recent list reflects every load path.
+  $effect(() => {
+    libraryRecentStore.hydrate();
+  });
+
+  $effect(() => {
+    const id = loadedSceneStore.snapshot?.id;
+    if (id) {
+      libraryRecentStore.push(id);
+    }
+  });
+
   const filteredCards = $derived.by(() => {
     const q = query.trim().toLowerCase();
-    return cards.filter((card) => {
+    const recents = libraryRecentStore.ids;
+    const filtered = cards.filter((card) => {
       if (q) {
         const haystack = [card.title, card.credit, card.description, ...card.tags]
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(q)) return false;
       }
+      if (sourceFilter === 'built-in' && card.source !== 'Bundled') return false;
+      if (sourceFilter === 'my-scenes' && card.source !== 'User') return false;
+      if (recentChipActive && !recents.includes(card.id)) return false;
       if (activeCategories.size > 0) {
         const matches = card.categories.some((c) => activeCategories.has(c.toUpperCase()));
         if (!matches) return false;
       }
       return true;
     });
+
+    const sorted = [...filtered];
+    if (sortMode === 'title') {
+      sorted.sort((a, b) =>
+        (a.title || a.id).localeCompare(b.title || b.id, undefined, { sensitivity: 'base' }),
+      );
+    } else if (sortMode === 'recent') {
+      // Recently loaded first (in the order `libraryRecentStore.ids`
+      // lists them — most-recent-first), then everything else in
+      // id-asc tie-break order. A plain Record-of-number lets the
+      // ephemeral lookup avoid the `svelte/prefer-svelte-reactivity`
+      // friction `new Map()` trips (mirrors Perform.svelte's
+      // controlValues precedent at line 353).
+      const recencyIndex: Record<string, number> = {};
+      for (let i = 0; i < recents.length; i++) {
+        const id = recents[i];
+        if (id !== undefined) recencyIndex[id] = i;
+      }
+      sorted.sort((a, b) => {
+        const aIdx = recencyIndex[a.id];
+        const bIdx = recencyIndex[b.id];
+        if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx;
+        if (aIdx !== undefined) return -1;
+        if (bIdx !== undefined) return 1;
+        return a.id.localeCompare(b.id);
+      });
+    } else if (sortMode === 'favorites') {
+      // TODO(wave-2.5-lib-b): swap the no-op partition for
+      // `libraryFavoritesStore.has(card.id)` once Lane LIB.B merges.
+      // Until then `favorites` is a stub that preserves id-asc order.
+      sorted.sort((a, b) => a.id.localeCompare(b.id));
+    }
+    // `id` sort is the default; the engine returns id-sorted already
+    // so `sorted` is already in id order at this branch.
+    return sorted;
   });
 
   function toggleCategory(cat: string) {
@@ -95,6 +173,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     } else {
       activeCategories.add(cat);
     }
+  }
+
+  function toggleRecentChip() {
+    recentChipActive = !recentChipActive;
   }
 
   // W11 PR2: merge bundled (ship-time) + user-staged scene cards.
@@ -214,6 +296,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           {filteredCards.length} of {cards.length} scene{cards.length === 1 ? '' : 's'}
         </span>
       {/if}
+      <label class="library__source">
+        <span>source</span>
+        <select bind:value={sourceFilter} aria-label="filter by source">
+          <option value="all">all</option>
+          <option value="built-in">built-in</option>
+          <option value="my-scenes">my scenes</option>
+        </select>
+      </label>
       <div class="library__ctas" role="group" aria-label="Library actions">
         <button
           type="button"
@@ -262,6 +352,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           aria-label="filter scenes"
         />
         <div class="library__chips" role="group" aria-label="category filters">
+          <button
+            type="button"
+            class="library__chip"
+            class:active={recentChipActive}
+            aria-pressed={recentChipActive}
+            onclick={toggleRecentChip}
+            title="Show only recently loaded scenes"
+          >
+            RECENT
+          </button>
           {#each CATEGORIES as cat (cat)}
             <button
               type="button"
@@ -274,6 +374,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             </button>
           {/each}
         </div>
+        <label class="library__sort">
+          <span>sort</span>
+          <select bind:value={sortMode} aria-label="sort scenes">
+            <option value="id">id</option>
+            <option value="title">title</option>
+            <option value="recent">recent</option>
+            <option value="favorites">favorites</option>
+          </select>
+        </label>
         <label class="library__size">
           <span>size</span>
           <select bind:value={size}>
@@ -614,14 +723,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     color: var(--color-on-primary);
     border-color: var(--color-primary);
   }
-  .library__size {
+  .library__size,
+  .library__sort,
+  .library__source {
     display: inline-flex;
     align-items: center;
     gap: var(--space-xs);
     font-size: var(--font-size-body-sm);
     color: var(--color-text-1);
   }
-  .library__size select {
+  .library__size select,
+  .library__sort select,
+  .library__source select {
     background: var(--color-bg-3);
     color: var(--color-text-0);
     border: 1px solid var(--color-line-2);
