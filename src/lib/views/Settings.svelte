@@ -77,6 +77,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/settings-fixtures';
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
+  import { audioDevicesStore } from '../stores/audioDevices.svelte';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import { settingsStore } from '../stores/settings.svelte';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
@@ -98,6 +99,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // verbatim, so the existing Settings view tests keep passing).
   $effect(() => {
     void settingsStore.load();
+  });
+
+  // Wave 2.6 Lane AUD.A — populate the Input Device dropdown with the
+  // host's real cpal input devices via `list_audio_devices`. Empty
+  // list (CI / headless / no-audio-subsystem hosts; running outside
+  // Tauri under `npm run dev` / Vitest) falls back to the W21 PR1
+  // `AUDIO_INPUT_DEVICES` fixture so the dropdown always renders at
+  // least the default-microphone hint. Mirrors the Wave 2.1 Lane D.1
+  // MIDI Devices tab refresh-on-mount pattern.
+  $effect(() => {
+    void audioDevicesStore.refresh();
   });
 
   // Pull the audio + graphics + general sections through derived
@@ -123,6 +135,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const liveAudioSnapshot = $derived(audioSnapshotStore.snapshot);
   const meterLevel = $derived(liveAudioSnapshot?.rms ?? AUDIO_METER_LEVEL);
   const meterPeak = $derived(liveAudioSnapshot?.peak ?? AUDIO_METER_PEAK);
+
+  // Wave 2.6 Lane AUD.A — derive the Input Device dropdown option set
+  // from `audioDevicesStore.devices`. Empty live list falls back to
+  // the W21 PR1 fixture so the dropdown always has something to
+  // render (e.g. running outside Tauri).
+  const liveAudioInputOptions = $derived(
+    audioDevicesStore.devices.map((d) => ({ id: d.id, label: d.name })),
+  );
+  const audioInputOptions = $derived(
+    liveAudioInputOptions.length > 0 ? liveAudioInputOptions : AUDIO_INPUT_DEVICES,
+  );
 
   // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
   // mirroring `views/settings.jsx` lines 187-194 (the right-column
@@ -321,7 +344,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             onchange={(e) =>
               settingsStore.update({ audio: { input_device: e.currentTarget.value } })}
           >
-            {#each AUDIO_INPUT_DEVICES as opt (opt.id)}
+            {#each audioInputOptions as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
           </select>

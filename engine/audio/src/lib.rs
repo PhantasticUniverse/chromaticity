@@ -223,6 +223,7 @@ pub mod silent;
 pub mod uniforms;
 
 pub use bpm::BpmEstimator;
+pub use cpal_source::{AudioDeviceInfo, AudioDeviceKind, enumerate_input_devices};
 pub use error::AudioError;
 pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource};
 pub use uniforms::{AudioUniformSnapshot, extract_uniform_snapshot};

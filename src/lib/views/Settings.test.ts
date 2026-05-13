@@ -56,6 +56,8 @@ import {
   RESOLUTION_PRESETS,
   SENDER_NAME_DEFAULT,
 } from '../data/settings-fixtures';
+import type { AudioDevicePayload } from '../ipc/bindings/AudioDevicePayload';
+import { audioDevicesStore } from '../stores/audioDevices.svelte';
 import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 import { settingsStore } from '../stores/settings.svelte';
 
@@ -87,6 +89,12 @@ describe('Settings view', () => {
     // singleton; clear any test-injected snapshot so the next render
     // starts in the no-snapshot (synthetic fallback) state.
     audioSnapshotStore.unsubscribe();
+    audioSnapshotStore.snapshot = null;
+    // Wave 2.6 Lane AUD.A — `audioDevicesStore` is a module-level
+    // singleton shared across the suite. Reset between tests so each
+    // case mounts against an empty live list (falls back to the
+    // fixture) unless the test explicitly seeds devices.
+    audioDevicesStore.reset();
     cleanup();
   });
 
@@ -133,6 +141,51 @@ describe('Settings view', () => {
     // Sample rate select renders all four fixture options.
     const sampleRate = within(audio).getByLabelText('Sample Rate') as HTMLSelectElement;
     expect(sampleRate.querySelectorAll('option').length).toBe(AUDIO_SAMPLE_RATES.length);
+  });
+
+  it('Input Device dropdown shows enumerated devices when audioDevicesStore.devices populated', async () => {
+    // Wave 2.6 Lane AUD.A — when the engine `list_audio_devices`
+    // command returns a non-empty list, the dropdown options come
+    // from `audioDevicesStore.devices` (mapped to `{id, label: name}`)
+    // rather than the W21 PR1 `AUDIO_INPUT_DEVICES` fixture. Seed the
+    // store BEFORE rendering so the derived options reflect the live
+    // list on first render.
+    const live: AudioDevicePayload[] = [
+      {
+        id: 'input-built-in-microphone',
+        name: 'Built-in Microphone',
+        kind: 'Input',
+      },
+      {
+        id: 'input-blackhole-16ch',
+        name: 'BlackHole 16ch',
+        kind: 'Input',
+      },
+    ];
+    audioDevicesStore.devices = live;
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
+    const options = Array.from(input.querySelectorAll('option'));
+    // Live list replaces the fixture entirely; the option count
+    // matches the seeded device count, not the fixture length.
+    expect(options.length).toBe(live.length);
+    expect(options.map((o) => o.value)).toEqual(live.map((d) => d.id));
+    expect(options.map((o) => o.textContent?.trim())).toEqual(live.map((d) => d.name));
+  });
+
+  it('Input Device dropdown falls back to the fixture when audioDevicesStore is empty', () => {
+    // The "no Tauri context" / "no audio subsystem" / "no devices
+    // connected" branches all collapse to `audioDevicesStore.devices`
+    // being empty; the dropdown then renders the W21 PR1 fixture so
+    // the operator-facing surface always has something to pick.
+    audioDevicesStore.reset();
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
+    const options = Array.from(input.querySelectorAll('option'));
+    expect(options.length).toBe(AUDIO_INPUT_DEVICES.length);
+    expect(options.map((o) => o.value)).toEqual(AUDIO_INPUT_DEVICES.map((d) => d.id));
   });
 
   it('Audio Device input-gain slider updates the dB readout aria-valuetext', async () => {
@@ -353,7 +406,17 @@ describe('Settings view', () => {
   });
 
   it('Storage Add-folder browse invokes pick_folder via the IPC mock and appends the row', async () => {
-    invokeMock.mockResolvedValueOnce('/Users/operator/Movies/Chromaticity/Loops');
+    // Wave 2.6 Lane AUD.A added a `list_audio_devices` invoke on
+    // Settings mount; route it to an empty array so the once-mock
+    // below only fires for `pick_folder`. Otherwise mount-time
+    // audio enumeration consumes the `mockResolvedValueOnce` value.
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'list_audio_devices') return Promise.resolve([]);
+      if (command === 'pick_folder') {
+        return Promise.resolve('/Users/operator/Movies/Chromaticity/Loops');
+      }
+      return Promise.resolve(undefined);
+    });
     const { container } = render(Settings);
     const storage = getSection(container, 'Storage');
     const addBtn = within(storage).getByRole('button', { name: 'Add media folder' });
