@@ -55,6 +55,32 @@ procurement remains AO-gated and `EV-RELEASE-PIPELINE` stays at
 `Planned` until then. Phase 0 governance and clean-room baseline ADRs
 remain authoritative throughout.
 
+Pre-alpha smoke testing on 2026-05-11 surfaced that ~60% of cross-seam
+IPC was gapped despite the v0.2-beta UI port being wireframe-faithful
+complete. Wave 2.1 (2026-05-11) closed the gap in a single day across
+11 PRs (`#435`-`#445`) covering scene load + control dispatch + snap +
+preset / playlist + Perform STANDARD/CONSOLE variant + top bar HUD +
+Settings TOML persistence + MIDI device list + learn-mode capture +
+OSC route inspection. Wave 2.2 R.1 (`#448`) then wired the v0.2-beta
+bundle's 16 procedural Canvas2D scene renderers into the Perform /
+Library / Playlist / Author preview panes; Wave 2.3 Q.1 + Q.2
+(`#449` / `#450`) fixed ResizeObserver flicker + DPR-on-retina +
+audio-gate widening and brought Perform's STANDARD layout to
+wireframe fidelity. Wave 2.4 (2026-05-13) shipped page-by-page
+wiring solidification on the Perform page across 6 PRs (`#451`-`#456`)
+adding action buttons (Default / Random / Lock-all) + scene-list
+click-to-load + `Command::PresetSave` engine surface + adapter-pill
+liveness + media-tab filter + SnapBar slot labels with right-click
+rename. Wave 2.5 (2026-05-13) followed on the Library page across 5
+PRs (`#457`-`#461`) adding card SceneStill thumbnails + favorites + a
+source / sort / recent filter axis + the canonical bundle sidebar
+preview pane with Open-in-Author handoff + empty-state polish + a
+double-click → Perform handoff. The `DESIGN.md` token contract was
+reconciled against the rendered shell post-Wave-2.4 (`#462`). Wave 2.6
+(Audio page) is in progress at the time of this refresh; subsequent
+pages (Settings, MIDI, OSC, Sources, Playlist, Author, Patch, Import,
+License, Help, Welcome) follow the same playbook.
+
 ## Repository Layout
 
 ```
