@@ -105,7 +105,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Sender, TryRecvError, bounded};
 
 use crate::bpm::BpmEstimator;
-use crate::cpal_source::try_default_input;
+use crate::cpal_source::{try_default_input, try_input_by_preference};
 use crate::frame::AudioFrame;
 use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
@@ -211,6 +211,45 @@ impl AudioRuntime {
     #[must_use]
     pub fn new(config: AudioRuntimeConfig) -> Self {
         match try_default_input() {
+            Ok(cpal_source) => Self::from_primary(cpal_source, config),
+            Err(_) => Self::from_primary(SilentSource::new(u32::MAX), config),
+        }
+    }
+
+    /// Construct a runtime honouring a persisted operator device
+    /// preference at startup.
+    ///
+    /// Wave 2.8 Lane AUD.SRC: closes the cosmetic-only gap on the
+    /// Wave 2.6 Lane AUD.A Input Device dropdown — previously
+    /// `AudioRuntime::new` always bound the host's default input
+    /// device (microphone on macOS) and the persisted
+    /// `settings.audio.input_device` was inert. This constructor takes
+    /// the persisted preference string and resolves it via
+    /// [`try_input_by_preference`]:
+    ///
+    /// - `None` or the Wave 2.1 sentinel `"default"` → host default
+    ///   input (matches [`AudioRuntime::new`] semantics).
+    /// - A sanitised id from `enumerate_input_devices` (e.g.
+    ///   `"input-blackhole-16ch"`) or a raw cpal device name → that
+    ///   device is bound.
+    /// - A preference that does not resolve against the current host
+    ///   (operator unplugged BlackHole, switched audio profiles, etc.)
+    ///   → falls back to the host default input with a one-shot stderr
+    ///   warning; runtime still constructs successfully.
+    /// - cpal failure on either path → falls back to a
+    ///   [`SilentSource`]-only configuration that produces zero
+    ///   snapshots indefinitely (matches [`AudioRuntime::new`]).
+    ///
+    /// "Apply at startup" only — true "apply without restart" needs
+    /// producer-thread restart semantics + 60 Hz scheduler-tick
+    /// coordination and is a future wave. The Settings → Audio hint
+    /// copy notes the restart requirement to the operator.
+    ///
+    /// Evidence: `EV-INTEGRATION-MATRIX` (audio arm, Wave 2.8 Lane
+    /// AUD.SRC).
+    #[must_use]
+    pub fn with_preferred_device(preference: Option<&str>, config: AudioRuntimeConfig) -> Self {
+        match try_input_by_preference(preference) {
             Ok(cpal_source) => Self::from_primary(cpal_source, config),
             Err(_) => Self::from_primary(SilentSource::new(u32::MAX), config),
         }

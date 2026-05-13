@@ -222,10 +222,18 @@ audio APIs. To get a meaningful reaction:
 
 - **Easy path**: play music on your computer speakers and let the
   built-in mic pick it up acoustically. Speak / clap near the mic.
-- **Cleaner path**: install a virtual audio loopback (BlackHole,
-  Loopback, SoundFlower) that routes system output to a virtual
-  input device, then select it as the default input in System
-  Settings → Sound → Input. Most performers prefer this.
+- **Cleaner path**: install a virtual audio loopback that routes
+  system output to a virtual input device:
+  - [BlackHole](https://existential.audio/blackhole/) — free,
+    MIT-licensed, ships a 2-channel or 16-channel virtual driver.
+  - [Loopback](https://rogueamoeba.com/loopback/) — paid, more
+    flexible GUI-driven routing.
+    After installing, restart Chromaticity, open Settings → Audio,
+    pick the BlackHole / Loopback device in the Input Device dropdown.
+    Wave 2.8 Lane AUD.SRC: `AudioRuntime` now honours the persisted
+    selection at startup (previously the dropdown was cosmetic).
+    Most performers prefer this path over the acoustic mic-pickup
+    route above.
 - **No-mic path**: if your machine has no input device at all, the
   producer falls back to a `SilentSource` and emits all-zero
   snapshots. Visualizers stay on synthetic fallback — that's
