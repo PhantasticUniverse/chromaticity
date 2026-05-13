@@ -228,6 +228,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::playlist::playlist_position,
             commands::library::list_scene_packages,
             commands::library::list_bundled_scene_packages,
+            commands::library::list_custom_scene_packages,
             commands::library::default_scene_root,
             commands::library::bundled_scene_root,
             commands::library_search::search_scene_library,

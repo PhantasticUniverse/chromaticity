@@ -53,6 +53,7 @@ import { libraryFavoritesStore } from '../stores/libraryFavorites.svelte';
 import { libraryRecentStore } from '../stores/libraryRecent.svelte';
 import { loadedSceneStore } from '../stores/loadedScene.svelte';
 import { routeStore } from '../stores/route.svelte';
+import { settingsStore } from '../stores/settings.svelte';
 import { sceneKindFromMetadata } from '../widgets/scene-kind-from-metadata';
 
 const RECENT_STORAGE_KEY = 'library-recent';
@@ -115,16 +116,28 @@ const OVERFLOW_TAG_CARDS = [
   },
 ];
 
-// Helper: route the three Tauri commands the Library view fires
+// Helper: route the Tauri commands the Library view fires
 // (`default_scene_root`, `list_bundled_scene_packages`,
-// `list_scene_packages`) through a single dispatcher. Returning
+// `list_scene_packages`, `list_custom_scene_packages`, `load_scene`,
+// `get_settings`) through a single dispatcher. Returning
 // `unhandled-${cmd}` short-circuits the Promise.allSettled branch's
 // partial-result path.
+//
+// Wave 2.8 LIB.LOCAL: `loadCards()` reads
+// `settingsStore.snapshot.storage.scene_folders` at call time, and
+// the Library view kicks `settingsStore.load()` in a separate
+// `$effect`. The default `get_settings` handler returns the engine
+// defaults (`scene_folders: []`) so existing tests that don't care
+// about custom folders pass unchanged; tests covering the
+// custom-folder path supply a populated array and assert against
+// the post-hydration re-scan.
 function dispatchInvoke(handlers: {
   default_scene_root?: () => string | Promise<string>;
   list_bundled_scene_packages?: () => unknown | Promise<unknown>;
   list_scene_packages?: (args: { root: string }) => unknown | Promise<unknown>;
+  list_custom_scene_packages?: (args: { root: string }) => unknown | Promise<unknown>;
   load_scene?: (args: { path: string }) => unknown | Promise<unknown>;
+  get_settings?: () => unknown | Promise<unknown>;
 }): void {
   invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
     if (cmd === 'default_scene_root' && handlers.default_scene_root) {
@@ -136,12 +149,88 @@ function dispatchInvoke(handlers: {
     if (cmd === 'list_scene_packages' && handlers.list_scene_packages) {
       return handlers.list_scene_packages(args as { root: string });
     }
+    if (cmd === 'list_custom_scene_packages' && handlers.list_custom_scene_packages) {
+      return handlers.list_custom_scene_packages(args as { root: string });
+    }
     if (cmd === 'load_scene' && handlers.load_scene) {
       return handlers.load_scene(args as { path: string });
+    }
+    if (cmd === 'get_settings') {
+      if (handlers.get_settings) return handlers.get_settings();
+      // Default-empty settings keeps custom-folder list empty so
+      // existing tests behave as they did before the LIB.LOCAL wire.
+      return DEFAULT_SETTINGS_FIXTURE;
     }
     throw new Error(`unhandled-${cmd}`);
   });
 }
+
+// Default settings fixture handed back from `get_settings` when a
+// test doesn't override. Mirrors `engine/runtime::settings::Settings::default()`
+// at the storage axis (the only axis Library reads). Other sections
+// carry safe placeholder values so the SettingsPayload's required-
+// field invariants are satisfied through the bridge.
+const DEFAULT_SETTINGS_FIXTURE = {
+  general: { theme: 'Pulse' },
+  audio: {
+    input_device: 'default',
+    output_device: 'default',
+    sample_rate_hz: 48_000,
+    latency_hint: 'balanced',
+    channel_layout: 'stereo',
+    channel_left: 'L1',
+    channel_right: 'R2',
+    input_gain: 0.59,
+  },
+  graphics: {
+    resolution_preset: '1080p',
+    custom_resolution_enabled: false,
+    custom_width: 1920,
+    custom_height: 1080,
+    fps_target: '60',
+    vsync: true,
+    hdr_target: 'sdr',
+    display: 'display-1',
+    color_space: 'srgb',
+    multi_display_mode: 'single',
+    render_scale: 1.0,
+    screen_fitting: 'fit',
+    fps_slider_enabled: false,
+  },
+  storage: {
+    media_folders: [],
+    scene_folders: [],
+    backup_path: '',
+    backup_retention: 'retain-10',
+  },
+  live_sources: {
+    syphon_input_enabled: true,
+    syphon_output_enabled: true,
+    ndi_input_enabled: false,
+    ndi_output_enabled: true,
+    constant_output_resolution: false,
+    sender_name: 'chrm',
+  },
+  osc: {
+    local_ip: '0.0.0.0',
+    port: 8000,
+    tx_enabled: true,
+    rx_enabled: true,
+  },
+  tempo: {
+    ableton_link_enabled: true,
+    start_stop_sync: true,
+    midi_clock_in_enabled: false,
+    midi_clock_in_device: 'any',
+    midi_clock_out_enabled: true,
+    midi_clock_out_device: 'iac-1',
+    quantize: 'bar',
+    manual_bpm: 120.0,
+    link_offset_ms: 0,
+    audio_bpm_sensitivity: 60,
+    bpm_source_priority: ['audio', 'midiclock', 'link', 'manual'],
+  },
+};
 
 // Wave 2.5 Lane LIB.A — SceneCanvas in the right rail reads
 // `prefers-reduced-motion` via `window.matchMedia`. jsdom does not
@@ -188,6 +277,14 @@ describe('Library view', () => {
     // off the same runes singletons.
     loadedSceneStore.reset();
     routeStore.set('library');
+    // Wave 2.8 LIB.LOCAL: drop the settings-store load-idempotency
+    // latch so each test re-runs `get_settings` through the
+    // dispatcher. Without this, the first test's resolved load()
+    // promise short-circuits every subsequent test's `await
+    // settingsStore.load()` inside `loadCards`, freezing the
+    // `storage.scene_folders` snapshot to whatever the first test
+    // returned.
+    settingsStore.reset();
   });
 
   afterEach(() => {
@@ -203,6 +300,7 @@ describe('Library view', () => {
     }
     loadedSceneStore.reset();
     routeStore.set('library');
+    settingsStore.reset();
     vi.unstubAllGlobals();
   });
 
@@ -1084,6 +1182,141 @@ describe('Library view', () => {
     expect(loadSceneCalls.length).toBe(0);
     // And the favorite store DID toggle (positive control).
     expect(libraryFavoritesStore.isFavorite('pkg.user.geo')).toBe(true);
+  });
+
+  // ---------------------------------------------------------------
+  // Wave 2.8 LIB.LOCAL — custom scene folder scan path. The Settings
+  // → Storage Custom Scene Folders entries (Wave 2.7 SET.B
+  // persistence) now drive the Library scan; previously the paths
+  // were saved but never consulted. Tests pin: (a) one custom folder
+  // contributes cards alongside bundled + user-default; (b) two
+  // custom folders both contribute and dedup by id; (c) a missing /
+  // failing custom folder doesn't collapse the rest of the grid.
+  // ---------------------------------------------------------------
+
+  it('cards from a custom scene folder render alongside bundled + user-default (Wave 2.8 LIB.LOCAL)', async () => {
+    const CUSTOM_CARDS = [
+      {
+        id: 'pkg.local.aurora',
+        title: 'Local Aurora',
+        credit: 'Operator',
+        description: 'A scene staged from scenes-local/',
+        tags: ['local'],
+        categories: ['Custom'],
+        path: '/repo/scenes-local/aurora.chroma',
+        format_tag: 'native-chroma-scene',
+        source: 'User' as const,
+      },
+    ];
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+      list_custom_scene_packages: (args) => {
+        if (args.root === '/repo/scenes-local') return CUSTOM_CARDS;
+        return [];
+      },
+      get_settings: () => ({
+        ...DEFAULT_SETTINGS_FIXTURE,
+        storage: {
+          ...DEFAULT_SETTINGS_FIXTURE.storage,
+          scene_folders: ['/repo/scenes-local'],
+        },
+      }),
+    });
+    const { findByText, container } = render(Library);
+    // Wait for the custom card title to land — its uniqueness
+    // confirms the custom-folder scan fanned out and merged into
+    // the grid.
+    expect(await findByText('Local Aurora')).toBeInTheDocument();
+    // Total tile count: 2 bundled + 1 user-default + 1 custom.
+    const tiles = container.querySelectorAll('.scene-tile');
+    expect(tiles.length).toBe(BUNDLED_CARDS.length + USER_CARDS.length + CUSTOM_CARDS.length);
+    // Custom card carries SceneSource: User → no BUILT-IN chip.
+    const customTile = Array.from(tiles).find((t) => t.textContent?.includes('Local Aurora'));
+    expect(customTile?.querySelector('.scene-tile__builtin')).toBeNull();
+  });
+
+  it('two custom scene folders both contribute cards (Wave 2.8 LIB.LOCAL fan-out)', async () => {
+    const FOLDER_A_CARDS = [
+      {
+        id: 'pkg.local.a-one',
+        title: 'Folder A One',
+        credit: '',
+        description: '',
+        tags: [],
+        categories: [],
+        path: '/repo/scenes-local-a/one.chroma',
+        format_tag: 'native-chroma-scene',
+        source: 'User' as const,
+      },
+    ];
+    const FOLDER_B_CARDS = [
+      {
+        id: 'pkg.local.b-one',
+        title: 'Folder B One',
+        credit: '',
+        description: '',
+        tags: [],
+        categories: [],
+        path: '/elsewhere/one.chroma',
+        format_tag: 'native-chroma-scene',
+        source: 'User' as const,
+      },
+    ];
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => [],
+      list_scene_packages: () => [],
+      list_custom_scene_packages: (args) => {
+        if (args.root === '/repo/scenes-local-a') return FOLDER_A_CARDS;
+        if (args.root === '/elsewhere') return FOLDER_B_CARDS;
+        return [];
+      },
+      get_settings: () => ({
+        ...DEFAULT_SETTINGS_FIXTURE,
+        storage: {
+          ...DEFAULT_SETTINGS_FIXTURE.storage,
+          scene_folders: ['/repo/scenes-local-a', '/elsewhere'],
+        },
+      }),
+    });
+    const { container } = render(Library);
+    // Both custom-folder cards must land in the grid. `Folder A One`
+    // also appears in the LIB.A right-rail sidebar (it binds to the
+    // first filtered card by default), so the bare `findByText` would
+    // match two nodes; scope queries to the grid container instead.
+    await waitFor(() => {
+      expect(container.querySelectorAll('.library__grid .scene-tile').length).toBe(2);
+    });
+    const grid = container.querySelector('.library__grid') as HTMLElement;
+    expect(within(grid).getByText('Folder A One')).toBeInTheDocument();
+    expect(within(grid).getByText('Folder B One')).toBeInTheDocument();
+  });
+
+  it('a failing custom scene folder does not collapse the rest of the grid (Wave 2.8 LIB.LOCAL resilience)', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+      list_custom_scene_packages: () => Promise.reject(new Error('custom folder unmounted')),
+      get_settings: () => ({
+        ...DEFAULT_SETTINGS_FIXTURE,
+        storage: {
+          ...DEFAULT_SETTINGS_FIXTURE.storage,
+          scene_folders: ['/some/unmounted/external/drive'],
+        },
+      }),
+    });
+    const { findByText, container, queryByRole } = render(Library);
+    // Bundled + user-default cards land regardless. The custom-
+    // folder rejection is swallowed because the merged list is
+    // non-empty (Promise.allSettled partial-result path).
+    expect(await findByText('Glitch')).toBeInTheDocument();
+    expect(container.querySelectorAll('.scene-tile').length).toBe(
+      BUNDLED_CARDS.length + USER_CARDS.length,
+    );
+    expect(queryByRole('alert')).toBeNull();
   });
 
   it('clicking the FAVORITES chip narrows the grid to favorited cards only', async () => {

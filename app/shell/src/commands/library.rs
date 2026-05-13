@@ -230,6 +230,31 @@ pub fn list_scene_packages(root: String) -> Result<Vec<SceneCard>, String> {
     list_scene_packages_impl(&root, SceneSource::User, RootGuard::EnforceUserDefault)
 }
 
+/// List every `.chroma` package directly under an operator-supplied
+/// custom scene folder (Wave 2.8 LIB.LOCAL).
+///
+/// Mirrors [`list_scene_packages`] but skips the descendant-of-default-
+/// root guard so the IPC surface can scan paths the operator has
+/// explicitly added via Settings → Storage → Add Custom Scene Folder
+/// (persisted as `settings.storage.scene_folders` per Wave 2.7 SET.B).
+/// Cards are tagged [`SceneSource::User`] because they're operator-
+/// staged content, distinct from the ship-time bundled corpus.
+///
+/// Security posture: the path-traversal guard exists to prevent a
+/// malicious caller from scanning anywhere outside `$HOME/Library/...`
+/// (`$XDG_DATA_HOME/...`, `$APPDATA\...`) when the frontend hands in a
+/// user-supplied path. The custom-folders flow inverts that contract:
+/// the operator explicitly nominates the path via the folder picker
+/// (Wave 2.7 SET.B) and the path is persisted in Settings TOML, so the
+/// arbitrary-root scan is the WHOLE POINT. Malformed-package tolerance
+/// (silent skip on `load_chroma_dir` failure) is preserved by the
+/// underlying `list_scene_packages_impl` so a single bad `.chroma` in a
+/// custom folder cannot collapse the whole Library load.
+#[tauri::command]
+pub fn list_custom_scene_packages(root: String) -> Result<Vec<SceneCard>, String> {
+    list_scene_packages_impl(&root, SceneSource::User, RootGuard::AllowBundled)
+}
+
 /// User-facing subdirectories of `<AppBundle>/Resources/scenes/` that
 /// the bundled-scene walk recurses into per
 /// `docs/38-scene-library-and-import-spec.md` §2.1. The
@@ -477,6 +502,65 @@ mod tests {
             ],
         );
         assert!(!scene.controls.is_empty(), "demo-kaleido carries controls");
+    }
+
+    #[test]
+    fn list_custom_scene_packages_arbitrary_root_yields_user_source_cards() {
+        // Evidence: EV-LIBRARY-DISCOVERY (T1) — Wave 2.8 LIB.LOCAL
+        // custom-scene-folder scan path. The operator-supplied root
+        // is NOT a descendant of `$HOME/Library/...`; the bundled-
+        // guard arm skips the descendant check so the scan succeeds
+        // and every card emerges tagged `SceneSource::User` because
+        // the content is operator-staged (distinct from the
+        // ship-time `SceneSource::Bundled` corpus).
+        //
+        // Uses the repo-resident `library/` fixture corpus as a
+        // stand-in for an operator's custom-folder content; the
+        // same `list_scene_packages_impl` body powers both the
+        // `EnforceUserDefault` (default-root) and `AllowBundled`
+        // (custom-folder / bundled-root) arms, so the corpus shape
+        // exercises the metadata-extraction contract identically.
+        let custom_folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../engine/scene/tests/fixtures/scenes/library");
+
+        let cards = list_scene_packages_impl(
+            &custom_folder.to_string_lossy(),
+            SceneSource::User,
+            RootGuard::AllowBundled,
+        )
+        .expect("custom-folder scan must succeed under AllowBundled guard");
+
+        assert!(
+            !cards.is_empty(),
+            "custom-folder scan must surface the library/ corpus",
+        );
+        for card in &cards {
+            assert_eq!(
+                card.source,
+                SceneSource::User,
+                "custom-folder cards must carry SceneSource::User (got {:?} for {})",
+                card.source,
+                card.id,
+            );
+        }
+    }
+
+    #[test]
+    fn list_custom_scene_packages_nonexistent_path_returns_empty_vec() {
+        // A custom folder the operator has not yet created must
+        // surface as the graceful empty-corpus case rather than an
+        // error — the `Library.svelte::loadCards` Promise.allSettled
+        // composition relies on this so a missing entry in
+        // `settings.storage.scene_folders` doesn't collapse the
+        // whole library load.
+        let nonexistent = format!(
+            "/tmp/__chromaticity_custom_folder_test_nonexistent_{}__",
+            std::process::id()
+        );
+        let cards =
+            list_scene_packages_impl(&nonexistent, SceneSource::User, RootGuard::AllowBundled)
+                .expect("nonexistent custom path must yield empty Ok");
+        assert!(cards.is_empty());
     }
 
     #[test]

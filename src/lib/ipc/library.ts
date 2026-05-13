@@ -30,6 +30,20 @@ export async function listBundledScenePackages(): Promise<SceneCard[]> {
   return invoke<SceneCard[]>('list_bundled_scene_packages');
 }
 
+/// Enumerate every `.chroma` package directly under an operator-
+/// supplied custom scene folder (Wave 2.8 LIB.LOCAL). The handler
+/// skips the descendant-of-default-root path-traversal guard because
+/// the operator has explicitly nominated the folder via Settings →
+/// Storage → Add Custom Scene Folder (persisted as
+/// `settings.storage.scene_folders` per Wave 2.7 SET.B). Cards are
+/// tagged `source: "User"` server-side; a nonexistent root surfaces
+/// as the empty vec rather than an error so the `Promise.allSettled`
+/// composition in `Library.svelte::loadCards` stays resilient when
+/// the persisted path no longer exists on disk.
+export async function listCustomScenePackages(root: string): Promise<SceneCard[]> {
+  return invoke<SceneCard[]>('list_custom_scene_packages', { root });
+}
+
 /// Read the platform-default scene-library root path.
 export async function defaultSceneRoot(): Promise<string> {
   return invoke<string>('default_scene_root');
