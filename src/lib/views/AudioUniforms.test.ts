@@ -36,6 +36,7 @@ import {
 } from '../data/audio-uniform-fixtures';
 import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
 import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+import { settingsStore } from '../stores/settings.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal(
@@ -61,10 +62,13 @@ describe('AudioUniforms view', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    // Reset the shared singleton between tests so the Snapshot-button
+    // Reset the shared singletons between tests so the Snapshot-button
     // suite (which writes a live snapshot) cannot leak state into the
-    // default-null assertions of sibling tests.
+    // default-null assertions of sibling tests; settings + audio
+    // subscription teardown per the Wave 2.6 AUD.C dual-mode posture.
     audioSnapshotStore.snapshot = null;
+    audioSnapshotStore.unsubscribe();
+    settingsStore.reset();
     cleanup();
   });
 
@@ -468,5 +472,73 @@ describe('AudioUniforms view', () => {
       expect(getByText(band.label)).toBeInTheDocument();
       expect(getByText(band.subLabel)).toBeInTheDocument();
     }
+  });
+
+  it('peak/RMS dB readout reflects audioSnapshotStore.snapshot values', () => {
+    // Wave 2.6 AUD.C — when the audioSnapshotStore carries a live
+    // snapshot, the hero stats strip drops the frozen
+    // `AUDIO_UNIFORMS_FIXTURE.peakDb` / `.rmsDb` text and renders the
+    // 20·log10 conversion of `snapshot.peak` / `.rms` instead. peak
+    // 0.8 -> 20·log10(0.8) ≈ -1.9 dB; rms 0.25 -> ≈ -12.0 dB.
+    const payload: AudioUniformSnapshotPayload = {
+      bpm: 128,
+      rms: 0.25,
+      peak: 0.8,
+      fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+    };
+    audioSnapshotStore.snapshot = payload;
+    const { container } = render(AudioUniforms);
+    const stats = container.querySelector('.au__hero-stats');
+    expect(stats).not.toBeNull();
+    if (stats === null) return;
+    const expectedPeak = (20 * Math.log10(0.8)).toFixed(1);
+    const expectedRms = (20 * Math.log10(0.25)).toFixed(1);
+    expect(stats.textContent).toContain(`${expectedPeak} dB`);
+    expect(stats.textContent).toContain(`${expectedRms} dB`);
+    // Frozen fixture values should NOT appear once the live snapshot
+    // is present (peak -1.7 dB / rms -10.5 dB).
+    expect(stats.textContent).not.toContain(`${AUDIO_UNIFORMS_FIXTURE.peakDb.toFixed(1)} dB`);
+    expect(stats.textContent).not.toContain(`${AUDIO_UNIFORMS_FIXTURE.rmsDb.toFixed(1)} dB`);
+  });
+
+  it('peak/RMS dB readout clamps to -60 dB floor when snapshot reports digital silence', () => {
+    // Wave 2.6 AUD.C — guard against -Infinity on `peak === 0` /
+    // `rms === 0` (e.g. the engine's `SilentSource` fallback on hosts
+    // without a default cpal input device). The conversion clamps the
+    // linear amplitude to 1e-3 before the log, yielding -60.0 dB.
+    audioSnapshotStore.snapshot = {
+      bpm: 0,
+      rms: 0,
+      peak: 0,
+      fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+    };
+    const { container } = render(AudioUniforms);
+    const stats = container.querySelector('.au__hero-stats');
+    expect(stats?.textContent).toContain('-60.0 dB');
+  });
+
+  it('peak/RMS dB readout falls back to fixture when no live snapshot is present', () => {
+    // Wave 2.6 AUD.C — startup-window / vite-dev / Vitest-jsdom branch.
+    // No subscribe() resolution → snapshot stays null → fixture values
+    // render (peakDb -1.7, rmsDb -10.5 per audio-uniform-fixtures.ts).
+    const { container } = render(AudioUniforms);
+    const stats = container.querySelector('.au__hero-stats');
+    expect(stats?.textContent).toContain(`${AUDIO_UNIFORMS_FIXTURE.peakDb.toFixed(1)} dB`);
+    expect(stats?.textContent).toContain(`${AUDIO_UNIFORMS_FIXTURE.rmsDb.toFixed(1)} dB`);
+  });
+
+  it('source label reads settingsStore.snapshot.audio.input_device when set', () => {
+    // Wave 2.6 AUD.C — when the settings store carries a non-default
+    // input_device, the hero `src` label renders it verbatim (in lieu
+    // of the bundle's "Mic · Yeti" fixture). Lane AUD.A's live device
+    // enumeration will populate this string with an authoritative
+    // device name later in Wave 2.6.
+    settingsStore.snapshot = {
+      ...settingsStore.snapshot,
+      audio: { ...settingsStore.snapshot.audio, input_device: 'BlackHole 2ch' },
+    };
+    const { container } = render(AudioUniforms);
+    const stats = container.querySelector('.au__hero-stats');
+    expect(stats?.textContent).toContain('BlackHole 2ch');
   });
 });
