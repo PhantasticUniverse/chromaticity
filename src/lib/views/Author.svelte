@@ -21,10 +21,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // there is no CodeMirror dependency in the bundle source. The W20
   // feature-parity report flagged Author as the largest authoring-
   // quality gap because the bundle's read-only display is not enough
-  // for production operators — this PR closes that gap. The fixture
-  // file (`src/lib/data/author-fixtures.ts`) remains the substitution
-  // boundary for the eventual Phase-3+/4a real-persistence wiring
-  // (`EV-SCRIPT-CONTRACT`, docs/26).
+  // for production operators — this PR closes that gap. Author view
+  // ships local snapshot UI only; engine-side persistence + live-reload
+  // are Phase-4b PR 2 carryforward per `EV-AUTHORING-LIVE-RELOAD`. The
+  // fixture file (`src/lib/data/author-fixtures.ts`) is the substitution
+  // boundary for that wiring.
   //
   // Other locked deviations carried forward from W18 PR2:
   //   - The bundle's `<SceneStill>`, `<Preview>`, `<PreviewTools>`
@@ -80,11 +81,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * `chromaticity-planning/ui-predev-bundle-v0.2-beta/extras.jsx`
    * `PreviewTools` (lines 189-208). All three flags are local
    * chrome only; the real preview wiring (HUD overlay, frame-rate
-   * pacing, screenshot capture) is `EV-INTEGRATION-MATRIX` scope
-   * for Phase-3+. The pause toggle still flips icon + `aria-pressed`
-   * + the `--on` modifier so the click feedback is visible; the
-   * screenshot button raises a 200ms `flash` overlay on the preview
-   * tile (gated on `prefers-reduced-motion: reduce`). */
+   * pacing, screenshot capture) rides the live preview render
+   * pipeline (ADR-011 Phase-2+ deferred). The pause toggle still
+   * flips icon + `aria-pressed` + the `--on` modifier so the click
+   * feedback is visible; the screenshot button raises a 200ms
+   * `flash` overlay on the preview tile (gated on
+   * `prefers-reduced-motion: reduce`). */
   let hudVisible = $state<boolean>(true);
   let paused = $state<boolean>(false);
   let flash = $state<boolean>(false);
@@ -177,7 +179,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   function saveAll(): void {
-    // Local-only snapshot. Phase-3+/4a wires the EV-SCRIPT-CONTRACT IPC.
+    // Local-only snapshot; engine-side persistence is Phase-4b PR 2
+    // carryforward per `EV-AUTHORING-LIVE-RELOAD`.
     saved = { ...buffers };
   }
 
@@ -288,7 +291,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 </button>
               {/each}
               <p class="au-author__pop-foot mono">
-                Phase-3+ wires real persistence; these are fixture snapshots.
+                Real backup persistence is Phase-4b PR 2 carryforward; these are fixture snapshots.
               </p>
             </div>
           {/if}
