@@ -388,6 +388,54 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   /**
+   * Wave 2.9 SC.A — derive a name-keyed control snapshot from the
+   * loaded scene's schema + the live `controlValues` cache. The
+   * resulting map flows into `<SceneCanvas controls={...}>` so the
+   * preview canvas pre-multiplies the three common-axis controls
+   * (`speed`, `intensity`, `tint`) at the `draw()` boundary.
+   *
+   * `controlValues` is the engine-committed `f32` per `ControlId`
+   * (schema position 0..N-1 for Scene Controls). For each schema
+   * entry whose `name` matches a recognised axis, the live cache
+   * value flows through; absent entries fall back to the schema's
+   * declared default so the preview reflects the bundle's intent
+   * even before the user touches a widget.
+   *
+   * `tint` is special-cased: `ControlValue` is `f32` so `Swatch`
+   * widgets dispatch only a single channel through `set_control`
+   * today (Wave 2.1 A.2 convention — RGB tuples ride forward when
+   * the engine widens). The schema's declared `default` (already a
+   * `[r, g, b]` or `[r, g, b, a]` tuple from the IPC bridge) is
+   * surfaced verbatim so the colour wash reflects the scene's
+   * intent. Live tint updates compose on top once Wave 2.10+
+   * widens the Swatch → engine wire to multi-channel.
+   */
+  const controlSnapshot = $derived.by(() => {
+    const schema = loadedSceneStore.snapshot?.controls;
+    if (!schema) return {} as Record<string, number | readonly number[]>;
+    const snap: Record<string, number | readonly number[]> = {};
+    for (let i = 0; i < schema.length; i++) {
+      const def = schema[i];
+      if (!def || !def.name) continue;
+      const liveNumeric = controlValues[i];
+      if (typeof liveNumeric === 'number') {
+        snap[def.name] = liveNumeric;
+      }
+    }
+    // Surface the tint default verbatim from the schema. Live tint
+    // dispatch is Wave 2.10+ scope — until then the colour wash
+    // tracks the scene's declared default, not pointer input.
+    for (const def of schema) {
+      if (!def || def.name !== 'tint') continue;
+      if (Array.isArray(def.default)) {
+        snap.tint = def.default;
+      }
+      break;
+    }
+    return snap;
+  });
+
+  /**
    * Wave 2.4 Lane PERF.A — normalise a `ControlDefaultValuePayload`
    * onto the `f32` `set_control` wire. Booleans encode as 0 / 1
    * (matching the existing toggle dispatch convention); numbers pass
@@ -1007,6 +1055,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         kind={previewKind}
         seed={previewSeed}
         audio
+        controls={controlSnapshot}
         ariaLabel={`Live scene preview · ${sceneTitleName}`}
       />
       <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — Preview HUD chrome ported
