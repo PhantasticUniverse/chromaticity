@@ -76,6 +76,14 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     backup_path: '',
     backup_retention: 'retain-10',
   },
+  live_sources: {
+    syphon_input_enabled: true,
+    syphon_output_enabled: true,
+    ndi_input_enabled: false,
+    ndi_output_enabled: true,
+    constant_output_resolution: false,
+    sender_name: 'chrm',
+  },
   osc: {
     local_ip: '0.0.0.0',
     port: 8000,
@@ -112,6 +120,7 @@ function cloneDefaults(): SettingsPayload {
       media_folders: [...DEFAULT_SETTINGS.storage.media_folders],
       scene_folders: [...DEFAULT_SETTINGS.storage.scene_folders],
     },
+    live_sources: { ...DEFAULT_SETTINGS.live_sources },
     osc: { ...DEFAULT_SETTINGS.osc },
     tempo: {
       ...DEFAULT_SETTINGS.tempo,
@@ -201,6 +210,7 @@ class SettingsStore {
       audio: { ...this.snapshot.audio, ...(patch.audio ?? {}) },
       graphics: { ...this.snapshot.graphics, ...(patch.graphics ?? {}) },
       storage: { ...this.snapshot.storage, ...(patch.storage ?? {}) },
+      live_sources: { ...this.snapshot.live_sources, ...(patch.live_sources ?? {}) },
       osc: { ...this.snapshot.osc, ...(patch.osc ?? {}) },
       tempo: { ...this.snapshot.tempo, ...(patch.tempo ?? {}) },
     };
@@ -308,6 +318,7 @@ export interface SettingsPatch {
   audio?: Partial<SettingsPayload['audio']>;
   graphics?: Partial<SettingsPayload['graphics']>;
   storage?: Partial<SettingsPayload['storage']>;
+  live_sources?: Partial<SettingsPayload['live_sources']>;
   osc?: Partial<SettingsPayload['osc']>;
   tempo?: Partial<SettingsPayload['tempo']>;
 }

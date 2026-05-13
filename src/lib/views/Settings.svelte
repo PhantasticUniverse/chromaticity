@@ -71,7 +71,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     RENDER_SCALE_STEP,
     RESOLUTION_PRESETS,
     SCREEN_FITTING_OPTIONS,
-    SENDER_NAME_DEFAULT,
     type ColorSpaceOption,
     type FolderEntry,
     type MultiDisplayModeOption,
@@ -128,9 +127,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   // Pull the audio + graphics + general sections through derived
   // reads so any store mutation reflects in the UI on next $effect
-  // flush.
+  // flush. Wave 2.7 SET.B extends the derived set to cover storage
+  // + live_sources so those sections now persist through the
+  // settingsStore IPC seam as well.
   const audioSnapshot = $derived(settingsStore.snapshot.audio);
   const graphicsSnapshot = $derived(settingsStore.snapshot.graphics);
+  const storageSnapshot = $derived(settingsStore.snapshot.storage);
+  const liveSourcesSnapshot = $derived(settingsStore.snapshot.live_sources);
 
   // Wave 2.6 AUD.B — live audio monitoring meter wiring.
   // Subscribe to the audio-uniform IPC store on mount so the
@@ -203,58 +206,115 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * W21 PR1 + W41 cohort fields all flow through the same seam. */
   const renderScaleLabel = $derived(`${graphicsSnapshot.render_scale.toFixed(2)}×`);
 
-  /* ----- Live Sources (W42) -----
-   * Bundle source: views/settings.jsx lines 115-124. Five boolean
-   * toggles + one text input gating the Syphon/Spout (per-platform
-   * sibling pair), NDI v2 input/output, Constant Output Resolution,
-   * and Sender Name surfaces. Frozen-frame; live source enumeration
-   * + the broadcast/receive IPC ride in alongside the Phase-3+/4a
-   * integration crate. The `data-cap` attributes carry the bundle's
-   * entitlement-gated capability ids (`io.syphon.*`, `io.ndi.*`,
-   * `render.custom-resolution`) for the W15+ post-MVP SKU
-   * infrastructure to consume without further markup changes. */
-  let syphonInputEnabled = $state(true);
-  let syphonOutputEnabled = $state(true);
-  let ndiInputEnabled = $state(false);
-  let ndiOutputEnabled = $state(true);
-  let constantOutputResolution = $state(false);
-  let senderName = $state(SENDER_NAME_DEFAULT);
+  /* ----- Live Sources (Wave 2.7 SET.B) -----
+   * Bundle source: views/settings.jsx lines 115-124. Six bundle-
+   * faithful rows (five boolean toggles + one text input). The
+   * engine-side capability gating for Spout / Syphon / NDI is a
+   * Wave 1c-β follow-up; the UI prefs persist NOW through the
+   * settingsStore TOML round-trip so operators don't keep re-
+   * flipping the same six prefs across restarts. `data-cap`
+   * attributes (`io.syphon.*`, `io.ndi.*`, `render.custom-resolution`)
+   * ride along for the W15+ entitlement infra. */
 
-  /* ----- Storage state ----- */
-  let mediaFolders = $state<FolderEntry[]>(DEFAULT_MEDIA_FOLDERS.map((f) => ({ ...f })));
-  let sceneFolders = $state<FolderEntry[]>(DEFAULT_SCENE_FOLDERS.map((f) => ({ ...f })));
-  let backupPath = $state(DEFAULT_BACKUP_PATH);
-  let backupRetention = $state(BACKUP_RETENTION_OPTIONS[1]?.id ?? 'retain-10');
+  /* ----- Storage (Wave 2.7 SET.B) -----
+   * Storage section's four persisted axes (media_folders +
+   * scene_folders + backup_path + backup_retention) now read from
+   * `settingsStore.snapshot.storage` and write through
+   * `settingsStore.update({ storage })`. The bundle-faithful fixture
+   * defaults (`DEFAULT_MEDIA_FOLDERS` / `DEFAULT_SCENE_FOLDERS` /
+   * `DEFAULT_BACKUP_PATH`) seed the store on first launch via the
+   * one-time `$effect` below; once seeded, every Add / Remove /
+   * Browse action mutates the store directly and the in-memory
+   * snapshot reflects the change on next render. */
 
-  let folderIdCounter = DEFAULT_MEDIA_FOLDERS.length + DEFAULT_SCENE_FOLDERS.length + 1;
+  /* `FolderEntry` carries a synthetic `id` for the `{#each}` key,
+   * synthesised from the path (which is unique per row since the
+   * Storage section disallows duplicates by construction). */
+  const mediaFolders: FolderEntry[] = $derived(
+    storageSnapshot.media_folders.map((path) => ({ id: `mf-${path}`, path })),
+  );
+  const sceneFolders: FolderEntry[] = $derived(
+    storageSnapshot.scene_folders.map((path) => ({ id: `sf-${path}`, path })),
+  );
+  const backupPath = $derived(
+    storageSnapshot.backup_path !== '' ? storageSnapshot.backup_path : DEFAULT_BACKUP_PATH,
+  );
+
+  /* First-launch hydration. The engine-side default for
+   * `storage.media_folders` + `storage.scene_folders` is an empty
+   * `Vec<String>`; the bundle-faithful UI fixtures expect the
+   * Settings view to show a starter set on first launch. Run the
+   * seed synchronously at script init so the visible storage list
+   * matches the bundle on first paint; subsequent `settingsStore.load()`
+   * IPC resolutions overwrite the snapshot wholesale, so a persisted
+   * (non-empty) document from a previous session replaces this seed
+   * without further intervention.
+   *
+   * Idempotent at the store level — `update()` is a shallow merge,
+   * so the seed only fires once per Settings.svelte mount even if
+   * the script init runs more than once across hot-module replaces. */
+  {
+    const s = settingsStore.snapshot.storage;
+    const isEmpty =
+      s.media_folders.length === 0 && s.scene_folders.length === 0 && s.backup_path === '';
+    if (isEmpty) {
+      settingsStore.update({
+        storage: {
+          media_folders: DEFAULT_MEDIA_FOLDERS.map((f) => f.path),
+          scene_folders: DEFAULT_SCENE_FOLDERS.map((f) => f.path),
+          backup_path: DEFAULT_BACKUP_PATH,
+        },
+      });
+    }
+  }
 
   async function browseMediaFolder() {
     const path = await pickFolder('Pick a Media folder');
     if (path) {
-      mediaFolders = [...mediaFolders, { id: `mf-${folderIdCounter++}`, path }];
+      settingsStore.update({
+        storage: {
+          media_folders: [...settingsStore.snapshot.storage.media_folders, path],
+        },
+      });
     }
   }
 
   async function browseSceneFolder() {
     const path = await pickFolder('Pick a Custom scene folder');
     if (path) {
-      sceneFolders = [...sceneFolders, { id: `sf-${folderIdCounter++}`, path }];
+      settingsStore.update({
+        storage: {
+          scene_folders: [...settingsStore.snapshot.storage.scene_folders, path],
+        },
+      });
     }
   }
 
   async function browseBackupFolder() {
     const path = await pickFolder('Pick a Backups folder');
     if (path) {
-      backupPath = path;
+      settingsStore.update({ storage: { backup_path: path } });
     }
   }
 
   function removeMediaFolder(id: string) {
-    mediaFolders = mediaFolders.filter((f) => f.id !== id);
+    // The synthetic `id` is `mf-<path>` per the derived mapping
+    // above; strip the prefix to recover the path and filter.
+    const path = id.startsWith('mf-') ? id.slice(3) : id;
+    settingsStore.update({
+      storage: {
+        media_folders: settingsStore.snapshot.storage.media_folders.filter((p) => p !== path),
+      },
+    });
   }
 
   function removeSceneFolder(id: string) {
-    sceneFolders = sceneFolders.filter((f) => f.id !== id);
+    const path = id.startsWith('sf-') ? id.slice(3) : id;
+    settingsStore.update({
+      storage: {
+        scene_folders: settingsStore.snapshot.storage.scene_folders.filter((p) => p !== path),
+      },
+    });
   }
 
   /* ----- Tempo & Sync — persisted via settingsStore (Wave 2.7 SET.A) -----
@@ -818,10 +878,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <button
             type="button"
             class="settings__pill-toggle"
-            class:on={syphonInputEnabled}
-            aria-pressed={syphonInputEnabled}
+            class:on={liveSourcesSnapshot.syphon_input_enabled}
+            aria-pressed={liveSourcesSnapshot.syphon_input_enabled}
             aria-label="Spout / Syphon Input"
-            onclick={() => (syphonInputEnabled = !syphonInputEnabled)}
+            onclick={() =>
+              settingsStore.update({
+                live_sources: {
+                  syphon_input_enabled: !liveSourcesSnapshot.syphon_input_enabled,
+                },
+              })}
           >
             <span class="settings__pill-thumb"></span>
           </button>
@@ -831,10 +896,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <button
             type="button"
             class="settings__pill-toggle"
-            class:on={syphonOutputEnabled}
-            aria-pressed={syphonOutputEnabled}
+            class:on={liveSourcesSnapshot.syphon_output_enabled}
+            aria-pressed={liveSourcesSnapshot.syphon_output_enabled}
             aria-label="Spout / Syphon Output"
-            onclick={() => (syphonOutputEnabled = !syphonOutputEnabled)}
+            onclick={() =>
+              settingsStore.update({
+                live_sources: {
+                  syphon_output_enabled: !liveSourcesSnapshot.syphon_output_enabled,
+                },
+              })}
           >
             <span class="settings__pill-thumb"></span>
           </button>
@@ -844,10 +914,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <button
             type="button"
             class="settings__pill-toggle"
-            class:on={ndiInputEnabled}
-            aria-pressed={ndiInputEnabled}
+            class:on={liveSourcesSnapshot.ndi_input_enabled}
+            aria-pressed={liveSourcesSnapshot.ndi_input_enabled}
             aria-label="NDI Input"
-            onclick={() => (ndiInputEnabled = !ndiInputEnabled)}
+            onclick={() =>
+              settingsStore.update({
+                live_sources: { ndi_input_enabled: !liveSourcesSnapshot.ndi_input_enabled },
+              })}
           >
             <span class="settings__pill-thumb"></span>
           </button>
@@ -857,10 +930,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <button
             type="button"
             class="settings__pill-toggle"
-            class:on={ndiOutputEnabled}
-            aria-pressed={ndiOutputEnabled}
+            class:on={liveSourcesSnapshot.ndi_output_enabled}
+            aria-pressed={liveSourcesSnapshot.ndi_output_enabled}
             aria-label="NDI Output"
-            onclick={() => (ndiOutputEnabled = !ndiOutputEnabled)}
+            onclick={() =>
+              settingsStore.update({
+                live_sources: { ndi_output_enabled: !liveSourcesSnapshot.ndi_output_enabled },
+              })}
           >
             <span class="settings__pill-thumb"></span>
           </button>
@@ -870,10 +946,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <button
             type="button"
             class="settings__pill-toggle"
-            class:on={constantOutputResolution}
-            aria-pressed={constantOutputResolution}
+            class:on={liveSourcesSnapshot.constant_output_resolution}
+            aria-pressed={liveSourcesSnapshot.constant_output_resolution}
             aria-label="Constant Output Resolution"
-            onclick={() => (constantOutputResolution = !constantOutputResolution)}
+            onclick={() =>
+              settingsStore.update({
+                live_sources: {
+                  constant_output_resolution: !liveSourcesSnapshot.constant_output_resolution,
+                },
+              })}
           >
             <span class="settings__pill-thumb"></span>
           </button>
@@ -884,7 +965,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             id="sender-name"
             type="text"
             class="settings__input settings__input--sender"
-            bind:value={senderName}
+            value={liveSourcesSnapshot.sender_name}
+            oninput={(e) =>
+              settingsStore.update({
+                live_sources: { sender_name: e.currentTarget.value },
+              })}
             maxlength="32"
           />
         </div>
@@ -1007,7 +1092,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           </div>
           <div class="settings__field">
             <label for="backup-retention" class="settings__label">Retention</label>
-            <select id="backup-retention" class="settings__select" bind:value={backupRetention}>
+            <select
+              id="backup-retention"
+              class="settings__select"
+              value={storageSnapshot.backup_retention}
+              onchange={(e) =>
+                settingsStore.update({
+                  storage: { backup_retention: e.currentTarget.value },
+                })}
+            >
               {#each BACKUP_RETENTION_OPTIONS as opt (opt.id)}
                 <option value={opt.id}>{opt.label}</option>
               {/each}

@@ -1496,6 +1496,52 @@ impl From<StorageSettingsPayload> for chromaticity_runtime::settings::StorageSet
     }
 }
 
+/// IPC-facing Live Sources preferences mirroring
+/// [`chromaticity_runtime::settings::LiveSourcesSettings`].
+///
+/// Wave 2.7 SET.B: carries the six persisted Live Sources rows from
+/// the Settings view (Spout / Syphon Input + Output, NDI Input +
+/// Output, Constant Output Resolution, Sender Name). The engine-side
+/// capability gating is a Wave 1c-β follow-up; the UI prefs round-
+/// trip through the TOML store so operators don't keep re-flipping
+/// them across restarts.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub struct LiveSourcesSettingsPayload {
+    pub syphon_input_enabled: bool,
+    pub syphon_output_enabled: bool,
+    pub ndi_input_enabled: bool,
+    pub ndi_output_enabled: bool,
+    pub constant_output_resolution: bool,
+    pub sender_name: String,
+}
+
+impl From<chromaticity_runtime::settings::LiveSourcesSettings> for LiveSourcesSettingsPayload {
+    fn from(s: chromaticity_runtime::settings::LiveSourcesSettings) -> Self {
+        Self {
+            syphon_input_enabled: s.syphon_input_enabled,
+            syphon_output_enabled: s.syphon_output_enabled,
+            ndi_input_enabled: s.ndi_input_enabled,
+            ndi_output_enabled: s.ndi_output_enabled,
+            constant_output_resolution: s.constant_output_resolution,
+            sender_name: s.sender_name,
+        }
+    }
+}
+
+impl From<LiveSourcesSettingsPayload> for chromaticity_runtime::settings::LiveSourcesSettings {
+    fn from(p: LiveSourcesSettingsPayload) -> Self {
+        Self {
+            syphon_input_enabled: p.syphon_input_enabled,
+            syphon_output_enabled: p.syphon_output_enabled,
+            ndi_input_enabled: p.ndi_input_enabled,
+            ndi_output_enabled: p.ndi_output_enabled,
+            constant_output_resolution: p.constant_output_resolution,
+            sender_name: p.sender_name,
+        }
+    }
+}
+
 /// IPC-facing OSC operator-network preferences mirroring
 /// [`chromaticity_runtime::settings::OscSettings`].
 ///
@@ -1639,6 +1685,7 @@ pub struct SettingsPayload {
     pub audio: AudioSettingsPayload,
     pub graphics: GraphicsSettingsPayload,
     pub storage: StorageSettingsPayload,
+    pub live_sources: LiveSourcesSettingsPayload,
     pub osc: OscSettingsPayload,
     pub tempo: TempoSettingsPayload,
 }
@@ -1650,6 +1697,7 @@ impl From<chromaticity_runtime::settings::Settings> for SettingsPayload {
             audio: s.audio.into(),
             graphics: s.graphics.into(),
             storage: s.storage.into(),
+            live_sources: s.live_sources.into(),
             osc: s.osc.into(),
             tempo: s.tempo.into(),
         }
@@ -1663,6 +1711,7 @@ impl From<SettingsPayload> for chromaticity_runtime::settings::Settings {
             audio: p.audio.into(),
             graphics: p.graphics.into(),
             storage: p.storage.into(),
+            live_sources: p.live_sources.into(),
             osc: p.osc.into(),
             tempo: p.tempo.into(),
         }
