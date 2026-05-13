@@ -25,7 +25,22 @@ covers the **pre-cert pre-alpha** path.
 ## Repository state baseline
 
 - Branch: `main` at the time of build.
-- Recent landings (2026-05-11): the 11-PR Wave 2.1 cross-seam activation
+- Recent landings (2026-05-12 through 2026-05-13): the Wave 2.5 Library
+  page-by-page wiring (5 PRs) closed at HEAD `bd9eb96` after the
+  DESIGN.md token reconciliation. Wave 2.5: `#457` (card thumbnails
+  fade-in + 50-card budget), `#458` (source/recent/sort filters),
+  `#459` (tag badges + favorites), `#460` (empty state polish + handoff),
+  `#461` (sidebar preview + metadata + Author handoff). Wave 2.4
+  Perform: `#451` (snap labels), `#452` (media filter), `#453` (action
+  buttons), `#454` (adapter pills), `#455` (scene list load), `#456`
+  (preset save engine widening). Wave 2.3: `#449` (Q.1 renderer
+  signatures + composition), `#450` (Q.2 Perform layout fidelity).
+  Wave 2.2: `#447` (R.2 shader sourcing research catalog), `#448`
+  (R.1 SceneCanvas + SceneStill wired into Perform / Library /
+  Playlist / Author preview panes). DESIGN.md alignment: `#462`
+  (rail.width 48→76, status-bar.height 22→28, snap slot count
+  16→8, snap labels anatomy note).
+- Prior landings (2026-05-11): the 11-PR Wave 2.1 cross-seam activation
   sequence closed at HEAD `c40e63e`. Lane A: `#436` (scene load), `#441`
   (control dispatch), `#442` (snap), `#445` (preset+playlist). Lane B:
   `#435` (Perform variant + STANDARD/CONSOLE toggle), `#438` (top bar HUD).
@@ -348,21 +363,24 @@ Wave 2.1 follow-on records in [`docs/53-v1-release-parity-gaps.md`][docs-53]
 synthetic or partially wired. Treat the visual presence as the contract;
 don't expect real-world data.
 
-| Surface                                               | Status                                                                                                                                                                                                       |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Perform preview pane** (live render)                | ADR-011 Phase-2+ deferred. `set_control` IPC fires end-to-end and the engine commits the value, but the preview pane stays a gradient placeholder. This is expected — do NOT file as "scene doesn't render". |
-| **Camera input** (Media view, Perform)                | Wave 1c-β closed synthetic; per-platform `nokhwa` real bindings deferred.                                                                                                                                    |
-| **Syphon publish/subscribe** (macOS)                  | UI scaffolding present; real `publish_syphon_output` + observer deferred.                                                                                                                                    |
-| **AudioReactivity 48-bar FFT**                        | Synthetic-driven post-MVP; only the 4 named band tiles + BPM strip are live.                                                                                                                                 |
-| **AudioUniforms Spectrum widget** (64-bar)            | Synthetic post-MVP (the bundle's inline Spectrum, not a separate widget).                                                                                                                                    |
-| **Dual-GPU selection**                                | Synthetic 10-fixture validation only; physical dual-GPU validation deferred.                                                                                                                                 |
-| **Crash injection drill**                             | Synthetic harness only; do NOT deliberately SIGKILL expecting recovery.                                                                                                                                      |
-| **GPU thumbnail rendering** (Library)                 | Deterministic byte-hash stub; real GPU thumbnails deferred post-MVP.                                                                                                                                         |
-| **MIDI binding-to-control assignment** (Wave 2.1 D.2) | Learn mode captures the message + persists to localStorage; binding it to a specific control id is Wave 2.2 scope.                                                                                           |
-| **MIDI multi-message learn** (Wave 2.1 D.2)           | Single-message MVP only; debounced multi-message capture (composite bindings) is Wave 2.2 scope.                                                                                                             |
-| **Top bar Camera + Record buttons** (Wave 2.1 B.2)    | Visual stubs only; real wiring is Wave 2.2 scope.                                                                                                                                                            |
-| **Perform Shuffle button** (Wave 2.1 A.4)             | Engine has no shuffle command; the "Shuffle" button advances by +1 like Next (label parity with the bundle, no random ordering).                                                                             |
-| **Top bar FPS readout**                               | Placeholder pending ADR-011 rendering backend.                                                                                                                                                               |
+| Surface                                                                 | Status                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Perform preview pane** (live render)                                  | ADR-011 Phase-2+ deferred. `set_control` IPC fires end-to-end and the engine commits the value, but the preview pane stays a gradient placeholder. This is expected — do NOT file as "scene doesn't render". |
+| **Camera input** (Media view, Perform)                                  | Wave 1c-β closed synthetic; per-platform `nokhwa` real bindings deferred.                                                                                                                                    |
+| **Syphon publish/subscribe** (macOS)                                    | UI scaffolding present; real `publish_syphon_output` + observer deferred.                                                                                                                                    |
+| **AudioReactivity 48-bar FFT**                                          | Synthetic-driven post-MVP; only the 4 named band tiles + BPM strip are live.                                                                                                                                 |
+| **AudioUniforms Spectrum widget** (64-bar)                              | Synthetic post-MVP (the bundle's inline Spectrum, not a separate widget).                                                                                                                                    |
+| **Dual-GPU selection**                                                  | Synthetic 10-fixture validation only; physical dual-GPU validation deferred.                                                                                                                                 |
+| **Crash injection drill**                                               | Synthetic harness only; do NOT deliberately SIGKILL expecting recovery.                                                                                                                                      |
+| **GPU thumbnail rendering** (Library)                                   | Deterministic byte-hash stub; real GPU thumbnails deferred post-MVP.                                                                                                                                         |
+| **MIDI binding-to-control assignment** (Wave 2.1 D.2)                   | Learn mode captures the message + persists to localStorage; binding it to a specific control id carries forward as a future-wave follow-up.                                                                  |
+| **MIDI multi-message learn** (Wave 2.1 D.2)                             | Single-message MVP only; debounced multi-message capture (composite bindings) carries forward as a future-wave follow-up.                                                                                    |
+| **Top bar Camera + Record buttons** (Wave 2.1 B.2)                      | Visual stubs only; real wiring rides the Wave 1c-β camera follow-ups (per-platform `nokhwa` + Syphon `publish_syphon_output`).                                                                               |
+| **Perform preset save disk persistence** (Wave 2.4 PERF.C)              | Engine widened with `Command::PresetSave` for in-process snapshot capture; Cmd-click on a preset slot saves, click recalls. Settings-TOML disk persistence deferred.                                         |
+| **SnapBar slot labels disk persistence** (Wave 2.4 PERF.F)              | Right-click-rename persists custom labels through localStorage; engine snap state stays binary saved/unsaved.                                                                                                |
+| **Library favorites / recent / source filter** (Wave 2.5 LIB.B / LIB.C) | Frontend-only stores backed by localStorage; engine-side support intentionally deferred per the clean-room scene-write narrowing.                                                                            |
+| **Perform Shuffle button** (Wave 2.1 A.4)                               | Engine has no shuffle command; the "Shuffle" button advances by +1 like Next (label parity with the bundle, no random ordering).                                                                             |
+| **Top bar FPS readout**                                                 | Placeholder pending ADR-011 rendering backend.                                                                                                                                                               |
 
 ## Wave 2.1 acceptance criteria
 
@@ -391,6 +409,85 @@ re-verification + mic note (C.1 / `#437` / `41a389c`).
 If any of the 8 fail under the verification steps, file via the
 bug-report template below. Items in the "Known synthetic surfaces"
 table are NOT failure modes — please check that table first.
+
+## Wave 2.4 + 2.5 acceptance criteria addendum
+
+The Wave 2.4 Perform-page wiring (6 PRs, `#451` / `#452` / `#453` /
+`#454` / `#455` / `#456`) and Wave 2.5 Library-page wiring (5 PRs,
+`#457` / `#458` / `#459` / `#460` / `#461`) plus the DESIGN.md token
+alignment (`#462`) layer twelve new acceptance gates on top of the
+Wave 2.1 set. Verify in place during the §C / §D / §G smoke
+walkthrough.
+
+### Perform (Wave 2.4)
+
+- [ ] **PERF.A action buttons.** Default / Random / Lock-all buttons in
+      Scene Controls + Meta Controls headers reset / randomize / lock
+      controls. Per-row Lock icon dims that row + blocks `set_control`
+      dispatch (engine never sees suppressed values).
+- [ ] **PERF.B scene list load.** Single-click any row in the Perform
+      right-column scene list — `load_scene` fires; the active-row
+      marker reflects `loadedSceneStore.snapshot?.id` (4 of 12
+      `SETLIST_FIXTURE` rows resolve to corpus paths; the remaining 8
+      stay display-only with no click handler attached — that's
+      expected, not a bug).
+- [ ] **PERF.C preset save.** Cmd-click (macOS) / Ctrl-click (Windows
+      / Linux) an empty preset slot — current control state saves to
+      that slot (in-process snapshot, NOT disk-persistent); plain click
+      recalls.
+- [ ] **PERF.D adapter pills.** The TopBar OUT / MIDI / OSC pills
+      reflect live state: OUT green when a scene is loaded; MIDI green
+      when at least one device enumerated; OSC polled every 5 s via
+      `osc_health_snapshot` (Healthy → ok / Recovering → warming /
+      Degraded → disconnected / no-snapshot → off).
+- [ ] **PERF.E media filter.** The media-tab pills filter the media
+      grid (`all` / `live` / `media` per `MediaCardKind`). Three dead
+      controls dropped (Setlist dropdown / Play Setlist / media
+      Refresh).
+- [ ] **PERF.F snap labels.** Right-click any SnapBar slot — inline
+      rename input opens; Enter commits, Escape cancels, blur commits.
+      Quit + relaunch — custom labels persist via localStorage (engine
+      snap state stays binary saved/unsaved).
+
+### Library (Wave 2.5)
+
+- [ ] **LIB.A sidebar preview + Author handoff.** Single-click a
+      Library card — the right-pane sidebar renders a `<SceneCanvas>`
+      preview keyed off scene metadata, plus a metadata column (title /
+      source pill / credit / description / category + tag chips /
+      controls-count badge). Action buttons round-trip through
+      `load_scene`; Open-in-Author hands off to Author view.
+- [ ] **LIB.B tag badges + favorites.** Tag chips render on each card
+      (top-left, max 3 visible + `+N more` overflow). Heart icon
+      (top-right) toggles favorite membership (localStorage). FAVORITES
+      filter chip narrows the grid to favorited cards only.
+- [ ] **LIB.C source filter + recent + sort.** Source `<select>` in
+      the panel head (`all` / `built-in` / `my-scenes`) filters by
+      bundled vs user. New `RECENT` chip prepended to the category-chip
+      row. Sort `<select>` in the toolbar (`id` / `title` / `recent`
+      / `favorites`).
+- [ ] **LIB.D card thumbnails.** Scene cards render `<SceneStill>`
+      thumbnails (canvas-2d procedural, NOT real GPU output) with a
+      240 ms ease-out fade-in animation on first paint
+      (`prefers-reduced-motion: reduce` suppresses).
+- [ ] **LIB.E empty state + handoff polish.** Library empty state
+      shows the supported-formats footnote (".chroma · .chromaPack ·
+      .synScene conversion · Shadertoy URL · ISF reject"). When all
+      cards filter out via search + chip filters, the
+      `EMPTY_LIBRARY_FILTERED` branch renders instead of an empty
+      grid container. Double-click a card — the actively-loading tile
+      flips to `aria-busy="true"` + dimmed `.scene-tile--loading`
+      affordance (sibling tiles unaffected); on success, route flips
+      to Perform.
+
+### DESIGN.md tokens (PR `#462`)
+
+- [ ] **Rail width.** Sidebar rail renders at 76 px (`rail.width`),
+      not the prior 48 px doc claim. Status bar renders at 28 px
+      (`status-bar.height`), not 22 px.
+- [ ] **Snap slot count.** SnapBar trims to 8 slots
+      (`SNAP_SLOT_COUNT = 8` in `snap.svelte.ts`) even though the
+      engine carries 16.
 
 ## What's fair game for bug reports
 
@@ -461,10 +558,13 @@ build next time.
 - Wave 1c-β real-binding follow-ups (per-platform `nokhwa` + Syphon
   `Send`-trait reconciliation + `publish_syphon_output` real-impl) —
   unlocks the synthetic surfaces in the Media view.
-- Wave 2.2 candidate scope per [`docs/53` G6][docs-53]: MIDI binding-
-  to-control assignment, MIDI multi-message learn, top bar Camera /
-  Record real wiring, optional engine `Command::Shuffle`. Live preview
-  render pipeline (ADR-011 Phase-2+) is the larger cross-wave gap.
+- Future-wave candidate scope per [`docs/53` G6][docs-53]: MIDI
+  binding-to-control assignment, MIDI multi-message learn, top bar
+  Camera / Record real wiring (rides Wave 1c-β camera follow-ups),
+  optional engine `Command::Shuffle`, Perform preset save Settings-
+  TOML disk persistence, SnapBar slot-labels Settings-TOML disk
+  persistence. Live preview render pipeline (ADR-011 Phase-2+) is the
+  larger cross-wave gap.
 - `EV-ANALYTICS-ZERO-DEFAULT` closing-docs PR (~2026-05-20) — 14-day
   soak window completes; closes Phase-4d at 6/6.
 
