@@ -42,6 +42,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import Library from './Library.svelte';
 import { clearCache } from '../stores/library';
+import { sceneKindFromMetadata } from '../widgets/scene-kind-from-metadata';
 
 // ts-rs SceneCard records used to drive the `list_*_scene_packages`
 // IPC mocks. Two bundled cards (one with a credit, one without) plus
@@ -189,6 +190,54 @@ describe('Library view', () => {
     expect(tiles.length).toBe(3);
     const thumbs = container.querySelectorAll('.scene-tile__thumbnail canvas.scene-still');
     expect(thumbs.length).toBe(3);
+  });
+
+  it('resolves sceneKindFromMetadata to a deterministic kind for the bundled Glitch card (Wave 2.5 LIB.D)', () => {
+    // Spot-check the helper against a known fixture: the "Glitch"
+    // card tags + title token "glitch" routes through the exact-title
+    // map (TITLE_EXACT['glitch'] = 'glitch'). Guards against future
+    // accidental regressions in the heuristic priority pipeline that
+    // would silently change a card's preview.
+    const glitchCard = BUNDLED_CARDS[1];
+    expect(glitchCard?.title).toBe('Glitch');
+    expect(sceneKindFromMetadata(glitchCard)).toBe('glitch');
+    // The user-card titled "My Geometric Sketch" falls through to the
+    // category fallback (Geometric → lattice) via the joined-haystack
+    // pass.
+    const geoCard = USER_CARDS[0];
+    expect(sceneKindFromMetadata(geoCard)).toBe('lattice');
+  });
+
+  it('renders 50 cards under 100 ms (Wave 2.5 LIB.D thumbnail render budget)', async () => {
+    // Synthetic 50-card corpus exercises the canvas-per-card render
+    // path at near-real-world fixture cardinality. The grid budget is
+    // intentionally loose (100 ms covers slow CI runners + jsdom's
+    // canvas no-op draw stub) — the goal is a regression guard against
+    // any future thumbnail-side abstraction that would push per-card
+    // mount cost beyond ~2 ms.
+    const FIFTY_CARDS = Array.from({ length: 50 }, (_, i) => ({
+      id: `pkg.perf.card-${i}`,
+      title: `Perf Card ${i}`,
+      credit: '',
+      description: '',
+      tags: [],
+      categories: ['Built-In'],
+      path: `/perf/card-${i}.chroma`,
+      format_tag: 'native-chroma-scene',
+      source: 'Bundled' as const,
+    }));
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => FIFTY_CARDS,
+      list_scene_packages: () => [],
+    });
+    const start = performance.now();
+    const { findByText, container } = render(Library);
+    await findByText('Perf Card 0');
+    const durationMs = performance.now() - start;
+    const thumbs = container.querySelectorAll('.scene-tile__thumbnail canvas.scene-still');
+    expect(thumbs.length).toBe(50);
+    expect(durationMs).toBeLessThan(100);
   });
 
   it('toolbar search filters the grid by case-insensitive title/credit/tag/description substring', async () => {

@@ -677,11 +677,30 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   /* Wave 2.2 Lane R.1 — `<SceneStill>` canvas fills the thumbnail
      container. Bitmap dimensions are explicit-width/height (220 × 138);
-     CSS scales the rendered canvas to fit the grid cell. */
+     CSS scales the rendered canvas to fit the grid cell. Wave 2.5
+     Lane LIB.D adds a first-paint fade-in transition — the canvas
+     animates from opacity:0 → 1 on mount, so the grid resolves with a
+     soft reveal instead of a hard pop when scrolling fills new cards.
+     `prefers-reduced-motion: reduce` suppresses the animation per the
+     repo-wide accessibility posture. */
   .scene-tile__thumbnail :global(canvas.scene-still) {
     width: 100%;
     height: 100%;
     display: block;
+    animation: scene-tile-thumb-fade-in 240ms ease-out both;
+  }
+  @keyframes scene-tile-thumb-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scene-tile__thumbnail :global(canvas.scene-still) {
+      animation: none;
+    }
   }
   .scene-tile__meta {
     display: flex;
