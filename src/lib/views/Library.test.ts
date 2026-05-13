@@ -42,7 +42,10 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import Library from './Library.svelte';
 import { clearCache } from '../stores/library';
+import { libraryRecentStore } from '../stores/libraryRecent.svelte';
 import { sceneKindFromMetadata } from '../widgets/scene-kind-from-metadata';
+
+const RECENT_STORAGE_KEY = 'library-recent';
 
 // ts-rs SceneCard records used to drive the `list_*_scene_packages`
 // IPC mocks. Two bundled cards (one with a credit, one without) plus
@@ -118,11 +121,15 @@ describe('Library view', () => {
     // the per-root cache from the previous test's resolved fetch
     // doesn't short-circuit the next test's $effect.
     clearCache();
+    window.localStorage.removeItem(RECENT_STORAGE_KEY);
+    libraryRecentStore.reset();
     invokeMock.mockReturnValue(new Promise(() => {}));
   });
 
   afterEach(() => {
     clearCache();
+    window.localStorage.removeItem(RECENT_STORAGE_KEY);
+    libraryRecentStore.reset();
     cleanup();
   });
 
@@ -454,6 +461,112 @@ describe('Library view', () => {
       delete w.__TAURI_INTERNALS__;
       infoSpy.mockRestore();
     }
+  });
+
+  // -- Wave 2.5 Lane LIB.C — source filter / RECENT chip / sort axis --
+
+  it('source filter "built-in" narrows the grid to Bundled cards only', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    const { findByText, findByLabelText, container } = render(Library);
+    // Wait for the grid to land first so the $derived re-runs see
+    // the populated cards array when we change the source filter.
+    await findByText('My Geometric Sketch');
+    const sourceSelect = (await findByLabelText('filter by source')) as HTMLSelectElement;
+    expect(sourceSelect.value).toBe('all');
+    await fireEvent.change(sourceSelect, { target: { value: 'built-in' } });
+    const tiles = container.querySelectorAll('.scene-tile');
+    expect(tiles.length).toBe(BUNDLED_CARDS.length);
+    // Every visible tile carries the BUILT-IN provenance chip.
+    const builtinChips = container.querySelectorAll('.scene-tile__builtin');
+    expect(builtinChips.length).toBe(BUNDLED_CARDS.length);
+  });
+
+  it('source filter "my-scenes" narrows the grid to User cards only', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    const { findByText, findByLabelText, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    const sourceSelect = (await findByLabelText('filter by source')) as HTMLSelectElement;
+    await fireEvent.change(sourceSelect, { target: { value: 'my-scenes' } });
+    const tiles = container.querySelectorAll('.scene-tile');
+    expect(tiles.length).toBe(USER_CARDS.length);
+    expect(container.querySelectorAll('.scene-tile__builtin').length).toBe(0);
+    expect(tiles[0]?.textContent).toContain('My Geometric Sketch');
+  });
+
+  it('sort "title" alphabetises the grid by card title', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    const { findByLabelText, container } = render(Library);
+    const sortSelect = (await findByLabelText('sort scenes')) as HTMLSelectElement;
+    await fireEvent.change(sortSelect, { target: { value: 'title' } });
+    const titles = Array.from(container.querySelectorAll('.scene-tile__title')).map(
+      (el) => el.textContent?.trim() ?? '',
+    );
+    // Expected: Glitch (G), My Geometric Sketch (M), Welcome (W).
+    expect(titles).toEqual(['Glitch', 'My Geometric Sketch', 'Welcome']);
+  });
+
+  it('sort "recent" puts recently-loaded cards first, non-recents in id-asc tie-break', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    // Seed the recent store BEFORE render so the $effect hydrate runs
+    // against a populated localStorage. The order in storage is the
+    // order returned by `ids` (most-recent-first), so put `pkg.user.geo`
+    // first to assert it surfaces ahead of the bundled cards.
+    window.localStorage.setItem(
+      RECENT_STORAGE_KEY,
+      JSON.stringify(['pkg.user.geo', 'pkg.builtin.glitch']),
+    );
+    const { findByLabelText, container } = render(Library);
+    const sortSelect = (await findByLabelText('sort scenes')) as HTMLSelectElement;
+    await fireEvent.change(sortSelect, { target: { value: 'recent' } });
+    // Wait for the $effect to hydrate the store (microtask).
+    await waitFor(() => {
+      const titles = Array.from(container.querySelectorAll('.scene-tile__title')).map(
+        (el) => el.textContent?.trim() ?? '',
+      );
+      expect(titles).toEqual(['My Geometric Sketch', 'Glitch', 'Welcome']);
+    });
+  });
+
+  it('RECENT chip narrows the grid to ids tracked in libraryRecentStore', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    window.localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(['pkg.builtin.welcome']));
+    const { findByRole, container } = render(Library);
+    const recentChip = await findByRole('button', { name: 'RECENT' });
+    expect(recentChip).toHaveAttribute('aria-pressed', 'false');
+    // Wait for hydration before activating the chip so the filter sees
+    // the populated list.
+    await waitFor(() => {
+      expect(libraryRecentStore.ids.length).toBe(1);
+    });
+    await fireEvent.click(recentChip);
+    expect(recentChip).toHaveAttribute('aria-pressed', 'true');
+    const tiles = container.querySelectorAll('.scene-tile');
+    expect(tiles.length).toBe(1);
+    expect(tiles[0]?.textContent).toContain('Welcome');
+    // Toggling off restores the full grid.
+    await fireEvent.click(recentChip);
+    expect(recentChip).toHaveAttribute('aria-pressed', 'false');
+    expect(container.querySelectorAll('.scene-tile').length).toBe(3);
   });
 
   it('renders the right-rail setlist sidebar with 14 fixture rows and a single active row', async () => {
