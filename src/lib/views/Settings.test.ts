@@ -698,6 +698,19 @@ describe('Settings view', () => {
             tx_enabled: true,
             rx_enabled: true,
           },
+          tempo: {
+            ableton_link_enabled: true,
+            start_stop_sync: true,
+            midi_clock_in_enabled: false,
+            midi_clock_in_device: 'any',
+            midi_clock_out_enabled: true,
+            midi_clock_out_device: 'iac-1',
+            quantize: 'bar',
+            manual_bpm: 120.0,
+            link_offset_ms: 0,
+            audio_bpm_sensitivity: 60,
+            bpm_source_priority: ['audio', 'midiclock', 'link', 'manual'],
+          },
         });
       }
       return Promise.resolve();
@@ -728,6 +741,46 @@ describe('Settings view', () => {
     expect(queryByRole('dialog', { name: /reset settings to defaults/i })).toBeNull();
     const resetCalls = invokeMock.mock.calls.filter((c) => c[0] === 'reset_settings');
     expect(resetCalls.length).toBe(0);
+  });
+
+  it('Tempo & Sync Ableton Link toggle writes through settingsStore', async () => {
+    // Wave 2.7 Lane SET.A — Tempo & Sync controls persist through the
+    // settingsStore. The Ableton Link toggle starts at the bundle
+    // default (true); clicking it flips the store-side value.
+    const { container } = render(Settings);
+    const tempo = getSection(container, 'Tempo & Sync');
+    const link = within(tempo).getByLabelText('Ableton Link') as HTMLButtonElement;
+    expect(link).toHaveAttribute('aria-pressed', 'true');
+    expect(settingsStore.snapshot.tempo.ableton_link_enabled).toBe(true);
+    await fireEvent.click(link);
+    expect(settingsStore.snapshot.tempo.ableton_link_enabled).toBe(false);
+    expect(link).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('Tempo & Sync Manual BPM input writes through settingsStore on input', async () => {
+    // Editing the Manual BPM number input flows directly into the
+    // store via the oninput handler. The Set button further clamps +
+    // round-trips through settingsStore.update().
+    const { container } = render(Settings);
+    const tempo = getSection(container, 'Tempo & Sync');
+    const manual = within(tempo).getByLabelText('Manual BPM') as HTMLInputElement;
+    expect(parseFloat(manual.value)).toBeCloseTo(120.0, 1);
+    await fireEvent.input(manual, { target: { value: '140' } });
+    expect(settingsStore.snapshot.tempo.manual_bpm).toBe(140);
+  });
+
+  it('Tempo & Sync Quantize tab-segment writes through settingsStore', async () => {
+    const { container } = render(Settings);
+    const tempo = getSection(container, 'Tempo & Sync');
+    expect(settingsStore.snapshot.tempo.quantize).toBe('bar');
+    const tablist = within(tempo).getByRole('tablist', { name: 'Quantize transitions' });
+    const tabs = within(tablist).getAllByRole('tab');
+    // Pick a different fixture entry — index 0 is 'off'.
+    const offTab = tabs[0];
+    expect(offTab).toBeDefined();
+    if (!offTab) return;
+    await fireEvent.click(offTab);
+    expect(settingsStore.snapshot.tempo.quantize).toBe('off');
   });
 
   it('changing Target FPS dispatches a debounced set_settings IPC call', async () => {

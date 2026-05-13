@@ -88,12 +88,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   // Wave 2.1 Lane C.3 — persist Audio / Graphics / General settings
   // via the `get_settings` / `set_settings` Tauri IPC handlers.
-  // Storage / Live Sources / Tempo & Sync stay local-state-only at
-  // this slice; they round-trip through the bundle-faithful fixture
-  // defaults and don't survive restart yet. Theme persistence is
-  // handled by the existing ThemeSwitcher (localStorage); the
-  // settings document carries a `general.theme` field for future
-  // unification but does NOT override the live ThemeSwitcher today.
+  // Storage / Live Sources stay local-state-only at this slice; they
+  // round-trip through the bundle-faithful fixture defaults and
+  // don't survive restart yet. Wave 2.7 Lane SET.A widens persistence
+  // to cover Tempo & Sync (Ableton Link / Start-Stop Sync / MIDI
+  // Clock In + Out / Quantize / Manual BPM / Link offset / Audio BPM
+  // sensitivity / BPM source priority) via the new
+  // `settingsStore.update({ tempo: ... })` patch shape and also
+  // unifies Theme persistence: the ThemeSwitcher now reads / writes
+  // `settingsStore.snapshot.general.theme` (localStorage retained as
+  // a fast-path fallback for the no-Tauri / pre-load window).
   //
   // The store loads asynchronously on mount; until it resolves the
   // form fields render against the bundle-faithful defaults baked
@@ -253,12 +257,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     sceneFolders = sceneFolders.filter((f) => f.id !== id);
   }
 
-  /* ----- Tempo & Sync state (W22 PR1) ----- */
-  // Frozen-frame, no IPC: runtime wiring (Audio estimator, MIDI Clock,
-  // Ableton Link peer discovery) lands in Phase-3+. The priority chain
-  // is FIXED in W22 — drag-reorder + per-source health is Phase-3+ scope
-  // per the M-10 BPM source resolver in
-  // `chromaticity-planning/ui-predev-bundle-v0.2-beta/views/midi.jsx`.
+  /* ----- Tempo & Sync — persisted via settingsStore (Wave 2.7 SET.A) -----
+   * Replaces the W22 PR1 / W40 local `$state` set with reads through
+   * `settingsStore.snapshot.tempo` and writes through
+   * `settingsStore.update({ tempo: { ... } })`. Runtime wiring (Audio
+   * estimator, MIDI Clock, Ableton Link peer discovery) still lands
+   * in Phase-3+; Wave 2.7 closes only the persistence seam so
+   * operator-tuned tempo values survive restart.
+   *
+   * The priority chain is FIXED at the default W22 order today and
+   * persisted as a string array on the engine. Drag-reorder + per-
+   * source health remain Phase-3+ scope per the M-10 BPM source
+   * resolver in
+   * `chromaticity-planning/ui-predev-bundle-v0.2-beta/views/midi.jsx`. */
 
   type BpmSourceId = 'audio' | 'midiclock' | 'link' | 'manual';
 
@@ -277,10 +288,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   const ACTIVE_BPM_SOURCE: BpmSourceId = 'audio';
 
-  let manualBpm = $state(120.0);
-  let linkOffsetMs = $state(0);
-  let audioBpmSensitivity = $state(60);
+  const tempoSnapshot = $derived(settingsStore.snapshot.tempo);
 
+  // Tap-tempo state stays local — transient UI computation, not
+  // operator-tunable preference. The computed BPM, when the
+  // operator clicks "Set", round-trips through settingsStore to
+  // become the new persisted manual_bpm.
   let tapTimestamps = $state<number[]>([]);
   let tappedBpm = $state<number | null>(null);
   let tapResetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -315,25 +328,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   function setManualBpm() {
-    // Frozen-frame: clamp + round-trip through local state only.
-    manualBpm = Math.min(300, Math.max(20, Math.round(manualBpm * 10) / 10));
+    // Clamp the operator-entered BPM into the canonical 20..=300
+    // range, then write through settingsStore so it persists across
+    // restart.
+    const clamped = Math.min(300, Math.max(20, Math.round(tempoSnapshot.manual_bpm * 10) / 10));
+    settingsStore.update({ tempo: { manual_bpm: clamped } });
   }
-
-  /* ----- Tempo & Sync extensions (W40) -----
-   * Bundle source: views/settings.jsx lines 52-77. Adds the five
-   * settings.jsx Tempo & Sync rows that the W22 PR1 port left for
-   * later: Ableton Link toggle + peer pill, Start/Stop Sync toggle,
-   * MIDI Clock In + Out (each toggle + device select), and Quantize
-   * Transitions tab-seg. Frozen-frame; live Link peer count + MIDI
-   * clock device enumeration ride in alongside the Phase-3+ tempo
-   * arbiter and the integration crate's MIDI/Link probes. */
-  let linkEnabled = $state(true);
-  let startStopSync = $state(true);
-  let midiClockInEnabled = $state(false);
-  let midiClockInDevice = $state(MIDI_CLOCK_INPUT_DEVICES[0]?.id ?? 'any');
-  let midiClockOutEnabled = $state(true);
-  let midiClockOutDevice = $state(MIDI_CLOCK_OUTPUT_DEVICES[0]?.id ?? 'iac-1');
-  let quantize = $state<QuantizeTransitionOption['id']>('bar');
 
   /* ----- Wave 2.7 Lane SET.D: Reset-to-Defaults + live About version -----
    * Reset-to-Defaults surfaces the `reset_settings` Tauri command
@@ -1099,7 +1099,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               min="20"
               max="300"
               step="0.1"
-              bind:value={manualBpm}
+              value={tempoSnapshot.manual_bpm}
+              oninput={(e) =>
+                settingsStore.update({
+                  tempo: { manual_bpm: Number.parseFloat(e.currentTarget.value) },
+                })}
             />
             <button type="button" class="settings__btn settings__btn--ghost" onclick={setManualBpm}>
               Set
@@ -1116,7 +1120,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               min="-200"
               max="200"
               step="1"
-              bind:value={linkOffsetMs}
+              value={tempoSnapshot.link_offset_ms}
+              oninput={(e) =>
+                settingsStore.update({
+                  tempo: { link_offset_ms: Number.parseFloat(e.currentTarget.value) },
+                })}
             />
             <span class="settings__hint settings__hint--inline">
               compensates for downstream-link latency, signed
@@ -1129,14 +1137,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <button
               type="button"
               class="settings__pill-toggle"
-              class:on={linkEnabled}
-              aria-pressed={linkEnabled}
+              class:on={tempoSnapshot.ableton_link_enabled}
+              aria-pressed={tempoSnapshot.ableton_link_enabled}
               aria-label="Ableton Link"
-              onclick={() => (linkEnabled = !linkEnabled)}
+              onclick={() =>
+                settingsStore.update({
+                  tempo: { ableton_link_enabled: !tempoSnapshot.ableton_link_enabled },
+                })}
             >
               <span class="settings__pill-thumb"></span>
             </button>
-            <span class="settings__link-pill" data-state={linkEnabled ? 'active' : 'idle'}>
+            <span
+              class="settings__link-pill"
+              data-state={tempoSnapshot.ableton_link_enabled ? 'active' : 'idle'}
+            >
               <span class="settings__link-dot" aria-hidden="true"></span>
               {ABLETON_LINK_PEER_FIXTURE.count} peers · {ABLETON_LINK_PEER_FIXTURE.bpm.toFixed(2)}
               BPM
@@ -1152,10 +1166,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <button
               type="button"
               class="settings__pill-toggle"
-              class:on={startStopSync}
-              aria-pressed={startStopSync}
+              class:on={tempoSnapshot.start_stop_sync}
+              aria-pressed={tempoSnapshot.start_stop_sync}
               aria-label="Start Stop Sync"
-              onclick={() => (startStopSync = !startStopSync)}
+              onclick={() =>
+                settingsStore.update({
+                  tempo: { start_stop_sync: !tempoSnapshot.start_stop_sync },
+                })}
             >
               <span class="settings__pill-thumb"></span>
             </button>
@@ -1170,18 +1187,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <button
               type="button"
               class="settings__pill-toggle"
-              class:on={midiClockInEnabled}
-              aria-pressed={midiClockInEnabled}
+              class:on={tempoSnapshot.midi_clock_in_enabled}
+              aria-pressed={tempoSnapshot.midi_clock_in_enabled}
               aria-label="MIDI Clock Input"
-              onclick={() => (midiClockInEnabled = !midiClockInEnabled)}
+              onclick={() =>
+                settingsStore.update({
+                  tempo: { midi_clock_in_enabled: !tempoSnapshot.midi_clock_in_enabled },
+                })}
             >
               <span class="settings__pill-thumb"></span>
             </button>
             <select
               id="midi-clock-in-device"
               class="settings__select settings__select--compact"
-              bind:value={midiClockInDevice}
-              disabled={!midiClockInEnabled}
+              value={tempoSnapshot.midi_clock_in_device}
+              onchange={(e) =>
+                settingsStore.update({
+                  tempo: { midi_clock_in_device: e.currentTarget.value },
+                })}
+              disabled={!tempoSnapshot.midi_clock_in_enabled}
             >
               {#each MIDI_CLOCK_INPUT_DEVICES as opt (opt.id)}
                 <option value={opt.id}>{opt.label}</option>
@@ -1195,18 +1219,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <button
               type="button"
               class="settings__pill-toggle"
-              class:on={midiClockOutEnabled}
-              aria-pressed={midiClockOutEnabled}
+              class:on={tempoSnapshot.midi_clock_out_enabled}
+              aria-pressed={tempoSnapshot.midi_clock_out_enabled}
               aria-label="MIDI Clock Output"
-              onclick={() => (midiClockOutEnabled = !midiClockOutEnabled)}
+              onclick={() =>
+                settingsStore.update({
+                  tempo: { midi_clock_out_enabled: !tempoSnapshot.midi_clock_out_enabled },
+                })}
             >
               <span class="settings__pill-thumb"></span>
             </button>
             <select
               id="midi-clock-out-device"
               class="settings__select settings__select--compact"
-              bind:value={midiClockOutDevice}
-              disabled={!midiClockOutEnabled}
+              value={tempoSnapshot.midi_clock_out_device}
+              onchange={(e) =>
+                settingsStore.update({
+                  tempo: { midi_clock_out_device: e.currentTarget.value },
+                })}
+              disabled={!tempoSnapshot.midi_clock_out_enabled}
             >
               {#each MIDI_CLOCK_OUTPUT_DEVICES as opt (opt.id)}
                 <option value={opt.id}>{opt.label}</option>
@@ -1219,8 +1250,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <div class="settings__field-row">
             <TabSegment
               options={QUANTIZE_TRANSITION_OPTIONS}
-              value={quantize}
-              onChange={(id) => (quantize = id as QuantizeTransitionOption['id'])}
+              value={tempoSnapshot.quantize as QuantizeTransitionOption['id']}
+              onChange={(id) => settingsStore.update({ tempo: { quantize: id } })}
               ariaLabel="Quantize transitions"
             />
             <span class="settings__hint settings__hint--inline">
@@ -1232,12 +1263,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
       <div class="settings__bpm-sensitivity">
         <ControlGroup name="audio" tint="var(--color-cat-motion)">
-          <Fader value={audioBpmSensitivity / 100} label="BPM sense" />
+          <Fader
+            value={tempoSnapshot.audio_bpm_sensitivity / 100}
+            label="BPM sense"
+            onchange={(next) =>
+              settingsStore.update({ tempo: { audio_bpm_sensitivity: next * 100 } })}
+          />
         </ControlGroup>
         <div class="settings__bpm-sensitivity-meta">
           <span class="settings__label">Audio BPM sensitivity</span>
           <span class="settings__bpm-readout">
-            {audioBpmSensitivity}<span class="settings__bpm-unit">%</span>
+            {Math.round(tempoSnapshot.audio_bpm_sensitivity)}<span class="settings__bpm-unit"
+              >%</span
+            >
           </span>
           <p class="settings__hint">
             Tuning weight applied to the audio onset estimator before it competes in the priority
@@ -1247,8 +1285,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </div>
 
       <p class="settings__hint">
-        Frozen-frame stub — no IPC dispatch. Runtime tempo arbiter, drag-reorder of the priority
-        chain, and live Link peer count land in Phase-3+ alongside the audio estimator.
+        Wave 2.7 Lane SET.A — Tempo & Sync values persist to the TOML settings store. Runtime tempo
+        arbiter, drag-reorder of the priority chain, and live Link peer count still land in Phase-3+
+        alongside the audio estimator.
       </p>
     </article>
 
@@ -1257,8 +1296,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <div class="settings__row">
         <ThemeSwitcher />
         <p class="settings__hint">
-          Three-theme cascade per <code>tokens.css</code>. Selection is session-scoped (no
-          persistence yet); resets to <em>pulse</em> on reload.
+          Three-theme cascade per <code>tokens.css</code>. Wave 2.7 Lane SET.A unified theme
+          persistence: selection writes through to the TOML settings store and survives restart.
         </p>
       </div>
       <div class="settings__row settings__row--locked" data-cap="io.osc.input">

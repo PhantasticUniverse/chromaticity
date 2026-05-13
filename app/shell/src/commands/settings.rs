@@ -153,7 +153,7 @@ mod tests {
     use chromaticity_runtime::settings::Theme;
     use chromaticity_ui_bridge::{
         AudioSettingsPayload, GeneralSettingsPayload, GraphicsSettingsPayload, OscSettingsPayload,
-        SettingsPayload, StorageSettingsPayload, ThemePayload,
+        SettingsPayload, StorageSettingsPayload, TempoSettingsPayload, ThemePayload,
     };
 
     fn nondefault_payload() -> SettingsPayload {
@@ -197,6 +197,24 @@ mod tests {
                 port: 9100,
                 tx_enabled: false,
                 rx_enabled: true,
+            },
+            tempo: TempoSettingsPayload {
+                ableton_link_enabled: false,
+                start_stop_sync: false,
+                midi_clock_in_enabled: true,
+                midi_clock_in_device: "midi-port-2".to_string(),
+                midi_clock_out_enabled: false,
+                midi_clock_out_device: "midi-port-3".to_string(),
+                quantize: "phrase".to_string(),
+                manual_bpm: 128.5,
+                link_offset_ms: -25.0,
+                audio_bpm_sensitivity: 80.0,
+                bpm_source_priority: vec![
+                    "manual".to_string(),
+                    "midiclock".to_string(),
+                    "audio".to_string(),
+                    "link".to_string(),
+                ],
             },
         }
     }

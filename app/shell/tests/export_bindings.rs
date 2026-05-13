@@ -24,7 +24,7 @@ use chromaticity_ui_bridge::{
     MidiLearnEventPayload, MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot,
     OscHealthState, OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId,
     SceneCard, SceneSource, SettingsPayload, SnapSlotId, StorageSettingsPayload,
-    SyphonOutputStatusPayload, SyphonServerPayload, ThemePayload,
+    SyphonOutputStatusPayload, SyphonServerPayload, TempoSettingsPayload, ThemePayload,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -79,6 +79,9 @@ fn export_bindings_to_frontend_tree() {
     StorageSettingsPayload::export_all_to(&out_dir)
         .expect("export StorageSettingsPayload bindings");
     OscSettingsPayload::export_all_to(&out_dir).expect("export OscSettingsPayload bindings");
+    // Wave 2.7 Lane SET.A — TempoSettingsPayload mirrors the Settings
+    // view's Tempo & Sync section (W22 PR1 + W40 expansion).
+    TempoSettingsPayload::export_all_to(&out_dir).expect("export TempoSettingsPayload bindings");
     SettingsPayload::export_all_to(&out_dir).expect("export SettingsPayload bindings");
     // Wave 2.1 Lane D.3 OSC route binding — registry payloads.
     OscDirectionPayload::export_all_to(&out_dir).expect("export OscDirectionPayload bindings");
