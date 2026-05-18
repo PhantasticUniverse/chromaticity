@@ -395,6 +395,9 @@ fn first_float_arg(message: &OscMessage) -> Option<f32> {
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
+    //! Evidence: EV-INTEGRATION-MATRIX (T1) — bind-target grammar
+    //! and adapter dispatch action pins.
+
     use std::sync::Mutex;
 
     use rosc::{OscMessage, OscPacket, OscType};
