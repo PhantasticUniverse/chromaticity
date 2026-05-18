@@ -85,7 +85,9 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     sender_name: 'chrm',
   },
   osc: {
-    local_ip: '0.0.0.0',
+    // ADR-013 §1: loopback-only by default; routable OSC bind is an
+    // explicit operator opt-in.
+    local_ip: '127.0.0.1',
     port: 8000,
     tx_enabled: true,
     rx_enabled: true,
@@ -141,6 +143,11 @@ class SettingsStore {
    * the W21 PR1 form scaffolding renders unchanged. */
   isLoaded = $state(false);
 
+  /** True only after `get_settings` returns a valid shell payload.
+   * Debounced saves are gated on this so pre-load fixture seeding
+   * cannot overwrite a persisted settings file. */
+  canPersist = $state(false);
+
   /** Tracks the in-flight load() promise (idempotency latch). */
   #loadPromise: Promise<void> | null = null;
 
@@ -180,13 +187,16 @@ class SettingsStore {
       // SettingsPayload; the error surface records the issue.
       if (fresh && typeof fresh === 'object' && 'audio' in fresh && 'graphics' in fresh) {
         this.snapshot = fresh;
+        this.canPersist = true;
         this.error = null;
       } else {
+        this.canPersist = false;
         this.error = 'get_settings returned a malformed payload';
       }
     } catch (e) {
       // Swallow — no Tauri runtime available; snapshot stays at
       // the bundle-faithful default and the view renders normally.
+      this.canPersist = false;
       this.error = e instanceof Error ? e.message : String(e);
     } finally {
       this.isLoaded = true;
@@ -215,7 +225,9 @@ class SettingsStore {
       tempo: { ...this.snapshot.tempo, ...(patch.tempo ?? {}) },
     };
     this.snapshot = next;
-    this.#scheduleSave();
+    if (this.isLoaded && this.canPersist) {
+      this.#scheduleSave();
+    }
   }
 
   #scheduleSave(): void {
@@ -229,6 +241,9 @@ class SettingsStore {
   }
 
   async #doSave(): Promise<void> {
+    if (!this.isLoaded || !this.canPersist) {
+      return;
+    }
     try {
       const { setSettings } = await import('../ipc/settings');
       // Snapshot a structural copy so an in-flight save doesn't
@@ -258,7 +273,9 @@ class SettingsStore {
       clearTimeout(this.#saveTimer);
       this.#saveTimer = null;
     }
-    await this.#doSave();
+    if (this.isLoaded && this.canPersist) {
+      await this.#doSave();
+    }
   }
 
   /**
@@ -285,6 +302,8 @@ class SettingsStore {
       const fresh = await resetSettings();
       if (fresh && typeof fresh === 'object' && 'audio' in fresh && 'graphics' in fresh) {
         this.snapshot = fresh;
+        this.isLoaded = true;
+        this.canPersist = true;
         this.error = null;
       } else {
         this.error = 'reset_settings returned a malformed payload';
@@ -305,6 +324,7 @@ class SettingsStore {
     }
     this.snapshot = cloneDefaults();
     this.isLoaded = false;
+    this.canPersist = false;
     this.error = null;
     this.#loadPromise = null;
   }

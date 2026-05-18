@@ -65,9 +65,11 @@
 //!   shape extension that promotes the corresponding selections into
 //!   canonical sub-stores, at which point each helper gains the
 //!   corresponding sub-store assignments and joins
-//!   [`restore_all_supported_classes`]. As of this PR,
-//!   [`restore_all_supported_classes`] still covers ONLY class-a +
-//!   class-b + class-c.
+//!   [`restore_all_supported_classes`]. As of the current launch
+//!   wiring, [`restore_all_supported_classes`] covers class-a +
+//!   class-b + class-c + class-d; class-e / -f / -g remain
+//!   documented-deferred no-ops because their canonical State
+//!   sub-stores do not exist yet.
 //! - **PR 5** (this PR): class-d (OSC/MIDI session bindings) ships
 //!   as a real sub-store assignment via the additive [`State`]
 //!   extension introduced in
@@ -125,8 +127,9 @@
 //!
 //! # Crash-injection harness scope (PR 1)
 //!
-//! The on-disk path uses an ordinary `std::fs::write` /
-//! `std::fs::read` cycle through the configured save path. The
+//! The on-disk path writes through a same-dir temporary file,
+//! `flush` / `sync_all`, then atomic rename, and reads through the
+//! configured save path. The
 //! "crash-injection" harness in [`tests`] and the sibling
 //! `engine/runtime/tests/crash_resume_corpus/main.rs` T2 corpus
 //! simulate a crash IN-PROCESS by:
@@ -178,8 +181,9 @@
 use crate::state::State;
 use crate::state_migration::{DecodeError, decode_snapshot, encode_snapshot};
 use std::fmt;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Opaque byte container for a serialized state snapshot.
 ///
@@ -345,12 +349,29 @@ impl<S: StateSnapshotter> CrashResumeAdapter<S> {
         &self.save_path
     }
 
+    /// Serialize `state` into an opaque snapshot blob without
+    /// touching the filesystem.
+    ///
+    /// Host integrations use this to capture the state while holding
+    /// their canonical-state lock, then drop the lock before calling
+    /// [`Self::save_blob`] for the slower disk write.
+    pub fn snapshot(&self, state: &State) -> Result<StateSnapshotBlob, CrashResumeError> {
+        self.snapshotter.snapshot(state)
+    }
+
+    /// Persist an already-serialized snapshot blob to the configured
+    /// save path via same-dir temporary file, `flush` / `sync_all`,
+    /// then atomic rename. Overwrites any existing snapshot.
+    pub fn save_blob(&mut self, blob: &StateSnapshotBlob) -> Result<(), CrashResumeError> {
+        atomic_write(&self.save_path, blob.as_bytes())?;
+        Ok(())
+    }
+
     /// Serialize `state` and persist the blob to the configured save
     /// path. Overwrites any existing snapshot.
     pub fn save(&mut self, state: &State) -> Result<(), CrashResumeError> {
-        let blob = self.snapshotter.snapshot(state)?;
-        std::fs::write(&self.save_path, blob.as_bytes())?;
-        Ok(())
+        let blob = self.snapshot(state)?;
+        self.save_blob(&blob)
     }
 
     /// Attempt to read a previously-saved snapshot from the save
@@ -369,6 +390,53 @@ impl<S: StateSnapshotter> CrashResumeAdapter<S> {
             Err(e) => Err(CrashResumeError::Io(e)),
         }
     }
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), io::Error> {
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp_path = temporary_sibling_path(path);
+    let mut tmp_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)?;
+    let write_result = (|| -> Result<(), io::Error> {
+        tmp_file.write_all(bytes)?;
+        tmp_file.flush()?;
+        tmp_file.sync_all()?;
+        Ok(())
+    })();
+    if let Err(err) = write_result {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(err);
+    }
+    drop(tmp_file);
+    if let Err(err) = std::fs::rename(&tmp_path, path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(err);
+    }
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        let _ = std::fs::File::open(parent).and_then(|dir| dir.sync_all());
+    }
+    Ok(())
+}
+
+fn temporary_sibling_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "crash-resume.bin".to_string());
+    let pid = std::process::id();
+    let timestamp = timestamp_nanos();
+    path.with_file_name(format!("{file_name}.tmp-{pid}-{timestamp}"))
+}
+
+fn timestamp_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
 }
 
 /// Apply class-a fields from `restored` onto `target`.
@@ -701,9 +769,9 @@ mod tests {
     }
 
     /// Build a non-default state with mapping mutations only (NOT in
-    /// class-a / -b / -c). Used to assert restoration does not
-    /// accidentally touch still-deferred classes (class-d through
-    /// class-g).
+    /// class-a / -b / -c / -d). Used to assert restoration does not
+    /// accidentally touch the per-mapping store while class-d restores
+    /// only the session-bindings sub-store.
     fn seeded_deferred_classes() -> State {
         let bus = InMemoryBus::in_memory();
         let mut state = State::default();
@@ -1348,7 +1416,9 @@ mod tests {
     #[test]
     fn restore_all_supported_classes_now_includes_class_c() {
         // Extends the PR 1 pin: class-c is added to the convenience
-        // helper in PR 2. Class-d through class-g remain deferred.
+        // helper in PR 2. Class-d is now included via the
+        // session-bindings sub-store; class-e through class-g remain
+        // documented-deferred no-ops.
         let restored_source = seeded_state();
         // Seed `restored_source` with a class-c mutation so the
         // helper has something to project.
@@ -1384,7 +1454,7 @@ mod tests {
             target.playlist_position(),
             restored_source.playlist_position(),
         );
-        // Still-deferred classes (d-g) preserved on target:
+        // Per-mapping store remains outside class-a/b/c/d restoration:
         assert_eq!(
             target.mapping_source(MappingId(99)),
             Some(MappingSource::Midi),
