@@ -11,6 +11,7 @@
 export type { AudioDeviceKindPayload } from './AudioDeviceKindPayload';
 export type { AudioDevicePayload } from './AudioDevicePayload';
 export type { AudioSettingsPayload } from './AudioSettingsPayload';
+export type { AudioAxisAvailability } from './AudioAxisAvailability';
 export type { AudioUniformSnapshotPayload } from './AudioUniformSnapshotPayload';
 export type { CameraDeviceKindPayload } from './CameraDeviceKindPayload';
 export type { CameraDevicePayload } from './CameraDevicePayload';

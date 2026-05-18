@@ -99,6 +99,7 @@ crossbeam-channel = "0.5"
 # both crates are MIT/Apache-2.0 (allow-listed by deny.toml).
 serde = { version = "1", features = ["derive"] }
 toml = "0.9"
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # criterion 0.5 backs the Phase-3 wave PR 6 EV-PERF-BUDGETS proxy

@@ -204,7 +204,7 @@ mod scheduler_ipc_pins {
     use crate::scheduler::audio::AudioPull;
     use crate::scheduler::observability::TickEmitter;
     use crate::state::State;
-    use chromaticity_audio::AudioUniformSnapshot;
+    use chromaticity_audio::{AudioAxisAvailability, AudioUniformSnapshot};
     use std::sync::{Arc, Mutex};
 
     /// Mock [`AudioPull`] returning a fixed snapshot for assertion.
@@ -284,9 +284,12 @@ mod scheduler_ipc_pins {
     fn nonzero_snapshot() -> AudioUniformSnapshot {
         AudioUniformSnapshot {
             bpm: 128.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.4,
             peak: 0.9,
             fft_bands: [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         }
     }
 

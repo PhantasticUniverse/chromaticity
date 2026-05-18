@@ -102,9 +102,12 @@ describe('AudioUniforms view', () => {
   it('enables the Snapshot button when audioSnapshotStore holds a live snapshot', async () => {
     audioSnapshotStore.snapshot = {
       bpm: 120,
+      bpm_availability: 'Ready',
       rms: 0.3,
       peak: 0.6,
       fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+      fft_availability: 'Ready',
+      degraded: false,
     };
     const { getByRole } = render(AudioUniforms);
     // Microtask flush for the $derived recomputation.
@@ -118,9 +121,12 @@ describe('AudioUniforms view', () => {
   it('captures the live snapshot as a JSON blob download when clicked', async () => {
     audioSnapshotStore.snapshot = {
       bpm: 132.5,
+      bpm_availability: 'Ready',
       rms: 0.42,
       peak: 0.81,
       fft_bands: [0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88],
+      fft_availability: 'Ready',
+      degraded: false,
     };
     // Capture the Blob handed to URL.createObjectURL so we can read its
     // text contents back out and verify the JSON payload shape.
@@ -168,15 +174,21 @@ describe('AudioUniforms view', () => {
       const text = await (capturedBlob as Blob).text();
       const parsed = JSON.parse(text) as {
         bpm: number;
+        bpm_availability: string;
         rms: number;
         peak: number;
         fft_bands: number[];
+        fft_availability: string;
+        degraded: boolean;
         captured_at: string;
       };
       expect(parsed.bpm).toBe(132.5);
+      expect(parsed.bpm_availability).toBe('Ready');
       expect(parsed.rms).toBeCloseTo(0.42);
       expect(parsed.peak).toBeCloseTo(0.81);
       expect(parsed.fft_bands).toEqual([0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88]);
+      expect(parsed.fft_availability).toBe('Ready');
+      expect(parsed.degraded).toBe(false);
       // captured_at is an ISO-8601 timestamp emitted at click time.
       expect(parsed.captured_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     }
@@ -405,9 +417,12 @@ describe('AudioUniforms view', () => {
   // no hit). Per-bar `.toFixed(2)` matches the view's value rendering.
   const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
     bpm: 120,
+    bpm_availability: 'Ready',
     rms: 0.4,
     peak: 0.9,
     fft_bands: [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9],
+    fft_availability: 'Ready',
+    degraded: false,
   };
 
   it('reduces 8 fft_bands into the 5 band tiles when audioSnapshotStore.snapshot is set', () => {
@@ -482,9 +497,12 @@ describe('AudioUniforms view', () => {
     // 0.8 -> 20·log10(0.8) ≈ -1.9 dB; rms 0.25 -> ≈ -12.0 dB.
     const payload: AudioUniformSnapshotPayload = {
       bpm: 128,
+      bpm_availability: 'Ready',
       rms: 0.25,
       peak: 0.8,
       fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+      fft_availability: 'Ready',
+      degraded: false,
     };
     audioSnapshotStore.snapshot = payload;
     const { container } = render(AudioUniforms);
@@ -508,9 +526,12 @@ describe('AudioUniforms view', () => {
     // linear amplitude to 1e-3 before the log, yielding -60.0 dB.
     audioSnapshotStore.snapshot = {
       bpm: 0,
+      bpm_availability: 'Warming',
       rms: 0,
       peak: 0,
       fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      fft_availability: 'Warming',
+      degraded: false,
     };
     const { container } = render(AudioUniforms);
     const stats = container.querySelector('.au__hero-stats');

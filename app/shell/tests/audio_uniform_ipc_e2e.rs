@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use chromaticity_app_lib::state::ipc_emit::{AUDIO_UNIFORM_SNAPSHOT_EVENT, TauriIpcEmitter};
-use chromaticity_audio::AudioUniformSnapshot;
+use chromaticity_audio::{AudioAxisAvailability, AudioUniformSnapshot};
 use chromaticity_runtime::scheduler::ipc::IpcEmit;
 use chromaticity_ui_bridge::AudioUniformSnapshotPayload;
 use tauri::Listener;
@@ -67,9 +67,12 @@ fn producer_to_listener_round_trip_preserves_payload_identity() {
 
     let snapshot = AudioUniformSnapshot {
         bpm: 132.5,
+        bpm_availability: AudioAxisAvailability::Ready,
         rms: 0.42,
         peak: 0.88,
         fft_bands: [0.05, 0.10, 0.20, 0.35, 0.50, 0.65, 0.80, 0.95],
+        fft_availability: AudioAxisAvailability::Ready,
+        degraded: false,
     };
     let emitter = TauriIpcEmitter::new(app.handle().clone());
     emitter.emit_snapshot(snapshot);
@@ -105,21 +108,30 @@ fn multiple_emits_deliver_in_order() {
     let snapshots = [
         AudioUniformSnapshot {
             bpm: 100.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.10,
             peak: 0.20,
             fft_bands: [0.0; 8],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         },
         AudioUniformSnapshot {
             bpm: 110.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.20,
             peak: 0.30,
             fft_bands: [0.1; 8],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         },
         AudioUniformSnapshot {
             bpm: 120.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.30,
             peak: 0.40,
             fft_bands: [0.2; 8],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         },
     ];
     for snapshot in snapshots {

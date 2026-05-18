@@ -38,7 +38,7 @@
 //! constrain the synchronisation primitive.
 
 use chromaticity_audio::AudioUniformSnapshot;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Scheduler-side adapter for pulling the latest audio uniform
 /// snapshot once per tick. Implemented by:
@@ -79,6 +79,7 @@ pub trait AudioPull: Send + Sync {
 pub struct MutexAudioPull {
     snapshot: std::sync::Arc<std::sync::Mutex<AudioUniformSnapshot>>,
     poison_recoveries: std::sync::Arc<AtomicU64>,
+    poison_warned: std::sync::Arc<AtomicBool>,
 }
 
 impl MutexAudioPull {
@@ -89,6 +90,7 @@ impl MutexAudioPull {
         Self {
             snapshot,
             poison_recoveries: std::sync::Arc::new(AtomicU64::new(0)),
+            poison_warned: std::sync::Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -121,10 +123,23 @@ impl AudioPull for MutexAudioPull {
         // no-panic clause. Phase-3+ may surface a degraded-mode
         // signal through observability without changing this seam.
         match self.snapshot.lock() {
-            Ok(guard) => *guard,
+            Ok(guard) => {
+                let mut snapshot = *guard;
+                if self.poison_recovery_count() > 0 {
+                    snapshot.degraded = true;
+                }
+                snapshot
+            }
             Err(poisoned) => {
                 self.poison_recoveries.fetch_add(1, Ordering::Relaxed);
-                *poisoned.into_inner()
+                if !self.poison_warned.swap(true, Ordering::Relaxed) {
+                    tracing::warn!(
+                        "audio snapshot mutex was poisoned, recovered with last-known state"
+                    );
+                }
+                let mut snapshot = *poisoned.into_inner();
+                snapshot.degraded = true;
+                snapshot
             }
         }
     }
@@ -171,7 +186,7 @@ mod scheduler_audio_pins {
     use crate::command_bus::{Command, ControlId, ControlValue, InMemoryBus, PresetId};
     use crate::scheduler::Scheduler;
     use crate::state::State;
-    use chromaticity_audio::AudioUniformSnapshot;
+    use chromaticity_audio::{AudioAxisAvailability, AudioUniformSnapshot};
     use std::sync::{Arc, Mutex};
 
     /// Mock [`AudioPull`] returning a fixed snapshot and recording
@@ -232,9 +247,12 @@ mod scheduler_audio_pins {
     fn nonzero_snapshot() -> AudioUniformSnapshot {
         AudioUniformSnapshot {
             bpm: 120.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.5,
             peak: 0.75,
             fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         }
     }
 
@@ -413,7 +431,14 @@ mod scheduler_audio_pins {
             .tick(&mut state, &bus)
             .expect("tick must succeed despite poisoned audio mutex");
         assert_eq!(report.frame, 1);
-        assert_eq!(state.latest_audio_snapshot(), Some(&target));
+        let recovered = state
+            .latest_audio_snapshot()
+            .expect("poison recovery should store a snapshot");
+        assert_eq!(recovered.bpm, target.bpm);
+        assert_eq!(recovered.rms, target.rms);
+        assert_eq!(recovered.peak, target.peak);
+        assert_eq!(recovered.fft_bands, target.fft_bands);
+        assert!(recovered.degraded);
         assert_eq!(
             poison_recoveries.load(std::sync::atomic::Ordering::Relaxed),
             1

@@ -441,6 +441,34 @@ pub struct OscHealthSnapshot {
     pub local_addr: Option<String>,
 }
 
+/// IPC-facing readiness flag for snapshot axes that need an
+/// accumulated analysis window before their numeric values should be
+/// displayed as live data.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
+#[ts(export)]
+pub enum AudioAxisAvailability {
+    Warming,
+    Ready,
+}
+
+impl From<chromaticity_audio::AudioAxisAvailability> for AudioAxisAvailability {
+    fn from(availability: chromaticity_audio::AudioAxisAvailability) -> Self {
+        match availability {
+            chromaticity_audio::AudioAxisAvailability::Warming => Self::Warming,
+            chromaticity_audio::AudioAxisAvailability::Ready => Self::Ready,
+        }
+    }
+}
+
+impl From<AudioAxisAvailability> for chromaticity_audio::AudioAxisAvailability {
+    fn from(availability: AudioAxisAvailability) -> Self {
+        match availability {
+            AudioAxisAvailability::Warming => Self::Warming,
+            AudioAxisAvailability::Ready => Self::Ready,
+        }
+    }
+}
+
 /// IPC-facing snapshot of the engine's
 /// [`chromaticity_audio::AudioUniformSnapshot`] audio-analysis
 /// uniforms.
@@ -453,11 +481,11 @@ pub struct OscHealthSnapshot {
 /// AudioReactivity) can replace its synthetic-time-domain stubs with
 /// the real engine producer's data. Payload-shape parity with the
 /// engine type is the load-bearing contract: field names, field
-/// types, and field ordering must match
-/// [`chromaticity_audio::AudioUniformSnapshot`] exactly so the
-/// bidirectional `From` impls (and the JSON wire shape consumed by
-/// the Tauri event channel) preserve the 11-field surface (one
-/// `bpm`, one `rms`, one `peak`, eight `fft_bands`).
+/// types, and field ordering mirror
+/// [`chromaticity_audio::AudioUniformSnapshot`] so the bidirectional
+/// `From` impls (and the JSON wire shape consumed by the Tauri event
+/// channel) preserve the widened surface (BPM + BPM readiness, RMS,
+/// peak, eight FFT bands + FFT readiness, and the degraded flag).
 ///
 /// `Copy` rides for cheap once-per-tick emit copies; `f32` precludes
 /// `Eq` / `Hash` so tests use `PartialEq` only (matching the
@@ -477,18 +505,24 @@ pub struct OscHealthSnapshot {
 #[ts(export)]
 pub struct AudioUniformSnapshotPayload {
     pub bpm: f32,
+    pub bpm_availability: AudioAxisAvailability,
     pub rms: f32,
     pub peak: f32,
     pub fft_bands: [f32; 8],
+    pub fft_availability: AudioAxisAvailability,
+    pub degraded: bool,
 }
 
 impl From<chromaticity_audio::AudioUniformSnapshot> for AudioUniformSnapshotPayload {
     fn from(snapshot: chromaticity_audio::AudioUniformSnapshot) -> Self {
         Self {
             bpm: snapshot.bpm,
+            bpm_availability: snapshot.bpm_availability.into(),
             rms: snapshot.rms,
             peak: snapshot.peak,
             fft_bands: snapshot.fft_bands,
+            fft_availability: snapshot.fft_availability.into(),
+            degraded: snapshot.degraded,
         }
     }
 }
@@ -497,9 +531,12 @@ impl From<AudioUniformSnapshotPayload> for chromaticity_audio::AudioUniformSnaps
     fn from(payload: AudioUniformSnapshotPayload) -> Self {
         Self {
             bpm: payload.bpm,
+            bpm_availability: payload.bpm_availability.into(),
             rms: payload.rms,
             peak: payload.peak,
             fft_bands: payload.fft_bands,
+            fft_availability: payload.fft_availability.into(),
+            degraded: payload.degraded,
         }
     }
 }

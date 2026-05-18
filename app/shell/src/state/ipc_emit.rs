@@ -115,22 +115,34 @@ mod ipc_emit_pins {
     //!   silent end-to-end break.
 
     use super::AUDIO_UNIFORM_SNAPSHOT_EVENT;
-    use chromaticity_audio::AudioUniformSnapshot;
+    use chromaticity_audio::{AudioAxisAvailability, AudioUniformSnapshot};
     use chromaticity_ui_bridge::AudioUniformSnapshotPayload;
 
     #[test]
     fn payload_conversion_preserves_field_by_field_equality() {
         let snapshot = AudioUniformSnapshot {
             bpm: 145.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.7,
             peak: 0.9,
             fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         };
         let payload = AudioUniformSnapshotPayload::from(snapshot);
         assert_eq!(payload.bpm, snapshot.bpm);
+        assert_eq!(
+            payload.bpm_availability,
+            chromaticity_ui_bridge::AudioAxisAvailability::Ready
+        );
         assert_eq!(payload.rms, snapshot.rms);
         assert_eq!(payload.peak, snapshot.peak);
         assert_eq!(payload.fft_bands, snapshot.fft_bands);
+        assert_eq!(
+            payload.fft_availability,
+            chromaticity_ui_bridge::AudioAxisAvailability::Ready
+        );
+        assert!(!payload.degraded);
         // Reverse direction round-trip preserves the snapshot too;
         // mirrors the producer-side `From` symmetry the cross-seam
         // contract relies on.
@@ -162,10 +174,19 @@ mod ipc_emit_pins {
         let snapshot = AudioUniformSnapshot::default();
         let payload = AudioUniformSnapshotPayload::from(snapshot);
         assert_eq!(payload.bpm, 0.0);
+        assert_eq!(
+            payload.bpm_availability,
+            chromaticity_ui_bridge::AudioAxisAvailability::Warming
+        );
         assert_eq!(payload.rms, 0.0);
         assert_eq!(payload.peak, 0.0);
         for band in payload.fft_bands {
             assert_eq!(band, 0.0);
         }
+        assert_eq!(
+            payload.fft_availability,
+            chromaticity_ui_bridge::AudioAxisAvailability::Warming
+        );
+        assert!(!payload.degraded);
     }
 }

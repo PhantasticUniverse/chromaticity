@@ -33,6 +33,24 @@
 //! `record_pull_outcome`. The negotiator's per-instance counters are
 //! layered above and never replace the global tracker.
 //!
+//! # Pending and callback-stop semantics
+//!
+//! [`IngestStatus::Pending`] is a neutral callback gap, not evidence
+//! that the capture device has failed. The cpal source can be open
+//! while its data callback has not yet delivered a frame, so `Pending`
+//! does not increment the demotion counter and cannot push the
+//! negotiator into silent fallback by itself. The regression
+//! `production_empty_poll_returns_pending_not_failure` pins that empty
+//! production polls remain neutral.
+//!
+//! Callback-stop failure is modelled by the source translating a
+//! channel `Disconnected` observation into [`IngestStatus::Closed`] at
+//! the ingest boundary rather than by the negotiator inventing a
+//! wall-clock timeout. That keeps ownership of device-liveness inside
+//! the cpal adapter, where stream errors and callback shutdown are
+//! observable, and keeps this layer purely status-driven: `Closed`
+//! is the demotion signal, `Pending` is warmup.
+//!
 //! Governing docs: `docs/06-audio-engine.md` "Reliability/Fallback
 //! Policy" (fall back to silent on device failure) and ADR-016 (audio-
 //! ingest counter family).

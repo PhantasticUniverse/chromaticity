@@ -333,9 +333,12 @@ impl AudioRuntime {
                                 let smoothed_bpm = estimator.observe(&analysis_frame);
                                 let merged = AudioUniformSnapshot {
                                     bpm: smoothed_bpm,
+                                    bpm_availability: analysis_snapshot.bpm_availability,
                                     rms: instant_snapshot.rms,
                                     peak: instant_snapshot.peak,
                                     fft_bands: analysis_snapshot.fft_bands,
+                                    fft_availability: analysis_snapshot.fft_availability,
+                                    degraded: false,
                                 };
                                 match shared_for_thread.lock() {
                                     Ok(mut guard) => {

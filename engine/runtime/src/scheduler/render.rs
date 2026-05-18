@@ -162,7 +162,7 @@ mod scheduler_render_pins {
     use crate::scheduler::Scheduler;
     use crate::scheduler::audio::AudioPull;
     use crate::state::State;
-    use chromaticity_audio::AudioUniformSnapshot;
+    use chromaticity_audio::{AudioAxisAvailability, AudioUniformSnapshot};
     use std::sync::{Arc, Mutex};
 
     /// Mock [`RenderDispatch`] recording the post-tick `state.frame()`
@@ -229,9 +229,12 @@ mod scheduler_render_pins {
     fn nonzero_snapshot() -> AudioUniformSnapshot {
         AudioUniformSnapshot {
             bpm: 132.5,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.42,
             peak: 0.91,
             fft_bands: [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         }
     }
 

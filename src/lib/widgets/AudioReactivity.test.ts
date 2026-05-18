@@ -21,6 +21,7 @@ import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSn
 
 const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
   bpm: 145,
+  bpm_availability: 'Ready',
   rms: 0.5,
   peak: 0.9,
   // BASS = avg(0.10, 0.20) = 0.15 -> 15%
@@ -28,6 +29,8 @@ const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
   // HIGH MID = avg(0.50, 0.60) = 0.55 -> 55%
   // HIGH = avg(0.70, 0.80) = 0.75 -> 75%
   fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+  fft_availability: 'Ready',
+  degraded: false,
 };
 
 function stubMatchMedia(reduce: boolean): void {
@@ -80,7 +83,9 @@ describe('AudioReactivity widget', () => {
     const { container, getByText } = render(AudioReactivity, {
       props: { bpm: 96.5, linkPeerCount: 7 },
     });
-    expect(container.querySelector('.audio-reactivity__tempo-bpm')?.textContent).toBe('96.50 BPM');
+    expect(container.querySelector('.audio-reactivity__tempo-bpm')?.textContent?.trim()).toBe(
+      '96.50 BPM',
+    );
     expect(getByText(/Ableton Link · 7 peers/)).toBeInTheDocument();
   });
 
@@ -120,7 +125,30 @@ describe('AudioReactivity widget', () => {
     const { container } = render(AudioReactivity, {
       props: { bpm: 100, snapshot: SAMPLE_SNAPSHOT },
     });
-    expect(container.querySelector('.audio-reactivity__tempo-bpm')?.textContent).toBe('145.00 BPM');
+    expect(container.querySelector('.audio-reactivity__tempo-bpm')?.textContent?.trim()).toBe(
+      '145.00 BPM',
+    );
+  });
+
+  it('renders placeholders while snapshot BPM and FFT are warming', () => {
+    const { container } = render(AudioReactivity, {
+      props: {
+        bpm: 100,
+        snapshot: {
+          ...SAMPLE_SNAPSHOT,
+          bpm_availability: 'Warming',
+          fft_availability: 'Warming',
+        },
+      },
+    });
+    expect(container.querySelector('.audio-reactivity__tempo-bpm')?.textContent?.trim()).toBe(
+      '-- BPM',
+    );
+    const pct = Array.from(container.querySelectorAll('.audio-reactivity__band-pct')).map((el) =>
+      el.textContent?.trim(),
+    );
+    expect(pct).toEqual(['--', '--', '--', '--']);
+    expect(container.querySelectorAll('.audio-reactivity__band--warming')).toHaveLength(4);
   });
 
   it('reduces snapshot.fft_bands (8) into the four named band tiles by averaging adjacent pairs', () => {
