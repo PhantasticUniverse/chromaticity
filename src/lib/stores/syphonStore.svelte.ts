@@ -3,12 +3,11 @@
 //
 // Wave 1c-β Phase 4 Lane B Syphon source-picker + output-publish
 // singleton store. Backs the operator-facing Syphon section in
-// `src/lib/views/Sources.svelte` — `refreshServers()` invokes
-// `list_syphon_servers` (`app/shell/src/commands/syphon.rs`),
-// `publishOutput(name)` / `unpublishOutput()` invoke the matching
-// publish / unpublish Tauri commands, and `loadPersistedSelection()`
-// rehydrates the prior input selection from `localStorage` on view
-// mount.
+// `src/lib/views/Sources.svelte` — `refreshServers()` invokes the
+// typed `listSyphonServers` wrapper, `publishOutput(name)` /
+// `unpublishOutput()` invoke the matching publish / unpublish wrappers,
+// and `loadPersistedSelection()` rehydrates the prior input selection
+// from `localStorage` on view mount.
 //
 // `.svelte.ts` extension is required for runes-in-module per the
 // `feedback_eslint_svelte_dot_ts_parser.md` user-memory convention;
@@ -49,20 +48,14 @@
 // only requirement; settings-store IPC is post-MVP. The persisted key
 // is the framework-stable Syphon server UUID per ADR-021 §4.
 
-import { invoke } from '@tauri-apps/api/core';
-
 import type { SyphonOutputStatusPayload } from '../ipc/bindings/SyphonOutputStatusPayload';
 import type { SyphonServerPayload } from '../ipc/bindings/SyphonServerPayload';
+import { listSyphonServers, publishSyphonOutput, unpublishSyphonOutput } from '../ipc/syphon';
 
 /** localStorage key for the operator's last-selected Syphon server
  * UUID. Namespaced under `chromaticity.syphon.` so a future settings-
  * store migration can scan the prefix when porting persisted state. */
 const PERSISTED_INPUT_KEY = 'chromaticity.syphon.selectedInput';
-
-/** Tauri command names surfaced by `app/shell/src/commands/syphon.rs`. */
-const LIST_SYPHON_SERVERS_COMMAND = 'list_syphon_servers';
-const PUBLISH_SYPHON_OUTPUT_COMMAND = 'publish_syphon_output';
-const UNPUBLISH_SYPHON_OUTPUT_COMMAND = 'unpublish_syphon_output';
 
 /** Default operator-facing output server name. Mirrors
  * `chromaticity_syphon_adapter::DEFAULT_OUTPUT_NAME_TEMPLATE` so the
@@ -106,7 +99,7 @@ class SyphonStore {
     this.isLoading = true;
     this.error = null;
     try {
-      const fresh = await invoke<SyphonServerPayload[]>(LIST_SYPHON_SERVERS_COMMAND);
+      const fresh = await listSyphonServers();
       this.servers = fresh;
     } catch (e) {
       this.servers = [];
@@ -128,9 +121,7 @@ class SyphonStore {
   async publishOutput(name: string): Promise<void> {
     this.error = null;
     try {
-      const status = await invoke<SyphonOutputStatusPayload>(PUBLISH_SYPHON_OUTPUT_COMMAND, {
-        name,
-      });
+      const status = await publishSyphonOutput(name);
       this.output = status;
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
@@ -144,7 +135,7 @@ class SyphonStore {
   async unpublishOutput(): Promise<void> {
     this.error = null;
     try {
-      const status = await invoke<SyphonOutputStatusPayload>(UNPUBLISH_SYPHON_OUTPUT_COMMAND);
+      const status = await unpublishSyphonOutput();
       this.output = status;
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);

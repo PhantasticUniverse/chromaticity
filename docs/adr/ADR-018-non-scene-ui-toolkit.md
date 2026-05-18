@@ -3,6 +3,15 @@
 ## Status
 Accepted
 
+## Update
+
+2026-05-18: the Phase-0 bootstrap lint named in the original
+enforcement text (`eslint-plugin-chromaticity-ui-tokens`) has not been
+implemented. Token enforcement remains an ADR requirement, but the
+dedicated lint plugin is deferred until the AO explicitly scopes that
+work; current enforcement is by code review, existing Svelte/TypeScript
+lint, and evidence rows that verify rendered UI behavior.
+
 ## Context
 NFR-11 Accessibility Floor mandates WCAG 2.2 AA on the non-scene UI surface, including a `>= 24 x 24 CSS px` target-size floor, `3:1` focus-indicator contrast on both dark and light backgrounds, `4.5:1` body-text contrast, reduced-motion respect, and axe-core + VoiceOver/NVDA conformance. NFR-12 Color Management mandates V1 sRGB output with OS display-profile respect on the non-scene UI. NFR-10 Authoring Responsiveness mandates p95 latency budgets for hover-docs, symbol-search, and docs-search measured at the OS event boundary per `37-authoring-environment-spec.md` §3.3a.
 
@@ -104,7 +113,7 @@ Token names and the token families above are normative and change only via an AD
 
 ## Enforcement
 
-- Design tokens above are authoritative. Components may not hard-code colour, spacing, radius, or motion outside the token set; `eslint-plugin-chromaticity-ui-tokens` (Phase-0 bootstrap lint) enforces this on Svelte component files.
+- Design tokens above are authoritative. Components may not hard-code colour, spacing, radius, or motion outside the token set. Automated token-specific lint is deferred per the 2026-05-18 update above; until that lands, token discipline is enforced through code review, existing Svelte/TypeScript lint, and the UI evidence rows that validate rendered behavior.
 - `EV-ACCESSIBILITY-AA` runs axe-core CI on every PR touching non-scene UI code and includes the per-release VoiceOver/NVDA manual audit checklist; the contrast-pair registry is part of the packet.
 - `EV-COLOR-MANAGEMENT-SRGB` asserts the non-scene UI surface is sRGB; render conformance tests include a snapshot diff on calibrated vs uncalibrated display configurations.
 - NFR-10 measurement harness per `37-authoring-environment-spec.md` §3.3a validates keystroke-to-paint latency against declared budgets.
