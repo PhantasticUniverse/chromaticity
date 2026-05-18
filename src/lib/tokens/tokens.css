@@ -112,6 +112,45 @@
   --radius-lg: 10px;
   --radius-full: 999px;
 
+  /* Elevation supplement — chicklet inset bevel. Pulse default emits no
+   * inset (flat); Console overrides with the 1px-up / 1px-down bevel
+   * documented in DESIGN.md §Elevation, Atelier emits a zero-glow
+   * hairline. */
+  --shadow-inset: none;
+
+  /* Density scale — operator switches the whole UI between `compact` and
+   * `comfortable`. Compact is the operator default per DESIGN.md §Layout
+   * (stage-distance viewing position). `[data-density="comfortable"]`
+   * cascade below widens for desktop authoring. */
+  --pad: 6px;
+  --gap: 6px;
+  --knob: 36px;
+  --track-h: 64px;
+  --row-h: 24px;
+  --fs: 12px;
+
+  /* Motion scale — three durations + three easings cover every UI
+   * transition. Per DESIGN.md "Bundle alignment" §Trail closeout: future
+   * widget retrofits compose from these tokens rather than inlining ms +
+   * easing per-callsite. The reduced-motion safety net above collapses
+   * all of these to instant under `prefers-reduced-motion: reduce`. */
+  --duration-fast: 80ms;
+  --duration-normal: 160ms;
+  --duration-slow: 320ms;
+  --easing-out: cubic-bezier(0.2, 0, 0, 1);
+  --easing-in: cubic-bezier(0.4, 0, 1, 1);
+  --easing-inout: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* z-index scale — named layers for the four operator-visible overlay
+   * tiers. Existing modals / overlays use raw integers (per the audit);
+   * future widgets compose from these tokens for a single source of
+   * truth on stacking order. */
+  --z-rail: 10;
+  --z-topbar: 20;
+  --z-overlay: 900;
+  --z-modal: 950;
+  --z-toast: 1000;
+
   /* ------------- Elevation --------------------------------------------- */
   --glow: 1;
   --shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -163,6 +202,14 @@
 
   --glow: 0;
   --shadow-panel: 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --shadow-inset: none;
+
+  /* Atelier radii — slightly tighter than Pulse to feel like printed paper
+   * rather than glowing dark UI. Per DESIGN.md §Shapes "Per-theme overrides". */
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
 }
 
 /* Console — desaturated hardware aesthetic, amber-LED accent, chicklet bevels.
@@ -213,6 +260,30 @@
   --shadow-panel:
     inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -1px 0 rgba(0, 0, 0, 0.6),
     0 1px 0 rgba(0, 0, 0, 0.5);
+
+  /* Console chicklet bevel — 1px inset highlight + 1px outset shadow per
+   * DESIGN.md §Elevation. Mirrors the bundle's `--shadow-inset` pattern
+   * for hardware-aesthetic buttons. */
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+
+  /* Console radii — tightest of the three themes. Hardware-instrument feel
+   * favours square corners; we keep just enough radius to soften the bevel. */
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+}
+
+/* Comfortable density — desktop authoring / studio mode. Widens the six
+ * density tokens defined on :root above. Compact remains the operator
+ * default (no attribute needed). Mirrors DESIGN.md §Layout density table. */
+[data-density='comfortable'] {
+  --pad: 10px;
+  --gap: 10px;
+  --knob: 48px;
+  --track-h: 84px;
+  --row-h: 30px;
+  --fs: 13px;
 }
 
 /* ----------------------------------------------------------------------------

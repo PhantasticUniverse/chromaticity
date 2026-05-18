@@ -211,4 +211,70 @@ describe('CueTransitionCurve', () => {
     expect(lastCall.cp1[0]).toBeCloseTo(0.25, 5);
     expect(lastCall.cp1[1]).toBeCloseTo(0.5, 5);
   });
+
+  // ---------------- DESIGN.md "Bundle alignment" — 2D keyboard nudge -------
+
+  it('ArrowRight on cp1 nudges X by 5%', async () => {
+    const onchange = vi.fn();
+    const { container } = render(CueTransitionCurve, {
+      props: { kind: 'fade' as const, cp1: [0.42, 0.0] as [number, number], onchange },
+    });
+    const cp1 = container.querySelector('[data-handle="cp1"]') as SVGGElement | null;
+    if (cp1 === null) throw new Error('cp1 handle not rendered');
+    await fireEvent.keyDown(cp1, { key: 'ArrowRight' });
+    expect(onchange).toHaveBeenCalled();
+    const got = onchange.mock.calls.at(-1)?.[0];
+    expect(got.cp1[0]).toBeCloseTo(0.47, 5);
+    expect(got.cp1[1]).toBeCloseTo(0.0, 5);
+  });
+
+  it('ArrowUp on cp2 nudges Y by 5%', async () => {
+    const onchange = vi.fn();
+    const { container } = render(CueTransitionCurve, {
+      props: { kind: 'fade' as const, cp2: [0.58, 0.5] as [number, number], onchange },
+    });
+    const cp2 = container.querySelector('[data-handle="cp2"]') as SVGGElement | null;
+    if (cp2 === null) throw new Error('cp2 handle not rendered');
+    await fireEvent.keyDown(cp2, { key: 'ArrowUp' });
+    const got = onchange.mock.calls.at(-1)?.[0];
+    expect(got.cp2[0]).toBeCloseTo(0.58, 5);
+    expect(got.cp2[1]).toBeCloseTo(0.55, 5);
+  });
+
+  it('Shift+ArrowRight uses the 20% large X step', async () => {
+    const onchange = vi.fn();
+    const { container } = render(CueTransitionCurve, {
+      props: { kind: 'fade' as const, cp1: [0.2, 0.0] as [number, number], onchange },
+    });
+    const cp1 = container.querySelector('[data-handle="cp1"]') as SVGGElement | null;
+    if (cp1 === null) throw new Error('cp1 handle not rendered');
+    await fireEvent.keyDown(cp1, { key: 'ArrowRight', shiftKey: true });
+    const got = onchange.mock.calls.at(-1)?.[0];
+    expect(got.cp1[0]).toBeCloseTo(0.4, 5);
+  });
+
+  it('Home snaps X to 0', async () => {
+    const onchange = vi.fn();
+    const { container } = render(CueTransitionCurve, {
+      props: { kind: 'fade' as const, cp1: [0.5, 0.3] as [number, number], onchange },
+    });
+    const cp1 = container.querySelector('[data-handle="cp1"]') as SVGGElement | null;
+    if (cp1 === null) throw new Error('cp1 handle not rendered');
+    await fireEvent.keyDown(cp1, { key: 'Home' });
+    const got = onchange.mock.calls.at(-1)?.[0];
+    expect(got.cp1[0]).toBe(0);
+    expect(got.cp1[1]).toBeCloseTo(0.3, 5);
+  });
+
+  it('clamps to [0, 1] at the extremes', async () => {
+    const onchange = vi.fn();
+    const { container } = render(CueTransitionCurve, {
+      props: { kind: 'fade' as const, cp2: [0.98, 0.5] as [number, number], onchange },
+    });
+    const cp2 = container.querySelector('[data-handle="cp2"]') as SVGGElement | null;
+    if (cp2 === null) throw new Error('cp2 handle not rendered');
+    await fireEvent.keyDown(cp2, { key: 'ArrowRight' });
+    const got = onchange.mock.calls.at(-1)?.[0];
+    expect(got.cp2[0]).toBe(1);
+  });
 });

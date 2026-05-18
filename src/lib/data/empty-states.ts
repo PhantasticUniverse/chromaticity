@@ -39,6 +39,12 @@ export interface EmptyStateCopy {
   readonly body: string;
   readonly primaryAction?: EmptyStateAction;
   readonly secondaryAction?: EmptyStateAction;
+  /** Optional tertiary action — DESIGN.md "Bundle alignment (2026-05-18)"
+   * §Trail closeout. The bundle's `EmptyLibrary` pattern carries three
+   * actions (Install Built-Ins / New Scene / Import); our prior 2-action
+   * cap clipped that surface. Consumers that render 3-action empty states
+   * iterate `[primary, secondary, tertiary].filter(Boolean)`. */
+  readonly tertiaryAction?: EmptyStateAction;
   /** Optional small monospace footnote rendered below the actions
    * (mirrors the bundle's `meta` slot on `<EmptyState>`). Used by
    * Library to surface the supported-formats line per
@@ -51,6 +57,7 @@ export const EMPTY_LIBRARY: EmptyStateCopy = {
   body: 'Your library is where every scene lives — built-ins, Shadertoy conversions, .chroma packages, and your own Chromaticity drafts. Pull down the built-in pack to get going, or start from scratch.',
   primaryAction: { label: 'Install Built-Ins' },
   secondaryAction: { label: 'New Scene' },
+  tertiaryAction: { label: 'Import…' },
   meta: 'Supported: .chroma · .chromaPack · .synScene conversion · Shadertoy URL · ISF reject',
 };
 
