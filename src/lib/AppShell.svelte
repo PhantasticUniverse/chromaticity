@@ -111,6 +111,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // describes ("WatermarkOverlay threaded into Perform live Preview
   // via ChromaCtx.licensed").
   import ConsoleDrawer from './ConsoleDrawer.svelte';
+  import type { CrashResumeStatusPayload } from './ipc/bindings';
   import SidebarRail from './SidebarRail.svelte';
   import StatusBar from './StatusBar.svelte';
   import { capabilitiesStore } from './stores/capabilities.svelte';
@@ -149,20 +150,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `EV-INTEGRATION-MATRIX` scope; once that lands the visibility
   // will read from a capability flag rather than a hardcoded default.
   let bannerVisible = $state(false);
-  type ResumeStatus = 'restored' | 'partial' | 'lost';
-
-  interface CrashResumeStatus {
-    readonly showName: string;
-    readonly controls: ResumeStatus;
-    readonly snaps: ResumeStatus;
-    readonly playlist: ResumeStatus;
-    readonly adapters: ResumeStatus;
-    readonly scene: ResumeStatus;
-    readonly p50: number;
-  }
 
   let crashResumeVisible = $state(false);
-  let crashResumeStatus = $state<CrashResumeStatus | null>(null);
+  let crashResumeStatus = $state<CrashResumeStatusPayload | null>(null);
   let commandPaletteOpen = $state(false);
 
   // Watermark visibility is the inverse of the `render.watermark.off`
@@ -197,7 +187,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void (async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const status = await invoke<CrashResumeStatus | null>('get_crash_resume_status');
+        const status = await invoke<CrashResumeStatusPayload | null>('get_crash_resume_status');
         if (status) {
           crashResumeStatus = status;
           crashResumeVisible = true;

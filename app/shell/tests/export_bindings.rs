@@ -20,12 +20,13 @@ use chromaticity_ui_bridge::{
     AudioAxisAvailability, AudioDeviceKindPayload, AudioDevicePayload, AudioSettingsPayload,
     AudioUniformSnapshotPayload, CameraDeviceKindPayload, CameraDevicePayload,
     ControlDefaultValuePayload, ControlId, ControlKindPayload, ControlSchemaPayload, ControlValue,
-    GeneralSettingsPayload, GraphicsSettingsPayload, LiveSourcesSettingsPayload,
-    LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload, MidiLearnEventPayload,
-    MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot, OscHealthState,
-    OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId, SceneCard, SceneSource,
-    SettingsPayload, SnapSlotId, StorageSettingsPayload, SyphonOutputStatusPayload,
-    SyphonServerPayload, TempoSettingsPayload, ThemePayload,
+    CrashResumeStatusPayload, GeneralSettingsPayload, GraphicsSettingsPayload,
+    LiveSourcesSettingsPayload, LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload,
+    MidiLearnEventPayload, MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot,
+    OscHealthState, OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId,
+    ResumeStatusPayload, SceneCard, SceneSource, SettingsPayload, SnapSlotId,
+    StorageSettingsPayload, SyphonOutputStatusPayload, SyphonServerPayload, TempoSettingsPayload,
+    ThemePayload,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -46,6 +47,9 @@ fn export_bindings_to_frontend_tree() {
     OscHealthState::export_all_to(&out_dir).expect("export OscHealthState bindings");
     OscHealthSnapshot::export_all_to(&out_dir).expect("export OscHealthSnapshot bindings");
     AudioAxisAvailability::export_all_to(&out_dir).expect("export AudioAxisAvailability bindings");
+    ResumeStatusPayload::export_all_to(&out_dir).expect("export ResumeStatusPayload bindings");
+    CrashResumeStatusPayload::export_all_to(&out_dir)
+        .expect("export CrashResumeStatusPayload bindings");
     AudioUniformSnapshotPayload::export_all_to(&out_dir)
         .expect("export AudioUniformSnapshotPayload bindings");
     // Wave 2.6 Lane AUD.A: live cpal input-device enumeration bridge.

@@ -5,7 +5,9 @@
 //!
 //! This bridge-local target mirrors the app-shell export harness so
 //! payload-only widenings can be regenerated with
-//! `cargo test -p chromaticity-ui-bridge --test export_bindings`.
+//! `cargo test -p chromaticity-ui-bridge --test export_bindings`. The
+//! frontend index file at `src/lib/ipc/bindings/index.ts` is hand-
+//! authored and re-exports the per-type files generated here.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -13,18 +15,22 @@ use chromaticity_ui_bridge::{
     AudioAxisAvailability, AudioDeviceKindPayload, AudioDevicePayload, AudioSettingsPayload,
     AudioUniformSnapshotPayload, CameraDeviceKindPayload, CameraDevicePayload,
     ControlDefaultValuePayload, ControlId, ControlKindPayload, ControlSchemaPayload, ControlValue,
-    GeneralSettingsPayload, GraphicsSettingsPayload, LiveSourcesSettingsPayload,
-    LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload, MidiLearnEventPayload,
-    MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot, OscHealthState,
-    OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId, SceneCard, SceneSource,
-    SettingsPayload, SnapSlotId, StorageSettingsPayload, SyphonOutputStatusPayload,
-    SyphonServerPayload, TempoSettingsPayload, ThemePayload,
+    CrashResumeStatusPayload, GeneralSettingsPayload, GraphicsSettingsPayload,
+    LiveSourcesSettingsPayload, LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload,
+    MidiLearnEventPayload, MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot,
+    OscHealthState, OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId,
+    ResumeStatusPayload, SceneCard, SceneSource, SettingsPayload, SnapSlotId,
+    StorageSettingsPayload, SyphonOutputStatusPayload, SyphonServerPayload, TempoSettingsPayload,
+    ThemePayload,
 };
 use std::path::PathBuf;
 use ts_rs::TS;
 
 #[test]
 fn export_bindings_to_frontend_tree() {
+    // `cargo test -p chromaticity-ui-bridge` runs with cwd =
+    // `app/ui-bridge/`, so the relative path resolves to the
+    // repo-root frontend dir.
     let out_dir = PathBuf::from("../../src/lib/ipc/bindings");
     std::fs::create_dir_all(&out_dir).expect("create bindings out dir");
 
@@ -37,6 +43,9 @@ fn export_bindings_to_frontend_tree() {
     OscHealthState::export_all_to(&out_dir).expect("export OscHealthState bindings");
     OscHealthSnapshot::export_all_to(&out_dir).expect("export OscHealthSnapshot bindings");
     AudioAxisAvailability::export_all_to(&out_dir).expect("export AudioAxisAvailability bindings");
+    ResumeStatusPayload::export_all_to(&out_dir).expect("export ResumeStatusPayload bindings");
+    CrashResumeStatusPayload::export_all_to(&out_dir)
+        .expect("export CrashResumeStatusPayload bindings");
     AudioUniformSnapshotPayload::export_all_to(&out_dir)
         .expect("export AudioUniformSnapshotPayload bindings");
     AudioDeviceKindPayload::export_all_to(&out_dir)

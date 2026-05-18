@@ -14,7 +14,7 @@
 //!
 //! Post-Phase-3 status (`ec10ee7`): the bridge surface above is the
 //! current ts-rs binding-generation source consumed by
-//! `app/shell/tests/export_bindings.rs` and re-exported under
+//! `app/ui-bridge/tests/export_bindings.rs` and re-exported under
 //! `src/lib/ipc/bindings/`. The next surface to land here is the W34+
 //! adapter-pill IPC mirror; subsequent slices may add `Command` /
 //! `Event` / `SnapshotPayload` shapes if the IPC contract grows beyond
@@ -233,6 +233,40 @@ pub enum OscHealthState {
     Healthy,
     Recovering,
     Degraded,
+}
+
+/// IPC-facing restoration status for a crash-resume area.
+///
+/// The shell's `get_crash_resume_status` command returns these values
+/// after startup recovery. The wire uses lowercase strings to match
+/// the CrashResumeBanner chip classes and the pre-existing Svelte
+/// display contract.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, rename_all = "lowercase")]
+pub enum ResumeStatusPayload {
+    Restored,
+    Partial,
+    Lost,
+}
+
+/// IPC-facing crash-resume recovery summary.
+///
+/// Produced once during shell setup when a persisted crash-resume
+/// snapshot is recovered. Field names stay camelCase on the wire so
+/// the frontend consumes the generated binding directly without a
+/// hand-written mirror.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub struct CrashResumeStatusPayload {
+    pub show_name: String,
+    pub controls: ResumeStatusPayload,
+    pub snaps: ResumeStatusPayload,
+    pub playlist: ResumeStatusPayload,
+    pub adapters: ResumeStatusPayload,
+    pub scene: ResumeStatusPayload,
+    pub p50: u32,
 }
 
 /// IPC-facing default-value shape for a single control declared by a

@@ -33,7 +33,7 @@ use chromaticity_runtime::crash_resume::{
 };
 use chromaticity_runtime::scheduler::Scheduler;
 use chromaticity_runtime::scheduler::audio::MutexAudioPull;
-use serde::Serialize;
+use chromaticity_ui_bridge::{CrashResumeStatusPayload, ResumeStatusPayload};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -61,26 +61,6 @@ const CRASH_RESUME_FILE_NAME: &str = "crash-resume.bin";
 const CRASH_RESUME_SAVE_PERIOD: Duration = Duration::from_secs(1);
 
 static CRASH_RESUME_STATUS: OnceLock<Mutex<Option<CrashResumeStatusPayload>>> = OnceLock::new();
-static CRASH_RESUME_PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
-
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "lowercase")]
-enum ResumeStatusPayload {
-    Restored,
-    Partial,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CrashResumeStatusPayload {
-    show_name: String,
-    controls: ResumeStatusPayload,
-    snaps: ResumeStatusPayload,
-    playlist: ResumeStatusPayload,
-    adapters: ResumeStatusPayload,
-    scene: ResumeStatusPayload,
-    p50: u64,
-}
 
 #[tauri::command]
 fn get_crash_resume_status() -> Result<Option<CrashResumeStatusPayload>, String> {
@@ -121,7 +101,7 @@ fn recover_crash_resume_snapshot(app_state: &AppState, save_path: &Path) {
                 playlist: ResumeStatusPayload::Restored,
                 adapters: ResumeStatusPayload::Restored,
                 scene: ResumeStatusPayload::Partial,
-                p50: duration_millis_u64(started.elapsed()),
+                p50: duration_millis_u32(started.elapsed()),
             }));
         }
         Ok(None) => {
@@ -137,28 +117,12 @@ fn recover_crash_resume_snapshot(app_state: &AppState, save_path: &Path) {
     }
 }
 
-fn discard_crash_resume_snapshot() {
-    let Some(path) = CRASH_RESUME_PATH.get() else {
-        return;
-    };
-    match std::fs::remove_file(path) {
-        Ok(()) => {}
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-        Err(err) => {
-            eprintln!(
-                "chromaticity-app: failed to discard crash-resume snapshot {} after clean exit: {err}",
-                path.display()
-            );
-        }
-    }
-}
-
-fn duration_millis_u64(duration: Duration) -> u64 {
+fn duration_millis_u32(duration: Duration) -> u32 {
     let millis = duration.as_millis();
-    if millis > u128::from(u64::MAX) {
-        u64::MAX
+    if millis > u128::from(u32::MAX) {
+        u32::MAX
     } else {
-        millis as u64
+        millis as u32
     }
 }
 
@@ -193,7 +157,7 @@ fn duration_millis_u64(duration: Duration) -> u64 {
 /// next deadline is reset to one frame period from "now". That keeps
 /// cadence stable without immediate back-to-back catch-up ticks.
 pub fn run() -> Result<(), tauri::Error> {
-    let result = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
@@ -226,7 +190,6 @@ pub fn run() -> Result<(), tauri::Error> {
                 bootstrap_state.install_settings_path(settings_path);
 
                 let save_path = data_dir.join(CRASH_RESUME_FILE_NAME);
-                let _ = CRASH_RESUME_PATH.set(save_path.clone());
                 recover_crash_resume_snapshot(bootstrap_state.inner(), &save_path);
                 crash_resume_path = Some(save_path);
             }
@@ -313,6 +276,12 @@ pub fn run() -> Result<(), tauri::Error> {
                             match blob_result {
                                 Ok(blob) => {
                                     if let Some(adapter) = crash_resume_adapter.as_mut() {
+                                        // Crash-resume snapshots save on a 1s
+                                        // coalesced cadence. Last-second
+                                        // SIGKILL/SIGSEGV/OOM mutations may be
+                                        // lost; acceptable for pre-alpha, with
+                                        // follow-up for event-driven/250ms
+                                        // saves.
                                         if let Err(err) = adapter.save_blob(&blob) {
                                             eprintln!(
                                                 "chromaticity-app: failed to save crash-resume snapshot to {}: {err}",
@@ -416,11 +385,5 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::scene::load_scene,
             commands::scene::loaded_scene,
         ])
-        .run(tauri::generate_context!());
-
-    if result.is_ok() {
-        discard_crash_resume_snapshot();
-    }
-
-    result
+        .run(tauri::generate_context!())
 }
