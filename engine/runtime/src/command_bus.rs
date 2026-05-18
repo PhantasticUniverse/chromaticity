@@ -238,7 +238,43 @@ pub struct Event {
     pub payload: EventPayload,
 }
 
-/// Errors returned from [`CommandBus::dispatch`].
+/// Internal sequence number assigned to an accepted dispatch.
+///
+/// This is distinct from [`EventSeq`]: it identifies a queued command
+/// before commit so synchronous callers can drain older work and stop
+/// exactly at the command they dispatched, even when payloads are
+/// identical.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct DispatchSeq(u64);
+
+/// Command plus bus-local dispatch identity.
+///
+/// The fields stay private so callers cannot forge dispatch identity;
+/// custom [`CommandChannel`] implementations only need to transport
+/// the value losslessly.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueuedCommand {
+    dispatch_seq: DispatchSeq,
+    command: Command,
+}
+
+impl QueuedCommand {
+    fn new(dispatch_seq: DispatchSeq, command: Command) -> Self {
+        Self {
+            dispatch_seq,
+            command,
+        }
+    }
+
+    fn untracked(command: Command) -> Self {
+        Self {
+            dispatch_seq: DispatchSeq(u64::MAX),
+            command,
+        }
+    }
+}
+
+/// Errors returned from [`CommandBus`] dispatch helpers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CommandBusError {
@@ -248,6 +284,10 @@ pub enum CommandBusError {
     Backpressure,
     /// The bus has been closed and no longer accepts dispatches.
     Closed,
+    /// A synchronous dispatch was accepted but could not be observed
+    /// during the matching commit drain. This indicates a second
+    /// commit consumer is draining the same bus concurrently.
+    CommitUnavailable,
 }
 
 impl fmt::Display for CommandBusError {
@@ -255,6 +295,10 @@ impl fmt::Display for CommandBusError {
         match self {
             Self::Backpressure => write!(f, "command bus is full"),
             Self::Closed => write!(f, "command bus is closed"),
+            Self::CommitUnavailable => write!(
+                f,
+                "dispatched command was not available for synchronous commit"
+            ),
         }
     }
 }
@@ -272,6 +316,20 @@ pub trait CommandBus: Send + Sync {
     /// accepted the command; actual commit runs asynchronously on the
     /// commit thread.
     fn dispatch(&self, command: Command) -> Result<(), CommandBusError>;
+
+    /// Enqueue `command`, drain older queued commands into `state`,
+    /// then commit the newly-dispatched command into `state` before
+    /// returning its event.
+    ///
+    /// This is for synchronous IPC mutators that immediately read
+    /// canonical state back to the caller. It preserves bus FIFO order
+    /// while ensuring the readback includes the mutation from this
+    /// dispatch, not merely the next older queued command.
+    fn dispatch_and_commit_into(
+        &self,
+        command: Command,
+        state: &mut State,
+    ) -> Result<Event, CommandBusError>;
 }
 
 /// Pluggable transport for commands between producer and commit.
@@ -289,6 +347,25 @@ pub trait CommandChannel: Send + Sync {
     /// Attempt to receive the next command without blocking. Returns
     /// `None` when the channel is empty or the peer has been dropped.
     fn try_recv(&self) -> Option<Command>;
+
+    /// Send a command with its bus-assigned dispatch identity.
+    ///
+    /// Channel implementations that preserve [`QueuedCommand`]
+    /// identity enable [`CommandBus::dispatch_and_commit_into`] to
+    /// stop on the exact command it dispatched. The default keeps
+    /// existing custom channels source-compatible for async dispatch
+    /// and commit paths.
+    fn send_queued(&self, command: QueuedCommand) -> Result<(), CommandBusError> {
+        self.send(command.command)
+    }
+
+    /// Attempt to receive the next queued command with dispatch
+    /// identity. Implementations that do not override this method
+    /// return an untracked identity, which is sufficient for ordinary
+    /// commit drains but not exact synchronous dispatch matching.
+    fn try_recv_queued(&self) -> Option<QueuedCommand> {
+        self.try_recv().map(QueuedCommand::untracked)
+    }
 }
 
 /// Bounded MPMC in-memory channel backed by `crossbeam-channel`.
@@ -300,8 +377,8 @@ pub trait CommandChannel: Send + Sync {
 /// memory-exhaustion DoS surface where a hostile sender can grow the
 /// queue without back-pressure feedback.
 pub struct CrossbeamChannel {
-    tx: Sender<Command>,
-    rx: Receiver<Command>,
+    tx: Sender<QueuedCommand>,
+    rx: Receiver<QueuedCommand>,
 }
 
 impl CrossbeamChannel {
@@ -329,6 +406,14 @@ impl Default for CrossbeamChannel {
 
 impl CommandChannel for CrossbeamChannel {
     fn send(&self, command: Command) -> Result<(), CommandBusError> {
+        self.send_queued(QueuedCommand::untracked(command))
+    }
+
+    fn try_recv(&self) -> Option<Command> {
+        self.try_recv_queued().map(|command| command.command)
+    }
+
+    fn send_queued(&self, command: QueuedCommand) -> Result<(), CommandBusError> {
         // `try_send` so a full queue surfaces as
         // `CommandBusError::Backpressure` instead of blocking the
         // producer; the caller picks the shed policy. Disconnect
@@ -339,7 +424,7 @@ impl CommandChannel for CrossbeamChannel {
         })
     }
 
-    fn try_recv(&self) -> Option<Command> {
+    fn try_recv_queued(&self) -> Option<QueuedCommand> {
         match self.rx.try_recv() {
             Ok(command) => Some(command),
             Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
@@ -383,6 +468,7 @@ impl CommandChannel for CrossbeamChannel {
 /// the slice-3 scheduler lifecycle.
 pub struct InMemoryBus {
     channel: Box<dyn CommandChannel>,
+    next_dispatch: AtomicU64,
     next_seq: AtomicU64,
     command_counts: CommandKindCounts,
     event_counts: EventKindCounts,
@@ -482,6 +568,7 @@ impl InMemoryBus {
     pub fn with_channel(channel: Box<dyn CommandChannel>) -> Self {
         let bus = Self {
             channel,
+            next_dispatch: AtomicU64::new(0),
             next_seq: AtomicU64::new(0),
             command_counts: CommandKindCounts::default(),
             event_counts: EventKindCounts::default(),
@@ -501,21 +588,49 @@ impl InMemoryBus {
         Self::with_channel(Box::new(CrossbeamChannel::new()))
     }
 
+    fn next_queued_command(&self, command: Command) -> QueuedCommand {
+        let dispatch_seq = DispatchSeq(self.next_dispatch.fetch_add(1, Ordering::SeqCst));
+        QueuedCommand::new(dispatch_seq, command)
+    }
+
+    fn dispatch_queued(&self, command: QueuedCommand) -> Result<DispatchSeq, CommandBusError> {
+        // Map the command to its `CommandKind` at the start of
+        // dispatch so slice-3 can lift this straight into a
+        // `MetricEvent::RuntimeCommandsDispatched` emission without
+        // touching the call site.
+        let kind = command_kind(&command.command);
+        let dispatch_seq = command.dispatch_seq;
+        self.channel.send_queued(command)?;
+        self.record_command_dispatched(kind);
+        Ok(dispatch_seq)
+    }
+
+    fn commit_one_queued(&self) -> Option<(DispatchSeq, Event)> {
+        let command = self.channel.try_recv_queued()?;
+        let dispatch_seq = command.dispatch_seq;
+        let seq = EventSeq(self.next_seq.fetch_add(1, Ordering::SeqCst));
+        let payload = EventPayload::from_command(command.command);
+        self.record_event_emitted(event_kind(&payload));
+        Some((dispatch_seq, Event { seq, payload }))
+    }
+
+    fn commit_one_queued_into(&self, state: &mut State) -> Option<(DispatchSeq, Event)> {
+        let (dispatch_seq, event) = self.commit_one_queued()?;
+        state.apply_event(&event);
+        Some((dispatch_seq, event))
+    }
+
     /// Commit the next pending command, assigning it a monotonic
     /// [`EventSeq`]. Returns `None` if the channel is empty.
     pub fn commit_one(&self) -> Option<Event> {
-        let command = self.channel.try_recv()?;
-        let seq = EventSeq(self.next_seq.fetch_add(1, Ordering::SeqCst));
-        let payload = EventPayload::from_command(command);
-        self.record_event_emitted(event_kind(&payload));
-        Some(Event { seq, payload })
+        let (_, event) = self.commit_one_queued()?;
+        Some(event)
     }
 
     /// Commit the next pending command and apply the resulting event to
     /// canonical [`State`].
     pub fn commit_one_into(&self, state: &mut State) -> Option<Event> {
-        let event = self.commit_one()?;
-        state.apply_event(&event);
+        let (_, event) = self.commit_one_queued_into(state)?;
         Some(event)
     }
 
@@ -673,14 +788,23 @@ impl InMemoryBus {
 
 impl CommandBus for InMemoryBus {
     fn dispatch(&self, command: Command) -> Result<(), CommandBusError> {
-        // Map the command to its `CommandKind` at the start of
-        // dispatch so slice-3 can lift this straight into a
-        // `MetricEvent::RuntimeCommandsDispatched` emission without
-        // touching the call site.
-        let kind = command_kind(&command);
-        self.channel.send(command)?;
-        self.record_command_dispatched(kind);
-        Ok(())
+        let command = self.next_queued_command(command);
+        self.dispatch_queued(command).map(|_| ())
+    }
+
+    fn dispatch_and_commit_into(
+        &self,
+        command: Command,
+        state: &mut State,
+    ) -> Result<Event, CommandBusError> {
+        let command = self.next_queued_command(command);
+        let target = self.dispatch_queued(command)?;
+        while let Some((dispatch_seq, event)) = self.commit_one_queued_into(state) {
+            if dispatch_seq == target {
+                return Ok(event);
+            }
+        }
+        Err(CommandBusError::CommitUnavailable)
     }
 }
 
@@ -726,6 +850,7 @@ mod drift_pins {
         CrossbeamChannel, EventPayload, InMemoryBus, MappingId, MappingSource, PresetId,
         SnapSlotId,
     };
+    use crate::state::State;
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::thread;
@@ -921,6 +1046,54 @@ mod drift_pins {
         let bus = InMemoryBus::in_memory();
         assert!(bus.commit_one().is_none());
         assert!(bus.commit_all().is_empty());
+    }
+
+    #[test]
+    fn dispatch_and_commit_into_drains_older_commands_before_returning_own_event() {
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+
+        bus.dispatch(Command::ControlSet {
+            id: ControlId(7),
+            value: ControlValue(0.25),
+        })
+        .unwrap();
+        let event = bus
+            .dispatch_and_commit_into(
+                Command::ControlSet {
+                    id: ControlId(7),
+                    value: ControlValue(0.75),
+                },
+                &mut state,
+            )
+            .unwrap();
+
+        assert_eq!(
+            event.payload,
+            EventPayload::ControlChanged {
+                id: ControlId(7),
+                new_value: ControlValue(0.75),
+            }
+        );
+        assert_eq!(state.control_value(ControlId(7)), Some(ControlValue(0.75)));
+        assert!(bus.commit_one().is_none());
+    }
+
+    #[test]
+    fn dispatch_and_commit_into_tracks_exact_command_when_payloads_match() {
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+        let command = Command::PresetRecall { id: PresetId(7) };
+
+        bus.dispatch(command.clone()).unwrap();
+        let event = bus.dispatch_and_commit_into(command, &mut state).unwrap();
+
+        assert_eq!(
+            event.payload,
+            EventPayload::PresetRecalled { id: PresetId(7) }
+        );
+        assert_eq!(state.active_preset(), Some(PresetId(7)));
+        assert!(bus.commit_one().is_none());
     }
 
     #[test]

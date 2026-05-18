@@ -7,9 +7,9 @@
 //! [`super::control`]: each mutator handler validates the slot
 //! through [`chromaticity_runtime::SnapSlotId::new`], dispatches the
 //! corresponding [`chromaticity_runtime::Command`] through the bus
-//! held in [`crate::state::AppState`], and applies the committed
-//! event to canonical state via
-//! [`chromaticity_runtime::CommandBus::commit_one_into`]. The reader
+//! held in [`crate::state::AppState`], drains older queued commands,
+//! and applies its own committed event to canonical state via
+//! [`chromaticity_runtime::CommandBus::dispatch_and_commit_into`]. The reader
 //! handlers ([`active_snap_slot`], [`snap_slot_saved`]) project the
 //! resulting state back across the IPC boundary.
 //!
@@ -36,40 +36,37 @@ fn parse_slot(slot: u8) -> Result<SnapSlotId, String> {
 
 fn recall_snap_impl(app: &AppState, slot: u8) -> Result<(), String> {
     let slot = parse_slot(slot)?;
-    app.bus
-        .dispatch(Command::SnapRecall { slot })
-        .map_err(|err| err.to_string())?;
     let mut state = app
         .state
         .lock()
         .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app.bus.commit_one_into(&mut state);
+    app.bus
+        .dispatch_and_commit_into(Command::SnapRecall { slot }, &mut state)
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
 fn save_snap_impl(app: &AppState, slot: u8) -> Result<(), String> {
     let slot = parse_slot(slot)?;
-    app.bus
-        .dispatch(Command::SnapSave { slot })
-        .map_err(|err| err.to_string())?;
     let mut state = app
         .state
         .lock()
         .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app.bus.commit_one_into(&mut state);
+    app.bus
+        .dispatch_and_commit_into(Command::SnapSave { slot }, &mut state)
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
 fn clear_snap_impl(app: &AppState, slot: u8) -> Result<(), String> {
     let slot = parse_slot(slot)?;
-    app.bus
-        .dispatch(Command::SnapClear { slot })
-        .map_err(|err| err.to_string())?;
     let mut state = app
         .state
         .lock()
         .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app.bus.commit_one_into(&mut state);
+    app.bus
+        .dispatch_and_commit_into(Command::SnapClear { slot }, &mut state)
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -127,7 +124,7 @@ pub fn snap_slot_saved(app_state: State<'_, AppState>, slot: u8) -> Result<bool,
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
     //! Unit tests for the D3 Snap round-trip handler glue. Pins the
-    //! SHELL-side `parse_slot → dispatch → commit_one_into → readback`
+    //! SHELL-side `parse_slot → dispatch_and_commit_into → readback`
     //! chain plus the `0..=15` slot-validation surface.
 
     use super::{
@@ -135,6 +132,7 @@ mod tests {
         snap_slot_saved_impl,
     };
     use crate::state::AppState;
+    use chromaticity_runtime::{Command, CommandBus, SnapSlotId};
 
     #[test]
     fn save_snap_then_active_snap_slot_round_trip() {
@@ -193,5 +191,49 @@ mod tests {
         let app = AppState::new();
         let err = clear_snap_impl(&app, 200).unwrap_err();
         assert!(err.contains("invalid snap slot 200"), "got: {err}");
+    }
+
+    #[test]
+    fn recall_snap_readback_includes_own_command_after_queued_work() {
+        let app = AppState::new();
+        app.bus
+            .dispatch(Command::SnapSave {
+                slot: SnapSlotId::new(5).unwrap(),
+            })
+            .unwrap();
+
+        recall_snap_impl(&app, 7).unwrap();
+
+        assert_eq!(active_snap_slot_impl(&app).unwrap(), Some(7));
+    }
+
+    #[test]
+    fn save_snap_readback_includes_own_command_after_queued_work() {
+        let app = AppState::new();
+        app.bus
+            .dispatch(Command::SnapRecall {
+                slot: SnapSlotId::new(1).unwrap(),
+            })
+            .unwrap();
+
+        save_snap_impl(&app, 5).unwrap();
+
+        assert_eq!(active_snap_slot_impl(&app).unwrap(), Some(5));
+        assert!(snap_slot_saved_impl(&app, 5).unwrap());
+    }
+
+    #[test]
+    fn clear_snap_readback_includes_own_command_after_queued_work() {
+        let app = AppState::new();
+        app.bus
+            .dispatch(Command::SnapSave {
+                slot: SnapSlotId::new(5).unwrap(),
+            })
+            .unwrap();
+
+        clear_snap_impl(&app, 5).unwrap();
+
+        assert_eq!(active_snap_slot_impl(&app).unwrap(), None);
+        assert!(!snap_slot_saved_impl(&app, 5).unwrap());
     }
 }

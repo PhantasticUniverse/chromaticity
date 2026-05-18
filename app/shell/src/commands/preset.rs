@@ -7,9 +7,9 @@
 //! ([`recall_preset`]) wraps the raw `u32` into a
 //! [`chromaticity_runtime::PresetId`], dispatches a
 //! [`chromaticity_runtime::Command::PresetRecall`] through the bus held
-//! in [`crate::state::AppState`], and applies the committed event to
-//! canonical state via
-//! [`chromaticity_runtime::CommandBus::commit_one_into`]. The reader
+//! in [`crate::state::AppState`], drains older queued commands, and
+//! applies its own committed event to canonical state via
+//! [`chromaticity_runtime::CommandBus::dispatch_and_commit_into`]. The reader
 //! ([`active_preset`]) projects the resulting state back across the IPC
 //! boundary as `Option<u32>`.
 //!
@@ -28,14 +28,13 @@ use tauri::State;
 use crate::state::AppState;
 
 fn recall_preset_impl(app: &AppState, id: u32) -> Result<(), String> {
-    app.bus
-        .dispatch(Command::PresetRecall { id: PresetId(id) })
-        .map_err(|err| err.to_string())?;
     let mut state = app
         .state
         .lock()
         .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app.bus.commit_one_into(&mut state);
+    app.bus
+        .dispatch_and_commit_into(Command::PresetRecall { id: PresetId(id) }, &mut state)
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -43,16 +42,15 @@ fn save_preset_impl(app: &AppState, id: u32) -> Result<(), String> {
     // Wave 2.4 PERF.C: dispatch `Command::PresetSave { id }` and let
     // the canonical state commit thread snapshot the current
     // `ControlStore` into the preset bank via `State::apply_event`.
-    // Mirrors `recall_preset_impl`'s `dispatch → lock → commit_one_into`
-    // chain.
-    app.bus
-        .dispatch(Command::PresetSave { id: PresetId(id) })
-        .map_err(|err| err.to_string())?;
+    // Mirrors `recall_preset_impl`'s
+    // `lock → dispatch_and_commit_into` chain.
     let mut state = app
         .state
         .lock()
         .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app.bus.commit_one_into(&mut state);
+    app.bus
+        .dispatch_and_commit_into(Command::PresetSave { id: PresetId(id) }, &mut state)
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -93,12 +91,13 @@ pub fn active_preset(app_state: State<'_, AppState>) -> Result<Option<u32>, Stri
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
     //! Unit tests for the D4 preset round-trip handler glue. Pins the
-    //! SHELL-side `dispatch → commit_one_into → readback` chain.
+    //! SHELL-side `dispatch_and_commit_into → readback` chain.
     //! `PresetId` is a transparent `u32` newtype with no validator, so
     //! there is no invalid-input test to write.
 
     use super::{active_preset_impl, recall_preset_impl, save_preset_impl};
     use crate::state::AppState;
+    use chromaticity_runtime::{Command, CommandBus, PresetId};
 
     #[test]
     fn recall_preset_then_active_preset_round_trip() {
@@ -128,6 +127,30 @@ mod tests {
         // shape.
         let app = AppState::new();
         save_preset_impl(&app, 5).unwrap();
+        assert_eq!(active_preset_impl(&app).unwrap(), Some(5));
+    }
+
+    #[test]
+    fn recall_preset_readback_includes_own_command_after_queued_work() {
+        let app = AppState::new();
+        app.bus
+            .dispatch(Command::PresetRecall { id: PresetId(1) })
+            .unwrap();
+
+        recall_preset_impl(&app, 2).unwrap();
+
+        assert_eq!(active_preset_impl(&app).unwrap(), Some(2));
+    }
+
+    #[test]
+    fn save_preset_readback_includes_own_command_after_queued_work() {
+        let app = AppState::new();
+        app.bus
+            .dispatch(Command::PresetRecall { id: PresetId(1) })
+            .unwrap();
+
+        save_preset_impl(&app, 5).unwrap();
+
         assert_eq!(active_preset_impl(&app).unwrap(), Some(5));
     }
 }

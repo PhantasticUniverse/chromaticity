@@ -6,8 +6,8 @@
 //!
 //! Frontend → [`set_control`] dispatches a
 //! [`chromaticity_runtime::Command::ControlSet`] through the bus held
-//! in [`crate::state::AppState`], commits the resulting event into
-//! canonical state, and returns. A subsequent
+//! in [`crate::state::AppState`], drains older queued commands, commits
+//! its own resulting event into canonical state, and returns. A subsequent
 //! [`get_control`] reads the post-commit value back through the same
 //! `AppState`.
 //!
@@ -30,17 +30,19 @@ use crate::state::AppState;
 /// Inner implementation invoked by both the Tauri wrapper and unit
 /// tests; takes a borrowed [`AppState`] directly.
 fn set_control_impl(app: &AppState, id: ControlId, value: ControlValue) -> Result<(), String> {
-    app.bus
-        .dispatch(Command::ControlSet {
-            id: id.into(),
-            value: value.into(),
-        })
-        .map_err(|err| err.to_string())?;
     let mut state = app
         .state
         .lock()
         .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app.bus.commit_one_into(&mut state);
+    app.bus
+        .dispatch_and_commit_into(
+            Command::ControlSet {
+                id: id.into(),
+                value: value.into(),
+            },
+            &mut state,
+        )
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -79,13 +81,14 @@ pub fn get_control(
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
     //! Unit tests for the D2 control round-trip handler glue. The
-    //! engine-side `commit_one_into → apply_event` chain is covered by
+    //! engine-side `dispatch_and_commit_into → apply_event` chain is covered by
     //! `engine/runtime` tests; these tests pin the SHELL-side
-    //! `Mutex::lock → dispatch → commit_one_into → readback` chain that
+    //! `Mutex::lock → dispatch_and_commit_into → readback` chain that
     //! is otherwise only exercised end-to-end through Tauri.
 
     use super::{get_control_impl, set_control_impl};
     use crate::state::AppState;
+    use chromaticity_runtime::{Command, CommandBus};
     use chromaticity_ui_bridge::{ControlId, ControlValue};
 
     #[test]
@@ -109,6 +112,24 @@ mod tests {
         let app = AppState::new();
         set_control_impl(&app, ControlId(7), ControlValue(0.25)).unwrap();
         set_control_impl(&app, ControlId(7), ControlValue(0.75)).unwrap();
+        assert_eq!(
+            get_control_impl(&app, ControlId(7)).unwrap(),
+            Some(ControlValue(0.75)),
+        );
+    }
+
+    #[test]
+    fn set_control_readback_includes_own_command_after_queued_work() {
+        let app = AppState::new();
+        app.bus
+            .dispatch(Command::ControlSet {
+                id: ControlId(7).into(),
+                value: ControlValue(0.25).into(),
+            })
+            .unwrap();
+
+        set_control_impl(&app, ControlId(7), ControlValue(0.75)).unwrap();
+
         assert_eq!(
             get_control_impl(&app, ControlId(7)).unwrap(),
             Some(ControlValue(0.75)),
