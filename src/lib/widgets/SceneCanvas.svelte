@@ -131,18 +131,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const ctx = c.getContext('2d');
     if (!ctx) return;
 
-    // Wave 2.3 Q.1: DPR defaults to the device-pixel-ratio so retina
-    // displays render sharp. Consumers can still pass `dpr={1}` to
-    // override. `typeof window` guard for SSR / Vitest jsdom where
-    // `window.devicePixelRatio` is missing or `undefined`.
-    const effectiveDpr =
-      dpr ??
+    const resolveDpr = (explicitDpr: number | undefined): number =>
+      explicitDpr ??
       (typeof window !== 'undefined' && typeof window.devicePixelRatio === 'number'
         ? window.devicePixelRatio
         : 1);
 
+    const controlEnabled = (ctrls: SceneRendererControls | undefined, name: string): boolean => {
+      const value = ctrls?.[name];
+      return typeof value === 'number' && value >= 0.5;
+    };
+
     let raf = 0;
-    const resize = (): void => {
+    const resize = (bitmapDpr: number): void => {
       const r = c.getBoundingClientRect();
       // Wave 2.3 Q.1: only reassign `c.width` / `c.height` when the
       // computed bitmap size differs from the current one. Setting
@@ -150,18 +151,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       // the value is unchanged — without the guard, ResizeObserver
       // firing faster than rAF caused the AO-reported "flashing"
       // black canvas.
-      const nw = Math.max(1, Math.round(r.width * (effectiveDpr || 1)));
-      const nh = Math.max(1, Math.round(r.height * (effectiveDpr || 1)));
+      const nw = Math.max(1, Math.round(r.width * (bitmapDpr || 1)));
+      const nh = Math.max(1, Math.round(r.height * (bitmapDpr || 1)));
       if (c.width !== nw) c.width = nw;
       if (c.height !== nh) c.height = nh;
     };
-    resize();
+    // Wave 2.3 Q.1: DPR defaults to the device-pixel-ratio so retina
+    // displays render sharp. Consumers can still pass `dpr={1}` to
+    // override. The prop read is untracked so dpr changes resize on
+    // the next frame instead of tearing down the rAF setup effect.
+    resize(untrack(() => resolveDpr(dpr)));
 
     // jsdom does not implement ResizeObserver in every Vitest config;
     // guard so tests don't blow up on construction.
     let ro: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(resize);
+      ro = new ResizeObserver(() => resize(untrack(() => resolveDpr(dpr))));
       ro.observe(c);
     }
 
@@ -188,7 +193,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       const effectiveLvl = Math.max(0, Math.min(1, lvl * intensity * 2));
 
       const r = RENDERERS[frameKind] ?? RENDERERS.rings;
-      r(ctx, effectiveT, frameSeed, c.width, c.height, effectiveLvl, ctrls);
+      const mirrorX =
+        controlEnabled(ctrls, 'mirror') ||
+        controlEnabled(ctrls, 'vert_mirror') ||
+        controlEnabled(ctrls, 'vertical_mirror');
+      const mirrorY =
+        controlEnabled(ctrls, 'hor_mirror') || controlEnabled(ctrls, 'horizontal_mirror');
+      if (mirrorX || mirrorY) {
+        ctx.save();
+        ctx.translate(mirrorX ? c.width : 0, mirrorY ? c.height : 0);
+        ctx.scale(mirrorX ? -1 : 1, mirrorY ? -1 : 1);
+        r(ctx, effectiveT, frameSeed, c.width, c.height, effectiveLvl, ctrls);
+        ctx.restore();
+      } else {
+        r(ctx, effectiveT, frameSeed, c.width, c.height, effectiveLvl, ctrls);
+      }
       // Vignette + scanline post-pass per the bundle. Wave 2.3 Q.1:
       // softened from 0.65 → 0.45 to keep wide preview panes
       // readable at the edges.
@@ -227,11 +246,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           ctx.fillRect(0, 0, c.width, c.height);
         }
       }
+
+      if (controlEnabled(ctrls, 'invert')) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'difference';
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.restore();
+      }
     };
 
     if (reduceMotion) {
       // Static frame — equivalent to a SceneStill emit.
-      draw(seed * 13.7, 0.5, kind, seed, controls);
+      const frame = untrack(() => ({
+        kind,
+        seed,
+        controls,
+        dpr: resolveDpr(dpr),
+      }));
+      resize(frame.dpr);
+      draw(frame.seed * 13.7, 0.5, frame.kind, frame.seed, frame.controls);
       return () => {
         ro?.disconnect();
       };
@@ -254,8 +288,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         kind,
         seed,
         controls,
+        dpr: resolveDpr(dpr),
         snapshot: audioSnapshotStore.snapshot,
       }));
+      resize(frame.dpr);
       // Wave 2.2 Lane R.1 + Wave 2.3 Q.1 — prefer the live engine
       // snapshot when present (gate widened from "rms > 0 || peak > 0"
       // to "snapshot !== null" so silent-microphone audio still drives
@@ -280,7 +316,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       draw(t, smLvl, frame.kind, frame.seed, frame.controls);
       raf = requestAnimationFrame(loop);
     };
-    loop();
+    raf = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(raf);

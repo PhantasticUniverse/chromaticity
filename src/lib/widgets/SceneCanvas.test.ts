@@ -88,6 +88,11 @@ function stubCanvasContext(record: FillStyleRecord): () => void {
         return grad;
       },
       fillRect: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      scale: vi.fn(),
+      globalCompositeOperation: 'source-over' as GlobalCompositeOperation,
     };
     return new Proxy(ctx, {
       set(target, prop, value): boolean {
@@ -127,6 +132,7 @@ function makeRecordingContext(): { ctx: CanvasRenderingContext2D; ops: CanvasOp[
     restore: () => record('restore'),
     translate: (...args: unknown[]) => record('translate', ...args),
     rotate: (...args: unknown[]) => record('rotate', ...args),
+    scale: (...args: unknown[]) => record('scale', ...args),
     beginPath: () => record('beginPath'),
     moveTo: (...args: unknown[]) => record('moveTo', ...args),
     lineTo: (...args: unknown[]) => record('lineTo', ...args),
@@ -295,6 +301,62 @@ describe('SceneCanvas widget', () => {
       restore();
     }
   });
+
+  for (const { name, initial, next } of [
+    {
+      name: 'kind',
+      initial: { kind: 'rings' as const, seed: 0, audio: true },
+      next: { kind: 'plasma' as const, seed: 0, audio: true },
+    },
+    {
+      name: 'seed',
+      initial: { kind: 'rings' as const, seed: 0, audio: true },
+      next: { kind: 'rings' as const, seed: 7, audio: true },
+    },
+    {
+      name: 'controls',
+      initial: {
+        kind: 'rings' as const,
+        seed: 0,
+        audio: true,
+        controls: { rotation_speed: 0 },
+      },
+      next: {
+        kind: 'rings' as const,
+        seed: 0,
+        audio: true,
+        controls: { rotation_speed: 1 },
+      },
+    },
+    {
+      name: 'dpr',
+      initial: { kind: 'rings' as const, seed: 0, audio: true, dpr: 1 },
+      next: { kind: 'rings' as const, seed: 0, audio: true, dpr: 2 },
+    },
+  ]) {
+    it(`does not tear down the rAF loop when ${name} mutates`, async () => {
+      const restore = stubCanvasContext({ styles: [] });
+      const requestAnimationFrameSpy = vi.fn(() => 41);
+      const cancelAnimationFrameSpy = vi.fn();
+      vi.stubGlobal('requestAnimationFrame', requestAnimationFrameSpy);
+      vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrameSpy);
+      try {
+        const { rerender } = render(SceneCanvas, { props: initial });
+        await tick();
+        expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
+        const initialRafId = requestAnimationFrameSpy.mock.results[0]?.value;
+        expect(initialRafId).toBe(41);
+
+        await rerender(next);
+        await tick();
+
+        expect(cancelAnimationFrameSpy).not.toHaveBeenCalledWith(initialRafId);
+        expect(requestAnimationFrameSpy.mock.calls.length).toBe(1);
+      } finally {
+        restore();
+      }
+    });
+  }
 
   // Wave 2.9 SC.A — controls pre-multiplier coverage. The reduce-motion
   // branch draws exactly one static frame inside the `$effect` so the
@@ -557,5 +619,40 @@ describe('SceneCanvas widget', () => {
     const lowMaxHeight = Math.max(...lowBars.map((op) => op.args[3] as number));
     const highMaxHeight = Math.max(...highBars.map((op) => op.args[3] as number));
     expect(highMaxHeight).toBeGreaterThan(lowMaxHeight);
+  });
+
+  for (const kind of ['rings', 'orbit', 'tunnel', 'fluid', 'plasma'] as const) {
+    for (const controlName of ['rotation_speed', 'warp_amount'] as const) {
+      it(`actual ${kind} renderer maps ${controlName} visibly`, async () => {
+        const actual =
+          await vi.importActual<typeof import('./scene-renderers')>('./scene-renderers');
+        const low = makeRecordingContext();
+        const high = makeRecordingContext();
+
+        actual.RENDERERS[kind](low.ctx, 1.5, 2, 120, 80, 0.5, {
+          [controlName]: 0,
+        });
+        actual.RENDERERS[kind](high.ctx, 1.5, 2, 120, 80, 0.5, {
+          [controlName]: 1,
+        });
+
+        expect(JSON.stringify(high.ops)).not.toBe(JSON.stringify(low.ops));
+      });
+    }
+  }
+
+  it('reports preview-wired controls through the static manifest helper', async () => {
+    const actual = await vi.importActual<typeof import('./scene-renderers')>('./scene-renderers');
+
+    for (const kind of ['rings', 'orbit', 'tunnel', 'fluid', 'plasma'] as const) {
+      expect(actual.isControlPreviewWired(kind, 'rotation_speed')).toBe(true);
+      expect(actual.isControlPreviewWired(kind, 'warp amount')).toBe(true);
+    }
+    expect(actual.isControlPreviewWired('bars', 'low_band')).toBe(true);
+    expect(actual.isControlPreviewWired('kaleido', 'segments')).toBe(true);
+    expect(actual.isControlPreviewWired('rings', 'invert')).toBe(true);
+    expect(actual.isControlPreviewWired('plasma', 'mirror')).toBe(true);
+    expect(actual.isControlPreviewWired('rings', 'focus')).toBe(false);
+    expect(actual.isControlPreviewWired('bars', 'rotation_speed')).toBe(false);
   });
 });
