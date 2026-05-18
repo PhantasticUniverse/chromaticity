@@ -5,7 +5,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 # `docs-corpus/` — chromaticity in-app help corpus
 
-Operator runbook for the Wave 1d-α docs corpus rails.
+Operator runbook for the in-app docs corpus.
 
 ## What this is
 
@@ -15,9 +15,11 @@ to static HTML with [MkDocs](https://www.mkdocs.org/) + Material
 theme, and bundled into the Tauri desktop binary for surfacing through
 the Help view (`src/lib/views/Help.svelte`).
 
-This wave (Wave 1d-α PR 1) ships the rails only — `mkdocs.yml`, two
-placeholder pages, the Help view, and the build-output wiring. Real
-corpus content authoring is PR 2+ scope.
+The current V1-RC baseline ships an 11-page clean-room corpus covering
+Perform mode, scene workflow, library workflow, audio reactivity,
+Shadertoy import, hotkeys, OSC routes, uniforms, settings, welcome, and
+about content. The Help view surfaces those pages from the bundled
+static build output.
 
 ## Clean-room attestation
 
@@ -41,15 +43,15 @@ comments (the markdown rendering pipeline strips them at build time).
 1. Edit existing `.md` files under `docs-corpus/docs/` or add new ones.
 2. Add new pages to the `nav:` block in `docs-corpus/mkdocs.yml`.
 3. Add a corresponding entry to the Help-view page list in
-   `src/lib/views/Help.svelte` (PR 1 hardcodes two entries; PR 3+
-   expands to dynamic enumeration).
+   `src/lib/stores/helpStore.svelte.ts`; the list is still
+   hand-maintained until dynamic enumeration lands.
 4. Build locally with `mkdocs build` (see below) and verify the HTML
    output looks correct via `dist/help/index.html`.
 
 ## How to build
 
-The build chain is local-only at PR 1; CI integration is Wave 1d-β
-release-eng scope.
+The build chain is local for authoring changes; CI integration remains
+release-eng follow-up work.
 
 ```sh
 # One-time install (Python toolchain — outside the Rust + Node stack):
@@ -59,47 +61,35 @@ pip install mkdocs mkdocs-material
 cd docs-corpus
 mkdocs build
 
-# Output lands at ../dist/help/. The `dist/.gitkeep` sentinel survives;
-# the help/ subdir is gitignored alongside the rest of dist/*.
+# Output lands at ../dist/help/. The built tree is tracked until CI
+# owns the corpus build before `cargo tauri build`.
 ```
 
 For the desktop build to bundle the Help corpus, run `mkdocs build`
-before `cargo tauri build` so the static HTML exists at link time.
-At Wave 1d-α PR 2, the built `dist/help/` tree is committed to the
-repo verbatim — Tauri's `tauri-build` resource resolver expands
-`bundle.resources` at link time and needs every entry to exist on
-disk; committing the built tree is the simplest forward-compatible
-posture until Wave 1d-β CI integration lands and `mkdocs build` runs
-in CI ahead of `cargo tauri build`. The PR 1 `PLACEHOLDER.txt`
-sentinel has been replaced with explicit per-page entries in
-`bundle.resources` (six HTML pages + 404 + sitemap pair) plus
-directory-walk entries for `assets/` (mkdocs-material CSS/JS) and
-`search/` (lunr index).
+before `cargo tauri build` so the static HTML exists at link time. The
+built `dist/help/` tree is committed to the repo because Tauri's
+`tauri-build` resource resolver expands `bundle.resources` at link time
+and needs every entry to exist on disk. `bundle.resources` lists the
+HTML pages plus directory-walk entries for `assets/` (mkdocs-material
+CSS/JS) and `search/` (lunr index).
 
 ## Where the output goes
 
 - Source: `docs-corpus/docs/*.md`
-- Build artifact: `dist/help/*.html` (gitignored — see `.gitignore`)
+- Build artifact: `dist/help/*.html` (tracked build output until CI owns
+  the corpus build)
 - Bundled into Tauri binary at runtime resource path `help/**`
 - Surfaced through `src/lib/views/Help.svelte` via Tauri's
   `convertFileSrc` resource resolution.
 
-## Known follow-ups (Wave 1d-α PR 3+)
+## Known follow-ups
 
-- Continued corpus content authoring beyond the PR 2 first wave
-  (scene format, MIDI, troubleshooting, settings reference, library
-  workflow, perform mode, onboarding). Target ≈ 92 pages to match
-  the V1-RC content gap.
 - Dynamic page enumeration in `Help.svelte` (drop the hardcoded
-  two-entry page-list so the new pages from PR 2 are sidebar-
-  navigable). PR 2 ships the pages in the bundle but the Help-view
-  sidebar continues to surface only Welcome / About until the store
-  widens.
+  page-list so new corpus pages are sidebar-navigable without a
+  TypeScript edit).
 - Full-text search threaded through to the Help view UI (the lunr
-  index ships in PR 2's bundle but the sidebar has no search
-  affordance yet).
-- Wave 1d-β CI integration: `mkdocs build` invoked from the
-  release-eng workflow before `cargo tauri build` so authors stop
-  committing the built tree manually.
-- `EV-DOCS-CORPUS` row at `docs/26` advances from `InProgress` to
-  `Pass` once full corpus expansion + CI integration land.
+  index ships in the bundle but the sidebar has no search affordance
+  yet).
+- CI integration: `mkdocs build` invoked from the release-eng workflow
+  before `cargo tauri build` so authors stop committing the built tree
+  manually.

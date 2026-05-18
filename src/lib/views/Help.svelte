@@ -4,29 +4,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 -->
 
 <script lang="ts">
-  // Wave 1d-α PR 1 — Help view scaffold.
+  // Wave 1d-α Help view.
   //
-  // Surfaces the in-app docs corpus (built from `docs-corpus/` to
-  // `dist/help/` via mkdocs and bundled into the Tauri binary at
-  // resource path `help/**` per `app/shell/tauri.conf.json`
-  // `bundle.resources`). The view is intentionally minimal at PR 1:
-  //
-  //   - A two-row sidebar (hardcoded from `helpStore` `HELP_PAGES`:
-  //     Welcome + About) for the two placeholder corpus pages shipped
-  //     in this PR.
-  //   - An iframe content pane sourcing the bundled HTML via Tauri's
-  //     `convertFileSrc` against the resolved resource path.
+  // Surfaces the 11-page in-app docs corpus (built from
+  // `docs-corpus/` to `dist/help/` via mkdocs and bundled into the
+  // Tauri binary at resource path `help/**` per
+  // `app/shell/tauri.conf.json` `bundle.resources`). The static
+  // sidebar is populated from `helpStore` `HELP_PAGES`; dynamic page
+  // enumeration and full-text search remain follow-up work.
   //
   // The iframe approach matches Tauri 2's recommended posture for
   // displaying bundled static HTML inside the app: the asset protocol
   // serves files from the bundle's resource directory through a
   // sandboxed origin, isolating the corpus content from the host UI's
   // CSP without coupling to the runtime / IPC layer.
-  //
-  // PR 2+ widens scope to: dynamic page enumeration, full-text search,
-  // breadcrumb navigation, and the latency-budget instrumentation
-  // tracked by `EV-DOCS-UX-LATENCY` (`engine/authoring/src/ux_latency.rs`,
-  // currently synthetic-narrowed).
   //
   // The startup wallclock when the bundled corpus is missing (operator
   // forgot to run `mkdocs build` before `cargo tauri build`) renders
@@ -82,10 +73,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </li>
       {/each}
     </ul>
-    <p class="help__note">
-      Wave 1d-α PR 1 scaffold. Real corpus content lands in PR 2+ per the
-      <code>EV-DOCS-CORPUS</code> registry row.
-    </p>
   </aside>
   <div class="help__content">
     {#if resolveError}
@@ -171,12 +158,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: var(--color-bg-3);
     color: var(--color-primary);
     border-color: var(--color-primary);
-  }
-  .help__note {
-    margin: 0;
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-mono-sm);
-    color: var(--color-text-3);
   }
   .help__content {
     display: flex;

@@ -4,10 +4,9 @@
 // Wave 2.6 Lane AUD.A (input) + Wave 2.7 Lane SET.C (output) cpal
 // device-listing singleton store. Backs the operator-facing Settings →
 // Audio Device → Input Device / Output Device dropdowns in
-// `src/lib/views/Settings.svelte` — `refresh()` invokes the
-// `list_audio_devices` Tauri command (`app/shell/src/commands/audio.rs`)
-// for inputs; `refreshOutput()` invokes the parallel
-// `list_audio_output_devices` command for outputs.
+// `src/lib/views/Settings.svelte` — `refresh()` invokes the typed
+// `listAudioDevices` wrapper for inputs; `refreshOutput()` invokes the
+// parallel `listAudioOutputDevices` wrapper for outputs.
 //
 // `.svelte.ts` extension is required for runes-in-module per the
 // `feedback_eslint_svelte_dot_ts_parser.md` user-memory convention; the
@@ -34,14 +33,8 @@
 // the audio snapshot store that listens to a push-model Tauri event
 // channel.
 
-import { invoke } from '@tauri-apps/api/core';
-
+import { listAudioDevices, listAudioOutputDevices } from '../ipc/audio';
 import type { AudioDevicePayload } from '../ipc/bindings/AudioDevicePayload';
-
-/** Tauri command name surfaced by `app/shell/src/commands/audio.rs`. */
-const LIST_AUDIO_DEVICES_COMMAND = 'list_audio_devices';
-/** Wave 2.7 Lane SET.C output-side counterpart. */
-const LIST_AUDIO_OUTPUT_DEVICES_COMMAND = 'list_audio_output_devices';
 
 class AudioDevicesStore {
   /** Latest input-enumeration result. Empty vec under the no-devices /
@@ -80,7 +73,7 @@ class AudioDevicesStore {
     this.isLoading = true;
     this.error = null;
     try {
-      const fresh = await invoke<AudioDevicePayload[]>(LIST_AUDIO_DEVICES_COMMAND);
+      const fresh = await listAudioDevices();
       // Defensive coerce — a test harness that mocks `invoke` without
       // a return value (or a degenerate runtime path) hands back
       // `undefined`; the consumer view's `audioDevicesStore.devices.map`
@@ -105,7 +98,7 @@ class AudioDevicesStore {
     this.isLoadingOutput = true;
     this.outputError = null;
     try {
-      const fresh = await invoke<AudioDevicePayload[]>(LIST_AUDIO_OUTPUT_DEVICES_COMMAND);
+      const fresh = await listAudioOutputDevices();
       this.outputDevices = Array.isArray(fresh) ? fresh : [];
     } catch (e) {
       this.outputDevices = [];
