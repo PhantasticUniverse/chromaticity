@@ -115,7 +115,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     sceneSeedFromMetadata,
   } from '../widgets/scene-kind-from-metadata';
   import type { SceneKind } from '../widgets/scene-renderers';
-  import { SCENE_KINDS } from '../widgets/scene-renderers';
+  import { isControlPreviewWired, SCENE_KINDS } from '../widgets/scene-renderers';
 
   /** Best-effort SceneKind coercion for the setlist fixture's `kind`
    * field (a free-form string). Falls back to `rings` when the fixture
@@ -405,8 +405,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * Wave 2.9 SC.A — derive a name-keyed control snapshot from the
    * loaded scene's schema + the live `controlValues` cache. The
    * resulting map flows into `<SceneCanvas controls={...}>` so the
-   * preview canvas pre-multiplies the three common-axis controls
-   * (`speed`, `intensity`, `tint`) at the `draw()` boundary.
+   * preview canvas pre-multiplies the common adapter controls and
+   * forwards renderer-owned controls only when the preview adapter
+   * declares them wired for the derived SceneKind.
    *
    * `controlValues` is the engine-committed `f32` per scoped
    * `ControlId` (scene id + schema position for Scene Controls). For
@@ -424,10 +425,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * intent. Live tint updates compose on top once Wave 2.10+
    * widens the Swatch → engine wire to multi-channel.
    */
-  function isPreviewNumericAxis(name: string): boolean {
-    return name === 'speed' || name === 'intensity';
-  }
-
   const controlSnapshot = $derived.by(() => {
     const schema = loadedSceneStore.snapshot?.controls;
     if (!schema) return {} as Record<string, number | readonly number[]>;
@@ -435,29 +432,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     for (let i = 0; i < schema.length; i++) {
       const def = schema[i];
       if (!def || !def.name) continue;
-      if (isPreviewNumericAxis(def.name)) {
+      if (!isControlPreviewWired(previewKind, def.name)) continue;
+      if (Array.isArray(def.default) && def.name === 'tint') {
+        snap.tint = def.default;
+      } else {
         const defaultNumeric = defaultValueToFloat(def.default, def.min, def.max);
-        if (defaultNumeric !== null) {
-          snap[def.name] = defaultNumeric;
-        }
+        if (defaultNumeric !== null) snap[def.name] = defaultNumeric;
       }
       const liveNumeric = cachedControlValue(i);
       if (typeof liveNumeric === 'number') {
         snap[def.name] = liveNumeric;
       }
     }
-    // Surface the tint default verbatim from the schema. Live tint
-    // dispatch is Wave 2.10+ scope — until then the colour wash
-    // tracks the scene's declared default, not pointer input.
-    for (const def of schema) {
-      if (!def || def.name !== 'tint') continue;
-      if (Array.isArray(def.default)) {
-        snap.tint = def.default;
-      }
-      break;
-    }
     return snap;
   });
+
+  function controlPreviewWired(ctl: PerformControlSpec, isScene: boolean): boolean {
+    return isScene && isControlPreviewWired(previewKind, ctl.label);
+  }
 
   /**
    * Wave 2.4 Lane PERF.A — normalise a `ControlDefaultValuePayload`
@@ -1403,7 +1395,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           ctl.kind !== 'swatch' &&
           ctl.controlId !== undefined &&
           controlLockStore.isLocked(ctl.controlId)}
-        <div class="cg-row" data-locked={rowLocked ? 'true' : 'false'}>
+        {@const previewWired = controlPreviewWired(ctl, isScene)}
+        <div
+          class="cg-row"
+          data-locked={rowLocked ? 'true' : 'false'}
+          data-preview-wired={previewWired ? 'true' : 'false'}
+          title={previewWired ? undefined : 'engine-only — preview adapter not implemented'}
+        >
           {#if ctl.kind === 'fader'}
             {#if ctl.controlId !== undefined}
               {@const id = ctl.controlId}
@@ -1663,7 +1661,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * Lock affordance + the `dispatchControl` guard back the
    * UI-affordance and the dispatch-side check respectively. */
   .cg-row {
-    display: contents;
+    display: inline-flex;
+    align-items: flex-end;
+  }
+  .cg-row[data-preview-wired='false'] {
+    opacity: 0.7;
   }
   .cg-row[data-locked='true'] :global(.fader),
   .cg-row[data-locked='true'] :global(.knob),

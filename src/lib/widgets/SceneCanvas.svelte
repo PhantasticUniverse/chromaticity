@@ -64,7 +64,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // when they want a moving image. The widget is a thin Svelte
   // wrapper around `<canvas>`: the `$effect` owns the rAF +
   // ResizeObserver and tears them down on unmount.
-  import { RENDERERS, type SceneKind } from './scene-renderers';
+  import { untrack } from 'svelte';
+
+  import { RENDERERS, type SceneKind, type SceneRendererControls } from './scene-renderers';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
   type Props = {
@@ -90,13 +92,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
      *  audio fallback (`pulse = 0.6 + lvl * 0.4`) still has headroom;
      *  `tint` (Vec3 or Vec4 of `[r, g, b, (a)]`, channels in `[0, 1]`)
      *  draws a translucent overlay over the vignette post-pass at 20%
-     *  of the supplied alpha. Missing keys default to nominal so
-     *  scenes without these axes render identically to pre-Wave-2.9
-     *  behaviour. The renderer signatures stay 6-arg
-     *  (`ctx, t, seed, w, h, lvl`); adapter pre-multiplies at the
-     *  `draw()` boundary. Tied to Wave 2.10+ for the remaining axes
-     *  (warp / invert / focus / gamma / mirror). */
-    controls?: Record<string, number | readonly number[]>;
+     *  of the supplied alpha. Other scene-specific controls flow to
+     *  `scene-renderers.ts`, where renderer-owned mappings cover
+     *  geometry, palette, scale, and audio-band axes without widening
+     *  Perform. Missing keys default to nominal so scenes without
+     *  these axes render identically to pre-control behaviour. */
+    controls?: SceneRendererControls;
   };
 
   let { kind = 'rings', seed = 0, audio = true, dpr, ariaLabel, controls }: Props = $props();
@@ -130,18 +131,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const ctx = c.getContext('2d');
     if (!ctx) return;
 
-    // Wave 2.3 Q.1: DPR defaults to the device-pixel-ratio so retina
-    // displays render sharp. Consumers can still pass `dpr={1}` to
-    // override. `typeof window` guard for SSR / Vitest jsdom where
-    // `window.devicePixelRatio` is missing or `undefined`.
-    const effectiveDpr =
-      dpr ??
+    const resolveDpr = (explicitDpr: number | undefined): number =>
+      explicitDpr ??
       (typeof window !== 'undefined' && typeof window.devicePixelRatio === 'number'
         ? window.devicePixelRatio
         : 1);
 
+    const controlEnabled = (ctrls: SceneRendererControls | undefined, name: string): boolean => {
+      const value = ctrls?.[name];
+      return typeof value === 'number' && value >= 0.5;
+    };
+
     let raf = 0;
-    const resize = (): void => {
+    const resize = (bitmapDpr: number): void => {
       const r = c.getBoundingClientRect();
       // Wave 2.3 Q.1: only reassign `c.width` / `c.height` when the
       // computed bitmap size differs from the current one. Setting
@@ -149,28 +151,35 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       // the value is unchanged — without the guard, ResizeObserver
       // firing faster than rAF caused the AO-reported "flashing"
       // black canvas.
-      const nw = Math.max(1, Math.round(r.width * (effectiveDpr || 1)));
-      const nh = Math.max(1, Math.round(r.height * (effectiveDpr || 1)));
+      const nw = Math.max(1, Math.round(r.width * (bitmapDpr || 1)));
+      const nh = Math.max(1, Math.round(r.height * (bitmapDpr || 1)));
       if (c.width !== nw) c.width = nw;
       if (c.height !== nh) c.height = nh;
     };
-    resize();
+    // Wave 2.3 Q.1: DPR defaults to the device-pixel-ratio so retina
+    // displays render sharp. Consumers can still pass `dpr={1}` to
+    // override. The prop read is untracked so dpr changes resize on
+    // the next frame instead of tearing down the rAF setup effect.
+    resize(untrack(() => resolveDpr(dpr)));
 
     // jsdom does not implement ResizeObserver in every Vitest config;
     // guard so tests don't blow up on construction.
     let ro: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(resize);
+      ro = new ResizeObserver(() => resize(untrack(() => resolveDpr(dpr))));
       ro.observe(c);
     }
 
     const draw = (
       t: number,
       lvl: number,
-      ctrls?: Record<string, number | readonly number[]>,
+      frameKind: SceneKind,
+      frameSeed: number,
+      ctrls?: SceneRendererControls,
     ): void => {
       // Wave 2.9 SC.A — pre-multiply common-axis controls at the
-      // adapter boundary so the 16 renderer functions stay 6-arg.
+      // adapter boundary so the renderers keep a 6-arg public arity
+      // while accepting optional control metadata via a rest param.
       // `speed` (0.5 nominal, 1.0 = 2x, 0.0 = frozen) scales `t`;
       // `intensity` (0.5 nominal) scales `lvl`. The `* 2` factor
       // maps the `[0, 1]` Slider range onto a `[0, 2]` multiplier so
@@ -183,8 +192,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       const intensity = typeof intensityRaw === 'number' ? intensityRaw : 0.5;
       const effectiveLvl = Math.max(0, Math.min(1, lvl * intensity * 2));
 
-      const r = RENDERERS[kind] ?? RENDERERS.rings;
-      r(ctx, effectiveT, seed, c.width, c.height, effectiveLvl);
+      const r = RENDERERS[frameKind] ?? RENDERERS.rings;
+      const mirrorX =
+        controlEnabled(ctrls, 'mirror') ||
+        controlEnabled(ctrls, 'vert_mirror') ||
+        controlEnabled(ctrls, 'vertical_mirror');
+      const mirrorY =
+        controlEnabled(ctrls, 'hor_mirror') || controlEnabled(ctrls, 'horizontal_mirror');
+      if (mirrorX || mirrorY) {
+        ctx.save();
+        ctx.translate(mirrorX ? c.width : 0, mirrorY ? c.height : 0);
+        ctx.scale(mirrorX ? -1 : 1, mirrorY ? -1 : 1);
+        r(ctx, effectiveT, frameSeed, c.width, c.height, effectiveLvl, ctrls);
+        ctx.restore();
+      } else {
+        r(ctx, effectiveT, frameSeed, c.width, c.height, effectiveLvl, ctrls);
+      }
       // Vignette + scanline post-pass per the bundle. Wave 2.3 Q.1:
       // softened from 0.65 → 0.45 to keep wide preview panes
       // readable at the edges.
@@ -223,11 +246,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           ctx.fillRect(0, 0, c.width, c.height);
         }
       }
+
+      if (controlEnabled(ctrls, 'invert')) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'difference';
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.restore();
+      }
     };
 
     if (reduceMotion) {
       // Static frame — equivalent to a SceneStill emit.
-      draw(seed * 13.7, 0.5, controls);
+      const frame = untrack(() => ({
+        kind,
+        seed,
+        controls,
+        dpr: resolveDpr(dpr),
+      }));
+      resize(frame.dpr);
+      draw(frame.seed * 13.7, 0.5, frame.kind, frame.seed, frame.controls);
       return () => {
         ro?.disconnect();
       };
@@ -245,6 +283,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const LVL_EMA = 0.25;
     const loop = (): void => {
       const t = (performance.now() - start) / 1000;
+      const frame = untrack(() => ({
+        audio,
+        kind,
+        seed,
+        controls,
+        dpr: resolveDpr(dpr),
+        snapshot: audioSnapshotStore.snapshot,
+      }));
+      resize(frame.dpr);
       // Wave 2.2 Lane R.1 + Wave 2.3 Q.1 — prefer the live engine
       // snapshot when present (gate widened from "rms > 0 || peak > 0"
       // to "snapshot !== null" so silent-microphone audio still drives
@@ -252,8 +299,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       // synthetic sine-pulse only renders during the no-snapshot
       // startup window + the no-Tauri-context fallback.
       let rawLvl: number;
-      if (audio) {
-        const live = audioSnapshotStore.snapshot;
+      if (frame.audio) {
+        const live = frame.snapshot;
         if (live !== null) {
           // RMS is already in [0, 1] from the engine producer; clamp
           // for safety since the wire is `f32`. Add a small peak
@@ -266,10 +313,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         rawLvl = 0.3;
       }
       smLvl = smLvl + (rawLvl - smLvl) * LVL_EMA;
-      draw(t, smLvl, controls);
+      draw(t, smLvl, frame.kind, frame.seed, frame.controls);
       raf = requestAnimationFrame(loop);
     };
-    loop();
+    raf = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(raf);

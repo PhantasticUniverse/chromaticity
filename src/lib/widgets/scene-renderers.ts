@@ -12,11 +12,14 @@
 // `SceneCanvas` form used by the Perform preview hero / Author live-
 // preview tile.
 //
-// Renderer signature mirrors the bundle: `(ctx, t, seed, w, h, lvl)`
-// with `lvl` ∈ [0, 1] (audio level proxy). For SceneStill, `lvl` is
-// fixed at 0.5 and `t` defaults to `seed * 13.7` per the bundle
-// `renderStill` body. The fix on `t` keeps thumbnails deterministic per
-// seed across reloads.
+// Renderer signature keeps the bundle's 6-arg public arity:
+// `(ctx, t, seed, w, h, lvl)` with `lvl` ∈ [0, 1] (audio level proxy).
+// SceneCanvas may pass optional name-keyed control metadata via a rest
+// arg, which preserves `Function.length === 6` for SceneStill/tests while
+// letting live previews wire geometry, palette, scale and band controls.
+// For SceneStill, `lvl` is fixed at 0.5 and `t` defaults to `seed * 13.7`
+// per the bundle `renderStill` body. The fix on `t` keeps thumbnails
+// deterministic per seed across reloads.
 //
 // **Wave 2.3 Q.1 audio-reactivity widening.** The bundle source carries
 // `lvl` in every renderer signature but only consumes it from
@@ -72,6 +75,9 @@ export type SceneKind =
   | 'dunes'
   | 'lattice';
 
+export type SceneControlValue = number | readonly number[];
+export type SceneRendererControls = Readonly<Record<string, SceneControlValue>>;
+
 export const SCENE_KINDS: readonly SceneKind[] = [
   'rings',
   'fluid',
@@ -98,7 +104,52 @@ export type SceneRenderer = (
   w: number,
   h: number,
   lvl: number,
+  ...rest: readonly [controls?: SceneRendererControls]
 ) => void;
+
+export const CONTROL_PREVIEW_WIRING: Readonly<Record<SceneKind, readonly string[]>> = {
+  rings: ['rotation_speed', 'warp_amount'],
+  fluid: ['rotation_speed', 'warp_amount'],
+  grid: [],
+  kaleido: ['segments', 'rotation_speed', 'warp_amount', 'palette', 'scale'],
+  noise: [],
+  cells: [],
+  rain: [],
+  plasma: ['rotation_speed', 'warp_amount'],
+  orbit: ['rotation_speed', 'warp_amount'],
+  tunnel: ['rotation_speed', 'warp_amount'],
+  filaments: [],
+  glitch: [],
+  ink: [],
+  bars: ['segments', 'low_band', 'mid_band', 'high_band', 'palette', 'scale'],
+  dunes: [],
+  lattice: ['rotation_speed', 'warp_amount', 'palette', 'scale'],
+};
+
+const UNIVERSAL_PREVIEW_CONTROLS: readonly string[] = [
+  'speed',
+  'intensity',
+  'tint',
+  'invert',
+  'mirror',
+  'vert_mirror',
+  'vertical_mirror',
+  'hor_mirror',
+  'horizontal_mirror',
+];
+
+function normalizeControlName(controlName: string): string {
+  return controlName
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+export function isControlPreviewWired(kind: SceneKind, controlName: string): boolean {
+  const name = normalizeControlName(controlName);
+  if (UNIVERSAL_PREVIEW_CONTROLS.includes(name)) return true;
+  return (CONTROL_PREVIEW_WIRING[kind] ?? []).includes(name);
+}
 
 /**
  * Wave 2.3 Q.1 audio-coupling envelope. Maps `lvl ∈ [0, 1]` to
@@ -110,7 +161,127 @@ function pulse(lvl: number): number {
   return 0.6 + Math.max(0, Math.min(1, lvl)) * 0.4;
 }
 
-const rings: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function controlNumber(
+  controls: SceneRendererControls | undefined,
+  key: string,
+): number | undefined {
+  const value = controls?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function controlUnit(
+  controls: SceneRendererControls | undefined,
+  key: string,
+  fallback: number,
+): number {
+  const raw = controlNumber(controls, key);
+  return raw === undefined ? fallback : clamp01(raw);
+}
+
+function optionalUnitControl(
+  controls: SceneRendererControls | undefined,
+  key: string,
+): number | undefined {
+  const raw = controlNumber(controls, key);
+  return raw === undefined ? undefined : clamp01(raw);
+}
+
+function segmentCount(controls: SceneRendererControls | undefined, fallback: number): number {
+  const raw = controlNumber(controls, 'segments');
+  if (raw === undefined) return fallback;
+  const native = raw <= 1 ? 2 + clamp01(raw) * 22 : raw;
+  return Math.max(2, Math.min(64, Math.round(native)));
+}
+
+function rotationRate(controls: SceneRendererControls | undefined, fallback: number): number {
+  const raw = controlNumber(controls, 'rotation_speed');
+  if (raw === undefined) return fallback;
+  return 0.05 + clamp01(raw) * 0.6;
+}
+
+function warpAmount(controls: SceneRendererControls | undefined, fallback: number): number {
+  return controlUnit(controls, 'warp_amount', fallback);
+}
+
+function scaleMultiplier(controls: SceneRendererControls | undefined): number {
+  const raw = controlNumber(controls, 'scale');
+  if (raw === undefined) return 1;
+  if (raw <= 1) return 0.5 + clamp01(raw);
+  return Math.max(0.25, Math.min(4, raw));
+}
+
+function paletteIndex(controls: SceneRendererControls | undefined): number | undefined {
+  const raw = controlNumber(controls, 'palette');
+  if (raw === undefined) return undefined;
+  const native = raw <= 1 ? raw * 3 : raw;
+  return Math.max(0, Math.min(3, Math.round(native)));
+}
+
+function positiveHue(hue: number): number {
+  return ((hue % 360) + 360) % 360;
+}
+
+function paletteHue(controls: SceneRendererControls | undefined, hue: number): number {
+  const base = positiveHue(hue);
+  switch (paletteIndex(controls)) {
+    case 0:
+      return 15 + base * 0.16;
+    case 2:
+      return 185 + base * 0.18;
+    case 3:
+      return 0;
+    default:
+      return base;
+  }
+}
+
+function paletteSaturation(
+  controls: SceneRendererControls | undefined,
+  saturation: number,
+): number {
+  switch (paletteIndex(controls)) {
+    case 0:
+      return Math.max(45, Math.min(100, saturation * 0.9));
+    case 2:
+      return Math.max(35, Math.min(100, saturation * 0.72));
+    case 3:
+      return 0;
+    default:
+      return Math.max(0, Math.min(100, saturation));
+  }
+}
+
+function hslControl(
+  controls: SceneRendererControls | undefined,
+  hue: number,
+  saturation: number,
+  lightness: number,
+): string {
+  return `hsl(${paletteHue(controls, hue)} ${paletteSaturation(controls, saturation)}% ${Math.max(
+    0,
+    Math.min(100, lightness),
+  )}%)`;
+}
+
+function hslaControl(
+  controls: SceneRendererControls | undefined,
+  hue: number,
+  saturation: number,
+  lightness: number,
+  alpha: number,
+): string {
+  return `hsla(${paletteHue(controls, hue)} ${paletteSaturation(controls, saturation)}% ${Math.max(
+    0,
+    Math.min(100, lightness),
+  )}% / ${clamp01(alpha)})`;
+}
+
+const rings: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   const cx = w / 2;
   const cy = h / 2;
   const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(w, h));
@@ -119,9 +290,20 @@ const rings: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   g.addColorStop(1, '#000');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
+  const rot = rotationRate(controls, 0.2);
+  const warp = warpAmount(controls, 0.35);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(t * rot);
+  ctx.scale(1 + warp * 0.18, 1 - warp * 0.1);
+  ctx.translate(-cx, -cy);
   ctx.globalCompositeOperation = 'screen';
   for (let i = 0; i < 14; i++) {
-    const r = (Math.sin(t * 0.5 + i * 0.4 + seed) * 0.5 + 0.5) * Math.min(w, h) * 0.45 + i * 6;
+    const ringWarp = Math.sin(i * 0.9 + seed + t * 0.7) * warp * Math.min(w, h) * 0.035;
+    const r =
+      (Math.sin(t * 0.5 + i * 0.4 + seed) * 0.5 + 0.5) * Math.min(w, h) * 0.45 +
+      i * (6 + warp * 3) +
+      ringWarp;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.strokeStyle = `hsla(${(t * 70 + i * 30 + seed * 90) % 360},95%,70%,${0.35 - i * 0.02})`;
@@ -129,9 +311,11 @@ const rings: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
     ctx.stroke();
   }
   ctx.globalCompositeOperation = 'source-over';
+  ctx.restore();
 };
 
-const fluid: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const fluid: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = 'screen';
@@ -141,10 +325,18 @@ const fluid: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   // Wave 2.9 SC.B: bump position drift 0.3/0.4 → 0.45/0.6 (~1.5×) and
   // radius pulse 0.7 → 1.0 so silent-audio blob travel is perceptible
   // on a 600 px preview.
+  const flow = t * rotationRate(controls, 0.18) * Math.PI * 2;
+  const cosFlow = Math.cos(flow);
+  const sinFlow = Math.sin(flow);
+  const warp = warpAmount(controls, 0.35);
   for (let i = 0; i < 8; i++) {
-    const x = w * (0.5 + 0.4 * Math.sin(t * 0.45 + i + seed));
-    const y = h * (0.5 + 0.4 * Math.cos(t * 0.6 + i * 1.3 + seed));
-    const r = Math.min(w, h) * (0.25 + 0.15 * Math.sin(t * 1.0 + i + seed)) * p;
+    const vx =
+      0.4 * Math.sin(t * 0.45 + i + seed) + Math.sin(t * 1.1 + i * 2.2 + seed) * warp * 0.12;
+    const vy =
+      0.4 * Math.cos(t * 0.6 + i * 1.3 + seed) + Math.cos(t * 0.9 + i * 1.7 + seed) * warp * 0.12;
+    const x = w * (0.5 + vx * cosFlow - vy * sinFlow);
+    const y = h * (0.5 + vx * sinFlow + vy * cosFlow);
+    const r = Math.min(w, h) * (0.25 + (0.15 + warp * 0.08) * Math.sin(t * 1.0 + i + seed)) * p;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, `hsla(${(t * 40 + i * 45 + seed * 30) % 360},90%,60%,0.6)`);
     g.addColorStop(1, 'transparent');
@@ -172,25 +364,31 @@ const grid: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const kaleido: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const kaleido: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   const cx = w / 2;
   const cy = h / 2;
   ctx.save();
   ctx.translate(cx, cy);
   ctx.fillStyle = '#000';
   ctx.fillRect(-w / 2, -h / 2, w, h);
-  const slices = 6;
+  const slices = segmentCount(controls, 6);
+  const rotRate = rotationRate(controls, 0.2);
+  const warp = warpAmount(controls, 0.4);
+  const scale = scaleMultiplier(controls);
+  const reach = w * (0.35 + scale * 0.15);
+  const fanHalfHeight = h * (0.05 + warp * 0.125) + lvl * 20;
   for (let s = 0; s < slices; s++) {
     ctx.save();
-    ctx.rotate((s / slices) * Math.PI * 2 + t * 0.2);
-    const g = ctx.createLinearGradient(0, 0, w * 0.5, 0);
-    g.addColorStop(0, `hsl(${(t * 50 + seed * 40 + s * 30) % 360} 90% 60%)`);
+    ctx.rotate((s / slices) * Math.PI * 2 + t * rotRate);
+    const g = ctx.createLinearGradient(0, 0, reach, 0);
+    g.addColorStop(0, hslControl(controls, t * 50 + seed * 40 + s * 30, 90, 60));
     g.addColorStop(1, 'transparent');
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(w * 0.5, -h * 0.1 - lvl * 20);
-    ctx.lineTo(w * 0.5, h * 0.1 + lvl * 20);
+    ctx.lineTo(reach, -fanHalfHeight);
+    ctx.lineTo(reach, fanHalfHeight);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -271,7 +469,8 @@ const rain: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const plasma: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const plasma: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   const step = 4;
   // Wave 2.3 Q.1 audio-coupling: brighten the plasma's lightness band
   // with `lvl` so silent audio renders muted, loud audio renders vivid.
@@ -280,13 +479,22 @@ const plasma: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   // 1.5/2.0/1.05/3.0 (~1.5×). The bundle defaults read as a slow
   // gradient drift on a 600 px preview; the bump makes the four
   // overlaid sin fields swirl visibly at silent audio.
+  const fieldAngle = t * rotationRate(controls, 0.18) * Math.PI * 2;
+  const cosField = Math.cos(fieldAngle);
+  const sinField = Math.sin(fieldAngle);
+  const warp = warpAmount(controls, 0.35);
+  const freq = 0.015 + warp * 0.018;
   for (let y = 0; y < h; y += step) {
     for (let x = 0; x < w; x += step) {
+      const dx = x - w / 2;
+      const dy = y - h / 2;
+      const rx = dx * cosField - dy * sinField + w / 2;
+      const ry = dx * sinField + dy * cosField + h / 2;
       const v =
-        Math.sin(x * 0.02 + t * 1.5 + seed) +
-        Math.sin(y * 0.02 + t * 2.0) +
-        Math.sin((x + y) * 0.015 + t * 1.05) +
-        Math.sin(Math.sqrt(x * x + y * y) * 0.02 + t * 3.0);
+        Math.sin(rx * 0.02 + t * 1.5 + seed) +
+        Math.sin(ry * 0.02 + t * 2.0) +
+        Math.sin((rx + ry) * freq + t * 1.05) +
+        Math.sin(Math.sqrt(rx * rx + ry * ry) * (0.02 + warp * 0.01) + t * 3.0);
       const hue = (v * 60 + t * 40 + seed * 30) % 360;
       ctx.fillStyle = `hsl(${(hue + 360) % 360} 90% ${40 + v * 10 + lightnessBoost}%)`;
       ctx.fillRect(x, y, step, step);
@@ -294,16 +502,20 @@ const plasma: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const orbit: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const orbit: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.fillRect(0, 0, w, h);
   const cx = w / 2;
   const cy = h / 2;
+  const rot = rotationRate(controls, 0.5);
+  const warp = warpAmount(controls, 0.35);
   for (let i = 0; i < 50; i++) {
-    const a = t * 0.5 + i * 0.3 + seed;
-    const r = 20 + i * 5 + Math.sin(t + i) * 30;
-    const x = cx + Math.cos(a) * r;
-    const y = cy + Math.sin(a) * r;
+    const a = t * rot + i * 0.3 + seed;
+    const r = 20 + i * 5 + Math.sin(t + i) * (30 + warp * 24);
+    const eccentricity = 1 + warp * 0.55;
+    const x = cx + Math.cos(a) * r * eccentricity;
+    const y = cy + Math.sin(a + Math.sin(t * 0.7 + i) * warp * 0.5) * r * (1 - warp * 0.25);
     ctx.fillStyle = `hsl(${(i * 15 + t * 40 + seed * 50) % 360} 95% ${60 + lvl * 10}%)`;
     ctx.beginPath();
     ctx.arc(x, y, 2 + lvl * 3, 0, Math.PI * 2);
@@ -311,7 +523,8 @@ const orbit: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const tunnel: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const tunnel: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   const cx = w / 2;
   const cy = h / 2;
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h));
@@ -324,22 +537,28 @@ const tunnel: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   // with `lvl` — silent audio shows thin tunnel lines, loud audio
   // thickens them.
   const lineW = 1 + lvl * 2;
+  const rot = rotationRate(controls, 0.3);
+  const warp = warpAmount(controls, 0.35);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(t * rot);
   for (let i = 0; i < 40; i++) {
-    const a = (i / 40) * Math.PI * 2 + t * 0.3;
+    const a = (i / 40) * Math.PI * 2;
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(a) * w, cy + Math.sin(a) * h);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * w, Math.sin(a) * h);
     ctx.lineWidth = lineW;
     ctx.stroke();
   }
   for (let r = 20; r < Math.max(w, h); r += 40) {
-    const rr = r + ((t * 60) % 40);
+    const rr = r + ((t * (45 + warp * 55)) % 40) + Math.sin(r * 0.035 + t * 1.5 + seed) * warp * 18;
     ctx.beginPath();
-    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.arc(0, 0, rr, 0, Math.PI * 2);
     ctx.strokeStyle = `hsla(${(t * 50 + r + seed * 40) % 360} 90% 70% / ${0.4 + lvl * 0.3})`;
     ctx.lineWidth = 2 + lvl * 2;
     ctx.stroke();
   }
+  ctx.restore();
 };
 
 const filaments: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
@@ -404,23 +623,33 @@ const ink: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const bars: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const bars: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   ctx.fillStyle = '#050507';
   ctx.fillRect(0, 0, w, h);
-  const n = 32;
+  const n = segmentCount(controls, 32);
   // Wave 2.3 Q.1 audio-coupling: bar heights pulse with `lvl` so the
   // spectrum widget visibly reacts. Pattern `(0.6 + lvl * 0.4)` keeps
   // silent audio at 60% bar height (readable) while loud audio
   // pushes to full extent.
   const p = pulse(lvl);
+  const scale = scaleMultiplier(controls);
+  const low = optionalUnitControl(controls, 'low_band');
+  const mid = optionalUnitControl(controls, 'mid_band');
+  const high = optionalUnitControl(controls, 'high_band');
   for (let i = 0; i < n; i++) {
     const v = Math.abs(Math.sin(t * 2 + i * 0.4 + seed)) * (1 - (i / n) * 0.3);
-    const bh = v * h * 0.95 * p;
+    const band = i < n / 3 ? low : i < (n * 2) / 3 ? mid : high;
+    const bandScale = band === undefined ? 1 : 0.45 + band * 1.1;
+    const bh = Math.max(1, Math.min(h, v * h * 0.75 * p * scale * bandScale));
     const x = (i / n) * w;
-    const bw = w / n - 2;
+    const bw = Math.max(1, w / n - 2);
     const g = ctx.createLinearGradient(0, h - bh, 0, h);
-    g.addColorStop(0, `hsl(${(i * 10 + t * 30 + seed * 40) % 360} 95% 65%)`);
-    g.addColorStop(1, `hsl(${(i * 10 + t * 30 + seed * 40 + 30) % 360} 95% 30%)`);
+    g.addColorStop(0, hslControl(controls, i * 10 + t * 30 + seed * 40, 95, 55 + bandScale * 10));
+    g.addColorStop(
+      1,
+      hslControl(controls, i * 10 + t * 30 + seed * 40 + 30, 95, 25 + bandScale * 5),
+    );
     ctx.fillStyle = g;
     ctx.fillRect(x, h - bh, bw, bh);
   }
@@ -458,28 +687,34 @@ const dunes: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const lattice: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const lattice: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   ctx.fillStyle = '#030508';
   ctx.fillRect(0, 0, w, h);
-  const s = 20;
+  const scale = scaleMultiplier(controls);
+  const s = Math.max(8, 20 / scale);
   const cx = w / 2;
   const cy = h / 2;
+  const maxDim = Math.max(1, w, h);
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(Math.sin(t * 0.2 + seed) * 0.2);
+  ctx.rotate(
+    Math.sin(t * rotationRate(controls, 0.2) + seed) * (0.1 + warpAmount(controls, 0.4) * 0.25),
+  );
   // Wave 2.3 Q.1 audio-coupling: per-node dot radius + lightness
   // jitter pulse with `lvl`.
-  const dot = 3 + lvl * 3;
+  const dot = (3 + lvl * 3) * Math.min(1.8, scale);
   const lightnessBoost = lvl * 15;
   for (let y = -h; y < h; y += s) {
     for (let x = -w; x < w; x += s) {
       const d = Math.hypot(x, y);
       const v = Math.sin(d * 0.03 - t * 2 + seed);
       const hue = (v * 60 + t * 30 + seed * 40) % 360;
-      ctx.fillStyle = `hsla(${hue} 85% ${40 + v * 20 + lightnessBoost}% / ${0.8 - d / Math.max(w, h)})`;
+      const alpha = clamp01(0.8 - d / maxDim);
+      ctx.fillStyle = hslaControl(controls, hue, 85, 40 + v * 20 + lightnessBoost, alpha);
       ctx.fillRect(x - dot / 2, y - dot / 2, dot, dot);
       if (Math.abs(x) < w / 2 && Math.abs(y) < h / 2) {
-        ctx.strokeStyle = `hsla(${hue} 85% 50% / 0.2)`;
+        ctx.strokeStyle = hslaControl(controls, hue, 85, 50, 0.2);
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, y);

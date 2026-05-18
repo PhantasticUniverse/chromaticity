@@ -31,6 +31,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // any future Perform / Playlist surface needing wall-clock counter
   // chrome.
 
+  import { untrack } from 'svelte';
+
   type Props = {
     /** When false, the rAF tick is detached and the display freezes
      * at its current value. */
@@ -63,7 +65,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     let raf = 0;
     // Mirrors the bundle's `start = performance.now() - s * 1000` so
     // pause/resume preserves accumulated time.
-    const start = performance.now() - seconds * 1000;
+    const start = performance.now() - untrack(() => seconds) * 1000;
     const tick = (t: number): void => {
       seconds = (t - start) / 1000;
       raf = requestAnimationFrame(tick);

@@ -170,6 +170,64 @@ describe('Perform view', () => {
     expect(within(panel).getByText('Glitch')).toBeInTheDocument();
   });
 
+  it('marks scene control rows whose preview adapter is not wired', () => {
+    loadedSceneStore.snapshot = {
+      id: 'demo-kaleido',
+      path: '/fake/Resources/scenes/library/demo-kaleido.chroma',
+      name: 'Demo Kaleido',
+      credit: '',
+      description: 'Six-fold radial mirror with drifting hue and a soft warp envelope.',
+      controls: [
+        {
+          name: 'rotation_speed',
+          kind: 'Slider',
+          default: 0.25,
+          min: 0,
+          max: 1,
+          ui_group: 'motion',
+          description: null,
+          label: null,
+        },
+        {
+          name: 'invert',
+          kind: 'Toggle',
+          default: false,
+          min: null,
+          max: null,
+          ui_group: 'fx',
+          description: null,
+          label: null,
+        },
+        {
+          name: 'focus',
+          kind: 'Xy',
+          default: [0.5, 0.5],
+          min: null,
+          max: null,
+          ui_group: 'geometry',
+          description: null,
+          label: null,
+        },
+      ],
+      schema_version: 1,
+    };
+
+    const { getByLabelText } = render(Perform);
+    const panel = getByLabelText('Scene Controls');
+
+    expect(within(panel).getByText('rotation_speed').closest('.cg-row')).toHaveAttribute(
+      'data-preview-wired',
+      'true',
+    );
+    expect(within(panel).getByText('invert').closest('.cg-row')).toHaveAttribute(
+      'data-preview-wired',
+      'true',
+    );
+    const focusRow = within(panel).getByText('focus').closest('.cg-row');
+    expect(focusRow).toHaveAttribute('data-preview-wired', 'false');
+    expect(focusRow).toHaveAttribute('title', 'engine-only — preview adapter not implemented');
+  });
+
   it('renders the Meta Controls panel landmark', () => {
     const { getByLabelText } = render(Perform);
     const panel = getByLabelText('Meta Controls');
