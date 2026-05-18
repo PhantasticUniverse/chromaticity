@@ -304,9 +304,12 @@ describe('Settings view', () => {
     // Inject a live snapshot with a distinct rms value and re-assert.
     audioSnapshotStore.snapshot = {
       bpm: 120,
+      bpm_availability: 'Ready',
       rms: 0.25,
       peak: 0.45,
       fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+      fft_availability: 'Ready',
+      degraded: false,
     };
     // Allow Svelte to flush the $derived re-evaluation.
     await Promise.resolve();

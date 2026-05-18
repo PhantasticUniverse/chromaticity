@@ -30,9 +30,11 @@
 //! The bounded channel has a small capacity (see
 //! [`CHANNEL_CAPACITY`]). When the analyser is behind, the audio
 //! thread MUST NOT block; instead, the data callback drops the new
-//! frame and accepts the staleness. This is the §7.11 degraded-mode
-//! contract: under-runs are surfaced as `WouldBlock` to the analyser,
-//! never as a stalled audio thread. The
+//! frame and accepts the staleness. A callback-driven device can also
+//! be polled between normal callback bursts; production cpal sources
+//! surface that empty-poll gap as [`IngestStatus::Pending`] so it does
+//! not masquerade as a device failure. True under-runs still surface as
+//! `WouldBlock`, never as a stalled audio thread. The
 //! [`crate::ingest::IngestState`] state machine rolls those
 //! `WouldBlock`s into the Reliability/Fallback Policy degraded-mode
 //! transition; the
@@ -360,12 +362,13 @@ struct StreamFormat {
 /// Slice-3b production entry: [`try_default_input`]. The struct is
 /// `Send` (the cpal-stream guard is held behind a `Box<dyn
 /// StreamGuard + Send>`); the `try_pull` surface is non-blocking and
-/// returns the `IngestStatus::WouldBlock` / `Closed` outcomes
-/// expected by [`crate::ingest::IngestState`] without ever touching
-/// the platform device API directly.
+/// returns `Pending` for healthy empty polls, `WouldBlock` for true
+/// underruns, or `Closed` for terminal device loss without ever
+/// touching the platform device API directly.
 pub struct CpalSource {
     consumer: Receiver<AudioFrame>,
     closed: Arc<AtomicBool>,
+    pending_on_empty: bool,
     /// Type-erased lifetime guard for the underlying `cpal::Stream`.
     /// Keeping the stream alive is the entire role of this field;
     /// `Drop` on the guard releases the audio-thread resources.
@@ -398,9 +401,19 @@ impl CpalSource {
         closed: Arc<AtomicBool>,
         stream: Box<dyn StreamGuard>,
     ) -> Self {
+        Self::from_parts_with_empty_poll_status(consumer, closed, stream, false)
+    }
+
+    fn from_parts_with_empty_poll_status(
+        consumer: Receiver<AudioFrame>,
+        closed: Arc<AtomicBool>,
+        stream: Box<dyn StreamGuard>,
+        pending_on_empty: bool,
+    ) -> Self {
         Self {
             consumer,
             closed,
+            pending_on_empty,
             _stream: stream,
         }
     }
@@ -416,7 +429,13 @@ impl IngestBoundary for CpalSource {
                     *out = frame;
                     IngestStatus::Ready
                 }
-                Err(TryRecvError::Empty) => IngestStatus::WouldBlock,
+                Err(TryRecvError::Empty) => {
+                    if self.pending_on_empty {
+                        IngestStatus::Pending
+                    } else {
+                        IngestStatus::WouldBlock
+                    }
+                }
                 Err(TryRecvError::Disconnected) => {
                     // Sender side has gone away (callback dropped or
                     // the stream guard's drop ran); treat as closed
@@ -510,13 +529,14 @@ pub fn try_default_input() -> Result<CpalSource, AudioError> {
     };
 
     match setup {
-        Ok(_) => Ok(CpalSource::from_parts(
+        Ok(_) => Ok(CpalSource::from_parts_with_empty_poll_status(
             consumer,
             closed,
             Box::new(CpalStreamGuard {
                 shutdown: Some(shutdown_tx),
                 owner: Some(owner),
             }),
+            true,
         )),
         Err(err) => {
             // Owner thread already exited (or is exiting); drop the
@@ -664,13 +684,14 @@ fn try_input_by_device_name(name: &str) -> Result<CpalSource, AudioError> {
     };
 
     match setup {
-        Ok(_) => Ok(CpalSource::from_parts(
+        Ok(_) => Ok(CpalSource::from_parts_with_empty_poll_status(
             consumer,
             closed,
             Box::new(CpalStreamGuard {
                 shutdown: Some(shutdown_tx),
                 owner: Some(owner),
             }),
+            true,
         )),
         Err(err) => {
             drop(shutdown_tx);
@@ -992,6 +1013,17 @@ mod cpal_source_pins {
         let mut source = CpalSource::from_parts(rx, closed, Box::new(NoopGuard));
         let mut out = AudioFrame::default();
         assert_eq!(source.try_pull(&mut out), IngestStatus::WouldBlock);
+    }
+
+    #[test]
+    fn production_empty_poll_returns_pending_not_failure() {
+        let _serialize = observability::test_serialize_lock();
+        let (_tx, rx) = bounded::<AudioFrame>(4);
+        let closed = Arc::new(AtomicBool::new(false));
+        let mut source =
+            CpalSource::from_parts_with_empty_poll_status(rx, closed, Box::new(NoopGuard), true);
+        let mut out = AudioFrame::default();
+        assert_eq!(source.try_pull(&mut out), IngestStatus::Pending);
     }
 
     #[test]

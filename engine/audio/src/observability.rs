@@ -435,14 +435,16 @@ fn lock_obs() -> MutexGuard<'static, AudioObservability> {
 /// [`AudioIngestFrameStatus`] label value.
 ///
 /// The brief pins the mapping 1:1; the variant names match
-/// exactly. [`IngestStatus`] is defined in this crate and never
-/// grows without a paired catalog update, so the exhaustive match
-/// here is deliberate.
-fn map_status(status: &IngestStatus) -> AudioIngestFrameStatus {
+/// exactly for recordable outcomes. [`IngestStatus::Pending`] is a
+/// neutral poll gap rather than an ingest-frame outcome, so it has
+/// no catalog-side counter until the catalog grows a dedicated
+/// label.
+fn map_status(status: &IngestStatus) -> Option<AudioIngestFrameStatus> {
     match status {
-        IngestStatus::Ready => AudioIngestFrameStatus::Ready,
-        IngestStatus::WouldBlock => AudioIngestFrameStatus::WouldBlock,
-        IngestStatus::Closed => AudioIngestFrameStatus::Closed,
+        IngestStatus::Ready => Some(AudioIngestFrameStatus::Ready),
+        IngestStatus::Pending => None,
+        IngestStatus::WouldBlock => Some(AudioIngestFrameStatus::WouldBlock),
+        IngestStatus::Closed => Some(AudioIngestFrameStatus::Closed),
     }
 }
 
@@ -456,7 +458,9 @@ fn map_status(status: &IngestStatus) -> AudioIngestFrameStatus {
 /// `try_pull` so the three audio catalog metrics accumulate for
 /// the `EV-OBSERVABILITY` exit gate.
 pub(crate) fn record_pull_outcome(status: &IngestStatus, samples_len: usize) {
-    let frame_status = map_status(status);
+    let Some(frame_status) = map_status(status) else {
+        return;
+    };
     let mut obs = lock_obs();
     match frame_status {
         AudioIngestFrameStatus::Ready => {

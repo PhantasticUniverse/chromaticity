@@ -21,9 +21,12 @@ import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSn
 
 const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
   bpm: 145,
+  bpm_availability: 'Ready',
   rms: 0.5,
   peak: 0.9,
   fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+  fft_availability: 'Ready',
+  degraded: false,
 };
 
 function stubMatchMedia(reduce: boolean): void {
@@ -99,6 +102,18 @@ describe('BpmRing widget', () => {
     const { container } = render(BpmRing, { props: { bpm: 100, snapshot: SAMPLE_SNAPSHOT } });
     expect(container.querySelector('.bpm-ring__val')?.textContent).toBe('145');
     expect(container.querySelector('.bpm-ring')?.getAttribute('aria-label')).toContain('145 BPM');
+  });
+
+  it('renders a dim placeholder while snapshot BPM is warming', () => {
+    const { container } = render(BpmRing, {
+      props: {
+        bpm: 100,
+        snapshot: { ...SAMPLE_SNAPSHOT, bpm: 145, bpm_availability: 'Warming' },
+      },
+    });
+    expect(container.querySelector('.bpm-ring__val')?.textContent).toBe('--');
+    expect(container.querySelector('.bpm-ring')).toHaveClass('bpm-ring--warming');
+    expect(container.querySelector('.bpm-ring')?.getAttribute('aria-label')).toContain('warming');
   });
 
   it('falls back to the bpm prop when snapshot is null', () => {

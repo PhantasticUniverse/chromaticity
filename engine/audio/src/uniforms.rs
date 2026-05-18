@@ -87,6 +87,7 @@
 //! tracking onset detection) lands in a follow-up slice once the
 //! analyser scheduler is upstream.
 
+use std::collections::VecDeque;
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
@@ -144,6 +145,91 @@ pub const BPM_CLAMP_MIN: f32 = 50.0;
 /// §2.7.
 pub const BPM_CLAMP_MAX: f32 = 220.0;
 
+/// Readiness for a snapshot axis that needs an accumulated analysis
+/// window before its numeric value is trustworthy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioAxisAvailability {
+    /// The producer has observed audio, but not enough history for
+    /// this axis' windowed analysis path.
+    Warming,
+    /// The axis has enough input history for consumers to display its
+    /// numeric value.
+    Ready,
+}
+
+impl Default for AudioAxisAvailability {
+    fn default() -> Self {
+        Self::Warming
+    }
+}
+
+/// Rolling mono analysis window capacity for a sample rate.
+///
+/// The FFT path needs [`FFT_WINDOW_SIZE`] samples. The BPM
+/// autocorrelation path needs one sample more than the longest lag in
+/// the `[BPM_CLAMP_MIN, BPM_CLAMP_MAX]` search range so at least one
+/// overlap sample exists at that lag. Runtime callers use this to
+/// accumulate callback-sized frames before asking the pure extractor
+/// for FFT/BPM features.
+#[must_use]
+pub(crate) fn analysis_window_samples(sample_rate_hz: u32) -> usize {
+    if sample_rate_hz == 0 {
+        return FFT_WINDOW_SIZE;
+    }
+    let bpm_window = bpm_analysis_window_samples(sample_rate_hz);
+    FFT_WINDOW_SIZE.max(bpm_window)
+}
+
+fn bpm_analysis_window_samples(sample_rate_hz: u32) -> usize {
+    if sample_rate_hz == 0 {
+        return usize::MAX;
+    }
+    (60.0 * sample_rate_hz as f32 / BPM_CLAMP_MIN).ceil() as usize + 1
+}
+
+/// Stateful rolling mono window used by the runtime to feed the pure
+/// uniform extractor enough samples for FFT and BPM analysis.
+///
+/// Callback frames can be shorter than [`FFT_WINDOW_SIZE`] and far
+/// shorter than the longest BPM autocorrelation lag. This helper keeps
+/// the pure [`extract_uniform_snapshot`] contract intact while giving
+/// the production runtime a bounded history window to analyse.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct AudioAnalysisWindow {
+    sample_rate_hz: Option<u32>,
+    samples: VecDeque<f32>,
+}
+
+impl AudioAnalysisWindow {
+    /// Push one frame into the rolling mono window and return the
+    /// current accumulated analysis frame.
+    #[must_use]
+    pub(crate) fn observe(&mut self, frame: &AudioFrame) -> AudioFrame {
+        let mono = mono_mix(frame);
+        let sample_rate_hz = frame.sample_rate_hz();
+        if self.sample_rate_hz != Some(sample_rate_hz) {
+            self.sample_rate_hz = Some(sample_rate_hz);
+            self.samples.clear();
+        }
+
+        self.samples.extend(mono);
+
+        let capacity = analysis_window_samples(sample_rate_hz);
+        while self.samples.len() > capacity {
+            let _ = self.samples.pop_front();
+        }
+
+        AudioFrame::new(sample_rate_hz, 1, self.samples.iter().copied().collect())
+    }
+
+    /// Number of mono samples currently retained.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn len(&self) -> usize {
+        self.samples.len()
+    }
+}
+
 /// Plain-data audio uniform snapshot.
 ///
 /// This is the producer-side hand-off shape: every consumer
@@ -158,6 +244,9 @@ pub const BPM_CLAMP_MAX: f32 = 220.0;
 /// - `bpm`: estimated tempo, clamped to `[50, 220]`. Slice-1 returns
 ///   [`BPM_DEFAULT`] when the frame is too short to autocorrelate
 ///   across the full lag range.
+/// - `bpm_availability`: readiness flag for whether `bpm` was
+///   computed from a filled BPM analysis window (`Ready`) or is still
+///   carrying the short-frame fallback during warmup (`Warming`).
 /// - `rms`: root-mean-square energy of the (mono-mixed) frame in
 ///   `[0, 1]`. Out-of-range input samples are tolerated (the
 ///   analyser clamps per docs/06 §7.4) but the published RMS is
@@ -167,12 +256,20 @@ pub const BPM_CLAMP_MAX: f32 = 220.0;
 ///   `min(1.0, max(abs(samples)))` over the mono mix.
 /// - `fft_bands`: 8 log-spaced FFT magnitudes covering
 ///   `[FFT_BAND_MIN_HZ, FFT_BAND_MAX_HZ]`, each in `[0, 1]`.
+/// - `fft_availability`: readiness flag for whether `fft_bands`
+///   comes from a filled FFT window (`Ready`) or should be displayed
+///   as warming (`Warming`).
+/// - `degraded`: cross-seam health flag set by downstream adapters
+///   when the last-known snapshot had to be recovered from a degraded
+///   path (for example a poisoned snapshot mutex).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AudioUniformSnapshot {
     /// Estimated BPM, clamped `[50, 220]`. Maps to the
     /// `syn_BPM` compat-syn-v1 retention via the engine/render
     /// slice-5a adapter (docs/36 line 117).
     pub bpm: f32,
+    /// Whether `bpm` is safe for UI display as a real tempo estimate.
+    pub bpm_availability: AudioAxisAvailability,
     /// Root-mean-square instantaneous energy, `[0, 1]`. Maps to
     /// the `chroma_AudioRMS` chromaticity-native binding via the
     /// engine/render slice-5a adapter.
@@ -188,6 +285,12 @@ pub struct AudioUniformSnapshot {
     /// adapter (split-vec4 spelling pending the future `audio[]`
     /// array uniform variant).
     pub fft_bands: [f32; FFT_BAND_COUNT],
+    /// Whether `fft_bands` is safe for UI display as real spectrum
+    /// data.
+    pub fft_availability: AudioAxisAvailability,
+    /// True once a cross-thread snapshot adapter recovers from a
+    /// degraded path and returns last-known state.
+    pub degraded: bool,
 }
 
 impl Default for AudioUniformSnapshot {
@@ -202,9 +305,12 @@ impl Default for AudioUniformSnapshot {
     fn default() -> Self {
         Self {
             bpm: 0.0,
+            bpm_availability: AudioAxisAvailability::Warming,
             rms: 0.0,
             peak: 0.0,
             fft_bands: [0.0; FFT_BAND_COUNT],
+            fft_availability: AudioAxisAvailability::Warming,
+            degraded: false,
         }
     }
 }
@@ -240,12 +346,27 @@ pub fn extract_uniform_snapshot(frame: &AudioFrame) -> AudioUniformSnapshot {
     let peak = compute_peak(&mono);
     let fft_bands = compute_fft_bands(&mono, frame.sample_rate_hz());
     let bpm = compute_bpm_autocorr(&mono, frame.sample_rate_hz());
+    let sample_rate_hz = frame.sample_rate_hz();
+    let fft_availability = if sample_rate_hz != 0 && mono.len() >= FFT_WINDOW_SIZE {
+        AudioAxisAvailability::Ready
+    } else {
+        AudioAxisAvailability::Warming
+    };
+    let bpm_availability =
+        if sample_rate_hz != 0 && mono.len() >= bpm_analysis_window_samples(sample_rate_hz) {
+            AudioAxisAvailability::Ready
+        } else {
+            AudioAxisAvailability::Warming
+        };
 
     AudioUniformSnapshot {
         bpm,
+        bpm_availability,
         rms,
         peak,
         fft_bands,
+        fft_availability,
+        degraded: false,
     }
 }
 
@@ -529,10 +650,13 @@ mod uniforms_drift_pins {
     //! - `docs/06-audio-engine.md` §7.1 — sample-rate / framing / channel policy baseline.
 
     use super::{
-        AudioUniformSnapshot, BPM_CLAMP_MAX, BPM_CLAMP_MIN, BPM_DEFAULT, FFT_BAND_COUNT,
-        FFT_BAND_MAX_HZ, FFT_BAND_MIN_HZ, FFT_WINDOW_SIZE, compute_peak, compute_rms,
-        log_band_edges,
+        AudioAnalysisWindow, AudioAxisAvailability, AudioUniformSnapshot, BPM_CLAMP_MAX,
+        BPM_CLAMP_MIN, BPM_DEFAULT, FFT_BAND_COUNT, FFT_BAND_MAX_HZ, FFT_BAND_MIN_HZ,
+        FFT_WINDOW_SIZE, analysis_window_samples, compute_peak, compute_rms,
+        extract_uniform_snapshot, log_band_edges,
     };
+    use crate::frame::AudioFrame;
+    use std::f32::consts::TAU;
 
     #[test]
     fn rms_matches_hand_computed_small_input() {
@@ -659,8 +783,79 @@ mod uniforms_drift_pins {
     fn snapshot_default_is_all_zero() {
         let s = AudioUniformSnapshot::default();
         assert_eq!(s.bpm, 0.0);
+        assert_eq!(s.bpm_availability, AudioAxisAvailability::Warming);
         assert_eq!(s.rms, 0.0);
         assert_eq!(s.peak, 0.0);
         assert_eq!(s.fft_bands, [0.0; FFT_BAND_COUNT]);
+        assert_eq!(s.fft_availability, AudioAxisAvailability::Warming);
+        assert!(!s.degraded);
+    }
+
+    #[test]
+    fn analysis_window_accumulates_short_frames_for_fft() {
+        let mut window = AudioAnalysisWindow::default();
+        let sample_rate_hz = 48_000;
+        let freq_hz = 440.0_f32;
+        let chunk = 128;
+
+        let mut analysis = AudioFrame::default();
+        for frame_idx in 0..(FFT_WINDOW_SIZE / chunk) {
+            let offset = frame_idx * chunk;
+            let samples: Vec<f32> = (0..chunk)
+                .map(|i| {
+                    let t = (offset + i) as f32 / sample_rate_hz as f32;
+                    (TAU * freq_hz * t).sin()
+                })
+                .collect();
+            analysis = window.observe(&AudioFrame::new(sample_rate_hz, 1, samples));
+        }
+
+        assert_eq!(window.len(), FFT_WINDOW_SIZE);
+        let snapshot = extract_uniform_snapshot(&analysis);
+        assert_eq!(snapshot.fft_availability, AudioAxisAvailability::Ready);
+        assert!(
+            snapshot.fft_bands.iter().any(|band| *band > 0.0),
+            "accumulated short frames should feed the FFT path",
+        );
+    }
+
+    #[test]
+    fn analysis_window_marks_axes_warming_until_each_window_fills() {
+        let mut window = AudioAnalysisWindow::default();
+        let sample_rate_hz = 1_000;
+
+        let warming_frame = window.observe(&AudioFrame::new(sample_rate_hz, 1, vec![0.1; 128]));
+        let warming = extract_uniform_snapshot(&warming_frame);
+        assert_eq!(warming.bpm_availability, AudioAxisAvailability::Warming);
+        assert_eq!(warming.fft_availability, AudioAxisAvailability::Warming);
+
+        let fft_fill = FFT_WINDOW_SIZE - window.len();
+        let fft_ready_frame =
+            window.observe(&AudioFrame::new(sample_rate_hz, 1, vec![0.1; fft_fill]));
+        let fft_ready = extract_uniform_snapshot(&fft_ready_frame);
+        assert_eq!(fft_ready.bpm_availability, AudioAxisAvailability::Warming);
+        assert_eq!(fft_ready.fft_availability, AudioAxisAvailability::Ready);
+
+        let full_fill = analysis_window_samples(sample_rate_hz) - window.len();
+        let ready_frame = window.observe(&AudioFrame::new(sample_rate_hz, 1, vec![0.1; full_fill]));
+        let ready = extract_uniform_snapshot(&ready_frame);
+        assert_eq!(ready.bpm_availability, AudioAxisAvailability::Ready);
+        assert_eq!(ready.fft_availability, AudioAxisAvailability::Ready);
+    }
+
+    #[test]
+    fn analysis_window_capacity_covers_bpm_lag_and_resets_on_rate_change() {
+        let cap_48k = analysis_window_samples(48_000);
+        assert!(cap_48k > FFT_WINDOW_SIZE);
+
+        let mut window = AudioAnalysisWindow::default();
+        let first = AudioFrame::new(48_000, 1, vec![0.1; 256]);
+        let second = AudioFrame::new(44_100, 1, vec![0.2; 128]);
+        let _ = window.observe(&first);
+        assert_eq!(window.len(), 256);
+        let analysis = window.observe(&second);
+        assert_eq!(window.len(), 128);
+        assert_eq!(analysis.sample_rate_hz(), 44_100);
+        assert!(analysis.samples().iter().all(|sample| *sample == 0.2));
     }
 }

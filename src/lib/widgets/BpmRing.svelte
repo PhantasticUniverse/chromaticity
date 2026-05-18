@@ -20,9 +20,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // widget consumes the engine's `audio_uniform_snapshot_changed` Tauri
   // event via `audioSnapshotStore` (producer side: Wave 6 PR 1, merge
   // `c1d93e8`). When a non-null snapshot is available the displayed BPM
-  // is sourced from `liveSnapshot.bpm`; otherwise the synthetic
-  // rAF-driven sweep keeps running so the ring still animates while the
-  // production audio bootstrap is pending. Either way `prefers-
+  // is sourced from `liveSnapshot.bpm` only when
+  // `bpm_availability === 'Ready'`; during engine warmup the readout
+  // renders a dim `--` placeholder while the synthetic tempo keeps the
+  // ring moving. Otherwise the synthetic rAF-driven sweep keeps
+  // running so the ring still animates while the production audio
+  // bootstrap is pending. Either way `prefers-
   // reduced-motion: reduce` pins the visual at beat 1 / measure 0.
   //
   // The optional `snapshot` prop lets tests inject a fixed payload
@@ -51,7 +54,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   });
 
   const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
-  const liveBpm = $derived(liveSnapshot?.bpm ?? bpm);
+  const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
+  const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
+  const bpmLabel = $derived(liveSnapshot && !bpmReady ? '--' : String(liveBpm));
 
   let now = $state(0);
   let reduceMotion = $state(false);
@@ -94,9 +99,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
 <div
   class="bpm-ring"
+  class:bpm-ring--warming={liveSnapshot !== null && !bpmReady}
   style="width: {size}px; height: {size}px;"
   role="img"
-  aria-label="BPM ring at {liveBpm} BPM, beat {beatIndex} of 4"
+  aria-label={liveSnapshot !== null && !bpmReady
+    ? `BPM ring warming, beat ${beatIndex} of 4`
+    : `BPM ring at ${liveBpm} BPM, beat ${beatIndex} of 4`}
 >
   <svg viewBox="0 0 {VIEW} {VIEW}" aria-hidden="true">
     <circle class="bpm-ring__bg" cx={VIEW / 2} cy={VIEW / 2} r={RADIUS} />
@@ -109,7 +117,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       stroke-dashoffset={offset}
     />
   </svg>
-  <div class="bpm-ring__val">{liveBpm}</div>
+  <div class="bpm-ring__val">{bpmLabel}</div>
 </div>
 
 <style>
@@ -144,5 +152,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-mono-md);
     font-weight: var(--font-weight-label);
     color: var(--color-text-0);
+  }
+  .bpm-ring--warming .bpm-ring__fg {
+    opacity: 0.45;
+  }
+  .bpm-ring--warming .bpm-ring__val {
+    color: var(--color-text-3);
   }
 </style>

@@ -46,7 +46,7 @@
 use chromaticity_audio::AudioUniformSnapshot;
 use chromaticity_runtime::scheduler::ipc::IpcEmit;
 use chromaticity_ui_bridge::AudioUniformSnapshotPayload;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime};
 
 /// Event name on the Tauri event channel. The Svelte listener wired
 /// in Wave 1c-α PR 2 (`src/lib/stores/audioSnapshot.svelte.ts`) calls
@@ -62,20 +62,20 @@ pub const AUDIO_UNIFORM_SNAPSHOT_EVENT: &str = "audio_uniform_snapshot_changed";
 /// [`chromaticity_audio::AudioUniformSnapshot`] payload via
 /// [`tauri::Emitter::emit`] on every scheduler tick where a fresh
 /// snapshot is present.
-pub struct TauriIpcEmitter {
-    app: AppHandle,
+pub struct TauriIpcEmitter<R: Runtime = tauri::Wry> {
+    app: AppHandle<R>,
 }
 
-impl TauriIpcEmitter {
+impl<R: Runtime> TauriIpcEmitter<R> {
     /// Wrap a [`tauri::AppHandle`] for use with
     /// [`chromaticity_runtime::scheduler::Scheduler::with_ipc_emit`].
     #[must_use]
-    pub fn new(app: AppHandle) -> Self {
+    pub fn new(app: AppHandle<R>) -> Self {
         Self { app }
     }
 }
 
-impl IpcEmit for TauriIpcEmitter {
+impl<R: Runtime> IpcEmit for TauriIpcEmitter<R> {
     fn emit_snapshot(&self, snapshot: AudioUniformSnapshot) {
         let payload = AudioUniformSnapshotPayload::from(snapshot);
         // Silent drop on emit failure per ADR-019 §3 + §4. Tauri's
@@ -115,22 +115,34 @@ mod ipc_emit_pins {
     //!   silent end-to-end break.
 
     use super::AUDIO_UNIFORM_SNAPSHOT_EVENT;
-    use chromaticity_audio::AudioUniformSnapshot;
+    use chromaticity_audio::{AudioAxisAvailability, AudioUniformSnapshot};
     use chromaticity_ui_bridge::AudioUniformSnapshotPayload;
 
     #[test]
     fn payload_conversion_preserves_field_by_field_equality() {
         let snapshot = AudioUniformSnapshot {
             bpm: 145.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.7,
             peak: 0.9,
             fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         };
         let payload = AudioUniformSnapshotPayload::from(snapshot);
         assert_eq!(payload.bpm, snapshot.bpm);
+        assert_eq!(
+            payload.bpm_availability,
+            chromaticity_ui_bridge::AudioAxisAvailability::Ready
+        );
         assert_eq!(payload.rms, snapshot.rms);
         assert_eq!(payload.peak, snapshot.peak);
         assert_eq!(payload.fft_bands, snapshot.fft_bands);
+        assert_eq!(
+            payload.fft_availability,
+            chromaticity_ui_bridge::AudioAxisAvailability::Ready
+        );
+        assert!(!payload.degraded);
         // Reverse direction round-trip preserves the snapshot too;
         // mirrors the producer-side `From` symmetry the cross-seam
         // contract relies on.
@@ -162,10 +174,19 @@ mod ipc_emit_pins {
         let snapshot = AudioUniformSnapshot::default();
         let payload = AudioUniformSnapshotPayload::from(snapshot);
         assert_eq!(payload.bpm, 0.0);
+        assert_eq!(
+            payload.bpm_availability,
+            chromaticity_ui_bridge::AudioAxisAvailability::Warming
+        );
         assert_eq!(payload.rms, 0.0);
         assert_eq!(payload.peak, 0.0);
         for band in payload.fft_bands {
             assert_eq!(band, 0.0);
         }
+        assert_eq!(
+            payload.fft_availability,
+            chromaticity_ui_bridge::AudioAxisAvailability::Warming
+        );
+        assert!(!payload.degraded);
     }
 }

@@ -20,9 +20,12 @@ import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSn
 
 const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
   bpm: 145,
+  bpm_availability: 'Ready',
   rms: 0.5,
   peak: 0.9,
   fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+  fft_availability: 'Ready',
+  degraded: false,
 };
 
 function stubMatchMedia(reduce: boolean): void {

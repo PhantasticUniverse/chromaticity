@@ -56,6 +56,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     the store hydrates on TopBar mount and re-polls on focus
   //     events; this is the same enumeration that powers the MIDI
   //     view Devices tab (Wave 2.1 D.1).
+  //   - **AUDIO pill** — derived from `audioSnapshotStore.snapshot`;
+  //     `snapshot.degraded` maps to the red disconnected state so
+  //     operator chrome surfaces recovered last-known audio state.
   //   - **OSC pill** — driven by the new `oscHealthStore` which polls
   //     the `osc_health_snapshot` Tauri command every 5 s (Wave 2.1
   //     D.3 shipped the command + bridge type).
@@ -125,10 +128,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     return transportStore.timecode();
   });
 
-  const currentBpm = $derived(audioSnapshotStore.snapshot?.bpm ?? DEFAULT_BPM);
+  const audioSnapshot = $derived(audioSnapshotStore.snapshot);
+  const audioBpmReady = $derived(audioSnapshot?.bpm_availability === 'Ready');
+  const currentBpm = $derived(audioBpmReady ? (audioSnapshot?.bpm ?? DEFAULT_BPM) : DEFAULT_BPM);
   // BPM display formatting: bundle renders one decimal place
   // (`Chromaticity.html` line 208 `128.0`). We mirror that.
-  const bpmDisplay = $derived(currentBpm.toFixed(1));
+  const bpmDisplay = $derived(audioSnapshot && !audioBpmReady ? '--' : currentBpm.toFixed(1));
 
   // Per-route subtitle. Hardcoded for W15; future enhancement could
   // accept a per-view dynamic count via route-store metadata (e.g.
@@ -223,6 +228,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /** MIDI pill state — `ok` when at least one enumerated MIDI device is present. */
   const midiState: AdapterPillState = $derived(midiStore.devices.length > 0 ? 'ok' : 'off');
 
+  /** AUDIO pill state — degraded snapshots surface as red/offline. */
+  const audioState: AdapterPillState = $derived.by(() => {
+    const snap = audioSnapshotStore.snapshot;
+    if (!snap) return 'off';
+    if (snap.degraded) return 'disconnected';
+    if (snap.bpm_availability !== 'Ready' || snap.fft_availability !== 'Ready') return 'warming';
+    return 'ok';
+  });
+
   /** OSC pill state — derived from the polling store snapshot. */
   const oscState: AdapterPillState = $derived(
     mapOscHealthToPillState(oscHealthStore.snapshot?.state ?? null),
@@ -239,6 +253,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       ? `${midiStore.devices.length} device${midiStore.devices.length === 1 ? '' : 's'}`
       : 'No MIDI devices',
   );
+
+  /** AUDIO pill tooltip detail — readiness / degraded summary. */
+  const audioDetail = $derived.by(() => {
+    const snap = audioSnapshotStore.snapshot;
+    if (!snap) return 'Audio snapshot offline';
+    if (snap.degraded) return 'Audio degraded · recovered last-known snapshot';
+    if (snap.bpm_availability !== 'Ready' || snap.fft_availability !== 'Ready') {
+      return `Warming · BPM ${snap.bpm_availability} · FFT ${snap.fft_availability}`;
+    }
+    return 'Audio snapshot ready';
+  });
 
   /** OSC pill tooltip detail — local address when bound; state word otherwise. */
   const oscDetail = $derived.by(() => {
@@ -299,7 +324,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </span>
       <span class="top-bar__transport-bpm" data-testid="top-bar-bpm">
         <span class="top-bar__transport-bpm-key">BPM</span>
-        <span class="top-bar__transport-bpm-value">{bpmDisplay}</span>
+        <span
+          class="top-bar__transport-bpm-value"
+          class:top-bar__transport-bpm-value--warming={audioSnapshot !== null && !audioBpmReady}
+        >
+          {bpmDisplay}
+        </span>
       </span>
       <span class="top-bar__transport-vu" data-testid="top-bar-vu" aria-label="Audio meter">
         <VuStereo width={88} />
@@ -310,6 +340,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <div class="top-bar__hud">
     <div class="top-bar__pills" role="group" aria-label="Adapter status">
       <AdapterPill kind="OUT" state={outState} detail={outDetail} />
+      <AdapterPill kind="AUDIO" state={audioState} detail={audioDetail} />
       <AdapterPill kind="MIDI" state={midiState} detail={midiDetail} />
       <AdapterPill kind="OSC" state={oscState} detail={oscDetail} />
     </div>
@@ -635,6 +666,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     color: var(--color-primary);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
+  }
+
+  .top-bar__transport-bpm-value--warming {
+    color: var(--color-text-3);
   }
 
   .top-bar__transport-vu {

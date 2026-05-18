@@ -25,9 +25,12 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 const SAMPLE_PAYLOAD: AudioUniformSnapshotPayload = {
   bpm: 128,
+  bpm_availability: 'Ready',
   rms: 0.5,
   peak: 0.8,
   fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+  fft_availability: 'Ready',
+  degraded: false,
 };
 
 describe('audioSnapshotStore', () => {

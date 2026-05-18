@@ -33,6 +33,24 @@
 //! `record_pull_outcome`. The negotiator's per-instance counters are
 //! layered above and never replace the global tracker.
 //!
+//! # Pending and callback-stop semantics
+//!
+//! [`IngestStatus::Pending`] is a neutral callback gap, not evidence
+//! that the capture device has failed. The cpal source can be open
+//! while its data callback has not yet delivered a frame, so `Pending`
+//! does not increment the demotion counter and cannot push the
+//! negotiator into silent fallback by itself. The regression
+//! `production_empty_poll_returns_pending_not_failure` pins that empty
+//! production polls remain neutral.
+//!
+//! Callback-stop failure is modelled by the source translating a
+//! channel `Disconnected` observation into [`IngestStatus::Closed`] at
+//! the ingest boundary rather than by the negotiator inventing a
+//! wall-clock timeout. That keeps ownership of device-liveness inside
+//! the cpal adapter, where stream errors and callback shutdown are
+//! observable, and keeps this layer purely status-driven: `Closed`
+//! is the demotion signal, `Pending` is warmup.
+//!
 //! Governing docs: `docs/06-audio-engine.md` "Reliability/Fallback
 //! Policy" (fall back to silent on device failure) and ADR-016 (audio-
 //! ingest counter family).
@@ -80,9 +98,11 @@ pub enum IngestSource {
 /// Slice-3a transition rule:
 ///
 /// - Negotiator starts on the primary source.
-/// - Each non-`Ready` outcome from the primary increments the
-///   primary failure counter; each `Ready` resets it (and increments
-///   the primary success counter).
+/// - Each failure outcome from the primary (`WouldBlock` / `Closed`)
+///   increments the primary failure counter; each `Ready` resets it
+///   (and increments the primary success counter). `Pending` is a
+///   neutral poll gap for callback-driven sources and does not mutate
+///   either counter.
 /// - When `primary_consecutive_failures >= degraded_after`, demote
 ///   to the fallback.
 /// - While on the fallback, the negotiator probes the primary on
@@ -256,6 +276,7 @@ impl IngestNegotiator {
                     self.primary_consecutive_successes.saturating_add(1);
                 self.primary_consecutive_failures = 0;
             }
+            IngestStatus::Pending => {}
             IngestStatus::WouldBlock | IngestStatus::Closed => {
                 self.primary_consecutive_failures =
                     self.primary_consecutive_failures.saturating_add(1);
@@ -291,7 +312,7 @@ impl IngestBoundary for IngestNegotiator {
                 let status = self.primary.try_pull(out);
                 self.record_primary(&status);
                 self.maybe_demote();
-                if matches!(status, IngestStatus::Ready) {
+                if matches!(status, IngestStatus::Ready | IngestStatus::Pending) {
                     return status;
                 }
                 // Primary failed; if we just demoted, serve the
@@ -492,6 +513,25 @@ mod negotiation_pins {
         neg.try_pull(&mut frame);
         assert_eq!(neg.primary_consecutive_successes(), 0);
         assert_eq!(neg.primary_consecutive_failures(), 1);
+    }
+
+    #[test]
+    fn negotiator_pending_poll_gap_does_not_demote_primary() {
+        let mut neg = IngestNegotiator::new(ScriptedSource::new(vec![
+            IngestStatus::Pending,
+            IngestStatus::Pending,
+            IngestStatus::Ready,
+        ]));
+        let mut frame = AudioFrame::default();
+        assert_eq!(neg.try_pull(&mut frame), IngestStatus::Pending);
+        assert_eq!(neg.try_pull(&mut frame), IngestStatus::Pending);
+        assert_eq!(neg.active_source(), IngestSource::Primary);
+        assert_eq!(neg.primary_consecutive_failures(), 0);
+        assert_eq!(neg.primary_consecutive_successes(), 0);
+
+        assert_eq!(neg.try_pull(&mut frame), IngestStatus::Ready);
+        assert_eq!(neg.active_source(), IngestSource::Primary);
+        assert_eq!(neg.primary_consecutive_successes(), 1);
     }
 
     #[test]

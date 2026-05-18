@@ -23,10 +23,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // widget consumes the engine's `audio_uniform_snapshot_changed` Tauri
   // event via `audioSnapshotStore` (producer side: Wave 6 PR 1, merge
   // `c1d93e8`). When a non-null snapshot is available the BPM driving
-  // the beat-position math is sourced from `liveSnapshot.bpm`;
-  // otherwise the synthetic rAF tick keeps cycling so the dots still
-  // animate. `prefers-reduced-motion: reduce` pins beat 1 (the
-  // downbeat) regardless.
+  // the beat-position math is sourced from `liveSnapshot.bpm` only
+  // once `bpm_availability === 'Ready'`; during warmup the synthetic
+  // BPM keeps cycling and the accessible label reports warming.
+  // `prefers-reduced-motion: reduce` pins beat 1 (the downbeat)
+  // regardless.
   //
   // The optional `snapshot` prop lets tests inject a fixed payload
   // without going through the singleton store; default behaviour reads
@@ -48,7 +49,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   });
 
   const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
-  const liveBpm = $derived(liveSnapshot?.bpm ?? bpm);
+  const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
+  const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
 
   let now = $state(0);
   let reduceMotion = $state(false);
@@ -84,7 +86,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const DOTS: ReadonlyArray<number> = [0, 1, 2, 3];
 </script>
 
-<div class="beat-dots" role="img" aria-label="Beat {cur + 1} of 4 at {liveBpm} BPM">
+<div
+  class="beat-dots"
+  role="img"
+  aria-label={liveSnapshot !== null && !bpmReady
+    ? `Beat ${cur + 1} of 4, BPM warming`
+    : `Beat ${cur + 1} of 4 at ${liveBpm} BPM`}
+>
   {#each DOTS as i (i)}
     <span
       class="beat-dots__dot"

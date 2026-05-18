@@ -24,8 +24,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // merge `c1d93e8`). When a non-null snapshot is available the four
   // band-tile values are reduced from the engine's 8 FFT bands (BASS
   // = avg(fft_bands[0..2]), LOW MID = avg(fft_bands[2..4]), HIGH MID
-  // = avg(fft_bands[4..6]), HIGH = avg(fft_bands[6..8])) and the BPM
-  // readout reads `liveSnapshot.bpm`; otherwise the existing
+  // = avg(fft_bands[4..6]), HIGH = avg(fft_bands[6..8])) once
+  // `fft_availability === 'Ready'`, and the BPM readout reads
+  // `liveSnapshot.bpm` once `bpm_availability === 'Ready'`; warming
+  // axes render dim `--` placeholders. Otherwise the existing
   // synthetic-time defaults render. The 48-bar FFT visualiser stays
   // synthetic-driven — the 8 → 48 interpolation is a stretch goal,
   // not in PR 2 scope (deferred as a post-MVP enhancement). Tap-tempo
@@ -59,7 +61,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   });
 
   const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
-  const liveBpm = $derived(liveSnapshot?.bpm ?? bpm);
+  const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
+  const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
+  const bpmDisplay = $derived(liveSnapshot && !bpmReady ? '-- BPM' : `${liveBpm.toFixed(2)} BPM`);
+  const fftWarming = $derived(
+    !bands && liveSnapshot !== null && liveSnapshot.fft_availability !== 'Ready',
+  );
 
   // Wave 2.8 Q.1 — smooth the per-band FFT values before they drive
   // the 4 named tiles. The engine producer emits a fresh snapshot
@@ -95,7 +102,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const HYST = 0.6;
     const tick = (): void => {
       const snap = untrack(() => audioSnapshotStore.snapshot);
-      if (snap) {
+      if (snap && snap.fft_availability === 'Ready') {
         const f = snap.fft_bands;
         const tiles = [(f[0] + f[1]) / 2, (f[2] + f[3]) / 2, (f[4] + f[5]) / 2, (f[6] + f[7]) / 2];
         for (let i = 0; i < 4; i++) {
@@ -135,6 +142,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { name: 'HIGH', value: 0.58, tint: 'var(--color-band-high)' },
   ];
 
+  const WARMING_BANDS: ReadonlyArray<{
+    readonly name: string;
+    readonly value: number;
+    readonly tint: string;
+  }> = DEFAULT_BANDS.map((band) => ({ ...band, value: 0 }));
+
   /**
    * Reduce the engine's 8-band FFT array into the bundle's 4 named
    * tiles by averaging adjacent pairs (8 → 4). Preserves the bundle's
@@ -164,16 +177,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // the rAF $effect above.
   const renderBands = $derived(
     bands ??
-      (snapshot
-        ? tilesFromValues([
-            (snapshot.fft_bands[0] + snapshot.fft_bands[1]) / 2,
-            (snapshot.fft_bands[2] + snapshot.fft_bands[3]) / 2,
-            (snapshot.fft_bands[4] + snapshot.fft_bands[5]) / 2,
-            (snapshot.fft_bands[6] + snapshot.fft_bands[7]) / 2,
-          ])
-        : liveSnapshot
-          ? tilesFromValues(smoothedBands)
-          : DEFAULT_BANDS),
+      (fftWarming
+        ? WARMING_BANDS
+        : snapshot
+          ? tilesFromValues([
+              (snapshot.fft_bands[0] + snapshot.fft_bands[1]) / 2,
+              (snapshot.fft_bands[2] + snapshot.fft_bands[3]) / 2,
+              (snapshot.fft_bands[4] + snapshot.fft_bands[5]) / 2,
+              (snapshot.fft_bands[6] + snapshot.fft_bands[7]) / 2,
+            ])
+          : liveSnapshot
+            ? tilesFromValues(smoothedBands)
+            : DEFAULT_BANDS),
   );
 
   // True iff the rAF-smoothing path is active (no caller-supplied
@@ -263,7 +278,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <div class="audio-reactivity" role="img" aria-label="Audio reactivity preview">
   <div class="audio-reactivity__bands">
     {#each renderBands as band, i (band.name)}
-      <div class="audio-reactivity__band">
+      <div class="audio-reactivity__band" class:audio-reactivity__band--warming={fftWarming}>
         <div class="audio-reactivity__band-name">{band.name}</div>
         <div class="audio-reactivity__band-track">
           <div
@@ -272,7 +287,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           ></div>
         </div>
         <div class="audio-reactivity__band-pct">
-          {useHystPct ? (displayedBandPct[i] ?? 0) : Math.round(band.value * 100)}%
+          {#if fftWarming}
+            --
+          {:else}
+            {useHystPct ? (displayedBandPct[i] ?? 0) : Math.round(band.value * 100)}%
+          {/if}
         </div>
       </div>
     {/each}
@@ -301,7 +320,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   <div class="audio-reactivity__tempo">
     <span class="audio-reactivity__tempo-label">tempo</span>
-    <span class="audio-reactivity__tempo-bpm">{liveBpm.toFixed(2)} BPM</span>
+    <span
+      class="audio-reactivity__tempo-bpm"
+      class:audio-reactivity__tempo-bpm--warming={liveSnapshot !== null && !bpmReady}
+    >
+      {bpmDisplay}
+    </span>
     <span class="audio-reactivity__link-pill">
       <span class="audio-reactivity__link-dot" aria-hidden="true"></span>
       Ableton Link · {linkPeerCount} peers
@@ -351,6 +375,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     border-radius: inherit;
     transition: width 120ms ease;
   }
+  .audio-reactivity__band--warming .audio-reactivity__band-fill {
+    opacity: 0.35;
+  }
   .audio-reactivity__band-pct {
     font-family: var(--font-family-mono);
     font-size: var(--font-size-mono-sm);
@@ -390,6 +417,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-mono-md);
     color: var(--color-primary);
     font-variant-numeric: tabular-nums;
+  }
+  .audio-reactivity__tempo-bpm--warming {
+    color: var(--color-text-3);
   }
   .audio-reactivity__link-pill {
     display: inline-flex;

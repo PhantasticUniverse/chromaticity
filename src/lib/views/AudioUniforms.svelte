@@ -302,6 +302,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
     smoothedSnapshot = {
       bpm: snap.bpm,
+      bpm_availability: snap.bpm_availability,
       rms: _smRms,
       peak: _smPeak,
       fft_bands: [
@@ -314,11 +315,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         _smFft[6] ?? 0,
         _smFft[7] ?? 0,
       ],
+      fft_availability: snap.fft_availability,
+      degraded: snap.degraded,
     };
   });
 
   const liveBands = $derived<readonly FrequencyBand[]>(
-    smoothedSnapshot ? reduceFftToBands(smoothedSnapshot) : AUDIO_UNIFORMS_FIXTURE.bands,
+    smoothedSnapshot?.fft_availability === 'Ready'
+      ? reduceFftToBands(smoothedSnapshot)
+      : AUDIO_UNIFORMS_FIXTURE.bands,
   );
 
   // Wave 2.6 AUD.C — live peak / RMS dB readout in the hero stats strip.
@@ -406,9 +411,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const capturedAt = new Date().toISOString();
     const payload = {
       bpm: snap.bpm,
+      bpm_availability: snap.bpm_availability,
       rms: snap.rms,
       peak: snap.peak,
       fft_bands: snap.fft_bands,
+      fft_availability: snap.fft_availability,
+      degraded: snap.degraded,
       captured_at: capturedAt,
     };
     const json = JSON.stringify(payload, null, 2);

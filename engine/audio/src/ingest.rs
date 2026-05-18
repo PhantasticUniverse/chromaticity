@@ -11,11 +11,13 @@
 //! complete block and never blocks on the producer.
 //!
 //! Slice-2 adds the [`IngestState`] degraded-mode accounting per §7.11:
-//! two consecutive non-[`IngestStatus::Ready`] outcomes flip the state
-//! into [`IngestMode::Degraded`]; the first [`IngestStatus::Ready`]
-//! returns it to [`IngestMode::Normal`]. This is the ingest-side half
-//! of the §7.11 invariant; the consumer-side snapshot handling lives
-//! in the frame scheduler (not this crate).
+//! two consecutive failure outcomes (`WouldBlock` / `Closed`) flip
+//! the state into [`IngestMode::Degraded`]; the first
+//! [`IngestStatus::Ready`] returns it to [`IngestMode::Normal`].
+//! [`IngestStatus::Pending`] is neutral and exists for callback-driven
+//! sources that can be polled between normal producer bursts. This is
+//! the ingest-side half of the §7.11 invariant; the consumer-side
+//! snapshot handling lives in the frame scheduler (not this crate).
 //!
 //! # Standing constraint — cpal FFI-seam panic discipline
 //!
@@ -56,13 +58,19 @@ use crate::frame::AudioFrame;
 /// Outcome of a non-blocking pull from the ingest source.
 ///
 /// Mirrors the §7.11 degraded-modes vocabulary: the analyser either
-/// gets a fresh frame, observes a transient gap it can tolerate, or
-/// learns the source has gone away and it must switch to the silent
-/// fallback uniforms from the reliability policy.
+/// gets a fresh frame, observes a neutral poll gap, observes a
+/// transient underrun it can tolerate, or learns the source has gone
+/// away and it must switch to the silent fallback uniforms from the
+/// reliability policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IngestStatus {
     /// A fresh frame was produced.
     Ready,
+    /// No frame is available on this poll, but the source is still
+    /// healthy and this should not count toward degraded-mode
+    /// fallback. Used by callback-driven producers such as cpal
+    /// where the analyser can poll between normal callback bursts.
+    Pending,
     /// No frame is available yet; retry on the next hop.
     WouldBlock,
     /// The source has closed and will not produce further frames.
@@ -75,7 +83,9 @@ pub enum IngestStatus {
 /// thread at the §7.1 hop cadence (`375 Hz` once the real pipeline
 /// lands). The method is non-blocking so an under-run never stalls
 /// the analyser: the §7.11 degraded-modes policy takes over after two
-/// consecutive `WouldBlock` / `Closed` outcomes.
+/// consecutive `WouldBlock` / `Closed` outcomes. Healthy empty polls
+/// can return [`IngestStatus::Pending`] without advancing the
+/// degraded-mode counter.
 ///
 /// The trait is object-safe on purpose; the first real ingest source
 /// will be selected at runtime from a configuration surface, so the
@@ -94,7 +104,7 @@ pub trait IngestBoundary {
 /// `Normal` — the most recent outcome was `Ready`, or the consecutive-
 /// non-`Ready` counter has not yet crossed the §7.11 threshold.
 ///
-/// `Degraded` — two or more consecutive non-`Ready` outcomes have been
+/// `Degraded` — two or more consecutive failure outcomes have been
 /// observed; the analyser should fall back to the silent-fallback
 /// uniforms from the reliability policy until a `Ready` returns the
 /// source to `Normal`.
@@ -115,11 +125,11 @@ impl Default for IngestMode {
     }
 }
 
-/// Ingest-side §7.11 state machine tracking consecutive non-`Ready`
+/// Ingest-side §7.11 state machine tracking consecutive failure
 /// outcomes.
 ///
-/// Slice-2 pins the rule: two consecutive non-`Ready` (either
-/// `WouldBlock` or `Closed`) outcomes flip the mode to
+/// Slice-2 pins the rule: two consecutive failure outcomes (either
+/// `WouldBlock` or `Closed`) flip the mode to
 /// [`IngestMode::Degraded`]; the first subsequent `Ready` returns it
 /// to [`IngestMode::Normal`]. The threshold of 2 is the §7.11
 /// "consecutive underruns" constant the ingest side is required to
@@ -146,6 +156,7 @@ impl IngestState {
                 self.consecutive_underruns = 0;
                 self.mode = IngestMode::Normal;
             }
+            IngestStatus::Pending => {}
             IngestStatus::WouldBlock | IngestStatus::Closed => {
                 self.consecutive_underruns = self.consecutive_underruns.saturating_add(1);
                 if self.consecutive_underruns >= 2 {

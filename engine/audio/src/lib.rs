@@ -228,7 +228,7 @@ pub use cpal_source::{
 };
 pub use error::AudioError;
 pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource};
-pub use uniforms::{AudioUniformSnapshot, extract_uniform_snapshot};
+pub use uniforms::{AudioAxisAvailability, AudioUniformSnapshot, extract_uniform_snapshot};
 
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -327,6 +327,24 @@ mod drift_pins {
         // `WouldBlock` does.
         assert_eq!(state.next_state(IngestStatus::Closed), IngestMode::Normal);
         assert_eq!(state.next_state(IngestStatus::Closed), IngestMode::Degraded);
+    }
+
+    #[test]
+    fn ingest_state_treats_pending_as_neutral_poll_gap() {
+        let mut state = IngestState::default();
+        assert_eq!(state.next_state(IngestStatus::Pending), IngestMode::Normal);
+        assert_eq!(state.next_state(IngestStatus::Pending), IngestMode::Normal);
+        assert_eq!(state.mode(), IngestMode::Normal);
+
+        assert_eq!(
+            state.next_state(IngestStatus::WouldBlock),
+            IngestMode::Normal
+        );
+        assert_eq!(state.next_state(IngestStatus::Pending), IngestMode::Normal);
+        assert_eq!(
+            state.next_state(IngestStatus::WouldBlock),
+            IngestMode::Degraded
+        );
     }
 }
 

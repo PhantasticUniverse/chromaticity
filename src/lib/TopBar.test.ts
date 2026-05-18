@@ -125,17 +125,17 @@ describe('TopBar shell component', () => {
     );
   });
 
-  it('renders three adapter pills with the OUT / MIDI / OSC kind labels', () => {
+  it('renders four adapter pills with the OUT / AUDIO / MIDI / OSC kind labels', () => {
     const { container } = render(TopBar);
     const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-    expect(pills.length).toBe(3);
+    expect(pills.length).toBe(4);
     const kinds = Array.from(pills).map((p) =>
       p.querySelector('.adapter-pill__kind')?.textContent?.trim(),
     );
-    expect(kinds).toEqual(['OUT', 'MIDI', 'OSC']);
+    expect(kinds).toEqual(['OUT', 'AUDIO', 'MIDI', 'OSC']);
   });
 
-  it('defaults all three adapter pills to off when no live data is present', () => {
+  it('defaults all four adapter pills to off when no live data is present', () => {
     // Wave 2.4 Lane PERF.D — without a loaded scene, MIDI devices, or
     // an OSC health snapshot, every pill renders the off baseline.
     const { container } = render(TopBar);
@@ -143,6 +143,7 @@ describe('TopBar shell component', () => {
     expect(pills[0]?.getAttribute('data-state')).toBe('off');
     expect(pills[1]?.getAttribute('data-state')).toBe('off');
     expect(pills[2]?.getAttribute('data-state')).toBe('off');
+    expect(pills[3]?.getAttribute('data-state')).toBe('off');
   });
 
   it('groups the adapter pills under an Adapter status aria-label', () => {
@@ -298,9 +299,12 @@ describe('TopBar shell component', () => {
       routeStore.set('perform');
       audioSnapshotStore.snapshot = {
         bpm: 132.5,
+        bpm_availability: 'Ready',
         rms: 0.4,
         peak: 0.7,
         fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+        fft_availability: 'Ready',
+        degraded: false,
       };
       const { getByTestId } = render(TopBar);
       // Microtask flush for the $derived recomputation.
@@ -384,16 +388,34 @@ describe('TopBar shell component', () => {
       const { container } = render(TopBar);
       await Promise.resolve();
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-      expect(pills[1]?.getAttribute('data-state')).toBe('ok');
-      expect(pills[1]?.getAttribute('title')).toContain('1 device');
+      expect(pills[2]?.getAttribute('data-state')).toBe('ok');
+      expect(pills[2]?.getAttribute('title')).toContain('1 device');
     });
 
     it('keeps the MIDI pill off when no devices are enumerated', () => {
       midiStore.devices = [];
       const { container } = render(TopBar);
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-      expect(pills[1]?.getAttribute('data-state')).toBe('off');
-      expect(pills[1]?.getAttribute('title')).toContain('No MIDI devices');
+      expect(pills[2]?.getAttribute('data-state')).toBe('off');
+      expect(pills[2]?.getAttribute('title')).toContain('No MIDI devices');
+    });
+
+    it('maps degraded audio snapshots to the red AUDIO pill state', async () => {
+      audioSnapshotStore.snapshot = {
+        bpm: 128,
+        bpm_availability: 'Ready',
+        rms: 0.3,
+        peak: 0.5,
+        fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+        fft_availability: 'Ready',
+        degraded: true,
+      };
+      const { container } = render(TopBar);
+      await Promise.resolve();
+      const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
+      expect(pills[1]?.querySelector('.adapter-pill__kind')?.textContent?.trim()).toBe('AUDIO');
+      expect(pills[1]?.getAttribute('data-state')).toBe('disconnected');
+      expect(pills[1]?.getAttribute('title')).toContain('degraded');
     });
 
     it('maps OSC Healthy snapshot to the ok pill state', async () => {
@@ -406,8 +428,8 @@ describe('TopBar shell component', () => {
       const { container } = render(TopBar);
       await Promise.resolve();
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-      expect(pills[2]?.getAttribute('data-state')).toBe('ok');
-      expect(pills[2]?.getAttribute('title')).toContain('127.0.0.1:7000');
+      expect(pills[3]?.getAttribute('data-state')).toBe('ok');
+      expect(pills[3]?.getAttribute('title')).toContain('127.0.0.1:7000');
     });
 
     it('maps OSC Recovering snapshot to the warming pill state', async () => {
@@ -419,7 +441,7 @@ describe('TopBar shell component', () => {
       const { container } = render(TopBar);
       await Promise.resolve();
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-      expect(pills[2]?.getAttribute('data-state')).toBe('warming');
+      expect(pills[3]?.getAttribute('data-state')).toBe('warming');
     });
 
     it('maps OSC Degraded snapshot to the disconnected pill state', async () => {
@@ -431,14 +453,14 @@ describe('TopBar shell component', () => {
       const { container } = render(TopBar);
       await Promise.resolve();
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-      expect(pills[2]?.getAttribute('data-state')).toBe('disconnected');
+      expect(pills[3]?.getAttribute('data-state')).toBe('disconnected');
     });
 
     it('renders the OSC pill in the off state when no snapshot has arrived', () => {
       const { container } = render(TopBar);
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-      expect(pills[2]?.getAttribute('data-state')).toBe('off');
-      expect(pills[2]?.getAttribute('title')).toContain('offline');
+      expect(pills[3]?.getAttribute('data-state')).toBe('off');
+      expect(pills[3]?.getAttribute('title')).toContain('offline');
     });
   });
 });

@@ -30,8 +30,8 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-use chromaticity_audio::AudioUniformSnapshot;
-use chromaticity_ui_bridge::AudioUniformSnapshotPayload;
+use chromaticity_audio::{AudioAxisAvailability as EngineAxisAvailability, AudioUniformSnapshot};
+use chromaticity_ui_bridge::{AudioAxisAvailability, AudioUniformSnapshotPayload};
 use ts_rs::TS;
 
 /// Helper: a non-default snapshot exercising distinct values across
@@ -40,18 +40,24 @@ use ts_rs::TS;
 fn nonzero_snapshot() -> AudioUniformSnapshot {
     AudioUniformSnapshot {
         bpm: 137.5,
+        bpm_availability: EngineAxisAvailability::Ready,
         rms: 0.42,
         peak: 0.81,
         fft_bands: [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80],
+        fft_availability: EngineAxisAvailability::Ready,
+        degraded: false,
     }
 }
 
 fn nonzero_payload() -> AudioUniformSnapshotPayload {
     AudioUniformSnapshotPayload {
         bpm: 137.5,
+        bpm_availability: AudioAxisAvailability::Ready,
         rms: 0.42,
         peak: 0.81,
         fft_bands: [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80],
+        fft_availability: AudioAxisAvailability::Ready,
+        degraded: false,
     }
 }
 
@@ -65,6 +71,7 @@ fn engine_to_payload_field_by_field_equality() {
     let payload: AudioUniformSnapshotPayload = snapshot.into();
 
     assert_eq!(payload.bpm, snapshot.bpm);
+    assert_eq!(payload.bpm_availability, AudioAxisAvailability::Ready);
     assert_eq!(payload.rms, snapshot.rms);
     assert_eq!(payload.peak, snapshot.peak);
     for (i, (lhs, rhs)) in payload
@@ -78,6 +85,8 @@ fn engine_to_payload_field_by_field_equality() {
             "fft_bands[{i}] mismatch: payload={lhs}, snapshot={rhs}"
         );
     }
+    assert_eq!(payload.fft_availability, AudioAxisAvailability::Ready);
+    assert_eq!(payload.degraded, snapshot.degraded);
 }
 
 #[test]
@@ -89,6 +98,7 @@ fn payload_to_engine_round_trip_field_by_field_equality() {
     let snapshot: AudioUniformSnapshot = payload.into();
 
     assert_eq!(snapshot.bpm, payload.bpm);
+    assert_eq!(snapshot.bpm_availability, EngineAxisAvailability::Ready);
     assert_eq!(snapshot.rms, payload.rms);
     assert_eq!(snapshot.peak, payload.peak);
     for (i, (lhs, rhs)) in snapshot
@@ -102,6 +112,8 @@ fn payload_to_engine_round_trip_field_by_field_equality() {
             "fft_bands[{i}] mismatch: snapshot={lhs}, payload={rhs}"
         );
     }
+    assert_eq!(snapshot.fft_availability, EngineAxisAvailability::Ready);
+    assert_eq!(snapshot.degraded, payload.degraded);
 }
 
 #[test]
@@ -117,6 +129,7 @@ fn payload_json_round_trip_field_by_field_equality() {
         serde_json::from_str(&json).expect("deserialize payload");
 
     assert_eq!(decoded.bpm, payload.bpm);
+    assert_eq!(decoded.bpm_availability, payload.bpm_availability);
     assert_eq!(decoded.rms, payload.rms);
     assert_eq!(decoded.peak, payload.peak);
     for (i, (lhs, rhs)) in decoded
@@ -130,6 +143,8 @@ fn payload_json_round_trip_field_by_field_equality() {
             "fft_bands[{i}] mismatch after JSON round-trip: decoded={lhs}, payload={rhs}"
         );
     }
+    assert_eq!(decoded.fft_availability, payload.fft_availability);
+    assert_eq!(decoded.degraded, payload.degraded);
     assert_eq!(decoded, payload);
 }
 
@@ -146,9 +161,12 @@ fn payload_default_round_trip_uses_zero_snapshot() {
 
     assert_eq!(back, snapshot);
     assert_eq!(payload.bpm, 0.0);
+    assert_eq!(payload.bpm_availability, AudioAxisAvailability::Warming);
     assert_eq!(payload.rms, 0.0);
     assert_eq!(payload.peak, 0.0);
     assert_eq!(payload.fft_bands, [0.0_f32; 8]);
+    assert_eq!(payload.fft_availability, AudioAxisAvailability::Warming);
+    assert!(!payload.degraded);
 }
 
 #[test]
@@ -161,15 +179,21 @@ fn payload_extreme_values_round_trip() {
     // value-preservation.
     let upper = AudioUniformSnapshot {
         bpm: 220.0,
+        bpm_availability: EngineAxisAvailability::Ready,
         rms: 1.0,
         peak: 1.0,
         fft_bands: [1.0; 8],
+        fft_availability: EngineAxisAvailability::Ready,
+        degraded: false,
     };
     let lower = AudioUniformSnapshot {
         bpm: 50.0,
+        bpm_availability: EngineAxisAvailability::Ready,
         rms: 0.0,
         peak: 0.0,
         fft_bands: [0.0; 8],
+        fft_availability: EngineAxisAvailability::Ready,
+        degraded: false,
     };
 
     for snapshot in [upper, lower] {
@@ -177,9 +201,12 @@ fn payload_extreme_values_round_trip() {
         let back: AudioUniformSnapshot = payload.into();
         assert_eq!(back, snapshot);
         assert_eq!(payload.bpm, snapshot.bpm);
+        assert_eq!(payload.bpm_availability, AudioAxisAvailability::Ready);
         assert_eq!(payload.rms, snapshot.rms);
         assert_eq!(payload.peak, snapshot.peak);
         assert_eq!(payload.fft_bands, snapshot.fft_bands);
+        assert_eq!(payload.fft_availability, AudioAxisAvailability::Ready);
+        assert!(!payload.degraded);
     }
 }
 

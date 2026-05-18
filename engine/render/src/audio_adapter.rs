@@ -175,8 +175,8 @@ mod audio_adapter_drift_pins {
     //! - `docs/26-evidence-artifact-registry.md` row 30 — `EV-AUDIO-TRACE`.
     //! - `docs/36-reactive-symbol-catalog.md` §2.7, §2.11.
 
-    use chromaticity_audio::AudioUniformSnapshot;
     use chromaticity_audio::uniforms::FFT_BAND_COUNT;
+    use chromaticity_audio::{AudioAxisAvailability, AudioUniformSnapshot};
 
     use super::{
         UNIFORM_NAME_BPM, UNIFORM_NAME_FFT, UNIFORM_NAME_PEAK, UNIFORM_NAME_RMS,
@@ -235,9 +235,12 @@ mod audio_adapter_drift_pins {
         // would silently re-pack the std140 buffer slot.
         let snapshot = AudioUniformSnapshot {
             bpm: 128.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.6,
             peak: 0.95,
             fft_bands: [0.0; 8],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         };
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
         match &uniforms[0].value {
@@ -274,10 +277,13 @@ mod audio_adapter_drift_pins {
         // with a single 8-element float array.
         let snapshot = AudioUniformSnapshot {
             bpm: 0.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.0,
             peak: 0.0,
             // Distinct values per band so the ordering is observable.
             fft_bands: [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         };
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
         match &uniforms[3].value {
@@ -303,9 +309,12 @@ mod audio_adapter_drift_pins {
         // that compare equal name-by-name and value-by-value.
         let snapshot = AudioUniformSnapshot {
             bpm: 90.0,
+            bpm_availability: AudioAxisAvailability::Ready,
             rms: 0.3,
             peak: 0.5,
             fft_bands: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40],
+            fft_availability: AudioAxisAvailability::Ready,
+            degraded: false,
         };
         let a = uniform_input_from_audio_snapshot(&snapshot);
         let b = uniform_input_from_audio_snapshot(&snapshot);
