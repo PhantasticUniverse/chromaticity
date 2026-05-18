@@ -19,8 +19,9 @@
 //!   [`uniforms::AudioUniformSnapshot`] + the
 //!   [`uniforms::extract_uniform_snapshot`] entry point produce four
 //!   audio analysis primitives (BPM clamped `[50, 220]`, raw RMS
-//!   instantaneous energy, instantaneous peak magnitude, 8-band
-//!   log-spaced FFT magnitudes) per single [`frame::AudioFrame`].
+//!   energy, peak magnitude, 8-band log-spaced FFT magnitudes) over
+//!   the caller-supplied [`frame::AudioFrame`]. The production
+//!   runtime supplies its rolling analysis window for these fields.
 //!   The cross-crate adapter (engine/render slice-5a) maps these
 //!   onto the `syn_BPM` compat-syn-v1 retention plus
 //!   chromaticity-native `chroma_*` audio bindings. Cross-crate

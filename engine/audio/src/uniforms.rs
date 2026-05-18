@@ -30,14 +30,15 @@
 //!
 //! - [`AudioUniformSnapshot::bpm`] -> `syn_BPM` (catalog §2.7,
 //!   clamped `[50, 220]`).
-//! - [`AudioUniformSnapshot::rms`] -> the root-mean-square
-//!   instantaneous energy that `syn_InputLevel` (catalog §2.10,
-//!   `audio_indicators.synScene`) is computed from. Slice-1 exposes
-//!   the raw RMS in `[0, 1]`; the AGC + threshold gate the catalog
-//!   describes lands in a later slice once the `syn_Threshold`
-//!   plumbing arrives.
-//! - [`AudioUniformSnapshot::peak`] -> the per-frame peak magnitude
-//!   the `syn_Level*` family normalises against.
+//! - [`AudioUniformSnapshot::rms`] -> the root-mean-square energy
+//!   over the caller-supplied mono analysis buffer that
+//!   `syn_InputLevel` (catalog §2.10, `audio_indicators.synScene`)
+//!   is computed from. The production runtime supplies its rolling
+//!   analysis window here. Slice-1 exposes the raw RMS in `[0, 1]`;
+//!   the AGC + threshold gate the catalog describes lands in a later
+//!   slice once the `syn_Threshold` plumbing arrives.
+//! - [`AudioUniformSnapshot::peak`] -> the peak magnitude over the
+//!   caller-supplied mono analysis buffer.
 //! - [`AudioUniformSnapshot::fft_bands`] -> 8 log-spaced FFT
 //!   magnitudes that downstream consumers can resample into the
 //!   `syn_Spectrum` (`r=Raw FFT`, catalog §2.6) sampler1D / 2D
@@ -247,13 +248,16 @@ impl AudioAnalysisWindow {
 /// - `bpm_availability`: readiness flag for whether `bpm` was
 ///   computed from a filled BPM analysis window (`Ready`) or is still
 ///   carrying the short-frame fallback during warmup (`Warming`).
-/// - `rms`: root-mean-square energy of the (mono-mixed) frame in
-///   `[0, 1]`. Out-of-range input samples are tolerated (the
-///   analyser clamps per docs/06 §7.4) but the published RMS is
-///   clamped to `[0, 1]` before storage so consumers can rely on
-///   the bound.
-/// - `peak`: instantaneous peak magnitude in `[0, 1]`, computed as
-///   `min(1.0, max(abs(samples)))` over the mono mix.
+/// - `rms`: root-mean-square energy of the caller-supplied
+///   mono-mixed analysis buffer in `[0, 1]`. The production runtime
+///   passes its rolling analysis window here; one-shot callers may
+///   still pass a single callback frame. Out-of-range input samples
+///   are tolerated (the analyser clamps per docs/06 §7.4) but the
+///   published RMS is clamped to `[0, 1]` before storage so consumers
+///   can rely on the bound.
+/// - `peak`: peak magnitude in `[0, 1]`, computed as
+///   `min(1.0, max(abs(samples)))` over the caller-supplied
+///   mono-mixed analysis buffer.
 /// - `fft_bands`: 8 log-spaced FFT magnitudes covering
 ///   `[FFT_BAND_MIN_HZ, FFT_BAND_MAX_HZ]`, each in `[0, 1]`.
 /// - `fft_availability`: readiness flag for whether `fft_bands`
@@ -270,11 +274,11 @@ pub struct AudioUniformSnapshot {
     pub bpm: f32,
     /// Whether `bpm` is safe for UI display as a real tempo estimate.
     pub bpm_availability: AudioAxisAvailability,
-    /// Root-mean-square instantaneous energy, `[0, 1]`. Maps to
+    /// Root-mean-square window energy, `[0, 1]`. Maps to
     /// the `chroma_AudioRMS` chromaticity-native binding via the
     /// engine/render slice-5a adapter.
     pub rms: f32,
-    /// Instantaneous peak magnitude, `[0, 1]`. Maps to the
+    /// Window peak magnitude, `[0, 1]`. Maps to the
     /// `chroma_AudioPeak` chromaticity-native binding via the
     /// engine/render slice-5a adapter.
     pub peak: f32,
@@ -342,8 +346,8 @@ pub fn extract_uniform_snapshot(frame: &AudioFrame) -> AudioUniformSnapshot {
         return AudioUniformSnapshot::default();
     }
 
-    let rms = compute_rms(&mono);
-    let peak = compute_peak(&mono);
+    let rms = compute_rms_over_window(&mono);
+    let peak = compute_peak_over_window(&mono);
     let fft_bands = compute_fft_bands(&mono, frame.sample_rate_hz());
     let bpm = compute_bpm_autocorr(&mono, frame.sample_rate_hz());
     let sample_rate_hz = frame.sample_rate_hz();
@@ -439,6 +443,15 @@ fn compute_rms(mono: &[f32]) -> f32 {
     rms.clamp(0.0, 1.0)
 }
 
+/// Root-mean-square over a mono analysis window, clamped to `[0, 1]`.
+///
+/// This is a named wrapper around the scalar RMS primitive so the
+/// runtime can pin that RMS is sourced from the same rolling analysis
+/// window as FFT/BPM rather than from the most recent callback hop.
+pub(crate) fn compute_rms_over_window(samples: &[f32]) -> f32 {
+    compute_rms(samples)
+}
+
 /// Peak absolute magnitude over a mono buffer, clamped to `[0, 1]`.
 fn compute_peak(mono: &[f32]) -> f32 {
     let mut peak = 0.0_f32;
@@ -449,6 +462,14 @@ fn compute_peak(mono: &[f32]) -> f32 {
         }
     }
     peak.clamp(0.0, 1.0)
+}
+
+/// Peak absolute magnitude over a mono analysis window, clamped to `[0, 1]`.
+///
+/// Kept paired with [`compute_rms_over_window`] so the runtime's
+/// windowed energy/envelope contract is explicit at the call site.
+pub(crate) fn compute_peak_over_window(samples: &[f32]) -> f32 {
+    compute_peak(samples)
 }
 
 /// Build the [`FFT_BAND_COUNT`]-element band array for `mono`.
@@ -652,11 +673,26 @@ mod uniforms_drift_pins {
     use super::{
         AudioAnalysisWindow, AudioAxisAvailability, AudioUniformSnapshot, BPM_CLAMP_MAX,
         BPM_CLAMP_MIN, BPM_DEFAULT, FFT_BAND_COUNT, FFT_BAND_MAX_HZ, FFT_BAND_MIN_HZ,
-        FFT_WINDOW_SIZE, analysis_window_samples, compute_peak, compute_rms,
-        extract_uniform_snapshot, log_band_edges,
+        FFT_WINDOW_SIZE, analysis_window_samples, compute_peak, compute_peak_over_window,
+        compute_rms, compute_rms_over_window, extract_uniform_snapshot, log_band_edges,
     };
     use crate::frame::AudioFrame;
     use std::f32::consts::TAU;
+
+    fn variance(values: &[f32]) -> f32 {
+        if values.is_empty() {
+            return 0.0;
+        }
+        let mean = values.iter().sum::<f32>() / values.len() as f32;
+        values
+            .iter()
+            .map(|value| {
+                let delta = value - mean;
+                delta * delta
+            })
+            .sum::<f32>()
+            / values.len() as f32
+    }
 
     #[test]
     fn rms_matches_hand_computed_small_input() {
@@ -703,6 +739,19 @@ mod uniforms_drift_pins {
     fn peak_zero_for_silent_or_empty_buffer() {
         assert_eq!(compute_peak(&[]), 0.0);
         assert_eq!(compute_peak(&[0.0_f32; 32]), 0.0);
+    }
+
+    #[test]
+    fn window_rms_and_peak_match_known_content() {
+        let window = [0.0_f32, 0.25, -0.75, 0.5];
+        let expected_rms = ((0.25_f32 * 0.25) + (0.75_f32 * 0.75) + (0.5_f32 * 0.5)).sqrt() / 2.0;
+
+        let rms = compute_rms_over_window(&window);
+        assert!(
+            (rms - expected_rms).abs() < 1e-6,
+            "expected {expected_rms}, got {rms}",
+        );
+        assert_eq!(compute_peak_over_window(&window), 0.75);
     }
 
     #[test]
@@ -857,5 +906,34 @@ mod uniforms_drift_pins {
         assert_eq!(window.len(), 128);
         assert_eq!(analysis.sample_rate_hz(), 44_100);
         assert!(analysis.samples().iter().all(|sample| *sample == 0.2));
+    }
+
+    #[test]
+    fn analysis_window_rms_variance_is_lower_than_callback_variance() {
+        let mut window = AudioAnalysisWindow::default();
+        let sample_rate_hz = 1_000;
+        let chunk = 128;
+        let mut callback_rms = Vec::new();
+        let mut windowed_rms = Vec::new();
+
+        for idx in 0..48 {
+            let amplitude = if idx % 2 == 0 { 0.9 } else { 0.1 };
+            let frame = AudioFrame::new(sample_rate_hz, 1, vec![amplitude; chunk]);
+            let callback_snapshot = extract_uniform_snapshot(&frame);
+            let analysis = window.observe(&frame);
+
+            if window.len() >= FFT_WINDOW_SIZE {
+                let window_snapshot = extract_uniform_snapshot(&analysis);
+                callback_rms.push(callback_snapshot.rms);
+                windowed_rms.push(window_snapshot.rms);
+            }
+        }
+
+        let callback_variance = variance(&callback_rms);
+        let windowed_variance = variance(&windowed_rms);
+        assert!(
+            windowed_variance * 10.0 < callback_variance,
+            "windowed RMS variance {windowed_variance} should be much lower than callback variance {callback_variance}",
+        );
     }
 }
