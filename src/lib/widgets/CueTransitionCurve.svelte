@@ -162,6 +162,76 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     dragging = target;
   }
 
+  // --- Keyboard nudge (2D) ------------------------------------------------
+  // Bezier control points are 2-axis: X (time progress) and Y (visual
+  // progress). The 1D slider widgets in this codebase nudge a single axis;
+  // bezier handles need both. WAI-ARIA APG slider pattern + a sensible
+  // 2D extension:
+  //
+  //   ArrowLeft  / ArrowRight  → ±X (5% small / 20% with Shift)
+  //   ArrowDown  / ArrowUp     → ±Y (5% small / 20% with Shift)
+  //   PageDown   / PageUp      → ±Y large step
+  //   Home / End               → X snap to 0 / 1 (matches aria-valuenow axis)
+  //
+  // Closes the DESIGN.md "Bundle alignment (2026-05-18)" §Trail item
+  // "CueTransitionCurve 2D keyboard nudge". The 1D Fader / Knob /
+  // CrossFader nudge shipped in #491; this handler extends the pattern to
+  // bezier control points.
+  const NUDGE_STEP_SMALL = 0.05;
+  const NUDGE_STEP_LARGE = 0.2;
+  function nudgeHandle(target: 'cp1' | 'cp2', e: KeyboardEvent): void {
+    if (activeKind !== 'fade') return;
+    const current = target === 'cp1' ? activeCp1 : activeCp2;
+    const stepX = e.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP_SMALL;
+    const stepY = e.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP_SMALL;
+    let nextX = current[0];
+    let nextY = current[1];
+    let consumed = false;
+    switch (e.key) {
+      case 'ArrowLeft':
+        nextX = current[0] - stepX;
+        consumed = true;
+        break;
+      case 'ArrowRight':
+        nextX = current[0] + stepX;
+        consumed = true;
+        break;
+      case 'ArrowDown':
+        nextY = current[1] - stepY;
+        consumed = true;
+        break;
+      case 'ArrowUp':
+        nextY = current[1] + stepY;
+        consumed = true;
+        break;
+      case 'PageDown':
+        nextY = current[1] - NUDGE_STEP_LARGE;
+        consumed = true;
+        break;
+      case 'PageUp':
+        nextY = current[1] + NUDGE_STEP_LARGE;
+        consumed = true;
+        break;
+      case 'Home':
+        nextX = 0;
+        consumed = true;
+        break;
+      case 'End':
+        nextX = 1;
+        consumed = true;
+        break;
+    }
+    if (!consumed) return;
+    e.preventDefault();
+    const clamped: [number, number] = [clamp01(nextX), clamp01(nextY)];
+    if (target === 'cp1') {
+      activeCp1 = clamped;
+    } else {
+      activeCp2 = clamped;
+    }
+    emit();
+  }
+
   $effect(() => {
     if (dragging === null) return;
     const onMove = (e: PointerEvent): void => {
@@ -315,6 +385,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             aria-valuemax="1"
             aria-valuenow={activeCp1[0]}
             onpointerdown={(e) => startDrag('cp1', e)}
+            onkeydown={(e) => nudgeHandle('cp1', e)}
           >
             <circle cx={h1[0]} cy={h1[1]} r={10} class="cue-curve__handle-hit" />
             <circle cx={h1[0]} cy={h1[1]} r={5} class="cue-curve__handle-dot" />
@@ -344,6 +415,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             aria-valuemax="1"
             aria-valuenow={activeCp2[0]}
             onpointerdown={(e) => startDrag('cp2', e)}
+            onkeydown={(e) => nudgeHandle('cp2', e)}
           >
             <circle cx={h2[0]} cy={h2[1]} r={10} class="cue-curve__handle-hit" />
             <circle cx={h2[0]} cy={h2[1]} r={5} class="cue-curve__handle-dot" />

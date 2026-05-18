@@ -42,6 +42,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // The button's `aria-pressed` reflects the open state so screen
   // readers can announce the drawer's visibility.
   import Icon from './Icon.svelte';
+  import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { consoleStore } from './stores/console.svelte';
 
   // Wave 2.3 Lane Q.2 (G.14) — bundle-faithful placeholder values.
@@ -94,6 +95,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }, 5000);
     return () => window.clearInterval(id);
   });
+
+  /**
+   * Live audio peak in dBFS — closes the DESIGN.md "Bundle alignment
+   * (2026-05-18)" §Trail item "StatusBar audio dBFS chip". The bundle
+   * ships a `<Icon name="audio" /> -9 dBFS` chip between GPU and
+   * warnings; we mirror by reading `audioSnapshotStore.snapshot?.peak`
+   * (analysis-window peak per Round 3 Lane Q windowing unification) and
+   * converting to dBFS via `20 * log10(peak)`. Silent audio (peak == 0)
+   * floors at -∞ dB; we display `-∞` rather than `NaN`. No live snapshot
+   * → `—` placeholder.
+   */
+  const peakDbfsLabel = $derived.by(() => {
+    const peak = audioSnapshotStore.snapshot?.peak;
+    if (peak === undefined) return '—';
+    if (peak <= 0) return '-∞ dB';
+    const db = 20 * Math.log10(peak);
+    return `${db.toFixed(1)} dB`;
+  });
 </script>
 
 <footer class="status-bar" aria-label="Status bar">
@@ -118,6 +137,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <span class="status-bar__metric" title="JS heap usage (approx, performance.memory)">
       <span class="status-bar__metric-value">{memoryGB}</span>
       <span class="status-bar__metric-label">GB</span>
+    </span>
+    <span class="status-bar__sep" aria-hidden="true">·</span>
+    <span class="status-bar__metric" title="Live audio peak in dBFS (DESIGN.md bundle alignment)">
+      <Icon name="audio" size={10} />
+      <span class="status-bar__metric-label">PEAK</span>
+      <span class="status-bar__metric-value" data-testid="status-bar-peak-dbfs"
+        >{peakDbfsLabel}</span
+      >
     </span>
     <span class="status-bar__sep" aria-hidden="true">·</span>
     <span
