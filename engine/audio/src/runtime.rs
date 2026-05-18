@@ -110,9 +110,10 @@ use crate::frame::AudioFrame;
 use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
 use crate::silent::SilentSource;
-use crate::uniforms::{AudioUniformSnapshot, extract_uniform_snapshot};
+use crate::uniforms::{AudioAnalysisWindow, AudioUniformSnapshot, extract_uniform_snapshot};
 
-/// Back-off when [`IngestStatus::WouldBlock`] is observed.
+/// Back-off when [`IngestStatus::Pending`] or
+/// [`IngestStatus::WouldBlock`] is observed.
 ///
 /// Tuned to the §7.1 hop cadence (375 Hz nominal -> ~2.67ms per hop);
 /// a 500us back-off yields ~5 retry attempts per nominal hop, which
@@ -310,6 +311,7 @@ impl AudioRuntime {
             .name("chromaticity-audio-runtime".into())
             .spawn(move || {
                 let mut frame = AudioFrame::default();
+                let mut analysis_window = AudioAnalysisWindow::default();
                 loop {
                     match shutdown_rx.try_recv() {
                         Ok(()) | Err(TryRecvError::Disconnected) => break,
@@ -325,13 +327,15 @@ impl AudioRuntime {
                         let status = negotiator.try_pull(&mut frame);
                         match status {
                             IngestStatus::Ready => {
-                                let snapshot = extract_uniform_snapshot(&frame);
-                                let smoothed_bpm = estimator.observe(&frame);
+                                let instant_snapshot = extract_uniform_snapshot(&frame);
+                                let analysis_frame = analysis_window.observe(&frame);
+                                let analysis_snapshot = extract_uniform_snapshot(&analysis_frame);
+                                let smoothed_bpm = estimator.observe(&analysis_frame);
                                 let merged = AudioUniformSnapshot {
                                     bpm: smoothed_bpm,
-                                    rms: snapshot.rms,
-                                    peak: snapshot.peak,
-                                    fft_bands: snapshot.fft_bands,
+                                    rms: instant_snapshot.rms,
+                                    peak: instant_snapshot.peak,
+                                    fft_bands: analysis_snapshot.fft_bands,
                                 };
                                 match shared_for_thread.lock() {
                                     Ok(mut guard) => {
@@ -350,7 +354,9 @@ impl AudioRuntime {
                                 }
                                 LoopStep::Continue
                             }
-                            IngestStatus::WouldBlock => LoopStep::Backoff(WOULD_BLOCK_BACKOFF),
+                            IngestStatus::Pending | IngestStatus::WouldBlock => {
+                                LoopStep::Backoff(WOULD_BLOCK_BACKOFF)
+                            }
                             IngestStatus::Closed => LoopStep::Backoff(CLOSED_BACKOFF),
                         }
                     }));

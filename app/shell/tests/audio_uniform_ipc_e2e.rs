@@ -14,28 +14,11 @@
 //! payload field-by-field equal to
 //! [`AudioUniformSnapshotPayload::from(snapshot)`].
 //!
-//! ## Why we call `Emitter::emit` directly rather than `TauriIpcEmitter::emit_snapshot`
-//!
-//! The production [`chromaticity_app_lib::state::ipc_emit::TauriIpcEmitter`]
-//! is monomorphic over the default Tauri runtime (`Wry`) — the
-//! `AppHandle` it wraps is `AppHandle<Wry>`, not generic over
-//! `R: Runtime`. `tauri::test::mock_app()` returns
-//! `App<MockRuntime>`, and `MockRuntime` and `Wry` are distinct
-//! types. Re-exporting the production struct as runtime-generic
-//! would either widen its public surface or pull every call site
-//! into a generic-parameterised refactor; neither is in scope for
-//! this closing PR.
-//!
-//! Instead we exercise the same composition: import the production
-//! event-name constant ([`AUDIO_UNIFORM_SNAPSHOT_EVENT`]), the
-//! production payload conversion (`AudioUniformSnapshotPayload::from`),
-//! and the production emit API (`tauri::Emitter::emit`) against the
-//! mock app. The wire we cover is identical to what the production
-//! adapter sends; only the runtime type differs. The production
-//! adapter's own T1 drift pins in
-//! `app/shell/src/state/ipc_emit.rs::ipc_emit_pins` cover the
-//! payload-conversion + event-name constant invariants on the
-//! production runtime side.
+//! The test calls the real
+//! [`chromaticity_app_lib::state::ipc_emit::TauriIpcEmitter`]
+//! adapter against Tauri's `MockRuntime`, so the payload conversion,
+//! event name, and `Emitter::emit` call all execute through the same
+//! production `IpcEmit` implementation used by the app shell.
 //!
 //! Wave 1c-α's `app/ui-bridge/tests/audio_uniform_payload_round_trip.rs`
 //! T2 corpus covers the pure ts-rs payload shape; this test extends
@@ -49,10 +32,11 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chromaticity_app_lib::state::ipc_emit::AUDIO_UNIFORM_SNAPSHOT_EVENT;
+use chromaticity_app_lib::state::ipc_emit::{AUDIO_UNIFORM_SNAPSHOT_EVENT, TauriIpcEmitter};
 use chromaticity_audio::AudioUniformSnapshot;
+use chromaticity_runtime::scheduler::ipc::IpcEmit;
 use chromaticity_ui_bridge::AudioUniformSnapshotPayload;
-use tauri::{Emitter, Listener};
+use tauri::Listener;
 
 /// Spin until either the predicate is satisfied or the deadline
 /// elapses. Tauri delivers events asynchronously on its own
@@ -68,16 +52,6 @@ fn wait_until(deadline: Duration, predicate: impl Fn() -> bool) -> bool {
         std::thread::sleep(Duration::from_millis(5));
     }
     predicate()
-}
-
-/// Mirror of [`chromaticity_app_lib::state::ipc_emit::TauriIpcEmitter::emit_snapshot`]'s
-/// body, parameterised over the test's `MockRuntime` rather than
-/// the production `Wry`. Keeping the conversion + emit call
-/// identical to the production path means a future drift in either
-/// surface fires this test as well as the production T1 pins.
-fn emit_via_app<R: tauri::Runtime>(app: &tauri::AppHandle<R>, snapshot: AudioUniformSnapshot) {
-    let payload = AudioUniformSnapshotPayload::from(snapshot);
-    let _ = app.emit(AUDIO_UNIFORM_SNAPSHOT_EVENT, &payload);
 }
 
 #[test]
@@ -97,7 +71,8 @@ fn producer_to_listener_round_trip_preserves_payload_identity() {
         peak: 0.88,
         fft_bands: [0.05, 0.10, 0.20, 0.35, 0.50, 0.65, 0.80, 0.95],
     };
-    emit_via_app(&app.handle().clone(), snapshot);
+    let emitter = TauriIpcEmitter::new(app.handle().clone());
+    emitter.emit_snapshot(snapshot);
 
     assert!(
         wait_until(Duration::from_secs(2), || {
@@ -126,7 +101,7 @@ fn multiple_emits_deliver_in_order() {
         received_handle.lock().unwrap().push(payload);
     });
 
-    let handle = app.handle().clone();
+    let emitter = TauriIpcEmitter::new(app.handle().clone());
     let snapshots = [
         AudioUniformSnapshot {
             bpm: 100.0,
@@ -148,7 +123,7 @@ fn multiple_emits_deliver_in_order() {
         },
     ];
     for snapshot in snapshots {
-        emit_via_app(&handle, snapshot);
+        emitter.emit_snapshot(snapshot);
     }
 
     assert!(
@@ -190,7 +165,7 @@ fn emit_after_listener_unlisten_does_not_panic() {
         received_handle.lock().unwrap().push(payload);
     });
 
-    let handle = app.handle().clone();
+    let emitter = TauriIpcEmitter::new(app.handle().clone());
 
     // Drop the listener before any emit fires.
     app.unlisten(listener_id);
@@ -199,7 +174,7 @@ fn emit_after_listener_unlisten_does_not_panic() {
     // detached listener must not observe any of them.
     let snapshot = AudioUniformSnapshot::default();
     for _ in 0..5 {
-        emit_via_app(&handle, snapshot);
+        emitter.emit_snapshot(snapshot);
     }
 
     // Tauri's emit is best-effort; give the dispatcher a chance to

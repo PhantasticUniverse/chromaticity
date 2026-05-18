@@ -38,6 +38,7 @@
 //! constrain the synchronisation primitive.
 
 use chromaticity_audio::AudioUniformSnapshot;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Scheduler-side adapter for pulling the latest audio uniform
 /// snapshot once per tick. Implemented by:
@@ -77,6 +78,7 @@ pub trait AudioPull: Send + Sync {
 /// becomes a performance concern.
 pub struct MutexAudioPull {
     snapshot: std::sync::Arc<std::sync::Mutex<AudioUniformSnapshot>>,
+    poison_recoveries: std::sync::Arc<AtomicU64>,
 }
 
 impl MutexAudioPull {
@@ -84,7 +86,27 @@ impl MutexAudioPull {
     /// [`super::Scheduler::with_audio_pull`].
     #[must_use]
     pub fn new(snapshot: std::sync::Arc<std::sync::Mutex<AudioUniformSnapshot>>) -> Self {
-        Self { snapshot }
+        Self {
+            snapshot,
+            poison_recoveries: std::sync::Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Number of times this pull adapter recovered a poisoned mutex.
+    ///
+    /// The scheduler still returns the last snapshot to preserve the
+    /// no-panic tick contract, but the recovery is now observable to
+    /// the owner for diagnostics.
+    #[must_use]
+    pub fn poison_recovery_count(&self) -> u64 {
+        self.poison_recoveries.load(Ordering::Relaxed)
+    }
+
+    /// Shared poison-recovery counter for tests or diagnostics that
+    /// move the adapter behind `Box<dyn AudioPull>`.
+    #[must_use]
+    pub fn poison_recovery_counter(&self) -> std::sync::Arc<AtomicU64> {
+        std::sync::Arc::clone(&self.poison_recoveries)
     }
 }
 
@@ -100,7 +122,10 @@ impl AudioPull for MutexAudioPull {
         // signal through observability without changing this seam.
         match self.snapshot.lock() {
             Ok(guard) => *guard,
-            Err(poisoned) => *poisoned.into_inner(),
+            Err(poisoned) => {
+                self.poison_recoveries.fetch_add(1, Ordering::Relaxed);
+                *poisoned.into_inner()
+            }
         }
     }
 }
@@ -378,6 +403,8 @@ mod scheduler_audio_pins {
         // inner snapshot rather than propagating the poison.
         assert!(shared.is_poisoned());
         let pull = MutexAudioPull::new(shared.clone());
+        assert_eq!(pull.poison_recovery_count(), 0);
+        let poison_recoveries = pull.poison_recovery_counter();
         let mut scheduler = Scheduler::new().with_audio_pull(Box::new(pull));
         let mut state = State::default();
         let bus = InMemoryBus::in_memory();
@@ -387,5 +414,9 @@ mod scheduler_audio_pins {
             .expect("tick must succeed despite poisoned audio mutex");
         assert_eq!(report.frame, 1);
         assert_eq!(state.latest_audio_snapshot(), Some(&target));
+        assert_eq!(
+            poison_recoveries.load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
     }
 }
