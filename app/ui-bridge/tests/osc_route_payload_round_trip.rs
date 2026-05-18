@@ -40,7 +40,7 @@ fn sample_entry() -> OscRouteEntry {
         range: "0.0 – 1.0".to_string(),
         direction: OscDirection::Both,
         family: OscRouteFamily::Control,
-        bind_target: Some("fader-1".to_string()),
+        bind_target: Some("control:scene:fader-1".to_string()),
     }
 }
 
@@ -52,7 +52,7 @@ fn sample_payload() -> OscRoutePayload {
         range: "0.0 – 1.0".to_string(),
         direction: OscDirectionPayload::Both,
         family: OscRouteFamilyPayload::Control,
-        bind_target: Some("fader-1".to_string()),
+        bind_target: Some("control:scene:fader-1".to_string()),
     }
 }
 

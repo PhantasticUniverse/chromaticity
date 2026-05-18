@@ -30,6 +30,7 @@
 //!   (`docs/adr/ADR-013-networking-defaults-and-security.md`).
 
 pub mod adapter;
+pub mod bindings;
 pub mod defaults;
 pub mod route_registry;
 pub mod routes;

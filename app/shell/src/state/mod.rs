@@ -66,6 +66,8 @@
 
 use chromaticity_audio::runtime::AudioRuntimeHandle;
 use chromaticity_midi_adapter::MidiListenHandle;
+use chromaticity_osc_adapter::adapter::UdpOscAdapter;
+use chromaticity_osc_adapter::bindings::{OscDispatchAction, OscDispatchSink};
 use chromaticity_osc_adapter::route_registry::OscRouteRegistry;
 use chromaticity_runtime::InMemoryBus;
 use chromaticity_runtime::settings::Settings;
@@ -250,14 +252,45 @@ pub struct AppState {
     /// is mutated by `bind_osc_route` / `unbind_osc_route` IPC handlers;
     /// the seed table itself is immutable across the registry's lifetime.
     ///
-    /// **Not persisted in Wave 2.1 Lane D.3.** Bind / unbind survives the
-    /// process lifetime only; restoring bindings across restart is a
-    /// future-wave concern (would extend either the Lane C.3 settings
-    /// document or grow a sibling `osc-bindings.toml` document — the
-    /// shape choice is deferred until the dispatch surface that
-    /// CONSUMES the bind target ships, since persisting an advisory-only
-    /// label between runs has no operator-observable benefit today).
+    /// Bind / unbind survives the process lifetime only; restoring
+    /// bindings across restart is a future-wave concern (would extend
+    /// either the settings document or grow a sibling
+    /// `osc-bindings.toml` document).
     pub osc_routes: Mutex<OscRouteRegistry>,
+    /// Bundled scene resource root (`<AppBundle>/Resources/scenes`).
+    ///
+    /// Installed during Tauri setup when resource-dir resolution is
+    /// available. OSC `scene:<id>` dispatch uses this root plus the
+    /// operator's persisted custom scene folders to resolve scene ids
+    /// into `.chroma` packages without widening the runtime command
+    /// bus.
+    pub bundled_scene_root: Mutex<Option<PathBuf>>,
+    /// Live UDP OSC adapter owned by the shell.
+    ///
+    /// The adapter itself never mutates [`Self::state`] while polling.
+    /// Instead, its dispatch sink appends [`OscDispatchAction`]s into
+    /// [`Self::osc_dispatch_queue`]. The scheduler thread calls the
+    /// OSC poll helper after dropping the runtime state lock, then
+    /// drains queued actions through the command bus / shell scene
+    /// loader in a separate step.
+    pub osc_adapter: Mutex<UdpOscAdapter>,
+    /// Queue of actions emitted by [`Self::osc_adapter`]'s sink.
+    pub osc_dispatch_queue: Arc<Mutex<Vec<OscDispatchAction>>>,
+}
+
+struct QueuedOscDispatchSink {
+    queue: Arc<Mutex<Vec<OscDispatchAction>>>,
+}
+
+impl OscDispatchSink for QueuedOscDispatchSink {
+    fn dispatch(&self, action: OscDispatchAction) -> Result<(), String> {
+        let mut guard = self
+            .queue
+            .lock()
+            .map_err(|err| format!("osc dispatch queue mutex poisoned: {err}"))?;
+        guard.push(action);
+        Ok(())
+    }
 }
 
 /// Composite record stored on [`AppState::loaded_scene`].
@@ -283,6 +316,11 @@ impl AppState {
     /// bootstrapping the runtime continue to work unchanged.
     #[must_use]
     pub fn new() -> Self {
+        let osc_dispatch_queue = Arc::new(Mutex::new(Vec::new()));
+        let mut osc_adapter = UdpOscAdapter::new();
+        osc_adapter.set_dispatch_sink(Arc::new(QueuedOscDispatchSink {
+            queue: Arc::clone(&osc_dispatch_queue),
+        }));
         Self {
             state: Mutex::new(State::default()),
             bus: InMemoryBus::in_memory(),
@@ -293,6 +331,23 @@ impl AppState {
             midi_learn_handle: Mutex::new(None),
             loaded_scene: Mutex::new(None),
             osc_routes: Mutex::new(OscRouteRegistry::with_default_seed()),
+            bundled_scene_root: Mutex::new(None),
+            osc_adapter: Mutex::new(osc_adapter),
+            osc_dispatch_queue,
+        }
+    }
+
+    /// Install the bundled scene resource root used by OSC scene-load
+    /// dispatch.
+    pub fn install_bundled_scene_root(&self, root: PathBuf) {
+        match self.bundled_scene_root.lock() {
+            Ok(mut guard) => {
+                *guard = Some(root);
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = Some(root);
+            }
         }
     }
 

@@ -71,6 +71,11 @@ chromaticity-observability = { version = "0.0.0", path = "../observability" }
 # License: inherited first-party (LicenseRef-Chromaticity-Proprietary).
 chromaticity-audio = { version = "0.0.0", path = "../audio" }
 
+# OSC settings defaults import the adapter-owned ADR-013 port constants
+# so the persisted runtime settings document and network adapter stay
+# in lockstep.
+chromaticity-osc-adapter = { version = "0.0.0", path = "../../integrations/osc-adapter" }
+
 # Slice-5.3 — chromaticity-script optional dep behind the
 # `script-bridge` feature. The runtime adapter implements the
 # slice-5.1 `chromaticity_script::ScriptCommandSender` trait so a

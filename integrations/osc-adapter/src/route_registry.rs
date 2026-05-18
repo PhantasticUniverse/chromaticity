@@ -16,12 +16,11 @@
 //!    taxonomy entries pulled from `docs/08-io-integrations.md` §OSC,
 //!    mirrored in the frontend fixture
 //!    `src/lib/data/osc-routes.ts`).
-//! 2. Bind a free-form operator-supplied `target` string per route so
-//!    the operator can document "this route drives control 'fader-1'"
-//!    or "/scenes/glitch maps to scene id `s-12`". The dispatch that
-//!    consumes the bind target — turning a parsed inbound packet into
-//!    a real `Command` on the runtime bus — remains future-wave scope
-//!    per `EV-INTEGRATION-MATRIX`.
+//! 2. Bind a structured operator-supplied `target` string per route
+//!    using the [`crate::bindings::parse_bind_target`] grammar
+//!    (`control:<bank>:<name>`, `scene:<scene_id>`, `snap:<slot>`,
+//!    `preset:<id>`, `playlist:next|prev`). The string stays verbatim
+//!    on the IPC wire, but malformed targets fail at bind time.
 //! 3. Persist the bind table between runs (via the shell-side
 //!    `AppState.settings` mutex; the engine adapter itself stays
 //!    storage-free per ADR-005 §3).
@@ -29,7 +28,7 @@
 //! ## Why this is structurally separate from `crate::routes`
 //!
 //! - `RouteAddr::parse(s)` parses ARBITRARY inbound addresses against
-//!   the four `RoutePrefix` variants. Adding a Family / Direction /
+//!   the canonical `RoutePrefix` families. Adding a Family / Direction /
 //!   Kind axis there would conflate "what does this wire-shape parse
 //!   into" with "what does the operator see in the route binding UI".
 //! - The seven canonical routes here are a curated UX subset (the
@@ -48,6 +47,8 @@
 //! (n=7); no indexing optimisation is needed at this scale.
 
 use std::collections::BTreeMap;
+
+use crate::bindings::{BindError, parse_bind_target};
 
 /// Direction of an OSC route relative to the chromaticity adapter.
 ///
@@ -103,6 +104,9 @@ pub enum OscRouteError {
     /// The supplied canonical route is not in the registry's
     /// initial seed.
     UnknownRoute(String),
+    /// The route exists, but the supplied target string does not
+    /// match the bind-target grammar.
+    InvalidBindTarget(BindError),
 }
 
 impl core::fmt::Display for OscRouteError {
@@ -111,6 +115,7 @@ impl core::fmt::Display for OscRouteError {
             Self::UnknownRoute(route) => {
                 write!(f, "osc route not registered: {route}")
             }
+            Self::InvalidBindTarget(err) => write!(f, "{err}"),
         }
     }
 }
@@ -121,10 +126,8 @@ impl std::error::Error for OscRouteError {}
 ///
 /// `bind_target` is `None` when the operator hasn't bound the route
 /// to anything (the default state for every entry in the seed table).
-/// Setting it to `Some(target)` is purely advisory at this slice —
-/// the actual runtime dispatch that would consume the bind target
-/// remains a future-wave concern. The shell-side handler validates
-/// non-empty targets at the IPC boundary.
+/// Setting it to `Some(target)` records the exact IPC string after the
+/// grammar has been validated by [`parse_bind_target`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OscRouteEntry {
     /// Canonical address (plural-root v1) — `/controls/{bank}/{name}`,
@@ -140,7 +143,7 @@ pub struct OscRouteEntry {
     pub range: String,
     pub direction: OscDirection,
     pub family: OscRouteFamily,
-    /// Operator-supplied advisory target for this route. `None` when
+    /// Operator-supplied validated target for this route. `None` when
     /// unbound. A non-empty string when bound.
     pub bind_target: Option<String>,
 }
@@ -229,13 +232,13 @@ impl OscRouteRegistry {
     /// Bind `target` to the route identified by `canonical`.
     ///
     /// Returns [`OscRouteError::UnknownRoute`] when the canonical
-    /// address isn't in the seed table. The target string is stored
-    /// verbatim; semantic validation (does the target exist as a
-    /// real control id?) is deferred to the future-wave dispatch
-    /// surface.
+    /// address isn't in the seed table and
+    /// [`OscRouteError::InvalidBindTarget`] when `target` does not
+    /// match the OSC bind-target grammar.
     pub fn bind(&mut self, canonical: &str, target: &str) -> Result<(), OscRouteError> {
         match self.entries.get_mut(canonical) {
             Some(entry) => {
+                parse_bind_target(target).map_err(OscRouteError::InvalidBindTarget)?;
                 entry.bind_target = Some(target.to_string());
                 Ok(())
             }
@@ -418,12 +421,12 @@ mod tests {
     fn bind_sets_target_on_known_route() {
         let mut registry = OscRouteRegistry::with_default_seed();
         registry
-            .bind("/controls/{bank}/{name}", "fader-1")
+            .bind("/controls/{bank}/{name}", "control:scene:fader-1")
             .expect("known route");
         let entry = registry
             .get("/controls/{bank}/{name}")
             .expect("seeded route");
-        assert_eq!(entry.bind_target.as_deref(), Some("fader-1"));
+        assert_eq!(entry.bind_target.as_deref(), Some("control:scene:fader-1"),);
     }
 
     #[test]
@@ -442,10 +445,23 @@ mod tests {
     fn unbind_clears_target_on_known_route() {
         let mut registry = OscRouteRegistry::with_default_seed();
         registry
-            .bind("/scenes/{sceneName}", "s-12")
+            .bind("/scenes/{sceneName}", "scene:s-12")
             .expect("known route");
         registry.unbind("/scenes/{sceneName}").expect("known route");
         let entry = registry.get("/scenes/{sceneName}").expect("seeded route");
+        assert!(entry.bind_target.is_none());
+    }
+
+    #[test]
+    fn bind_rejects_invalid_target_grammar() {
+        let mut registry = OscRouteRegistry::with_default_seed();
+        let err = registry
+            .bind("/controls/{bank}/{name}", "fader-1")
+            .unwrap_err();
+        assert!(matches!(err, OscRouteError::InvalidBindTarget(_)));
+        let entry = registry
+            .get("/controls/{bank}/{name}")
+            .expect("seeded route");
         assert!(entry.bind_target.is_none());
     }
 

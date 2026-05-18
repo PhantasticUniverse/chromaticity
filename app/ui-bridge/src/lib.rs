@@ -455,8 +455,8 @@ pub struct LoadedScenePayload {
 
 /// IPC-facing snapshot of OSC adapter health metrics.
 ///
-/// The W14 OSC view reads this on mount to render the adapter
-/// health pill + listen-address readout. Fields:
+/// The OSC view reads this on mount to render the adapter health pill
+/// + listen-address readout. Fields:
 ///
 /// - `state` — the W4 `OscHealthState` discriminant, mirroring the
 ///   internal bind-retry state machine.
@@ -1627,6 +1627,7 @@ impl From<LiveSourcesSettingsPayload> for chromaticity_runtime::settings::LiveSo
 pub struct OscSettingsPayload {
     pub local_ip: String,
     pub port: u16,
+    pub out_port: u16,
     pub tx_enabled: bool,
     pub rx_enabled: bool,
 }
@@ -1636,6 +1637,7 @@ impl From<chromaticity_runtime::settings::OscSettings> for OscSettingsPayload {
         Self {
             local_ip: s.local_ip,
             port: s.port,
+            out_port: s.out_port,
             tx_enabled: s.tx_enabled,
             rx_enabled: s.rx_enabled,
         }
@@ -1647,6 +1649,7 @@ impl From<OscSettingsPayload> for chromaticity_runtime::settings::OscSettings {
         Self {
             local_ip: p.local_ip,
             port: p.port,
+            out_port: p.out_port,
             tx_enabled: p.tx_enabled,
             rx_enabled: p.rx_enabled,
         }

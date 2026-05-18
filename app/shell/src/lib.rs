@@ -188,6 +188,14 @@ pub fn run() -> Result<(), tauri::Error> {
                 let bootstrap_state = app.state::<AppState>();
                 bootstrap_state.install_settings(loaded);
                 bootstrap_state.install_settings_path(settings_path);
+                if let Ok(resource_dir) = app.path().resource_dir() {
+                    bootstrap_state.install_bundled_scene_root(resource_dir.join("scenes"));
+                }
+                if let Err(err) =
+                    commands::osc::configure_live_osc_adapter(bootstrap_state.inner())
+                {
+                    eprintln!("chromaticity-app: failed to configure OSC adapter: {err}");
+                }
 
                 let save_path = data_dir.join(CRASH_RESUME_FILE_NAME);
                 recover_crash_resume_snapshot(bootstrap_state.inner(), &save_path);
@@ -297,6 +305,17 @@ pub fn run() -> Result<(), tauri::Error> {
                                 }
                             }
                             next_crash_resume_save = Instant::now() + CRASH_RESUME_SAVE_PERIOD;
+                        }
+
+                        if let Err(err) =
+                            commands::osc::poll_live_osc_adapter(app_state.inner())
+                        {
+                            eprintln!("chromaticity-app: OSC poll failed: {err}");
+                        }
+                        if let Err(err) =
+                            commands::osc::drain_queued_osc_actions(app_state.inner())
+                        {
+                            eprintln!("chromaticity-app: OSC dispatch failed: {err}");
                         }
 
                         let now = Instant::now();

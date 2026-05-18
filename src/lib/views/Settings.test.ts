@@ -73,7 +73,7 @@ import {
 import type { AudioDevicePayload } from '../ipc/bindings/AudioDevicePayload';
 import { audioDevicesStore } from '../stores/audioDevices.svelte';
 import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
-import { settingsStore } from '../stores/settings.svelte';
+import { DEFAULT_SETTINGS, settingsStore } from '../stores/settings.svelte';
 
 function getSection(container: HTMLElement, heading: string): HTMLElement {
   const headings = Array.from(
@@ -722,60 +722,9 @@ describe('Settings view', () => {
     // modal invokes the `reset_settings` Tauri command and closes
     // the modal on success.
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(DEFAULT_SETTINGS);
       if (cmd === 'reset_settings') {
-        return Promise.resolve({
-          general: { theme: 'Pulse' },
-          audio: {
-            input_device: 'default',
-            output_device: 'default',
-            sample_rate_hz: 48_000,
-            latency_hint: 'balanced',
-            channel_layout: 'stereo',
-            channel_left: 'L1',
-            channel_right: 'R2',
-            input_gain: 0.59,
-          },
-          graphics: {
-            resolution_preset: '1080p',
-            custom_resolution_enabled: false,
-            custom_width: 1920,
-            custom_height: 1080,
-            fps_target: '60',
-            vsync: true,
-            hdr_target: 'sdr',
-            display: 'display-1',
-            color_space: 'srgb',
-            multi_display_mode: 'single',
-            render_scale: 1.0,
-            screen_fitting: 'fit',
-            fps_slider_enabled: false,
-          },
-          storage: {
-            media_folders: [],
-            scene_folders: [],
-            backup_path: '',
-            backup_retention: 'retain-10',
-          },
-          osc: {
-            local_ip: '0.0.0.0',
-            port: 8000,
-            tx_enabled: true,
-            rx_enabled: true,
-          },
-          tempo: {
-            ableton_link_enabled: true,
-            start_stop_sync: true,
-            midi_clock_in_enabled: false,
-            midi_clock_in_device: 'any',
-            midi_clock_out_enabled: true,
-            midi_clock_out_device: 'iac-1',
-            quantize: 'bar',
-            manual_bpm: 120.0,
-            link_offset_ms: 0,
-            audio_bpm_sensitivity: 60,
-            bpm_source_priority: ['audio', 'midiclock', 'link', 'manual'],
-          },
-        });
+        return Promise.resolve(DEFAULT_SETTINGS);
       }
       return Promise.resolve();
     });
@@ -855,10 +804,15 @@ describe('Settings view', () => {
     vi.useFakeTimers();
     try {
       // Settings.svelte mounts and calls load() — let invokeMock
-      // resolve with `undefined` for both get_settings and set_settings.
-      invokeMock.mockResolvedValue(undefined);
+      // resolve with a complete settings payload so the persistence
+      // gate opens before the debounced write assertion.
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'get_settings') return Promise.resolve(DEFAULT_SETTINGS);
+        return Promise.resolve(undefined);
+      });
       const { container } = render(Settings);
-      await Promise.resolve();
+      await settingsStore.load();
+      invokeMock.mockClear();
       const graphics = getSection(container, 'Graphics / Output');
       const fps = within(graphics).getByLabelText('Target FPS') as HTMLSelectElement;
       await fireEvent.change(fps, { target: { value: '120' } });

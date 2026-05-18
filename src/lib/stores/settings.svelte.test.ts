@@ -67,6 +67,7 @@ const SAMPLE_PAYLOAD: SettingsPayload = {
   osc: {
     local_ip: '192.168.1.42',
     port: 9100,
+    out_port: 9101,
     tx_enabled: false,
     rx_enabled: true,
   },
@@ -84,6 +85,19 @@ const SAMPLE_PAYLOAD: SettingsPayload = {
     bpm_source_priority: ['manual', 'midiclock', 'audio', 'link'],
   },
 };
+
+async function loadPersistableSettingsStore(setSettings?: () => Promise<unknown>) {
+  const module = await import('./settings.svelte');
+  module.settingsStore.reset();
+  invokeMock.mockImplementation((cmd: string) => {
+    if (cmd === 'get_settings') return Promise.resolve(module.DEFAULT_SETTINGS);
+    if (cmd === 'set_settings') return setSettings ? setSettings() : Promise.resolve();
+    return Promise.resolve();
+  });
+  await module.settingsStore.load();
+  invokeMock.mockClear();
+  return module;
+}
 
 describe('settingsStore', () => {
   beforeEach(() => {
@@ -153,9 +167,7 @@ describe('settingsStore', () => {
   });
 
   it('update() schedules a debounced set_settings invocation', async () => {
-    invokeMock.mockResolvedValue(undefined);
-    const { settingsStore } = await import('./settings.svelte');
-    settingsStore.reset();
+    const { settingsStore } = await loadPersistableSettingsStore();
     settingsStore.update({ general: { theme: 'Console' } });
     // Immediately after update, no set_settings invocation yet.
     expect(invokeMock).not.toHaveBeenCalledWith('set_settings', expect.anything());
@@ -172,9 +184,7 @@ describe('settingsStore', () => {
   });
 
   it('update() collapses rapid edits into a single debounced save', async () => {
-    invokeMock.mockResolvedValue(undefined);
-    const { settingsStore } = await import('./settings.svelte');
-    settingsStore.reset();
+    const { settingsStore } = await loadPersistableSettingsStore();
     // Five rapid updates inside the debounce window.
     settingsStore.update({ graphics: { fps_target: '30' } });
     settingsStore.update({ graphics: { fps_target: '60' } });
@@ -192,9 +202,7 @@ describe('settingsStore', () => {
   });
 
   it('flush() bypasses debounce and awaits the save', async () => {
-    invokeMock.mockResolvedValue(undefined);
-    const { settingsStore } = await import('./settings.svelte');
-    settingsStore.reset();
+    const { settingsStore } = await loadPersistableSettingsStore();
     settingsStore.update({ audio: { input_gain: 0.99 } });
     // Before flush(): no set_settings yet (still inside debounce window).
     expect(invokeMock).not.toHaveBeenCalledWith('set_settings', expect.anything());
@@ -204,12 +212,9 @@ describe('settingsStore', () => {
   });
 
   it('flush() records the error when set_settings rejects', async () => {
-    invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === 'set_settings') return Promise.reject(new Error('disk full'));
-      return Promise.resolve();
-    });
-    const { settingsStore } = await import('./settings.svelte');
-    settingsStore.reset();
+    const { settingsStore } = await loadPersistableSettingsStore(() =>
+      Promise.reject(new Error('disk full')),
+    );
     settingsStore.update({ general: { theme: 'Console' } });
     await settingsStore.flush();
     expect(settingsStore.error).toBe('disk full');
@@ -261,8 +266,9 @@ describe('settingsStore', () => {
             sender_name: 'chrm',
           },
           osc: {
-            local_ip: '0.0.0.0',
-            port: 8000,
+            local_ip: '127.0.0.1',
+            port: 9000,
+            out_port: 9001,
             tx_enabled: true,
             rx_enabled: true,
           },
@@ -337,8 +343,9 @@ describe('settingsStore', () => {
         sender_name: 'chrm',
       },
       osc: {
-        local_ip: '0.0.0.0',
-        port: 8000,
+        local_ip: '127.0.0.1',
+        port: 9000,
+        out_port: 9001,
         tx_enabled: true,
         rx_enabled: true,
       },

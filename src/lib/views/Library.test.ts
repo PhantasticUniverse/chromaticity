@@ -212,8 +212,9 @@ const DEFAULT_SETTINGS_FIXTURE = {
     sender_name: 'chrm',
   },
   osc: {
-    local_ip: '0.0.0.0',
-    port: 8000,
+    local_ip: '127.0.0.1',
+    port: 9000,
+    out_port: 9001,
     tx_enabled: true,
     rx_enabled: true,
   },

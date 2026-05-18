@@ -11,4 +11,4 @@
  * composes [`OscSettings`] as a top-level section so this bridge
  * extension is purely additive.
  */
-export type OscSettingsPayload = { local_ip: string, port: number, tx_enabled: boolean, rx_enabled: boolean, };
+export type OscSettingsPayload = { local_ip: string, port: number, out_port: number, tx_enabled: boolean, rx_enabled: boolean, };

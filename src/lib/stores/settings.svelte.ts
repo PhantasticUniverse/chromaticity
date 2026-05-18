@@ -88,7 +88,8 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     // ADR-013 §1: loopback-only by default; routable OSC bind is an
     // explicit operator opt-in.
     local_ip: '127.0.0.1',
-    port: 8000,
+    port: 9000,
+    out_port: 9001,
     tx_enabled: true,
     rx_enabled: true,
   },

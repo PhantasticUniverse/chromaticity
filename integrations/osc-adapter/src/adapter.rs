@@ -7,9 +7,9 @@
 //! [`UdpOscAdapter`] binds a `std::net::UdpSocket` to the ADR-013
 //! loopback default, polls non-blocking, and applies the ADR-013
 //! §5 payload-hardening checks (packet-size cap; bundle-depth cap)
-//! before accepting a parsed packet. Route dispatch — turning a
-//! parsed message into a command on the runtime bus — remains
-//! slice-3 scope; slice-2 parses and validates only.
+//! before accepting a parsed packet. Bound inbound routes are then
+//! translated through [`crate::bindings`] into host-dispatch actions
+//! delivered to an installed callback sink.
 //!
 //! Governing ADRs:
 //!
@@ -34,11 +34,13 @@
 
 use core::net::{IpAddr, SocketAddr};
 use std::net::UdpSocket;
+use std::sync::Arc;
 use std::time::Duration;
 
 use chromaticity_observability::catalog::{OscAdapterState, OscBindErrorReason, OscPacketOutcome};
 use rosc::{OscPacket, decoder};
 
+use crate::bindings::{BindError, OscDispatchSink, OscRouteBindings};
 use crate::defaults::{DEFAULT_INBOUND_BIND, DEFAULT_MAX_BUNDLE_DEPTH, DEFAULT_MAX_PACKET_BYTES};
 
 /// Maximum [`UdpOscAdapter::bind`] attempts before surrendering.
@@ -129,6 +131,9 @@ pub enum OscAdapterError {
     },
     /// rosc decoder rejected the packet shape.
     MalformedPacket(String),
+    /// A bound inbound route parsed successfully but failed while
+    /// translating or submitting its dispatch action.
+    DispatchFailed(String),
 }
 
 impl core::fmt::Display for OscAdapterError {
@@ -143,6 +148,7 @@ impl core::fmt::Display for OscAdapterError {
                 write!(f, "osc bundle depth {actual} exceeds cap {max}")
             }
             Self::MalformedPacket(msg) => write!(f, "osc packet malformed: {msg}"),
+            Self::DispatchFailed(msg) => write!(f, "osc dispatch failed: {msg}"),
         }
     }
 }
@@ -195,12 +201,11 @@ pub trait OscAdapter {
 
 /// UDP-backed OSC adapter.
 ///
-/// Slice-2 implementation: bind a non-blocking
-/// `std::net::UdpSocket` to the ADR-013 loopback default, poll for
-/// one packet at a time, run the packet through [`validate_packet`],
-/// drop the packet on hardening failure. No route dispatch happens
-/// in slice-2 — slice-3 wires the parsed packet to the runtime bus
-/// via the event channel the `OscAdapter` trait will grow.
+/// Implementation: bind a non-blocking `std::net::UdpSocket` to the
+/// ADR-013 loopback default, poll for one packet at a time, run the
+/// packet through [`validate_packet`], drop the packet on hardening
+/// failure, then dispatch bound messages through the installed
+/// [`OscDispatchSink`].
 ///
 /// The `allowlist` field is the structural placeholder for
 /// ADR-013 §2 "accept from bound interface only (empty
@@ -244,6 +249,8 @@ pub struct UdpOscAdapter {
     outcome_counts: PacketOutcomeCounts,
     state_transition_counts: StateTransitionCounts,
     bind_error_counts: BindErrorCounts,
+    route_bindings: OscRouteBindings,
+    dispatch_sink: Option<Arc<dyn OscDispatchSink>>,
 }
 
 /// Per-[`OscPacketOutcome`] packet counter storage for
@@ -326,7 +333,38 @@ impl UdpOscAdapter {
             outcome_counts: PacketOutcomeCounts::default(),
             state_transition_counts: StateTransitionCounts::default(),
             bind_error_counts: BindErrorCounts::default(),
+            route_bindings: OscRouteBindings::default(),
+            dispatch_sink: None,
         }
+    }
+
+    /// Bind a canonical route pattern to an operator target string.
+    ///
+    /// The target is parsed immediately so malformed targets fail at
+    /// bind time rather than becoming a silent no-op on inbound OSC.
+    pub fn bind_route(&mut self, canonical: &str, target: &str) -> Result<(), BindError> {
+        self.route_bindings.bind(canonical, target)
+    }
+
+    /// Clear any adapter-local dispatch binding for `canonical`.
+    pub fn unbind_route(&mut self, canonical: &str) {
+        self.route_bindings.unbind(canonical);
+    }
+
+    /// Clear every adapter-local dispatch binding.
+    pub fn clear_route_bindings(&mut self) {
+        self.route_bindings.clear();
+    }
+
+    /// Install the host dispatch sink used when a bound inbound OSC
+    /// message resolves to an action.
+    pub fn set_dispatch_sink(&mut self, sink: Arc<dyn OscDispatchSink>) {
+        self.dispatch_sink = Some(sink);
+    }
+
+    /// Remove any host dispatch sink.
+    pub fn clear_dispatch_sink(&mut self) {
+        self.dispatch_sink = None;
     }
 
     /// Number of entries currently on the allowlist.
@@ -599,6 +637,16 @@ impl UdpOscAdapter {
         self.record_state_transition(from, to);
     }
 
+    fn dispatch_packet(&self, packet: &OscPacket) -> Result<(), OscAdapterError> {
+        if self.route_bindings.is_empty() {
+            return Ok(());
+        }
+        self.route_bindings
+            .dispatch_packet_optional(packet, self.dispatch_sink.as_deref())
+            .map(|_| ())
+            .map_err(|err| OscAdapterError::DispatchFailed(err.to_string()))
+    }
+
     /// Test-only seam that drives the same recv-failure state-machine
     /// branch [`UdpOscAdapter::poll`] runs when `recv_from` returns a
     /// non-`WouldBlock` error. Mirrors the production branch one-for-one
@@ -708,8 +756,8 @@ impl OscAdapter for UdpOscAdapter {
         // restores Healthy from any prior Recovering / Degraded.
         self.consecutive_recv_failures = 0;
         self.health_state = OscHealthState::Healthy;
-        // Slice-2 parses and validates but drops the packet;
-        // slice-3 routes it via the hub-facing event channel.
+        // Parse and validate first; bound routes then dispatch through
+        // the host-installed sink.
         //
         // The per-outcome counter updated below is the interim
         // observable for `chromaticity_osc_inbound_packets_total`
@@ -722,7 +770,10 @@ impl OscAdapter for UdpOscAdapter {
         // also fences future `OscAdapterError` variants the
         // allowlist / rate-limit slice may introduce).
         let outcome = match validate_packet(&self.recv_buf[..len]) {
-            Ok(_) => OscPacketOutcome::Accepted,
+            Ok(packet) => {
+                self.dispatch_packet(&packet)?;
+                OscPacketOutcome::Accepted
+            }
             Err(OscAdapterError::OversizedPacket { .. }) => OscPacketOutcome::OversizedDropped,
             Err(_) => OscPacketOutcome::ParseError,
         };

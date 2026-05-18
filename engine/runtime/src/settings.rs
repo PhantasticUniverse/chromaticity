@@ -45,6 +45,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chromaticity_osc_adapter::defaults::{DEFAULT_OSC_IN_PORT, DEFAULT_OSC_OUT_PORT};
+
 /// Three-theme cascade matching the existing frontend
 /// `ThemeSwitcher` (`src/lib/ThemeSwitcher.svelte`). Pulse is the
 /// bundle default; Atelier and Console are the v0.2-beta sweep's
@@ -356,19 +358,19 @@ impl Default for LiveSourcesSettings {
 ///
 /// `local_ip` carries the bind-side interface (ADR-013 §1 default is
 /// `127.0.0.1` loopback; non-loopback values are an explicit operator
-/// opt-in for routable inbound). `port` carries the bind-side port
-/// (UDP 8000 is the historical Synesthesia default). `tx_enabled`
-/// gates outbound transmission; `rx_enabled` gates inbound packet
-/// processing. Both toggles default to `true` so the bundle-faithful
-/// behaviour matches the v0.2 wireframe-06 read-out "LISTENING /
-/// Port 7000" (the literal port is operator-configurable here; the
-/// frontend reads it back via the settings store).
+/// opt-in for routable inbound). `port` carries the bind-side inbound
+/// UDP port and `out_port` carries the default outbound target port;
+/// both values come from `chromaticity-osc-adapter` so fresh-install
+/// settings and adapter defaults cannot drift. `tx_enabled` gates
+/// outbound transmission; `rx_enabled` gates inbound packet processing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OscSettings {
     #[serde(default = "OscSettings::default_local_ip")]
     pub local_ip: String,
     #[serde(default = "OscSettings::default_port")]
     pub port: u16,
+    #[serde(default = "OscSettings::default_out_port")]
+    pub out_port: u16,
     #[serde(default = "OscSettings::default_tx_enabled")]
     pub tx_enabled: bool,
     #[serde(default = "OscSettings::default_rx_enabled")]
@@ -380,7 +382,10 @@ impl OscSettings {
         "127.0.0.1".to_string()
     }
     fn default_port() -> u16 {
-        8000
+        DEFAULT_OSC_IN_PORT
+    }
+    fn default_out_port() -> u16 {
+        DEFAULT_OSC_OUT_PORT
     }
     fn default_tx_enabled() -> bool {
         true
@@ -395,6 +400,7 @@ impl Default for OscSettings {
         Self {
             local_ip: Self::default_local_ip(),
             port: Self::default_port(),
+            out_port: Self::default_out_port(),
             tx_enabled: Self::default_tx_enabled(),
             rx_enabled: Self::default_rx_enabled(),
         }
@@ -753,6 +759,7 @@ mod tests {
     //!   on-disk wire shape against silent serde-rename drift.
 
     use super::{Settings, SettingsError, Theme};
+    use chromaticity_osc_adapter::defaults::{DEFAULT_OSC_IN_PORT, DEFAULT_OSC_OUT_PORT};
     use std::io::Write;
 
     fn tmp_path(name: &str) -> std::path::PathBuf {
@@ -976,7 +983,8 @@ mod tests {
         // view's listening / send-to readouts.
         let defaults = Settings::default();
         assert_eq!(defaults.osc.local_ip, "127.0.0.1");
-        assert_eq!(defaults.osc.port, 8000);
+        assert_eq!(defaults.osc.port, DEFAULT_OSC_IN_PORT);
+        assert_eq!(defaults.osc.out_port, DEFAULT_OSC_OUT_PORT);
         assert!(defaults.osc.tx_enabled);
         assert!(defaults.osc.rx_enabled);
     }
@@ -990,12 +998,14 @@ mod tests {
         let mut settings = Settings::default();
         settings.osc.local_ip = "192.168.1.42".to_string();
         settings.osc.port = 9100;
+        settings.osc.out_port = 9101;
         settings.osc.tx_enabled = false;
         settings.osc.rx_enabled = true;
         settings.save_to_path(&path).unwrap();
         let loaded = Settings::load_from_path(&path).unwrap();
         assert_eq!(loaded.osc.local_ip, "192.168.1.42");
         assert_eq!(loaded.osc.port, 9100);
+        assert_eq!(loaded.osc.out_port, 9101);
         assert!(!loaded.osc.tx_enabled);
         assert!(loaded.osc.rx_enabled);
         let _ = std::fs::remove_file(&path);
@@ -1188,7 +1198,8 @@ mod tests {
         let loaded = Settings::load_from_path(&path).unwrap();
         // The OSC section materialises with the per-field defaults.
         assert_eq!(loaded.osc.local_ip, "127.0.0.1");
-        assert_eq!(loaded.osc.port, 8000);
+        assert_eq!(loaded.osc.port, DEFAULT_OSC_IN_PORT);
+        assert_eq!(loaded.osc.out_port, DEFAULT_OSC_OUT_PORT);
         assert!(loaded.osc.tx_enabled);
         assert!(loaded.osc.rx_enabled);
         // Other sections still resolve as expected.

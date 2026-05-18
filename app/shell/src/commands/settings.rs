@@ -24,7 +24,7 @@
 use chromaticity_ui_bridge::SettingsPayload;
 use tauri::State;
 
-use crate::state::AppState;
+use crate::{commands::osc, state::AppState};
 
 /// Inner implementation invoked by both the Tauri wrapper and unit
 /// tests; takes a borrowed [`AppState`] directly.
@@ -56,11 +56,18 @@ fn set_settings_impl(app: &AppState, settings: SettingsPayload) -> Result<(), St
     if let Some(path) = path.as_ref() {
         engine.save_to_path(path).map_err(|err| err.to_string())?;
     }
-    let mut guard = match app.settings.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    *guard = engine;
+    {
+        let mut guard = match app.settings.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        *guard = engine;
+    }
+    if let Err(err) = osc::configure_live_osc_adapter(app) {
+        eprintln!(
+            "chromaticity-app: failed to reconfigure OSC adapter after settings update: {err}"
+        );
+    }
     Ok(())
 }
 
@@ -86,11 +93,18 @@ fn reset_settings_impl(app: &AppState) -> Result<SettingsPayload, String> {
     if let Some(path) = path.as_ref() {
         defaults.save_to_path(path).map_err(|err| err.to_string())?;
     }
-    let mut guard = match app.settings.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    *guard = defaults.clone();
+    {
+        let mut guard = match app.settings.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        *guard = defaults.clone();
+    }
+    if let Err(err) = osc::configure_live_osc_adapter(app) {
+        eprintln!(
+            "chromaticity-app: failed to reconfigure OSC adapter after settings reset: {err}"
+        );
+    }
     Ok(defaults.into())
 }
 
@@ -204,6 +218,7 @@ mod tests {
             osc: OscSettingsPayload {
                 local_ip: "192.168.1.42".to_string(),
                 port: 9100,
+                out_port: 9101,
                 tx_enabled: false,
                 rx_enabled: true,
             },
