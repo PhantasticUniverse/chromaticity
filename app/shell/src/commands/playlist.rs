@@ -6,9 +6,9 @@
 //! Mirrors the D2 control and D3 Snap round-trip patterns: the mutator
 //! ([`advance_playlist`]) dispatches a
 //! [`chromaticity_runtime::Command::PlaylistAdvance`] through the bus
-//! held in [`crate::state::AppState`], and applies the committed event
-//! to canonical state via
-//! [`chromaticity_runtime::CommandBus::commit_one_into`]. The reader
+//! held in [`crate::state::AppState`], drains older queued commands,
+//! and applies its own committed event to canonical state via
+//! [`chromaticity_runtime::CommandBus::dispatch_and_commit_into`]. The reader
 //! ([`playlist_position`]) projects the resulting cursor position back
 //! across the IPC boundary as `i64`.
 //!
@@ -27,14 +27,13 @@ use tauri::State;
 use crate::state::AppState;
 
 fn advance_playlist_impl(app: &AppState, step: i32) -> Result<(), String> {
-    app.bus
-        .dispatch(Command::PlaylistAdvance { step })
-        .map_err(|err| err.to_string())?;
     let mut state = app
         .state
         .lock()
         .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    let _ = app.bus.commit_one_into(&mut state);
+    app.bus
+        .dispatch_and_commit_into(Command::PlaylistAdvance { step }, &mut state)
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -65,7 +64,7 @@ pub fn playlist_position(app_state: State<'_, AppState>) -> Result<i64, String> 
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
     //! Unit tests for the D4 playlist round-trip handler glue. Pins the
-    //! SHELL-side `dispatch → commit_one_into → readback` chain.
+    //! SHELL-side `dispatch_and_commit_into → readback` chain.
     //!
     //! The saturating-add overflow guard is pinned at the runtime
     //! layer in `engine/runtime/src/state.rs::tests::playlist_advance_saturates_at_i64_max`
@@ -77,6 +76,7 @@ mod tests {
 
     use super::{advance_playlist_impl, playlist_position_impl};
     use crate::state::AppState;
+    use chromaticity_runtime::{Command, CommandBus};
 
     #[test]
     fn playlist_position_initial_is_zero() {
@@ -97,5 +97,17 @@ mod tests {
         advance_playlist_impl(&app, 5).unwrap();
         advance_playlist_impl(&app, -2).unwrap();
         assert_eq!(playlist_position_impl(&app).unwrap(), 3);
+    }
+
+    #[test]
+    fn advance_playlist_readback_includes_own_command_after_queued_work() {
+        let app = AppState::new();
+        app.bus
+            .dispatch(Command::PlaylistAdvance { step: 10 })
+            .unwrap();
+
+        advance_playlist_impl(&app, 3).unwrap();
+
+        assert_eq!(playlist_position_impl(&app).unwrap(), 13);
     }
 }
