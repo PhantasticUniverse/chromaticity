@@ -78,6 +78,45 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       target.releasePointerCapture(event.pointerId);
     }
   };
+
+  // Keyboard nudge per WAI-ARIA APG slider pattern. Rotary knobs accept
+  // ↑/→ as "clockwise / increase" and ↓/← as "counter-clockwise / decrease"
+  // by convention. Step sizing mirrors `Fader.svelte` for cross-widget
+  // operator muscle memory: 5% per arrow, 20% with Shift / PageUp / PageDown,
+  // Home/End snap to extremes. Closes the DESIGN.md "Bundle alignment"
+  // §Trail item ("Arrow-key slider nudge").
+  const STEP_SMALL = 0.05;
+  const STEP_LARGE = 0.2;
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (!actionable) return;
+    let next: number | null = null;
+    switch (event.key) {
+      case 'ArrowUp':
+      case 'ArrowRight':
+        next = pct + (event.shiftKey ? STEP_LARGE : STEP_SMALL);
+        break;
+      case 'ArrowDown':
+      case 'ArrowLeft':
+        next = pct - (event.shiftKey ? STEP_LARGE : STEP_SMALL);
+        break;
+      case 'PageUp':
+        next = pct + STEP_LARGE;
+        break;
+      case 'PageDown':
+        next = pct - STEP_LARGE;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = 1;
+        break;
+    }
+    if (next !== null) {
+      event.preventDefault();
+      onchange?.(Math.max(0, Math.min(1, next)));
+    }
+  };
 </script>
 
 <!-- Interactive (role="slider" + tabindex + aria-value*) vs display-
@@ -102,6 +141,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
       onpointercancel={onPointerUp}
+      onkeydown={onKeyDown}
     >
       <div class="knob-arc"></div>
       <div class="knob-ind"></div>

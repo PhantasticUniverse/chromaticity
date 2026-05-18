@@ -84,6 +84,48 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       target.releasePointerCapture(event.pointerId);
     }
   };
+
+  // Keyboard nudge per WAI-ARIA APG slider pattern + the v0.2-beta bundle's
+  // operator habit (vertical fader responds to ↑/↓ as primary; ←/→ are
+  // accepted aliases for the operator who's also holding a mouse). Step
+  // sizing matches HTML5 input[type=range] convention scaled to the 0..1
+  // range: 5% per arrow, 20% with Shift, snap to min/max with Home/End,
+  // PageUp/PageDown for coarse 20% jumps. Closes the DESIGN.md "Bundle
+  // alignment" §Trail item ("Arrow-key slider nudge") at the operator
+  // surface — bundle uses native <input type=range> which gets nudge for
+  // free; our custom role="slider" div needs the handler explicitly.
+  const STEP_SMALL = 0.05;
+  const STEP_LARGE = 0.2;
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (!actionable) return;
+    let next: number | null = null;
+    switch (event.key) {
+      case 'ArrowUp':
+      case 'ArrowRight':
+        next = pct + (event.shiftKey ? STEP_LARGE : STEP_SMALL);
+        break;
+      case 'ArrowDown':
+      case 'ArrowLeft':
+        next = pct - (event.shiftKey ? STEP_LARGE : STEP_SMALL);
+        break;
+      case 'PageUp':
+        next = pct + STEP_LARGE;
+        break;
+      case 'PageDown':
+        next = pct - STEP_LARGE;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = 1;
+        break;
+    }
+    if (next !== null) {
+      event.preventDefault();
+      onchange?.(Math.max(0, Math.min(1, next)));
+    }
+  };
 </script>
 
 <!-- The interactive (role="slider" + tabindex + aria-value*) branch
@@ -108,6 +150,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
       onpointercancel={onPointerUp}
+      onkeydown={onKeyDown}
     >
       <div class="fader-fill" style="height: {pct * 100}%"></div>
       <div class="fader-cap" style="bottom: calc({pct * 100}% - 4px)"></div>

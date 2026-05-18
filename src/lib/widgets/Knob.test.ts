@@ -183,4 +183,57 @@ describe('Knob widget', () => {
     await fireEvent.pointerMove(dial, { clientX: 24, clientY: 70, pointerId: 1 });
     expect(onchange).not.toHaveBeenCalled();
   });
+
+  // ---------------- DESIGN.md "Bundle alignment" — keyboard nudge ---------
+
+  it('ArrowUp nudges value up by 5% step', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Knob, { props: { value: 0.5, onchange } });
+    const dial = container.querySelector('.knob-dial') as HTMLElement | null;
+    if (dial === null) throw new Error('knob-dial not rendered');
+    await fireEvent.keyDown(dial, { key: 'ArrowUp' });
+    expect(onchange).toHaveBeenCalledWith(0.55);
+  });
+
+  it('ArrowLeft nudges value down by 5% step', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Knob, { props: { value: 0.5, onchange } });
+    const dial = container.querySelector('.knob-dial') as HTMLElement | null;
+    if (dial === null) throw new Error('knob-dial not rendered');
+    await fireEvent.keyDown(dial, { key: 'ArrowLeft' });
+    const got = onchange.mock.calls[0]?.[0] as number | undefined;
+    expect(got).toBeCloseTo(0.45, 5);
+  });
+
+  it('Shift+ArrowUp uses the 20% large step', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Knob, { props: { value: 0.3, onchange } });
+    const dial = container.querySelector('.knob-dial') as HTMLElement | null;
+    if (dial === null) throw new Error('knob-dial not rendered');
+    await fireEvent.keyDown(dial, { key: 'ArrowUp', shiftKey: true });
+    const got = onchange.mock.calls[0]?.[0] as number | undefined;
+    expect(got).toBeCloseTo(0.5, 5);
+  });
+
+  it('Home / End snap to extremes', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Knob, { props: { value: 0.5, onchange } });
+    const dial = container.querySelector('.knob-dial') as HTMLElement | null;
+    if (dial === null) throw new Error('knob-dial not rendered');
+    await fireEvent.keyDown(dial, { key: 'End' });
+    expect(onchange).toHaveBeenLastCalledWith(1);
+    await fireEvent.keyDown(dial, { key: 'Home' });
+    expect(onchange).toHaveBeenLastCalledWith(0);
+  });
+
+  it('disabled knob does not fire onchange on keydown', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Knob, {
+      props: { value: 0.5, onchange, disabled: true },
+    });
+    const dial = container.querySelector('.knob-dial') as HTMLElement | null;
+    if (dial === null) throw new Error('knob-dial not rendered');
+    await fireEvent.keyDown(dial, { key: 'ArrowUp' });
+    expect(onchange).not.toHaveBeenCalled();
+  });
 });
