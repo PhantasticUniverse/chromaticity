@@ -351,6 +351,11 @@ impl UdpOscAdapter {
         self.route_bindings.unbind(canonical);
     }
 
+    /// Clear every adapter-local dispatch binding.
+    pub fn clear_route_bindings(&mut self) {
+        self.route_bindings.clear();
+    }
+
     /// Install the host dispatch sink used when a bound inbound OSC
     /// message resolves to an action.
     pub fn set_dispatch_sink(&mut self, sink: Arc<dyn OscDispatchSink>) {

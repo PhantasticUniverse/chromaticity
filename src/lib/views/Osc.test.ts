@@ -186,11 +186,11 @@ describe('Osc view', () => {
     expect(await findByText('Healthy')).toBeInTheDocument();
     const pill = container.querySelector('.osc-view__health-pill');
     expect(pill?.getAttribute('data-state')).toBe('healthy');
-    // local_addr=null → "unbound — Phase-3 wires bind()" placeholder.
-    expect(container.textContent).toContain('unbound — Phase-3 wires bind()');
+    // local_addr=null renders the live-adapter unbound placeholder.
+    expect(container.textContent).toContain('unbound');
   });
 
-  it('renders ErrorMessage and the Phase-3 hint when the snapshot IPC rejects', async () => {
+  it('renders ErrorMessage and the browser-mode hint when the snapshot IPC rejects', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'osc_health_snapshot') {
         return Promise.reject(new Error('osc_health_snapshot offline in browser-mode'));
@@ -204,8 +204,7 @@ describe('Osc view', () => {
     const matches = await findAllByText(/osc_health_snapshot offline in browser-mode/);
     expect(matches.length).toBeGreaterThan(0);
     expect(container.textContent).toContain('IPC error');
-    // The hint paragraph wraps across lines; tolerate intervening whitespace.
-    expect(container.textContent ?? '').toMatch(/Real adapter\s+wiring lands in Phase-3/);
+    expect(container.textContent ?? '').toMatch(/Tauri internals unset/);
   });
 
   it('renders the Ableton Link stub panel with em-dash placeholders', () => {

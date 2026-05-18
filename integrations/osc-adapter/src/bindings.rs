@@ -276,6 +276,11 @@ impl OscRouteBindings {
         self.entries.remove(canonical.trim());
     }
 
+    /// Remove every adapter-local route binding.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
     pub fn dispatch_packet(
         &self,
         packet: &OscPacket,

@@ -22,11 +22,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //   - CENTER Routes table (now 6 columns + colspan-6 note row)
   //   - RIGHT  Ableton Link panel (stub) + Hints
   //
-  // IPC consumption: `osc_health_snapshot` (W14 PR4) returns a stub
-  // snapshot in this wave because AppState doesn't yet own a
-  // UdpOscAdapter. Real adapter wiring is Phase-3 EV-INTEGRATION-MATRIX
-  // scope. The view's contract is locked in now so the Phase-3
-  // follow-up only swaps the IPC handler body.
+  // IPC consumption: `osc_health_snapshot` reads the live UdpOscAdapter
+  // owned by AppState, while the route table hydrates from the shell
+  // registry and validates bind targets before inbound dispatch.
   //
   // Locked design choices (W16):
   //   - Hardcoded OSC_ROUTES per docs/08 + bundle (`src/lib/data/osc-routes.ts`).
@@ -250,9 +248,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </h1>
       <p class="osc-view__intro">
         OSC adapter health, routes, and live monitor. Wireframe-06 port from the bundle's
-        <code>views/osc.jsx</code>; W14 stubs the adapter health IPC, hardcodes routes per
-        <code>docs/08</code>, and renders Ableton Link as a stub. Real adapter wiring is Phase-3
-        scope.
+        <code>views/osc.jsx</code>; routes hydrate from the shell registry per
+        <code>docs/08</code>, and Ableton Link remains a transport stub.
       </p>
     </header>
 
@@ -261,8 +258,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       {#if healthError}
         <ErrorMessage error={healthError} />
         <p class="osc-view__hint">
-          IPC error — typically expected in browser-mode (Tauri internals unset). Real adapter
-          wiring lands in Phase-3.
+          IPC error — typically expected in browser-mode (Tauri internals unset).
         </p>
       {:else if healthSnapshot}
         <div class="osc-view__health-pill" data-state={healthSnapshot.state.toLowerCase()}>
@@ -275,7 +271,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             {#if healthSnapshot.local_addr}
               <code>{healthSnapshot.local_addr}</code>
             {:else}
-              <span class="osc-view__muted">unbound — Phase-3 wires bind()</span>
+              <span class="osc-view__muted">unbound</span>
             {/if}
           </dd>
           <dt>attempted binds</dt>

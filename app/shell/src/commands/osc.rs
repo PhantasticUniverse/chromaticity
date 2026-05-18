@@ -3,8 +3,8 @@
 
 //! OSC adapter IPC surface.
 //!
-//! W14 PR4 introduced the [`osc_health_snapshot`] IPC command (still
-//! a stub — adapter binding lives on the Phase-3+ wiring queue).
+//! W14 PR4 introduced the [`osc_health_snapshot`] IPC command; Round 3
+//! wires it to the live UDP adapter owned by [`AppState`].
 //! Wave 2.1 Lane D.3 (`/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`)
 //! adds three operator-facing handlers backing the OSC view's routes
 //! table + bind / unbind affordances:
@@ -40,36 +40,56 @@
 //! type matches the project's existing handler shape for forward-compat
 //! with future wiring that might surface adapter-mutex-poisoned conditions.
 
+use chromaticity_osc_adapter::adapter::{OscAdapter, OscHealthState as AdapterOscHealthState};
 use chromaticity_osc_adapter::bindings::{OscDispatchAction, OscRuntimeCommand};
 use chromaticity_osc_adapter::route_registry::OscRouteError;
 use chromaticity_runtime::{
     Command, CommandBus, ControlId as RuntimeControlId, ControlValue as RuntimeControlValue,
     PresetId, SnapSlotId,
 };
-use chromaticity_ui_bridge::{OscHealthSnapshot, OscHealthState, OscRoutePayload};
+use chromaticity_scene::loader::load_chroma_dir;
+use chromaticity_scene::schema::Scene;
+use chromaticity_ui_bridge::{
+    LoadedScenePayload, OscHealthSnapshot, OscHealthState, OscRoutePayload,
+};
+use std::net::{IpAddr, SocketAddr};
+use std::path::{Path, PathBuf};
 use tauri::State;
 
-use crate::state::AppState;
+use crate::commands::scene::build_loaded_scene_payload;
+use crate::state::{AppState, LoadedSceneRecord};
+
+const BUNDLED_USER_FACING_SCENE_SUBDIRS: &[&str] = &["library", "welcome", "examples"];
 
 /// Read the OSC adapter's health snapshot.
 ///
-/// **W14 stub.** Phase-3 will replace the stub body with a
-/// read-through to a `UdpOscAdapter` owned by [`AppState`]. See
-/// module prose for scope rationale.
+/// Read-through to the `UdpOscAdapter` owned by [`AppState`].
 #[tauri::command]
-pub fn osc_health_snapshot() -> Result<OscHealthSnapshot, String> {
-    osc_health_snapshot_impl()
+pub fn osc_health_snapshot(app_state: State<'_, AppState>) -> Result<OscHealthSnapshot, String> {
+    osc_health_snapshot_impl(app_state.inner())
 }
 
-/// Inner stub returning the placeholder snapshot. Pulled out as a
-/// pure function so the W14 unit tests can exercise the same body
-/// the Tauri command shell wraps.
-fn osc_health_snapshot_impl() -> Result<OscHealthSnapshot, String> {
+/// Inner implementation pulled out so unit tests can exercise the
+/// same body the Tauri command shell wraps.
+fn osc_health_snapshot_impl(app: &AppState) -> Result<OscHealthSnapshot, String> {
+    let adapter = match app.osc_adapter.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
     Ok(OscHealthSnapshot {
-        state: OscHealthState::Healthy,
-        attempted_binds: 0,
-        local_addr: None,
+        state: bridge_health_state(adapter.health_state()),
+        attempted_binds: adapter.attempted_binds(),
+        local_addr: adapter.local_addr().map(|addr| addr.to_string()),
     })
+}
+
+fn bridge_health_state(state: AdapterOscHealthState) -> OscHealthState {
+    match state {
+        AdapterOscHealthState::Healthy => OscHealthState::Healthy,
+        AdapterOscHealthState::Recovering => OscHealthState::Recovering,
+        AdapterOscHealthState::Degraded => OscHealthState::Degraded,
+        _ => OscHealthState::Degraded,
+    }
 }
 
 /// Inner implementation for [`osc_routes_snapshot`]; takes a borrowed
@@ -95,29 +115,55 @@ fn bind_osc_route_impl(app: &AppState, route: &str, target: &str) -> Result<(), 
     if trimmed.is_empty() {
         return Err("bind target must not be empty".to_string());
     }
-    let mut guard = match app.osc_routes.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
+    {
+        let mut guard = match app.osc_routes.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard
+            .bind(route, trimmed)
+            .map_err(|err: OscRouteError| err.to_string())?;
+    }
+
+    let adapter_result = {
+        let mut adapter = match app.osc_adapter.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        adapter.bind_route(route, trimmed)
     };
-    guard
-        .bind(route, trimmed)
-        .map_err(|err: OscRouteError| err.to_string())
+    if let Err(err) = adapter_result {
+        let mut guard = match app.osc_routes.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let _ = guard.unbind(route);
+        return Err(err.to_string());
+    }
+    Ok(())
 }
 
 /// Inner implementation for [`unbind_osc_route`]; takes a borrowed
 /// [`AppState`] directly so unit tests can exercise the seam without
 /// a Tauri runtime.
 fn unbind_osc_route_impl(app: &AppState, route: &str) -> Result<(), String> {
-    let mut guard = match app.osc_routes.lock() {
+    {
+        let mut guard = match app.osc_routes.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard
+            .unbind(route)
+            .map_err(|err: OscRouteError| err.to_string())?;
+    }
+    let mut adapter = match app.osc_adapter.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    guard
-        .unbind(route)
-        .map_err(|err: OscRouteError| err.to_string())
+    adapter.unbind_route(route);
+    Ok(())
 }
 
-#[allow(dead_code)]
 fn runtime_command_from_osc(command: OscRuntimeCommand) -> Result<Command, String> {
     match command {
         OscRuntimeCommand::ControlSet { id, value } => Ok(Command::ControlSet {
@@ -135,7 +181,6 @@ fn runtime_command_from_osc(command: OscRuntimeCommand) -> Result<Command, Strin
     }
 }
 
-#[allow(dead_code)]
 fn dispatch_osc_action_impl(app: &AppState, action: OscDispatchAction) -> Result<(), String> {
     match action {
         OscDispatchAction::RuntimeCommand(command) => {
@@ -149,10 +194,202 @@ fn dispatch_osc_action_impl(app: &AppState, action: OscDispatchAction) -> Result
                 .map_err(|err| err.to_string())?;
             Ok(())
         }
-        OscDispatchAction::SceneLoad { scene_id } => Err(format!(
-            "osc scene load target {scene_id} cannot dispatch through the runtime command bus yet",
-        )),
+        OscDispatchAction::SceneLoad { scene_id } => {
+            load_scene_by_id_impl(app, &scene_id).map(|_| ())
+        }
         _ => Err("unsupported osc dispatch action".to_string()),
+    }
+}
+
+/// Configure the live UDP adapter from the current settings snapshot.
+///
+/// Called during setup and after settings writes. Bind failures are
+/// surfaced to the caller, but the adapter remains installed so the
+/// health command can report attempted bind count and `local_addr =
+/// None` instead of leaving OSC as a silent no-op.
+pub(crate) fn configure_live_osc_adapter(app: &AppState) -> Result<(), String> {
+    let settings = {
+        let guard = match app.settings.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.osc.clone()
+    };
+    let route_snapshot = {
+        let guard = match app.osc_routes.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.snapshot()
+    };
+
+    let mut adapter = match app.osc_adapter.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    adapter.clear_route_bindings();
+    for route in route_snapshot {
+        if let Some(target) = route.bind_target.as_deref() {
+            adapter
+                .bind_route(&route.canonical, target)
+                .map_err(|err| err.to_string())?;
+        }
+    }
+
+    adapter.unbind().map_err(|err| err.to_string())?;
+    if !settings.rx_enabled {
+        return Ok(());
+    }
+    let ip: IpAddr = settings
+        .local_ip
+        .parse()
+        .map_err(|err| format!("invalid OSC listen IP {}: {err}", settings.local_ip))?;
+    adapter
+        .bind(SocketAddr::new(ip, settings.port))
+        .map_err(|err| err.to_string())
+}
+
+/// Poll the live UDP adapter once. The caller must not hold
+/// `AppState::state`; adapter dispatch only queues actions.
+pub(crate) fn poll_live_osc_adapter(app: &AppState) -> Result<(), String> {
+    let mut adapter = match app.osc_adapter.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    adapter.poll().map_err(|err| err.to_string())
+}
+
+/// Drain OSC actions queued by the adapter sink and apply them through
+/// the runtime command bus or shell scene loader.
+pub(crate) fn drain_queued_osc_actions(app: &AppState) -> Result<usize, String> {
+    let actions = {
+        let mut guard = match app.osc_dispatch_queue.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        std::mem::take(&mut *guard)
+    };
+    let count = actions.len();
+    for action in actions {
+        dispatch_osc_action_impl(app, action)?;
+    }
+    Ok(count)
+}
+
+fn load_scene_by_id_impl(app: &AppState, scene_id: &str) -> Result<LoadedScenePayload, String> {
+    let candidates = scene_candidates(app, scene_id);
+    let mut attempted = Vec::new();
+    for path in candidates {
+        attempted.push(path.display().to_string());
+        match load_scene_path(app, &path) {
+            Ok(payload) => return Ok(payload),
+            Err(_) => continue,
+        }
+    }
+    Err(format!(
+        "osc scene target {scene_id} did not resolve to a loadable .chroma package (tried: {})",
+        attempted.join(", "),
+    ))
+}
+
+fn load_scene_path(app: &AppState, path: &Path) -> Result<LoadedScenePayload, String> {
+    let scene = load_chroma_dir(path).map_err(|err| err.to_string())?;
+    store_loaded_scene(app, scene, path)
+}
+
+fn store_loaded_scene(
+    app: &AppState,
+    scene: Scene,
+    path: &Path,
+) -> Result<LoadedScenePayload, String> {
+    let payload = build_loaded_scene_payload(&scene, path);
+    let record = LoadedSceneRecord {
+        scene,
+        path: path.to_path_buf(),
+    };
+    match app.loaded_scene.lock() {
+        Ok(mut guard) => {
+            *guard = Some(record);
+        }
+        Err(poisoned) => {
+            let mut guard = poisoned.into_inner();
+            *guard = Some(record);
+        }
+    }
+    Ok(payload)
+}
+
+fn scene_candidates(app: &AppState, scene_id: &str) -> Vec<PathBuf> {
+    let trimmed = scene_id.trim();
+    let mut candidates = Vec::new();
+    if trimmed.is_empty() {
+        return candidates;
+    }
+
+    let direct = PathBuf::from(trimmed);
+    if direct.is_absolute() || direct.extension().and_then(|ext| ext.to_str()) == Some("chroma") {
+        push_candidate(&mut candidates, direct);
+    }
+
+    let mut roots = Vec::new();
+    if let Some(root) = match app.bundled_scene_root.lock() {
+        Ok(g) => g.clone(),
+        Err(p) => p.into_inner().clone(),
+    } {
+        roots.push(root);
+    }
+    if let Some(root) = platform_default_scene_root() {
+        roots.push(root);
+    }
+    {
+        let settings = match app.settings.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        roots.extend(settings.storage.scene_folders.iter().map(PathBuf::from));
+    }
+
+    let package_name = if trimmed.ends_with(".chroma") {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}.chroma")
+    };
+    for root in roots {
+        push_candidate(&mut candidates, root.join(&package_name));
+        for subdir in BUNDLED_USER_FACING_SCENE_SUBDIRS {
+            push_candidate(&mut candidates, root.join(subdir).join(&package_name));
+        }
+    }
+    candidates
+}
+
+fn push_candidate(candidates: &mut Vec<PathBuf>, path: PathBuf) {
+    if !candidates.iter().any(|existing| existing == &path) {
+        candidates.push(path);
+    }
+}
+
+fn platform_default_scene_root() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        std::env::var("HOME")
+            .ok()
+            .map(|home| PathBuf::from(home).join("Library/Application Support/Chromaticity/Scenes"))
+    } else if cfg!(target_os = "windows") {
+        std::env::var("APPDATA")
+            .ok()
+            .map(|appdata| PathBuf::from(appdata).join("Chromaticity").join("Scenes"))
+    } else if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        if xdg.is_empty() {
+            std::env::var("HOME")
+                .ok()
+                .map(|home| PathBuf::from(home).join(".local/share/chromaticity/scenes"))
+        } else {
+            Some(PathBuf::from(xdg).join("chromaticity/scenes"))
+        }
+    } else {
+        std::env::var("HOME")
+            .ok()
+            .map(|home| PathBuf::from(home).join(".local/share/chromaticity/scenes"))
     }
 }
 
@@ -193,10 +430,79 @@ mod tests {
     //! Tauri.
 
     use super::*;
+    use chromaticity_osc_adapter::adapter::OscAdapter;
+    use chromaticity_osc_adapter::bindings::control_target_id;
+    use std::net::{SocketAddr, UdpSocket};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    const POLL_DEADLINE: Duration = Duration::from_secs(1);
+    const POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+    fn fixture_scene_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../engine/scene/tests/fixtures/scenes")
+    }
+
+    fn bind_app_osc_ephemeral(app: &AppState) -> SocketAddr {
+        let mut adapter = app.osc_adapter.lock().expect("osc adapter lock");
+        adapter
+            .bind("127.0.0.1:0".parse().expect("loopback socket addr"))
+            .expect("bind ephemeral osc adapter");
+        adapter.local_addr().expect("bound adapter local addr")
+    }
+
+    fn encode_osc_message(addr: &str, args: &[f32]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        push_osc_string(&mut bytes, addr);
+        let mut tags = String::from(",");
+        for _ in args {
+            tags.push('f');
+        }
+        push_osc_string(&mut bytes, &tags);
+        for value in args {
+            bytes.extend(value.to_bits().to_be_bytes());
+        }
+        bytes
+    }
+
+    fn push_osc_string(bytes: &mut Vec<u8>, value: &str) {
+        bytes.extend(value.as_bytes());
+        bytes.push(0);
+        while bytes.len() % 4 != 0 {
+            bytes.push(0);
+        }
+    }
+
+    fn send_osc(sender: &UdpSocket, addr: SocketAddr, path: &str, args: &[f32]) {
+        sender
+            .send_to(&encode_osc_message(path, args), addr)
+            .expect("send osc packet");
+    }
+
+    fn poll_and_drain_until<F>(app: &AppState, mut done: F)
+    where
+        F: FnMut() -> bool,
+    {
+        let start = Instant::now();
+        loop {
+            poll_live_osc_adapter(app).expect("osc poll succeeds");
+            let _ = drain_queued_osc_actions(app).expect("queued osc actions drain");
+            if done() {
+                return;
+            }
+            assert!(
+                start.elapsed() < POLL_DEADLINE,
+                "timed out waiting for OSC dispatch"
+            );
+            thread::sleep(POLL_INTERVAL);
+        }
+    }
 
     #[test]
-    fn stub_returns_healthy_unbound_snapshot() {
-        let snapshot = osc_health_snapshot_impl().expect("stub never errors");
+    fn health_snapshot_reads_fresh_unbound_adapter() {
+        let app = AppState::new();
+        let snapshot = osc_health_snapshot_impl(&app).expect("health snapshot reads adapter");
         assert!(matches!(snapshot.state, OscHealthState::Healthy));
         assert_eq!(snapshot.attempted_binds, 0);
         assert_eq!(snapshot.local_addr, None);
@@ -204,7 +510,8 @@ mod tests {
 
     #[test]
     fn snapshot_serializes_round_trip() {
-        let snapshot = osc_health_snapshot_impl().expect("stub never errors");
+        let app = AppState::new();
+        let snapshot = osc_health_snapshot_impl(&app).expect("health snapshot reads adapter");
         let json = serde_json::to_string(&snapshot).expect("serializes");
         let parsed: OscHealthSnapshot = serde_json::from_str(&json).expect("round-trips");
         assert_eq!(parsed, snapshot);
@@ -307,6 +614,66 @@ mod tests {
     }
 
     #[test]
+    fn health_snapshot_reports_bound_adapter_addr() {
+        let app = AppState::new();
+        let bound = bind_app_osc_ephemeral(&app);
+
+        let snapshot = osc_health_snapshot_impl(&app).expect("health snapshot reads adapter");
+
+        assert!(matches!(snapshot.state, OscHealthState::Healthy));
+        assert_eq!(snapshot.attempted_binds, 1);
+        let bound_string = bound.to_string();
+        assert_eq!(snapshot.local_addr.as_deref(), Some(bound_string.as_str()));
+    }
+
+    #[test]
+    fn live_adapter_dispatches_runtime_targets_from_udp() {
+        let app = AppState::new();
+        let bound = bind_app_osc_ephemeral(&app);
+        bind_osc_route_impl(&app, "/controls/{bank}/{name}", "control:fx:speed")
+            .expect("control route binds");
+        bind_osc_route_impl(&app, "/presets/{name}", "preset:7").expect("preset route binds");
+        bind_osc_route_impl(&app, "/favslots/{n}", "snap:3").expect("snap route binds");
+        bind_osc_route_impl(&app, "/playlists/next", "playlist:next")
+            .expect("playlist route binds");
+        let sender = UdpSocket::bind("127.0.0.1:0").expect("sender binds");
+
+        send_osc(&sender, bound, "/controls/fx/speed", &[0.42]);
+        send_osc(&sender, bound, "/presets/main", &[]);
+        send_osc(&sender, bound, "/favslots/3", &[]);
+        send_osc(&sender, bound, "/playlists/next", &[]);
+
+        poll_and_drain_until(&app, || {
+            let state = app.state.lock().expect("state lock");
+            state.control_value(RuntimeControlId(control_target_id("fx", "speed")))
+                == Some(RuntimeControlValue(0.42))
+                && state.active_preset() == Some(PresetId(7))
+                && state.active_snap_slot() == Some(SnapSlotId::new(3).expect("valid slot"))
+                && state.playlist_position() == 1
+        });
+    }
+
+    #[test]
+    fn live_adapter_dispatches_scene_target_from_udp() {
+        let app = AppState::new();
+        app.install_bundled_scene_root(fixture_scene_root());
+        let bound = bind_app_osc_ephemeral(&app);
+        bind_osc_route_impl(&app, "/scenes/{sceneName}", "scene:welcome")
+            .expect("scene route binds");
+        let sender = UdpSocket::bind("127.0.0.1:0").expect("sender binds");
+
+        send_osc(&sender, bound, "/scenes/welcome", &[]);
+
+        poll_and_drain_until(&app, || {
+            let guard = app.loaded_scene.lock().expect("loaded scene lock");
+            guard
+                .as_ref()
+                .map(|record| record.path.ends_with("welcome/welcome.chroma"))
+                .unwrap_or(false)
+        });
+    }
+
+    #[test]
     fn dispatch_osc_runtime_actions_commit_through_bus() {
         let app = AppState::new();
         dispatch_osc_action_impl(
@@ -344,15 +711,19 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_osc_scene_action_reports_runtime_gap() {
+    fn dispatch_osc_scene_action_loads_scene_into_app_state() {
         let app = AppState::new();
-        let err = dispatch_osc_action_impl(
+        app.install_bundled_scene_root(fixture_scene_root());
+
+        dispatch_osc_action_impl(
             &app,
             OscDispatchAction::SceneLoad {
-                scene_id: "demo".to_string(),
+                scene_id: "welcome".to_string(),
             },
         )
-        .expect_err("scene action has no runtime command yet");
-        assert!(err.contains("cannot dispatch through the runtime command bus yet"));
+        .expect("scene target loads");
+        let guard = app.loaded_scene.lock().expect("loaded scene lock");
+        let record = guard.as_ref().expect("scene loaded");
+        assert!(record.path.ends_with("welcome/welcome.chroma"));
     }
 }

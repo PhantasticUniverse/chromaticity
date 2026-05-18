@@ -455,8 +455,8 @@ pub struct LoadedScenePayload {
 
 /// IPC-facing snapshot of OSC adapter health metrics.
 ///
-/// The W14 OSC view reads this on mount to render the adapter
-/// health pill + listen-address readout. Fields:
+/// The OSC view reads this on mount to render the adapter health pill
+/// + listen-address readout. Fields:
 ///
 /// - `state` — the W4 `OscHealthState` discriminant, mirroring the
 ///   internal bind-retry state machine.
