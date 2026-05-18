@@ -28,6 +28,7 @@
 import '@testing-library/jest-dom/vitest';
 import { within } from '@testing-library/dom';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { invokeMock } = vi.hoisted(() => ({
@@ -73,6 +74,35 @@ const SAMPLE_SCENE: LoadedScenePayload = {
     },
   ],
   schema_version: 1,
+};
+
+const SAMPLE_SCENE_B: LoadedScenePayload = {
+  ...SAMPLE_SCENE,
+  id: 'demo-spectrum',
+  path: '/tmp/demo-spectrum.chroma',
+  name: 'Demo Spectrum',
+  controls: [
+    {
+      name: 'segments',
+      kind: 'Slider',
+      default: 0.2,
+      min: 0.0,
+      max: 1.0,
+      ui_group: 'geometry',
+      description: null,
+      label: null,
+    },
+    {
+      name: 'mute',
+      kind: 'Toggle',
+      default: true,
+      min: null,
+      max: null,
+      ui_group: 'geometry',
+      description: null,
+      label: null,
+    },
+  ],
 };
 
 function stubMatchMedia(): void {
@@ -186,6 +216,24 @@ describe('Perform view — control dispatch (Wave 2.1 Lane A.2)', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(slider.getAttribute('aria-valuenow')).toBe('0.42');
+  });
+
+  it('does not reuse a touched scene-control value after the loaded scene id changes', async () => {
+    const { getByLabelText } = render(Perform);
+    const sceneCtrls = getByLabelText('Scene Controls');
+    const slider = within(sceneCtrls).getByRole('slider', { name: 'segments' });
+    stubRect(slider, 100, 0);
+    stubPointerCapture(slider);
+    await fireEvent.pointerDown(slider, { clientX: 5, clientY: 20, pointerId: 1 });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(slider.getAttribute('aria-valuenow')).toBe('0.8');
+
+    loadedSceneStore.snapshot = SAMPLE_SCENE_B;
+    await tick();
+
+    const nextSlider = within(sceneCtrls).getByRole('slider', { name: 'segments' });
+    expect(nextSlider.getAttribute('aria-valuenow')).toBe('0.2');
   });
 
   it('toggling a scene-control switch encodes boolean as numeric 1.0', async () => {

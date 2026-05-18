@@ -873,6 +873,25 @@ describe('MIDI view', () => {
     expect(container.querySelector('.midi__panel--learn')).toBeNull();
   });
 
+  it('stops an active learn session when the MIDI view unmounts', async () => {
+    const { getByRole, unmount } = render(MIDI);
+    await waitFor(() => {
+      expect(midiStore.devices.length).toBe(LIVE_DEVICES_FIXTURE.length);
+    });
+    invokeMock.mockClear();
+
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('start_midi_learn', { portId: 'input-0' });
+    });
+
+    invokeMock.mockClear();
+    unmount();
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('stop_midi_learn');
+    });
+  });
+
   it('Devices tab renders a per-device Learn button gated on the learn capability', async () => {
     const { container, getByRole } = render(MIDI);
     await fireEvent.click(getByRole('tab', { name: /Devices/i }));

@@ -81,6 +81,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     MEDIA_DEFAULT_ACTIVE_INDEX,
     MEDIA_TABS,
     META_CONTROL_GROUPS,
+    META_CONTROL_ID_BASE,
     SCENE_CONTROL_GROUPS,
     type MediaTab,
     type PerformControlGroup,
@@ -321,8 +322,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // attaching the schema-position `controlId` to each spec so widget
   // `onchange` callbacks can dispatch `set_control` IPC through
   // `dispatchAndRead`. The local `controlValues` map records the
-  // last-committed value per ID so re-renders post-drag reflect the
-  // engine-side state; absent entries fall back to the schema default.
+  // last-committed value per scoped ID so re-renders post-drag reflect
+  // the engine-side state; absent entries fall back to the schema default.
   //
   // Tint cycles through the four canonical category tokens so the
   // group columns retain visual variety; the cycle is stable across
@@ -335,12 +336,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   ] as const;
 
   /**
-   * Lane A.2 local control-value map. Keyed by engine-side
-   * `ControlId` (number): scene-schema position indices (0..N-1) for
-   * Scene Controls, the `META_CONTROL_ID_BASE` (1000+) namespace for
-   * Meta Controls. A plain Record-of-state lets Svelte 5's reactivity
-   * track per-ID updates without the `svelte/prefer-svelte-reactivity`
-   * lint friction a `$state(new Map())` would trip.
+   * Lane A.2 local control-value map. Scene controls are keyed by
+   * `{loadedSceneId}:{ControlId}` while Meta Controls use
+   * `meta:{ControlId}`. The previous number-only key leaked value 0
+   * from one scene into control 0 of the next loaded scene; the scoped
+   * string key keeps same-position controls isolated without clearing
+   * the cross-scene meta namespace.
    *
    * Values:
    *   - faders / knobs store a `[0, 1]`-clamped float.
@@ -351,7 +352,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * each commit so the UI reflects the engine-committed value (the
    * round-trip catches engine-side clamping / quantisation).
    */
-  let controlValues = $state<Record<number, number>>({});
+  type ControlValueCache = Record<string, number>;
+  const SCENELESS_CONTROL_SCOPE = 'fixture';
+  let controlValues = $state<ControlValueCache>({});
+
+  function controlValueKey(id: number): string {
+    if (id >= META_CONTROL_ID_BASE) return `meta:${id}`;
+    return `${loadedSceneId ?? SCENELESS_CONTROL_SCOPE}:${id}`;
+  }
+
+  function cachedControlValue(id: number): number | undefined {
+    const value = controlValues[controlValueKey(id)];
+    return typeof value === 'number' ? value : undefined;
+  }
 
   /**
    * Dispatch a single-control update to the engine and update the
@@ -373,11 +386,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    */
   function dispatchControl(id: number, value: number): void {
     if (controlLockStore.isLocked(id)) return;
-    controlValues = { ...controlValues, [id]: value };
+    const key = controlValueKey(id);
+    controlValues = { ...controlValues, [key]: value };
     void dispatchAndRead(id, value)
       .then((readback) => {
         if (typeof readback === 'number') {
-          controlValues = { ...controlValues, [id]: readback };
+          controlValues = { ...controlValues, [key]: readback };
         }
       })
       .catch(() => {
@@ -394,12 +408,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * preview canvas pre-multiplies the three common-axis controls
    * (`speed`, `intensity`, `tint`) at the `draw()` boundary.
    *
-   * `controlValues` is the engine-committed `f32` per `ControlId`
-   * (schema position 0..N-1 for Scene Controls). For each schema
-   * entry whose `name` matches a recognised axis, the live cache
-   * value flows through; absent entries fall back to the schema's
-   * declared default so the preview reflects the bundle's intent
-   * even before the user touches a widget.
+   * `controlValues` is the engine-committed `f32` per scoped
+   * `ControlId` (scene id + schema position for Scene Controls). For
+   * each schema entry whose `name` matches a recognised numeric axis,
+   * the declared default seeds the snapshot first, then the live cache
+   * overlays user-touched values. This lets `speed` / `intensity`
+   * defaults affect the preview before the operator moves a widget.
    *
    * `tint` is special-cased: `ControlValue` is `f32` so `Swatch`
    * widgets dispatch only a single channel through `set_control`
@@ -410,6 +424,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * intent. Live tint updates compose on top once Wave 2.10+
    * widens the Swatch → engine wire to multi-channel.
    */
+  function isPreviewNumericAxis(name: string): boolean {
+    return name === 'speed' || name === 'intensity';
+  }
+
   const controlSnapshot = $derived.by(() => {
     const schema = loadedSceneStore.snapshot?.controls;
     if (!schema) return {} as Record<string, number | readonly number[]>;
@@ -417,7 +435,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     for (let i = 0; i < schema.length; i++) {
       const def = schema[i];
       if (!def || !def.name) continue;
-      const liveNumeric = controlValues[i];
+      if (isPreviewNumericAxis(def.name)) {
+        const defaultNumeric = defaultValueToFloat(def.default, def.min, def.max);
+        if (defaultNumeric !== null) {
+          snap[def.name] = defaultNumeric;
+        }
+      }
+      const liveNumeric = cachedControlValue(i);
       if (typeof liveNumeric === 'number') {
         snap[def.name] = liveNumeric;
       }
@@ -715,11 +739,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     // Wave 2.1 Lane A.2 — each spec carries its engine-side
     // `controlId` (the schema position) so the widget can wire its
     // `onchange` to `dispatchControl(controlId, …)`. The value
-    // prefers the live `controlValues[id]` entry (engine-committed)
-    // over the schema default so post-drag re-renders reflect the
-    // user's last input.
+    // prefers the scene-scoped live cache entry (engine-committed) over
+    // the schema default so post-drag re-renders reflect the user's last
+    // input without leaking across newly loaded scenes.
     const def = payload.default;
-    const liveNumeric = controlValues[id];
+    const liveNumeric = cachedControlValue(id);
     switch (payload.kind) {
       case 'Toggle': {
         const defaultOn = typeof def === 'boolean' ? def : false;
@@ -836,7 +860,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     return META_CONTROL_GROUPS.map((group): PerformControlGroup => {
       const controls = group.controls.map((spec): PerformControlSpec => {
         if (spec.controlId === undefined) return spec;
-        const live = controlValues[spec.controlId];
+        const live = cachedControlValue(spec.controlId);
         if (typeof live !== 'number') return spec;
         if (spec.kind === 'toggle') {
           return { ...spec, on: live >= 0.5 };

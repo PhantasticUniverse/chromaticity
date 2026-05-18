@@ -38,17 +38,13 @@
 //    `cm-line` text via `dispatchEvent` of an `input` event isn't
 //    reliable under jsdom (CodeMirror's input bridge depends on
 //    `beforeinput` / IME plumbing not implemented in jsdom). Instead
-//    we exercise the path by switching `value` through a small
-//    Svelte wrapper that re-keys the component, asserting that a
-//    fresh mount with the new value lands the new text.
-//  * **`bind:this` on the Editor component instance is NOT how the
-//    Author view drives the `setDoc` exported function** — Author
-//    uses re-keyed remount via `{#key activeFile}`. We mirror that
-//    contract here: the public surface is "remount + new value =
-//    new text", not "instance.setDoc(new)". `setDoc` is reachable in
-//    Svelte 5 only via `bind:this`; it's an internal helper for the
-//    parent's Revert / Load Backup paths, so the public-surface
-//    coverage is enough for shell-component-track parity.
+//    we exercise the external prop-sync path with Testing Library's
+//    `rerender()`, asserting that the same EditorView receives the
+//    replacement text through dispatch.
+//  * **`value` prop changes sync through CodeMirror dispatch** rather
+//    than through an EditorView remount. Author still re-keys across
+//    file-tab changes, but ordinary buffer edits should preserve the
+//    CodeMirror instance, cursor, selection, and undo stack.
 //  * **CodeMirror normalises whitespace + line breaks into per-line
 //    `<div class="cm-line">` rows.** A multi-line `value` round-trip
 //    is asserted by joining `.cm-line` `.textContent` rather than
@@ -214,6 +210,27 @@ describe('Editor (CodeMirror 6 wrapper)', () => {
     // contract guarantees no fire on construct (the constructor's
     // first transaction sets `docChanged=false`).
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('syncs a value prop change without remounting CodeMirror', async () => {
+    const { container, rerender } = render(Editor, {
+      props: {
+        value: 'first buffer',
+        language: 'js',
+        ariaLabel: 'script.js source',
+      },
+    });
+    const mountedView = container.querySelector('.cm-editor');
+    expect(mountedView).not.toBeNull();
+
+    await rerender({
+      value: 'second buffer',
+      language: 'js',
+      ariaLabel: 'script.js source',
+    });
+
+    expect(container.querySelector('.cm-editor')).toBe(mountedView);
+    expect(readDoc(container)).toBe('second buffer');
   });
 
   it('cleans up the EditorView on unmount (no leaked .cm-editor host)', () => {

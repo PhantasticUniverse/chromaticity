@@ -159,6 +159,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void midiStore.refresh();
   });
 
+  $effect(() => {
+    return () => {
+      if (learning || midiLearnStore.state !== 'idle') {
+        void midiLearnStore.stop();
+      }
+    };
+  });
+
   // Auto-enable any device id we've NEVER seen before — fresh plugs
   // default to "allowed". Devices the operator explicitly disabled
   // remain in `everSeen` but absent from `allowlist`, so a subsequent
