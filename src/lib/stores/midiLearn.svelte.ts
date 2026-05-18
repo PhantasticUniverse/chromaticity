@@ -38,19 +38,11 @@
 // future wave can read this localStorage entry as the seed for the
 // binding-assignment UX.
 
-import { invoke } from '@tauri-apps/api/core';
-
 import type { MidiLearnEventPayload } from '../ipc/bindings/MidiLearnEventPayload';
+import { MIDI_LEARN_EVENT, startMidiLearn, stopMidiLearn } from '../ipc/midi';
 
 /** Tauri unlisten handle returned by `listen()`. Stored so `stop()` can detach. */
 type UnlistenFn = () => void;
-
-/** Tauri event name emitted by `app/shell/src/commands/midi.rs::MIDI_LEARN_EVENT`. */
-const MIDI_LEARN_EVENT = 'midi_learn_event';
-
-/** Tauri command name surfaced by `app/shell/src/commands/midi.rs`. */
-const START_MIDI_LEARN_COMMAND = 'start_midi_learn';
-const STOP_MIDI_LEARN_COMMAND = 'stop_midi_learn';
 
 /** localStorage key under which the most recent confirmed capture is recorded. */
 export const MIDI_LEARN_CONFIRMED_KEY = 'chromaticity.midi.learn.confirmed';
@@ -92,7 +84,7 @@ class MidiLearnStore {
     this.state = 'listening';
 
     try {
-      await invoke(START_MIDI_LEARN_COMMAND, { portId });
+      await startMidiLearn(portId);
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
       this.state = 'idle';
@@ -129,7 +121,7 @@ class MidiLearnStore {
   async stop(): Promise<void> {
     await this.#detachListener();
     try {
-      await invoke(STOP_MIDI_LEARN_COMMAND);
+      await stopMidiLearn();
     } catch (e) {
       // Swallow — outside Tauri the command rejects; nothing to clean
       // up server-side and the state-machine transition still applies.

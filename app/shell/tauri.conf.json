@@ -44,6 +44,7 @@
       "../../engine/scene/tests/fixtures/scenes/library/demo-text.chroma/scene.json": "scenes/library/demo-text.chroma/scene.json",
       "../../engine/scene/tests/fixtures/scenes/library/README.md": "scenes/library/README.md",
       "../../engine/scene/tests/fixtures/scenes/welcome/README.md": "scenes/welcome/README.md",
+      "../../engine/scene/tests/fixtures/scenes/welcome/welcome.chroma/scene.json": "scenes/welcome/welcome.chroma/scene.json",
       "../../engine/scene/tests/fixtures/scenes/examples/README.md": "scenes/examples/README.md",
       "../../engine/scene/tests/fixtures/scenes/shadertoy-fixtures/README.md": "scenes/shadertoy-fixtures/README.md",
       "../../dist/help/index.html": "help/index.html",

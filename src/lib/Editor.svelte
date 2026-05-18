@@ -62,6 +62,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     lineNumbers,
   } from '@codemirror/view';
   import { tags as t } from '@lezer/highlight';
+  import { untrack } from 'svelte';
 
   import { GLSL_COMPLETIONS, categoryBoost, categoryType } from './data/glsl-completions';
 
@@ -89,6 +90,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let view: EditorView | null = null;
   const languageCompartment = new Compartment();
   const readOnlyCompartment = new Compartment();
+  const ariaLabelCompartment = new Compartment();
 
   function languageExtension(lang: EditorLanguage): Extension {
     if (lang === 'glsl') {
@@ -269,7 +271,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     };
   }
 
-  function buildExtensions(lang: EditorLanguage, ro: boolean): Extension[] {
+  function buildExtensions(lang: EditorLanguage, ro: boolean, label: string): Extension[] {
     return [
       lineNumbers(),
       foldGutter(),
@@ -284,7 +286,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       languageCompartment.of(languageExtension(lang)),
       readOnlyCompartment.of([EditorState.readOnly.of(ro), EditorView.editable.of(!ro)]),
       chromaticityTheme,
-      EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
+      ariaLabelCompartment.of(EditorView.contentAttributes.of({ 'aria-label': label })),
       EditorView.updateListener.of((u) => {
         if (u.docChanged && onChange) {
           onChange(u.state.doc.toString());
@@ -295,15 +297,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   $effect(() => {
     if (host === null) return;
+    const initialValue = untrack(() => value);
+    const initialLanguage = untrack(() => language);
+    const initialReadOnly = untrack(() => readOnly);
+    const initialAriaLabel = untrack(() => ariaLabel);
     view = new EditorView({
-      doc: value,
+      doc: initialValue,
       parent: host,
-      extensions: buildExtensions(language, readOnly),
+      extensions: buildExtensions(initialLanguage, initialReadOnly, initialAriaLabel),
     });
     return () => {
       view?.destroy();
       view = null;
     };
+  });
+
+  // Reactively sync external value changes without rebuilding the
+  // EditorView. Normal typing already updates the parent to the same
+  // string, so this is a no-op during ordinary edits and preserves the
+  // cursor/selection/history stack.
+  $effect(() => {
+    if (view === null) return;
+    setDoc(value);
   });
 
   // Reactively reconfigure language compartment when the prop changes,
@@ -323,6 +338,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         EditorState.readOnly.of(readOnly),
         EditorView.editable.of(!readOnly),
       ]),
+    });
+  });
+
+  // Reactively reconfigure the editable content's ARIA label without
+  // remounting the editor.
+  $effect(() => {
+    if (view === null) return;
+    view.dispatch({
+      effects: ariaLabelCompartment.reconfigure(
+        EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
+      ),
     });
   });
 

@@ -39,6 +39,8 @@
 import '@testing-library/jest-dom/vitest';
 import { within } from '@testing-library/dom';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Wave 2.1 Lane A.4 — invoke mock for the preset-rail click +
@@ -76,6 +78,26 @@ function stubMatchMedia(reduce: boolean): void {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }));
+}
+
+type TauriConfig = {
+  bundle?: {
+    resources?: Record<string, string>;
+  };
+};
+
+function bundledSceneResourceIds(): Set<string> {
+  const configPath = join(process.cwd(), 'app/shell/tauri.conf.json');
+  const config = JSON.parse(readFileSync(configPath, 'utf8')) as TauriConfig;
+  const resources = Object.values(config.bundle?.resources ?? {});
+  const ids = new Set<string>();
+  for (const dest of resources) {
+    const match = dest.match(
+      /^scenes\/(?:library|welcome|examples)\/([^/]+)\.chroma\/scene\.json$/,
+    );
+    if (match?.[1]) ids.add(match[1]);
+  }
+  return ids;
 }
 
 beforeEach(() => {
@@ -359,6 +381,20 @@ describe('Perform view', () => {
     await flushMicrotasks();
     expect(invokeMock).toHaveBeenCalledWith('list_bundled_scene_packages');
     expect(invokeMock).toHaveBeenCalledWith('load_scene', { path: KALEIDO_PATH });
+  });
+
+  it('maps every resolvable setlist row to a bundled scene resource', () => {
+    const bundledIds = bundledSceneResourceIds();
+    const resolvedIds = new Set(
+      SETLIST_FIXTURE.map((scene) => resolveSetlistRowToSceneId(scene)).filter(
+        (id): id is string => id !== null,
+      ),
+    );
+    expect(resolvedIds.size).toBeGreaterThan(0);
+    expect(resolveSetlistRowToSceneId({ name: 'Sun_Set', kind: 'rings' })).toBe('welcome');
+    for (const id of resolvedIds) {
+      expect(bundledIds).toContain(id);
+    }
   });
 
   it('omits the click handler for setlist rows with no corpus match', async () => {
