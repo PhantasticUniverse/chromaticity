@@ -229,3 +229,30 @@ body {
   background: var(--color-bg-0);
   color: var(--color-text-0);
 }
+
+/* -----------------------------------------------------------------------------
+ * Global `prefers-reduced-motion: reduce` kill-switch.
+ *
+ * Mirrors the v0.2-beta bundle's `styles.css` pattern (DESIGN.md "Bundle
+ * alignment" §2026-05-18 follow-up) and serves as the safety net underneath
+ * the per-widget JS gates in BeatDots / BpmRing / AudioReactivity / VuStereo /
+ * SceneCanvas / Timecode. A future decorative `@keyframes` added to any
+ * component without an explicit reduced-motion gate now degrades to instant
+ * by default; the per-widget gates remain authoritative for the frozen-frame
+ * test contracts that pin specific values (e.g. `pins the downbeat`).
+ *
+ * `scroll-behavior: auto !important` defeats CSS-level smooth scrolling
+ * (operator surfaces never want smooth scroll under reduce per WCAG 2.1
+ * SC 2.3.3).
+ * -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

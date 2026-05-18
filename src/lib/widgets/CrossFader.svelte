@@ -53,6 +53,46 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       target.releasePointerCapture(event.pointerId);
     }
   };
+
+  // Keyboard nudge per WAI-ARIA APG slider pattern. CrossFader is
+  // horizontal, so ←/→ are the primary axis; ↑/↓ accept the same
+  // direction as aliases. Step sizing matches Fader / Knob for
+  // consistent operator muscle memory (5% per arrow, 20% with Shift
+  // / PageUp / PageDown, Home/End for extremes). Closes the DESIGN.md
+  // "Bundle alignment" §Trail item.
+  const STEP_SMALL = 0.05;
+  const STEP_LARGE = 0.2;
+  const pctClamped = $derived(Math.max(0, Math.min(1, value)));
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (disabled || onChange === undefined) return;
+    let next: number | null = null;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+        next = pctClamped + (event.shiftKey ? STEP_LARGE : STEP_SMALL);
+        break;
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        next = pctClamped - (event.shiftKey ? STEP_LARGE : STEP_SMALL);
+        break;
+      case 'PageUp':
+        next = pctClamped + STEP_LARGE;
+        break;
+      case 'PageDown':
+        next = pctClamped - STEP_LARGE;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = 1;
+        break;
+    }
+    if (next !== null) {
+      event.preventDefault();
+      onChange?.(Math.max(0, Math.min(1, next)));
+    }
+  };
 </script>
 
 <div class="xfade-wrap" class:xfade-wrap--disabled={disabled} style="--xfade-pos: {pct}%">
@@ -70,6 +110,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     onpointermove={onPointerMove}
     onpointerup={onPointerUp}
     onpointercancel={onPointerUp}
+    onkeydown={onKeyDown}
   >
     <div class="xfade-thumb" aria-hidden="true"></div>
   </div>

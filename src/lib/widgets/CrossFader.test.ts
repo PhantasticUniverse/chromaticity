@@ -144,4 +144,47 @@ describe('CrossFader widget', () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(container.querySelector('.xfade-wrap--disabled')).not.toBeNull();
   });
+
+  // ---------------- DESIGN.md "Bundle alignment" — keyboard nudge ---------
+
+  it('ArrowRight nudges value up by 5% step', async () => {
+    const onChange = vi.fn();
+    const { container } = render(CrossFader, { props: { value: 0.5, onChange } });
+    const track = container.querySelector('.xfade') as HTMLElement | null;
+    if (track === null) throw new Error('xfade not rendered');
+    await fireEvent.keyDown(track, { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledWith(0.55);
+  });
+
+  it('ArrowLeft nudges value down by 5% step', async () => {
+    const onChange = vi.fn();
+    const { container } = render(CrossFader, { props: { value: 0.5, onChange } });
+    const track = container.querySelector('.xfade') as HTMLElement | null;
+    if (track === null) throw new Error('xfade not rendered');
+    await fireEvent.keyDown(track, { key: 'ArrowLeft' });
+    const got = onChange.mock.calls[0]?.[0] as number | undefined;
+    expect(got).toBeCloseTo(0.45, 5);
+  });
+
+  it('Home / End snap to extremes', async () => {
+    const onChange = vi.fn();
+    const { container } = render(CrossFader, { props: { value: 0.5, onChange } });
+    const track = container.querySelector('.xfade') as HTMLElement | null;
+    if (track === null) throw new Error('xfade not rendered');
+    await fireEvent.keyDown(track, { key: 'End' });
+    expect(onChange).toHaveBeenLastCalledWith(1);
+    await fireEvent.keyDown(track, { key: 'Home' });
+    expect(onChange).toHaveBeenLastCalledWith(0);
+  });
+
+  it('disabled crossfader does not fire onChange on keydown', async () => {
+    const onChange = vi.fn();
+    const { container } = render(CrossFader, {
+      props: { value: 0.5, onChange, disabled: true },
+    });
+    const track = container.querySelector('.xfade') as HTMLElement | null;
+    if (track === null) throw new Error('xfade not rendered');
+    await fireEvent.keyDown(track, { key: 'ArrowRight' });
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

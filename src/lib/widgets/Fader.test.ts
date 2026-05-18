@@ -209,4 +209,66 @@ describe('Fader widget', () => {
     await fireEvent.pointerDown(track, { clientX: 5, clientY: 25, pointerId: 1 });
     expect(onchange).not.toHaveBeenCalled();
   });
+
+  // ---------------- DESIGN.md "Bundle alignment" — keyboard nudge ---------
+
+  it('ArrowUp nudges value up by 5% step', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Fader, { props: { value: 0.5, onchange } });
+    const track = container.querySelector('.fader-track') as HTMLElement | null;
+    if (track === null) throw new Error('fader-track not rendered');
+    await fireEvent.keyDown(track, { key: 'ArrowUp' });
+    expect(onchange).toHaveBeenCalledWith(0.55);
+  });
+
+  it('ArrowDown nudges value down by 5% step', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Fader, { props: { value: 0.5, onchange } });
+    const track = container.querySelector('.fader-track') as HTMLElement | null;
+    if (track === null) throw new Error('fader-track not rendered');
+    await fireEvent.keyDown(track, { key: 'ArrowDown' });
+    const got = onchange.mock.calls[0]?.[0] as number | undefined;
+    expect(got).toBeCloseTo(0.45, 5);
+  });
+
+  it('Shift+ArrowUp uses the 20% large step', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Fader, { props: { value: 0.2, onchange } });
+    const track = container.querySelector('.fader-track') as HTMLElement | null;
+    if (track === null) throw new Error('fader-track not rendered');
+    await fireEvent.keyDown(track, { key: 'ArrowUp', shiftKey: true });
+    const got = onchange.mock.calls[0]?.[0] as number | undefined;
+    expect(got).toBeCloseTo(0.4, 5);
+  });
+
+  it('Home snaps to 0; End snaps to 1', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Fader, { props: { value: 0.5, onchange } });
+    const track = container.querySelector('.fader-track') as HTMLElement | null;
+    if (track === null) throw new Error('fader-track not rendered');
+    await fireEvent.keyDown(track, { key: 'Home' });
+    expect(onchange).toHaveBeenLastCalledWith(0);
+    await fireEvent.keyDown(track, { key: 'End' });
+    expect(onchange).toHaveBeenLastCalledWith(1);
+  });
+
+  it('clamps to [0, 1] at the extremes', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Fader, { props: { value: 0.98, onchange } });
+    const track = container.querySelector('.fader-track') as HTMLElement | null;
+    if (track === null) throw new Error('fader-track not rendered');
+    await fireEvent.keyDown(track, { key: 'ArrowUp' });
+    expect(onchange).toHaveBeenCalledWith(1);
+  });
+
+  it('disabled fader does not fire onchange on keydown', async () => {
+    const onchange = vi.fn();
+    const { container } = render(Fader, {
+      props: { value: 0.5, onchange, disabled: true },
+    });
+    const track = container.querySelector('.fader-track') as HTMLElement | null;
+    if (track === null) throw new Error('fader-track not rendered');
+    await fireEvent.keyDown(track, { key: 'ArrowUp' });
+    expect(onchange).not.toHaveBeenCalled();
+  });
 });
