@@ -12,11 +12,10 @@
 //! - [`osc_routes_snapshot`] — enumerate the canonical-route registry
 //!   (the seven UX entries the v0.2-beta bundle's OSC view JSX
 //!   fixture surfaces, mirrored in `src/lib/data/osc-routes.ts`).
-//! - [`bind_osc_route`] — set the operator's advisory bind target
-//!   for a single route. Validation is intentionally minimal (the
-//!   target string must be non-empty); semantic checks against real
-//!   control ids or scene ids are deferred until the runtime dispatch
-//!   surface that consumes the bind target ships.
+//! - [`bind_osc_route`] — set the operator's bind target for a single
+//!   route. The string stays verbatim on the IPC wire but is parsed at
+//!   bind time by `chromaticity_osc_adapter::bindings` so malformed
+//!   targets cannot become silent no-ops.
 //! - [`unbind_osc_route`] — clear the bind target on a single route.
 //!
 //! All three handlers operate on [`crate::state::AppState::osc_routes`]
@@ -33,14 +32,20 @@
 //! - Unknown canonical route (the supplied address isn't in the
 //!   seed table) — surfaces the [`OscRouteError::UnknownRoute`]
 //!   `Display` form.
-//! - Empty bind target (only relevant on `bind_osc_route`) — surfaces
-//!   `"bind target must not be empty"`.
+//! - Empty or malformed bind target (only relevant on
+//!   `bind_osc_route`) — surfaces the adapter bind-target parser's
+//!   human-readable error.
 //!
 //! `osc_routes_snapshot` is infallible; the `Result<_, String>` return
 //! type matches the project's existing handler shape for forward-compat
 //! with future wiring that might surface adapter-mutex-poisoned conditions.
 
+use chromaticity_osc_adapter::bindings::{OscDispatchAction, OscRuntimeCommand};
 use chromaticity_osc_adapter::route_registry::OscRouteError;
+use chromaticity_runtime::{
+    Command, CommandBus, ControlId as RuntimeControlId, ControlValue as RuntimeControlValue,
+    PresetId, SnapSlotId,
+};
 use chromaticity_ui_bridge::{OscHealthSnapshot, OscHealthState, OscRoutePayload};
 use tauri::State;
 
@@ -112,6 +117,45 @@ fn unbind_osc_route_impl(app: &AppState, route: &str) -> Result<(), String> {
         .map_err(|err: OscRouteError| err.to_string())
 }
 
+#[allow(dead_code)]
+fn runtime_command_from_osc(command: OscRuntimeCommand) -> Result<Command, String> {
+    match command {
+        OscRuntimeCommand::ControlSet { id, value } => Ok(Command::ControlSet {
+            id: RuntimeControlId(id),
+            value: RuntimeControlValue(value),
+        }),
+        OscRuntimeCommand::PresetRecall { id } => Ok(Command::PresetRecall { id: PresetId(id) }),
+        OscRuntimeCommand::SnapRecall { slot } => {
+            let slot = SnapSlotId::new(slot)
+                .ok_or_else(|| format!("invalid snap slot {slot}: max is {}", SnapSlotId::MAX))?;
+            Ok(Command::SnapRecall { slot })
+        }
+        OscRuntimeCommand::PlaylistAdvance { step } => Ok(Command::PlaylistAdvance { step }),
+        _ => Err("unsupported osc runtime command".to_string()),
+    }
+}
+
+#[allow(dead_code)]
+fn dispatch_osc_action_impl(app: &AppState, action: OscDispatchAction) -> Result<(), String> {
+    match action {
+        OscDispatchAction::RuntimeCommand(command) => {
+            let command = runtime_command_from_osc(command)?;
+            let mut state = app
+                .state
+                .lock()
+                .map_err(|err| format!("state mutex poisoned: {err}"))?;
+            app.bus
+                .dispatch_and_commit_into(command, &mut state)
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        }
+        OscDispatchAction::SceneLoad { scene_id } => Err(format!(
+            "osc scene load target {scene_id} cannot dispatch through the runtime command bus yet",
+        )),
+        _ => Err("unsupported osc dispatch action".to_string()),
+    }
+}
+
 /// Enumerate the OSC route registry as a snapshot of
 /// [`OscRoutePayload`]s. Wave 2.1 Lane D.3.
 #[tauri::command]
@@ -180,14 +224,14 @@ mod tests {
     #[test]
     fn bind_then_snapshot_surfaces_the_target() {
         let app = AppState::new();
-        bind_osc_route_impl(&app, "/controls/{bank}/{name}", "fader-1")
+        bind_osc_route_impl(&app, "/controls/{bank}/{name}", "control:scene:fader-1")
             .expect("seeded route accepts bind");
         let routes = osc_routes_snapshot_impl(&app).expect("infallible");
         let entry = routes
             .iter()
             .find(|r| r.canonical == "/controls/{bank}/{name}")
             .expect("seeded route in snapshot");
-        assert_eq!(entry.bind_target.as_deref(), Some("fader-1"));
+        assert_eq!(entry.bind_target.as_deref(), Some("control:scene:fader-1"),);
     }
 
     #[test]
@@ -203,9 +247,20 @@ mod tests {
     }
 
     #[test]
+    fn bind_rejects_invalid_target_grammar() {
+        let app = AppState::new();
+        let err = bind_osc_route_impl(&app, "/controls/{bank}/{name}", "fader-1")
+            .expect_err("malformed target should reject");
+        assert!(
+            err.contains("unknown osc bind target family"),
+            "error should explain target grammar: got {err:?}",
+        );
+    }
+
+    #[test]
     fn bind_rejects_unknown_canonical_route() {
         let app = AppState::new();
-        let err = bind_osc_route_impl(&app, "/not/a/real/route", "anything")
+        let err = bind_osc_route_impl(&app, "/not/a/real/route", "control:scene:fader-1")
             .expect_err("unknown route should reject");
         assert!(
             err.contains("/not/a/real/route"),
@@ -216,7 +271,7 @@ mod tests {
     #[test]
     fn unbind_clears_target_via_handler_glue() {
         let app = AppState::new();
-        bind_osc_route_impl(&app, "/scenes/{sceneName}", "s-12")
+        bind_osc_route_impl(&app, "/scenes/{sceneName}", "scene:s-12")
             .expect("seeded route accepts bind");
         unbind_osc_route_impl(&app, "/scenes/{sceneName}").expect("seeded route accepts unbind");
         let routes = osc_routes_snapshot_impl(&app).expect("infallible");
@@ -241,13 +296,63 @@ mod tests {
         // from operator copy-paste; the handler trims at the seam
         // so the stored target stays clean.
         let app = AppState::new();
-        bind_osc_route_impl(&app, "/controls/{bank}/{name}", "  fader-1  ")
+        bind_osc_route_impl(&app, "/controls/{bank}/{name}", "  control:scene:fader-1  ")
             .expect("trim-friendly bind");
         let routes = osc_routes_snapshot_impl(&app).expect("infallible");
         let entry = routes
             .iter()
             .find(|r| r.canonical == "/controls/{bank}/{name}")
             .expect("seeded route in snapshot");
-        assert_eq!(entry.bind_target.as_deref(), Some("fader-1"));
+        assert_eq!(entry.bind_target.as_deref(), Some("control:scene:fader-1"),);
+    }
+
+    #[test]
+    fn dispatch_osc_runtime_actions_commit_through_bus() {
+        let app = AppState::new();
+        dispatch_osc_action_impl(
+            &app,
+            OscDispatchAction::RuntimeCommand(OscRuntimeCommand::ControlSet { id: 9, value: 0.5 }),
+        )
+        .expect("control action dispatches");
+        dispatch_osc_action_impl(
+            &app,
+            OscDispatchAction::RuntimeCommand(OscRuntimeCommand::PresetRecall { id: 4 }),
+        )
+        .expect("preset action dispatches");
+        dispatch_osc_action_impl(
+            &app,
+            OscDispatchAction::RuntimeCommand(OscRuntimeCommand::SnapRecall { slot: 3 }),
+        )
+        .expect("snap action dispatches");
+        dispatch_osc_action_impl(
+            &app,
+            OscDispatchAction::RuntimeCommand(OscRuntimeCommand::PlaylistAdvance { step: -1 }),
+        )
+        .expect("playlist action dispatches");
+
+        let state = app.state.lock().expect("state lock");
+        assert_eq!(
+            state.control_value(RuntimeControlId(9)),
+            Some(RuntimeControlValue(0.5)),
+        );
+        assert_eq!(state.active_preset(), Some(PresetId(4)));
+        assert_eq!(
+            state.active_snap_slot(),
+            Some(SnapSlotId::new(3).expect("valid slot")),
+        );
+        assert_eq!(state.playlist_position(), -1);
+    }
+
+    #[test]
+    fn dispatch_osc_scene_action_reports_runtime_gap() {
+        let app = AppState::new();
+        let err = dispatch_osc_action_impl(
+            &app,
+            OscDispatchAction::SceneLoad {
+                scene_id: "demo".to_string(),
+            },
+        )
+        .expect_err("scene action has no runtime command yet");
+        assert!(err.contains("cannot dispatch through the runtime command bus yet"));
     }
 }

@@ -156,6 +156,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   // Operator-facing port readout — settings-backed.
   const listenPort = $derived(settingsStore.snapshot.osc.port);
+  const outPort = $derived(settingsStore.snapshot.osc.out_port);
   const localIp = $derived(settingsStore.snapshot.osc.local_ip);
   const txEnabled = $derived(settingsStore.snapshot.osc.tx_enabled);
   const rxEnabled = $derived(settingsStore.snapshot.osc.rx_enabled);
@@ -170,6 +171,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const parsed = Number.parseInt(raw, 10);
     if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 65_535) {
       settingsStore.update({ osc: { port: parsed } });
+    }
+  }
+
+  function updateOutPort(event: Event): void {
+    const raw = (event.currentTarget as HTMLInputElement).value;
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 65_535) {
+      settingsStore.update({ osc: { out_port: parsed } });
     }
   }
 
@@ -281,7 +290,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <h2>Operator settings</h2>
       <p class="osc-view__hint">
         Persisted via the settings store (Wave 2.1 Lane C.3); changes survive restart. Bind / unbind
-        on individual routes is process-local until a future-wave dispatch surface lands.
+        on individual routes validates target grammar and remains process-local.
       </p>
       <label class="osc-view__field">
         <span class="osc-view__caps">listen IP</span>
@@ -303,6 +312,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           value={listenPort}
           oninput={updatePort}
           aria-label="OSC listen port"
+        />
+      </label>
+      <label class="osc-view__field">
+        <span class="osc-view__caps">send port</span>
+        <input
+          type="number"
+          class="osc-view__input"
+          min="0"
+          max="65535"
+          value={outPort}
+          oninput={updateOutPort}
+          aria-label="OSC send port"
         />
       </label>
       <div class="osc-view__field osc-view__field--toggle">

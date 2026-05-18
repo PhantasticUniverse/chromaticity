@@ -204,6 +204,7 @@ mod tests {
             osc: OscSettingsPayload {
                 local_ip: "192.168.1.42".to_string(),
                 port: 9100,
+                out_port: 9101,
                 tx_enabled: false,
                 rx_enabled: true,
             },

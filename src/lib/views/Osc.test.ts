@@ -71,9 +71,8 @@ describe('Osc view', () => {
     expect(heading).toHaveTextContent(/OSC/);
     expect(heading).toHaveTextContent(/LISTENING/);
     // The port readout binds to settingsStore.osc.port; the
-    // bundle-faithful default is 8000 (the historical Synesthesia
-    // default — operators retarget via the new listen-port input).
-    expect(heading).toHaveTextContent(/Port 8000/);
+    // fresh-install default is the adapter-owned OSC in port.
+    expect(heading).toHaveTextContent(/Port 9000/);
     expect(getByText(/Wireframe-06 port from the bundle's/)).toBeInTheDocument();
   });
 
@@ -234,12 +233,14 @@ describe('Osc view', () => {
   it('renders the listen IP + port inputs bound to the settings store defaults', () => {
     const { getByLabelText } = render(Osc);
     const ip = getByLabelText(/OSC listen IP/i) as HTMLInputElement;
-    expect(ip.value).toBe('0.0.0.0');
+    expect(ip.value).toBe('127.0.0.1');
     const port = getByLabelText(/OSC listen port/i) as HTMLInputElement;
-    expect(port.value).toBe('8000');
+    expect(port.value).toBe('9000');
+    const outPort = getByLabelText(/OSC send port/i) as HTMLInputElement;
+    expect(outPort.value).toBe('9001');
   });
 
-  it('editing the listen port dispatches a settings update', async () => {
+  it('editing the listen and send ports dispatches settings updates', async () => {
     const { getByLabelText } = render(Osc);
     const port = getByLabelText(/OSC listen port/i) as HTMLInputElement;
     await fireEvent.input(port, { target: { value: '9100' } });
@@ -248,6 +249,9 @@ describe('Osc view', () => {
     // mocked away because no invoke handler is registered for
     // `set_settings`).
     expect(settingsStore.snapshot.osc.port).toBe(9100);
+    const outPort = getByLabelText(/OSC send port/i) as HTMLInputElement;
+    await fireEvent.input(outPort, { target: { value: '9101' } });
+    expect(settingsStore.snapshot.osc.out_port).toBe(9101);
   });
 
   it('renders the live routes when the oscStore exposes them with a bind action', async () => {
@@ -299,7 +303,7 @@ describe('Osc view', () => {
     expect(save).not.toBeNull();
     // Save is disabled while the draft is empty.
     expect(save.disabled).toBe(true);
-    await fireEvent.input(input, { target: { value: 'fader-1' } });
+    await fireEvent.input(input, { target: { value: 'control:scene:fader-1' } });
     expect(save.disabled).toBe(false);
   });
 

@@ -106,18 +106,18 @@ describe('oscStore', () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'bind_osc_route') return Promise.resolve();
       if (cmd === 'osc_routes_snapshot')
-        return Promise.resolve([{ ...ROUTE_A, bind_target: 'fader-1' }]);
+        return Promise.resolve([{ ...ROUTE_A, bind_target: 'control:scene:fader-1' }]);
       return Promise.reject(new Error(`unexpected command ${cmd}`));
     });
     const { oscStore } = await import('./osc.svelte');
     oscStore.reset();
-    await oscStore.bind('/controls/{bank}/{name}', 'fader-1');
+    await oscStore.bind('/controls/{bank}/{name}', 'control:scene:fader-1');
     expect(invokeMock).toHaveBeenCalledWith('bind_osc_route', {
       route: '/controls/{bank}/{name}',
-      target: 'fader-1',
+      target: 'control:scene:fader-1',
     });
     expect(invokeMock).toHaveBeenCalledWith('osc_routes_snapshot');
-    expect(oscStore.routes[0]?.bind_target).toBe('fader-1');
+    expect(oscStore.routes[0]?.bind_target).toBe('control:scene:fader-1');
     expect(oscStore.error).toBeNull();
   });
 

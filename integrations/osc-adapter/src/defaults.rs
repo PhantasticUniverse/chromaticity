@@ -30,6 +30,21 @@ pub const DEFAULT_INBOUND_BIND: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 /// non-loopback target without explicit operator configuration.
 pub const DEFAULT_OUTBOUND_TARGET: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
+/// Default inbound OSC UDP port.
+///
+/// Fresh installs listen on 9000, matching the common OSC-controller
+/// convention while staying above privileged-port ranges. The bind
+/// address remains loopback-only unless the operator explicitly opts
+/// into a routable interface.
+pub const DEFAULT_OSC_IN_PORT: u16 = 9000;
+
+/// Default outbound OSC UDP port.
+///
+/// Fresh installs send outbound OSC to 9001 by default so local
+/// controller feedback can run beside inbound control traffic without
+/// binding the same socket in both directions.
+pub const DEFAULT_OSC_OUT_PORT: u16 = 9001;
+
 /// Maximum accepted OSC packet size in bytes (64 KiB).
 ///
 /// Oversize packets are rejected with an `osc-malformed`-class
@@ -89,6 +104,13 @@ mod tests {
     #[test]
     fn outbound_target_default_is_loopback() {
         assert_eq!(DEFAULT_OUTBOUND_TARGET, IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+
+    /// Evidence: EV-NET-HARDENING — ADR-013 §1 OSC port defaults hold.
+    #[test]
+    fn osc_port_defaults_match_fresh_install_contract() {
+        assert_eq!(DEFAULT_OSC_IN_PORT, 9000);
+        assert_eq!(DEFAULT_OSC_OUT_PORT, 9001);
     }
 
     /// Evidence: EV-NET-HARDENING — ADR-013 §5 packet-hardening caps

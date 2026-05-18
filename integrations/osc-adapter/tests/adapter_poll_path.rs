@@ -44,11 +44,16 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use std::net::{SocketAddr, UdpSocket};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use chromaticity_observability::catalog::OscPacketOutcome;
 use chromaticity_osc_adapter::adapter::{OscAdapter, UdpOscAdapter};
+use chromaticity_osc_adapter::bindings::{
+    OscDispatchAction, OscDispatchSink, OscRuntimeCommand, control_target_id,
+};
+use rosc::{OscMessage, OscPacket, OscType, encoder};
 
 /// Upper bound on how long we wait for a UDP packet to traverse
 /// loopback and become visible to `poll()`. Loopback typically
@@ -92,6 +97,29 @@ fn bind_loopback_adapter() -> (UdpOscAdapter, SocketAddr) {
     (adapter, local)
 }
 
+#[derive(Default)]
+struct VecSink {
+    actions: Mutex<Vec<OscDispatchAction>>,
+}
+
+impl OscDispatchSink for VecSink {
+    fn dispatch(&self, action: OscDispatchAction) -> Result<(), String> {
+        let mut guard = self
+            .actions
+            .lock()
+            .map_err(|err| format!("actions mutex poisoned: {err}"))?;
+        guard.push(action);
+        Ok(())
+    }
+}
+
+fn send_packet(sender: &UdpSocket, packet: OscPacket, bound: SocketAddr) {
+    let encoded = encoder::encode(&packet).expect("OSC packet encodes");
+    sender
+        .send_to(&encoded, bound)
+        .expect("send OSC packet to adapter");
+}
+
 #[test]
 fn poll_increments_accepted_counter_on_well_formed_message() {
     let (mut adapter, bound) = bind_loopback_adapter();
@@ -132,6 +160,94 @@ fn poll_increments_accepted_counter_on_well_formed_message() {
         0,
         "rate-limit outcome is reserved for a future slice",
     );
+}
+
+#[test]
+fn poll_dispatches_bound_control_message_to_sink() {
+    let (mut adapter, bound) = bind_loopback_adapter();
+    adapter
+        .bind_route("/controls/{bank}/{name}", "control:scene:brightness")
+        .expect("valid route binding");
+    let sink = Arc::new(VecSink::default());
+    adapter.set_dispatch_sink(sink.clone());
+    let sender = UdpSocket::bind("127.0.0.1:0").expect("bind sender socket");
+    send_packet(
+        &sender,
+        OscPacket::Message(OscMessage {
+            addr: "/controls/scene/brightness".to_string(),
+            args: vec![OscType::Float(0.8)],
+        }),
+        bound,
+    );
+
+    let accepted = poll_until(&mut adapter, OscPacketOutcome::Accepted, 0);
+
+    assert_eq!(accepted, 1);
+    assert_eq!(
+        sink.actions.lock().expect("actions lock").as_slice(),
+        &[OscDispatchAction::RuntimeCommand(
+            OscRuntimeCommand::ControlSet {
+                id: control_target_id("scene", "brightness"),
+                value: 0.8,
+            },
+        )],
+    );
+}
+
+#[test]
+fn poll_returns_dispatch_error_when_bound_route_has_no_sink() {
+    let (mut adapter, bound) = bind_loopback_adapter();
+    adapter
+        .bind_route("/playlists/next", "playlist:next")
+        .expect("valid route binding");
+    let sender = UdpSocket::bind("127.0.0.1:0").expect("bind sender socket");
+    send_packet(
+        &sender,
+        OscPacket::Message(OscMessage {
+            addr: "/playlists/next".to_string(),
+            args: Vec::new(),
+        }),
+        bound,
+    );
+
+    let start = Instant::now();
+    loop {
+        let result = adapter.poll();
+        match result {
+            Err(err) => {
+                assert!(
+                    err.to_string().contains("no dispatch sink"),
+                    "expected dispatch sink error, got {err}",
+                );
+                break;
+            }
+            Ok(()) if start.elapsed() < POLL_DEADLINE => {
+                thread::sleep(POLL_INTERVAL);
+            }
+            Ok(()) => panic!("expected dispatch error before deadline"),
+        }
+    }
+}
+
+#[test]
+fn poll_accepts_unmatched_packet_without_dispatch_sink() {
+    let (mut adapter, bound) = bind_loopback_adapter();
+    adapter
+        .bind_route("/playlists/next", "playlist:next")
+        .expect("valid route binding");
+    let sender = UdpSocket::bind("127.0.0.1:0").expect("bind sender socket");
+    send_packet(
+        &sender,
+        OscPacket::Message(OscMessage {
+            addr: "/audio/level".to_string(),
+            args: Vec::new(),
+        }),
+        bound,
+    );
+
+    let accepted = poll_until(&mut adapter, OscPacketOutcome::Accepted, 0);
+
+    assert_eq!(accepted, 1);
 }
 
 #[test]

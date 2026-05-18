@@ -19,8 +19,8 @@ mod fixtures {
     //! routing-matrix axis only. MIDI / camera / Syphon /
     //! audio-uniform-IPC axes are deferred to Wave 1b. Within OSC,
     //! the corpus exercises (a) the route-namespace taxonomy
-    //! (`/controls`, `/scenes`, `/audio`, `/render`) declared in
-    //! `docs/30-mvp-support-matrix.md`, (b) the slice-2
+    //! (Control, Scene, Preset, Snap, Playlist, Audio, Reserved)
+    //! declared in `docs/30-mvp-support-matrix.md`, (b) the slice-2
     //! [`UdpOscAdapter`] payload-hardening surface
     //! ([`validate_packet`] size + bundle-depth caps), (c) the
     //! ADR-013 §3 per-route rate-limit precedence pin
@@ -37,15 +37,11 @@ mod fixtures {
     //!
     //! Out-of-scope deliberately:
     //!
-    //! - **Compat-syn-v1 alias dual-listing** (`/favslot/recall/3`
-    //!   ↔ `/snaps/recall/3`). The slice-2 [`crate::routes::parse`]
-    //!   accepts only the four canonical prefixes; compat-alias
-    //!   expansion is slice-3+ scope per the routes module prose
-    //!   and `docs/22-compat-policy.md` §Compat aliases. A T1 pin
-    //!   for the alias landing belongs with that slice and is not
-    //!   manufactured here. The corresponding wire-name retention
-    //!   under `compat-syn-v1` is recorded in
-    //!   `docs/30-mvp-support-matrix.md` line 77.
+    //! - **Full route-handler semantics for every documented OSC
+    //!   address.** This corpus pins the top-level prefix taxonomy and
+    //!   representative dispatch-ready routes; per-route argument
+    //!   validation beyond the Round-3 bind-target surface belongs with
+    //!   the handler that owns that route family.
     //! - **Live `OscPacketOutcome::AllowlistRejected`** /
     //!   **`RateLimitedDropped`** counter advancement. Those
     //!   counters are pinned at zero in slice-2 (allowlist /
@@ -65,7 +61,7 @@ mod fixtures {
     use chromaticity_osc_adapter::defaults::{
         DEFAULT_INBOUND_BIND, DEFAULT_MAX_BUNDLE_DEPTH, DEFAULT_MAX_PACKET_BYTES,
     };
-    use chromaticity_osc_adapter::routes::{RoutePrefix, parse};
+    use chromaticity_osc_adapter::routes::{RouteParseError, RoutePrefix, parse, parse_diagnostic};
 
     /// Skip-on-CI sentinel: returns `Some(adapter, addr)` when an
     /// ephemeral loopback bind succeeds, or `None` (with a stderr
@@ -101,9 +97,9 @@ mod fixtures {
     // -----------------------------------------------------------
 
     #[test]
-    fn osc_route_prefix_controls_parses_canonical_path() {
-        let addr = parse("/controls/scene-a/foo").expect("canonical /controls path parses");
-        assert_eq!(addr.prefix, RoutePrefix::Controls);
+    fn osc_route_prefix_control_parses_canonical_path() {
+        let addr = parse("/control/scene-a/foo").expect("canonical /control path parses");
+        assert_eq!(addr.prefix, RoutePrefix::Control);
         assert_eq!(
             addr.segments,
             vec!["scene-a".to_string(), "foo".to_string()]
@@ -111,10 +107,31 @@ mod fixtures {
     }
 
     #[test]
-    fn osc_route_prefix_scenes_parses_canonical_path() {
-        let addr = parse("/scenes/select/3").expect("canonical /scenes path parses");
-        assert_eq!(addr.prefix, RoutePrefix::Scenes);
+    fn osc_route_prefix_scene_parses_canonical_path() {
+        let addr = parse("/scene/select/3").expect("canonical /scene path parses");
+        assert_eq!(addr.prefix, RoutePrefix::Scene);
         assert_eq!(addr.segments, vec!["select".to_string(), "3".to_string()]);
+    }
+
+    #[test]
+    fn osc_route_prefix_preset_parses_canonical_path() {
+        let addr = parse("/preset/7").expect("canonical /preset path parses");
+        assert_eq!(addr.prefix, RoutePrefix::Preset);
+        assert_eq!(addr.segments, vec!["7".to_string()]);
+    }
+
+    #[test]
+    fn osc_route_prefix_snap_parses_canonical_path() {
+        let addr = parse("/snap/3").expect("canonical /snap path parses");
+        assert_eq!(addr.prefix, RoutePrefix::Snap);
+        assert_eq!(addr.segments, vec!["3".to_string()]);
+    }
+
+    #[test]
+    fn osc_route_prefix_playlist_parses_canonical_path() {
+        let addr = parse("/playlist/next").expect("canonical /playlist path parses");
+        assert_eq!(addr.prefix, RoutePrefix::Playlist);
+        assert_eq!(addr.segments, vec!["next".to_string()]);
     }
 
     #[test]
@@ -128,25 +145,46 @@ mod fixtures {
     }
 
     #[test]
-    fn osc_route_prefix_render_parses_canonical_path() {
-        let addr = parse("/render/profile/standard").expect("canonical /render path parses");
-        assert_eq!(addr.prefix, RoutePrefix::Render);
+    fn osc_route_reserved_data_prefix_reports_reserved_diagnostic() {
+        assert!(parse("/data/subscribe/foo").is_none());
         assert_eq!(
-            addr.segments,
-            vec!["profile".to_string(), "standard".to_string()]
+            parse_diagnostic("/data/subscribe/foo").unwrap_err(),
+            RouteParseError::PrefixReserved("data".to_string()),
+        );
+    }
+
+    #[test]
+    fn osc_route_plural_aliases_still_parse() {
+        assert_eq!(
+            parse("/controls/scene-a/foo").expect("plural alias").prefix,
+            RoutePrefix::Control,
+        );
+        assert_eq!(
+            parse("/scenes/select/3").expect("plural alias").prefix,
+            RoutePrefix::Scene,
+        );
+        assert_eq!(
+            parse("/presets/7").expect("plural alias").prefix,
+            RoutePrefix::Preset,
+        );
+        assert_eq!(
+            parse("/favslots/3").expect("compat alias").prefix,
+            RoutePrefix::Snap,
+        );
+        assert_eq!(
+            parse("/playlists/next").expect("plural alias").prefix,
+            RoutePrefix::Playlist,
         );
     }
 
     #[test]
     fn osc_route_unknown_prefix_rejects() {
         // ADR-013 §5 strict-parse posture: an unrecognised top-level
-        // prefix must NOT yield a partial `RouteAddr`. Slice-3
-        // dispatch will rely on the post-parse shape being one of
-        // the four canonical prefixes; widening the accept set is a
-        // deliberate slice-3+ decision.
+        // prefix must NOT yield a partial `RouteAddr`. Dispatch relies
+        // on the post-parse shape being one of the canonical families.
         assert!(parse("/unknown/whatever").is_none());
         assert!(parse("/midi/note/on").is_none());
-        assert!(parse("/snaps/recall/3").is_none()); // canonical-Snap not yet in parser
+        assert!(parse("/render/profile/standard").is_none());
     }
 
     #[test]
@@ -167,7 +205,7 @@ mod fixtures {
                 // Traversal segments are NOT collapsed into a
                 // shorter path — they remain as opaque strings the
                 // slice-3 dispatch will reject.
-                assert_eq!(addr.prefix, RoutePrefix::Controls);
+                assert_eq!(addr.prefix, RoutePrefix::Control);
                 assert!(
                     addr.segments.iter().any(|s| s == ".."),
                     "traversal segments must not be silently absorbed",
@@ -191,7 +229,7 @@ mod fixtures {
         // contain empty strings — a slice-3 route handler keying on
         // an empty segment would be undefined.
         let parsed = parse("/controls//empty").expect("doubled-slash collapses, not rejects");
-        assert_eq!(parsed.prefix, RoutePrefix::Controls);
+        assert_eq!(parsed.prefix, RoutePrefix::Control);
         assert!(
             !parsed.segments.iter().any(String::is_empty),
             "empty segments must be stripped from the canonical segment vector",

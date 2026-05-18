@@ -57,8 +57,8 @@ mod fixtures {
     };
     use chromaticity_osc_adapter::defaults::{
         DEFAULT_ADAPTER_RATE_LIMIT_FLOOR_MSGS_PER_SEC, DEFAULT_INBOUND_BIND,
-        DEFAULT_MAX_BUNDLE_DEPTH, DEFAULT_MAX_PACKET_BYTES, DEFAULT_OUTBOUND_TARGET,
-        DEFAULT_RATE_LIMIT_MSGS_PER_SEC,
+        DEFAULT_MAX_BUNDLE_DEPTH, DEFAULT_MAX_PACKET_BYTES, DEFAULT_OSC_IN_PORT,
+        DEFAULT_OSC_OUT_PORT, DEFAULT_OUTBOUND_TARGET, DEFAULT_RATE_LIMIT_MSGS_PER_SEC,
     };
 
     /// Skip-on-CI sentinel — matches the integration-matrix corpus
@@ -121,6 +121,12 @@ mod fixtures {
             DEFAULT_OUTBOUND_TARGET,
             std::net::IpAddr::V4(Ipv4Addr::LOCALHOST)
         );
+    }
+
+    #[test]
+    fn default_osc_ports_match_fresh_install_contract() {
+        assert_eq!(DEFAULT_OSC_IN_PORT, 9000);
+        assert_eq!(DEFAULT_OSC_OUT_PORT, 9001);
     }
 
     // -----------------------------------------------------------
