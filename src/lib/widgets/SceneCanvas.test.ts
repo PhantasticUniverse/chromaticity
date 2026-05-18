@@ -289,9 +289,12 @@ describe('SceneCanvas widget', () => {
 
       audioSnapshotStore.snapshot = {
         bpm: 128,
+        bpm_availability: 'Ready',
         rms: 0.25,
         peak: 0.5,
         fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+        fft_availability: 'Ready',
+        degraded: false,
       };
       await tick();
 
