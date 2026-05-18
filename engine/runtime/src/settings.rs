@@ -33,16 +33,17 @@
 //!
 //! [`Settings::load_from_path`] returns [`SettingsError::Io`] for
 //! filesystem failures and [`SettingsError::Parse`] for malformed
-//! TOML; the shell-side handler logs the error and falls back to
-//! [`Settings::default`] so a corrupted settings file never blocks
-//! the app from launching. A missing file (initial launch) is NOT
-//! an error — callers test [`std::path::Path::exists`] first or
-//! treat [`std::io::ErrorKind::NotFound`] as the default-fallback
-//! sentinel; the helpers below ([`Settings::load_or_default`]) do
-//! exactly that.
+//! TOML. [`Settings::load_or_default`] is the launch helper: a
+//! missing file (initial launch) returns [`Settings::default`], and
+//! a malformed file is first quarantined to
+//! `settings.toml.malformed-<timestamp>` before falling back to
+//! defaults so the next write cannot silently destroy the damaged
+//! operator file.
 
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Three-theme cascade matching the existing frontend
 /// `ThemeSwitcher` (`src/lib/ThemeSwitcher.svelte`). Pulse is the
@@ -376,7 +377,7 @@ pub struct OscSettings {
 
 impl OscSettings {
     fn default_local_ip() -> String {
-        "0.0.0.0".to_string()
+        "127.0.0.1".to_string()
     }
     fn default_port() -> u16 {
         8000
@@ -545,8 +546,8 @@ pub struct Settings {
 ///
 /// The shell-side handler matches on the error and falls back to
 /// [`Settings::default`] on `Parse` so a corrupted file never
-/// blocks the app from launching — the operator's next save
-/// overwrites the corrupted file with a fresh document.
+/// blocks the app from launching — [`Settings::load_or_default`]
+/// quarantines malformed files before returning defaults.
 #[derive(Debug)]
 pub enum SettingsError {
     /// Filesystem I/O failure.
@@ -609,7 +610,8 @@ impl Settings {
         Ok(parsed)
     }
 
-    /// Serialise this [`Settings`] to `path` as TOML.
+    /// Serialise this [`Settings`] to `path` as TOML via a same-dir
+    /// temporary file, `flush` / `sync_all`, then atomic rename.
     ///
     /// Creates any missing parent directories so the first-launch
     /// save path doesn't fail when `~/Library/Application Support/...`
@@ -621,25 +623,94 @@ impl Settings {
             }
         }
         let serialised = toml::to_string_pretty(self)?;
-        std::fs::write(path, serialised)?;
+        atomic_write(path, serialised.as_bytes())?;
         Ok(())
     }
 
     /// Convenience helper: load from `path` if it exists, otherwise
-    /// return [`Self::default`]. A missing file is the initial-launch
-    /// case and is NOT an error; a malformed file IS an error and
-    /// surfaces verbatim so the caller can choose between "log +
-    /// fall back to default" or "refuse to launch".
+    /// return [`Self::default`].
+    ///
+    /// A missing file is the initial-launch case and is NOT an
+    /// error. A malformed file is quarantined next to the original as
+    /// `settings.toml.malformed-<timestamp>` before returning
+    /// defaults, so the next save cannot silently overwrite the only
+    /// copy of the operator's hand-edited or partially-written file.
     pub fn load_or_default(path: &Path) -> Result<Self, SettingsError> {
         match std::fs::read_to_string(path) {
             Ok(contents) => {
-                let parsed: Self = toml::from_str(&contents)?;
+                let parsed = match toml::from_str(&contents) {
+                    Ok(parsed) => parsed,
+                    Err(_err) => {
+                        quarantine_malformed(path)?;
+                        return Ok(Self::default());
+                    }
+                };
                 Ok(parsed)
             }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(err) => Err(SettingsError::Io(err)),
         }
     }
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), SettingsError> {
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+    let tmp_path = temporary_sibling_path(path, "tmp");
+    let mut tmp_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)?;
+    let write_result = (|| -> Result<(), std::io::Error> {
+        tmp_file.write_all(bytes)?;
+        tmp_file.flush()?;
+        tmp_file.sync_all()?;
+        Ok(())
+    })();
+    if let Err(err) = write_result {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(SettingsError::Io(err));
+    }
+    drop(tmp_file);
+    if let Err(err) = std::fs::rename(&tmp_path, path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(SettingsError::Io(err));
+    }
+    if let Some(parent) = parent {
+        let _ = std::fs::File::open(parent).and_then(|dir| dir.sync_all());
+    }
+    Ok(())
+}
+
+fn quarantine_malformed(path: &Path) -> Result<PathBuf, SettingsError> {
+    let quarantine_path = unique_malformed_path(path);
+    std::fs::rename(path, &quarantine_path)?;
+    Ok(quarantine_path)
+}
+
+fn unique_malformed_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "settings.toml".to_string());
+    let timestamp = timestamp_nanos();
+    path.with_file_name(format!("{file_name}.malformed-{timestamp}"))
+}
+
+fn temporary_sibling_path(path: &Path, suffix: &str) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "settings.toml".to_string());
+    let pid = std::process::id();
+    let timestamp = timestamp_nanos();
+    path.with_file_name(format!("{file_name}.{suffix}-{pid}-{timestamp}"))
+}
+
+fn timestamp_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -743,6 +814,45 @@ mod tests {
         }
         // Cleanup
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_or_default_quarantines_malformed_toml_before_defaulting() {
+        let path = tmp_path("malformed-load-default");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(b"this is not valid toml = = =\n").unwrap();
+        }
+
+        let loaded = Settings::load_or_default(&path).unwrap();
+
+        assert_eq!(loaded, Settings::default());
+        assert!(
+            !path.exists(),
+            "malformed source should be moved aside before default fallback",
+        );
+        let parent = path.parent().unwrap_or_else(|| std::path::Path::new(""));
+        let prefix = format!(
+            "{}.malformed-",
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "settings.toml".to_string()),
+        );
+        let quarantined: Vec<std::path::PathBuf> = std::fs::read_dir(parent)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|candidate| {
+                candidate
+                    .file_name()
+                    .map(|name| name.to_string_lossy().starts_with(&prefix))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert_eq!(quarantined.len(), 1, "expected one quarantined file");
+        let quarantined_contents = std::fs::read_to_string(&quarantined[0]).unwrap();
+        assert_eq!(quarantined_contents, "this is not valid toml = = =\n");
+        let _ = std::fs::remove_file(&quarantined[0]);
     }
 
     #[test]
@@ -859,12 +969,13 @@ mod tests {
 
     #[test]
     fn osc_settings_default_matches_bundle_baseline() {
-        // Wave 2.1 Lane D.3: pin the bundle-faithful OSC network
-        // defaults. The frontend reads back these values from the
+        // ADR-013 §1: the runtime/UI OSC default is loopback-only;
+        // binding a routable interface is an explicit operator
+        // opt-in. The frontend reads back these values from the
         // settings store on view mount and renders them in the OSC
         // view's listening / send-to readouts.
         let defaults = Settings::default();
-        assert_eq!(defaults.osc.local_ip, "0.0.0.0");
+        assert_eq!(defaults.osc.local_ip, "127.0.0.1");
         assert_eq!(defaults.osc.port, 8000);
         assert!(defaults.osc.tx_enabled);
         assert!(defaults.osc.rx_enabled);
@@ -1076,7 +1187,7 @@ mod tests {
         }
         let loaded = Settings::load_from_path(&path).unwrap();
         // The OSC section materialises with the per-field defaults.
-        assert_eq!(loaded.osc.local_ip, "0.0.0.0");
+        assert_eq!(loaded.osc.local_ip, "127.0.0.1");
         assert_eq!(loaded.osc.port, 8000);
         assert!(loaded.osc.tx_enabled);
         assert!(loaded.osc.rx_enabled);

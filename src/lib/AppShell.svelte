@@ -91,19 +91,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //
   // Wave-44 mounts `<CrashResumeBanner>` directly under the
   // `<DegradedBanner>` and above the routed view, matching the
-  // bundle's `Chromaticity.html` adoption site (lines 271-280) where
-  // both banners stack inside the same `tweaks.emptyStates ||
-  // tweaks.showCrashResume` wrapper. Visibility is owned by a local
-  // `crashResumeVisible` flag that defaults to `false` — the bundle's
-  // `tweaks.showCrashResume` is a dev-tweak, and live
-  // `CrashResumeState` IPC is `EV-INTEGRATION-MATRIX` scope deferred
-  // to Phase-3+/4a per R-37. To exercise the banner manually flip the
-  // `$state(false)` initializer to `$state(true)`. Fixture props
-  // mirror the bundle (`Warehouse · Saturday`, four restored / one
-  // partial, p50=480 ms). `onSupport` and `onViewLog` are no-op stubs
-  // pending the support-bundle modal port (W44 follow-up) and the
-  // Settings → Diagnostics deep-link; `onDismiss` flips the local
-  // visibility flag.
+  // bundle's `Chromaticity.html` adoption site (lines 271-280). Lane
+  // 4 FIX PASS wires the banner to the shell's real
+  // `get_crash_resume_status` command: setup restores the supported
+  // runtime classes before scheduler ticks start, records a one-shot
+  // status payload, and this shell shows the banner only when that
+  // payload is present. `onSupport` remains a no-op pending the
+  // support-bundle modal port; `onViewLog` routes to Settings.
   //
   // Wave-33a mounts `<WatermarkOverlay>` as a fixed bottom-right
   // overlay at z-index 990 (under HotkeyOverlay / CommandPalette).
@@ -155,7 +149,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `EV-INTEGRATION-MATRIX` scope; once that lands the visibility
   // will read from a capability flag rather than a hardcoded default.
   let bannerVisible = $state(false);
+  type ResumeStatus = 'restored' | 'partial' | 'lost';
+
+  interface CrashResumeStatus {
+    readonly showName: string;
+    readonly controls: ResumeStatus;
+    readonly snaps: ResumeStatus;
+    readonly playlist: ResumeStatus;
+    readonly adapters: ResumeStatus;
+    readonly scene: ResumeStatus;
+    readonly p50: number;
+  }
+
   let crashResumeVisible = $state(false);
+  let crashResumeStatus = $state<CrashResumeStatus | null>(null);
   let commandPaletteOpen = $state(false);
 
   // Watermark visibility is the inverse of the `render.watermark.off`
@@ -175,16 +182,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     actionLabel: 'Diagnostics',
   };
 
-  const CRASH_RESUME_FIXTURE = {
-    showName: 'Warehouse · Saturday',
-    controls: 'restored' as const,
-    snaps: 'restored' as const,
-    playlist: 'restored' as const,
-    adapters: 'partial' as const,
-    scene: 'restored' as const,
-    p50: 480,
-  };
-
   const COMMAND_PALETTE_ROUTING: Record<string, () => void> = {
     'launch-scene': () => routeStore.set('library'),
     'open-hotkeys': () => routeStore.set('settings'),
@@ -195,6 +192,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       const onSelect = COMMAND_PALETTE_ROUTING[action.id];
       return onSelect ? { ...action, onSelect } : action;
     });
+
+  $effect(() => {
+    void (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const status = await invoke<CrashResumeStatus | null>('get_crash_resume_status');
+        if (status) {
+          crashResumeStatus = status;
+          crashResumeVisible = true;
+        }
+      } catch {
+        // Browser-mode / Vitest: no Tauri runtime, no recovered
+        // snapshot, and therefore no banner.
+      }
+    })();
+  });
 
   $effect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -229,16 +242,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         />
       </div>
     {/if}
-    {#if crashResumeVisible}
+    {#if crashResumeVisible && crashResumeStatus}
       <div class="app-shell__banner">
         <CrashResumeBanner
-          showName={CRASH_RESUME_FIXTURE.showName}
-          controls={CRASH_RESUME_FIXTURE.controls}
-          snaps={CRASH_RESUME_FIXTURE.snaps}
-          playlist={CRASH_RESUME_FIXTURE.playlist}
-          adapters={CRASH_RESUME_FIXTURE.adapters}
-          scene={CRASH_RESUME_FIXTURE.scene}
-          p50={CRASH_RESUME_FIXTURE.p50}
+          showName={crashResumeStatus.showName}
+          controls={crashResumeStatus.controls}
+          snaps={crashResumeStatus.snaps}
+          playlist={crashResumeStatus.playlist}
+          adapters={crashResumeStatus.adapters}
+          scene={crashResumeStatus.scene}
+          p50={crashResumeStatus.p50}
           onViewLog={() => routeStore.set('settings')}
           onSupport={() => {
             /* W44 follow-up: support-bundle modal port */

@@ -36,10 +36,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // rows (HDR target, custom resolution) carry `data-cap=...`
   // attributes for the future entitlement infra to discover.
   //
-  // W21 PR1 visual-only stubs: each form field uses a local `$state`
-  // variable so the controls feel live (selects update, toggles flip,
-  // folder rows append on Browse) but no value is persisted across a
-  // reload. Persistence + IPC wiring tracks the evidence-matrix slice.
+  // The form fields below read and write the persisted settings store.
+  // Runtime application of a few preferences is still subsystem-owned,
+  // but the operator document itself survives restart.
   import { untrack } from 'svelte';
 
   import { HOTKEYS } from '../data/hotkeys';
@@ -281,20 +280,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     storageSnapshot.backup_path !== '' ? storageSnapshot.backup_path : DEFAULT_BACKUP_PATH,
   );
 
-  /* First-launch hydration. The engine-side default for
-   * `storage.media_folders` + `storage.scene_folders` is an empty
-   * `Vec<String>`; the bundle-faithful UI fixtures expect the
-   * Settings view to show a starter set on first launch. Run the
-   * seed synchronously at script init so the visible storage list
-   * matches the bundle on first paint; subsequent `settingsStore.load()`
-   * IPC resolutions overwrite the snapshot wholesale, so a persisted
-   * (non-empty) document from a previous session replaces this seed
-   * without further intervention.
-   *
-   * Idempotent at the store level — `update()` is a shallow merge,
-   * so the seed only fires once per Settings.svelte mount even if
-   * the script init runs more than once across hot-module replaces. */
-  {
+  /* Browser-mode fixture hydration. The shell load settles before any
+   * seed can run, and persisted Tauri settings are never clobbered.
+   * When `get_settings` is unavailable (Vite / Vitest), seed the
+   * local in-memory snapshot so the storage rows still render with the
+   * bundle's starter folders; `settingsStore.canPersist` remains false
+   * in that branch, so no write-through is scheduled. */
+  let storageSeedAttempted = $state(false);
+  $effect(() => {
+    if (!settingsStore.isLoaded || settingsStore.canPersist || storageSeedAttempted) {
+      return;
+    }
+    storageSeedAttempted = true;
     const s = settingsStore.snapshot.storage;
     const isEmpty =
       s.media_folders.length === 0 && s.scene_folders.length === 0 && s.backup_path === '';
@@ -307,7 +304,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         },
       });
     }
-  }
+  });
 
   async function browseMediaFolder() {
     const path = await pickFolder('Pick a Media folder');
@@ -498,11 +495,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <h1>settings</h1>
       <p class="settings__intro">
         Operator preferences, devices, output, storage, hotkey reference, and about.
-        Wireframe-aligned with the bundle's <code>views/settings.jsx</code>; W21 PR1 ships the
-        visual-only Audio / Graphics / Storage scaffolding plus the <code>pick_folder</code> IPC contract.
-        Live device enumeration + the native folder dialog land in Phase-3+/4a. W38 adds the right-rail
-        Preview + Diagnostics panel mirroring the bundle's two-column layout. W39 expands the Audio Device
-        section with Channel Routing, Input Gain, and a Monitoring meter.
+        Wireframe-aligned with the bundle's <code>views/settings.jsx</code>; Audio, Graphics,
+        Storage, Tempo, OSC, and General preferences persist through the shell settings document.
+        W38 adds the right-rail Preview + Diagnostics panel mirroring the bundle's two-column
+        layout. W39 expands the Audio Device section with Channel Routing, Input Gain, and a
+        Monitoring meter.
       </p>
     </header>
 
@@ -658,10 +655,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
       </div>
       <p class="settings__hint">
-        Visual stub — live cpal device enumeration arrives in Phase-3+/4a per
-        <code>EV-INTEGRATION-MATRIX</code>. The Monitoring meter reads live RMS / peak from the Wave
-        1c-α-2 audio-uniform IPC seam when a snapshot is present, falling back to a frozen-frame
-        fixture during the no-snapshot startup window.
+        Device choices are persisted and applied on restart. The Monitoring meter reads live RMS /
+        peak from the audio-uniform IPC seam when a snapshot is present, falling back to a
+        frozen-frame fixture during the no-snapshot startup window.
       </p>
     </article>
 

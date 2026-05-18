@@ -28,23 +28,139 @@ pub mod state;
 use crate::state::AppState;
 use crate::state::ipc_emit::TauriIpcEmitter;
 use chromaticity_audio::runtime::{AudioRuntime, AudioRuntimeConfig};
+use chromaticity_runtime::crash_resume::{
+    CanonicalBinarySnapshotter, CrashResumeAdapter, restore_all_supported_classes,
+};
 use chromaticity_runtime::scheduler::Scheduler;
 use chromaticity_runtime::scheduler::audio::MutexAudioPull;
-use std::sync::Arc;
+use serde::Serialize;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
-/// Nominal scheduler-tick cadence. The drift-corrected loop targets
+/// Nominal scheduler-tick cadence. The coalescing loop targets
 /// 60 Hz (~16.67ms per tick); commands that hold the
-/// [`AppState::state`] mutex longer than the tick period cause the
-/// loop to fall behind without sleep, recovering on subsequent ticks
-/// once the lock is released.
+/// [`AppState::state`] mutex longer than the tick period collapse
+/// missed ticks into the next pass instead of firing a catch-up
+/// burst.
 const SCHEDULER_TICK_HZ: f64 = 60.0;
 
 /// File name (relative to `app.path().app_data_dir()`) for the
 /// Wave 2.1 Lane C.3 persisted operator settings document.
 const SETTINGS_FILE_NAME: &str = "settings.toml";
+
+/// File name (relative to `app.path().app_data_dir()`) for the
+/// EV-CRASH-RESUME runtime-state snapshot.
+const CRASH_RESUME_FILE_NAME: &str = "crash-resume.bin";
+
+/// Coarse crash-resume snapshot cadence. The scheduler captures a
+/// snapshot at most once per second, coalescing missed frame ticks
+/// after mutex stalls instead of writing in a burst.
+const CRASH_RESUME_SAVE_PERIOD: Duration = Duration::from_secs(1);
+
+static CRASH_RESUME_STATUS: OnceLock<Mutex<Option<CrashResumeStatusPayload>>> = OnceLock::new();
+static CRASH_RESUME_PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ResumeStatusPayload {
+    Restored,
+    Partial,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CrashResumeStatusPayload {
+    show_name: String,
+    controls: ResumeStatusPayload,
+    snaps: ResumeStatusPayload,
+    playlist: ResumeStatusPayload,
+    adapters: ResumeStatusPayload,
+    scene: ResumeStatusPayload,
+    p50: u64,
+}
+
+#[tauri::command]
+fn get_crash_resume_status() -> Result<Option<CrashResumeStatusPayload>, String> {
+    let guard = match crash_resume_status_slot().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    Ok(guard.clone())
+}
+
+fn crash_resume_status_slot() -> &'static Mutex<Option<CrashResumeStatusPayload>> {
+    CRASH_RESUME_STATUS.get_or_init(|| Mutex::new(None))
+}
+
+fn set_crash_resume_status(status: Option<CrashResumeStatusPayload>) {
+    let mut guard = match crash_resume_status_slot().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    *guard = status;
+}
+
+fn recover_crash_resume_snapshot(app_state: &AppState, save_path: &Path) {
+    let started = Instant::now();
+    let adapter = CrashResumeAdapter::new(CanonicalBinarySnapshotter, save_path.to_path_buf());
+    match adapter.try_recover() {
+        Ok(Some(recovered)) => {
+            let mut state_guard = match app_state.state.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            restore_all_supported_classes(&recovered, &mut state_guard);
+            drop(state_guard);
+            set_crash_resume_status(Some(CrashResumeStatusPayload {
+                show_name: "Recovered runtime state".to_string(),
+                controls: ResumeStatusPayload::Restored,
+                snaps: ResumeStatusPayload::Restored,
+                playlist: ResumeStatusPayload::Restored,
+                adapters: ResumeStatusPayload::Restored,
+                scene: ResumeStatusPayload::Partial,
+                p50: duration_millis_u64(started.elapsed()),
+            }));
+        }
+        Ok(None) => {
+            set_crash_resume_status(None);
+        }
+        Err(err) => {
+            eprintln!(
+                "chromaticity-app: failed to recover crash-resume snapshot from {}: {err}",
+                save_path.display()
+            );
+            set_crash_resume_status(None);
+        }
+    }
+}
+
+fn discard_crash_resume_snapshot() {
+    let Some(path) = CRASH_RESUME_PATH.get() else {
+        return;
+    };
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            eprintln!(
+                "chromaticity-app: failed to discard crash-resume snapshot {} after clean exit: {err}",
+                path.display()
+            );
+        }
+    }
+}
+
+fn duration_millis_u64(duration: Duration) -> u64 {
+    let millis = duration.as_millis();
+    if millis > u128::from(u64::MAX) {
+        u64::MAX
+    } else {
+        millis as u64
+    }
+}
 
 /// Launch the Tauri application event loop.
 ///
@@ -64,20 +180,20 @@ const SETTINGS_FILE_NAME: &str = "settings.toml";
 /// [`TauriIpcEmitter`] (emitting the
 /// [`chromaticity_audio::AudioUniformSnapshot`] payload onto the
 /// Tauri event channel as `audio_uniform_snapshot_changed`); (c)
-/// spawns the state-commit thread that drives
+/// recovers any saved crash-resume snapshot before scheduler ticks
+/// can mutate state; (d) spawns the state-commit thread that drives
 /// [`Scheduler::tick`] under the [`AppState::state`] mutex on a
-/// drift-corrected ~60 Hz cadence; (d) installs both lifecycle
-/// handles onto the managed [`AppState`] via
+/// coalescing ~60 Hz cadence while saving crash-resume snapshots on
+/// a coarse cadence; (e) installs both lifecycle handles onto the
+/// managed [`AppState`] via
 /// [`AppState::install_audio_and_scheduler`].
 ///
-/// The drift-corrected timer pattern computes each tick's deadline
-/// against `t0 + frame_period * tick_count` rather than incrementally
-/// adding `frame_period` to the previous wake time. This avoids
-/// accumulating per-tick rounding errors over long runs and lets the
-/// loop recover its nominal cadence after a slow tick (e.g. a Tauri
-/// command handler that held the state mutex longer than ~16ms).
+/// The scheduler loop carries an explicit next deadline. If a slow
+/// tick or state-mutex stall pushes the loop past that deadline, the
+/// next deadline is reset to one frame period from "now". That keeps
+/// cadence stable without immediate back-to-back catch-up ticks.
 pub fn run() -> Result<(), tauri::Error> {
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
@@ -85,10 +201,11 @@ pub fn run() -> Result<(), tauri::Error> {
             // Wave 2.1 Lane C.3 settings persistence — resolve the
             // app data dir, install the path onto AppState, and load
             // the existing document (or fall back to default when
-            // no file yet exists). A malformed file is logged + the
-            // default is used so a corrupted settings file never
-            // blocks the app from launching; the operator's next
-            // save overwrites it.
+            // no file yet exists). A malformed file is quarantined
+            // by `load_or_default` before defaults are used, so a
+            // corrupted settings file never blocks launch and the
+            // operator's damaged copy is preserved.
+            let mut crash_resume_path = None;
             if let Ok(data_dir) = app.path().app_data_dir() {
                 let settings_path = data_dir.join(SETTINGS_FILE_NAME);
                 let loaded =
@@ -107,6 +224,11 @@ pub fn run() -> Result<(), tauri::Error> {
                 let bootstrap_state = app.state::<AppState>();
                 bootstrap_state.install_settings(loaded);
                 bootstrap_state.install_settings_path(settings_path);
+
+                let save_path = data_dir.join(CRASH_RESUME_FILE_NAME);
+                let _ = CRASH_RESUME_PATH.set(save_path.clone());
+                recover_crash_resume_snapshot(bootstrap_state.inner(), &save_path);
+                crash_resume_path = Some(save_path);
             }
 
             // (a) Producer-side audio runtime. Falls back to silent
@@ -142,19 +264,24 @@ pub fn run() -> Result<(), tauri::Error> {
                 .with_audio_pull(Box::new(MutexAudioPull::new(snapshot_handle)))
                 .with_ipc_emit(Box::new(TauriIpcEmitter::new(app.handle().clone())));
 
-            // (c) State-commit thread. Drift-corrected 60 Hz loop;
-            // see the function-level prose for the timing rationale.
+            // (c) State-commit thread. Coalescing 60 Hz loop; see
+            // the function-level prose for the timing rationale.
             let shutdown = Arc::new(AtomicBool::new(false));
             let shutdown_for_thread = Arc::clone(&shutdown);
             let app_handle = app.handle().clone();
             let mut scheduler_owned = scheduler;
+            let crash_resume_path_for_thread = crash_resume_path;
             let join = std::thread::Builder::new()
                 .name("chromaticity-scheduler-tick".into())
                 .spawn(move || {
-                    let t0 = Instant::now();
                     let frame_period = Duration::from_secs_f64(1.0 / SCHEDULER_TICK_HZ);
-                    let mut tick_count: u64 = 0;
+                    let mut next_deadline = Instant::now() + frame_period;
+                    let mut next_crash_resume_save = Instant::now() + CRASH_RESUME_SAVE_PERIOD;
+                    let mut crash_resume_adapter = crash_resume_path_for_thread
+                        .map(|path| CrashResumeAdapter::new(CanonicalBinarySnapshotter, path));
                     while !shutdown_for_thread.load(Ordering::Relaxed) {
+                        let should_capture_crash_resume = crash_resume_adapter.is_some()
+                            && Instant::now() >= next_crash_resume_save;
                         // Look up the managed AppState lazily on each
                         // tick. Capturing a `tauri::State<'_,
                         // AppState>` outside the loop would borrow
@@ -173,31 +300,49 @@ pub fn run() -> Result<(), tauri::Error> {
                         // normal operation (~9.7 billion years at 60
                         // FPS per the SchedulerError prose).
                         let _ = scheduler_owned.tick(&mut state_guard, &app_state.bus);
+                        let crash_resume_blob = if should_capture_crash_resume {
+                            crash_resume_adapter
+                                .as_ref()
+                                .map(|adapter| adapter.snapshot(&state_guard))
+                        } else {
+                            None
+                        };
                         drop(state_guard);
 
-                        tick_count = tick_count.saturating_add(1);
-                        let next_deadline = t0
-                            + frame_period
-                                .saturating_mul(u32::try_from(tick_count).unwrap_or(u32::MAX));
+                        if let Some(blob_result) = crash_resume_blob {
+                            match blob_result {
+                                Ok(blob) => {
+                                    if let Some(adapter) = crash_resume_adapter.as_mut() {
+                                        if let Err(err) = adapter.save_blob(&blob) {
+                                            eprintln!(
+                                                "chromaticity-app: failed to save crash-resume snapshot to {}: {err}",
+                                                adapter.save_path().display()
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    eprintln!(
+                                        "chromaticity-app: failed to serialize crash-resume snapshot: {err}"
+                                    );
+                                }
+                            }
+                            next_crash_resume_save = Instant::now() + CRASH_RESUME_SAVE_PERIOD;
+                        }
+
                         let now = Instant::now();
                         if next_deadline > now {
-                            // Sleep to the next tick boundary. If we
-                            // overslept (shouldn't happen with `<` /
-                            // `>` order above), the next iteration
-                            // catches up by setting `next_deadline`
-                            // to a past timestamp and skipping the
-                            // sleep.
                             std::thread::sleep(next_deadline - now);
+                            next_deadline += frame_period;
+                        } else {
+                            // Coalesce any missed ticks into this
+                            // single scheduler pass. If a command
+                            // held the state mutex for multiple frame
+                            // periods, schedule the next tick one
+                            // period from now instead of firing a
+                            // burst of immediate catch-up ticks.
+                            next_deadline = now + frame_period;
                         }
-                        // If we're behind (next_deadline <= now), the
-                        // next tick fires immediately. Drift
-                        // accumulates if Tauri command handlers hold
-                        // the state mutex longer than the tick period;
-                        // recovery is automatic once the lock is
-                        // released and the loop catches up. The
-                        // saturating_mul above caps the deadline
-                        // computation at u32::MAX seconds (~136
-                        // years) which is the practical ceiling.
                     }
                 })
                 .map_err(|e| -> Box<dyn std::error::Error> {
@@ -261,6 +406,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::settings::get_settings,
             commands::settings::set_settings,
             commands::settings::reset_settings,
+            get_crash_resume_status,
             commands::license::install_license,
             commands::license::remove_license,
             commands::license::request_trial,
@@ -270,5 +416,11 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::scene::load_scene,
             commands::scene::loaded_scene,
         ])
-        .run(tauri::generate_context!())
+        .run(tauri::generate_context!());
+
+    if result.is_ok() {
+        discard_crash_resume_snapshot();
+    }
+
+    result
 }
