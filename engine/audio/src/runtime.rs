@@ -52,8 +52,9 @@
 //!     if shutdown_rx.try_recv() is Ok(()) | Disconnected { break }
 //!     match negotiator.try_pull(&mut frame) {
 //!         Ready => {
-//!             let snapshot = extract_uniform_snapshot(&frame);
-//!             let smoothed_bpm = bpm_estimator.observe(&frame);
+//!             let analysis_frame = analysis_window.observe(&frame);
+//!             let snapshot = extract_uniform_snapshot(&analysis_frame);
+//!             let smoothed_bpm = bpm_estimator.observe(&analysis_frame);
 //!             *shared.lock() = AudioUniformSnapshot { bpm: smoothed_bpm, ..snapshot };
 //!         }
 //!         WouldBlock => sleep(500us),  // back off briefly
@@ -327,15 +328,14 @@ impl AudioRuntime {
                         let status = negotiator.try_pull(&mut frame);
                         match status {
                             IngestStatus::Ready => {
-                                let instant_snapshot = extract_uniform_snapshot(&frame);
                                 let analysis_frame = analysis_window.observe(&frame);
                                 let analysis_snapshot = extract_uniform_snapshot(&analysis_frame);
                                 let smoothed_bpm = estimator.observe(&analysis_frame);
                                 let merged = AudioUniformSnapshot {
                                     bpm: smoothed_bpm,
                                     bpm_availability: analysis_snapshot.bpm_availability,
-                                    rms: instant_snapshot.rms,
-                                    peak: instant_snapshot.peak,
+                                    rms: analysis_snapshot.rms,
+                                    peak: analysis_snapshot.peak,
                                     fft_bands: analysis_snapshot.fft_bands,
                                     fft_availability: analysis_snapshot.fft_availability,
                                     degraded: false,
@@ -513,7 +513,8 @@ mod runtime_pins {
     use super::*;
     use crate::frame::DEFAULT_SAMPLE_RATE_HZ;
     use crate::observability;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
     /// Sleep budget per polling step inside the test asserts. Tuned
     /// to the analyser hop cadence so the producer thread observes a
@@ -554,6 +555,65 @@ mod runtime_pins {
             "expected BPM at 120.0 silent-frame fallback or 0.0 pre-first-write, got {}",
             snapshot.bpm,
         );
+
+        handle.shutdown();
+    }
+
+    #[test]
+    fn runtime_rms_and_peak_are_computed_over_analysis_window() {
+        let _serialize = observability::test_serialize_lock();
+
+        #[derive(Debug)]
+        struct ScriptedFrames {
+            frames: VecDeque<AudioFrame>,
+            pulls: Arc<AtomicU32>,
+        }
+
+        impl IngestBoundary for ScriptedFrames {
+            fn try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus {
+                self.pulls.fetch_add(1, Ordering::Relaxed);
+                match self.frames.pop_front() {
+                    Some(frame) => {
+                        *out = frame;
+                        IngestStatus::Ready
+                    }
+                    None => IngestStatus::Pending,
+                }
+            }
+        }
+
+        let pulls = Arc::new(AtomicU32::new(0));
+        let frames = VecDeque::from([
+            AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, vec![1.0; 128]),
+            AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, vec![0.0; 128]),
+        ]);
+        let runtime = AudioRuntime::from_primary(
+            ScriptedFrames {
+                frames,
+                pulls: Arc::clone(&pulls),
+            },
+            AudioRuntimeConfig::default(),
+        );
+        let snapshot_handle = runtime.snapshot_handle();
+        let handle = runtime.spawn();
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while pulls.load(Ordering::Relaxed) < 3 && Instant::now() < deadline {
+            thread::sleep(POLL_STEP);
+        }
+        assert!(
+            pulls.load(Ordering::Relaxed) >= 3,
+            "runtime did not consume the scripted frames",
+        );
+
+        let snapshot = *snapshot_handle.lock().unwrap();
+        let expected_rms = std::f32::consts::FRAC_1_SQRT_2;
+        assert!(
+            (snapshot.rms - expected_rms).abs() < 1e-5,
+            "expected windowed RMS {expected_rms}, got {}",
+            snapshot.rms,
+        );
+        assert_eq!(snapshot.peak, 1.0);
 
         handle.shutdown();
     }

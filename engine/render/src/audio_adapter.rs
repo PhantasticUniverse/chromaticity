@@ -99,12 +99,12 @@ use crate::multipass::{UniformInput, UniformValue};
 /// Symbol name for the BPM scalar uniform per `docs/36` §2.7.
 pub const UNIFORM_NAME_BPM: &str = "syn_BPM";
 
-/// Symbol name for the RMS instantaneous-energy scalar uniform per
+/// Symbol name for the RMS window-energy scalar uniform per
 /// `docs/36` §2.11.
 pub const UNIFORM_NAME_RMS: &str = "chroma_AudioRMS";
 
-/// Symbol name for the peak instantaneous-magnitude scalar uniform
-/// per `docs/36` §2.11.
+/// Symbol name for the window peak-magnitude scalar uniform per
+/// `docs/36` §2.11.
 pub const UNIFORM_NAME_PEAK: &str = "chroma_AudioPeak";
 
 /// Symbol name for the 8-band log-spaced FFT array uniform per
