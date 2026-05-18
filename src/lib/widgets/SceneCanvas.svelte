@@ -64,7 +64,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // when they want a moving image. The widget is a thin Svelte
   // wrapper around `<canvas>`: the `$effect` owns the rAF +
   // ResizeObserver and tears them down on unmount.
-  import { RENDERERS, type SceneKind } from './scene-renderers';
+  import { untrack } from 'svelte';
+
+  import { RENDERERS, type SceneKind, type SceneRendererControls } from './scene-renderers';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
   type Props = {
@@ -90,13 +92,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
      *  audio fallback (`pulse = 0.6 + lvl * 0.4`) still has headroom;
      *  `tint` (Vec3 or Vec4 of `[r, g, b, (a)]`, channels in `[0, 1]`)
      *  draws a translucent overlay over the vignette post-pass at 20%
-     *  of the supplied alpha. Missing keys default to nominal so
-     *  scenes without these axes render identically to pre-Wave-2.9
-     *  behaviour. The renderer signatures stay 6-arg
-     *  (`ctx, t, seed, w, h, lvl`); adapter pre-multiplies at the
-     *  `draw()` boundary. Tied to Wave 2.10+ for the remaining axes
-     *  (warp / invert / focus / gamma / mirror). */
-    controls?: Record<string, number | readonly number[]>;
+     *  of the supplied alpha. Other scene-specific controls flow to
+     *  `scene-renderers.ts`, where renderer-owned mappings cover
+     *  geometry, palette, scale, and audio-band axes without widening
+     *  Perform. Missing keys default to nominal so scenes without
+     *  these axes render identically to pre-control behaviour. */
+    controls?: SceneRendererControls;
   };
 
   let { kind = 'rings', seed = 0, audio = true, dpr, ariaLabel, controls }: Props = $props();
@@ -167,10 +168,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const draw = (
       t: number,
       lvl: number,
-      ctrls?: Record<string, number | readonly number[]>,
+      frameKind: SceneKind,
+      frameSeed: number,
+      ctrls?: SceneRendererControls,
     ): void => {
       // Wave 2.9 SC.A — pre-multiply common-axis controls at the
-      // adapter boundary so the 16 renderer functions stay 6-arg.
+      // adapter boundary so the renderers keep a 6-arg public arity
+      // while accepting optional control metadata via a rest param.
       // `speed` (0.5 nominal, 1.0 = 2x, 0.0 = frozen) scales `t`;
       // `intensity` (0.5 nominal) scales `lvl`. The `* 2` factor
       // maps the `[0, 1]` Slider range onto a `[0, 2]` multiplier so
@@ -183,8 +187,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       const intensity = typeof intensityRaw === 'number' ? intensityRaw : 0.5;
       const effectiveLvl = Math.max(0, Math.min(1, lvl * intensity * 2));
 
-      const r = RENDERERS[kind] ?? RENDERERS.rings;
-      r(ctx, effectiveT, seed, c.width, c.height, effectiveLvl);
+      const r = RENDERERS[frameKind] ?? RENDERERS.rings;
+      r(ctx, effectiveT, frameSeed, c.width, c.height, effectiveLvl, ctrls);
       // Vignette + scanline post-pass per the bundle. Wave 2.3 Q.1:
       // softened from 0.65 → 0.45 to keep wide preview panes
       // readable at the edges.
@@ -227,7 +231,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
     if (reduceMotion) {
       // Static frame — equivalent to a SceneStill emit.
-      draw(seed * 13.7, 0.5, controls);
+      draw(seed * 13.7, 0.5, kind, seed, controls);
       return () => {
         ro?.disconnect();
       };
@@ -245,6 +249,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const LVL_EMA = 0.25;
     const loop = (): void => {
       const t = (performance.now() - start) / 1000;
+      const frame = untrack(() => ({
+        audio,
+        kind,
+        seed,
+        controls,
+        snapshot: audioSnapshotStore.snapshot,
+      }));
       // Wave 2.2 Lane R.1 + Wave 2.3 Q.1 — prefer the live engine
       // snapshot when present (gate widened from "rms > 0 || peak > 0"
       // to "snapshot !== null" so silent-microphone audio still drives
@@ -252,8 +263,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       // synthetic sine-pulse only renders during the no-snapshot
       // startup window + the no-Tauri-context fallback.
       let rawLvl: number;
-      if (audio) {
-        const live = audioSnapshotStore.snapshot;
+      if (frame.audio) {
+        const live = frame.snapshot;
         if (live !== null) {
           // RMS is already in [0, 1] from the engine producer; clamp
           // for safety since the wire is `f32`. Add a small peak
@@ -266,7 +277,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         rawLvl = 0.3;
       }
       smLvl = smLvl + (rawLvl - smLvl) * LVL_EMA;
-      draw(t, smLvl, controls);
+      draw(t, smLvl, frame.kind, frame.seed, frame.controls);
       raf = requestAnimationFrame(loop);
     };
     loop();

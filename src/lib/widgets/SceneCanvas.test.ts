@@ -15,6 +15,7 @@
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Wave 2.9 SC.A — `vi.hoisted` lifts the renderer-args recorder so the
@@ -46,6 +47,7 @@ vi.mock('./scene-renderers', async (importOriginal) => {
 
 import { SCENE_KINDS } from './scene-renderers';
 import SceneCanvas from './SceneCanvas.svelte';
+import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -104,12 +106,58 @@ function stubCanvasContext(record: FillStyleRecord): () => void {
   };
 }
 
+type CanvasOp = { type: string; args: unknown[] };
+function makeRecordingContext(): { ctx: CanvasRenderingContext2D; ops: CanvasOp[] } {
+  const ops: CanvasOp[] = [];
+  const record = (type: string, ...args: unknown[]): void => {
+    ops.push({ type, args });
+  };
+  const gradient = (type: string, args: unknown[]): CanvasGradient => {
+    record(type, ...args);
+    return {
+      addColorStop: (offset: number, color: string): void => record(`${type}:stop`, offset, color),
+    } as unknown as CanvasGradient;
+  };
+  const base: Record<PropertyKey, unknown> = {
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    globalCompositeOperation: 'source-over',
+    save: () => record('save'),
+    restore: () => record('restore'),
+    translate: (...args: unknown[]) => record('translate', ...args),
+    rotate: (...args: unknown[]) => record('rotate', ...args),
+    beginPath: () => record('beginPath'),
+    moveTo: (...args: unknown[]) => record('moveTo', ...args),
+    lineTo: (...args: unknown[]) => record('lineTo', ...args),
+    closePath: () => record('closePath'),
+    fill: () => record('fill'),
+    stroke: () => record('stroke'),
+    arc: (...args: unknown[]) => record('arc', ...args),
+    clearRect: (...args: unknown[]) => record('clearRect', ...args),
+    fillRect: (...args: unknown[]) => record('fillRect', ...args),
+    createLinearGradient: (...args: unknown[]) => gradient('linearGradient', args),
+    createRadialGradient: (...args: unknown[]) => gradient('radialGradient', args),
+  };
+  return {
+    ops,
+    ctx: new Proxy(base, {
+      set(target, prop, value): boolean {
+        record(`set:${String(prop)}`, value);
+        target[prop] = value;
+        return true;
+      },
+    }) as unknown as CanvasRenderingContext2D,
+  };
+}
+
 beforeEach(() => {
   stubMatchMedia(false);
   rendererSpy.mockClear();
 });
 
 afterEach(() => {
+  audioSnapshotStore.unsubscribe();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   cleanup();
@@ -219,6 +267,33 @@ describe('SceneCanvas widget', () => {
     });
     expect(container.querySelector('canvas.scene-canvas')).not.toBeNull();
     expect(() => unmount()).not.toThrow();
+  });
+
+  it('does not tear down the rAF loop when the live audio snapshot mutates', async () => {
+    const restore = stubCanvasContext({ styles: [] });
+    audioSnapshotStore.unsubscribe();
+    const requestAnimationFrameSpy = vi.fn(() => 41);
+    const cancelAnimationFrameSpy = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrameSpy);
+    vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrameSpy);
+    try {
+      render(SceneCanvas, { props: { kind: 'rings', seed: 0, audio: true } });
+      await tick();
+      expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
+
+      audioSnapshotStore.snapshot = {
+        bpm: 128,
+        rms: 0.25,
+        peak: 0.5,
+        fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      };
+      await tick();
+
+      expect(cancelAnimationFrameSpy).not.toHaveBeenCalled();
+      expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      restore();
+    }
   });
 
   // Wave 2.9 SC.A — controls pre-multiplier coverage. The reduce-motion
@@ -387,5 +462,100 @@ describe('SceneCanvas widget', () => {
     } finally {
       restore();
     }
+  });
+
+  it('passes renderer-owned controls through as an optional renderer argument', () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    const controls = {
+      rotation_speed: 1,
+      warp_amount: 1,
+      segments: 1,
+      low_band: 1,
+      mid_band: 0.5,
+      high_band: 0,
+      palette: 1,
+      scale: 1,
+    };
+    try {
+      render(SceneCanvas, {
+        props: { kind: 'kaleido', seed: 2, controls },
+      });
+      expect(rendererSpy).toHaveBeenCalled();
+      expect(rendererSpy.mock.calls[0]?.[6]).toBe(controls);
+    } finally {
+      restore();
+    }
+  });
+
+  it('actual kaleido renderer maps geometry and palette controls visibly', async () => {
+    const actual = await vi.importActual<typeof import('./scene-renderers')>('./scene-renderers');
+    const low = makeRecordingContext();
+    const high = makeRecordingContext();
+
+    actual.RENDERERS.kaleido(low.ctx, 1.5, 2, 120, 80, 0.5, {
+      segments: 0,
+      rotation_speed: 0,
+      warp_amount: 0,
+      palette: 0,
+      scale: 0,
+    });
+    actual.RENDERERS.kaleido(high.ctx, 1.5, 2, 120, 80, 0.5, {
+      segments: 1,
+      rotation_speed: 1,
+      warp_amount: 1,
+      palette: 1,
+      scale: 1,
+    });
+
+    const lowRotates = low.ops.filter((op) => op.type === 'rotate');
+    const highRotates = high.ops.filter((op) => op.type === 'rotate');
+    expect(highRotates.length).toBeGreaterThan(lowRotates.length);
+    expect(highRotates[0]?.args[0]).not.toBe(lowRotates[0]?.args[0]);
+
+    const lowFanHeight = Math.max(
+      ...low.ops
+        .filter((op) => op.type === 'lineTo' && typeof op.args[1] === 'number')
+        .map((op) => Math.abs(op.args[1] as number)),
+    );
+    const highFanHeight = Math.max(
+      ...high.ops
+        .filter((op) => op.type === 'lineTo' && typeof op.args[1] === 'number')
+        .map((op) => Math.abs(op.args[1] as number)),
+    );
+    expect(highFanHeight).toBeGreaterThan(lowFanHeight);
+
+    const lowPalette = low.ops.find((op) => op.type === 'linearGradient:stop')?.args[1];
+    const highPalette = high.ops.find((op) => op.type === 'linearGradient:stop')?.args[1];
+    expect(highPalette).not.toBe(lowPalette);
+  });
+
+  it('actual bars renderer maps band controls and floors narrow bar widths', async () => {
+    const actual = await vi.importActual<typeof import('./scene-renderers')>('./scene-renderers');
+    const low = makeRecordingContext();
+    const high = makeRecordingContext();
+
+    actual.RENDERERS.bars(low.ctx, 0.5, 0, 16, 60, 0.5, {
+      segments: 1,
+      low_band: 0,
+      mid_band: 0,
+      high_band: 0,
+      scale: 0,
+    });
+    actual.RENDERERS.bars(high.ctx, 0.5, 0, 16, 60, 0.5, {
+      segments: 1,
+      low_band: 1,
+      mid_band: 1,
+      high_band: 1,
+      scale: 1,
+    });
+
+    const lowBars = low.ops.filter((op) => op.type === 'fillRect').slice(1);
+    const highBars = high.ops.filter((op) => op.type === 'fillRect').slice(1);
+    expect(highBars.every((op) => typeof op.args[2] === 'number' && op.args[2] >= 1)).toBe(true);
+
+    const lowMaxHeight = Math.max(...lowBars.map((op) => op.args[3] as number));
+    const highMaxHeight = Math.max(...highBars.map((op) => op.args[3] as number));
+    expect(highMaxHeight).toBeGreaterThan(lowMaxHeight);
   });
 });

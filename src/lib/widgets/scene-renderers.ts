@@ -12,11 +12,14 @@
 // `SceneCanvas` form used by the Perform preview hero / Author live-
 // preview tile.
 //
-// Renderer signature mirrors the bundle: `(ctx, t, seed, w, h, lvl)`
-// with `lvl` ∈ [0, 1] (audio level proxy). For SceneStill, `lvl` is
-// fixed at 0.5 and `t` defaults to `seed * 13.7` per the bundle
-// `renderStill` body. The fix on `t` keeps thumbnails deterministic per
-// seed across reloads.
+// Renderer signature keeps the bundle's 6-arg public arity:
+// `(ctx, t, seed, w, h, lvl)` with `lvl` ∈ [0, 1] (audio level proxy).
+// SceneCanvas may pass optional name-keyed control metadata via a rest
+// arg, which preserves `Function.length === 6` for SceneStill/tests while
+// letting live previews wire geometry, palette, scale and band controls.
+// For SceneStill, `lvl` is fixed at 0.5 and `t` defaults to `seed * 13.7`
+// per the bundle `renderStill` body. The fix on `t` keeps thumbnails
+// deterministic per seed across reloads.
 //
 // **Wave 2.3 Q.1 audio-reactivity widening.** The bundle source carries
 // `lvl` in every renderer signature but only consumes it from
@@ -72,6 +75,9 @@ export type SceneKind =
   | 'dunes'
   | 'lattice';
 
+export type SceneControlValue = number | readonly number[];
+export type SceneRendererControls = Readonly<Record<string, SceneControlValue>>;
+
 export const SCENE_KINDS: readonly SceneKind[] = [
   'rings',
   'fluid',
@@ -98,6 +104,7 @@ export type SceneRenderer = (
   w: number,
   h: number,
   lvl: number,
+  ...rest: readonly [controls?: SceneRendererControls]
 ) => void;
 
 /**
@@ -108,6 +115,125 @@ export type SceneRenderer = (
  */
 function pulse(lvl: number): number {
   return 0.6 + Math.max(0, Math.min(1, lvl)) * 0.4;
+}
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function controlNumber(
+  controls: SceneRendererControls | undefined,
+  key: string,
+): number | undefined {
+  const value = controls?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function controlUnit(
+  controls: SceneRendererControls | undefined,
+  key: string,
+  fallback: number,
+): number {
+  const raw = controlNumber(controls, key);
+  return raw === undefined ? fallback : clamp01(raw);
+}
+
+function optionalUnitControl(
+  controls: SceneRendererControls | undefined,
+  key: string,
+): number | undefined {
+  const raw = controlNumber(controls, key);
+  return raw === undefined ? undefined : clamp01(raw);
+}
+
+function segmentCount(controls: SceneRendererControls | undefined, fallback: number): number {
+  const raw = controlNumber(controls, 'segments');
+  if (raw === undefined) return fallback;
+  const native = raw <= 1 ? 2 + clamp01(raw) * 22 : raw;
+  return Math.max(2, Math.min(64, Math.round(native)));
+}
+
+function rotationRate(controls: SceneRendererControls | undefined, fallback: number): number {
+  const raw = controlNumber(controls, 'rotation_speed');
+  if (raw === undefined) return fallback;
+  return 0.05 + clamp01(raw) * 0.6;
+}
+
+function warpAmount(controls: SceneRendererControls | undefined, fallback: number): number {
+  return controlUnit(controls, 'warp_amount', fallback);
+}
+
+function scaleMultiplier(controls: SceneRendererControls | undefined): number {
+  const raw = controlNumber(controls, 'scale');
+  if (raw === undefined) return 1;
+  if (raw <= 1) return 0.5 + clamp01(raw);
+  return Math.max(0.25, Math.min(4, raw));
+}
+
+function paletteIndex(controls: SceneRendererControls | undefined): number | undefined {
+  const raw = controlNumber(controls, 'palette');
+  if (raw === undefined) return undefined;
+  const native = raw <= 1 ? raw * 3 : raw;
+  return Math.max(0, Math.min(3, Math.round(native)));
+}
+
+function positiveHue(hue: number): number {
+  return ((hue % 360) + 360) % 360;
+}
+
+function paletteHue(controls: SceneRendererControls | undefined, hue: number): number {
+  const base = positiveHue(hue);
+  switch (paletteIndex(controls)) {
+    case 0:
+      return 15 + base * 0.16;
+    case 2:
+      return 185 + base * 0.18;
+    case 3:
+      return 0;
+    default:
+      return base;
+  }
+}
+
+function paletteSaturation(
+  controls: SceneRendererControls | undefined,
+  saturation: number,
+): number {
+  switch (paletteIndex(controls)) {
+    case 0:
+      return Math.max(45, Math.min(100, saturation * 0.9));
+    case 2:
+      return Math.max(35, Math.min(100, saturation * 0.72));
+    case 3:
+      return 0;
+    default:
+      return Math.max(0, Math.min(100, saturation));
+  }
+}
+
+function hslControl(
+  controls: SceneRendererControls | undefined,
+  hue: number,
+  saturation: number,
+  lightness: number,
+): string {
+  return `hsl(${paletteHue(controls, hue)} ${paletteSaturation(controls, saturation)}% ${Math.max(
+    0,
+    Math.min(100, lightness),
+  )}%)`;
+}
+
+function hslaControl(
+  controls: SceneRendererControls | undefined,
+  hue: number,
+  saturation: number,
+  lightness: number,
+  alpha: number,
+): string {
+  return `hsla(${paletteHue(controls, hue)} ${paletteSaturation(controls, saturation)}% ${Math.max(
+    0,
+    Math.min(100, lightness),
+  )}% / ${clamp01(alpha)})`;
 }
 
 const rings: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
@@ -172,25 +298,31 @@ const grid: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const kaleido: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const kaleido: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   const cx = w / 2;
   const cy = h / 2;
   ctx.save();
   ctx.translate(cx, cy);
   ctx.fillStyle = '#000';
   ctx.fillRect(-w / 2, -h / 2, w, h);
-  const slices = 6;
+  const slices = segmentCount(controls, 6);
+  const rotRate = rotationRate(controls, 0.2);
+  const warp = warpAmount(controls, 0.4);
+  const scale = scaleMultiplier(controls);
+  const reach = w * (0.35 + scale * 0.15);
+  const fanHalfHeight = h * (0.05 + warp * 0.125) + lvl * 20;
   for (let s = 0; s < slices; s++) {
     ctx.save();
-    ctx.rotate((s / slices) * Math.PI * 2 + t * 0.2);
-    const g = ctx.createLinearGradient(0, 0, w * 0.5, 0);
-    g.addColorStop(0, `hsl(${(t * 50 + seed * 40 + s * 30) % 360} 90% 60%)`);
+    ctx.rotate((s / slices) * Math.PI * 2 + t * rotRate);
+    const g = ctx.createLinearGradient(0, 0, reach, 0);
+    g.addColorStop(0, hslControl(controls, t * 50 + seed * 40 + s * 30, 90, 60));
     g.addColorStop(1, 'transparent');
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(w * 0.5, -h * 0.1 - lvl * 20);
-    ctx.lineTo(w * 0.5, h * 0.1 + lvl * 20);
+    ctx.lineTo(reach, -fanHalfHeight);
+    ctx.lineTo(reach, fanHalfHeight);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -404,23 +536,33 @@ const ink: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const bars: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const bars: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   ctx.fillStyle = '#050507';
   ctx.fillRect(0, 0, w, h);
-  const n = 32;
+  const n = segmentCount(controls, 32);
   // Wave 2.3 Q.1 audio-coupling: bar heights pulse with `lvl` so the
   // spectrum widget visibly reacts. Pattern `(0.6 + lvl * 0.4)` keeps
   // silent audio at 60% bar height (readable) while loud audio
   // pushes to full extent.
   const p = pulse(lvl);
+  const scale = scaleMultiplier(controls);
+  const low = optionalUnitControl(controls, 'low_band');
+  const mid = optionalUnitControl(controls, 'mid_band');
+  const high = optionalUnitControl(controls, 'high_band');
   for (let i = 0; i < n; i++) {
     const v = Math.abs(Math.sin(t * 2 + i * 0.4 + seed)) * (1 - (i / n) * 0.3);
-    const bh = v * h * 0.95 * p;
+    const band = i < n / 3 ? low : i < (n * 2) / 3 ? mid : high;
+    const bandScale = band === undefined ? 1 : 0.45 + band * 1.1;
+    const bh = Math.max(1, Math.min(h, v * h * 0.75 * p * scale * bandScale));
     const x = (i / n) * w;
-    const bw = w / n - 2;
+    const bw = Math.max(1, w / n - 2);
     const g = ctx.createLinearGradient(0, h - bh, 0, h);
-    g.addColorStop(0, `hsl(${(i * 10 + t * 30 + seed * 40) % 360} 95% 65%)`);
-    g.addColorStop(1, `hsl(${(i * 10 + t * 30 + seed * 40 + 30) % 360} 95% 30%)`);
+    g.addColorStop(0, hslControl(controls, i * 10 + t * 30 + seed * 40, 95, 55 + bandScale * 10));
+    g.addColorStop(
+      1,
+      hslControl(controls, i * 10 + t * 30 + seed * 40 + 30, 95, 25 + bandScale * 5),
+    );
     ctx.fillStyle = g;
     ctx.fillRect(x, h - bh, bw, bh);
   }
@@ -458,28 +600,34 @@ const dunes: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
   }
 };
 
-const lattice: SceneRenderer = (ctx, t, seed, w, h, lvl) => {
+const lattice: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
+  const controls = rest[0];
   ctx.fillStyle = '#030508';
   ctx.fillRect(0, 0, w, h);
-  const s = 20;
+  const scale = scaleMultiplier(controls);
+  const s = Math.max(8, 20 / scale);
   const cx = w / 2;
   const cy = h / 2;
+  const maxDim = Math.max(1, w, h);
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(Math.sin(t * 0.2 + seed) * 0.2);
+  ctx.rotate(
+    Math.sin(t * rotationRate(controls, 0.2) + seed) * (0.1 + warpAmount(controls, 0.4) * 0.25),
+  );
   // Wave 2.3 Q.1 audio-coupling: per-node dot radius + lightness
   // jitter pulse with `lvl`.
-  const dot = 3 + lvl * 3;
+  const dot = (3 + lvl * 3) * Math.min(1.8, scale);
   const lightnessBoost = lvl * 15;
   for (let y = -h; y < h; y += s) {
     for (let x = -w; x < w; x += s) {
       const d = Math.hypot(x, y);
       const v = Math.sin(d * 0.03 - t * 2 + seed);
       const hue = (v * 60 + t * 30 + seed * 40) % 360;
-      ctx.fillStyle = `hsla(${hue} 85% ${40 + v * 20 + lightnessBoost}% / ${0.8 - d / Math.max(w, h)})`;
+      const alpha = clamp01(0.8 - d / maxDim);
+      ctx.fillStyle = hslaControl(controls, hue, 85, 40 + v * 20 + lightnessBoost, alpha);
       ctx.fillRect(x - dot / 2, y - dot / 2, dot, dot);
       if (Math.abs(x) < w / 2 && Math.abs(y) < h / 2) {
-        ctx.strokeStyle = `hsla(${hue} 85% 50% / 0.2)`;
+        ctx.strokeStyle = hslaControl(controls, hue, 85, 50, 0.2);
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, y);
