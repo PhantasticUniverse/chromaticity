@@ -46,8 +46,8 @@ the first tick before any analysis history accumulates.
 | `syn_InputLevel` | `float` | `[0, inf)` | Pre-AGC instantaneous input level, computed as `clamp(RMS / AGC_target, 0, inf)` |
 | `syn_RawLevel` | `float` | `[0, inf)` | Alias of `syn_InputLevel` with identical semantics |
 | `syn_Threshold` | `float` | `[0, 1]` | Operator-settable noise-floor gate; audio hops below this value publish zeroed `syn_Level*` and `syn_*Hits` |
-| `chroma_AudioRMS` | `float` | `[0, 1]` | Instantaneous root-mean-square energy of the mono-mixed audio frame |
-| `chroma_AudioPeak` | `float` | `[0, 1]` | Instantaneous peak magnitude of the mono-mixed audio frame |
+| `chroma_AudioRMS` | `float` | `[0, inf)` | Analysis-window root-mean-square energy of the mono-mixed audio frame (computed over the same window as `chroma_AudioFFT` so smoothing is consistent across the audio uniform family) |
+| `chroma_AudioPeak` | `float` | `[0, inf)` | Analysis-window peak magnitude of the mono-mixed audio frame |
 
 ### Array audio uniforms
 

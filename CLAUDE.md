@@ -114,13 +114,16 @@ the additive design — corpora continue to use `commit_all_into` directly with
 - `EV-AUDIO-UNIFORM-IPC` — `Pass` (per ADR-019). Live IPC dispatch flows in
   production after Wave 1c-α-2 (`engine/audio::AudioRuntime` producer +
   `app/shell::TauriIpcEmitter` adapter + drift-corrected 60 Hz scheduler-tick
-  thread in `app/shell/src/lib.rs::run`). Three residual narrowings: (i) Spectrum
-  widget retrofit deferred (post-MVP UX); (ii) `AudioReactivity` 48-bar FFT
-  visualiser stays synthetic-driven (only 4 named band tiles + BPM strip read live
-  via 8 → 4 reduction; post-MVP UX); (iii) stale-but-last-good IPC surfacing
-  through the wire deferred (covered at producer-side T1 by
-  `engine/audio/src/runtime.rs` via `MutexAudioPull` poison-recovery, but not
-  transitively through the IPC seam).
+  thread in `app/shell/src/lib.rs::run`). Round 2 Lane A (PR `#484` round-2
+  amendment) widened the payload with per-axis `AudioAxisAvailability::{Warming,
+Ready}` + `degraded: bool`, surfaced cross-seam as the AUDIO adapter pill;
+  Round 3 Lane Q (PR `#488`) unified RMS / peak with the FFT / BPM analysis
+  window (jitter that prior UI EMA + label-hysteresis patches band-aided is now
+  fixed at source) and renamed our four invented `syn_*` audio symbols to
+  `chroma_*` to honour the namespace reservation. Two residual narrowings:
+  (i) Spectrum widget retrofit deferred (post-MVP UX); (ii) `AudioReactivity`
+  48-bar FFT visualiser stays synthetic-driven (only 4 named band tiles + BPM
+  strip read live via 8 → 4 reduction; post-MVP UX).
 - `EV-ENTITLEMENT-ENFORCEMENT` + `EV-ENTITLEMENT-REVOCATION` — `Pass` at the
   13-cap honored set (`HONORED_TOKEN_CAPABILITIES`, data-only); IO_CAMERA
   intentionally excluded — free at MVP per ADR-009. Revocation expiry-based
@@ -217,8 +220,6 @@ the additive design — corpora continue to use `commit_all_into` directly with
   `publish_syphon_output` real-impl + hardware validation carry forward as known
   follow-up PRs per `docs/EV-GATE-MODEL-AUDIT-checklist.md` Phase-4a Wave 1c-β
   closure section.
-- **Production-bootstrap follow-on** for `EV-AUDIO-UNIFORM-IPC` stale-but-last-good
-  IPC seam surfacing (axis (iii)).
 - **Hardware-gated** validation for `EV-GPU-SELECTION` (dual-GPU) and the
   `EV-CRASH-RESUME` / `EV-CRASH-PAYLOAD-REDACTION` full-injection crash harness.
 - **Post-MVP UX enhancements** — Spectrum widget retrofit + `AudioReactivity`
@@ -470,12 +471,76 @@ layout block updated; Snap panel anatomy "16-slot grid → 8-slot grid"
 `snap.svelte.ts`). Snap panel paragraph also gains a one-sentence note
 about the Wave 2.4 PERF.F slot-label affordance.
 
+**Wave 2.6 Audio-page solidification (2026-05-13).** Five PRs
+(`#463` AUD.E snapshot button, `#464` AUD.D band tiles live 8 → 4
+reduction, `#465` AUD.C uniforms peak / rms live, `#467` AUD.B
+Settings monitoring meter live, `#469` AUD.A audio device
+enumeration) closed live audio-snapshot consumption through the
+Audio view widgets.
+
+**Wave 2.7 Settings-page solidification (2026-05-13).** Four PRs
+(`#471` SET.A tempo + theme TOML; `#472` SET.D reset + about; `#473`
+SET.C output device enum; `#474` SET.B storage + livesources picker)
+closed the Settings view. Drift-cleanup PR `#470` removed stale
+Phase-3+ comments.
+
+**Wave 2.8 cross-cutting fixes (2026-05-15 through 2026-05-16).** Six
+PRs (`#476` LIB.LOCAL scenes-local + media-local folders; `#477` Q.1
+meter EMA smoothing; `#478` AUD.SRC operator input-device preference
+honoured at startup; `#479` SC.B renderer default-state speed bump;
+`#480` SC.A SceneCanvas control pre-multiplier for `speed` /
+`intensity` / `tint`; `#481` SC.C AudioReactivity band-pct label
+hysteresis). 16 seed `.chroma` packages dropped under `scenes-local/`
+(gitignored).
+
+**Pre-alpha fix passes round 1 → round 3 (2026-05-17 through
+2026-05-18).** Three parallel rounds against a mega-review
+(commissioned via `/ultrareview`) and a follow-on clean-room
+reference comparison sweep. **Round 1** (6 PRs, `#482`-`#487`) closed
+the mega-review's BLOCKER / HIGH / MEDIUM cohort: IPC wrappers for
+audio + syphon (`#482`); command bus ordered commit so a dispatched
+command drains through its own commit (`#483`); cpal `Pending`
+polling + FFT / BPM accumulator (`#484`); Perform scene-scoped
+`controlValues` + welcome bundle mapped through `tauri.conf.json`
+`bundle.resources` + Editor reconciled mount via compartments
+(`#485`); atomic settings write + quarantine + hydration gate +
+crash-resume save / recover wired into Tauri launch + OSC default IP
+loopback alignment (`#486`); SceneCanvas rAF reactivity untrack +
+renderer control coverage widening + `data-preview-wired` affordance
+scaffold (`#487`). **Round 2** amended `#484` / `#486` / `#487` to
+close partial-closures called out by the round-1 reviewer fan-out:
+`AudioAxisAvailability::{Warming, Ready}` discriminator + `degraded`
+flag wired cross-seam + AUDIO adapter pill in TopBar; crash-resume
+`discard_crash_resume_snapshot` inverted to preserve snapshot
+across clean exits (recovery is idempotent) + `CrashResumeStatusPayload`
+migrated to `app/ui-bridge`; SceneCanvas reactivity untracked across
+`kind` / `seed` / `controls` / `dpr` + renderer control coverage
+widened to rings / orbit / tunnel / fluid / plasma + universal
+`invert` / `mirror` post-pass + `data-preview-wired="false"`
+affordance shipped for unmapped controls in Perform. **Round 3** (2
+PRs, `#488`-`#489`) closed the clean-room comparison sweep's
+pre-alpha-blocking findings: audio `syn_*` → `chroma_*` rename for
+the four operator-invented symbols (`syn_RMS` / `syn_PEAK` /
+`syn_FFT_LO` / `syn_FFT_HI` → `chroma_AudioRMS` / `chroma_AudioPeak`
+/ `chroma_AudioFFT[8]`) + RMS / peak unified with the FFT / BPM
+analysis window (`#488`); OSC bind-to-action dispatch via typed
+`BindTarget` enum + prefix-parser taxonomy widened to all seven
+registry families (Control / Scene / Preset / Snap / Playlist /
+Audio / Reserved) with distinct `PrefixReserved` diagnostic +
+default OSC ports `DEFAULT_OSC_IN_PORT = 9000` /
+`DEFAULT_OSC_OUT_PORT = 9001` pinned in `defaults.rs` (`#489`).
+
 **What remains synthetic-only.**
 
 - **Live preview render pipeline** — ADR-011 Phase-2+ deferred. Dragging a
   control fires `set_control` through to the engine but the Perform preview
   pane stays a gradient placeholder; the scene's loaded GLSL is parsed and
-  the control schema honored, just not rasterised.
+  the control schema honored, just not rasterised. The canvas-2d procedural
+  preview adapter (`src/lib/widgets/scene-renderers.ts`) was widened in Round 2
+  Lane C to honour `rotation_speed` / `warp_amount` on rings / orbit / tunnel
+  / fluid / plasma + universal `invert` / `mirror` post-pass; unmapped controls
+  render dimmed via `data-preview-wired="false"` affordance in Perform so the
+  silent-no-op feel of round-2-prior UX is closed at the operator surface.
 - **Camera real bindings + Syphon `publish_syphon_output` real-impl** —
   Wave 1c-β follow-ups; per-platform nokhwa concrete bindings + Syphon
   `Send`-trait reconciliation + `list_syphon_servers`

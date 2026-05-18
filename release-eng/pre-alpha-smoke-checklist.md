@@ -493,14 +493,127 @@ walkthrough.
       affordance (sibling tiles unaffected); on success, route flips
       to Perform.
 
-### DESIGN.md tokens (PR `#462`)
+### DESIGN.md tokens (PR `#462` + 2026-05-18 refresh)
 
-- [ ] **Rail width.** Sidebar rail renders at 76 px (`rail.width`),
-      not the prior 48 px doc claim. Status bar renders at 28 px
-      (`status-bar.height`), not 22 px.
+- [ ] **Rail width.** Sidebar rail renders at 52 px (`rail.width` in
+      `DESIGN.md` frontmatter; `AppShell.svelte` grid template).
+      Status bar renders at 28 px (`status-bar.height`).
 - [ ] **Snap slot count.** SnapBar trims to 8 slots
       (`SNAP_SLOT_COUNT = 8` in `snap.svelte.ts`) even though the
       engine carries 16.
+
+## Pre-alpha fix-pass round 1 → round 3 acceptance criteria addendum
+
+Three parallel rounds (2026-05-17 through 2026-05-18) closed every
+mega-review and clean-room comparison finding scoped to pre-alpha.
+The acceptance steps below are NEW operator-visible behaviors layered
+on top of Wave 2.1 / 2.4 / 2.5 / 2.6 / 2.7 / 2.8. Verify in place
+during the walkthrough; failures should be filed via the bug-report
+template.
+
+### Audio engine (rounds 1, 2, 3)
+
+- [ ] **Audio warming arm visible** (Round 2 Lane A, PR `#484` Round
+      2 amendment). With audio reaching the mic (or BlackHole /
+      Loopback loopback), the first ~1.2 s after launch shows
+      BpmRing + BeatDots + AudioReactivity band tiles in a
+      dimmed / `--` placeholder state. Once the FFT / BPM analysis
+      window fills, all four band tiles + the BPM strip transition
+      to live values. This is the new `AudioAxisAvailability::Warming
+→ Ready` state — what looks like "audio not working for the
+      first second" is the documented warmup behavior, NOT a bug.
+- [ ] **AUDIO adapter pill in TopBar** (Round 2 Lane A). Top bar
+      now carries a fourth pill (`AUDIO` alongside `OUT / MIDI /
+OSC`). Healthy = green; degraded = red (set on poison-recovery
+      from the producer thread); warming = yellow during warmup.
+      Try unplugging / replugging the audio input device — the pill
+      reflects state transitions within ~1 scheduler tick (~17 ms).
+- [ ] **Native uniform symbol parity** (Round 3 Lane Q, PR `#488`).
+      Scene authors referencing the four legacy invented `syn_RMS`
+      / `syn_PEAK` / `syn_FFT_LO` / `syn_FFT_HI` names will fail to
+      bind; the canonical native spellings are now `chroma_AudioRMS`
+      / `chroma_AudioPeak` / `chroma_AudioFFT[8]` per
+      `docs/36-reactive-symbol-catalog.md` v1.3.0 (the catalog
+      reflects the rename; any in-flight scene that referenced the
+      old names must be updated).
+- [ ] **RMS / peak smoothness** (Round 3 Lane Q). Watch the
+      AudioReactivity band tile percentage labels for ~10 seconds
+      with audio playing. The values should glide smoothly without
+      sub-second jitter — RMS / peak are now computed over the
+      same analysis window as the FFT, eliminating the source of
+      jitter that earlier UI EMA + label-hysteresis patches
+      band-aided.
+
+### Settings + crash-resume (round 1, round 2 Lane B)
+
+- [ ] **Settings atomic write + quarantine** (Round 1 + Round 2
+      Lane B, PR `#486`). In Settings, change a value (FPS target,
+      OSC port, theme). The settings.toml under Tauri's
+      `app_data_dir` is written atomically (temp + fsync + rename);
+      a hand-corruption of the file (drop a brace, save) before
+      relaunch should land at `settings.toml.malformed-<timestamp>`
+      and the app comes up on defaults rather than failing to
+      launch.
+- [ ] **Crash-resume save / recover wired into launch** (Round 2
+      Lane B). Load a scene, drag controls, save a snap, advance the
+      playlist. From a terminal: `kill -9 <chromaticity-app pid>`.
+      Relaunch. The `CrashResumeBanner.svelte` surfaces a "session
+      recovered" affordance and active scene + Snap slot + playlist
+      position + (Round-1 class-d) OSC / MIDI device bindings
+      restore within ~1 s of the save-cadence window. The discard
+      gate is intentionally not auto-fired on clean exits;
+      restoration is idempotent.
+
+### Renderer control coverage (round 2 Lane C, PR `#487` round 2)
+
+- [ ] **rotation_speed + warp_amount across all responsive
+      renderers.** Load Demo Kaleido or any `examples/*.chroma`
+      scene whose schema declares `rotation_speed` / `warp_amount`.
+      Drag the controls; preview canvas should respond visibly on
+      kaleido / lattice / bars / **rings / orbit / tunnel / fluid /
+      plasma** renderers. (Round-1 baseline covered the first
+      three; Round-2 widened to the last five.)
+- [ ] **Universal `invert` / `mirror` post-pass.** Toggle any
+      scene's `invert` control (or use a fixture that declares it);
+      preview applies a color-channel invert post-pass. Toggle
+      `mirror`; preview flips horizontally. These apply to all 16
+      canvas-2d renderers uniformly.
+- [ ] **`data-preview-wired="false"` affordance.** Load a scene
+      with a control name NOT in the preview adapter's known set
+      (e.g. `gamma` / `focus` / any custom name). The control row
+      in Perform renders with `opacity: 0.7` and a hover tooltip
+      ("engine-only — preview adapter not implemented"). This
+      closes the silent-no-op feel from earlier rounds —
+      controls that fire `set_control` to the engine but have no
+      preview visualization are now operator-visibly dimmed.
+
+### OSC dispatch (round 3 Lane R, PR `#489`)
+
+- [ ] **OSC default IN / OUT ports on fresh install.** Open
+      Settings → OSC (or the OSC view). On a fresh install (no
+      pre-existing `settings.toml`) the IN port is `9000` and the
+      OUT port is `9001`; both are settable. The bind IP defaults
+      to `127.0.0.1` (ADR-013 loopback default; Round 1 Lane B
+      reconciliation moved it off the previous `0.0.0.0`).
+- [ ] **OSC prefix-parser coverage.** Send an inbound OSC packet
+      to a route under `/preset/` or `/snap/` or `/playlist/`
+      (using TouchOSC or `oscsend` from your peer machine). The
+      OSC view's diagnostic counters should NOT increment a
+      `parse-error` counter; the wire parser now accepts all seven
+      registry-family prefixes (Control / Scene / Preset / Snap /
+      Playlist / Audio / Reserved). Sending to `/data/...` returns
+      a distinct `prefix-reserved` diagnostic (not a generic
+      unknown-prefix error).
+- [ ] **OSC bind-to-action dispatch.** Add a route binding
+      via the OSC view: target = `scene:demo-kaleido` on route
+      `/scene/kaleido`. Send an OSC packet (any float arg) to
+      `/scene/kaleido`. The scene loads through the runtime
+      command bus — Perform's preview + Scene Controls header
+      bind to the loaded scene. Repeat with `snap:1` /
+      `preset:0` / `playlist:next` / `control:fx:speed` (the
+      last takes the OSC float arg as the new control value).
+      The new typed `BindTarget` enum covers all five verb
+      families.
 
 ## What's fair game for bug reports
 

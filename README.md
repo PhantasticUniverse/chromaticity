@@ -77,9 +77,46 @@ source / sort / recent filter axis + the canonical bundle sidebar
 preview pane with Open-in-Author handoff + empty-state polish + a
 double-click → Perform handoff. The `DESIGN.md` token contract was
 reconciled against the rendered shell post-Wave-2.4 (`#462`). Wave 2.6
-(Audio page) is in progress at the time of this refresh; subsequent
-pages (Settings, MIDI, OSC, Sources, Playlist, Author, Patch, Import,
-License, Help, Welcome) follow the same playbook.
+(Audio page, 2026-05-13) shipped 5 PRs (`#463`-`#469`) closing live
+audio-snapshot consumption through the Audio view widgets. Wave 2.7
+(Settings page, 2026-05-13) shipped 4 PRs (`#471`-`#474`) closing
+tempo / theme TOML persistence, storage + live-sources pickers, output
+device enumeration, and reset / about. Wave 2.8 (cross-cutting fixes,
+2026-05-15 through 2026-05-16) shipped 6 PRs (`#476`-`#481`) covering
+local scenes / media folders, meter EMA smoothing, operator
+audio-input-device honoured at startup, renderer default-state speed
+bump, SceneCanvas control pre-multiplier, and AudioReactivity band
+label hysteresis.
+
+The pre-alpha fix-pass sequence (2026-05-17 through 2026-05-18) then
+ran three parallel rounds against a mega-review and a clean-room
+reference comparison sweep. **Round 1** (6 PRs, `#482`-`#487`) closed
+the mega-review's BLOCKER / HIGH / MEDIUM cohort: IPC wrappers for
+audio + syphon (`#482`); command bus ordered commit so dispatched
+commands drain through their own commit (`#483`); cpal `Pending`
+polling + FFT / BPM accumulator (`#484`); Perform scene-scoped
+`controlValues` + welcome bundle mapped + editor reconciled
+mount (`#485`); atomic settings write + crash-resume save / recover
+wired into Tauri launch + ADR-013 OSC loopback alignment (`#486`);
+SceneCanvas rAF reactivity untracked + renderer control coverage
+widening (`#487`). **Round 2** amended #484 / #486 / #487 to close
+partial-closures called out by the round-1 reviewer fan-out:
+`AudioAxisAvailability::{Warming, Ready}` discriminator + `degraded`
+flag wired cross-seam + AUDIO adapter pill in TopBar; atomic write
+quarantine + hydration gate + crash-resume class-a-through-d restore
+wired end-to-end; SceneCanvas reactivity untracked across `kind` /
+`seed` / `controls` / `dpr` + renderer control coverage widened to
+rings / orbit / tunnel / fluid / plasma + universal `invert` /
+`mirror` post-pass + `data-preview-wired` affordance for unmapped
+controls. **Round 3** (2 PRs, `#488`-`#489`) closed the clean-room
+comparison sweep's pre-alpha-blocking findings: audio `syn_*` →
+`chroma_*` rename for the four invented symbols + RMS / peak unified
+with the FFT / BPM analysis window (`#488`); OSC bind-to-action
+dispatch + prefix-parser taxonomy widened to all seven registry
+families + default OSC ports IN=9000 / OUT=9001 pinned in
+`defaults.rs` (`#489`). Subsequent pages (MIDI, OSC, Sources, Playlist,
+Author, Patch, Import, License, Help, Welcome) follow the same
+playbook.
 
 ## Repository Layout
 

@@ -145,7 +145,7 @@ spacing:
 components:
   rail:
     background: '{colors.bg-1}'
-    width: 76px
+    width: 52px
     border-right: '1px solid {colors.line-1}'
   rail-icon:
     size: 36px
@@ -291,7 +291,7 @@ Live numerics use `mono-md` or `timecode` and apply `--glow` per theme. The 9px 
 The shell grid is fixed:
 
 ```
-[ 76px rail | 52px topbar      ]
+[ 52px rail | 52px topbar      ]
 [           | main view (scrolls) ]
 [           | Snap bar (~56px, Perform only) ]
 [           | 28px status bar  ]
@@ -366,3 +366,53 @@ Beyond the frontmatter contract, the operator-facing surface includes these prim
 - Don't leak Pulse `--glow` into Atelier. The zero-glow rule on Atelier is what gives it its scenes-as-paper feel.
 - Don't mix `band-*` and `signal-*` in the same chart. The audio→visual mapping breaks.
 - Don't recreate competitor UI. The clean-room policy at `docs/29-cleanroom-legal-policy-baseline.md` is non-negotiable.
+
+## Bundle alignment (2026-05-18)
+
+Periodic comparison sweep against the canonical v0.2-beta UI bundle (`chromaticity-planning/ui-predev-bundle-v0.2-beta/`) per the wireframes-drive-UI/UX feedback memory. The shell wins, but the bundle is the wireframe contract; this section records where the shell currently exceeds the bundle (preserve), where the shell is at parity (no action), and where the shell trails (documented follow-ups, scope decisions for the AO).
+
+### Where the shell EXCEEDS the bundle (preserve)
+
+These divergences are explicit improvements and must not regress in future passes:
+
+- **Semantic spacing scale.** Shell emits a 9-step `--space-*` ladder (`xs / sm / md / lg / xl / 2xl / 3xl / 4xl` per the frontmatter); bundle ships density tokens (`--pad / --gap / --knob / --track-h / --row-h / --fs`) plus raw pixel values. The `--space-*` ladder is the load-bearing primitive; density tokens compose from it.
+- **Semantic typography tokens.** Shell emits role-keyed vars (`--font-size-display-lg`, `--font-size-timecode`, `--letter-spacing-caps-sm`, etc.) that the bundle ships as utility classes + inline sizes. The vars survive theme swaps without per-call-site editing.
+- **TopBar adapter pills live-wired.** Shell's `OUT / AUDIO / MIDI / OSC` pills reflect `loadedSceneStore` + `audioSnapshotStore` + `midiStore` + `oscHealthStore` real cross-seam state; bundle ships a static `STATUS_PILLS` fixture.
+- **AppShell explicit `grid-template-rows`** (`52px 1fr 28px`) + named grid areas (`topbar topbar / rail main / status status`); bundle uses implicit-row flex. The explicit grid is the more rigorous responsive contract.
+- **SnapBar per-slot rename + localStorage labels** (Wave 2.4 PERF.F) — operator affordance the bundle has no equivalent of.
+- **Perform variant switcher** (`STANDARD / CONSOLE`) ported with `localStorage`-persistent store; bundle's variant is a prop with no UI toggle.
+- **Reduced-motion compliance.** Per-widget `matchMedia` gates plus positively-asserted frozen-frame test contracts (`BeatDots.test.ts` "pins the downbeat" / `BpmRing.test.ts` "pins beat 1" / `AudioReactivity.test.ts` "still renders 48 FFT bars under reduce"); bundle has CSS `animation: none` but no test parity.
+- **Focus-trap discipline.** Five modal components implement first-and-last tab-cycle (`HotkeyOverlay.svelte`, `NewSceneModal`, `ConsoleDrawer`, `Settings` panels, `CommandPalette`); bundle's modal pattern is Esc-only.
+- **`aria-live` taxonomy.** Nine `aria-live` call sites across console / import / inputs / author / banners; bundle's `v02_supplement.jsx` ships two. Verbose ARIA breadth in src/lib (~364 references) vs the bundle (~45 references).
+- **rAF cancellation discipline.** Twelve components call `cancelAnimationFrame` in `$effect` teardown (Round 2 Lane C reactivity teardown fix); bundle JSX scaffold does not show explicit cancellation patterns.
+- **WCAG-AA evidence.** `EV-ACCESSIBILITY-AA` axe-core T2 corpus runs against all 14 routed views; bundle ships hand-audit contrast table only.
+- **Document-level paint guarantee.** `tokens.css` sets `html, body { background, color }` unconditionally; bundle's equivalent is conditional on density-fallback.
+- **SPDX headers on tokens** (REUSE 3.2 compliance) — shell-side improvement.
+- **Per-tick clean-room layered architecture** — typed `Command → Event` envelope + replay determinism + V2 forward migration + 7-class crash-resume restoration — none of which the bundle could express.
+
+### Where the shell MATCHES the bundle (no action)
+
+- Color palette (all 7 layers; per-theme variants per Pulse / Atelier / Console; signal / band / category fixtures).
+- TopBar height 52px; status bar 28px (shell honours 28; bundle ships 26 — shell wins per Wave 2.3 Q.2 decision).
+- SnapBar 8-slot grid (engine still 16; widget trims via `SNAP_SLOT_COUNT = 8`).
+- Empty-state corpus (LIBRARY / LIBRARY_FILTERED / PLAYLIST / PLAYLIST_CUES / MIDI_DEVICES / OSC).
+- Perform STANDARD layout grid (`minmax(0, 1fr) 420px`).
+
+### Where the shell TRAILS the bundle (documented follow-ups)
+
+Tracked as scope decisions for future waves; not pre-alpha-blocking. The AO decides scheduling:
+
+- **`--shadow-inset` token missing.** Bundle ships `--shadow-inset` per theme; needed for Console chicklet bevels (line 323 above promises chicklet bevels = 1px inset + 1px outset). Currently we ship only `--shadow-panel`. Console theme's intended visual treatment is not fully expressible without this.
+- **Density tokens absent from `tokens.css`.** The frontmatter contract above and the §Layout density table (`--pad / --gap / --knob / --track-h / --row-h / --fs`) is fully specified, but `src/lib/tokens/tokens.css` does not yet emit these tokens. Density-switching is undeliverable today.
+- **Per-theme radii overrides** (Atelier 2/4/8, Console 2/3/4). `tokens.css` emits Pulse radii only; per-theme overrides live in the planning bundle. §Shapes acknowledges this gap; the planning-bundle override values need promotion into shell tokens before Atelier / Console can fully diverge.
+- **Atelier display-font (Fraunces) not bound.** Bundle swaps `--font-display` to Fraunces under `[data-theme="atelier"]`; `tokens.css` defines `--font-family-display` as Pulse-only. §Typography promises Fraunces; sidecar OFL-1.1 binding deferred per `docs/51-ux-bundle-legal-check.md` §2.
+- **Hotkey vocabulary breadth.** Bundle ships 57 rows in `hotkeys_data.jsx`; `src/lib/data/hotkeys.ts` ships 29 rows. The `?` overlay underdocs ~28 operator hotkeys (likely Author / Library / Playlist / Media cohorts). Data-only port from the bundle.
+- **Arrow-key slider nudge.** `Fader.svelte` / `Knob.svelte` / `CrossFader.svelte` / `CueTransitionCurve.svelte` declare `role="slider"` + `tabindex="0"` + `aria-valuenow` but have no `onkeydown` arrow-key handler. Screen reader announces a slider that does not respond to ↑/↓/←/→. Bundle uses native `<input type="range">` which gets nudge for free; our custom `role="slider"` divs need explicit handlers. ~10 lines per widget.
+- **Global `*` reduced-motion kill-switch.** Bundle has `@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; } }` in `styles.css`. Our coverage is per-widget JS gates + per-component CSS blocks; a decorative-CSS keyframe added in a future PR without explicit gating would not be caught. Recommend mirroring at the `src/app.css` level.
+- **Motion / z-index token scales.** Neither DESIGN.md nor the bundle defines `--duration-*` / `--easing-*` / `--z-*` scales. Z-indices are scattered as raw integers (990 / 1000 / 1010 / 900 / 901 / 950 / 951 / 100 / 101) across AppShell / ConsoleDrawer / NewSceneModal / Settings / HotkeyOverlay. Opportunity to lead the bundle, not just match.
+- **StatusBar audio dBFS chip.** Bundle ships an `<Icon name="audio" /> -9 dBFS` chip between GPU and warnings; our StatusBar omits it. Reads `audioSnapshotStore.snapshot.peak_dbfs`; trivial add.
+- **TopBar cell-divider chrome.** Bundle uses `.tb-section` with 1px right hairlines between brand / pills / metrics for the dense-instrument cadence; our TopBar is a flat 3-col grid with no internal dividers. DESIGN.md §Colors "hairlines over surface colour" spirit supports adding them.
+- **SidebarRail `railtop` brand-mark cell.** Bundle's rail opens with a 40px railtop brand-mark; our rail goes straight into nav (brand-mark rides only in TopBar).
+- **EmptyState tertiary action.** Bundle's `EmptyLibrary` pattern is 3 actions (Install Built-Ins + New Scene + Import); our `EmptyStateCopy` type carries 2 actions max. Widen with `readonly tertiaryAction?` to honour the 3-action bundle pattern.
+
+Per the shell-wins rule, none of these gaps invalidate the existing contract; they are operational improvements queued for a future `feat(ui)`-scope wave once the AO sets the priority. The clean-room `docs/29` posture applies — port behaviourally from the bundle, do not transcribe verbatim.
