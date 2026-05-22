@@ -392,6 +392,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::osc::osc_routes_snapshot,
             commands::osc::bind_osc_route,
             commands::osc::unbind_osc_route,
+            commands::osc::set_audio_threshold,
             commands::picker::pick_folder,
             commands::settings::get_settings,
             commands::settings::set_settings,

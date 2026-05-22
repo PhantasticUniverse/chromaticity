@@ -286,6 +286,25 @@ pub struct AppState {
     pub osc_sender: Mutex<Option<OscSender>>,
     /// Queue of actions emitted by [`Self::osc_adapter`]'s sink.
     pub osc_dispatch_queue: Arc<Mutex<Vec<OscDispatchAction>>>,
+    /// Current audio noise-floor gate threshold value.
+    ///
+    /// Shell-side state (not in the ADR-004 canonical [`State`] — that
+    /// slot is class-e in `engine/runtime/src/crash_resume.rs` and is
+    /// still a documented-deferred no-op). Defaults to `0.0` on
+    /// construction. Updated by two paths:
+    ///
+    /// 1. **Inbound OSC** — when the adapter receives
+    ///    `/audio/threshold {f}` on a route bound to `audio:threshold`,
+    ///    [`drain_queued_osc_actions`] calls
+    ///    [`apply_audio_threshold`](Self::apply_audio_threshold) and
+    ///    emits the outbound announce (the `OscDirection::Both` contract,
+    ///    PR9).
+    /// 2. **Direct set** — the `set_audio_threshold` Tauri command calls
+    ///    the same helper so the operator can set the threshold via the
+    ///    `Shift+T` hotkey path (frontend-only today; the IPC surface is
+    ///    provided here for when the hotkey handler is wired to a backend
+    ///    command).
+    pub audio_threshold: Mutex<f32>,
 }
 
 struct QueuedOscDispatchSink {
@@ -356,6 +375,7 @@ impl AppState {
             osc_adapter: Mutex::new(osc_adapter),
             osc_sender: Mutex::new(osc_sender),
             osc_dispatch_queue,
+            audio_threshold: Mutex::new(0.0_f32),
         }
     }
 
@@ -453,6 +473,39 @@ impl AppState {
                 let mut guard = poisoned.into_inner();
                 *guard = Some(scheduler_thread);
             }
+        }
+    }
+
+    /// Store `value` as the current audio threshold, clamping to `[0.0, 1.0]`.
+    ///
+    /// Called by [`crate::commands::osc::drain_queued_osc_actions`] when
+    /// an inbound `OscDispatchAction::AudioThreshold` fires (the inbound
+    /// path), and by the `set_audio_threshold` Tauri command (the
+    /// direct-set path for the `Shift+T` hotkey).
+    ///
+    /// Returns the stored (post-clamp) value so callers can emit the
+    /// outbound OSC announce with the same bit pattern that will be
+    /// persisted.
+    pub fn store_audio_threshold(&self, value: f32) -> f32 {
+        let clamped = value.clamp(0.0_f32, 1.0_f32);
+        match self.audio_threshold.lock() {
+            Ok(mut guard) => {
+                *guard = clamped;
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = clamped;
+            }
+        }
+        clamped
+    }
+
+    /// Read the current audio threshold value.
+    #[must_use]
+    pub fn current_audio_threshold(&self) -> f32 {
+        match self.audio_threshold.lock() {
+            Ok(guard) => *guard,
+            Err(poisoned) => *poisoned.into_inner(),
         }
     }
 }

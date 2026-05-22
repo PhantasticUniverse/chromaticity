@@ -43,7 +43,7 @@
 use chromaticity_osc_adapter::adapter::{OscAdapter, OscHealthState as AdapterOscHealthState};
 use chromaticity_osc_adapter::bindings::{OscDispatchAction, OscRuntimeCommand};
 use chromaticity_osc_adapter::route_registry::OscRouteError;
-use chromaticity_osc_adapter::sender::OscSender;
+use chromaticity_osc_adapter::sender::{OscArg, OscSender};
 use chromaticity_runtime::{
     Command, CommandBus, ControlId as RuntimeControlId, ControlValue as RuntimeControlValue,
     PresetId, SnapSlotId,
@@ -226,7 +226,31 @@ fn dispatch_osc_action_impl(app: &AppState, action: OscDispatchAction) -> Result
             }
             Ok(())
         }
+        OscDispatchAction::AudioThreshold { value } => {
+            // Store + emit outbound announce (OscDirection::Both contract).
+            apply_audio_threshold_and_announce(app, value);
+            Ok(())
+        }
         _ => Err("unsupported osc dispatch action".to_string()),
+    }
+}
+
+/// Store the audio threshold and emit a single outbound announce to the
+/// configured OSC target.
+///
+/// Called by both the inbound OSC dispatch path and the
+/// `set_audio_threshold` Tauri command so both change-points share the
+/// same announce logic. The emit is best-effort (non-blocking per the
+/// [`OscSender`] posture); a send-buffer-full or socket-closed condition
+/// is silently dropped — the threshold is stored regardless.
+pub(crate) fn apply_audio_threshold_and_announce(app: &AppState, value: f32) {
+    let stored = app.store_audio_threshold(value);
+    let mut guard = match app.osc_sender.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    if let Some(sender) = guard.as_mut() {
+        sender.emit("/audio/threshold", &[OscArg::Float(stored)]);
     }
 }
 
@@ -508,6 +532,29 @@ pub fn bind_osc_route(
 #[tauri::command]
 pub fn unbind_osc_route(app_state: State<'_, AppState>, route: String) -> Result<(), String> {
     unbind_osc_route_impl(app_state.inner(), &route)
+}
+
+/// Set the audio noise-floor gate threshold and emit an outbound OSC
+/// announce on `/audio/threshold {f}`.
+///
+/// This is the direct-set path for the operator `Shift+T` hotkey ("set
+/// audio threshold to current RMS level"). The value is clamped to
+/// `[0.0, 1.0]` before storage; the clamped value is what gets
+/// announced. The announce is best-effort (non-blocking UDP send).
+///
+/// PR9 Lane D — `OscDirection::Both` announce-on-change wire.
+#[tauri::command]
+pub fn set_audio_threshold(app_state: State<'_, AppState>, value: f32) -> Result<f32, String> {
+    let stored = set_audio_threshold_impl(app_state.inner(), value);
+    Ok(stored)
+}
+
+/// Inner implementation for [`set_audio_threshold`]; takes a borrowed
+/// [`AppState`] directly so unit tests can exercise the seam without a
+/// Tauri runtime.
+pub(crate) fn set_audio_threshold_impl(app: &AppState, value: f32) -> f32 {
+    apply_audio_threshold_and_announce(app, value);
+    app.current_audio_threshold()
 }
 
 #[cfg(test)]
@@ -874,6 +921,137 @@ mod tests {
             state.active_preset(),
             None,
             "no preset recalled when preset=None",
+        );
+    }
+
+    // Evidence: EV-INTEGRATION-MATRIX (T1) — PR9 audio-threshold
+    // bidirectionality wire pins (announce-on-change).
+
+    #[test]
+    fn dispatch_audio_threshold_action_stores_value_and_returns_ok() {
+        // An inbound OscDispatchAction::AudioThreshold must be accepted by
+        // dispatch_osc_action_impl without error.
+        let app = AppState::new();
+        dispatch_osc_action_impl(&app, OscDispatchAction::AudioThreshold { value: 0.25 })
+            .expect("AudioThreshold action must dispatch without error");
+        assert_eq!(
+            app.current_audio_threshold(),
+            0.25_f32,
+            "threshold must be stored after dispatch",
+        );
+    }
+
+    #[test]
+    fn set_audio_threshold_impl_stores_and_returns_clamped_value() {
+        // The Tauri command inner impl must clamp out-of-range inputs and
+        // return the stored (clamped) value so callers can verify what was
+        // persisted.
+        let app = AppState::new();
+
+        // Value in range — stored as-is.
+        let returned = set_audio_threshold_impl(&app, 0.42);
+        assert_eq!(
+            returned.to_bits(),
+            0.42_f32.to_bits(),
+            "in-range value must round-trip bit-exactly",
+        );
+        assert_eq!(app.current_audio_threshold().to_bits(), 0.42_f32.to_bits());
+
+        // Above range — clamped to 1.0.
+        let returned = set_audio_threshold_impl(&app, 1.5);
+        assert_eq!(
+            returned, 1.0_f32,
+            "above-range value must be clamped to 1.0"
+        );
+        assert_eq!(app.current_audio_threshold(), 1.0_f32);
+
+        // Below range — clamped to 0.0.
+        let returned = set_audio_threshold_impl(&app, -0.1);
+        assert_eq!(
+            returned, 0.0_f32,
+            "below-range value must be clamped to 0.0"
+        );
+        assert_eq!(app.current_audio_threshold(), 0.0_f32);
+    }
+
+    #[test]
+    fn inbound_threshold_update_triggers_exactly_one_outbound_announce() {
+        // Wire a real receiver, install it as the sender target, dispatch
+        // one AudioThreshold action, and assert exactly one UDP datagram
+        // arrives carrying the threshold value as a float.
+        let receiver = match std::net::UdpSocket::bind("127.0.0.1:0") {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("skipping announce test; receiver bind unavailable: {e}");
+                return;
+            }
+        };
+        receiver
+            .set_read_timeout(Some(std::time::Duration::from_secs(1)))
+            .expect("set read timeout");
+        let recv_addr = receiver.local_addr().expect("receiver local addr");
+
+        let app = AppState::new();
+        // Point the sender at our receiver.
+        {
+            let mut guard = app.osc_sender.lock().expect("osc sender lock");
+            *guard = chromaticity_osc_adapter::sender::OscSender::with_target(recv_addr)
+                .map(Some)
+                .unwrap_or(None);
+        }
+        if app.osc_sender.lock().expect("osc sender lock").is_none() {
+            eprintln!("skipping announce test; sender bind unavailable");
+            return;
+        }
+
+        dispatch_osc_action_impl(&app, OscDispatchAction::AudioThreshold { value: 0.37 })
+            .expect("dispatch must not error");
+
+        // Receive the single datagram and verify it decodes as
+        // `/audio/threshold` with a float argument equal to 0.37.
+        let mut buf = [0u8; 256];
+        let (len, _) = receiver
+            .recv_from(&mut buf)
+            .expect("receiver must get exactly one datagram");
+        assert!(len > 0, "received datagram must be non-empty");
+
+        // The datagram must decode as an OSC message with address
+        // `/audio/threshold` and at least one float argument.
+        let (_, packet) =
+            rosc::decoder::decode_udp(&buf[..len]).expect("datagram must be a valid OSC packet");
+        match packet {
+            rosc::OscPacket::Message(msg) => {
+                assert_eq!(
+                    msg.addr, "/audio/threshold",
+                    "announce address must be /audio/threshold"
+                );
+                assert_eq!(
+                    msg.args.len(),
+                    1,
+                    "announce must carry exactly one argument"
+                );
+                match msg.args[0] {
+                    rosc::OscType::Float(f) => {
+                        assert_eq!(
+                            f.to_bits(),
+                            0.37_f32.to_bits(),
+                            "announced float must be bit-identical to the inbound value",
+                        );
+                    }
+                    ref other => panic!("expected float arg, got {other:?}"),
+                }
+            }
+            other => panic!("expected OSC Message, got {other:?}"),
+        }
+
+        // No second datagram should arrive (non-blocking check).
+        receiver
+            .set_read_timeout(Some(std::time::Duration::from_millis(50)))
+            .expect("set short timeout");
+        let second = receiver.recv_from(&mut buf);
+        assert!(
+            second.is_err(),
+            "exactly one announce must fire per change; got a second datagram: {second:?}",
         );
     }
 }
