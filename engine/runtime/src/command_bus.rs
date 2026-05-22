@@ -174,6 +174,16 @@ pub enum Command {
     /// Advance the active playlist by `step` entries; negative values
     /// move backward.
     PlaylistAdvance { step: i32 },
+    /// Set the active playlist cursor to an absolute `index`.
+    ///
+    /// Parity-closure wave 2 Lane D item 2 (Tier 1): the absolute
+    /// counterpart of [`Command::PlaylistAdvance`], so an OSC
+    /// `/playlists/position {i}` bind can jump the cursor directly.
+    /// Tier-1 scope — `PlaylistStore` is a bare cursor with no
+    /// entry list, so `index` is NOT bounds-checked against a
+    /// playlist length; play / pause / select-by-name stay Phase-4+
+    /// per the `EV-PRESET-PLAYLIST` narrowing.
+    PlaylistSetPosition { index: i32 },
     /// Recall a Snap slot for the active scene.
     SnapRecall { slot: SnapSlotId },
     /// Save current state into a Snap slot.
@@ -221,6 +231,11 @@ pub enum EventPayload {
     PlaylistAdvanced {
         step: i32,
     },
+    /// Mirror of [`Command::PlaylistSetPosition`] (parity-closure
+    /// wave 2 Lane D item 2, Tier 1).
+    PlaylistPositionSet {
+        index: i32,
+    },
     SnapRecalled {
         slot: SnapSlotId,
     },
@@ -250,6 +265,7 @@ impl EventPayload {
             Command::PresetRecall { id } => Self::PresetRecalled { id },
             Command::PresetSave { id } => Self::PresetSaved { id },
             Command::PlaylistAdvance { step } => Self::PlaylistAdvanced { step },
+            Command::PlaylistSetPosition { index } => Self::PlaylistPositionSet { index },
             Command::SnapRecall { slot } => Self::SnapRecalled { slot },
             Command::SnapSave { slot } => Self::SnapSaved { slot },
             Command::SnapClear { slot } => Self::SnapCleared { slot },
@@ -569,6 +585,11 @@ fn command_kind(command: &Command) -> CommandKind {
         Command::PresetRecall { .. } => CommandKind::PresetRecall,
         Command::PresetSave { .. } => CommandKind::PresetSave,
         Command::PlaylistAdvance { .. } => CommandKind::PlaylistAdvance,
+        // Parity-closure wave 2 Lane D item 2: the absolute-set
+        // playlist command folds onto the existing PlaylistAdvance
+        // observability kind (the `ControlSet2D` precedent) — both
+        // are "the playlist cursor moved".
+        Command::PlaylistSetPosition { .. } => CommandKind::PlaylistAdvance,
         Command::SnapRecall { .. } => CommandKind::SnapRecall,
         Command::SnapSave { .. } => CommandKind::SnapSave,
         Command::SnapClear { .. } => CommandKind::SnapClear,
@@ -587,6 +608,9 @@ fn event_kind(payload: &EventPayload) -> EventKind {
         EventPayload::PresetRecalled { .. } => EventKind::PresetRecalled,
         EventPayload::PresetSaved { .. } => EventKind::PresetSaved,
         EventPayload::PlaylistAdvanced { .. } => EventKind::PlaylistAdvanced,
+        // Parity-closure wave 2 Lane D item 2: folds onto the
+        // existing PlaylistAdvanced kind — see `command_kind`.
+        EventPayload::PlaylistPositionSet { .. } => EventKind::PlaylistAdvanced,
         EventPayload::SnapRecalled { .. } => EventKind::SnapRecalled,
         EventPayload::SnapSaved { .. } => EventKind::SnapSaved,
         EventPayload::SnapCleared { .. } => EventKind::SnapCleared,

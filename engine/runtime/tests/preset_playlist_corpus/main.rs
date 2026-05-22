@@ -105,7 +105,7 @@ mod fixtures {
         }
     }
 
-    // --- Fixtures (8 total) ----------------------------------------------
+    // --- Fixtures (9 total) ----------------------------------------------
 
     #[test]
     fn single_preset_recall_sets_active_preset() {
@@ -336,5 +336,46 @@ mod fixtures {
         assert_eq!(state.active_preset(), Some(PresetId(8)));
         assert_eq!(state.playlist_position(), 7);
         assert_eq!(state.control_value(ControlId(11)), Some(ControlValue(0.25)));
+    }
+
+    #[test]
+    fn playlist_set_position_absolute_cursor_semantics() {
+        // Parity-closure wave 2 Lane D item 2 (Tier 1): the absolute
+        // `Command::PlaylistSetPosition` cursor. Three invariants —
+        // it discards an accumulated `PlaylistAdvance` offset, it
+        // honours a negative index verbatim (the Tier-1 cursor is
+        // unbounded; there is no playlist-entry list to clamp
+        // against), and a later `PlaylistAdvance` composes on top of
+        // the set position. Still position-only — play / pause /
+        // select-by-name and the entry model stay Phase-4+ per the
+        // `EV-PRESET-PLAYLIST` narrowing.
+        assert_cross_trial_playlist_position(
+            "set-position overrides prior advance",
+            |bus: &InMemoryBus| {
+                bus.dispatch(Command::PlaylistAdvance { step: 12 })
+                    .expect("playlist command must dispatch");
+                bus.dispatch(Command::PlaylistSetPosition { index: 5 })
+                    .expect("playlist command must dispatch");
+            },
+            5,
+        );
+        assert_cross_trial_playlist_position(
+            "set-position negative index honoured verbatim",
+            |bus: &InMemoryBus| {
+                bus.dispatch(Command::PlaylistSetPosition { index: -8 })
+                    .expect("playlist command must dispatch");
+            },
+            -8,
+        );
+        assert_cross_trial_playlist_position(
+            "advance composes on top of set-position",
+            |bus: &InMemoryBus| {
+                bus.dispatch(Command::PlaylistSetPosition { index: 5 })
+                    .expect("playlist command must dispatch");
+                bus.dispatch(Command::PlaylistAdvance { step: 3 })
+                    .expect("playlist command must dispatch");
+            },
+            8,
+        );
     }
 }

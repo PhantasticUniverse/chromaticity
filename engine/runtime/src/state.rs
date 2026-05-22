@@ -164,6 +164,15 @@ impl State {
                 self.playlist_store.position =
                     self.playlist_store.position.saturating_add(i64::from(step));
             }
+            EventPayload::PlaylistPositionSet { index } => {
+                // Parity-closure wave 2 Lane D item 2 (Tier 1):
+                // absolute cursor set. `i32 -> i64` is a lossless
+                // widening, so unlike `PlaylistAdvanced` (which
+                // saturates because it adds) no clamp is needed.
+                // Tier-1 scope — no playlist-entry model, so `index`
+                // is not bounded against a playlist length.
+                self.playlist_store.position = i64::from(index);
+            }
             EventPayload::SnapRecalled { slot } => {
                 self.snap_store.active = Some(slot);
             }
@@ -536,6 +545,29 @@ mod tests {
         };
         state.apply_event(&event);
         assert_eq!(state.playlist_position(), i64::MAX);
+    }
+
+    #[test]
+    fn playlist_set_position_sets_absolute_cursor() {
+        // Parity-closure wave 2 Lane D item 2 (Tier 1) T1 pin:
+        // PlaylistSetPosition assigns the cursor absolutely —
+        // overriding a prior advance — and a negative index is
+        // honoured verbatim (the Tier-1 cursor is unbounded; there
+        // is no playlist-entry list to clamp against).
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+
+        bus.dispatch(Command::PlaylistAdvance { step: 5 })
+            .expect("playlist advance must dispatch");
+        bus.dispatch(Command::PlaylistSetPosition { index: 2 })
+            .expect("playlist set-position must dispatch");
+        bus.commit_all_into(&mut state);
+        assert_eq!(state.playlist_position(), 2);
+
+        bus.dispatch(Command::PlaylistSetPosition { index: -3 })
+            .expect("playlist set-position must dispatch");
+        bus.commit_all_into(&mut state);
+        assert_eq!(state.playlist_position(), -3);
     }
 
     #[test]
