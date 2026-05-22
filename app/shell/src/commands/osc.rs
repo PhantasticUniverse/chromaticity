@@ -178,6 +178,9 @@ fn runtime_command_from_osc(command: OscRuntimeCommand) -> Result<Command, Strin
             Ok(Command::SnapRecall { slot })
         }
         OscRuntimeCommand::PlaylistAdvance { step } => Ok(Command::PlaylistAdvance { step }),
+        OscRuntimeCommand::PlaylistSetPosition { index } => {
+            Ok(Command::PlaylistSetPosition { index })
+        }
         _ => Err("unsupported osc runtime command".to_string()),
     }
 }
@@ -847,6 +850,52 @@ mod tests {
             Some(SnapSlotId::new(3).expect("valid slot")),
         );
         assert_eq!(state.playlist_position(), -1);
+    }
+
+    // Evidence: EV-INTEGRATION-MATRIX (T1) — PR7 playlist position dispatch
+    // through the shell command bus.
+
+    #[test]
+    fn dispatch_osc_playlist_set_position_commits_through_bus() {
+        // `OscRuntimeCommand::PlaylistSetPosition { index }` must be
+        // accepted by `runtime_command_from_osc` and committed through the
+        // command bus so the runtime playlist cursor lands at the given
+        // absolute index.
+        let app = AppState::new();
+
+        dispatch_osc_action_impl(
+            &app,
+            OscDispatchAction::RuntimeCommand(OscRuntimeCommand::PlaylistSetPosition { index: 4 }),
+        )
+        .expect("PlaylistSetPosition action must dispatch without error");
+
+        let state = app.state.lock().expect("state lock");
+        assert_eq!(
+            state.playlist_position(),
+            4,
+            "playlist cursor must be set to absolute index 4",
+        );
+    }
+
+    #[test]
+    fn live_adapter_dispatches_playlist_position_from_udp() {
+        // End-to-end: bind the position route, send a UDP packet to the
+        // adapter, poll + drain, and assert the runtime cursor moved.
+        let app = AppState::new();
+        let bound = bind_app_osc_ephemeral(&app);
+        bind_osc_route_impl(&app, "/playlists/position {i}", "playlist:position:2")
+            .expect("position route binds");
+        let sender = UdpSocket::bind("127.0.0.1:0").expect("sender binds");
+
+        // `/playlists/position` takes no float args; trigger value is
+        // irrelevant for a no-arg route — the position is encoded in the
+        // bind target string.
+        send_osc(&sender, bound, "/playlists/position", &[]);
+
+        poll_and_drain_until(&app, || {
+            let state = app.state.lock().expect("state lock");
+            state.playlist_position() == 2
+        });
     }
 
     #[test]

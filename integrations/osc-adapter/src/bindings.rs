@@ -41,14 +41,37 @@ pub enum BindTarget {
     Snap { slot: u8 },
     /// `preset:<id>` — dispatches a preset recall.
     Preset { id: u32 },
-    /// `playlist:next` / `playlist:prev` — dispatches playlist +/- 1.
-    Playlist { step: i32 },
+    /// `playlist:next` / `playlist:prev` / `playlist:position:<i>` —
+    /// dispatches a playlist cursor action.
+    ///
+    /// `PlaylistAction::Next` advances by +1; `PlaylistAction::Prev` by
+    /// -1; `PlaylistAction::Position(i)` sets the cursor to an absolute
+    /// index. A non-numeric or otherwise unparseable position segment is
+    /// rejected at parse time with
+    /// [`BindError::InvalidPlaylistPosition`].
+    Playlist { action: PlaylistAction },
     /// `audio:threshold` — dispatches an audio noise-floor gate set.
     ///
     /// The route `/audio/threshold {f}` carries the new threshold as the
     /// first OSC float argument. The host stores the value and emits the
     /// outbound announce (`OscDirection::Both` contract, PR9).
     Audio { kind: AudioTargetKind },
+}
+
+/// Playlist cursor action carried by [`BindTarget::Playlist`].
+///
+/// `Next` and `Prev` are relative one-step advances; `Position(i)`
+/// assigns the cursor to an absolute index (negative indices are
+/// valid — the runtime clamps/wraps per its own policy).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PlaylistAction {
+    /// Advance the playlist cursor by +1.
+    Next,
+    /// Advance the playlist cursor by -1.
+    Prev,
+    /// Set the playlist cursor to an absolute zero-based index.
+    Position(i32),
 }
 
 /// Sub-kind for [`BindTarget::Audio`].
@@ -78,6 +101,13 @@ pub enum BindError {
     InvalidPresetTarget,
     InvalidPresetId(String),
     InvalidPlaylistTarget,
+    /// The `playlist:position:<i>` segment is not a parseable `i32`.
+    ///
+    /// Only produced when the family and action keyword are correct but
+    /// the position integer segment cannot be parsed. Distinct from
+    /// [`BindError::InvalidPlaylistTarget`] which fires on unknown
+    /// action keywords.
+    InvalidPlaylistPosition(String),
     /// The `audio:` bind target sub-kind is unrecognised.
     ///
     /// Only `audio:threshold` is defined at MVP.
@@ -111,8 +141,16 @@ impl core::fmt::Display for BindError {
             Self::InvalidPresetTarget => write!(f, "preset target must be preset:<id>"),
             Self::InvalidPresetId(id) => write!(f, "preset id {id} must be a u32"),
             Self::InvalidPlaylistTarget => {
-                write!(f, "playlist target must be playlist:next or playlist:prev")
+                write!(
+                    f,
+                    "playlist target must be playlist:next, playlist:prev, \
+                     or playlist:position:<i32>",
+                )
             }
+            Self::InvalidPlaylistPosition(raw) => write!(
+                f,
+                "playlist position segment {raw:?} must be a signed integer (i32)",
+            ),
             Self::InvalidAudioTarget => {
                 write!(f, "audio target must be audio:threshold")
             }
@@ -216,12 +254,31 @@ fn parse_preset_target(parts: &[&str]) -> Result<BindTarget, BindError> {
 }
 
 fn parse_playlist_target(parts: &[&str]) -> Result<BindTarget, BindError> {
-    if parts.len() != 2 {
-        return Err(BindError::InvalidPlaylistTarget);
-    }
-    match parts[1].trim().to_ascii_lowercase().as_str() {
-        "next" => Ok(BindTarget::Playlist { step: 1 }),
-        "prev" => Ok(BindTarget::Playlist { step: -1 }),
+    // Accept `playlist:next` (2 parts), `playlist:prev` (2 parts), or
+    // `playlist:position:<i>` (3 parts). All other arities are invalid.
+    match parts.len() {
+        2 => match parts[1].trim().to_ascii_lowercase().as_str() {
+            "next" => Ok(BindTarget::Playlist {
+                action: PlaylistAction::Next,
+            }),
+            "prev" => Ok(BindTarget::Playlist {
+                action: PlaylistAction::Prev,
+            }),
+            _ => Err(BindError::InvalidPlaylistTarget),
+        },
+        3 => {
+            let keyword = parts[1].trim().to_ascii_lowercase();
+            if keyword != "position" {
+                return Err(BindError::InvalidPlaylistTarget);
+            }
+            let raw = parts[2].trim();
+            let index = raw
+                .parse::<i32>()
+                .map_err(|_| BindError::InvalidPlaylistPosition(raw.to_string()))?;
+            Ok(BindTarget::Playlist {
+                action: PlaylistAction::Position(index),
+            })
+        }
         _ => Err(BindError::InvalidPlaylistTarget),
     }
 }
@@ -257,10 +314,29 @@ pub fn control_target_id(bank: &str, name: &str) -> u32 {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum OscRuntimeCommand {
-    ControlSet { id: u32, value: f32 },
-    PresetRecall { id: u32 },
-    SnapRecall { slot: u8 },
-    PlaylistAdvance { step: i32 },
+    ControlSet {
+        id: u32,
+        value: f32,
+    },
+    PresetRecall {
+        id: u32,
+    },
+    SnapRecall {
+        slot: u8,
+    },
+    PlaylistAdvance {
+        step: i32,
+    },
+    /// Set the playlist cursor to an absolute position.
+    ///
+    /// Produced by `playlist:position:<i>` bind targets receiving any
+    /// inbound OSC message on the bound route. The `index` value is
+    /// passed through to `Command::PlaylistSetPosition { index }` in the
+    /// shell-side drain without clamping — the runtime is authoritative
+    /// on valid range.
+    PlaylistSetPosition {
+        index: i32,
+    },
 }
 
 /// Dispatch action emitted to a host-provided sink.
@@ -470,9 +546,17 @@ fn action_for_target(
         BindTarget::Preset { id } => Ok(OscDispatchAction::RuntimeCommand(
             OscRuntimeCommand::PresetRecall { id: *id },
         )),
-        BindTarget::Playlist { step } => Ok(OscDispatchAction::RuntimeCommand(
-            OscRuntimeCommand::PlaylistAdvance { step: *step },
-        )),
+        BindTarget::Playlist { action } => match action {
+            PlaylistAction::Next => Ok(OscDispatchAction::RuntimeCommand(
+                OscRuntimeCommand::PlaylistAdvance { step: 1 },
+            )),
+            PlaylistAction::Prev => Ok(OscDispatchAction::RuntimeCommand(
+                OscRuntimeCommand::PlaylistAdvance { step: -1 },
+            )),
+            PlaylistAction::Position(index) => Ok(OscDispatchAction::RuntimeCommand(
+                OscRuntimeCommand::PlaylistSetPosition { index: *index },
+            )),
+        },
         BindTarget::Audio { kind } => match kind {
             AudioTargetKind::Threshold => {
                 let value = first_float_arg(message)
@@ -502,7 +586,7 @@ mod tests {
 
     use super::{
         AudioTargetKind, BindError, BindTarget, OscDispatchAction, OscDispatchSink,
-        OscRouteBindings, OscRuntimeCommand, control_target_id, parse_bind_target,
+        OscRouteBindings, OscRuntimeCommand, PlaylistAction, control_target_id, parse_bind_target,
     };
 
     #[test]
@@ -532,11 +616,15 @@ mod tests {
         );
         assert_eq!(
             parse_bind_target("playlist:next").unwrap(),
-            BindTarget::Playlist { step: 1 },
+            BindTarget::Playlist {
+                action: PlaylistAction::Next,
+            },
         );
         assert_eq!(
             parse_bind_target("playlist:prev").unwrap(),
-            BindTarget::Playlist { step: -1 },
+            BindTarget::Playlist {
+                action: PlaylistAction::Prev,
+            },
         );
         assert_eq!(
             parse_bind_target("audio:threshold").unwrap(),
@@ -568,6 +656,134 @@ mod tests {
         assert_eq!(
             parse_bind_target("playlist:previous").unwrap_err(),
             BindError::InvalidPlaylistTarget,
+        );
+    }
+
+    // Evidence: EV-INTEGRATION-MATRIX (T1) — PR7 playlist:position bind-target
+    // grammar and dispatch action pins.
+
+    #[test]
+    fn parse_playlist_position_target_accepted() {
+        // `playlist:position:<i>` must parse to `BindTarget::Playlist {
+        // action: Position(i) }` for any valid i32.
+        assert_eq!(
+            parse_bind_target("playlist:position:0").unwrap(),
+            BindTarget::Playlist {
+                action: PlaylistAction::Position(0),
+            },
+        );
+        assert_eq!(
+            parse_bind_target("playlist:position:3").unwrap(),
+            BindTarget::Playlist {
+                action: PlaylistAction::Position(3),
+            },
+        );
+        // Negative indices are valid — runtime defines clamping/wrap policy.
+        assert_eq!(
+            parse_bind_target("playlist:position:-1").unwrap(),
+            BindTarget::Playlist {
+                action: PlaylistAction::Position(-1),
+            },
+        );
+        // Case-insensitive family + action normalisation.
+        assert_eq!(
+            parse_bind_target("PLAYLIST:POSITION:7").unwrap(),
+            BindTarget::Playlist {
+                action: PlaylistAction::Position(7),
+            },
+        );
+    }
+
+    #[test]
+    fn parse_playlist_position_non_numeric_segment_rejected() {
+        // A non-numeric position segment must produce
+        // `InvalidPlaylistPosition`, not a generic `InvalidPlaylistTarget`
+        // or a silent parse failure.
+        let err = parse_bind_target("playlist:position:foo")
+            .expect_err("non-numeric position must be rejected");
+        assert_eq!(err, BindError::InvalidPlaylistPosition("foo".to_string()),);
+        // The Display form must be descriptive: echo the bad segment
+        // and mention the expected type.
+        let msg = err.to_string();
+        assert!(
+            msg.contains("foo"),
+            "error must echo the bad segment; got: {msg}",
+        );
+        assert!(
+            msg.contains("i32") || msg.contains("integer"),
+            "error must describe the expected type; got: {msg}",
+        );
+    }
+
+    #[test]
+    fn parse_playlist_position_missing_segment_rejected_as_invalid_target() {
+        // `playlist:position` without the trailing integer must produce
+        // `InvalidPlaylistTarget` (arity mismatch), not
+        // `InvalidPlaylistPosition`.
+        let err = parse_bind_target("playlist:position")
+            .expect_err("bare playlist:position must be rejected");
+        assert!(
+            matches!(err, BindError::InvalidPlaylistTarget),
+            "expected InvalidPlaylistTarget for missing position segment, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn dispatch_playlist_position_route_emits_set_position_action() {
+        // A bound route dispatching `playlist:position:<i>` must produce
+        // exactly one `OscRuntimeCommand::PlaylistSetPosition { index }`
+        // action with the parsed integer preserved.
+        let mut bindings = OscRouteBindings::new();
+        bindings
+            .bind("/playlists/position {i}", "playlist:position:5")
+            .unwrap();
+        let sink = VecSink::default();
+        let message = rosc::OscMessage {
+            addr: "/playlists/position".to_string(),
+            args: vec![],
+        };
+
+        let dispatched = bindings
+            .dispatch_packet(&rosc::OscPacket::Message(message), &sink)
+            .unwrap();
+
+        assert_eq!(dispatched, 1, "exactly one dispatch action must fire");
+        let actions = sink.actions.lock().unwrap();
+        assert_eq!(actions.len(), 1, "exactly one action in the sink");
+        assert_eq!(
+            actions[0],
+            OscDispatchAction::RuntimeCommand(OscRuntimeCommand::PlaylistSetPosition { index: 5 }),
+        );
+    }
+
+    #[test]
+    fn dispatch_playlist_next_prev_emit_advance_actions() {
+        // Regression guard: after the Playlist variant refactor, next/prev
+        // must still produce `PlaylistAdvance`, not `PlaylistSetPosition`.
+        let mut bindings = OscRouteBindings::new();
+        bindings.bind("/playlists/next", "playlist:next").unwrap();
+        bindings.bind("/playlists/prev", "playlist:prev").unwrap();
+        let sink = VecSink::default();
+
+        for addr in ["/playlists/next", "/playlists/prev"] {
+            let message = rosc::OscMessage {
+                addr: addr.to_string(),
+                args: vec![],
+            };
+            bindings
+                .dispatch_packet(&rosc::OscPacket::Message(message), &sink)
+                .unwrap();
+        }
+
+        let actions = sink.actions.lock().unwrap();
+        assert_eq!(actions.len(), 2);
+        assert_eq!(
+            actions[0],
+            OscDispatchAction::RuntimeCommand(OscRuntimeCommand::PlaylistAdvance { step: 1 }),
+        );
+        assert_eq!(
+            actions[1],
+            OscDispatchAction::RuntimeCommand(OscRuntimeCommand::PlaylistAdvance { step: -1 }),
         );
     }
 
