@@ -69,6 +69,7 @@ use chromaticity_midi_adapter::MidiListenHandle;
 use chromaticity_osc_adapter::adapter::UdpOscAdapter;
 use chromaticity_osc_adapter::bindings::{OscDispatchAction, OscDispatchSink};
 use chromaticity_osc_adapter::route_registry::OscRouteRegistry;
+use chromaticity_osc_adapter::sender::OscSender;
 use chromaticity_runtime::InMemoryBus;
 use chromaticity_runtime::settings::Settings;
 use chromaticity_runtime::state::State;
@@ -274,6 +275,15 @@ pub struct AppState {
     /// drains queued actions through the command bus / shell scene
     /// loader in a separate step.
     pub osc_adapter: Mutex<UdpOscAdapter>,
+    /// Outbound OSC sender owned by the shell.
+    ///
+    /// Wraps a non-blocking UDP send socket targeting the
+    /// operator-configured host:port (ADR-013 §1 loopback default).
+    /// `None` when the initial bind fails (e.g. all ephemeral ports
+    /// exhausted); the failure is logged and the runtime continues
+    /// without outbound OSC. [`configure_live_osc_adapter`]
+    /// replaces the sender when the operator changes outbound settings.
+    pub osc_sender: Mutex<Option<OscSender>>,
     /// Queue of actions emitted by [`Self::osc_adapter`]'s sink.
     pub osc_dispatch_queue: Arc<Mutex<Vec<OscDispatchAction>>>,
 }
@@ -321,6 +331,17 @@ impl AppState {
         osc_adapter.set_dispatch_sink(Arc::new(QueuedOscDispatchSink {
             queue: Arc::clone(&osc_dispatch_queue),
         }));
+        // Attempt to construct the initial outbound sender. Failure
+        // (e.g. all ephemeral ports exhausted) is non-fatal: the
+        // field stays `None` and outbound sends are silently skipped
+        // until `configure_live_osc_adapter` succeeds.
+        let osc_sender = OscSender::new().map(Some).unwrap_or_else(|err| {
+            eprintln!(
+                "[chromaticity-shell] osc outbound sender init failed: {err}; \
+                 outbound OSC disabled until settings configure"
+            );
+            None
+        });
         Self {
             state: Mutex::new(State::default()),
             bus: InMemoryBus::in_memory(),
@@ -333,6 +354,7 @@ impl AppState {
             osc_routes: Mutex::new(OscRouteRegistry::with_default_seed()),
             bundled_scene_root: Mutex::new(None),
             osc_adapter: Mutex::new(osc_adapter),
+            osc_sender: Mutex::new(osc_sender),
             osc_dispatch_queue,
         }
     }

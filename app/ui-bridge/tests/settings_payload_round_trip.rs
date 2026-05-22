@@ -89,6 +89,7 @@ fn nonzero_settings() -> Settings {
         osc: OscSettings {
             local_ip: "192.168.1.42".to_string(),
             port: 9100,
+            out_host: "192.168.1.50".to_string(),
             out_port: 9101,
             tx_enabled: false,
             rx_enabled: true,
@@ -164,6 +165,7 @@ fn nonzero_payload() -> SettingsPayload {
         osc: OscSettingsPayload {
             local_ip: "192.168.1.42".to_string(),
             port: 9100,
+            out_host: "192.168.1.50".to_string(),
             out_port: 9101,
             tx_enabled: false,
             rx_enabled: true,
@@ -432,14 +434,16 @@ fn live_sources_engine_to_payload_round_trip() {
 
 #[test]
 fn osc_settings_engine_to_payload_round_trip() {
-    // Wave 2.1 Lane D.3: pin the OscSettingsPayload field-by-field
-    // mapping so a future shape divergence between
+    // Wave 2.1 Lane D.3 + Lane D (outbound sender): pin the
+    // OscSettingsPayload field-by-field mapping (including the new
+    // out_host field) so a future shape divergence between
     // `chromaticity_runtime::settings::OscSettings` and the bridge
     // mirror surfaces here before the wire shape drifts.
     let settings = nonzero_settings();
     let payload: SettingsPayload = settings.clone().into();
     assert_eq!(payload.osc.local_ip, settings.osc.local_ip);
     assert_eq!(payload.osc.port, settings.osc.port);
+    assert_eq!(payload.osc.out_host, settings.osc.out_host);
     assert_eq!(payload.osc.out_port, settings.osc.out_port);
     assert_eq!(payload.osc.tx_enabled, settings.osc.tx_enabled);
     assert_eq!(payload.osc.rx_enabled, settings.osc.rx_enabled);
@@ -448,5 +452,6 @@ fn osc_settings_engine_to_payload_round_trip() {
     let back: Settings = payload.into();
     assert_eq!(back.osc.local_ip, settings.osc.local_ip);
     assert_eq!(back.osc.port, settings.osc.port);
+    assert_eq!(back.osc.out_host, settings.osc.out_host);
     assert_eq!(back.osc.out_port, settings.osc.out_port);
 }

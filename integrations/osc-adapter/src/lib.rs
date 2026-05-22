@@ -17,6 +17,13 @@
 //! scope; the deferred camera / Syphon arms remain Wave 1c-β scope
 //! per the AO-approved narrowing.
 //!
+//! The outbound send path lives in [`sender`]: [`sender::OscSender`]
+//! wraps a non-blocking `send_to` UDP socket targeting
+//! `DEFAULT_OUTBOUND_TARGET:DEFAULT_OSC_OUT_PORT` by default (ADR-013
+//! §1 loopback) with operator-override support per ADR-013 §6.
+//! The best-effort / drop-on-WouldBlock posture mirrors the inbound
+//! adapter's hardening for oversize / malformed packets.
+//!
 //! The `crate::defaults` module holds the ADR-013 constants the
 //! conformance gate `EV-NET-HARDENING`
 //! (`docs/26-evidence-artifact-registry.md` line 77) asserts
@@ -34,3 +41,4 @@ pub mod bindings;
 pub mod defaults;
 pub mod route_registry;
 pub mod routes;
+pub mod sender;

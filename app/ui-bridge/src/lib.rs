@@ -1643,16 +1643,21 @@ impl From<LiveSourcesSettingsPayload> for chromaticity_runtime::settings::LiveSo
 /// [`chromaticity_runtime::settings::OscSettings`].
 ///
 /// Wave 2.1 Lane D.3: backs the OSC view's listening (`local_ip` +
-/// `port`) + TX/RX toggle inputs. The frontend's `settingsStore`
-/// reads / writes these via the `get_settings` / `set_settings`
-/// handler pair; the engine-side `Settings` document already
-/// composes [`OscSettings`] as a top-level section so this bridge
-/// extension is purely additive.
+/// `port`) + TX/RX toggle inputs. Lane D (OSC outbound sender)
+/// widens this payload with `out_host` — the operator-configurable
+/// outbound target IP per ADR-013 §1/§6. The frontend's
+/// `settingsStore` reads / writes these via the `get_settings` /
+/// `set_settings` handler pair; the engine-side `Settings` document
+/// already composes [`OscSettings`] as a top-level section so this
+/// bridge extension is purely additive.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 #[ts(export)]
 pub struct OscSettingsPayload {
     pub local_ip: String,
     pub port: u16,
+    /// Outbound target host IP (ADR-013 §1 loopback default;
+    /// operator-overridable per §6).
+    pub out_host: String,
     pub out_port: u16,
     pub tx_enabled: bool,
     pub rx_enabled: bool,
@@ -1663,6 +1668,7 @@ impl From<chromaticity_runtime::settings::OscSettings> for OscSettingsPayload {
         Self {
             local_ip: s.local_ip,
             port: s.port,
+            out_host: s.out_host,
             out_port: s.out_port,
             tx_enabled: s.tx_enabled,
             rx_enabled: s.rx_enabled,
@@ -1675,6 +1681,7 @@ impl From<OscSettingsPayload> for chromaticity_runtime::settings::OscSettings {
         Self {
             local_ip: p.local_ip,
             port: p.port,
+            out_host: p.out_host,
             out_port: p.out_port,
             tx_enabled: p.tx_enabled,
             rx_enabled: p.rx_enabled,
