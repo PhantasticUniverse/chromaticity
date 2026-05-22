@@ -341,6 +341,14 @@ const OSC_DEFAULT_ROUTES: &[OscRouteSeed] = &[
         family: OscRouteFamily::Playlist,
     },
     OscRouteSeed {
+        canonical: "/playlists/position {i}",
+        compat_alias: None,
+        type_tag: "i",
+        range: "absolute zero-based index",
+        direction: OscDirection::In,
+        family: OscRouteFamily::Playlist,
+    },
+    OscRouteSeed {
         canonical: "/presets/{name}",
         compat_alias: Some("/preset/{name}"),
         type_tag: "—",
@@ -522,6 +530,36 @@ mod tests {
                 "seed table missing direction {direction:?}"
             );
         }
+    }
+
+    // Evidence: EV-INTEGRATION-MATRIX (T1) — PR7 playlist position seed pin.
+
+    #[test]
+    fn playlist_position_route_is_in_default_seed() {
+        // The `/playlists/position {i}` route must be present in the
+        // canonical seed so operators can bind `playlist:position:<i>`
+        // targets through the OSC view.
+        let registry = OscRouteRegistry::with_default_seed();
+        let entry = registry
+            .get("/playlists/position {i}")
+            .expect("/playlists/position {{i}} must be in the default seed");
+        assert_eq!(entry.direction, OscDirection::In);
+        assert_eq!(entry.family, OscRouteFamily::Playlist);
+        assert!(entry.bind_target.is_none(), "must start unbound");
+    }
+
+    #[test]
+    fn playlist_position_route_accepts_playlist_position_bind_target() {
+        // The seeded position route must accept a `playlist:position:<i>`
+        // bind target via the registry bind path.
+        let mut registry = OscRouteRegistry::with_default_seed();
+        registry
+            .bind("/playlists/position {i}", "playlist:position:3")
+            .expect("/playlists/position {{i}} accepts playlist:position:3");
+        let entry = registry
+            .get("/playlists/position {i}")
+            .expect("seeded route");
+        assert_eq!(entry.bind_target.as_deref(), Some("playlist:position:3"),);
     }
 
     // Evidence: EV-INTEGRATION-MATRIX (T1) — PR9 audio-threshold
