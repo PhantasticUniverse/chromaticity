@@ -27,7 +27,16 @@ pub enum BindTarget {
         control_id: u32,
     },
     /// `scene:<scene_id>` — host callback requests a scene load.
-    Scene { scene_id: String },
+    ///
+    /// The optional `preset` field widens the target to
+    /// `scene:<scene_id>:<preset>` form, requesting that the host also
+    /// recall the given preset after the scene is loaded. A non-numeric
+    /// preset segment is rejected at parse time via
+    /// [`BindError::InvalidScenePreset`].
+    Scene {
+        scene_id: String,
+        preset: Option<u32>,
+    },
     /// `snap:<slot>` — dispatches a Snap recall.
     Snap { slot: u8 },
     /// `preset:<id>` — dispatches a preset recall.
@@ -46,6 +55,7 @@ pub enum BindError {
     EmptyControlPart,
     InvalidSceneTarget,
     EmptySceneId,
+    InvalidScenePreset(String),
     InvalidSnapTarget,
     InvalidSnapSlot(String),
     InvalidPresetTarget,
@@ -66,8 +76,15 @@ impl core::fmt::Display for BindError {
             Self::EmptyControlPart => {
                 write!(f, "control target bank and name must not be empty")
             }
-            Self::InvalidSceneTarget => write!(f, "scene target must be scene:<scene_id>"),
+            Self::InvalidSceneTarget => write!(
+                f,
+                "scene target must be scene:<scene_id> or scene:<scene_id>:<preset>",
+            ),
             Self::EmptySceneId => write!(f, "scene target id must not be empty"),
+            Self::InvalidScenePreset(raw) => write!(
+                f,
+                "scene preset segment {raw:?} must be a non-negative integer (u32)",
+            ),
             Self::InvalidSnapTarget => write!(f, "snap target must be snap:<slot>"),
             Self::InvalidSnapSlot(slot) => write!(f, "snap slot {slot} out of range (max 15)"),
             Self::InvalidPresetTarget => write!(f, "preset target must be preset:<id>"),
@@ -124,15 +141,27 @@ fn parse_control_target(parts: &[&str]) -> Result<BindTarget, BindError> {
 }
 
 fn parse_scene_target(parts: &[&str]) -> Result<BindTarget, BindError> {
-    if parts.len() != 2 {
+    // Accept `scene:<scene_id>` (2 parts) or `scene:<scene_id>:<preset>` (3
+    // parts). Any other arity is rejected as `InvalidSceneTarget`.
+    if parts.len() < 2 || parts.len() > 3 {
         return Err(BindError::InvalidSceneTarget);
     }
     let scene_id = parts[1].trim();
     if scene_id.is_empty() {
         return Err(BindError::EmptySceneId);
     }
+    let preset = if parts.len() == 3 {
+        let raw = parts[2].trim();
+        let id = raw
+            .parse::<u32>()
+            .map_err(|_| BindError::InvalidScenePreset(raw.to_string()))?;
+        Some(id)
+    } else {
+        None
+    };
     Ok(BindTarget::Scene {
         scene_id: scene_id.to_string(),
+        preset,
     })
 }
 
@@ -202,7 +231,15 @@ pub enum OscRuntimeCommand {
 #[non_exhaustive]
 pub enum OscDispatchAction {
     RuntimeCommand(OscRuntimeCommand),
-    SceneLoad { scene_id: String },
+    /// Request a scene load.
+    ///
+    /// When `preset` is `Some(id)`, the host must also recall that preset
+    /// after the scene load completes. A missing or unresolvable preset
+    /// must emit a graceful diagnostic and must NOT abort the scene load.
+    SceneLoad {
+        scene_id: String,
+        preset: Option<u32>,
+    },
 }
 
 /// Host-provided receiver for dispatched OSC actions.
@@ -375,8 +412,9 @@ fn action_for_target(
                 },
             ))
         }
-        BindTarget::Scene { scene_id } => Ok(OscDispatchAction::SceneLoad {
+        BindTarget::Scene { scene_id, preset } => Ok(OscDispatchAction::SceneLoad {
             scene_id: scene_id.clone(),
+            preset: *preset,
         }),
         BindTarget::Snap { slot } => Ok(OscDispatchAction::RuntimeCommand(
             OscRuntimeCommand::SnapRecall { slot: *slot },
@@ -426,6 +464,7 @@ mod tests {
             parse_bind_target("scene:demo-kaleido").unwrap(),
             BindTarget::Scene {
                 scene_id: "demo-kaleido".to_string(),
+                preset: None,
             },
         );
         assert_eq!(
@@ -544,11 +583,97 @@ mod tests {
             &[
                 OscDispatchAction::SceneLoad {
                     scene_id: "demo".to_string(),
+                    preset: None,
                 },
                 OscDispatchAction::RuntimeCommand(OscRuntimeCommand::PresetRecall { id: 7 }),
                 OscDispatchAction::RuntimeCommand(OscRuntimeCommand::SnapRecall { slot: 3 }),
                 OscDispatchAction::RuntimeCommand(OscRuntimeCommand::PlaylistAdvance { step: 1 }),
             ],
+        );
+    }
+
+    // Evidence: EV-INTEGRATION-MATRIX (T1) — scene bind-target two-arg form.
+
+    #[test]
+    fn parse_scene_target_one_arg_yields_none_preset() {
+        // `scene:<id>` — backward-compatible one-arg form, no preset.
+        assert_eq!(
+            parse_bind_target("scene:my-scene").unwrap(),
+            BindTarget::Scene {
+                scene_id: "my-scene".to_string(),
+                preset: None,
+            },
+        );
+    }
+
+    #[test]
+    fn parse_scene_target_two_arg_yields_some_preset() {
+        // `scene:<id>:<preset>` — two-arg form carries the preset id.
+        assert_eq!(
+            parse_bind_target("scene:demo-kaleido:7").unwrap(),
+            BindTarget::Scene {
+                scene_id: "demo-kaleido".to_string(),
+                preset: Some(7),
+            },
+        );
+        // Preset 0 is valid.
+        assert_eq!(
+            parse_bind_target("scene:intro:0").unwrap(),
+            BindTarget::Scene {
+                scene_id: "intro".to_string(),
+                preset: Some(0),
+            },
+        );
+    }
+
+    #[test]
+    fn parse_scene_target_non_numeric_preset_rejected() {
+        // A non-numeric preset segment must produce `InvalidScenePreset`,
+        // not a silent success or a generic `InvalidSceneTarget`.
+        let err = parse_bind_target("scene:my-scene:not-a-number")
+            .expect_err("non-numeric preset must be rejected");
+        assert_eq!(
+            err,
+            BindError::InvalidScenePreset("not-a-number".to_string()),
+        );
+        // The Display form must be descriptive.
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not-a-number"),
+            "error message must echo the bad segment; got: {msg}",
+        );
+        assert!(
+            msg.contains("u32") || msg.contains("integer"),
+            "error message must describe the expected type; got: {msg}",
+        );
+    }
+
+    #[test]
+    fn dispatch_scene_two_arg_emits_scene_load_with_preset() {
+        // A `scene:<id>:<preset>` bind target must produce a `SceneLoad`
+        // action with `preset: Some(id)` so the shell can apply both
+        // actions in sequence.
+        let mut bindings = OscRouteBindings::new();
+        bindings
+            .bind("/scenes/{sceneName}", "scene:demo-kaleido:7")
+            .unwrap();
+        let sink = VecSink::default();
+        let message = OscMessage {
+            addr: "/scenes/demo-kaleido".to_string(),
+            args: Vec::new(),
+        };
+
+        let dispatched = bindings
+            .dispatch_packet(&OscPacket::Message(message), &sink)
+            .unwrap();
+
+        assert_eq!(dispatched, 1);
+        assert_eq!(
+            sink.actions.lock().unwrap().as_slice(),
+            &[OscDispatchAction::SceneLoad {
+                scene_id: "demo-kaleido".to_string(),
+                preset: Some(7),
+            }],
         );
     }
 

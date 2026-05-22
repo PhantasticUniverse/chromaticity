@@ -194,8 +194,36 @@ fn dispatch_osc_action_impl(app: &AppState, action: OscDispatchAction) -> Result
                 .map_err(|err| err.to_string())?;
             Ok(())
         }
-        OscDispatchAction::SceneLoad { scene_id } => {
-            load_scene_by_id_impl(app, &scene_id).map(|_| ())
+        OscDispatchAction::SceneLoad { scene_id, preset } => {
+            // Always attempt the scene load first; the preset recall is
+            // best-effort — a missing or unresolvable preset id must not
+            // abort the scene load.
+            load_scene_by_id_impl(app, &scene_id).map(|_| ())?;
+            if let Some(preset_id) = preset {
+                let recall_result = {
+                    let mut state = app
+                        .state
+                        .lock()
+                        .map_err(|err| format!("state mutex poisoned: {err}"))?;
+                    app.bus
+                        .dispatch_and_commit_into(
+                            Command::PresetRecall {
+                                id: PresetId(preset_id),
+                            },
+                            &mut state,
+                        )
+                        .map_err(|err| err.to_string())
+                };
+                if let Err(err) = recall_result {
+                    // Graceful diagnostic: log and continue; scene load
+                    // already succeeded above.
+                    eprintln!(
+                        "osc scene-load preset recall (id={preset_id}) failed: {err}; \
+                         scene load succeeded",
+                    );
+                }
+            }
+            Ok(())
         }
         _ => Err("unsupported osc dispatch action".to_string()),
     }
@@ -719,11 +747,69 @@ mod tests {
             &app,
             OscDispatchAction::SceneLoad {
                 scene_id: "welcome".to_string(),
+                preset: None,
             },
         )
         .expect("scene target loads");
         let guard = app.loaded_scene.lock().expect("loaded scene lock");
         let record = guard.as_ref().expect("scene loaded");
         assert!(record.path.ends_with("welcome/welcome.chroma"));
+    }
+
+    #[test]
+    fn dispatch_osc_scene_action_with_preset_loads_scene_and_recalls_preset() {
+        // Evidence: EV-INTEGRATION-MATRIX (T1) — scene two-arg dispatch in
+        // the shell: scene loads successfully AND the preset is recalled.
+        let app = AppState::new();
+        app.install_bundled_scene_root(fixture_scene_root());
+
+        dispatch_osc_action_impl(
+            &app,
+            OscDispatchAction::SceneLoad {
+                scene_id: "welcome".to_string(),
+                preset: Some(5),
+            },
+        )
+        .expect("scene+preset action dispatches");
+
+        let guard = app.loaded_scene.lock().expect("loaded scene lock");
+        let record = guard.as_ref().expect("scene loaded");
+        assert!(record.path.ends_with("welcome/welcome.chroma"));
+        drop(guard);
+
+        let state = app.state.lock().expect("state lock");
+        assert_eq!(
+            state.active_preset(),
+            Some(chromaticity_runtime::PresetId(5)),
+            "preset must be recalled after scene load",
+        );
+    }
+
+    #[test]
+    fn dispatch_osc_scene_action_scene_load_succeeds_even_if_preset_were_ignored() {
+        // Evidence: EV-INTEGRATION-MATRIX (T1) — a scene load with
+        // preset=None completes without error (backward-compat one-arg form).
+        let app = AppState::new();
+        app.install_bundled_scene_root(fixture_scene_root());
+
+        dispatch_osc_action_impl(
+            &app,
+            OscDispatchAction::SceneLoad {
+                scene_id: "welcome".to_string(),
+                preset: None,
+            },
+        )
+        .expect("one-arg scene action dispatches");
+
+        let guard = app.loaded_scene.lock().expect("loaded scene lock");
+        let record = guard.as_ref().expect("scene loaded");
+        assert!(record.path.ends_with("welcome/welcome.chroma"));
+
+        let state = app.state.lock().expect("state lock");
+        assert_eq!(
+            state.active_preset(),
+            None,
+            "no preset recalled when preset=None",
+        );
     }
 }
