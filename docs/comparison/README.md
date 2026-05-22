@@ -43,18 +43,30 @@ Per-item template:
 - **Gap notes:** <where we fall short, with the planning trail or future wave reference>
 ```
 
+## Two layers — overview and features
+
+The sweep ships in two granularities so the AO can read it at either depth:
+
+- **Overview layer** (this directory's flat `.md` files): one scored row per
+  documented topic (e.g., "Audio uniforms" as a single item). ~73 items total.
+  Lands the headline at-a-glance picture per Synesthesia documentation group.
+- **Feature-level deep-dive layer** (`features/`): one scored row per
+  individual symbol / function / setting / workflow step / capability. ~857
+  items total. Used to surface clustered gaps that the overview layer
+  aggregates away (e.g., 64 hg_sdf functions blocked on one vendor PR).
+
+The two layers share the same scoring rubric and clean-room posture. They
+are complementary — overview for headline, features for precision.
+
 ## Section index
 
-The Synesthesia docs split into five natural sections; each gets its own
-comparison doc to keep the sweep revisitable in chunks.
-
-| File                                  | Synesthesia surface                                                                                            | Owner                  |
-| :------------------------------------ | :------------------------------------------------------------------------------------------------------------- | :--------------------- |
-| [ssf-format.md](ssf-format.md)        | Synesthesia Shader Format spec — audio uniforms, standard uniforms, functions, external libs, JSON, JS, best practices | Score against `chroma_*` uniforms, scene format, `engine/script` |
-| [faq.md](faq.md)                      | FAQ — general, troubleshooting, license, audio, video, settings, MIDI & OSC                                    | Score against help corpus + Settings + entitlement model + AudioRuntime |
-| [manual.md](manual.md)                | Manual — Control Hotkeys, OSC                                                                                  | Score against 57-row hotkey vocabulary + OSC adapter + bind-to-action |
-| [tutorials.md](tutorials.md)          | Tutorials — quickstart, first scene, presets/favslots/playlists, hotkeys, OBS, Shadertoy convert, JS handlers, v1.16 walkthrough | Score against docs-corpus + Author + Library + Playlist + Import |
-| [resources.md](resources.md)          | Resources — installers, changelogs, scene resources, GLSL resources                                            | Score against release pipeline + scene library corpus + Lygia trial + Shadertoy import |
+| Topic        | Overview                          | Feature-level deep dive                          | Synesthesia surface                                                                                            |
+| :----------- | :-------------------------------- | :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------- |
+| SSF format   | [ssf-format.md](ssf-format.md)    | [features/ssf-format.md](features/ssf-format.md) | Synesthesia Shader Format — audio uniforms, standard uniforms, functions, external libs, JSON, JS, best practices |
+| FAQ          | [faq.md](faq.md)                  | [features/faq.md](features/faq.md)               | FAQ — general, troubleshooting, license, audio, video, settings, MIDI & OSC                                    |
+| Manual       | [manual.md](manual.md)            | [features/manual.md](features/manual.md)         | Manual — Control Hotkeys, OSC                                                                                  |
+| Tutorials    | [tutorials.md](tutorials.md)      | [features/tutorials.md](features/tutorials.md)   | Tutorials — quickstart, first scene, presets/favslots/playlists, hotkeys, OBS, Shadertoy convert, JS handlers, v1.16 walkthrough |
+| Resources    | [resources.md](resources.md)      | [features/resources.md](features/resources.md)   | Resources — installers, changelogs, scene resources, GLSL resources                                            |
 
 ## Revisiting cadence
 
