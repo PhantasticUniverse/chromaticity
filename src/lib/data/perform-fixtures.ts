@@ -37,7 +37,13 @@
  * encoded IDs from the 1000+ offset namespace per Perform.svelte's
  * `META_CONTROL_ID_BASE`). Absent when the spec is purely display
  * (legacy SCENE_CONTROL_GROUPS fixture rows that survive when no
- * scene is loaded). */
+ * scene is loaded).
+ *
+ * Parity-closure Lane D adds `xy` — a 2D XY pad dispatching through
+ * the `set_control_2d` / `get_control_2d` Tauri commands. `value`
+ * is the current `[x, y]` pair; `min` / `max` default to `[-1, -1]`
+ * / `[1, 1]` (the Xy widget's defaults). `controlId` wires the vec2
+ * dispatch through `dispatchXy` in Perform.svelte. */
 export type PerformControlSpec =
   | {
       readonly kind: 'toggle';
@@ -63,6 +69,14 @@ export type PerformControlSpec =
       readonly kind: 'swatch';
       readonly label: string;
       readonly color: string;
+      readonly controlId?: number;
+    }
+  | {
+      readonly kind: 'xy';
+      readonly label: string;
+      readonly value: readonly [number, number];
+      readonly min?: readonly [number, number];
+      readonly max?: readonly [number, number];
       readonly controlId?: number;
     };
 
@@ -211,6 +225,16 @@ export const META_CONTROL_GROUPS: readonly PerformControlGroup[] = [
     controls: [
       { kind: 'toggle', label: 'alpha channel', on: false, controlId: 1050 },
       { kind: 'knob', label: 'transition', value: 0.25, controlId: 1051 },
+      // Parity-closure Lane D: XY focus point control dispatching via the
+      // `set_control_2d` / `get_control_2d` Tauri commands. Uses the
+      // default [-1, 1] range so the centre of the pad represents origin.
+      // controlId 1060 is the first ID in the 1060+ XY sub-namespace.
+      {
+        kind: 'xy',
+        label: 'focus',
+        value: [0, 0] as const,
+        controlId: 1060,
+      },
     ],
   },
 ];

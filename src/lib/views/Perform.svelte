@@ -91,7 +91,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
   import type { ControlSchemaPayload } from '../ipc/bindings';
-  import { dispatchAndRead } from '../stores/control';
+  import { dispatchAndRead, dispatchXy } from '../stores/control';
   import { controlLockStore } from '../stores/controlLock.svelte';
   import { fetchBundledSceneCards } from '../stores/library';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
@@ -109,6 +109,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     Swatch,
     TestCard,
     Toggle,
+    Xy,
   } from '../widgets';
   import {
     sceneKindFromMetadata,
@@ -351,8 +352,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * Read-back from `dispatchAndRead` overwrites the local entry on
    * each commit so the UI reflects the engine-committed value (the
    * round-trip catches engine-side clamping / quantisation).
+   *
+   * Parity-closure Lane D widens the cache to also accept
+   * `[number, number]` pairs for XY controls dispatched through
+   * `set_control_2d`. The scalar-only `cachedControlValue` helper
+   * remains unchanged — XY callers use `cachedXyValue` below.
    */
-  type ControlValueCache = Record<string, number>;
+  type ControlValueCache = Record<string, number | readonly [number, number]>;
   const SCENELESS_CONTROL_SCOPE = 'fixture';
   let controlValues = $state<ControlValueCache>({});
 
@@ -364,6 +370,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   function cachedControlValue(id: number): number | undefined {
     const value = controlValues[controlValueKey(id)];
     return typeof value === 'number' ? value : undefined;
+  }
+
+  /** Read a cached XY pair for the given control id. Returns
+   *  `undefined` when no live value exists yet (widget falls back to
+   *  its fixture / schema-declared default in that case). */
+  function cachedXyValue(id: number): readonly [number, number] | undefined {
+    const value = controlValues[controlValueKey(id)];
+    if (Array.isArray(value) && value.length === 2) {
+      return value as readonly [number, number];
+    }
+    return undefined;
   }
 
   /**
@@ -392,6 +409,38 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       .then((readback) => {
         if (typeof readback === 'number') {
           controlValues = { ...controlValues, [key]: readback };
+        }
+      })
+      .catch(() => {
+        // No Tauri runtime (vite dev / vitest) — local cache stays
+        // optimistic; the engine round-trip is a no-op in this
+        // environment by design.
+      });
+  }
+
+  /**
+   * Parity-closure Lane D — dispatch an XY (vec2) control update to
+   * the engine via `set_control_2d` and update the local cache with
+   * the read-back pair. Mirrors `dispatchControl` for the scalar path,
+   * including the `controlLockStore` guard and the silent-catch for
+   * the no-Tauri-runtime (vite dev / vitest) environment.
+   */
+  function dispatchXyControl(id: number, value: readonly [number, number]): void {
+    if (controlLockStore.isLocked(id)) return;
+    const key = controlValueKey(id);
+    controlValues = { ...controlValues, [key]: value };
+    void dispatchXy(id, [value[0], value[1]])
+      .then((readback) => {
+        if (
+          Array.isArray(readback) &&
+          readback.length === 2 &&
+          typeof readback[0] === 'number' &&
+          typeof readback[1] === 'number'
+        ) {
+          controlValues = {
+            ...controlValues,
+            [key]: [readback[0], readback[1]] as const,
+          };
         }
       })
       .catch(() => {
@@ -533,6 +582,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           dispatchControl(ctl.controlId, ctl.on ? 1 : 0);
         } else if (ctl.kind === 'fader' || ctl.kind === 'knob') {
           dispatchControl(ctl.controlId, ctl.value);
+        } else if (ctl.kind === 'xy') {
+          dispatchXyControl(ctl.controlId, ctl.value);
         }
       }
     }
@@ -594,7 +645,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   /** Apply a uniform-random dispatch to a single fixture row.
    *  Swatches skip (no `controlId`); toggles flip 0/1; numeric kinds
-   *  sample in [0, 1]. */
+   *  sample in [0, 1]; XY pads sample each axis in [min, max]. */
   function randomizeFixtureControl(ctl: PerformControlSpec): void {
     if (ctl.kind === 'swatch') return;
     if (ctl.controlId === undefined) return;
@@ -602,6 +653,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       dispatchControl(ctl.controlId, Math.random() < 0.5 ? 0 : 1);
     } else if (ctl.kind === 'fader' || ctl.kind === 'knob') {
       dispatchControl(ctl.controlId, Math.random());
+    } else if (ctl.kind === 'xy') {
+      const xMin = ctl.min?.[0] ?? -1;
+      const xMax = ctl.max?.[0] ?? 1;
+      const yMin = ctl.min?.[1] ?? -1;
+      const yMax = ctl.max?.[1] ?? 1;
+      dispatchXyControl(ctl.controlId, [
+        xMin + Math.random() * (xMax - xMin),
+        yMin + Math.random() * (yMax - yMin),
+      ]);
     }
   }
 
@@ -698,6 +758,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         dispatchControl(ctl.controlId, ctl.on ? 1 : 0);
       } else if (ctl.kind === 'fader' || ctl.kind === 'knob') {
         dispatchControl(ctl.controlId, ctl.value);
+      } else if (ctl.kind === 'xy') {
+        dispatchXyControl(ctl.controlId, ctl.value);
       }
     }
   }
@@ -760,15 +822,43 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         }
         return { kind: 'swatch', label: payload.name, color: '#ffffff' };
       }
+      case 'Xy': {
+        // Parity-closure Lane D: Xy controls map onto the interactive
+        // `<Xy>` widget dispatching through `set_control_2d`. The
+        // schema's `default` is a `[x, y]` pair; the live XY cache
+        // (keyed by `controlId`) overrides when the operator has
+        // dragged. min / max default to [-1, -1] / [1, 1] (matching
+        // the Xy widget prop defaults) unless the schema declares them.
+        const defaultXy: readonly [number, number] =
+          Array.isArray(def) &&
+          def.length >= 2 &&
+          typeof def[0] === 'number' &&
+          typeof def[1] === 'number'
+            ? [def[0], def[1]]
+            : [0, 0];
+        const liveXy = cachedXyValue(id);
+        const xyValue: readonly [number, number] = liveXy ?? defaultXy;
+        // Use schema min/max when both are available, otherwise use the
+        // Xy widget defaults ([-1, 1]).
+        const xyMin: readonly [number, number] =
+          typeof payload.min === 'number' ? [payload.min, payload.min] : ([-1, -1] as const);
+        const xyMax: readonly [number, number] =
+          typeof payload.max === 'number' ? [payload.max, payload.max] : ([1, 1] as const);
+        return {
+          kind: 'xy',
+          label: payload.name,
+          value: xyValue,
+          min: xyMin,
+          max: xyMax,
+          controlId: id,
+        };
+      }
       case 'Slider':
       case 'Bang':
       case 'Dropdown':
-      case 'Xy':
       case null:
       case undefined: {
-        // Slider / Bang / Dropdown / Xy collapse onto a Fader. Xy's
-        // 2-component default takes the first component as the fader
-        // value; richer widget mapping rides a future wave.
+        // Slider / Bang / Dropdown collapse onto a Fader.
         let value = 0;
         if (typeof def === 'number') {
           value = def;
@@ -852,6 +942,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     return META_CONTROL_GROUPS.map((group): PerformControlGroup => {
       const controls = group.controls.map((spec): PerformControlSpec => {
         if (spec.controlId === undefined) return spec;
+        // XY controls read from the dedicated vec2 cache.
+        if (spec.kind === 'xy') {
+          const liveXy = cachedXyValue(spec.controlId);
+          if (liveXy !== undefined) {
+            return { ...spec, value: liveXy };
+          }
+          return spec;
+        }
         const live = cachedControlValue(spec.controlId);
         if (typeof live !== 'number') return spec;
         if (spec.kind === 'toggle') {
@@ -1438,6 +1536,35 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             {/if}
           {:else if ctl.kind === 'swatch'}
             <Swatch color={ctl.color} label={ctl.label} />
+          {:else if ctl.kind === 'xy'}
+            {#if ctl.controlId !== undefined}
+              {@const id = ctl.controlId}
+              {@const xyMin = ctl.min}
+              {@const xyMax = ctl.max}
+              {#if xyMin !== undefined && xyMax !== undefined}
+                <Xy
+                  value={ctl.value}
+                  min={xyMin}
+                  max={xyMax}
+                  label={ctl.label}
+                  onchange={(next) => dispatchXyControl(id, next)}
+                />
+              {:else}
+                <Xy
+                  value={ctl.value}
+                  label={ctl.label}
+                  onchange={(next) => dispatchXyControl(id, next)}
+                />
+              {/if}
+            {:else}
+              {@const xyMin = ctl.min}
+              {@const xyMax = ctl.max}
+              {#if xyMin !== undefined && xyMax !== undefined}
+                <Xy value={ctl.value} min={xyMin} max={xyMax} label={ctl.label} />
+              {:else}
+                <Xy value={ctl.value} label={ctl.label} />
+              {/if}
+            {/if}
           {/if}
         </div>
       {/each}
@@ -1670,7 +1797,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .cg-row[data-locked='true'] :global(.fader),
   .cg-row[data-locked='true'] :global(.knob),
   .cg-row[data-locked='true'] :global(.toggle),
-  .cg-row[data-locked='true'] :global(.swatch-wrap) {
+  .cg-row[data-locked='true'] :global(.swatch-wrap),
+  .cg-row[data-locked='true'] :global(.xy) {
     opacity: 0.45;
   }
   /* Tighter inner widget gap inside ControlGroup body in this dense

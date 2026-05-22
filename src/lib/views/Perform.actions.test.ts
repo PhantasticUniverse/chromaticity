@@ -262,10 +262,12 @@ describe('Perform view — action buttons (Wave 2.4 Lane PERF.A)', () => {
     invokeMock.mockClear();
     await fireEvent.click(defaultBtn);
     const calls = setControlCalls();
-    // Every fixture meta-control row with a controlId should have
-    // fired one set_control. Count expected dispatchable controls.
+    // Every fixture meta-control row with a controlId should have fired one
+    // set_control — *except* xy controls, which dispatch via set_control_2d
+    // (a separate IPC command not counted by setControlCalls()).
     const expectedDispatchCount = META_CONTROL_GROUPS.flatMap((g) => g.controls).filter(
-      (c) => c.kind !== 'swatch' && 'controlId' in c && c.controlId !== undefined,
+      (c) =>
+        c.kind !== 'swatch' && c.kind !== 'xy' && 'controlId' in c && c.controlId !== undefined,
     ).length;
     expect(calls.length).toBe(expectedDispatchCount);
     // The brightness control (ID base + 1) has fixture default 0.0.
