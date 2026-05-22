@@ -67,6 +67,7 @@ const SAMPLE_PAYLOAD: SettingsPayload = {
   osc: {
     local_ip: '192.168.1.42',
     port: 9100,
+    out_host: '192.168.1.42',
     out_port: 9101,
     tx_enabled: false,
     rx_enabled: true,
@@ -268,6 +269,7 @@ describe('settingsStore', () => {
           osc: {
             local_ip: '127.0.0.1',
             port: 9000,
+            out_host: '127.0.0.1',
             out_port: 9001,
             tx_enabled: true,
             rx_enabled: true,
@@ -345,6 +347,7 @@ describe('settingsStore', () => {
       osc: {
         local_ip: '127.0.0.1',
         port: 9000,
+        out_host: '127.0.0.1',
         out_port: 9001,
         tx_enabled: true,
         rx_enabled: true,

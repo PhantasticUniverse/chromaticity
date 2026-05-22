@@ -5,10 +5,17 @@
  * [`chromaticity_runtime::settings::OscSettings`].
  *
  * Wave 2.1 Lane D.3: backs the OSC view's listening (`local_ip` +
- * `port`) + TX/RX toggle inputs. The frontend's `settingsStore`
- * reads / writes these via the `get_settings` / `set_settings`
- * handler pair; the engine-side `Settings` document already
- * composes [`OscSettings`] as a top-level section so this bridge
- * extension is purely additive.
+ * `port`) + TX/RX toggle inputs. Lane D (OSC outbound sender)
+ * widens this payload with `out_host` — the operator-configurable
+ * outbound target IP per ADR-013 §1/§6. The frontend's
+ * `settingsStore` reads / writes these via the `get_settings` /
+ * `set_settings` handler pair; the engine-side `Settings` document
+ * already composes [`OscSettings`] as a top-level section so this
+ * bridge extension is purely additive.
  */
-export type OscSettingsPayload = { local_ip: string, port: number, out_port: number, tx_enabled: boolean, rx_enabled: boolean, };
+export type OscSettingsPayload = { local_ip: string, port: number,
+/**
+ * Outbound target host IP (ADR-013 §1 loopback default;
+ * operator-overridable per §6).
+ */
+out_host: string, out_port: number, tx_enabled: boolean, rx_enabled: boolean, };

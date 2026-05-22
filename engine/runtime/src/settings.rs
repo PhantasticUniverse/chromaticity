@@ -354,21 +354,28 @@ impl Default for LiveSourcesSettings {
     }
 }
 
-/// OSC adapter operator-facing network defaults — Wave 2.1 Lane D.3.
+/// OSC adapter operator-facing network defaults — Wave 2.1 Lane D.3,
+/// widened with outbound target host in Lane D (OSC outbound sender).
 ///
 /// `local_ip` carries the bind-side interface (ADR-013 §1 default is
 /// `127.0.0.1` loopback; non-loopback values are an explicit operator
 /// opt-in for routable inbound). `port` carries the bind-side inbound
-/// UDP port and `out_port` carries the default outbound target port;
-/// both values come from `chromaticity-osc-adapter` so fresh-install
-/// settings and adapter defaults cannot drift. `tx_enabled` gates
-/// outbound transmission; `rx_enabled` gates inbound packet processing.
+/// UDP port; `out_host` carries the outbound target IP and `out_port`
+/// carries the outbound target UDP port (both default to the ADR-013
+/// §1 loopback posture). Values come from `chromaticity-osc-adapter`
+/// so fresh-install settings and adapter defaults cannot drift.
+/// `tx_enabled` gates outbound transmission; `rx_enabled` gates
+/// inbound packet processing per ADR-013 §6.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OscSettings {
     #[serde(default = "OscSettings::default_local_ip")]
     pub local_ip: String,
     #[serde(default = "OscSettings::default_port")]
     pub port: u16,
+    /// Outbound target host IP (ADR-013 §1 loopback default;
+    /// operator-overridable per §6).
+    #[serde(default = "OscSettings::default_out_host")]
+    pub out_host: String,
     #[serde(default = "OscSettings::default_out_port")]
     pub out_port: u16,
     #[serde(default = "OscSettings::default_tx_enabled")]
@@ -383,6 +390,11 @@ impl OscSettings {
     }
     fn default_port() -> u16 {
         DEFAULT_OSC_IN_PORT
+    }
+    fn default_out_host() -> String {
+        // ADR-013 §1: outbound default target is loopback unless
+        // the operator configures a specific IP per §6.
+        "127.0.0.1".to_string()
     }
     fn default_out_port() -> u16 {
         DEFAULT_OSC_OUT_PORT
@@ -400,6 +412,7 @@ impl Default for OscSettings {
         Self {
             local_ip: Self::default_local_ip(),
             port: Self::default_port(),
+            out_host: Self::default_out_host(),
             out_port: Self::default_out_port(),
             tx_enabled: Self::default_tx_enabled(),
             rx_enabled: Self::default_rx_enabled(),
@@ -984,6 +997,8 @@ mod tests {
         let defaults = Settings::default();
         assert_eq!(defaults.osc.local_ip, "127.0.0.1");
         assert_eq!(defaults.osc.port, DEFAULT_OSC_IN_PORT);
+        // ADR-013 §1 outbound target: loopback default.
+        assert_eq!(defaults.osc.out_host, "127.0.0.1");
         assert_eq!(defaults.osc.out_port, DEFAULT_OSC_OUT_PORT);
         assert!(defaults.osc.tx_enabled);
         assert!(defaults.osc.rx_enabled);
@@ -991,13 +1006,14 @@ mod tests {
 
     #[test]
     fn osc_settings_round_trip_preserves_operator_values() {
-        // Mutating each OSC field and round-tripping through TOML
-        // pins the field-name + serde-attribute stability of the
-        // [osc] section against future drift.
+        // Mutating each OSC field (including the new out_host)
+        // and round-tripping through TOML pins the field-name +
+        // serde-attribute stability of the [osc] section.
         let path = tmp_path("osc-round-trip");
         let mut settings = Settings::default();
         settings.osc.local_ip = "192.168.1.42".to_string();
         settings.osc.port = 9100;
+        settings.osc.out_host = "192.168.1.50".to_string();
         settings.osc.out_port = 9101;
         settings.osc.tx_enabled = false;
         settings.osc.rx_enabled = true;
@@ -1005,9 +1021,32 @@ mod tests {
         let loaded = Settings::load_from_path(&path).unwrap();
         assert_eq!(loaded.osc.local_ip, "192.168.1.42");
         assert_eq!(loaded.osc.port, 9100);
+        assert_eq!(loaded.osc.out_host, "192.168.1.50");
         assert_eq!(loaded.osc.out_port, 9101);
         assert!(!loaded.osc.tx_enabled);
         assert!(loaded.osc.rx_enabled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_osc_settings_without_out_host_loads_via_serde_default() {
+        // Forward-compat: a settings file written before out_host was
+        // added to [osc] MUST deserialise cleanly. The missing field
+        // fills via #[serde(default)] to the ADR-013 §1 loopback value.
+        let path = tmp_path("osc-no-out-host");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(
+                b"[osc]\nlocal_ip = \"127.0.0.1\"\nport = 9000\nout_port = 9001\n\
+                  tx_enabled = true\nrx_enabled = true\n",
+            )
+            .unwrap();
+        }
+        let loaded = Settings::load_from_path(&path).unwrap();
+        assert_eq!(
+            loaded.osc.out_host, "127.0.0.1",
+            "missing out_host must default to loopback per ADR-013 §1",
+        );
         let _ = std::fs::remove_file(&path);
     }
 

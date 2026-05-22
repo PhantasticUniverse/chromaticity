@@ -43,6 +43,7 @@
 use chromaticity_osc_adapter::adapter::{OscAdapter, OscHealthState as AdapterOscHealthState};
 use chromaticity_osc_adapter::bindings::{OscDispatchAction, OscRuntimeCommand};
 use chromaticity_osc_adapter::route_registry::OscRouteError;
+use chromaticity_osc_adapter::sender::OscSender;
 use chromaticity_runtime::{
     Command, CommandBus, ControlId as RuntimeControlId, ControlValue as RuntimeControlValue,
     PresetId, SnapSlotId,
@@ -229,12 +230,18 @@ fn dispatch_osc_action_impl(app: &AppState, action: OscDispatchAction) -> Result
     }
 }
 
-/// Configure the live UDP adapter from the current settings snapshot.
+/// Configure the live UDP adapter and outbound sender from the
+/// current settings snapshot.
 ///
-/// Called during setup and after settings writes. Bind failures are
-/// surfaced to the caller, but the adapter remains installed so the
-/// health command can report attempted bind count and `local_addr =
-/// None` instead of leaving OSC as a silent no-op.
+/// Called during setup and after settings writes. Inbound bind
+/// failures are surfaced to the caller, but the adapter remains
+/// installed so the health command can report attempted bind count
+/// and `local_addr = None` instead of leaving OSC as a silent no-op.
+///
+/// Outbound sender configuration is best-effort: a bind failure for
+/// the sender's ephemeral socket is logged and discarded (the
+/// `osc_sender` slot is set to `None` so subsequent emit calls
+/// short-circuit). This mirrors the inbound best-effort posture.
 pub(crate) fn configure_live_osc_adapter(app: &AppState) -> Result<(), String> {
     let settings = {
         let guard = match app.settings.lock() {
@@ -251,6 +258,7 @@ pub(crate) fn configure_live_osc_adapter(app: &AppState) -> Result<(), String> {
         guard.snapshot()
     };
 
+    // --- Inbound adapter ---
     let mut adapter = match app.osc_adapter.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
@@ -263,18 +271,74 @@ pub(crate) fn configure_live_osc_adapter(app: &AppState) -> Result<(), String> {
                 .map_err(|err| err.to_string())?;
         }
     }
-
     adapter.unbind().map_err(|err| err.to_string())?;
-    if !settings.rx_enabled {
-        return Ok(());
+    if settings.rx_enabled {
+        let ip: IpAddr = settings
+            .local_ip
+            .parse()
+            .map_err(|err| format!("invalid OSC listen IP {}: {err}", settings.local_ip))?;
+        adapter
+            .bind(SocketAddr::new(ip, settings.port))
+            .map_err(|err| err.to_string())?;
     }
-    let ip: IpAddr = settings
-        .local_ip
-        .parse()
-        .map_err(|err| format!("invalid OSC listen IP {}: {err}", settings.local_ip))?;
-    adapter
-        .bind(SocketAddr::new(ip, settings.port))
-        .map_err(|err| err.to_string())
+    drop(adapter);
+
+    // --- Outbound sender (ADR-013 §1 / §6) ---
+    configure_osc_sender(app, &settings);
+
+    Ok(())
+}
+
+/// (Re-)create the outbound [`OscSender`] from the OSC settings
+/// snapshot and install it into [`AppState::osc_sender`].
+///
+/// Best-effort: a bind failure for the sender's ephemeral local
+/// socket is logged to stderr and the slot is set to `None`.
+/// Callers must not treat a `None` slot as fatal — outbound sends
+/// simply no-op until the operator's settings are valid.
+fn configure_osc_sender(app: &AppState, settings: &chromaticity_runtime::settings::OscSettings) {
+    if !settings.tx_enabled {
+        // Operator has disabled outbound transmission. Install None
+        // so subsequent emit calls short-circuit immediately.
+        let mut guard = match app.osc_sender.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        *guard = None;
+        return;
+    }
+    let out_ip: IpAddr = match settings.out_host.parse() {
+        Ok(ip) => ip,
+        Err(err) => {
+            eprintln!(
+                "[chromaticity-shell] invalid OSC outbound host '{}': {err}; \
+                 outbound OSC disabled",
+                settings.out_host,
+            );
+            let mut guard = match app.osc_sender.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            *guard = None;
+            return;
+        }
+    };
+    let target = SocketAddr::new(out_ip, settings.out_port);
+    let new_sender = match OscSender::with_target(target) {
+        Ok(s) => Some(s),
+        Err(err) => {
+            eprintln!(
+                "[chromaticity-shell] osc outbound sender bind failed for \
+                 {target}: {err}; outbound OSC disabled",
+            );
+            None
+        }
+    };
+    let mut guard = match app.osc_sender.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    *guard = new_sender;
 }
 
 /// Poll the live UDP adapter once. The caller must not hold
