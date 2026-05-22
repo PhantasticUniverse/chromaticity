@@ -35,16 +35,21 @@ theme:
 nav:
   - Welcome: index.md
   - Guides:
+      - Quickstart: quickstart.md
       - Perform Mode: perform-mode.md
       - Scene Workflow: scene-workflow.md
       - Library Workflow: library-workflow.md
       - Audio Reactivity: audio-reactivity.md
+      - Livestreaming: livestream.md
       - Importing Shadertoy Scenes: import-shadertoy.md
+      - Best Practices: best-practices.md
   - Reference:
       - Hotkeys: hotkeys-reference.md
       - OSC Routes: osc-routes.md
       - Uniforms: chroma-uniforms.md
       - Settings: settings-reference.md
+      - System Requirements: system-requirements.md
+      - Supported Codecs: supported-codecs.md
   - About: about.md
 
 # Strict-build flag: surface broken links / orphan pages at corpus-build
