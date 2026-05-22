@@ -32,7 +32,9 @@
 //!     wire field: the decoder reads it and dispatches each
 //!     extension by id, so a future extension increments the count
 //!     without a version-tag bump. See `encode_snapshot` for each
-//!     payload.
+//!     payload. Each extension id appears AT MOST ONCE; a trailer
+//!     that repeats an id is rejected with
+//!     `DecodeError::DuplicateExtensionId`.
 //! ```
 //!
 //! Consequences:
@@ -146,6 +148,10 @@ pub enum DecodeError {
     /// session-bindings extension (Wave 4d.3 PR 5, row 80 class-d)
     /// did not decode as valid UTF-8.
     InvalidUtf8,
+    /// A V2 extension id appeared more than once in the envelope
+    /// trailer. The encoder emits each id at most once, so a repeat
+    /// indicates a malformed or tampered buffer.
+    DuplicateExtensionId(u32),
 }
 
 impl fmt::Display for DecodeError {
@@ -166,6 +172,9 @@ impl fmt::Display for DecodeError {
                 write!(f, "unknown extension id 0x{id:08x}")
             }
             Self::InvalidUtf8 => f.write_str("invalid utf-8 in length-prefixed string"),
+            Self::DuplicateExtensionId(id) => {
+                write!(f, "duplicate extension id 0x{id:08x}")
+            }
         }
     }
 }
@@ -487,21 +496,42 @@ fn decode_mapping_store(cursor: &mut Cursor<'_>, state: &mut State) -> Result<()
     Ok(())
 }
 
+/// Decode the V2 envelope extension trailer into `state`.
+///
+/// Reads `extension_count`, then dispatches each `ext_id ||
+/// payload` block by id. Each extension id may appear AT MOST ONCE:
+/// a repeated id surfaces [`DecodeError::DuplicateExtensionId`] and
+/// an unrecognised id surfaces [`DecodeError::UnknownExtensionId`].
+/// A V2 buffer carrying no [`EXT_ID_V2_SCHEMA_METADATA`] extension
+/// synthesizes the [`V2SchemaMetadata::v2_default`].
 fn decode_v2_extensions(cursor: &mut Cursor<'_>, state: &mut State) -> Result<(), DecodeError> {
     let extension_count = cursor.read_be_u32()?;
     let mut metadata: Option<V2SchemaMetadata> = None;
+    let mut seen_session_bindings = false;
+    let mut seen_xy_control_values = false;
     for _ in 0..extension_count {
         let ext_id = cursor.read_be_u32()?;
         match ext_id {
             EXT_ID_V2_SCHEMA_METADATA => {
+                if metadata.is_some() {
+                    return Err(DecodeError::DuplicateExtensionId(ext_id));
+                }
                 let schema_version = cursor.read_be_u32()?;
                 metadata = Some(V2SchemaMetadata { schema_version });
             }
             EXT_ID_V2_SESSION_BINDINGS => {
+                if seen_session_bindings {
+                    return Err(DecodeError::DuplicateExtensionId(ext_id));
+                }
                 decode_session_bindings_extension(cursor, state)?;
+                seen_session_bindings = true;
             }
             EXT_ID_V2_XY_CONTROL_VALUES => {
+                if seen_xy_control_values {
+                    return Err(DecodeError::DuplicateExtensionId(ext_id));
+                }
                 decode_xy_control_values_extension(cursor, state)?;
+                seen_xy_control_values = true;
             }
             other => return Err(DecodeError::UnknownExtensionId(other)),
         }
@@ -662,8 +692,8 @@ mod migration_pins {
     //! - `docs/43-development-standards.md` §15.5 — T-tier definitions.
 
     use super::{
-        DecodeError, V2SchemaMetadata, VERSION_V2, decode_snapshot, encode_snapshot,
-        encode_snapshot_v1, migrate_v1_to_v2,
+        DecodeError, EXT_ID_V2_SCHEMA_METADATA, V2SchemaMetadata, VERSION_V2, decode_snapshot,
+        encode_snapshot, encode_snapshot_v1, encode_state_canonical, migrate_v1_to_v2,
     };
     use crate::command_bus::ControlId;
     use crate::state::State;
@@ -738,6 +768,33 @@ mod migration_pins {
         assert!(
             matches!(err, DecodeError::UnknownVersion(0xFFFF_FFFF)),
             "expected UnknownVersion(0xFFFFFFFF), got {err:?}",
+        );
+    }
+
+    #[test]
+    fn decode_rejects_duplicate_extension_id() {
+        // Drift pin: a V2 envelope whose extension trailer repeats
+        // an extension id MUST surface
+        // `DecodeError::DuplicateExtensionId(_)`. The encoder emits
+        // each id exactly once, so a repeated id is a malformed or
+        // tampered buffer; the decoder must reject it loudly rather
+        // than silently overwriting the first occurrence's payload.
+        // The buffer is forged by hand: a valid V2 prefix + canonical
+        // body, then a trailer declaring two extensions both tagged
+        // EXT_ID_V2_SCHEMA_METADATA.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&VERSION_V2.to_be_bytes());
+        encode_state_canonical(&State::default(), &mut buf);
+        // extension_count = 2, both V2SchemaMetadata.
+        buf.extend_from_slice(&2u32.to_be_bytes());
+        buf.extend_from_slice(&EXT_ID_V2_SCHEMA_METADATA.to_be_bytes());
+        buf.extend_from_slice(&V2SchemaMetadata::SCHEMA_VERSION_V2.to_be_bytes());
+        buf.extend_from_slice(&EXT_ID_V2_SCHEMA_METADATA.to_be_bytes());
+        buf.extend_from_slice(&V2SchemaMetadata::SCHEMA_VERSION_V2.to_be_bytes());
+        let err = decode_snapshot(&buf).expect_err("duplicate extension id must reject");
+        assert!(
+            matches!(err, DecodeError::DuplicateExtensionId(id) if id == EXT_ID_V2_SCHEMA_METADATA),
+            "expected DuplicateExtensionId(0x00000001), got {err:?}",
         );
     }
 
