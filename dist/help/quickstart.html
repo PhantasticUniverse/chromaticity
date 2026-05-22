@@ -1,0 +1,1627 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="In-app help and reference for the Chromaticity desktop runtime.">
+      
+      
+        <meta name="author" content="Chromaticity">
+      
+      
+      
+        <link rel="prev" href="index.html">
+      
+      
+        <link rel="next" href="perform-mode.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Quickstart - Chromaticity Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#quickstart-first-launch-recipe" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="Chromaticity Help" class="md-header__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Chromaticity Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Quickstart
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="Chromaticity Help" class="md-nav__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Chromaticity Help
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="quickstart.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-first-launch-the-welcome-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. First launch — the Welcome view
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-audio-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Audio setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Audio setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pick-the-input-device" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pick the input device
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos-capturing-system-audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS — capturing system audio
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#windows-capturing-system-audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows — capturing system audio
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#confirm-the-device-is-producing-signal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confirm the device is producing signal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-load-your-first-scene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Load your first scene
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-drag-a-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Drag a control
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Drag a control">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-action-buttons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick action buttons
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-try-perform-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Try Perform mode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Try Perform mode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#standard-versus-console-variant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        STANDARD versus CONSOLE variant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snap-recall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snap recall
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preset-and-playlist-transport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preset and playlist transport
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-confirm-audio-reactivity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Confirm audio reactivity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Confirm audio reactivity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#set-the-noise-floor-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set the noise-floor threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-where-to-go-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Where to go next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="perform-mode.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Perform Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scene-workflow.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scene Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="library-workflow.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="audio-reactivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audio Reactivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="livestream.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Livestreaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="import-shadertoy.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing Shadertoy Scenes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="best-practices.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="hotkeys-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hotkeys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="osc-routes.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSC Routes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="chroma-uniforms.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uniforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="settings-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="system-requirements.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="supported-codecs.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Codecs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="about.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-first-launch-the-welcome-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. First launch — the Welcome view
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-audio-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Audio setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Audio setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pick-the-input-device" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pick the input device
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos-capturing-system-audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS — capturing system audio
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#windows-capturing-system-audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows — capturing system audio
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#confirm-the-device-is-producing-signal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confirm the device is producing signal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-load-your-first-scene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Load your first scene
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-drag-a-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Drag a control
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Drag a control">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-action-buttons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick action buttons
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-try-perform-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Try Perform mode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Try Perform mode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#standard-versus-console-variant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        STANDARD versus CONSOLE variant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snap-recall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snap recall
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preset-and-playlist-transport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preset and playlist transport
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-confirm-audio-reactivity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Confirm audio reactivity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Confirm audio reactivity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#set-the-noise-floor-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set the noise-floor threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-where-to-go-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Where to go next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<!--
+SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+SPDX-FileCopyrightText: 2026 Chromaticity
+-->
+
+<h1 id="quickstart-first-launch-recipe">Quickstart — first-launch recipe</h1>
+<p>This page walks a brand-new operator from "I just installed Chromaticity"
+to "I have an audio-reactive scene running and I'm dragging a control to
+confirm it reacts." Allow ten to fifteen minutes end-to-end.</p>
+<p>The recipe is honest about which surfaces are live in production today
+and which are scheduled follow-ups. Where the engine is still synthetic
+or partially wired, the page calls that out plainly rather than
+pretending the final surface is in place. The companion
+[Pre-Alpha Smoke Checklist][smoke] in the release-eng tree carries the
+exhaustive verification matrix; this page is the operator-facing
+narrative.</p>
+<h2 id="1-first-launch-the-welcome-view">1. First launch — the Welcome view</h2>
+<p>When Chromaticity opens for the first time it routes to <strong>Welcome</strong>.
+You see a centred hero with three quick-start cards:</p>
+<ul>
+<li><strong>Quick Start</strong> — routes to the Library view so you can pick a
+  bundled scene.</li>
+<li><strong>Import Setlist</strong> — disabled today. The Import view ports in a
+  later wave; the card is reserved for that surface.</li>
+<li><strong>Empty Project</strong> — routes to the Perform view with a blank scene
+  loaded.</li>
+</ul>
+<p>Underneath the cards is a hint row: "Audio input required · MIDI
+optional · Ableton Link supported." The first two are accurate today;
+the Link tagline is reserved for future work.</p>
+<p>The sidebar rail along the left edge surfaces the rest of the app —
+Perform, Library, Author, Playlist, Media, MIDI, OSC, Audio, Patch,
+Onboard, Settings, Help. Each rail icon shows a tooltip on hover. The
+status bar across the bottom carries the active tier badge, adapter
+state pills, and the theme name.</p>
+<p>!!! note "If the bundled Library looks empty"</p>
+<pre><code>On a fresh install where the Tauri bundle's `bundle.resources` widening
+has not yet landed (this widens the bundled scene corpus into the app
+package), the Library may show no built-in scenes. The clean-room
+corpus exists under `engine/scene/tests/fixtures/scenes/` in the
+repository; once the resources path widens, the Library auto-
+discovers them. Until that lands, point Settings → Storage at your
+own scene folder to populate the grid.
+</code></pre>
+<h2 id="2-audio-setup">2. Audio setup</h2>
+<p>Chromaticity is an audio-reactive runtime. The audio path is live in
+production via the Wave 1c-α-2 cross-seam wiring: the producer thread
+in <code>engine/audio</code> publishes a per-tick analysis snapshot; the scheduler
+emits the snapshot over IPC to the UI at sixty hertz; the four named
+band tiles and BPM strip in the AudioReactivity widget read the live
+snapshot end-to-end.</p>
+<h3 id="pick-the-input-device">Pick the input device</h3>
+<p>Open <strong>Settings → Audio Device</strong>. The Input Device dropdown enumerates
+host audio devices through the audio adapter's input picker. Pick the
+device you want the analysis pipeline to read from. The picker
+persists across restarts through the TOML-backed Settings store
+under Tauri's <code>app_data_dir</code>.</p>
+<p>The dropdown's selection takes effect when the analysis thread next
+restarts — typically the next scene load. The thread does not
+hot-swap devices mid-show to keep the snapshot pipeline deterministic.</p>
+<h3 id="macos-capturing-system-audio">macOS — capturing system audio</h3>
+<p>The producer uses cpal's default input device on macOS, which means
+the microphone, not system audio output. macOS doesn't expose
+system-output capture through standard audio APIs. The operator has
+three paths:</p>
+<p><strong>Easy path — acoustic mic pickup.</strong> Play music on your computer
+speakers and let the built-in microphone hear it. Clap or speak
+near the mic to confirm the named band tiles respond.</p>
+<p><strong>Cleaner path — virtual loopback.</strong> Install a virtual audio device
+that routes system output to a virtual input:</p>
+<pre><code class="language-bash"># BlackHole (free, MIT-licensed) — install with Homebrew:
+brew install blackhole-2ch
+
+# or grab the installer from existential.audio/blackhole/
+</code></pre>
+<p>After installing BlackHole, configure macOS to send system audio to
+it (Audio MIDI Setup → create a Multi-Output Device that includes
+your speakers and BlackHole, then route system output there).
+Restart Chromaticity, open Settings → Audio Device, and pick
+<strong>BlackHole 2ch</strong> in the Input Device dropdown. Loopback (paid, more
+flexible) is the GUI-driven alternative.</p>
+<p><strong>No-mic path — silent fallback.</strong> If the machine has no input
+device at all, the producer falls back to a silent source and emits
+all-zero snapshots. The visualizer widgets stay on synthetic fallback;
+that is expected behaviour, not a bug.</p>
+<h3 id="windows-capturing-system-audio">Windows — capturing system audio</h3>
+<p>Windows operators use <strong>VB-Cable</strong> (free) or VoiceMeeter (free,
+heavier GUI). Install VB-Cable, set your default playback device to
+"CABLE Input", set Chromaticity's input device in Settings to
+"CABLE Output", and audio routed to system playback is captured by
+the analysis pipeline.</p>
+<h3 id="confirm-the-device-is-producing-signal">Confirm the device is producing signal</h3>
+<p>Open the <strong>Audio</strong> view. The live monitoring meter at the top of the
+view shows the input level in real time; if you see motion when
+audio is playing, the device is producing signal and the analysis
+pipeline is reading it.</p>
+<p>The first ~1.2 seconds after the audio pipeline starts is a
+documented <strong>warming window</strong> — the BpmRing, BeatDots, and band tiles
+render in a dimmed placeholder state while the FFT and BPM
+accumulators fill. Once the analysis window is full, the widgets
+transition to live values. The new top-bar <strong>AUDIO</strong> pill reflects
+the transition: yellow during warming, green when ready, red on a
+producer-thread fault.</p>
+<h2 id="3-load-your-first-scene">3. Load your first scene</h2>
+<p>Open the <strong>Library</strong> view from the sidebar (or click Quick Start on
+the Welcome card). The library merges three sources: bundled scenes
+shipped inside the app bundle, user scenes under your registered
+storage folders, and the active Author workspace. See
+<a href="library-workflow.html">Library Workflow</a> for the full source taxonomy.</p>
+<p>Scenes are arranged as a card grid. Each card shows a thumbnail
+(canvas-2d procedural — see the honesty note below), a title, a
+source pill, and a few tag chips. Single-click any card to surface its
+detail in the right-pane sidebar with a <code>&lt;SceneCanvas&gt;</code> preview, the
+description, credit, and the controls-count badge. Double-click —
+or hit Enter on a focused card — to load the scene into the runtime.</p>
+<p>The four bundled welcome scenes you'll see first:</p>
+<ul>
+<li><strong>welcome.chroma</strong> — gradient-drift backdrop with three controls
+  (<code>intro_scale</code>, <code>drift_speed</code>, <code>accent</code>). The first-launch onboarding
+  scene per the scene library spec.</li>
+<li><strong>quick-start.chroma</strong> — minimal four-control scene combining a
+  brightness slider, a contrast knob, a saturation slider, and a tint
+  color. Sweep every primary widget kind in one place.</li>
+<li><strong>controls-tour.chroma</strong> — comprehensive widget showcase exercising
+  every input kind the Inspector can render (slider, knob, toggle,
+  color, xy, dropdown).</li>
+<li><strong>first-cue.chroma</strong> — single-cue starter scene illustrating a
+  fade-driven transition from calm baseline to emphasis. Useful when
+  you want to feel how cues drive control values.</li>
+</ul>
+<p>After loading, the app routes to <strong>Perform</strong>. The Scene Controls
+header binds to the loaded scene's NAME and the Scene Controls plus
+Meta Controls panels render against the loaded control schema.</p>
+<p>!!! warning "Preview is canvas-2d procedural, not live GPU render"</p>
+<pre><code>The Perform preview pane and every `&lt;SceneCanvas&gt;` instance render
+through a canvas-2d procedural adapter — sixteen built-in scene
+"kinds" mapped from each scene's metadata (kaleido, rings, plasma,
+orbit, tunnel, fluid, lattice, bars, and friends). The live GPU
+render pipeline is ADR-011 Phase-2-plus deferred. Dragging a
+control fires the dispatch through to the engine and the engine
+commits the value — that path is live — but what you see in the
+preview is the procedural visualisation, not the actual GLSL
+output. The procedural preview is wireframe-faithful for
+structural feedback (rotation, warp, audio reactivity); it is not
+the final rendered image.
+</code></pre>
+<h2 id="4-drag-a-control">4. Drag a control</h2>
+<p>In Perform, look at the <strong>Scene Controls</strong> panel along the left
+column. Each control row is a typed widget — sliders for numeric
+parameters, knobs for tighter-range numerics, toggles for booleans,
+swatches for colours. Each row carries a per-control hotkey-hint
+badge along its trailing edge.</p>
+<p>Drag a Fader. Three things happen in order:</p>
+<ol>
+<li>The widget's local drag position moves under your pointer.</li>
+<li>The dispatch through <code>set_control</code> IPC fires.</li>
+<li>The engine commits the value through its command bus and returns
+   it; the widget snaps to the engine-committed value (which, for
+   un-clamped controls, equals what you dragged to).</li>
+</ol>
+<p>If the control name maps to one of the renderer's known
+pre-multiplier axes — <code>speed</code>, <code>intensity</code>, <code>tint</code>, <code>rotation_speed</code>,
+<code>warp_amount</code>, <code>invert</code>, <code>mirror</code> — the canvas-2d procedural preview
+responds visibly. The Wave 2.8/2.9 SC.A widening added the
+<code>pulse(lvl) = 0.6 + lvl * 0.4</code> coupling envelope so the procedural
+visuals couple to the live audio level (sixty percent intensity at
+silent audio, full intensity at peak).</p>
+<p>Controls whose names are NOT in the renderer's known set still fire
+the engine dispatch correctly but produce no visible change in the
+preview. Those controls render with a <strong><code>data-preview-wired="false"</code>
+affordance</strong> — the row dims to seventy percent opacity and a hover
+tooltip explains: "engine-only — preview adapter not implemented."
+That is the honest signal that the engine sees the value but the
+canvas-2d preview adapter has no visualisation for that name. The
+GPU render pipeline (ADR-011 Phase-2-plus) is where those controls
+will land their visible effect.</p>
+<h3 id="quick-action-buttons">Quick action buttons</h3>
+<p>Above each control panel sit three action buttons that operate
+on the whole panel at once:</p>
+<ul>
+<li><strong>Default</strong> — resets every control in the panel to its declared
+  default.</li>
+<li><strong>Random</strong> — randomises every control to a value in its declared
+  range. Locked rows are skipped.</li>
+<li><strong>Lock-all</strong> — toggles a per-row lock on every control in the
+  panel. Locked rows dim and short-circuit the dispatch so the
+  engine never sees suppressed values.</li>
+</ul>
+<p>Per-row locks also expose the <strong><code>L</code></strong> hotkey while the row has
+focus; <strong><code>D</code></strong> sets the focused control to default; <strong><code>R</code></strong>
+randomises it; <strong><code>P</code></strong> sets it to its value in the active preset.
+See <a href="hotkeys-reference.html">Hotkey Reference</a> for the full
+vocabulary.</p>
+<h2 id="5-try-perform-mode">5. Try Perform mode</h2>
+<p>You're already in Perform after loading the scene. A few things
+to exercise.</p>
+<h3 id="standard-versus-console-variant">STANDARD versus CONSOLE variant</h3>
+<p>The top bar carries a <strong>STANDARD / CONSOLE</strong> toggle. STANDARD is the
+classic two-column layout — Scene Controls and Meta Controls on the
+left, Preview hero and Audio Reactivity panel in the middle, scene
+rail on the right. CONSOLE collapses to a denser three-column layout
+intended for operators who want more density at the cost of breathing
+room. The choice persists per launch.</p>
+<h3 id="snap-recall">Snap recall</h3>
+<p>The <strong>Snap bar</strong> runs across the bottom of Perform with eight
+quick-recall slots. Slots are addressed by the number keys <code>1</code> through
+<code>8</code> in operator focus, plus a "gold preset" recallable through
+<code>Cmd+0</code> or <code>Ctrl+0</code> as the guaranteed safe state.</p>
+<ul>
+<li><strong>Click slot N</strong> — recalls the saved state.</li>
+<li><strong>Cmd+click slot N</strong> (macOS) / <strong>Ctrl+click slot N</strong> (Windows) —
+  saves the current control state into slot N.</li>
+<li><strong>Alt+click slot N</strong> — clears the slot.</li>
+<li><strong>Right-click slot N</strong> — opens an inline rename input for a custom
+  label ("Intro" / "Drop" / "Outro"). Labels persist across restarts
+  through localStorage.</li>
+</ul>
+<p>Try it: drag a Fader, Cmd-click slot 1 to save, drag the Fader
+elsewhere, click slot 1 to ping back to the saved state.</p>
+<h3 id="preset-and-playlist-transport">Preset and playlist transport</h3>
+<p>The right-column scene rail carries a Prev / Next / Shuffle row
+that mirrors playlist transport. Click <strong>Next</strong> to advance one slot;
+click <strong>Previous</strong> to step back. The preset rail above it lets you
+click a preset to recall it; Cmd-click an empty preset slot to save
+the current control state to it (in-process snapshot — see the
+honesty note).</p>
+<p>!!! warning "Shuffle advances by +1, not random"</p>
+<pre><code>The engine does not yet carry a shuffle command. The Perform
+Shuffle button advances by +1 like Next; the label parity with
+the bundle is preserved but the ordering is not randomised.
+A future-wave engine `Command::Shuffle` widening is on the
+follow-up list.
+</code></pre>
+<p>!!! note "Preset save is in-process only"</p>
+<pre><code>Cmd-click preset save captures the current control state into an
+in-memory preset bank. Settings-TOML disk persistence is a
+deferred follow-up; quit and relaunch will not restore the saved
+preset.
+</code></pre>
+<h2 id="6-confirm-audio-reactivity">6. Confirm audio reactivity</h2>
+<p>Make sure your audio source is playing (music near the mic, or
+system-output routed through BlackHole / VB-Cable). Watch the
+top-bar HUD and the Audio Reactivity panel below the preview hero.</p>
+<ul>
+<li>The <strong>VU meter</strong> in the top bar pulses with the live RMS.</li>
+<li>The <strong>BpmRing</strong> rotates phase-locked to the estimated tempo.</li>
+<li>The <strong>BeatDots</strong> strip flashes on each beat boundary.</li>
+<li>The <strong>Audio Reactivity</strong> panel's four named band tiles
+  ("bass" / "low-mid" / "mid" / "high") move in proportion to the
+  spectrum energy in each band. The BPM strip beneath them tracks
+  the live BPM.</li>
+</ul>
+<p>The four named tiles are derived from the engine's eight log-spaced
+FFT bands via a documented pairwise average — see
+<a href="audio-reactivity.html">Audio Reactivity</a> for the reduction formula
+and the full uniform catalog.</p>
+<p>!!! note "Some audio surfaces stay synthetic"</p>
+<pre><code>The forty-eight bar FFT visualizer inside the Audio Reactivity
+panel and the inline sixty-four bar Spectrum surface in the Audio
+Uniforms view both stay synthetic-driven in the V1 release. They
+paint a deterministic visual placeholder, not the live FFT — that
+retrofit is post-MVP UX work. The four named band tiles and the
+BPM strip are the live-driven surfaces today.
+</code></pre>
+<h3 id="set-the-noise-floor-threshold">Set the noise-floor threshold</h3>
+<p>If you're in a noisy room and the band tiles are jittering on HVAC
+or crowd murmur, set the noise-floor gate. With audio playing,
+press <strong><code>Shift+T</code></strong> to sample the current rolling RMS and pin it as
+the threshold. Audio hops below the threshold publish zeroed level
+and hit uniforms — the band tiles go silent under the floor.</p>
+<p>The threshold also exposes through OSC at <code>/audio/threshold</code> (see
+<a href="osc-routes.html">OSC Routes</a>) for show-control automation.</p>
+<h2 id="7-where-to-go-next">7. Where to go next</h2>
+<p>The rest of the help corpus expands on each surface:</p>
+<ul>
+<li><strong><a href="audio-reactivity.html">Audio Reactivity</a></strong> — the full uniform
+  catalog, the eight-to-four band reduction, and a worked radial-pulse
+  shader example.</li>
+<li><strong><a href="scene-workflow.html">Scene Workflow</a></strong> — the <code>.chroma</code> package
+  format, the load lifecycle, and the live-reload policy authors rely
+  on while iterating.</li>
+<li><strong><a href="library-workflow.html">Library Workflow</a></strong> — scene sources, the
+  four-subdirectory bundled taxonomy, thumbnails, and the indexer.</li>
+<li><strong><a href="perform-mode.html">Perform Mode</a></strong> — the five panels, the Snap
+  bar, the scene rail, and the adapter-pill status surface.</li>
+<li><strong><a href="hotkeys-reference.html">Hotkey Reference</a></strong> — the canonical
+  fifty-seven row hotkey vocabulary.</li>
+<li><strong><a href="osc-routes.html">OSC Routes</a></strong> — wire-level routing and the
+  network-conservative defaults.</li>
+<li><strong><a href="settings-reference.html">Settings Reference</a></strong> — every setting in
+  the Settings view, with the audio / graphics / storage / network /
+  entitlement sections enumerated.</li>
+</ul>
+<p>For an exhaustive verification checklist of every Wave 2.x
+acceptance gate plus the known synthetic surfaces, the release-eng
+pre-alpha smoke checklist (in the repository at
+<code>release-eng/pre-alpha-smoke-checklist.md</code>) is the source of truth.
+This quickstart is the operator-facing narrative; the smoke checklist
+is the test matrix.</p>
+<hr />
+<!-- Clean-room authored from src/lib/views/Welcome.svelte (W16 PR3 Welcome view content),
+src/lib/views/Settings.svelte (Wave 2.7 Settings layout), src/lib/views/Library.svelte
+(Wave 2.5 LIB.A-E wiring), src/lib/views/Perform.svelte (Wave 2.4 PERF.A-F wiring),
+engine/scene/tests/fixtures/scenes/welcome/README.md (welcome scene corpus),
+src/lib/widgets/SceneCanvas.svelte + scene-renderers.ts (canvas-2d procedural adapter
++ Wave 2.8/2.9 SC.A pre-multiplier),
+release-eng/pre-alpha-smoke-checklist.md (verification matrix),
+and docs/29-cleanroom-legal-policy-baseline.md (clean-room SOP);
+never derived from Contents/ or chromaticity-planning/ per docs/29. -->
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.sections", "search.highlight", "search.suggest"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

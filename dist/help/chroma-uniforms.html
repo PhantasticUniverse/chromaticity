@@ -289,6 +289,34 @@
   
   
     <li class="md-nav__item">
+      <a href="quickstart.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="perform-mode.html" class="md-nav__link">
         
   
@@ -401,6 +429,34 @@
   
   
     <li class="md-nav__item">
+      <a href="livestream.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Livestreaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="import-shadertoy.html" class="md-nav__link">
         
   
@@ -409,6 +465,34 @@
     
   
     Importing Shadertoy Scenes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="best-practices.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
   
 
     
@@ -714,6 +798,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="system-requirements.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="supported-codecs.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Codecs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -977,14 +1117,14 @@ the first tick before any analysis history accumulates.</p>
 <tr>
 <td><code>chroma_AudioRMS</code></td>
 <td><code>float</code></td>
-<td><code>[0, 1]</code></td>
-<td>Instantaneous root-mean-square energy of the mono-mixed audio frame</td>
+<td><code>[0, inf)</code></td>
+<td>Analysis-window root-mean-square energy of the mono-mixed audio frame (computed over the same window as <code>chroma_AudioFFT</code> so smoothing is consistent across the audio uniform family)</td>
 </tr>
 <tr>
 <td><code>chroma_AudioPeak</code></td>
 <td><code>float</code></td>
-<td><code>[0, 1]</code></td>
-<td>Instantaneous peak magnitude of the mono-mixed audio frame</td>
+<td><code>[0, inf)</code></td>
+<td>Analysis-window peak magnitude of the mono-mixed audio frame</td>
 </tr>
 </tbody>
 </table>

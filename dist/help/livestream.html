@@ -1,0 +1,1521 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="In-app help and reference for the Chromaticity desktop runtime.">
+      
+      
+        <meta name="author" content="Chromaticity">
+      
+      
+      
+        <link rel="prev" href="audio-reactivity.html">
+      
+      
+        <link rel="next" href="import-shadertoy.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Livestreaming - Chromaticity Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#livestreaming-chromaticity" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="Chromaticity Help" class="md-header__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Chromaticity Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Livestreaming
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="Chromaticity Help" class="md-nav__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Chromaticity Help
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="quickstart.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="perform-mode.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Perform Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scene-workflow.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scene Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="library-workflow.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="audio-reactivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audio Reactivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Livestreaming
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="livestream.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Livestreaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#honest-preamble-read-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Honest preamble — read this first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-wired-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is wired today
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is wired today">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#macos-syphon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS — Syphon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos-what-obs-will-see" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS — what OBS will see
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#windows-cross-platform-current-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows + cross-platform — current state
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operator-pathway-forward-looking-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operator pathway — forward-looking recipe
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operator pathway — forward-looking recipe">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-install-obs-studio-and-the-syphon-plugin-macos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install OBS Studio and the Syphon plugin (macOS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-configure-audio-loopback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Configure audio loopback
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-enable-the-syphon-output-in-chromaticity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Enable the Syphon output in Chromaticity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-add-the-syphon-client-source-in-obs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Add the Syphon Client source in OBS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-confirm-audio-sync-and-round-trip-latency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Confirm audio sync and round-trip latency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-stream-key-configuration-and-bitrate-are-obs-concerns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Stream key configuration and bitrate are OBS concerns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#honest-follow-ups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Honest follow-ups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audio-capture-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audio capture posture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-references
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="import-shadertoy.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing Shadertoy Scenes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="best-practices.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="hotkeys-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hotkeys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="osc-routes.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSC Routes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="chroma-uniforms.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uniforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="settings-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="system-requirements.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="supported-codecs.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Codecs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="about.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#honest-preamble-read-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Honest preamble — read this first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-wired-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is wired today
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is wired today">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#macos-syphon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS — Syphon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos-what-obs-will-see" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS — what OBS will see
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#windows-cross-platform-current-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows + cross-platform — current state
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operator-pathway-forward-looking-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operator pathway — forward-looking recipe
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operator pathway — forward-looking recipe">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-install-obs-studio-and-the-syphon-plugin-macos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install OBS Studio and the Syphon plugin (macOS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-configure-audio-loopback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Configure audio loopback
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-enable-the-syphon-output-in-chromaticity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Enable the Syphon output in Chromaticity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-add-the-syphon-client-source-in-obs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Add the Syphon Client source in OBS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-confirm-audio-sync-and-round-trip-latency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Confirm audio sync and round-trip latency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-stream-key-configuration-and-bitrate-are-obs-concerns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Stream key configuration and bitrate are OBS concerns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#honest-follow-ups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Honest follow-ups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audio-capture-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audio capture posture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-references
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<!--
+SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+SPDX-FileCopyrightText: 2026 Chromaticity
+-->
+
+<h1 id="livestreaming-chromaticity">Livestreaming Chromaticity</h1>
+<p>This page documents the operator pathway for routing the Chromaticity
+render output into a livestreaming application such as OBS Studio, and
+covers what is wired today, what is scaffolded but not yet operational,
+and what is planned. Livestream pathing depends on a frame-publishing
+back end (Syphon on macOS, Spout on Windows, NDI cross-platform);
+several of those back ends are partial or future-wave work at the time
+of writing.</p>
+<h2 id="honest-preamble-read-this-first">Honest preamble — read this first</h2>
+<p><strong>The publish path is not operational yet.</strong> Chromaticity ships the
+Syphon adapter scaffold and the engine-side bridge, but the
+<code>publish_syphon_output</code> real implementation is a Wave 1c-β follow-up
+that has not landed. Operators who attempt to add a Syphon Client
+source in OBS today will not see a Chromaticity server on the bus,
+because the chromaticity output adapter does not yet hand wgpu-rendered
+textures into the framework's <code>publishFrameTexture:</code> call site.</p>
+<p>This page captures the recipe operators will follow <strong>once</strong> that
+real-impl lands. The directory + receiver scaffolding, the error
+taxonomy, the operator-facing health surface, and the engine bridge
+are all in place; what remains is the wgpu ↔ <code>IOSurface</code> extraction
+plumbing on the publish side. The receiver side (consuming a Syphon
+feed from another macOS app <strong>into</strong> Chromaticity as a video input)
+is also scaffold-complete pending the same hardware-validation pass.</p>
+<p>For the current state of the underlying integration work, see the
+"Wave 1c-β follow-ups" section in the repository's project memory.
+The honest follow-ups list at the bottom of this page tracks the
+remaining work items.</p>
+<h2 id="what-is-wired-today">What is wired today</h2>
+<h3 id="macos-syphon">macOS — Syphon</h3>
+<p>The Syphon I/O adapter (<code>integrations/syphon-adapter/</code>) compiles on
+macOS and exposes the public surface locked by ADR-021:</p>
+<ul>
+<li><code>SyphonInputAdapter</code> — for consuming frames published by other
+  macOS apps on the Syphon bus into Chromaticity as a video input.
+  Polling-consume model: the engine scheduler-tick pulls the most
+  recent frame each tick; backlog frames are dropped on saturation.</li>
+<li><code>SyphonOutputAdapter</code> — for publishing Chromaticity's render
+  output to the bus. The type-shape contract (<code>bind</code> / <code>unbind</code> /
+  <code>publish</code> / <code>health</code>) is wired; the framework-side
+  <code>publishFrameTexture:onCommandBuffer:imageRegion:flipped:</code> call
+  site is the deferred follow-up.</li>
+<li><code>SyphonServerDirectory</code> — singleton discovery surface keyed off
+  the <code>SyphonServerDirectory.sharedDirectory</code> Objective-C class
+  method. The <code>NSDistributedNotificationCenter</code> observer that fires
+  on server-add / server-update / server-remove notifications is a
+  carried-forward follow-up; the directory snapshot path
+  (initial enumeration) is wired.</li>
+<li>Texture binding namespace — input feeds bind under the
+  <code>chroma_SyphonInput[N]</code> uniform namespace on the engine side;
+  output servers register under an operator-overridable name
+  template.</li>
+</ul>
+<p>The texture pixel format is locked to BGRA8Unorm, which is the
+universally-supported format across Syphon consumers including OBS's
+Syphon plugin, Resolume, Madmapper, and VDMX.</p>
+<h3 id="macos-what-obs-will-see">macOS — what OBS will see</h3>
+<p>Once the <code>publish_syphon_output</code> real-impl lands, OBS Studio with the
+Syphon plugin installed will list "Chromaticity" (or the operator-
+chosen name) under <strong>Add Source → Syphon Client</strong>. The plugin reads
+the same <code>SyphonServerDirectory</code> Chromaticity registers against; no
+additional wiring is required on the OBS side.</p>
+<h3 id="windows-cross-platform-current-state">Windows + cross-platform — current state</h3>
+<ul>
+<li><strong>Spout (Windows)</strong>: not yet integrated. The adapter does not
+  exist; a future PR will add it under
+  <code>integrations/spout-adapter/</code>. The cross-platform parity bring-up
+  is tracked as a Wave 1c-β follow-up cluster sibling of the Syphon
+  publish work.</li>
+<li><strong>NDI (cross-platform)</strong>: scaffolded only. NDI is referenced in
+  the planning corpus as the macOS-and-Windows fallback for
+  operators who cannot route through Syphon or Spout, but no
+  adapter crate exists yet.</li>
+<li><strong>Virtual webcam output (cross-platform)</strong>: not planned for MVP.
+  Operators on a single workstation should prefer Syphon (macOS)
+  or Spout (Windows) once those ship; cross-machine routing should
+  prefer NDI.</li>
+</ul>
+<h2 id="operator-pathway-forward-looking-recipe">Operator pathway — forward-looking recipe</h2>
+<p>The recipe below describes how operators will livestream Chromaticity
+<strong>once</strong> the publish path lands. Until then, treat the workflow as a
+preview of the intended operator flow; the commands and UI surfaces
+named here may shift in detail.</p>
+<h3 id="1-install-obs-studio-and-the-syphon-plugin-macos">1. Install OBS Studio and the Syphon plugin (macOS)</h3>
+<ol>
+<li>Install <strong>OBS Studio</strong> (28.0 or later recommended). Download from
+   the OBS Studio website; the macOS build is a universal binary.</li>
+<li>Install the <strong>obs-syphon plugin</strong>. Plugin packages exist for both
+   Apple Silicon and Intel macOS; the plugin appears under
+   <code>Sources → Add → Syphon Client</code> once installed.</li>
+<li>Restart OBS so the plugin loads.</li>
+</ol>
+<p>On Windows the equivalent will be the Spout plugin for OBS once
+Chromaticity's Spout adapter lands; the configuration steps below
+will map across with the source type renamed from "Syphon Client" to
+"Spout".</p>
+<h3 id="2-configure-audio-loopback">2. Configure audio loopback</h3>
+<p>Chromaticity's audio input adapter binds the system's <strong>default input
+device</strong> (microphone) on macOS via cpal, not the system audio output.
+Capturing system audio for livestreaming requires a virtual loopback:</p>
+<ul>
+<li><strong>BlackHole</strong> (free; Apple Silicon and Intel macOS).</li>
+<li><strong>Loopback</strong> (Rogue Amoeba; commercial).</li>
+<li><strong>VB-Cable</strong> (free; Windows and macOS).</li>
+</ul>
+<p>Configure the loopback device as the system output (or as an aggregate
+device that mirrors output to loopback and to physical speakers), and
+point both Chromaticity's audio input and OBS's audio source at the
+loopback. For first-launch verification of the audio bootstrap path,
+see the audio reactivity reference page in this corpus.</p>
+<h3 id="3-enable-the-syphon-output-in-chromaticity">3. Enable the Syphon output in Chromaticity</h3>
+<p>Once the publish path lands, the <strong>Settings → Output</strong> tab will
+expose a Syphon Server toggle and an operator-overridable server
+name. The default name follows the
+<code>DEFAULT_OUTPUT_NAME_TEMPLATE</code> constant in the adapter (a
+predictable template the operator can override per show). With the
+toggle enabled, the <code>SyphonServerDirectory</code> will advertise
+"Chromaticity" (or the chosen name) on the bus immediately; OBS will
+pick it up without restart.</p>
+<p>The output adapter exposes an operator-facing health surface
+mirroring the camera adapter's health model — Bound, Disconnected,
+Negotiating, or Faulted with an operator-readable diagnostic. The
+TopBar adapter pills already render an OUT indicator that will read
+this health value once wired; see the Perform Mode page for the
+adapter-pill model.</p>
+<h3 id="4-add-the-syphon-client-source-in-obs">4. Add the Syphon Client source in OBS</h3>
+<p>In OBS Studio:</p>
+<ol>
+<li>Click the <code>+</code> button under the <strong>Sources</strong> panel.</li>
+<li>Choose <strong>Syphon Client</strong>.</li>
+<li>Give the source a name (this is OBS's internal label, separate
+   from the Chromaticity server name).</li>
+<li>In the source properties, the <strong>Source</strong> dropdown will list
+   every Syphon server currently on the bus. Pick the Chromaticity
+   server.</li>
+<li>Confirm the preview pane shows live Chromaticity output.</li>
+</ol>
+<p>Resolution, frame rate, and color space are negotiated through the
+underlying <code>IOSurface</code> (BGRA8Unorm; the resolution matches the
+Chromaticity render target). No additional configuration is required.</p>
+<h3 id="5-confirm-audio-sync-and-round-trip-latency">5. Confirm audio sync and round-trip latency</h3>
+<p>Both video (Chromaticity → Syphon → OBS) and audio
+(system → loopback → OBS) flow into OBS as independent sources. Audio
+sync is the operator's responsibility:</p>
+<ul>
+<li>In OBS, right-click the audio source and choose <strong>Advanced Audio
+  Properties</strong>. The <strong>Sync Offset</strong> column shifts audio relative to
+  video in milliseconds (positive values delay audio).</li>
+<li>A reasonable starting offset is 0 ms; tune by ear against beat-
+  reactive scenes. Syphon adds negligible video latency
+  (sub-millisecond on modern Apple Silicon); the loopback audio path
+  is typically near-zero.</li>
+</ul>
+<h3 id="6-stream-key-configuration-and-bitrate-are-obs-concerns">6. Stream key configuration and bitrate are OBS concerns</h3>
+<p>Chromaticity does not configure stream keys, RTMP endpoints, or
+encoder bitrates; those live entirely in OBS's <strong>Settings → Stream</strong>
+and <strong>Settings → Output</strong> tabs. Refer to the streaming platform's
+documentation (Twitch, YouTube, Kick, etc.) for endpoint details.</p>
+<h2 id="honest-follow-ups">Honest follow-ups</h2>
+<p>The list below tracks the work needed to make this page's recipe
+operational. Each item maps to a specific gap in the current
+integration surface.</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Syphon <code>publish_syphon_output</code> real-impl</td>
+<td>Wave 1c-β follow-up</td>
+<td>The <code>SyphonOutputAdapter::publish</code> method accepts a texture handle today; the engine-side wgpu ↔ <code>IOSurface</code> extraction and the framework-side <code>publishFrameTexture:onCommandBuffer:imageRegion:flipped:</code> call site are deferred. Once landed, OBS's Syphon Client will see the Chromaticity server.</td>
+</tr>
+<tr>
+<td><code>list_syphon_servers</code> <code>NSDistributedNotificationCenter</code> observer</td>
+<td>Wave 1c-β follow-up</td>
+<td>The directory snapshot path is wired; the live notification observer that fires on server-add / server-update / server-remove is deferred. Affects only operator-facing server-list freshness in Chromaticity's input picker; OBS-side discovery already works through the canonical framework.</td>
+</tr>
+<tr>
+<td>Per-platform nokhwa concrete bindings</td>
+<td>Wave 1c-β follow-up</td>
+<td>Camera-adapter sibling work for the input side of the integration matrix. Not directly required for Syphon livestream output but tracked in the same cluster.</td>
+</tr>
+<tr>
+<td>Syphon <code>Send</code>-trait reconciliation</td>
+<td>Wave 1c-β follow-up</td>
+<td>Thread-safety reconciliation between the framework's main-thread affinity and the chromaticity scheduler-tick thread.</td>
+</tr>
+<tr>
+<td>Real hardware validation</td>
+<td>Wave 1c-β follow-up</td>
+<td>The current T2 corpus uses a mock framework trait; live-bus validation on AO dev rigs is deferred.</td>
+</tr>
+<tr>
+<td>Spout (Windows) adapter</td>
+<td>Future PR</td>
+<td>The Windows-equivalent integration is not yet started. Once shipped, this page will gain a Windows recipe that mirrors the macOS flow with source-type substitution.</td>
+</tr>
+<tr>
+<td>NDI adapter activation</td>
+<td>Future PR</td>
+<td>Scaffolded reference only at present. NDI's value is cross-machine routing (Chromaticity on one workstation, OBS on another over LAN); when the adapter lands, this page will gain a multi-machine recipe.</td>
+</tr>
+<tr>
+<td>First-party video recorder</td>
+<td>Future PR</td>
+<td>A direct-to-disk video capture path internal to Chromaticity is an FAQ-surfaced operator request that depends on the same <code>publish_syphon_output</code> real-impl as a prerequisite (the encoder consumes the same <code>IOSurface</code> extraction).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="audio-capture-posture">Audio capture posture</h2>
+<p>Chromaticity binds the cpal default input device on macOS at startup
+(microphone, not system audio output). The operator path for
+capturing system audio into either Chromaticity (for audio-reactive
+visuals) <strong>or</strong> OBS (for the stream) is a virtual loopback as listed
+in step 2 above. There is no in-app system-audio capture path; this
+is a platform constraint (macOS does not expose system audio to user-
+space without a kernel extension or audio HAL plugin), not a
+Chromaticity choice.</p>
+<p>The audio loopback applies to <strong>both</strong> sides of the pipeline:</p>
+<ul>
+<li>Chromaticity reads the loopback as its audio input → audio-reactive
+  visuals respond to the music being played.</li>
+<li>OBS reads the loopback as an audio source → the stream carries the
+  music.</li>
+</ul>
+<p>If the operator needs both at once, configure the loopback once at
+the system level (aggregate device or BlackHole multi-output device)
+and point both applications at it.</p>
+<h2 id="cross-references">Cross-references</h2>
+<ul>
+<li><a href="audio-reactivity.html">Audio Reactivity</a> — for the audio input
+  bootstrap path and the synthetic-fallback gate that drives
+  visualizers when no live snapshot is present.</li>
+<li><a href="perform-mode.html">Perform Mode</a> — for the adapter-pill liveness
+  model that will surface the Syphon output health in the TopBar.</li>
+<li><a href="settings-reference.html">Settings Reference</a> — for the output
+  routing tile that will expose the Syphon Server toggle once the
+  real-impl lands.</li>
+</ul>
+<hr />
+<!-- Clean-room authored against integrations/syphon-adapter/src/{lib,adapter}.rs module-level doc-prose + CLAUDE.md "Wave 1c-β follow-ups" + "Out-of-scope (AO-deferred)" sections + ADR-021 (Syphon I/O adapter) + the Wave 1c-α-2 audio bootstrap producer notes; never derived from Contents/ or chromaticity-planning/ per docs/29. -->
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.sections", "search.highlight", "search.suggest"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

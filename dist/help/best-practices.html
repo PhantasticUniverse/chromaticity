@@ -1,0 +1,2106 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="In-app help and reference for the Chromaticity desktop runtime.">
+      
+      
+        <meta name="author" content="Chromaticity">
+      
+      
+      
+        <link rel="prev" href="import-shadertoy.html">
+      
+      
+        <link rel="next" href="hotkeys-reference.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Best Practices - Chromaticity Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#best-practices" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="Chromaticity Help" class="md-header__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Chromaticity Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Best Practices
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="Chromaticity Help" class="md-nav__button md-logo" aria-label="Chromaticity Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Chromaticity Help
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="quickstart.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="perform-mode.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Perform Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scene-workflow.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scene Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="library-workflow.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="audio-reactivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audio Reactivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="livestream.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Livestreaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="import-shadertoy.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing Shadertoy Scenes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="best-practices.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Best Practices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-control-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1 — Control design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1 — Control design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-pick-the-smallest-control-surface-that-exposes-intent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Pick the smallest control surface that exposes intent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-name-controls-for-the-operator-not-the-shader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Name controls for the operator, not the shader
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-snap-friendliness-and-the-control-surface-as-a-state-vector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Snap-friendliness and the control surface as a state vector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-use-ui_group-to-keep-perform-legible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Use UI_GROUP to keep Perform legible
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-the-is_meta-flag-and-the-_reactivity-meta-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 The IS_META flag and the _Reactivity meta-gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-range-default-and-the-interesting-zone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Range, default, and the "interesting zone"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-curves-smooth-variants-knobs-vs-sliders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7 Curves: smooth variants, knobs vs sliders
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#18-how-the-preview-adapter-consumes-named-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.8 How the preview adapter consumes named controls
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-glsl-pitfalls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2 — GLSL pitfalls
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2 — GLSL pitfalls">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-a-typo-at-the-uniform-declaration-site-silently-binds-zero" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 A typo at the uniform declaration site silently binds zero
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-coerce-toggles-through-05-not-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Coerce toggles through &gt; 0.5, not == 1.0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-integer-vs-float-coercion-at-uniform-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Integer-vs-float coercion at uniform boundaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-out-of-bounds-array-sampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Out-of-bounds array sampling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-the-all-zero-baseline-is-real" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 The all-zero baseline is real
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-alpha-pre-multiplication-caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Alpha pre-multiplication caveats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-gl_fragcoord-is-in-pixels-not-normalised" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 gl_FragCoord is in pixels, not normalised
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#28-hot-reload-preserves-chroma_time-not-your-accumulators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.8 Hot-reload preserves chroma_time, not your accumulators
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-glsl-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3 — GLSL performance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3 — GLSL performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-texture-sampling-is-the-largest-single-per-fragment-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Texture sampling is the largest single per-fragment cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-prefer-branchless-arithmetic-over-uniform-branching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Prefer branchless arithmetic over uniform branching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-itime-chroma_time-cost-vs-iframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 iTime / chroma_time cost vs iFrame
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-lygia-helpers-vs-hand-rolled-math" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Lygia helpers vs hand-rolled math
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-multipass-composition-costs-scale-with-pass-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 Multipass composition costs scale with pass count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-the-canvas-2d-preview-adapter-is-not-your-final-render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 The canvas-2d preview adapter is not your final render
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-profile-against-the-live-runtime-not-synthetic-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.7 Profile against the live runtime, not synthetic frames
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#38-cheap-defaults-expensive-worst-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.8 Cheap defaults, expensive worst cases
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="hotkeys-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hotkeys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="osc-routes.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OSC Routes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="chroma-uniforms.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uniforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="settings-reference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="system-requirements.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="supported-codecs.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Codecs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="about.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-control-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1 — Control design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1 — Control design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-pick-the-smallest-control-surface-that-exposes-intent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Pick the smallest control surface that exposes intent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-name-controls-for-the-operator-not-the-shader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Name controls for the operator, not the shader
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-snap-friendliness-and-the-control-surface-as-a-state-vector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Snap-friendliness and the control surface as a state vector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-use-ui_group-to-keep-perform-legible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Use UI_GROUP to keep Perform legible
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-the-is_meta-flag-and-the-_reactivity-meta-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 The IS_META flag and the _Reactivity meta-gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-range-default-and-the-interesting-zone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Range, default, and the "interesting zone"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-curves-smooth-variants-knobs-vs-sliders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7 Curves: smooth variants, knobs vs sliders
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#18-how-the-preview-adapter-consumes-named-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.8 How the preview adapter consumes named controls
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-glsl-pitfalls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2 — GLSL pitfalls
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2 — GLSL pitfalls">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-a-typo-at-the-uniform-declaration-site-silently-binds-zero" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 A typo at the uniform declaration site silently binds zero
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-coerce-toggles-through-05-not-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Coerce toggles through &gt; 0.5, not == 1.0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-integer-vs-float-coercion-at-uniform-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Integer-vs-float coercion at uniform boundaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-out-of-bounds-array-sampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Out-of-bounds array sampling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-the-all-zero-baseline-is-real" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 The all-zero baseline is real
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-alpha-pre-multiplication-caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Alpha pre-multiplication caveats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-gl_fragcoord-is-in-pixels-not-normalised" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 gl_FragCoord is in pixels, not normalised
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#28-hot-reload-preserves-chroma_time-not-your-accumulators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.8 Hot-reload preserves chroma_time, not your accumulators
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-glsl-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3 — GLSL performance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3 — GLSL performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-texture-sampling-is-the-largest-single-per-fragment-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Texture sampling is the largest single per-fragment cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-prefer-branchless-arithmetic-over-uniform-branching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Prefer branchless arithmetic over uniform branching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-itime-chroma_time-cost-vs-iframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 iTime / chroma_time cost vs iFrame
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-lygia-helpers-vs-hand-rolled-math" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Lygia helpers vs hand-rolled math
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-multipass-composition-costs-scale-with-pass-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 Multipass composition costs scale with pass count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-the-canvas-2d-preview-adapter-is-not-your-final-render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 The canvas-2d preview adapter is not your final render
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-profile-against-the-live-runtime-not-synthetic-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.7 Profile against the live runtime, not synthetic frames
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#38-cheap-defaults-expensive-worst-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.8 Cheap defaults, expensive worst cases
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<!--
+SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+SPDX-FileCopyrightText: 2026 Chromaticity
+-->
+
+<h1 id="best-practices">Best practices</h1>
+<p>A pattern catalogue for scene authors. Three top-level sections:</p>
+<ol>
+<li><a href="#1-control-design">Control design</a> — how to lay out a scene's
+   author-facing knobs so Perform, Snap, presets, and playlists stay
+   composable.</li>
+<li><a href="#2-glsl-pitfalls">GLSL pitfalls</a> — common foot-guns when writing
+   shaders against the <code>chroma_*</code> / <code>syn_*</code> uniform surface.</li>
+<li><a href="#3-glsl-performance">GLSL performance</a> — cost considerations,
+   when to reach for Lygia, and the honest picture of what the V1
+   preview adapter does and doesn't render.</li>
+</ol>
+<p>Read top-down on the first pass; each subsection is a named pattern
+or pitfall and is independently citable. If you only have five
+minutes, the four most leverage-y items are
+<a href="#13-snap-friendliness-and-the-control-surface-as-a-state-vector">Control surface composability</a>,
+<strong>Coerce booleans through <code>&gt; 0.5</code></strong> (§2.2),
+<a href="#32-prefer-branchless-arithmetic-over-uniform-branching">Branchless over divergent branches</a>,
+and <a href="#36-the-canvas-2d-preview-adapter-is-not-your-final-render">The canvas-2d preview is not your scene</a>.</p>
+<hr />
+<h2 id="1-control-design">1 — Control design</h2>
+<p>A scene's <code>CONTROLS</code> array is the public API your scene exposes to
+operators, snaps, presets, OSC, MIDI, and the in-app preview adapter
+all at once. The fields are documented in <a href="scene-workflow.html">Scene Workflow</a>;
+this section covers what to do with them.</p>
+<h3 id="11-pick-the-smallest-control-surface-that-exposes-intent">1.1 Pick the smallest control surface that exposes intent</h3>
+<p>Every control you declare becomes:</p>
+<ul>
+<li>a row in Perform's Scene Controls panel,</li>
+<li>a slot in every preset captured against this scene,</li>
+<li>a value persisted into every Snap,</li>
+<li>a route under <code>/chroma/control/&lt;name&gt;</code> for OSC operators,</li>
+<li>a learnable target for MIDI bindings.</li>
+</ul>
+<p>That's five surfaces multiplied by the count. Five controls is fine.
+Twenty is operator-hostile. Thirty is unusable in Perform.</p>
+<p>A useful sieve: <strong>if two controls always move together in your own
+testing, fold them into one.</strong> A <code>tint</code> colour with a per-channel
+<code>tint_r</code> / <code>tint_g</code> / <code>tint_b</code> triplet adjacent to it is one control,
+not four. A <code>position</code> xy plus a separate <code>position_x</code> and
+<code>position_y</code> is one xy control, not three.</p>
+<h3 id="12-name-controls-for-the-operator-not-the-shader">1.2 Name controls for the operator, not the shader</h3>
+<p>The <code>NAME</code> field is what the operator reads at perform-time. Two
+rules that age well:</p>
+<ul>
+<li><strong>Pick a short verb-or-noun phrase, lower-case, snake-cased.</strong>
+  <code>bass_pulse</code>, <code>palette_hue</code>, <code>tunnel_speed</code>. Avoid GLSL-internal
+  spellings like <code>u_pulse_amp_norm</code>.</li>
+<li><strong>Use the <code>DESCRIPTION</code> field for the longer story.</strong> Perform
+  surfaces <code>NAME</code> as the row label; the description shows up in
+  tooltips and in the operator's Help panel. There is no character
+  budget on <code>DESCRIPTION</code>; treat it like a one-sentence
+  operator-facing comment.</li>
+</ul>
+<p>The <code>LABEL</code> legacy field is preserved for ingest of reference scenes
+but does not need to be authored on new scenes; <code>NAME</code> carries.</p>
+<h3 id="13-snap-friendliness-and-the-control-surface-as-a-state-vector">1.3 Snap-friendliness and the control surface as a state vector</h3>
+<p>The Snap system captures the full vector of every control's current
+value at the moment you save the slot. Recalling a slot writes every
+captured value back. Presets behave the same way under Wave 2.4
+PERF.C semantics: Cmd-click captures, click recalls. Playlists
+transition between presets across scene boundaries.</p>
+<p>The implication: <strong>every author-facing control is part of the scene's
+state vector</strong>. Two anti-patterns follow:</p>
+<ul>
+<li><strong>Don't include "moment-of-author" controls</strong> that you don't want
+  operators to capture into Snaps. A debug <code>show_uv</code> toggle, a one-
+  shot <code>randomize_seed</code> bang, a developer-only <code>wireframe</code> flag: drop
+  these before publishing or move them behind your authoring branch.</li>
+<li><strong>Don't bake operator-facing logic into uniforms the scene
+  hot-reloads under.</strong> A control that takes effect only on scene
+  reload is silently broken under Snap recall — the recalled value
+  will not match the visible state. Make controls react every frame,
+  not at boot.</li>
+</ul>
+<h3 id="14-use-ui_group-to-keep-perform-legible">1.4 Use <code>UI_GROUP</code> to keep Perform legible</h3>
+<p>Controls without a <code>UI_GROUP</code> land in the default panel and stack
+top-to-bottom in declaration order. For scenes with more than ~6
+controls, declare an explicit <code>UI_GROUP</code> per cluster. Perform
+respects the groups as collapsible panels under Scene Controls; the
+Library scene-detail pane shows the group taxonomy too.</p>
+<p>A workable convention:</p>
+<ul>
+<li><code>appearance</code> — colours, palettes, tint, alpha.</li>
+<li><code>motion</code> — speed, rotation, warp, drift.</li>
+<li><code>audio</code> — per-band gains, reactivity multipliers.</li>
+<li><code>geometry</code> — scale, position, count, density.</li>
+<li><code>meta-output</code> — the four canonical <code>IS_META</code> flags (mirror, invert,
+  global tint, master gain).</li>
+<li><code>meta-pipeline</code> — anything else that affects the global pipeline
+  rather than the scene's intrinsic look.</li>
+</ul>
+<p>The strings are operator-facing prose; pick what reads cleanly in
+your scene's domain. Stay consistent across scenes if you ship a
+library.</p>
+<h3 id="15-the-is_meta-flag-and-the-_reactivity-meta-gate">1.5 The <code>IS_META</code> flag and the <code>_Reactivity</code> meta-gate</h3>
+<p><code>IS_META: true</code> on a control signals "this is a global pipeline
+adjustment, not an intrinsic scene parameter." The fixture set in
+<code>engine/scene/tests/fixtures/scenes/meta-controls.chroma</code> enumerates
+the canonical four:</p>
+<ul>
+<li><code>meta_mirror</code> (toggle)</li>
+<li><code>meta_invert</code> (toggle)</li>
+<li><code>meta_tint</code> (color)</li>
+<li><code>meta_gain</code> (slider, <code>[0, 2]</code>)</li>
+</ul>
+<p>Beyond those four, a separate first-class meta-control —
+<code>_Reactivity</code> — multiplies every audio uniform globally before the
+shader reads it. It's part of the Advanced edition meta-gate per the
+catalog and is what gives operators a single knob to turn down
+audio response without rewriting every shader's mix factor.</p>
+<p><strong>Pattern.</strong> Author your shader against the raw audio uniforms;
+reach for an <code>IS_META</code> <code>audio_gain</code> slider local to your scene
+<strong>only</strong> if you need scene-specific trim distinct from the global
+<code>_Reactivity</code> knob. Otherwise leave the global meta-knob to do its
+job.</p>
+<h3 id="16-range-default-and-the-interesting-zone">1.6 Range, default, and the "interesting zone"</h3>
+<p>Three patterns that pay for themselves:</p>
+<ul>
+<li><strong>Set <code>MIN</code> and <code>MAX</code> to the range you actually want the operator
+  to explore.</strong> A slider <code>[0, 1000]</code> where every interesting value
+  lives in <code>[0, 10]</code> wastes the operator's fine motor control.</li>
+<li><strong>Pick <code>DEFAULT</code> at the most-compelling-looking sample of the
+  range, not the midpoint and not zero.</strong> The operator's first
+  encounter with your scene is the default. If <code>0.0</code> is dead-silent
+  black, that's a bad first impression.</li>
+<li><strong>Avoid exact-zero defaults on multiplicative axes.</strong> A <code>gain</code> or
+  <code>intensity</code> slider that starts at <code>0.0</code> makes the scene look
+  broken at load time. Start at <code>0.5</code> and let the operator dial
+  down.</li>
+</ul>
+<h3 id="17-curves-smooth-variants-knobs-vs-sliders">1.7 Curves: smooth variants, knobs vs sliders</h3>
+<p>The TYPE field accepts the base kind plus a smoothing variant after
+the first whitespace token (<code>slider smooth</code>, <code>bang smooth</code>,
+<code>xy smooth</code>). The base kind drives the schema; the variant drives
+the runtime smoothing behaviour. Specifically:</p>
+<ul>
+<li><strong><code>slider</code> vs <code>knob</code></strong> — the engine treats both as scalar inputs
+  through the same pipeline. Pick <code>knob</code> when the visual affordance
+  in Perform should be rotary (small parameter, fits the dense
+  scene-controls grid), <code>slider</code> when linear travel reads more
+  intuitive (gains, levels, anything 0-to-1).</li>
+<li><strong><code>slider smooth</code> etc.</strong> — apply the smoothing variant to any
+  control the operator will sweep aggressively. The smoothing
+  removes step-jaggies when the value is bound to MIDI faders or
+  swept via OSC at high update rate.</li>
+<li><strong><code>bang</code> vs <code>bang smooth</code></strong> — momentary triggers. Smoothing on
+  <code>bang</code> decays the trigger toward zero with a configurable
+  half-life. Without smoothing, the trigger fires for exactly one
+  frame.</li>
+</ul>
+<p>The <code>PARAMS</code> field on a control carries variant-specific smoothing
+payload (target half-life, smoothing window, etc.) when the variant
+uses one.</p>
+<h3 id="18-how-the-preview-adapter-consumes-named-controls">1.8 How the preview adapter consumes named controls</h3>
+<p>The Perform / Library / Author preview tiles render through the
+canvas-2d procedural adapter (<code>SceneCanvas.svelte</code>), not through a
+GPU GLSL pipeline. The preview is wireframe-faithful for procedural
+shapes but is <strong>not</strong> rasterising your scene's actual shader. The
+ADR-011 GPU pipeline lands in Phase-2+; until then, the preview
+adapter reads three named pre-multiplier control names verbatim:</p>
+<ul>
+<li><strong><code>speed</code></strong> (slider in <code>[0, 1]</code>, nominal <code>0.5</code>) pre-multiplies the
+  renderer's time argument. <code>0.0</code> freezes the preview, <code>1.0</code> runs at
+  2x.</li>
+<li><strong><code>intensity</code></strong> (slider in <code>[0, 1]</code>, nominal <code>0.5</code>) pre-multiplies
+  the renderer's audio-level argument with the same 2x scaling.</li>
+<li><strong><code>tint</code></strong> (vec3 or vec4 in <code>[0, 1]</code> per channel) draws a
+  translucent overlay over the procedural vignette at 20% of the
+  supplied alpha.</li>
+</ul>
+<p>Plus four control-coverage extras: <code>invert</code>, <code>mirror</code>, <code>hor_mirror</code> /
+<code>horizontal_mirror</code>, <code>vert_mirror</code> / <code>vertical_mirror</code>. These render
+as post-pass overlays at the canvas-2d adapter level.</p>
+<p><strong>Pattern.</strong> If you want your scene's preview tile to "do the right
+thing" without operators having to imagine the GPU render, name your
+top-level speed / intensity / tint controls exactly those three
+spellings. The preview adapter will respect them. Other controls
+still dispatch through the runtime command bus to the engine —
+they're just not visualised in the canvas-2d preview.</p>
+<hr />
+<h2 id="2-glsl-pitfalls">2 — GLSL pitfalls</h2>
+<p>This section catalogues mistakes that compile cleanly but produce
+silently-wrong visuals at runtime. Read <a href="chroma-uniforms.html">Chromaticity Uniforms</a>
+for the canonical uniform vocabulary before reaching here for
+debugging.</p>
+<h3 id="21-a-typo-at-the-uniform-declaration-site-silently-binds-zero">2.1 A typo at the uniform declaration site silently binds zero</h3>
+<p>The runtime does not perform per-binding casing fixups. If your
+shader declares <code>uniform float chroma_audiorms;</code> (lowercase <code>r</code>)
+instead of <code>chroma_AudioRMS</code>, the binding adapter has no symbol
+to publish into. The compile is clean. The uniform reads zero
+forever. The scene renders dark.</p>
+<p><strong>Pattern.</strong> Copy uniform names from the
+<a href="chroma-uniforms.html">Chromaticity Uniforms reference</a> verbatim. The
+scene loader surfaces a warning at load time when a declared
+uniform name fails to resolve against the catalog; check the load
+diagnostics on every fresh declaration. Don't rely on visual
+inspection — a uniform binding zero often looks like the scene "just
+needs more audio."</p>
+<h3 id="22-coerce-toggles-through-05-not-10">2.2 Coerce toggles through <code>&gt; 0.5</code>, not <code>== 1.0</code></h3>
+<p>GLSL toggles arrive as <code>float</code> uniforms (0.0 or 1.0 on disk). The
+trip from operator → IPC → JSON → uniform → shader passes through
+several float coercions; a value that started life as 1.0 may
+arrive as 0.9999937 by the time the shader reads it. Comparing for
+strict equality against 1.0 produces sporadic flickering when the
+toggle is "on but reads slightly less than perfect."</p>
+<pre><code class="language-glsl">// FRAGILE — equality against a coerced float
+if (u_invert == 1.0) {
+    col = vec3(1.0) - col;
+}
+
+// ROBUST — half-range threshold
+if (u_invert &gt; 0.5) {
+    col = vec3(1.0) - col;
+}
+</code></pre>
+<p>The same rule applies to <code>if (audio_band == 0.0)</code> checks; use
+<code>&lt; 1e-6</code> or similar. CPU integer comparisons are not GPU float
+comparisons; thinking in epsilons is the discipline.</p>
+<h3 id="23-integer-vs-float-coercion-at-uniform-boundaries">2.3 Integer-vs-float coercion at uniform boundaries</h3>
+<p>GLSL implicitly promotes integer literals in expressions, but the
+rules surprise people. A common pitfall:</p>
+<pre><code class="language-glsl">// WRONG — integer division, returns 0
+float t = 1 / 2;
+
+// RIGHT — float division, returns 0.5
+float t = 1.0 / 2.0;
+</code></pre>
+<p>This bites authors who copy patterns from CPU languages where
+literal integer division promotes. In GLSL, <code>1 / 2</code> is <code>0</code>, full
+stop, and many downstream errors look like "the scene is dark" or
+"the colours desaturated."</p>
+<p>Similarly, when sampling <code>chroma_AudioFFT[i]</code>, declare <code>i</code> as <code>int</code>
+explicitly:</p>
+<pre><code class="language-glsl">int idx = int(floor(t * 8.0));
+idx = clamp(idx, 0, 7);
+float band = chroma_AudioFFT[idx];
+</code></pre>
+<p>A <code>float</code>-indexed array access compiles on some GLSL versions and
+fails on others; the <code>int</code> cast is portable.</p>
+<h3 id="24-out-of-bounds-array-sampling">2.4 Out-of-bounds array sampling</h3>
+<p><code>chroma_AudioFFT[8]</code> has exactly eight bands, indices 0..7. Reading
+<code>chroma_AudioFFT[8]</code> (the off-by-one) is undefined behaviour: some
+drivers return 0, some return the next memory cell, some kernel-
+panic the GPU on tiles where unused registers carry old fragment
+state. Always <code>clamp(idx, 0, 7)</code> before indexing.</p>
+<p>Sampler textures (<code>syn_Spectrum</code>, <code>syn_LevelTrail</code>) have the same
+constraint: the sampler API clamps automatically at the GL level,
+but the <code>u</code> coordinate you feed needs to be in <code>[0, 1]</code> for
+documented behaviour. Wrapping mode is sampler-default
+<code>GL_CLAMP_TO_EDGE</code> unless you opt into something else.</p>
+<h3 id="25-the-all-zero-baseline-is-real">2.5 The all-zero baseline is real</h3>
+<p>Every <code>chroma_*</code> and <code>syn_*</code> audio uniform reads zero during the
+no-audio-yet startup window. The first audio tick arrives some tens
+of milliseconds after the scene loads. A shader that divides by
+<code>chroma_AudioRMS</code> without an epsilon guard produces inf / NaN /
+black-screen on the first frame.</p>
+<pre><code class="language-glsl">// FRAGILE — division by zero on first frame
+vec3 col = base / chroma_AudioRMS;
+
+// ROBUST — saturating fallback
+float rms = max(chroma_AudioRMS, 1e-3);
+vec3 col = base / rms;
+</code></pre>
+<p>The same pattern applies to <code>chroma_AudioPeak</code>, <code>syn_Level</code>,
+<code>syn_BPMConfidence</code>, and any time-accelerator (<code>syn_BassTime</code> etc.)
+that decays toward zero on silence.</p>
+<h3 id="26-alpha-pre-multiplication-caveats">2.6 Alpha pre-multiplication caveats</h3>
+<p>Chromaticity scenes write to a 32-bit RGBA target. The compositor
+expects <strong>non-pre-multiplied alpha</strong> by default — i.e. your
+<code>gl_FragColor</code> carries the colour you want at full opacity and the
+alpha channel carries the blend factor. Authors who copy a pattern
+that pre-multiplies (multiplying RGB by A inside the shader) will
+see their scene appear dim when alpha is below 1.0.</p>
+<pre><code class="language-glsl">// NON-PREMULTIPLIED (default)
+gl_FragColor = vec4(scene_rgb, scene_alpha);
+
+// PRE-MULTIPLIED (rare; use only with a matching blend mode)
+gl_FragColor = vec4(scene_rgb * scene_alpha, scene_alpha);
+</code></pre>
+<p>If you need pre-multiplied (compositing-over with HDR sources,
+post-FX that operates in linear-light), document it in the scene's
+<code>DESCRIPTION</code> field so the operator knows what they're consuming.</p>
+<h3 id="27-gl_fragcoord-is-in-pixels-not-normalised">2.7 <code>gl_FragCoord</code> is in pixels, not normalised</h3>
+<p>A new author's first instinct is often:</p>
+<pre><code class="language-glsl">// WRONG — gl_FragCoord goes 0..width / 0..height, not 0..1
+vec2 uv = gl_FragCoord.xy;
+</code></pre>
+<p>You want one of:</p>
+<pre><code class="language-glsl">// Normalised, anisotropic — uv ranges 0..1 in each axis
+vec2 uv = gl_FragCoord.xy / iResolution.xy;
+
+// Normalised, aspect-corrected — centre at (0,0), keep y in [-0.5, 0.5]
+vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
+</code></pre>
+<p>The aspect-corrected form is what <code>audio-reactivity.md</code>'s worked
+example uses; it is the canonical shape for scenes that draw
+centred radial geometry.</p>
+<h3 id="28-hot-reload-preserves-chroma_time-not-your-accumulators">2.8 Hot-reload preserves <code>chroma_time</code>, not your accumulators</h3>
+<p>Live-reload (<code>docs/37</code>) preserves the operator's control values
+across the reload by re-applying the captured <code>PreservedState</code>. It
+does <strong>not</strong> preserve in-shader-state like a feedback accumulator
+in a multipass <code>FLOAT</code> target — that target gets cleared and your
+post-reload first frame reads zero.</p>
+<p><strong>Pattern.</strong> Don't write logic that depends on the previous frame's
+contents surviving a hot-reload. If your scene needs warm-up state,
+seed it from a stable noise function of <code>chroma_time</code> or <code>syn_Time</code>
+so the same pattern reproduces on every reload.</p>
+<hr />
+<h2 id="3-glsl-performance">3 — GLSL performance</h2>
+<p>A 60 Hz render budget gives you ~16.67 ms per frame for everything:
+geometry, multipass composition, post-FX, plus the scheduler tick
+that drains audio and IPC. On a mid-range integrated GPU, that
+budget is generous for most scenes and tight for the worst-case
+ones. This section catalogues where cost actually accumulates.</p>
+<h3 id="31-texture-sampling-is-the-largest-single-per-fragment-cost">3.1 Texture sampling is the largest single per-fragment cost</h3>
+<p>A modern GPU's texture sampler is fast but not free. A shader that
+does eight <code>texture()</code> calls per fragment will spend most of its
+budget in the sampler. The canonical mitigations:</p>
+<ul>
+<li><strong>Sample once, reuse.</strong> If you need <code>chroma_AudioFFT[3]</code> twice in
+  your shader, store the first read into a local <code>float</code> and reuse.
+  The compiler may CSE for you on simple cases, but for sampler
+  reads through <code>syn_Spectrum</code> it almost certainly will not.</li>
+<li><strong>Prefer the array uniform over the sampler.</strong> Reading
+  <code>chroma_AudioFFT[i]</code> is a uniform fetch, not a sampler read.
+  Reading <code>texture(syn_Spectrum, u).r</code> is a sampler read. Use the
+  array when you only need the eight-band shape; use the sampler
+  when you need the full 256-or-512-bin spectrum.</li>
+<li><strong>Avoid texture sampling inside loops with variable bounds.</strong>
+  GPU drivers can hoist loop-invariant samples; they can't always
+  hoist conditional ones.</li>
+</ul>
+<h3 id="32-prefer-branchless-arithmetic-over-uniform-branching">3.2 Prefer branchless arithmetic over uniform branching</h3>
+<p>GPU fragments execute in lockstep across a warp / wavefront
+(typically 32 or 64 lanes). When an <code>if</code> branches differently across
+lanes, both sides of the branch execute and the results are masked
+— the "diverged" cost is the sum, not the average.</p>
+<p>A branchless pattern is often cheaper:</p>
+<pre><code class="language-glsl">// DIVERGENT (per-fragment branch on a control value)
+vec3 col;
+if (u_audio_gate &gt; 0.5 &amp;&amp; bass &gt; 0.1) {
+    col = pulse_color * bass;
+} else {
+    col = base_color;
+}
+
+// BRANCHLESS (mix on the predicate)
+float gate = step(0.5, u_audio_gate) * step(0.1, bass);
+vec3 col = mix(base_color, pulse_color * bass, gate);
+</code></pre>
+<p><code>mix</code> / <code>step</code> / <code>smoothstep</code> are sampler-grade fast paths on
+nearly every GPU. Use them in preference to per-lane control flow
+whenever the predicate is cheap.</p>
+<p>The exception: when the branch is genuinely uniform across the
+warp (e.g. a toggle uniform that's the same for every fragment),
+GLSL compilers can collapse it to a true branch. That case is free.
+The expensive case is per-fragment divergence.</p>
+<h3 id="33-itime-chroma_time-cost-vs-iframe">3.3 <code>iTime</code> / <code>chroma_time</code> cost vs <code>iFrame</code></h3>
+<p>Both are scalar uniforms — the per-frame read cost is the same.
+What matters is what you do with them:</p>
+<ul>
+<li><strong><code>chroma_time</code> (float seconds)</strong> is wallclock-aligned. Use it
+  for animation phase, oscillators, wave functions. It is
+  monotonically increasing within a session.</li>
+<li><strong><code>iFrame</code> (integer frame counter)</strong> is useful for stochastic
+  patterns that need to sample a different pseudo-random value per
+  frame. Modular arithmetic on <code>iFrame</code> is your friend for
+  temporal dither, accumulation, or frame-blending tricks.</li>
+</ul>
+<p>The performance impact comes from the shape of the math you build
+on them. A <code>sin(chroma_time * 6.283 * freq)</code> is one transcendental
+per fragment; if you need that pattern many times, compute it once
+into a local and reuse. A nested-trig phase function like
+<code>sin(cos(sin(t * a) * b) * c)</code> may look concise but executes three
+transcendentals per fragment.</p>
+<h3 id="34-lygia-helpers-vs-hand-rolled-math">3.4 Lygia helpers vs hand-rolled math</h3>
+<p>Chromaticity ships <a href="https://github.com/patriciogonzalezvivo/lygia">Lygia v1.1.4</a>
+vendored under <code>third_party/lygia/</code> (per
+<a href="#references">Shader Sourcing Research</a>). Lygia is a utility
+library — noise, SDF, blend, palette, raymarch helpers — that
+composes against the <code>chroma_*</code> uniforms cleanly.</p>
+<p><strong>When to reach for Lygia:</strong></p>
+<ul>
+<li>Noise functions: <code>lygia/generative/cnoise.glsl</code> (classic Perlin),
+  <code>lygia/generative/snoise.glsl</code> (Simplex), <code>lygia/generative/fbm.glsl</code>
+  (fractional Brownian motion), <code>lygia/generative/voronoi.glsl</code>
+  (cellular). The vendored implementations are reference-quality
+  ports of canonical algorithms.</li>
+<li>SDF primitives: <code>lygia/sdf/</code> carries <code>sphereSDF</code>, <code>boxSDF</code>, etc.
+  Hand-rolling these is a foot-gun.</li>
+<li>Colour conversions: <code>lygia/color/</code> carries the standard sRGB /
+  linear / HSL / OKLAB / palette helpers.</li>
+</ul>
+<p><strong>When to skip Lygia and hand-roll:</strong></p>
+<ul>
+<li>One-shot math that's smaller than the include. A single
+  <code>smoothstep</code> doesn't need a helper file.</li>
+<li>Performance-critical inner loops where the call boundary cost
+  (or per-call uniform setup, if the helper expects extra
+  arguments) is comparable to the helper's body.</li>
+<li>Anything where you need exact control over WGSL transpile
+  semantics (Phase-2+ when the GPU pipeline lands).</li>
+</ul>
+<p><strong>License-trial caveat.</strong> Lygia ships under Prosperity-3.0.0 with a
+30-day commercial trial. The trial does not bind Chromaticity's
+shipped product — the license election lands at the Phase-5
+<code>EV-LICENSE-AUDIT</code> gate. Treat Lygia as a foreground tool during
+authoring; pre-stage the MIT-licensed alternative (webgl-noise +
+glslify + three.js post-FX subsets per the
+<a href="#references">Shader Sourcing Research</a> shortlist) if you ship a
+scene library you intend to redistribute.</p>
+<h3 id="35-multipass-composition-costs-scale-with-pass-count">3.5 Multipass composition costs scale with pass count</h3>
+<p>The scene schema's <code>PASSES</code> array declares N render passes that
+compose into the final frame. Each pass:</p>
+<ul>
+<li>Pays a framebuffer-bind cost (~tens of microseconds on a modern
+  GPU).</li>
+<li>Pays a texture-allocation cost on first use (one-time per pass).</li>
+<li>Reads the previous pass's output as a <code>sampler2D</code> texture.</li>
+</ul>
+<p>Three passes is generally cheap. Eight is generous but manageable.
+Twenty is asking the operator's integrated-GPU laptop to drop frames.</p>
+<p><strong>Pattern.</strong> Combine passes where the math allows it. If pass 2
+does a horizontal blur and pass 3 does a vertical blur, that's a
+classic separable filter and is a clean two-pass design — keep it
+two. But if pass 4 does a colour grade that could fold into the
+final composite of pass 5, fold it.</p>
+<p>The <code>FLOAT</code> per-pass flag (preserved in pass <code>extensions</code> at
+slice-3a) marks a pass as needing 16- or 32-bit per-channel
+precision; that doubles or quadruples the framebuffer memory
+footprint compared to a default 8-bit-per-channel target. Use
+<code>FLOAT</code> only when you need HDR or feedback accumulation precision.</p>
+<h3 id="36-the-canvas-2d-preview-adapter-is-not-your-final-render">3.6 The canvas-2d preview adapter is not your final render</h3>
+<p>The preview tiles in Perform / Library / Author are rendered by
+<code>src/lib/widgets/SceneCanvas.svelte</code> against the 16 procedural
+renderers in <code>scene-renderers.ts</code>. This is an <strong>operator preview
+adapter</strong>, not a GPU rasterisation of your shader. Specifically:</p>
+<ul>
+<li>It runs on the main UI thread via <code>requestAnimationFrame</code> and
+  HTML <code>CanvasRenderingContext2D</code>.</li>
+<li>It resolves a <code>SceneKind</code> from your scene's metadata (title,
+  tags, category) and picks one of 16 procedural patterns to
+  display.</li>
+<li>It honours the three named pre-multipliers (<code>speed</code>,
+  <code>intensity</code>, <code>tint</code>) plus the four mirror / invert post-pass
+  flags described in §1.8 above.</li>
+<li>It reads the live audio snapshot when present so the preview
+  pulse responds to real audio.</li>
+</ul>
+<p>What it does <strong>not</strong> do:</p>
+<ul>
+<li>Execute your <code>main.glsl</code> source.</li>
+<li>Render your multipass chain.</li>
+<li>Resolve <code>lygia/</code> includes.</li>
+<li>Respect any uniform other than the named pre-multipliers above.</li>
+</ul>
+<p>ADR-011 Phase-2+ work will replace the preview adapter with a real
+wgpu-backed mini renderer that does run your shader. Until then,
+the preview communicates "this is what the scene's about" rather
+than "this is what your shader literally outputs at this moment."</p>
+<p><strong>Pattern.</strong> Don't tune your scene's look against the preview tile.
+Tune it against the live render (Perform's main canvas, Author's
+live-preview pane in non-preview-tile mode). Use the preview tile
+as a visual table-of-contents.</p>
+<h3 id="37-profile-against-the-live-runtime-not-synthetic-frames">3.7 Profile against the live runtime, not synthetic frames</h3>
+<p>The <code>EV-PERF-BUDGETS</code> work shipped a synthetic-workload bench
+harness for the engine subsystems, but the only honest signal for
+"does my scene hit 60 Hz" is the Perform top-bar FPS readout under
+your actual scene workload. Two posture rules:</p>
+<ul>
+<li><strong>Measure with audio active.</strong> A silent-mic test underestimates
+  the analysis-thread cost; the scheduler tick that drains the
+  audio snapshot is part of your per-frame budget.</li>
+<li><strong>Measure with the controls you intend to ship.</strong> A control
+  that defaults to a cheap value (<code>intensity = 0</code>) hides cost
+  that the operator will pay later when they dial it up. Sweep
+  the controls through their declared range before declaring the
+  scene shippable.</li>
+</ul>
+<h3 id="38-cheap-defaults-expensive-worst-cases">3.8 Cheap defaults, expensive worst cases</h3>
+<p>A useful sanity check: the cheapest possible state of your scene
+(all sliders at zero, all toggles off) should hit 60 Hz on an
+integrated GPU. The most expensive state (all sliders at max, all
+toggles on) should still degrade gracefully — drop to 30 Hz, not
+freeze.</p>
+<p>If a particular control flips the scene from cheap to crash-
+expensive, that's a sign the control needs a clamp at the
+shader-author boundary, not the operator boundary. A
+<code>raymarch_steps</code> slider declared <code>MAX = 200</code> is the operator
+choosing to render at 5 fps; declare <code>MAX = 64</code> and let your
+shader's algorithmic budget do the right thing within that
+range.</p>
+<hr />
+<h2 id="references">References</h2>
+<ul>
+<li><a href="scene-workflow.html">Scene Workflow</a> — <code>.chroma</code> package shape and
+  scene-author lifecycle.</li>
+<li><a href="chroma-uniforms.html">Chromaticity Uniforms</a> — the canonical
+  <code>chroma_*</code> / <code>syn_*</code> uniform vocabulary.</li>
+<li><a href="audio-reactivity.html">Audio Reactivity</a> — the audio path,
+  snapshot fields, and the four-band reduction.</li>
+<li><a href="import-shadertoy.html">Importing Shadertoy Scenes</a> — the
+  <code>iTime</code> / <code>iResolution</code> / <code>iChannel0</code> adapter for ShaderToy
+  ports.</li>
+<li><a href="settings-reference.html">Settings Reference</a> — operator-side
+  preferences that affect every scene.</li>
+</ul>
+<p>External (links only; treat the body of these resources as
+attribution material, not ship-time content):</p>
+<ul>
+<li>Inigo Quilez's articles at <code>iquilezles.org/articles/</code> — MIT-
+  licensed primitives for SDF, noise, palette, raymarching.</li>
+<li>The Lygia shader library at <code>github.com/patriciogonzalezvivo/lygia</code>
+  — currently trial-vendored, see the project's
+  in-repo <code>docs/56-shader-sourcing-research.md</code> for the license
+  posture.</li>
+<li>The Book of Shaders — excellent pedagogical reference. The
+  example code in that repository ships under a proprietary
+  license that bars vendoring; read for learning, don't copy
+  into your scene.</li>
+</ul>
+<hr />
+<p><em>Authored from <code>engine/scene/src/schema.rs</code> (control schema
+shape), <code>engine/scene/tests/fixtures/scenes/</code> (representative
+scene fixtures), <code>third_party/lygia/</code> (vendored shader library),
+<code>src/lib/widgets/SceneCanvas.svelte</code> (canvas-2d preview adapter),
+<code>docs/56-shader-sourcing-research.md</code> (Lygia license posture),
+and <code>docs/comparison/features/ssf-format.md</code> (best-practices
+parity gap). Clean-room per
+<code>docs/29-cleanroom-legal-policy-baseline.md</code>.</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.sections", "search.highlight", "search.suggest"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
