@@ -25,9 +25,10 @@
 //! envelope_v2 = be_u32(0x0000_0002)
 //!            || encode_state_canonical(state)
 //!            || be_u32(extension_count)
-//!            || extensions[ V2SchemaMetadata::ext_id (be_u32)
-//!                        || be_u32(schema_version) ]
-//!     extension_count is fixed to 1 in V2 (V2SchemaMetadata only).
+//!            || extensions[ ext_id (be_u32) || ext_payload ]
+//!     extension_count is fixed to 3 in V2 — V2SchemaMetadata
+//!     (be_u32 schema_version), V2SessionBindings, and
+//!     V2XyControlValues. See `encode_snapshot` for each payload.
 //! ```
 //!
 //! Consequences:
@@ -79,6 +80,14 @@ const EXT_ID_V2_SCHEMA_METADATA: u32 = 0x0000_0001;
 /// 32) / EV-PRESET-PLAYLIST (row 34) / EV-STATE-MIGRATION (row 33)
 /// canonical hashes are unaffected.
 const EXT_ID_V2_SESSION_BINDINGS: u32 = 0x0000_0002;
+/// Stable extension id for the xy-control-values extension carrying
+/// `state.control_store.xy_values` (parity-closure wave 2 Lane D
+/// item 1). Like [`EXT_ID_V2_SESSION_BINDINGS`], the canonical-
+/// binary segment intentionally does NOT carry XY control values —
+/// they ride in this extension so EV-STATE-REPLAY (row 32) /
+/// EV-PRESET-PLAYLIST (row 34) / EV-STATE-MIGRATION (row 33)
+/// canonical hashes are unaffected by the addition.
+const EXT_ID_V2_XY_CONTROL_VALUES: u32 = 0x0000_0003;
 
 /// Mapping-source tag bytes mirror [`encode_state_canonical`]'s
 /// shape (Osc=0x01, Midi=0x02 per state_replay.rs lines 197-208).
@@ -195,7 +204,7 @@ impl std::error::Error for MigrateError {
 /// Encode `state` as a V2 envelope (current schema version).
 ///
 /// Layout: `be_u32(0x0000_0002) || encode_state_canonical(state)
-/// || be_u32(extension_count) || extensions[...]`. Two extensions
+/// || be_u32(extension_count) || extensions[...]`. Three extensions
 /// ship today:
 ///
 /// 1. [`EXT_ID_V2_SCHEMA_METADATA`] (`0x0000_0001`) — synthetic
@@ -206,20 +215,27 @@ impl std::error::Error for MigrateError {
 ///    [`encode_session_bindings_extension`] for the per-extension
 ///    payload shape. Always emitted; an empty `SessionBindings`
 ///    serializes to a four-byte `0u32 || 0u32` count pair.
+/// 3. [`EXT_ID_V2_XY_CONTROL_VALUES`] (`0x0000_0003`) — parity-
+///    closure wave 2 Lane D item 1 2-component (XY) control values
+///    (`state.control_store.xy_values`). See
+///    [`encode_xy_control_values_extension`] for the payload shape.
+///    Always emitted; an empty map serializes to a four-byte `0u32`
+///    count.
 ///
 /// The canonical-hash path
 /// ([`crate::state_replay::canonical_state_hash`]) reads the
-/// canonical-binary segment ONLY — both extensions sit outside that
-/// segment so adding extensions does not drift EV-STATE-REPLAY (row
-/// 32) / EV-PRESET-PLAYLIST (row 34) / EV-STATE-MIGRATION (row 33)
-/// canonical hashes.
+/// canonical-binary segment ONLY — all three extensions sit outside
+/// that segment so adding extensions does not drift EV-STATE-REPLAY
+/// (row 32) / EV-PRESET-PLAYLIST (row 34) / EV-STATE-MIGRATION (row
+/// 33) canonical hashes.
 #[must_use]
 pub fn encode_snapshot(state: &State) -> Vec<u8> {
     let mut buf = Vec::with_capacity(64);
     buf.extend_from_slice(&VERSION_V2.to_be_bytes());
     encode_state_canonical(state, &mut buf);
-    // Two extensions: V2SchemaMetadata + V2SessionBindings.
-    let extension_count: u32 = 2;
+    // Three extensions: V2SchemaMetadata + V2SessionBindings +
+    // V2XyControlValues.
+    let extension_count: u32 = 3;
     buf.extend_from_slice(&extension_count.to_be_bytes());
     // Extension 1: V2SchemaMetadata.
     buf.extend_from_slice(&EXT_ID_V2_SCHEMA_METADATA.to_be_bytes());
@@ -230,6 +246,10 @@ pub fn encode_snapshot(state: &State) -> Vec<u8> {
     // Extension 2: V2SessionBindings (Wave 4d.3 PR 5, row 80 class-d).
     buf.extend_from_slice(&EXT_ID_V2_SESSION_BINDINGS.to_be_bytes());
     encode_session_bindings_extension(state, &mut buf);
+    // Extension 3: V2XyControlValues (parity-closure wave 2 Lane D
+    // item 1).
+    buf.extend_from_slice(&EXT_ID_V2_XY_CONTROL_VALUES.to_be_bytes());
+    encode_xy_control_values_extension(state, &mut buf);
     buf
 }
 
@@ -476,6 +496,9 @@ fn decode_v2_extensions(cursor: &mut Cursor<'_>, state: &mut State) -> Result<()
             EXT_ID_V2_SESSION_BINDINGS => {
                 decode_session_bindings_extension(cursor, state)?;
             }
+            EXT_ID_V2_XY_CONTROL_VALUES => {
+                decode_xy_control_values_extension(cursor, state)?;
+            }
             other => return Err(DecodeError::UnknownExtensionId(other)),
         }
     }
@@ -566,6 +589,55 @@ fn decode_session_bindings_extension(
     Ok(())
 }
 
+/// Encode `state.control_store.xy_values` (parity-closure wave 2
+/// Lane D item 1) as a tagged extension payload appended to the V2
+/// envelope.
+///
+/// Layout:
+///
+/// ```text
+/// xy_control_values_payload =
+///     be_u32(count)
+///  || entries[ be_u32(control_id)
+///           || be_u32(x_bits)
+///           || be_u32(y_bits) ]
+/// ```
+///
+/// `x_bits` / `y_bits` are the IEEE-754 `f32::to_bits()` of each
+/// axis — the same lossless bit-pattern encoding the canonical
+/// control-store path uses for scalar `ControlValue`. Entries
+/// iterate in `ControlId` order (the `xy_values` `BTreeMap` is
+/// sorted by key), so the encoding is deterministic without an
+/// explicit sort. An empty map serializes to a four-byte `0u32`
+/// count.
+fn encode_xy_control_values_extension(state: &State, out: &mut Vec<u8>) {
+    let xy_values = &state.control_store.xy_values;
+    let count = u32::try_from(xy_values.len()).unwrap_or(u32::MAX);
+    out.extend_from_slice(&count.to_be_bytes());
+    for (id, value) in xy_values {
+        out.extend_from_slice(&id.0.to_be_bytes());
+        out.extend_from_slice(&value[0].to_bits().to_be_bytes());
+        out.extend_from_slice(&value[1].to_bits().to_be_bytes());
+    }
+}
+
+/// Decode the [`EXT_ID_V2_XY_CONTROL_VALUES`] extension payload
+/// written by [`encode_xy_control_values_extension`] into
+/// `state.control_store.xy_values`.
+fn decode_xy_control_values_extension(
+    cursor: &mut Cursor<'_>,
+    state: &mut State,
+) -> Result<(), DecodeError> {
+    let count = cursor.read_be_u32()?;
+    for _ in 0..count {
+        let id = ControlId(cursor.read_be_u32()?);
+        let x = f32::from_bits(cursor.read_be_u32()?);
+        let y = f32::from_bits(cursor.read_be_u32()?);
+        state.control_store.xy_values.insert(id, [x, y]);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod migration_pins {
@@ -589,6 +661,7 @@ mod migration_pins {
         DecodeError, V2SchemaMetadata, VERSION_V2, decode_snapshot, encode_snapshot,
         encode_snapshot_v1, migrate_v1_to_v2,
     };
+    use crate::command_bus::ControlId;
     use crate::state::State;
     use crate::state_replay::canonical_state_hash;
 
@@ -662,5 +735,49 @@ mod migration_pins {
             matches!(err, DecodeError::UnknownVersion(0xFFFF_FFFF)),
             "expected UnknownVersion(0xFFFFFFFF), got {err:?}",
         );
+    }
+
+    #[test]
+    fn xy_control_values_round_trip_through_v2_envelope() {
+        // Drift pin (parity-closure wave 2 Lane D item 1): a state
+        // carrying XY control values MUST survive the V2 envelope
+        // encode -> decode round-trip via the
+        // EXT_ID_V2_XY_CONTROL_VALUES extension. The canonical hash
+        // is unchanged by XY values (they ride the extension, not
+        // the canonical-binary segment) — so this pin observes the
+        // values directly through the `State` accessor AND asserts
+        // the canonical hash equals the empty-state hash.
+        let mut original = State::default();
+        original
+            .control_store
+            .xy_values
+            .insert(ControlId(4), [0.25, -0.75]);
+        original
+            .control_store
+            .xy_values
+            .insert(ControlId(1), [1.0, 0.0]);
+
+        let buf = encode_snapshot(&original);
+        let decoded = decode_snapshot(&buf).expect("xy-bearing state must decode");
+
+        assert_eq!(decoded.xy_control_value(ControlId(4)), Some([0.25, -0.75]));
+        assert_eq!(decoded.xy_control_value(ControlId(1)), Some([1.0, 0.0]));
+        assert_eq!(
+            canonical_state_hash(&original),
+            canonical_state_hash(&State::default()),
+            "XY values must not enter the canonical-binary segment",
+        );
+    }
+
+    #[test]
+    fn migrate_v1_buffer_yields_empty_xy_control_values() {
+        // Drift pin: a V1 buffer carries no XY extension; after
+        // migration the decoded state has an empty XY map. The
+        // Phase-3 forward-only migration contract — a field absent
+        // in V1 decodes to its `Default` (empty `BTreeMap`).
+        let v1 = encode_snapshot_v1(&State::default());
+        let v2 = migrate_v1_to_v2(&v1).expect("v1 default must migrate");
+        let decoded = decode_snapshot(&v2).expect("migrated v2 must decode");
+        assert_eq!(decoded.xy_control_value(ControlId(0)), None);
     }
 }

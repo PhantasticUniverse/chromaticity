@@ -55,6 +55,11 @@ mod fixtures {
     //! 8. `migrate_v1_to_v2_then_round_trip_v2` — V1 → V2 → V2
     //!    decode → V2 re-encode is idempotent (chained migration
     //!    converges to a fixed-point).
+    //! 9. `decode_v2_round_trips_xy_control_values` — parity-closure
+    //!    wave 2 Lane D item 1: a state carrying `ControlSet2D`-
+    //!    committed XY values round-trips through the V2 envelope
+    //!    via the `EXT_ID_V2_XY_CONTROL_VALUES` extension, and the
+    //!    XY payload leaves the canonical hash invariant.
     //!
     //! Each fixture is replayed `TRIALS = 100` times; cross-trial
     //! identity is asserted as the loudest regression signal, then
@@ -286,17 +291,20 @@ mod fixtures {
         // section. Reusing the encoder helpers via `encode_snapshot`
         // keeps the offset derivation honest under encoder drift.
         let buf = encode_snapshot(&state);
-        // Extension trailer for V2 with two extensions on a state
+        // Extension trailer for V2 with three extensions on a state
         // carrying empty `session_bindings` (Wave 4d.3 PR 5, row 80
-        // class-d):
-        //   be_u32(extension_count=2)                              [4]
+        // class-d) and empty `xy_values` (parity-closure wave 2
+        // Lane D item 1):
+        //   be_u32(extension_count=3)                              [4]
         //   ext1: be_u32(ext_id=schema_metadata) || be_u32(schema)  [8]
         //   ext2: be_u32(ext_id=session_bindings)
         //      || be_u32(osc_count=0) || be_u32(midi_count=0)      [12]
-        // = 24 bytes. The mapping-store fixture used by this test
-        // does not populate `session_bindings`, so the empty-empty
-        // shape applies.
-        const V2_EXTENSION_TRAILER_LEN: usize = 24;
+        //   ext3: be_u32(ext_id=xy_control_values)
+        //      || be_u32(xy_count=0)                                [8]
+        // = 32 bytes. The mapping-store fixture used by this test
+        // populates neither `session_bindings` nor `xy_values`, so
+        // the empty shape applies to both.
+        const V2_EXTENSION_TRAILER_LEN: usize = 32;
         let mapping_tag_offset = buf
             .len()
             .checked_sub(V2_EXTENSION_TRAILER_LEN + 1)
@@ -447,6 +455,57 @@ mod fixtures {
             assert_eq!(
                 v2_first, v2_second,
                 "trial {trial}: V1 → V2 → decode → encode must be a fixed-point",
+            );
+        }
+    }
+
+    // --- Fixture 9: V2 xy-control-values round-trip ------------------
+
+    #[test]
+    fn decode_v2_round_trips_xy_control_values() {
+        // Parity-closure wave 2 Lane D item 1: a state carrying
+        // `ControlSet2D`-committed XY values must survive the V2
+        // envelope round-trip via the `EXT_ID_V2_XY_CONTROL_VALUES`
+        // extension. `build_state`'s LCG sampler never emits
+        // `ControlSet2D` (the `kind % 7` mix predates the variant),
+        // so the XY payload is dispatched directly here. Each trial
+        // re-runs the deterministic path; cross-trial divergence
+        // would surface a nondeterministic encoder regression.
+        for trial in 0..TRIALS {
+            let bus = InMemoryBus::in_memory();
+            bus.dispatch(Command::ControlSet2D {
+                id: ControlId(3),
+                value: [0.125, -0.875],
+            })
+            .expect("xy control dispatch must succeed");
+            bus.dispatch(Command::ControlSet2D {
+                id: ControlId(8),
+                value: [1.0, 0.5],
+            })
+            .expect("xy control dispatch must succeed");
+            let mut original = State::default();
+            bus.commit_all_into(&mut original);
+
+            let buf = encode_snapshot(&original);
+            let decoded = decode_snapshot(&buf).expect("xy-bearing v2 envelope must decode");
+
+            assert_eq!(
+                decoded.xy_control_value(ControlId(3)),
+                Some([0.125, -0.875]),
+                "trial {trial}: xy control 3 must survive the V2 round-trip",
+            );
+            assert_eq!(
+                decoded.xy_control_value(ControlId(8)),
+                Some([1.0, 0.5]),
+                "trial {trial}: xy control 8 must survive the V2 round-trip",
+            );
+            // XY values ride the extension, not the canonical-binary
+            // segment — the canonical hash equals the empty-state
+            // hash even though two XY controls are populated.
+            assert_eq!(
+                canonical_state_hash(&decoded),
+                canonical_state_hash(&State::default()),
+                "trial {trial}: xy values must not enter the canonical hash",
             );
         }
     }

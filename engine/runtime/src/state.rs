@@ -19,7 +19,7 @@ use crate::command_bus::{
     ControlId, ControlValue, Event, EventPayload, MappingId, MappingSource, PresetId, SnapSlotId,
 };
 use crate::state_migration::V2SchemaMetadata;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Canonical runtime state.
 ///
@@ -117,6 +117,15 @@ impl State {
             EventPayload::ControlChanged { id, new_value } => {
                 self.control_store.values.insert(id, new_value);
             }
+            EventPayload::ControlChanged2D { id, new_value } => {
+                // Parity-closure wave 2 Lane D item 1: 2-component
+                // (XY) controls store into the additive `xy_values`
+                // sub-map. Disjoint key namespace from `values` is
+                // not enforced here — a scene's `xy` control and a
+                // scalar control are distinct `ControlId`s by
+                // schema construction.
+                self.control_store.xy_values.insert(id, new_value);
+            }
             EventPayload::PresetRecalled { id } => {
                 self.preset_store.active = Some(id);
                 // Wave 2.4 PERF.C: restore the bank's `ControlStore`
@@ -193,6 +202,18 @@ impl State {
     #[must_use]
     pub fn control_value(&self, id: ControlId) -> Option<ControlValue> {
         self.control_store.values.get(&id).copied()
+    }
+
+    /// Read the current 2-component (XY) value for a control.
+    ///
+    /// Additive sibling of [`Self::control_value`] for the `xy`
+    /// control kind (parity-closure wave 2 Lane D item 1). Mutated
+    /// by the [`EventPayload::ControlChanged2D`] apply path; `None`
+    /// until an XY control receives its first
+    /// [`crate::command_bus::Command::ControlSet2D`].
+    #[must_use]
+    pub fn xy_control_value(&self, id: ControlId) -> Option<[f32; 2]> {
+        self.control_store.xy_values.get(&id).copied()
     }
 
     /// Read the active preset, if one has been recalled.
@@ -303,6 +324,20 @@ pub(crate) struct ControlStore {
     /// deterministic FNV-1a-64 hashing per the EV-STATE-REPLAY T2
     /// corpus). Mutation flows through [`State::apply_event`] only.
     pub(crate) values: HashMap<ControlId, ControlValue>,
+    /// 2-component (XY) control values (parity-closure wave 2 Lane D
+    /// item 1). Additive sibling of [`Self::values`]; a `BTreeMap`
+    /// so iteration is sorted by `ControlId` for the deterministic
+    /// [`crate::state_migration`] extension encoder without an
+    /// explicit sort pass.
+    ///
+    /// Intentionally NOT observed by
+    /// [`crate::state_replay::encode_state_canonical`] — XY values
+    /// ride the `EXT_ID_V2_XY_CONTROL_VALUES` migration extension
+    /// only, the same precedent as [`PresetStore::banks`], so the
+    /// EV-STATE-REPLAY (row 32) / EV-PRESET-PLAYLIST (row 34) /
+    /// EV-STATE-MIGRATION (row 33) goldens are invariant under this
+    /// addition. Mutation flows through [`State::apply_event`] only.
+    pub(crate) xy_values: BTreeMap<ControlId, [f32; 2]>,
 }
 
 /// Preset store. See [`ControlStore`].
@@ -455,6 +490,28 @@ mod tests {
             state.mapping_source(MappingId(9)),
             Some(MappingSource::Midi)
         );
+    }
+
+    #[test]
+    fn control_set_2d_updates_xy_value_store() {
+        // Parity-closure wave 2 Lane D item 1: a committed
+        // ControlSet2D event populates the additive `xy_values`
+        // sub-store, readable via `xy_control_value`. The scalar
+        // `control_value` for the same id stays `None` — the two
+        // sub-maps are disjoint key spaces.
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+
+        bus.dispatch(Command::ControlSet2D {
+            id: ControlId(12),
+            value: [0.4, -0.6],
+        })
+        .expect("xy control command must dispatch");
+
+        let events = bus.commit_all_into(&mut state);
+        assert_eq!(events.len(), 1);
+        assert_eq!(state.xy_control_value(ControlId(12)), Some([0.4, -0.6]));
+        assert_eq!(state.control_value(ControlId(12)), None);
     }
 
     #[test]
