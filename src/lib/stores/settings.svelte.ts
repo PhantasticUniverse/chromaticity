@@ -89,6 +89,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     // explicit operator opt-in.
     local_ip: '127.0.0.1',
     port: 9000,
+    out_host: '127.0.0.1',
     out_port: 9001,
     tx_enabled: true,
     rx_enabled: true,
