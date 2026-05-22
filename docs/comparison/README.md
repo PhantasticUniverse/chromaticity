@@ -82,6 +82,18 @@ stay frozen at the snapshot date until the next full re-sweep.
 
 Lane D (optional polish) deferred: XY 2D control widget, OSC playlist bind enum widening, `BindTarget::Scene` two-arg form, `/audio/threshold` direction `Both`, OSC compat dual-emit window. Each is small but low-leverage relative to wave-1 work; revisit if AO smoke surfaces fresh issues.
 
+### Parity-closure wave 2 — Lane D (2026-05-22)
+
+Closed the wave-1 deferred Lane D cluster across 11 PRs (`#499`–`#509`). The five Lane D items:
+
+- **Interactive XY 2D control pad** — additive runtime `vec2` control values (a new `ControlSet2D` command + `ControlChanged2D` event riding a V2 migration-envelope extension), preset save/recall capture, the `set_control_2d` / `get_control_2d` IPC bridge with the `ControlValue2` ts-rs type, and the interactive `Xy.svelte` widget wired into Perform.
+- **OSC playlist `position` bind** — a Tier-1 absolute `Command::PlaylistSetPosition` plus the `/playlists/position {i}` OSC bind. (`play` / `pause` / `select` stay Phase-4+ per the `EV-PRESET-PLAYLIST` narrowing — they need a playlist-entry model.)
+- **`BindTarget::Scene` two-arg form** — `scene:<id>:<preset>` so a single OSC route loads a scene and recalls one of its presets.
+- **`/audio/threshold` bidirectional** — the route is now `OscDirection::Both`, with an announce-on-change outbound emit.
+- **OSC compat dual-emit window** — an opt-in, deadline-bounded window that emits outbound OSC on both the canonical and the singular compat-alias address, built on a new outbound OSC sender (ADR-013 §1/§6 loopback-default, operator-configurable).
+
+Optional wave-1 Lane D items beyond these five remain deferred per AO call.
+
 ## Revisiting cadence
 
 The sweep is intended to be re-run when:

@@ -1652,9 +1652,10 @@ impl From<LiveSourcesSettingsPayload> for chromaticity_runtime::settings::LiveSo
 /// [`chromaticity_runtime::settings::OscSettings`].
 ///
 /// Wave 2.1 Lane D.3: backs the OSC view's listening (`local_ip` +
-/// `port`) + TX/RX toggle inputs. Lane D (OSC outbound sender)
-/// widens this payload with `out_host` — the operator-configurable
-/// outbound target IP per ADR-013 §1/§6. The frontend's
+/// `port`) + TX/RX toggle inputs. Parity-closure wave 2 Lane D
+/// widens this payload with `out_host` (the operator-configurable
+/// outbound target IP per ADR-013 §1/§6) and the `dual_emit_*`
+/// compat-window controls. The frontend's
 /// `settingsStore` reads / writes these via the `get_settings` /
 /// `set_settings` handler pair; the engine-side `Settings` document
 /// already composes [`OscSettings`] as a top-level section so this
@@ -1670,6 +1671,13 @@ pub struct OscSettingsPayload {
     pub out_port: u16,
     pub tx_enabled: bool,
     pub rx_enabled: bool,
+    /// Compat dual-emit window: when `true`, outbound OSC is also
+    /// emitted on the singular compat-alias address. Parity-closure
+    /// wave 2 Lane D.
+    pub dual_emit_enabled: bool,
+    /// Optional dual-emit deadline (RFC3339); after it, dual-emit
+    /// stops even when enabled. `None` = no deadline.
+    pub dual_emit_until: Option<String>,
 }
 
 impl From<chromaticity_runtime::settings::OscSettings> for OscSettingsPayload {
@@ -1681,6 +1689,8 @@ impl From<chromaticity_runtime::settings::OscSettings> for OscSettingsPayload {
             out_port: s.out_port,
             tx_enabled: s.tx_enabled,
             rx_enabled: s.rx_enabled,
+            dual_emit_enabled: s.dual_emit_enabled,
+            dual_emit_until: s.dual_emit_until,
         }
     }
 }
@@ -1694,12 +1704,8 @@ impl From<OscSettingsPayload> for chromaticity_runtime::settings::OscSettings {
             out_port: p.out_port,
             tx_enabled: p.tx_enabled,
             rx_enabled: p.rx_enabled,
-            // PR10: dual-emit fields not yet surfaced in the settings
-            // payload; default to disabled / no deadline when converting
-            // from the IPC payload shape (operator TOML is the authoritative
-            // store for these fields).
-            dual_emit_enabled: false,
-            dual_emit_until: None,
+            dual_emit_enabled: p.dual_emit_enabled,
+            dual_emit_until: p.dual_emit_until,
         }
     }
 }

@@ -71,6 +71,8 @@ const SAMPLE_PAYLOAD: SettingsPayload = {
     out_port: 9101,
     tx_enabled: false,
     rx_enabled: true,
+    dual_emit_enabled: false,
+    dual_emit_until: null,
   },
   tempo: {
     ableton_link_enabled: false,
@@ -273,6 +275,8 @@ describe('settingsStore', () => {
             out_port: 9001,
             tx_enabled: true,
             rx_enabled: true,
+            dual_emit_enabled: false,
+            dual_emit_until: null,
           },
           tempo: {
             ableton_link_enabled: true,
@@ -351,6 +355,8 @@ describe('settingsStore', () => {
         out_port: 9001,
         tx_enabled: true,
         rx_enabled: true,
+        dual_emit_enabled: false,
+        dual_emit_until: null,
       },
       tempo: {
         ableton_link_enabled: true,

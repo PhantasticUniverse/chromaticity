@@ -171,6 +171,8 @@ fn nonzero_payload() -> SettingsPayload {
             out_port: 9101,
             tx_enabled: false,
             rx_enabled: true,
+            dual_emit_enabled: true,
+            dual_emit_until: Some("2027-01-01T00:00:00Z".to_string()),
         },
         tempo: TempoSettingsPayload {
             ableton_link_enabled: false,

@@ -93,6 +93,10 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     out_port: 9001,
     tx_enabled: true,
     rx_enabled: true,
+    // Compat dual-emit window (parity-closure wave 2 Lane D PR10).
+    // Off by default; operator opts in for legacy-controller migrations.
+    dual_emit_enabled: false,
+    dual_emit_until: null,
   },
   tempo: {
     ableton_link_enabled: true,

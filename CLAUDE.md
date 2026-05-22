@@ -574,6 +574,15 @@ Total ~95 rows lifted from PARTIAL/GAP toward MATCH-or-better
 control widget, OSC playlist bind enum, etc.) deferred to a future
 wave per AO call.
 
+**Parity-closure wave 2 (Lane D, 2026-05-22, PRs `#499`–`#508` + closeout).**
+Closed the deferred wave-1 Lane D cluster: XY 2D interactive control pad
+(`XyPad.svelte` + vec2 IPC bridge), `BindTarget::Scene` two-arg form,
+`PlaylistSetPosition` Tier-1 command, OSC outbound sender, `/audio/threshold`
+bidirectional route, `/playlists/position {i}` bidirectional OSC route, and
+the OSC compat dual-emit window (`dual_emit_enabled` / `dual_emit_until` +
+`compat_alias_emits` health counter surfaced in the OSC view). ~15 additional
+parity rows lifted.
+
 **What remains synthetic-only.**
 
 - **Live preview render pipeline** — ADR-011 Phase-2+ deferred. Dragging a

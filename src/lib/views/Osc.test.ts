@@ -174,6 +174,7 @@ describe('Osc view', () => {
           state: 'Healthy',
           attempted_binds: 0,
           local_addr: null,
+          compat_alias_emits: 0n,
         });
       }
       // Other commands (osc_routes_snapshot, get_settings) keep the
