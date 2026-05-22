@@ -158,6 +158,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const localIp = $derived(settingsStore.snapshot.osc.local_ip);
   const txEnabled = $derived(settingsStore.snapshot.osc.tx_enabled);
   const rxEnabled = $derived(settingsStore.snapshot.osc.rx_enabled);
+  const dualEmitEnabled = $derived(settingsStore.snapshot.osc.dual_emit_enabled);
+  const dualEmitUntil = $derived(settingsStore.snapshot.osc.dual_emit_until);
 
   function updateLocalIp(event: Event): void {
     const value = (event.currentTarget as HTMLInputElement).value;
@@ -186,6 +188,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   function toggleRx(): void {
     settingsStore.update({ osc: { rx_enabled: !rxEnabled } });
+  }
+
+  function toggleDualEmit(): void {
+    settingsStore.update({ osc: { dual_emit_enabled: !dualEmitEnabled } });
   }
 
   function openBindPanel(canonical: string, current: string | null): void {
@@ -332,6 +338,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <span>TX (outbound)</span>
         </label>
       </div>
+      <h3>compat dual-emit</h3>
+      <p class="osc-view__hint">
+        When enabled the outbound sender emits each message on both the canonical plural-root
+        address and the compat-syn-v1 alias simultaneously. Use during controller migration windows;
+        off by default (parity-closure wave 2 Lane D).
+      </p>
+      <div class="osc-view__field osc-view__field--toggle">
+        <label class="osc-view__toggle">
+          <input type="checkbox" checked={dualEmitEnabled} onchange={toggleDualEmit} />
+          <span>dual-emit {dualEmitEnabled ? 'on' : 'off'}</span>
+        </label>
+      </div>
+      {#if dualEmitUntil}
+        <p class="osc-view__hint">
+          expires <time>{dualEmitUntil}</time>
+        </p>
+      {/if}
+      {#if healthSnapshot}
+        <dl class="osc-view__health-dl">
+          <dt>compat alias emits</dt>
+          <dd>
+            <code
+              class:osc-view__dual-active={dualEmitEnabled &&
+                healthSnapshot.compat_alias_emits > 0n}
+            >
+              {healthSnapshot.compat_alias_emits.toString()}
+            </code>
+          </dd>
+        </dl>
+      {/if}
       <h3>audio-var families</h3>
       <ul class="osc-view__families">
         {#each OSC_AUDIO_VAR_FAMILIES as family (family.id)}
@@ -1072,6 +1108,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-body-sm);
     padding: var(--space-md);
     text-align: center;
+  }
+
+  .osc-view__dual-active {
+    color: var(--color-signal-green, var(--color-success));
   }
 
   .osc-view__hints ul {

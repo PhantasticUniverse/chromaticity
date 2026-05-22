@@ -82,6 +82,20 @@ stay frozen at the snapshot date until the next full re-sweep.
 
 Lane D (optional polish) deferred: XY 2D control widget, OSC playlist bind enum widening, `BindTarget::Scene` two-arg form, `/audio/threshold` direction `Both`, OSC compat dual-emit window. Each is small but low-leverage relative to wave-1 work; revisit if AO smoke surfaces fresh issues.
 
+### Parity-closure wave 2 — Lane D (2026-05-22, ~15 rows lifted)
+
+- **PR 1** (`#499`): XY 2D interactive control pad (`XyPad.svelte`) — widget + preset capture + IPC bridge (`vec2` type, `set_control_xy` / `get_control_xy` commands). Closes XY-control PARTIAL rows across SSF and Manual sections.
+- **PR 2** (`#500`): XY controls survive preset save/recall — `State::apply_event` preserves vec2 control values through `Command::PresetSave` / `EventPayload::PresetSaved`. Closes XY-preset-round-trip rows.
+- **PR 3** (`#501`): `BindTarget::Scene` two-arg form — OSC `/scenes/{name} {preset}` inbound route binds to a (scene, preset) tuple so external surfaces can jump to a named scene at a named preset in one message. Closes the compat scene-with-preset bind PARTIAL rows.
+- **PR 4** (`#502`): Vec2 control IPC bridge and shell commands — Tauri commands `set_control_xy` / `get_control_xy` + ts-rs `Vec2ControlPayload`. Engine round-trip tested.
+- **PR 5** (`#503`): `PlaylistSetPosition` command (Tier 1) — `Command::PlaylistSetPosition(i32)` + `EventPayload::PlaylistPositionChanged` + negative-index counting-from-end semantics. Closes playlist-absolute-position rows.
+- **PR 6** (`#504`): Interactive XY 2D control pad UI (closes the UI surface for PRs 1+4).
+- **PR 7** (`#505`): OSC outbound sender (`OscSender` + `OscSenderHandle`) with `emit` / `close` interface per ADR-013 §1/§6. Closes OSC-outbound PARTIAL rows.
+- **PR 8** (`#506`): `/audio/threshold` OSC route bidirectional — engine emits current threshold outbound on change + adapter bind. Closes the `/audio/threshold` direction PARTIAL rows.
+- **PR 9** (`#507`): OSC playlist `position` bind — `/playlists/position {i}` inbound + outbound routes wired through the `PlaylistSetPosition` command. Closes playlist-position OSC rows.
+- **PR 10** (`#508`): OSC compat dual-emit window — `OscSender::emit_with_compat_alias`, `dual_emit_enabled` / `dual_emit_until` settings fields, `compat_alias_emits` health counter. Closes compat-emit PARTIAL rows.
+- **PR 11** (this PR): OSC view dual-emit controls + `/playlists/position` route fixture + docs-corpus and parity-gap refresh.
+
 ## Revisiting cadence
 
 The sweep is intended to be re-run when:

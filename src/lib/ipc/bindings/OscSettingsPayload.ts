@@ -18,4 +18,18 @@ export type OscSettingsPayload = { local_ip: string, port: number,
  * Outbound target host IP (ADR-013 §1 loopback default;
  * operator-overridable per §6).
  */
-out_host: string, out_port: number, tx_enabled: boolean, rx_enabled: boolean, };
+out_host: string, out_port: number, tx_enabled: boolean, rx_enabled: boolean,
+/**
+ * When true the outbound sender emits each message twice — once on
+ * the canonical plural-root address and once on the compat-syn-v1
+ * alias address — so legacy controllers subscribed to the singular
+ * form receive both during a migration window. Off by default.
+ * Parity-closure wave 2 Lane D PR10.
+ */
+dual_emit_enabled: boolean,
+/**
+ * Optional RFC 3339 deadline string after which dual-emit stops
+ * automatically. `null` means the window stays open until the
+ * operator toggles it off.
+ */
+dual_emit_until: string | null, };

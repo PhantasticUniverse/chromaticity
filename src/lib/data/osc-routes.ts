@@ -241,7 +241,8 @@ export const OSC_ROUTES: readonly OscRouteFixture[] = [
     type: 'f',
     range: '0.0 – 1.0',
     family: 'audio',
-    direction: 'in',
+    direction: 'both',
+    note: 'inbound sets gate; outbound announces current threshold value',
   },
   {
     canonical: '/data/*',
