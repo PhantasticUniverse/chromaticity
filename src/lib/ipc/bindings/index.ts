@@ -21,6 +21,7 @@ export type { ControlId } from './ControlId';
 export type { ControlKindPayload } from './ControlKindPayload';
 export type { ControlSchemaPayload } from './ControlSchemaPayload';
 export type { ControlValue } from './ControlValue';
+export type { ControlValue2 } from './ControlValue2';
 export type { CrashResumeStatusPayload } from './CrashResumeStatusPayload';
 export type { GeneralSettingsPayload } from './GeneralSettingsPayload';
 export type { GraphicsSettingsPayload } from './GraphicsSettingsPayload';

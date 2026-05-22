@@ -76,6 +76,32 @@ impl From<chromaticity_runtime::ControlValue> for ControlValue {
     }
 }
 
+/// IPC-facing wrapper for [`chromaticity_runtime::ControlValue`] carrying a
+/// 2-component (XY) control value.
+///
+/// Mirrors [`ControlValue`]'s newtype shape but holds a `[f32; 2]` pair
+/// so the XY control widget can dispatch both axes atomically across the
+/// Tauri command boundary.  ts-rs renders `[f32; 2]` as a two-element
+/// tuple (`[number, number]`), matching the wire shape consumed by
+/// `set_control_2d` / `get_control_2d`.
+///
+/// `f32` precludes `Eq`/`Hash`; use `PartialEq` for tests.
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ControlValue2(pub [f32; 2]);
+
+impl From<ControlValue2> for [f32; 2] {
+    fn from(v: ControlValue2) -> Self {
+        v.0
+    }
+}
+
+impl From<[f32; 2]> for ControlValue2 {
+    fn from(arr: [f32; 2]) -> Self {
+        Self(arr)
+    }
+}
+
 /// IPC-facing wrapper for [`chromaticity_runtime::SnapSlotId`].
 ///
 /// Carries the serde + ts-rs derives needed to cross the Tauri command

@@ -15,7 +15,7 @@ use chromaticity_ui_bridge::{
     AudioAxisAvailability, AudioDeviceKindPayload, AudioDevicePayload, AudioSettingsPayload,
     AudioUniformSnapshotPayload, CameraDeviceKindPayload, CameraDevicePayload,
     ControlDefaultValuePayload, ControlId, ControlKindPayload, ControlSchemaPayload, ControlValue,
-    CrashResumeStatusPayload, GeneralSettingsPayload, GraphicsSettingsPayload,
+    ControlValue2, CrashResumeStatusPayload, GeneralSettingsPayload, GraphicsSettingsPayload,
     LiveSourcesSettingsPayload, LoadedScenePayload, MidiDeviceKindPayload, MidiDevicePayload,
     MidiLearnEventPayload, MidiLearnKindPayload, OscDirectionPayload, OscHealthSnapshot,
     OscHealthState, OscRouteFamilyPayload, OscRoutePayload, OscSettingsPayload, PresetId,
@@ -36,6 +36,7 @@ fn export_bindings_to_frontend_tree() {
 
     ControlId::export_all_to(&out_dir).expect("export ControlId bindings");
     ControlValue::export_all_to(&out_dir).expect("export ControlValue bindings");
+    ControlValue2::export_all_to(&out_dir).expect("export ControlValue2 bindings");
     SnapSlotId::export_all_to(&out_dir).expect("export SnapSlotId bindings");
     PresetId::export_all_to(&out_dir).expect("export PresetId bindings");
     SceneCard::export_all_to(&out_dir).expect("export SceneCard bindings");

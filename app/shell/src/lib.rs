@@ -365,6 +365,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::camera::list_camera_devices,
             commands::control::set_control,
             commands::control::get_control,
+            commands::control::set_control_2d,
+            commands::control::get_control_2d,
             commands::snap::recall_snap,
             commands::snap::save_snap,
             commands::snap::clear_snap,
