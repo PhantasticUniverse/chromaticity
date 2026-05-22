@@ -82,19 +82,17 @@ stay frozen at the snapshot date until the next full re-sweep.
 
 Lane D (optional polish) deferred: XY 2D control widget, OSC playlist bind enum widening, `BindTarget::Scene` two-arg form, `/audio/threshold` direction `Both`, OSC compat dual-emit window. Each is small but low-leverage relative to wave-1 work; revisit if AO smoke surfaces fresh issues.
 
-### Parity-closure wave 2 — Lane D (2026-05-22, ~15 rows lifted)
+### Parity-closure wave 2 — Lane D (2026-05-22)
 
-- **PR 1** (`#499`): XY 2D interactive control pad (`XyPad.svelte`) — widget + preset capture + IPC bridge (`vec2` type, `set_control_xy` / `get_control_xy` commands). Closes XY-control PARTIAL rows across SSF and Manual sections.
-- **PR 2** (`#500`): XY controls survive preset save/recall — `State::apply_event` preserves vec2 control values through `Command::PresetSave` / `EventPayload::PresetSaved`. Closes XY-preset-round-trip rows.
-- **PR 3** (`#501`): `BindTarget::Scene` two-arg form — OSC `/scenes/{name} {preset}` inbound route binds to a (scene, preset) tuple so external surfaces can jump to a named scene at a named preset in one message. Closes the compat scene-with-preset bind PARTIAL rows.
-- **PR 4** (`#502`): Vec2 control IPC bridge and shell commands — Tauri commands `set_control_xy` / `get_control_xy` + ts-rs `Vec2ControlPayload`. Engine round-trip tested.
-- **PR 5** (`#503`): `PlaylistSetPosition` command (Tier 1) — `Command::PlaylistSetPosition(i32)` + `EventPayload::PlaylistPositionChanged` + negative-index counting-from-end semantics. Closes playlist-absolute-position rows.
-- **PR 6** (`#504`): Interactive XY 2D control pad UI (closes the UI surface for PRs 1+4).
-- **PR 7** (`#505`): OSC outbound sender (`OscSender` + `OscSenderHandle`) with `emit` / `close` interface per ADR-013 §1/§6. Closes OSC-outbound PARTIAL rows.
-- **PR 8** (`#506`): `/audio/threshold` OSC route bidirectional — engine emits current threshold outbound on change + adapter bind. Closes the `/audio/threshold` direction PARTIAL rows.
-- **PR 9** (`#507`): OSC playlist `position` bind — `/playlists/position {i}` inbound + outbound routes wired through the `PlaylistSetPosition` command. Closes playlist-position OSC rows.
-- **PR 10** (`#508`): OSC compat dual-emit window — `OscSender::emit_with_compat_alias`, `dual_emit_enabled` / `dual_emit_until` settings fields, `compat_alias_emits` health counter. Closes compat-emit PARTIAL rows.
-- **PR 11** (this PR): OSC view dual-emit controls + `/playlists/position` route fixture + docs-corpus and parity-gap refresh.
+Closed the wave-1 deferred Lane D cluster across 11 PRs (`#499`–`#509`). The five Lane D items:
+
+- **Interactive XY 2D control pad** — additive runtime `vec2` control values (a new `ControlSet2D` command + `ControlChanged2D` event riding a V2 migration-envelope extension), preset save/recall capture, the `set_control_2d` / `get_control_2d` IPC bridge with the `ControlValue2` ts-rs type, and the interactive `Xy.svelte` widget wired into Perform.
+- **OSC playlist `position` bind** — a Tier-1 absolute `Command::PlaylistSetPosition` plus the `/playlists/position {i}` OSC bind. (`play` / `pause` / `select` stay Phase-4+ per the `EV-PRESET-PLAYLIST` narrowing — they need a playlist-entry model.)
+- **`BindTarget::Scene` two-arg form** — `scene:<id>:<preset>` so a single OSC route loads a scene and recalls one of its presets.
+- **`/audio/threshold` bidirectional** — the route is now `OscDirection::Both`, with an announce-on-change outbound emit.
+- **OSC compat dual-emit window** — an opt-in, deadline-bounded window that emits outbound OSC on both the canonical and the singular compat-alias address, built on a new outbound OSC sender (ADR-013 §1/§6 loopback-default, operator-configurable).
+
+Optional wave-1 Lane D items beyond these five remain deferred per AO call.
 
 ## Revisiting cadence
 
