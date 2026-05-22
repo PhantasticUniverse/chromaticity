@@ -453,6 +453,31 @@ noise substrate; small file count, MIT, no surprises.
   reference materials in this class are for "behavior/spec
   extraction only" — and even that is suspect for non-open assets.
 
+### 2.14 Mercury Demogroup hg_sdf (vendored 2026-05-22)
+
+- **Identity:** Mercury Demogroup's "HG_SDF" library — a single-file
+  GLSL library of signed-distance-function primitives (boxes, spheres,
+  torus, prism, polyhedra), domain operations (repeat, fold, mirror,
+  twist), and combination operators (smooth-union, intersection,
+  subtraction). The de facto standard for SDF-based rendering in the
+  demoscene. Maintained since 2011.
+- **License:** **Dual MIT OR CC-BY-NC-4.0** at the upstream's election
+  (per the inline SPDX header in `hg_sdf.glsl`, "SPDX-License-Identifier:
+  MIT OR CC-BY-NC-4.0"). Chromaticity **elects the MIT track**. The
+  CC-BY-NC-4.0 track fails the commercial-distribution guard per
+  `docs/29`; the MIT track is permissive and unambiguous.
+- **Compatibility verdict:** **CLEAN under MIT election.** Copyright
+  (c) 2011-2021 Mercury Demogroup. Single 830-line file, no external
+  dependencies. `deny.toml` `licenses.allow` already covers MIT.
+- **Recommendation.** Vendored under `third_party/hg_sdf/` 2026-05-22.
+  Production-use election state from the day of vendor (unlike Lygia,
+  no Phase-5 `EV-LICENSE-AUDIT` re-election needed — MIT is
+  permanent). Closes 64 PARTIAL rows in
+  `docs/comparison/features/ssf-format.md` SDF primitive coverage.
+- **Snapshot metadata.** See
+  `third_party/hg_sdf/UPSTREAM-VERSION.md` for direct source URL,
+  version date, election rationale, and provenance verification.
+
 ## 3 — Recommended seed corpus (V1 GPU-shader baseline)
 
 Below is a curated ~30-shader shortlist for the V1 GPU-shader corpus
