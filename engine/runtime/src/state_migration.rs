@@ -26,9 +26,13 @@
 //!            || encode_state_canonical(state)
 //!            || be_u32(extension_count)
 //!            || extensions[ ext_id (be_u32) || ext_payload ]
-//!     extension_count is fixed to 3 in V2 — V2SchemaMetadata
-//!     (be_u32 schema_version), V2SessionBindings, and
-//!     V2XyControlValues. See `encode_snapshot` for each payload.
+//!     The V2 encoder emits three extensions today —
+//!     V2SchemaMetadata (be_u32 schema_version), V2SessionBindings,
+//!     and V2XyControlValues. `extension_count` is a dynamic
+//!     wire field: the decoder reads it and dispatches each
+//!     extension by id, so a future extension increments the count
+//!     without a version-tag bump. See `encode_snapshot` for each
+//!     payload.
 //! ```
 //!
 //! Consequences:

@@ -469,18 +469,35 @@ mod fixtures {
         // extension. `build_state`'s LCG sampler never emits
         // `ControlSet2D` (the `kind % 7` mix predates the variant),
         // so the XY payload is dispatched directly here. Each trial
-        // re-runs the deterministic path; cross-trial divergence
-        // would surface a nondeterministic encoder regression.
+        // LCG-samples a distinct two-control payload — ids in
+        // disjoint even/odd lanes, axis values across the signed
+        // [-1, 1] range — so the round-trip is exercised across the
+        // value space rather than one fixed point, exactly as the
+        // command-stream fixtures (2 / 7 / 8) vary their LCG seed.
         for trial in 0..TRIALS {
+            let mut lcg = Lcg::new(0x7C0F_FEE5_1234_ABCD ^ u64::from(trial));
+            // Even/odd id lanes guarantee `id_a != id_b` so the two
+            // XY entries never collide within a trial's fresh state.
+            let id_a = ControlId(lcg.next_u32() & !1);
+            let val_a = [
+                lcg.next_f32_unit() * 2.0 - 1.0,
+                lcg.next_f32_unit() * 2.0 - 1.0,
+            ];
+            let id_b = ControlId(lcg.next_u32() | 1);
+            let val_b = [
+                lcg.next_f32_unit() * 2.0 - 1.0,
+                lcg.next_f32_unit() * 2.0 - 1.0,
+            ];
+
             let bus = InMemoryBus::in_memory();
             bus.dispatch(Command::ControlSet2D {
-                id: ControlId(3),
-                value: [0.125, -0.875],
+                id: id_a,
+                value: val_a,
             })
             .expect("xy control dispatch must succeed");
             bus.dispatch(Command::ControlSet2D {
-                id: ControlId(8),
-                value: [1.0, 0.5],
+                id: id_b,
+                value: val_b,
             })
             .expect("xy control dispatch must succeed");
             let mut original = State::default();
@@ -490,14 +507,14 @@ mod fixtures {
             let decoded = decode_snapshot(&buf).expect("xy-bearing v2 envelope must decode");
 
             assert_eq!(
-                decoded.xy_control_value(ControlId(3)),
-                Some([0.125, -0.875]),
-                "trial {trial}: xy control 3 must survive the V2 round-trip",
+                decoded.xy_control_value(id_a),
+                Some(val_a),
+                "trial {trial}: xy control a must survive the V2 round-trip",
             );
             assert_eq!(
-                decoded.xy_control_value(ControlId(8)),
-                Some([1.0, 0.5]),
-                "trial {trial}: xy control 8 must survive the V2 round-trip",
+                decoded.xy_control_value(id_b),
+                Some(val_b),
+                "trial {trial}: xy control b must survive the V2 round-trip",
             );
             // XY values ride the extension, not the canonical-binary
             // segment — the canonical hash equals the empty-state
