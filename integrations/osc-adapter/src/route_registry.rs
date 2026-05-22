@@ -297,7 +297,7 @@ const OSC_DEFAULT_ROUTES: &[OscRouteSeed] = &[
         compat_alias: None,
         type_tag: "f",
         range: "0.0 – 1.0",
-        direction: OscDirection::In,
+        direction: OscDirection::Both,
         family: OscRouteFamily::Audio,
     },
     OscRouteSeed {
@@ -522,5 +522,26 @@ mod tests {
                 "seed table missing direction {direction:?}"
             );
         }
+    }
+
+    // Evidence: EV-INTEGRATION-MATRIX (T1) — PR9 audio-threshold
+    // bidirectionality seed pin.
+
+    #[test]
+    fn audio_threshold_seed_direction_is_both() {
+        // The `/audio/threshold {f}` route is bidirectional: the adapter
+        // receives the inbound set and ANNOUNCES the new value outbound.
+        // This pin ensures the seed declaration matches the documented
+        // wire contract.
+        let registry = OscRouteRegistry::with_default_seed();
+        let entry = registry
+            .get("/audio/threshold {f}")
+            .expect("audio threshold route must be in the default seed");
+        assert_eq!(
+            entry.direction,
+            OscDirection::Both,
+            "/audio/threshold {{f}} must be Both (inbound set + outbound announce)"
+        );
+        assert_eq!(entry.family, OscRouteFamily::Audio);
     }
 }

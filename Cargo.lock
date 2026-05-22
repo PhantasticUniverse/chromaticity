@@ -481,6 +481,7 @@ dependencies = [
  "chromaticity-scene",
  "chromaticity-syphon-adapter",
  "chromaticity-ui-bridge",
+ "rosc",
  "serde",
  "serde_json",
  "sha2",

@@ -61,6 +61,9 @@ chromaticity-syphon-adapter = { version = "0.0.0", path = "../../integrations/sy
 [dev-dependencies]
 ts-rs = "10"
 tauri = { version = "2", features = ["test"] }
+# rosc 0.10 is used in osc command tests to decode the announce datagram
+# and verify the round-trip float value (PR9 EV-INTEGRATION-MATRIX T1).
+rosc = "0.10"
 
 [features]
 default = ["custom-protocol"]

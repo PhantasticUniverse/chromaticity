@@ -43,6 +43,23 @@ pub enum BindTarget {
     Preset { id: u32 },
     /// `playlist:next` / `playlist:prev` — dispatches playlist +/- 1.
     Playlist { step: i32 },
+    /// `audio:threshold` — dispatches an audio noise-floor gate set.
+    ///
+    /// The route `/audio/threshold {f}` carries the new threshold as the
+    /// first OSC float argument. The host stores the value and emits the
+    /// outbound announce (`OscDirection::Both` contract, PR9).
+    Audio { kind: AudioTargetKind },
+}
+
+/// Sub-kind for [`BindTarget::Audio`].
+///
+/// Only `Threshold` exists at MVP; the enum is left open for future
+/// audio-pipeline command routes without breaking existing callers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AudioTargetKind {
+    /// `/audio/threshold {f}` — set the noise-floor gate value (0.0 – 1.0).
+    Threshold,
 }
 
 /// Errors returned when validating an operator bind target.
@@ -61,6 +78,10 @@ pub enum BindError {
     InvalidPresetTarget,
     InvalidPresetId(String),
     InvalidPlaylistTarget,
+    /// The `audio:` bind target sub-kind is unrecognised.
+    ///
+    /// Only `audio:threshold` is defined at MVP.
+    InvalidAudioTarget,
     InvalidRoutePattern(String),
 }
 
@@ -70,7 +91,7 @@ impl core::fmt::Display for BindError {
             Self::EmptyTarget => write!(f, "bind target must not be empty"),
             Self::UnknownFamily(family) => write!(
                 f,
-                "unknown osc bind target family: {family} (expected control, scene, snap, preset, or playlist)",
+                "unknown osc bind target family: {family} (expected control, scene, snap, preset, playlist, or audio)",
             ),
             Self::InvalidControlTarget => write!(f, "control target must be control:<bank>:<name>"),
             Self::EmptyControlPart => {
@@ -91,6 +112,9 @@ impl core::fmt::Display for BindError {
             Self::InvalidPresetId(id) => write!(f, "preset id {id} must be a u32"),
             Self::InvalidPlaylistTarget => {
                 write!(f, "playlist target must be playlist:next or playlist:prev")
+            }
+            Self::InvalidAudioTarget => {
+                write!(f, "audio target must be audio:threshold")
             }
             Self::InvalidRoutePattern(route) => {
                 write!(f, "osc route pattern cannot be bound: {route}")
@@ -120,6 +144,7 @@ pub fn parse_bind_target(target: &str) -> Result<BindTarget, BindError> {
         "snap" => parse_snap_target(&parts),
         "preset" => parse_preset_target(&parts),
         "playlist" => parse_playlist_target(&parts),
+        "audio" => parse_audio_target(&parts),
         _ => Err(BindError::UnknownFamily(family)),
     }
 }
@@ -201,6 +226,18 @@ fn parse_playlist_target(parts: &[&str]) -> Result<BindTarget, BindError> {
     }
 }
 
+fn parse_audio_target(parts: &[&str]) -> Result<BindTarget, BindError> {
+    if parts.len() != 2 {
+        return Err(BindError::InvalidAudioTarget);
+    }
+    match parts[1].trim().to_ascii_lowercase().as_str() {
+        "threshold" => Ok(BindTarget::Audio {
+            kind: AudioTargetKind::Threshold,
+        }),
+        _ => Err(BindError::InvalidAudioTarget),
+    }
+}
+
 /// Stable numeric id used while the runtime command surface still
 /// exposes `ControlId(u32)` and the OSC target names controls by
 /// `bank:name`.
@@ -239,6 +276,17 @@ pub enum OscDispatchAction {
     SceneLoad {
         scene_id: String,
         preset: Option<u32>,
+    },
+    /// Set the audio noise-floor gate threshold.
+    ///
+    /// Produced when an inbound `/audio/threshold {f}` packet is received
+    /// on a route bound to `audio:threshold`. The host stores the value
+    /// and emits an outbound announce (the `OscDirection::Both` contract
+    /// introduced in PR9). The float is the raw OSC 32-bit float from the
+    /// packet — no quantization applied; callers MUST clamp to `[0.0, 1.0]`
+    /// before persisting if they require the documented range.
+    AudioThreshold {
+        value: f32,
     },
 }
 
@@ -425,6 +473,13 @@ fn action_for_target(
         BindTarget::Playlist { step } => Ok(OscDispatchAction::RuntimeCommand(
             OscRuntimeCommand::PlaylistAdvance { step: *step },
         )),
+        BindTarget::Audio { kind } => match kind {
+            AudioTargetKind::Threshold => {
+                let value = first_float_arg(message)
+                    .ok_or_else(|| OscDispatchError::MissingFloatArg(message.addr.clone()))?;
+                Ok(OscDispatchAction::AudioThreshold { value })
+            }
+        },
     }
 }
 
@@ -446,8 +501,8 @@ mod tests {
     use rosc::{OscMessage, OscPacket, OscType};
 
     use super::{
-        BindError, BindTarget, OscDispatchAction, OscDispatchSink, OscRouteBindings,
-        OscRuntimeCommand, control_target_id, parse_bind_target,
+        AudioTargetKind, BindError, BindTarget, OscDispatchAction, OscDispatchSink,
+        OscRouteBindings, OscRuntimeCommand, control_target_id, parse_bind_target,
     };
 
     #[test]
@@ -482,6 +537,12 @@ mod tests {
         assert_eq!(
             parse_bind_target("playlist:prev").unwrap(),
             BindTarget::Playlist { step: -1 },
+        );
+        assert_eq!(
+            parse_bind_target("audio:threshold").unwrap(),
+            BindTarget::Audio {
+                kind: AudioTargetKind::Threshold,
+            },
         );
     }
 
@@ -696,6 +757,134 @@ mod tests {
         assert!(
             err.to_string().contains("reserved"),
             "expected reserved diagnostic, got {err}",
+        );
+    }
+
+    // Evidence: EV-INTEGRATION-MATRIX (T1) — PR9 audio:threshold bind-target
+    // grammar + OscDispatchAction::AudioThreshold dispatch pins.
+
+    #[test]
+    fn parse_audio_threshold_target_accepted() {
+        use super::{AudioTargetKind, BindTarget};
+        // `audio:threshold` must parse to `BindTarget::Audio { kind: Threshold }`.
+        assert_eq!(
+            parse_bind_target("audio:threshold").unwrap(),
+            BindTarget::Audio {
+                kind: AudioTargetKind::Threshold,
+            },
+        );
+        // Case-insensitive family normalisation.
+        assert_eq!(
+            parse_bind_target("AUDIO:THRESHOLD").unwrap(),
+            BindTarget::Audio {
+                kind: AudioTargetKind::Threshold,
+            },
+        );
+    }
+
+    #[test]
+    fn parse_audio_target_rejects_unknown_kind() {
+        // Only `audio:threshold` is defined at MVP; unknown sub-kinds must error.
+        let err =
+            parse_bind_target("audio:level").expect_err("unknown audio sub-kind must be rejected");
+        assert!(
+            matches!(err, BindError::InvalidAudioTarget),
+            "expected InvalidAudioTarget, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn parse_audio_target_rejects_missing_kind() {
+        let err =
+            parse_bind_target("audio").expect_err("bare `audio` without sub-kind must be rejected");
+        assert!(
+            matches!(err, BindError::InvalidAudioTarget),
+            "expected InvalidAudioTarget, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn dispatch_audio_threshold_route_emits_audio_threshold_action() {
+        // An inbound `/audio/threshold` message on a route bound to
+        // `audio:threshold` must produce exactly one
+        // `OscDispatchAction::AudioThreshold { value }` with the float
+        // payload preserved bit-exactly.
+        let mut bindings = OscRouteBindings::new();
+        bindings
+            .bind("/audio/threshold {f}", "audio:threshold")
+            .unwrap();
+        let sink = VecSink::default();
+        let threshold_value: f32 = 0.42;
+        let message = OscMessage {
+            addr: "/audio/threshold".to_string(),
+            args: vec![OscType::Float(threshold_value)],
+        };
+
+        let dispatched = bindings
+            .dispatch_packet(&OscPacket::Message(message), &sink)
+            .unwrap();
+
+        assert_eq!(dispatched, 1, "exactly one dispatch action must fire");
+        let actions = sink.actions.lock().unwrap();
+        assert_eq!(actions.len(), 1, "exactly one action in the sink");
+        assert_eq!(
+            actions[0],
+            OscDispatchAction::AudioThreshold {
+                value: threshold_value
+            },
+        );
+    }
+
+    #[test]
+    fn dispatch_audio_threshold_float_round_trips_bit_exactly() {
+        // The announced float must preserve the inbound bit pattern without
+        // quantization — encode 0.37 (an awkward fractional), dispatch,
+        // assert the bits are identical.
+        let mut bindings = OscRouteBindings::new();
+        bindings
+            .bind("/audio/threshold {f}", "audio:threshold")
+            .unwrap();
+        let sink = VecSink::default();
+        let exact_value: f32 = 0.37_f32;
+        let message = OscMessage {
+            addr: "/audio/threshold".to_string(),
+            args: vec![OscType::Float(exact_value)],
+        };
+        bindings
+            .dispatch_packet(&OscPacket::Message(message), &sink)
+            .unwrap();
+        let actions = sink.actions.lock().unwrap();
+        match actions[0] {
+            OscDispatchAction::AudioThreshold { value } => {
+                assert_eq!(
+                    value.to_bits(),
+                    exact_value.to_bits(),
+                    "float bit pattern must survive the dispatch hop unmodified"
+                );
+            }
+            ref other => panic!("expected AudioThreshold, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_audio_threshold_missing_float_arg_errors() {
+        // `/audio/threshold` without a float argument must return a
+        // `MissingFloatArg` dispatch error, not a panic or silent drop.
+        let mut bindings = OscRouteBindings::new();
+        bindings
+            .bind("/audio/threshold {f}", "audio:threshold")
+            .unwrap();
+        let sink = VecSink::default();
+        let message = OscMessage {
+            addr: "/audio/threshold".to_string(),
+            args: vec![],
+        };
+        let err = bindings
+            .dispatch_packet(&OscPacket::Message(message), &sink)
+            .unwrap_err();
+        assert!(
+            matches!(err, super::OscDispatchError::MissingFloatArg(_)),
+            "expected MissingFloatArg, got {err:?}",
         );
     }
 }
