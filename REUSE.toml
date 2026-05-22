@@ -220,3 +220,25 @@ path = "LICENSES/BSD-3-Clause.txt"
 precedence = "override"
 SPDX-FileCopyrightText = "2010 bangnoise (Tom Butterworth) & vade (Anton Marini)"
 SPDX-License-Identifier = "BSD-3-Clause"
+
+# hg_sdf canonical source vendor (parity-closure Lane C, 2026-05-22).
+# Upstream is dual-licensed MIT OR CC-BY-NC-4.0; we elect the MIT track
+# unambiguously (the CC-BY-NC track fails the commercial-distribution guard
+# per `docs/29-cleanroom-legal-policy-baseline.md`). MIT is already on
+# `deny.toml` `licenses.allow`, so no `deny.toml` change is needed.
+# Election rationale + provenance marker at
+# `third_party/hg_sdf/UPSTREAM-VERSION.md`; election decision documented
+# in `docs/56-shader-sourcing-research.md` Sec.2.14.
+[[annotations]]
+path = "third_party/hg_sdf/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2011-2021 Mercury Demogroup"
+SPDX-License-Identifier = "MIT"
+
+# License text file: surface the SPDX identifier on the canonical text so
+# `reuse lint` does not flag it as missing coverage.
+[[annotations]]
+path = "LICENSES/MIT.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "2011-2021 Mercury Demogroup"
+SPDX-License-Identifier = "MIT"
