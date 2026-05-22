@@ -54,16 +54,24 @@ the cumulative narrowing axes and milestone commits.
   `chroma-uniforms` / `audio-reactivity`). PR 3 (`#426` / `b57bbfc`,
   2026-05-10) shipped 5 more pages (`scene-workflow` / `library-workflow` /
   `perform-mode` / `settings-reference` / `import-shadertoy`) closing the
-  corpus to 11 total pages; `EV-DOCS-CORPUS` now `Pass`.
+  corpus to 11 total pages; `EV-DOCS-CORPUS` now `Pass`. **Parity-closure wave
+  1** (`#496` / `d915d98`, 2026-05-22) added 5 more pages from the Synesthesia
+  parity-sweep deep-dive gaps (`quickstart` / `livestream` / `best-practices` /
+  `system-requirements` / `supported-codecs`), bringing the corpus to 16 total
+  pages.
 - **Wave 1d-β (PR 1 + PR 2)** — bundled scene starter library closed
   2026-05-10. PR 1 (`#418`) seeded one clean-room scene per remaining empty
   bundle subdirectory (`welcome/welcome.chroma` + `examples/audio-reactive-demo.chroma`);
   PR 2 (`#425` / `0f67340`) shipped 10 additional clean-room scenes spanning
   five feature surfaces (uniforms / control-widget showcase, audio reactivity,
   OSC routing, hotkey-bound preset cycling, playlist transitions). Total
-  corpus now 12 `.chroma` packages under `engine/scene/tests/fixtures/scenes/`
-  (4 `welcome/` + 8 `examples/` + the 3 pre-existing `library/demo-*`);
-  `EV-LIBRARY-CORPUS-MIN` now `Pass`.
+  corpus 16 `.chroma` packages under `engine/scene/tests/fixtures/scenes/`
+  (4 `welcome/` + 9 `examples/` + the 3 pre-existing `library/demo-*`);
+  `EV-LIBRARY-CORPUS-MIN` now `Pass`. The `tauri.conf.json` `bundle.resources`
+  block initially mapped only the 3 `library/demo-*` packages + one welcome
+  scene; parity-closure wave 1 Lane A (`#495` / `31e798c`, 2026-05-22) widened
+  the mapping to cover all 16 packages so the Library auto-discovery indexer
+  reads the full corpus in the shipped binary.
 - **Wave 1e (α + β + γ)** — release pipeline scaffold landed 2026-05-08
   through 2026-05-10. Wave 1e-α introduced `release-eng/` with stub signing
   scripts + hardened-runtime `entitlements.plist` + operator runbook; Wave 1e-β
@@ -530,6 +538,42 @@ Audio / Reserved) with distinct `PrefixReserved` diagnostic +
 default OSC ports `DEFAULT_OSC_IN_PORT = 9000` /
 `DEFAULT_OSC_OUT_PORT = 9001` pinned in `defaults.rs` (`#489`).
 
+**Synesthesia parity sweep + parity-closure wave 1 (2026-05-22).** Two
+docs PRs (`#493` / `a916b42` overview, `#494` / `68070c1` feature deep
+dive) benchmarked Chromaticity against the public Synesthesia
+documentation under `docs/comparison/` (clean-room observation only per
+`docs/29`). Aggregate ~857 feature-level rows scored across SSF / FAQ /
+Manual / Tutorials / Resources; ~77% at MATCH-or-better, ~36% at
+EXCEEDS-class. Single hard GAP (educational discount, commerce-layer)
+out of 65 GAP rows total — the rest cluster on missing docs / hg_sdf
+vendoring / `script.js` loader wire / production cert procurement.
+
+Parity-closure wave 1 (`#495` Lane A + `#496` Lane B + `#497` Lane C,
+2026-05-22) closed the highest-leverage clusters:
+
+- **Lane A** (`#495` / `31e798c`) — added `macos-13` (Intel) to the
+  `release.yml` build matrix (the staging glob broadened from
+  `chromaticity-*-latest/` to `chromaticity-*/` to participate the
+  Intel artifact); widened `tauri.conf.json` `bundle.resources` to
+  map the 3 welcome + 9 examples scenes (the indexer now reads the
+  full 16-package corpus in shipped binaries).
+
+- **Lane B** (`#496` / `d915d98`) — 5 new docs-corpus pages
+  (quickstart / livestream / best-practices / system-requirements /
+  supported-codecs) wiring into `mkdocs.yml` + `bundle.resources`.
+  Closes ~28-30 docs-cluster rows.
+
+- **Lane C** (`#497` / `f93e841`) — vendored Mercury Demogroup's
+  hg_sdf under `third_party/hg_sdf/` electing MIT (upstream is dual
+  MIT OR CC-BY-NC-4.0; MIT track is permanent at our end, no
+  Phase-5 `EV-LICENSE-AUDIT` re-election needed). Closes 64 SSF
+  external-library PARTIAL rows. `LICENSES/MIT.txt` added.
+
+Total ~95 rows lifted from PARTIAL/GAP toward MATCH-or-better
+(~11% of the parity surface). Optional Lane D widenings (XY 2D
+control widget, OSC playlist bind enum, etc.) deferred to a future
+wave per AO call.
+
 **What remains synthetic-only.**
 
 - **Live preview render pipeline** — ADR-011 Phase-2+ deferred. Dragging a
@@ -619,7 +663,7 @@ chromaticity/
 │   └── ui-bridge/        # ts-rs IPC type generator (Rust → TypeScript bindings)
 ├── engine/               # runtime/, scene/, audio/, authoring/, observability/, render/, script/, entitlement/
 ├── integrations/         # osc-adapter/, midi-adapter/, camera-adapter/, syphon-adapter/
-├── third_party/          # vendored snapshots — lygia/ (Lygia v1.1.4 trial vendor) + Syphon-Framework/ (BSD-3-Clause clean-room)
+├── third_party/          # vendored snapshots — lygia/ (Lygia v1.1.4 trial vendor) + Syphon-Framework/ (BSD-3-Clause clean-room) + hg_sdf/ (Mercury Demogroup MIT-elected, parity-closure wave 1)
 ├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
 ├── .config/hakari.toml   # cargo-hakari config; platforms mirror deny.toml graph.targets
 ├── src/                  # Svelte web root; may migrate under app/ui/ later

@@ -68,6 +68,20 @@ are complementary — overview for headline, features for precision.
 | Tutorials    | [tutorials.md](tutorials.md)      | [features/tutorials.md](features/tutorials.md)   | Tutorials — quickstart, first scene, presets/favslots/playlists, hotkeys, OBS, Shadertoy convert, JS handlers, v1.16 walkthrough |
 | Resources    | [resources.md](resources.md)      | [features/resources.md](features/resources.md)   | Resources — installers, changelogs, scene resources, GLSL resources                                            |
 
+## Closure log
+
+The sweep is followed by per-wave closure PRs that close clusters of PARTIAL /
+GAP rows. Score deltas roll up here; per-row scores in the individual docs
+stay frozen at the snapshot date until the next full re-sweep.
+
+### Parity-closure wave 1 (2026-05-22, ~95 rows lifted)
+
+- **Lane A** (`#495` / `31e798c`): release.yml macOS Intel matrix arm + tauri.conf.json `bundle.resources` widening to all 16 `.chroma` packages. Closes the Mac Intel installer GAP toward PARTIAL, moves `EV-LIBRARY-CORPUS-MIN` from InProgress to Pass.
+- **Lane B** (`#496` / `d915d98`): 5 new docs-corpus pages (quickstart / livestream / best-practices / system-requirements / supported-codecs) wired into `mkdocs.yml` + `bundle.resources`. Closes ~28-30 docs-cluster PARTIAL/GAP rows across SSF / FAQ / Tutorials / Resources.
+- **Lane C** (`#497` / `f93e841`): vendored Mercury Demogroup's hg_sdf under `third_party/hg_sdf/` electing MIT (upstream dual MIT OR CC-BY-NC-4.0; MIT track permanent). Closes 64 SSF external-library PARTIAL rows — the largest single-PR closure.
+
+Lane D (optional polish) deferred: XY 2D control widget, OSC playlist bind enum widening, `BindTarget::Scene` two-arg form, `/audio/threshold` direction `Both`, OSC compat dual-emit window. Each is small but low-leverage relative to wave-1 work; revisit if AO smoke surfaces fresh issues.
+
 ## Revisiting cadence
 
 The sweep is intended to be re-run when:
@@ -79,4 +93,5 @@ The sweep is intended to be re-run when:
 Per-section docs carry a `_Last refreshed:_` marker at their head — bump it
 when revising. Scores can change in either direction over time (a Synesthesia
 release may add a feature, advancing Chromaticity from MATCH to PARTIAL; a
-Chromaticity wave may close a GAP).
+Chromaticity wave may close a GAP). The closure log above tracks completed
+gap-closure work between full re-sweeps.
