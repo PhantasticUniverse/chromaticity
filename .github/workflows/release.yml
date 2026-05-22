@@ -112,7 +112,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # macos-latest = Apple Silicon (arm64); macos-13 = Intel x86_64.
+        # Both produce a binary named `chromaticity-app`; the staging
+        # step disambiguates by stripping the `chromaticity-` prefix
+        # from the artifact dir name, so `macos-13` lands at
+        # `staged/chromaticity-app-macos-13` while `macos-latest` lands
+        # at `staged/chromaticity-app-macos`. Closes the parity-sweep
+        # Resources GAP on Mac Intel coverage; non-deploy until
+        # production cert procurement clears the AO gate per ADR-014.
+        os: [ubuntu-latest, macos-latest, windows-latest, macos-13]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -294,7 +302,13 @@ jobs:
           echo "--- artifacts/ tree (diagnostic) ---"
           find artifacts -maxdepth 4 -type f | sort
           echo "--- staging ---"
-          for dir in artifacts/chromaticity-*-latest/; do
+          # Match every per-platform artifact dir, not just the
+          # `*-latest` suffix — `macos-13` (Intel) doesn't carry the
+          # `-latest` suffix and would silently no-match the prior
+          # glob. The sed pipeline still trims the trailing `-latest`
+          # when present, so `macos-latest` → `macos` and
+          # `macos-13` → `macos-13` produce distinct platform names.
+          for dir in artifacts/chromaticity-*/; do
             [ -d "$dir" ] || continue
             platform=$(basename "$dir" | sed 's|^chromaticity-||; s|-latest$||')
             while IFS= read -r src; do
