@@ -128,28 +128,31 @@ impl State {
             }
             EventPayload::PresetRecalled { id } => {
                 self.preset_store.active = Some(id);
-                // Wave 2.4 PERF.C: restore the bank's `ControlStore`
-                // snapshot if `id` has been saved. Recalling an
+                // Wave 2.4 PERF.C, widened by parity-closure wave 2
+                // Lane D item 1 (PR 2): restore the bank's whole
+                // `ControlStore` snapshot — scalar `values` AND XY
+                // `xy_values` — if `id` has been saved. Recalling an
                 // unsaved preset leaves the control store untouched
-                // (no-op restoration) — that's the Phase-3 baseline
-                // behaviour every prior corpus + golden pinned and
-                // remains the contract here.
+                // (no-op restoration) — the Phase-3 baseline every
+                // prior corpus + golden pinned, preserved here.
                 if let Some(snapshot) = self.preset_store.banks.get(&id) {
-                    self.control_store.values = snapshot.clone();
+                    self.control_store = snapshot.clone();
                 }
             }
             EventPayload::PresetSaved { id } => {
-                // Wave 2.4 PERF.C: capture the current control-store
-                // snapshot into the bank keyed by `id`. Saving also
-                // activates the preset (mirrors `SnapSaved` which
-                // sets `active = Some(slot)` and `recall_preset`
-                // already overwriting `active`). The clone is an
-                // in-process HashMap copy (no IO); preset-bank
-                // durability + on-disk persistence remain Wave 2.5+
-                // scope.
+                // Wave 2.4 PERF.C, widened by parity-closure wave 2
+                // Lane D item 1 (PR 2): capture the whole current
+                // `ControlStore` — scalar `values` AND XY
+                // `xy_values` — into the bank keyed by `id`, so an
+                // `xy` control survives a save/recall round-trip.
+                // Saving also activates the preset (mirrors
+                // `SnapSaved` setting `active = Some(slot)`). The
+                // clone is an in-process copy (no IO); preset-bank
+                // durability + on-disk persistence remain a
+                // later-wave scope.
                 self.preset_store
                     .banks
-                    .insert(id, self.control_store.values.clone());
+                    .insert(id, self.control_store.clone());
                 self.preset_store.active = Some(id);
             }
             EventPayload::PlaylistAdvanced { step } => {
@@ -317,7 +320,11 @@ impl State {
 }
 
 /// Control-value store.
-#[derive(Debug, Default)]
+///
+/// `Clone` is derived (parity-closure wave 2 Lane D item 1, PR 2) so
+/// the whole store can be snapshotted into a [`PresetStore`] bank —
+/// see [`PresetStore::banks`].
+#[derive(Debug, Default, Clone)]
 pub(crate) struct ControlStore {
     /// Crate-private; sibling [`crate::state_replay`] reads this for
     /// canonical-binary encoding (sorted by `ControlId.0` for
@@ -343,11 +350,13 @@ pub(crate) struct ControlStore {
 /// Preset store. See [`ControlStore`].
 ///
 /// Wave 2.4 PERF.C extends the store with an in-process preset bank
-/// keyed by [`PresetId`]. Each entry holds a snapshot of
-/// [`ControlStore::values`] captured at
+/// keyed by [`PresetId`]. Each entry holds a snapshot of the whole
+/// [`ControlStore`] — scalar `values` AND XY `xy_values` (the latter
+/// widened in by parity-closure wave 2 Lane D item 1, PR 2, so an
+/// `xy` control survives a save/recall round-trip) — captured at
 /// [`EventPayload::PresetSaved`]-apply time. The bank is purely
 /// in-memory — preset-bank durability + on-disk persistence remain
-/// Wave 2.5+ scope per the Phase-3 `EV-PRESET-PLAYLIST` narrowing.
+/// a later-wave scope per the Phase-3 `EV-PRESET-PLAYLIST` narrowing.
 /// `PresetRecalled` restores controls from the bank IF a matching
 /// entry exists; recalling an unsaved preset leaves the control
 /// store untouched (matching the existing Phase-3 semantics that
@@ -363,7 +372,7 @@ pub(crate) struct ControlStore {
 #[derive(Debug, Default)]
 pub(crate) struct PresetStore {
     pub(crate) active: Option<PresetId>,
-    pub(crate) banks: HashMap<PresetId, HashMap<ControlId, ControlValue>>,
+    pub(crate) banks: HashMap<PresetId, ControlStore>,
 }
 
 /// Playlist store. See [`ControlStore`].
@@ -572,6 +581,48 @@ mod tests {
         bus.commit_all_into(&mut state);
         assert_eq!(state.control_value(control), Some(saved_value));
         assert_eq!(state.active_preset(), Some(PresetId(0)));
+    }
+
+    #[test]
+    fn xy_preset_save_recall_roundtrip() {
+        // Parity-closure wave 2 Lane D item 1 (PR 2) T1 pin: an
+        // `xy` control captured into a preset bank survives a
+        // save -> mutate -> recall round-trip, exactly as scalar
+        // controls do — because the bank snapshots the whole
+        // `ControlStore` (scalar `values` + XY `xy_values`), not
+        // just the scalar map.
+        let bus = InMemoryBus::in_memory();
+        let mut state = State::default();
+        let xy = ControlId(21);
+        let saved = [0.3, -0.7];
+        let mutated = [-0.9, 0.1];
+
+        // Set the xy control, then save preset 0 — the bank
+        // captures `saved`.
+        bus.dispatch(Command::ControlSet2D {
+            id: xy,
+            value: saved,
+        })
+        .expect("xy control command must dispatch");
+        bus.dispatch(Command::PresetSave { id: PresetId(0) })
+            .expect("preset save command must dispatch");
+        bus.commit_all_into(&mut state);
+        assert_eq!(state.xy_control_value(xy), Some(saved));
+
+        // Mutate the xy control past the saved value.
+        bus.dispatch(Command::ControlSet2D {
+            id: xy,
+            value: mutated,
+        })
+        .expect("xy control command must dispatch");
+        bus.commit_all_into(&mut state);
+        assert_eq!(state.xy_control_value(xy), Some(mutated));
+
+        // Recall preset 0 — the xy control restores to `saved`.
+        bus.dispatch(Command::PresetRecall { id: PresetId(0) })
+            .expect("preset recall command must dispatch");
+        bus.commit_all_into(&mut state);
+        assert_eq!(state.xy_control_value(xy), Some(saved));
     }
 
     #[test]
