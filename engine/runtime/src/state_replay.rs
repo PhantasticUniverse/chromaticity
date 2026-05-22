@@ -153,6 +153,15 @@ fn default_buffer_capacity(state: &State) -> usize {
 ///   exercises the save+recall round-trip sees a meaningful
 ///   downstream hash change without the bank itself being on the
 ///   canonical wire.
+/// - `control_store.xy_values` (parity-closure wave 2 Lane D item
+///   1): 2-component (XY) control values. Same precedent as
+///   `preset_store.banks` — adding them to the canonical-binary
+///   contract would drift the row 32 / row 34 / row 33 goldens, so
+///   they ride the `EXT_ID_V2_XY_CONTROL_VALUES` migration
+///   extension only. The `ControlChanged2D` apply-event path
+///   mutates `xy_values`, but `encode_control_store` reads
+///   `control_store.values` exclusively, so XY mutations leave the
+///   canonical hash untouched.
 pub(crate) fn encode_state_canonical(state: &State, out: &mut Vec<u8>) {
     // be_u64(frame).
     out.extend_from_slice(&state.frame.to_be_bytes());
@@ -321,6 +330,39 @@ mod state_replay_pins {
         let ha = replay_canonical_hash(&stream_a);
         let hb = replay_canonical_hash(&stream_b);
         assert_ne!(ha, hb, "distinct event streams must hash differently");
+    }
+
+    #[test]
+    fn control_changed_2d_replay_is_pure_and_canonical_invariant() {
+        // Drift pin (parity-closure wave 2 Lane D item 1): a
+        // `ControlChanged2D` event stream replays deterministically,
+        // and — because XY values are NOT observed by the canonical
+        // encoder (`encode_control_store` reads `values` only) — the
+        // resulting canonical hash equals the empty-stream hash.
+        let events = vec![
+            Event {
+                seq: EventSeq(0),
+                payload: EventPayload::ControlChanged2D {
+                    id: ControlId(5),
+                    new_value: [0.5, -0.5],
+                },
+            },
+            Event {
+                seq: EventSeq(1),
+                payload: EventPayload::ControlChanged2D {
+                    id: ControlId(2),
+                    new_value: [1.0, 0.0],
+                },
+            },
+        ];
+        let h1 = replay_canonical_hash(&events);
+        let h2 = replay_canonical_hash(&events);
+        assert_eq!(h1, h2, "ControlChanged2D replay must be a pure function");
+        assert_eq!(
+            h1,
+            replay_canonical_hash(&[]),
+            "XY values must not enter the canonical-binary segment",
+        );
     }
 
     fn sample_event_stream() -> Vec<Event> {

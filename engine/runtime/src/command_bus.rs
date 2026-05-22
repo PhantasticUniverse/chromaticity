@@ -66,7 +66,12 @@ use std::time::Instant;
 /// scheme (hierarchical path, opaque handle, or both). The control
 /// store landing in slice-3 decides the canonical form; current
 /// payloads round-trip through the bus without inspection.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+///
+/// `Ord` is derived (parity-closure wave 2 Lane D item 1) so the
+/// [`crate::state::ControlStore`] xy-value sub-store can key a
+/// `BTreeMap` for deterministic iteration in the
+/// [`crate::state_migration`] extension encoder.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ControlId(pub u32);
 
 /// Stable scalar control value.
@@ -146,6 +151,17 @@ pub struct EventSeq(pub u64);
 pub enum Command {
     /// Set a control to a specific value.
     ControlSet { id: ControlId, value: ControlValue },
+    /// Set a 2-component (XY) control to a specific `[x, y]` value.
+    ///
+    /// Additive sibling of [`Command::ControlSet`] for the `xy`
+    /// control kind (`docs/28-implementation-contract-pack.md`
+    /// CP-01); the scalar `ControlSet` path is byte-identical and
+    /// untouched. Parity-closure wave 2 Lane D item 1. The XY value
+    /// rides the `EXT_ID_V2_XY_CONTROL_VALUES` migration extension
+    /// (`crate::state_migration`), not the EV-STATE-REPLAY
+    /// canonical-binary segment, so row 32 / 33 / 34 goldens are
+    /// invariant under this addition.
+    ControlSet2D { id: ControlId, value: [f32; 2] },
     /// Recall a preset by identifier.
     PresetRecall { id: PresetId },
     /// Save the current `ControlStore` snapshot into the preset bank
@@ -183,6 +199,13 @@ pub enum EventPayload {
         id: ControlId,
         new_value: ControlValue,
     },
+    /// Mirror of [`Command::ControlSet2D`] (parity-closure wave 2
+    /// Lane D item 1). Additive sibling of [`Self::ControlChanged`]
+    /// for 2-component (XY) controls.
+    ControlChanged2D {
+        id: ControlId,
+        new_value: [f32; 2],
+    },
     PresetRecalled {
         id: PresetId,
     },
@@ -217,6 +240,10 @@ impl EventPayload {
     fn from_command(command: Command) -> Self {
         match command {
             Command::ControlSet { id, value } => Self::ControlChanged {
+                id,
+                new_value: value,
+            },
+            Command::ControlSet2D { id, value } => Self::ControlChanged2D {
                 id,
                 new_value: value,
             },
@@ -533,6 +560,12 @@ struct LifecycleTransitionCounts {
 fn command_kind(command: &Command) -> CommandKind {
     match command {
         Command::ControlSet { .. } => CommandKind::ControlSet,
+        // Parity-closure wave 2 Lane D item 1: the XY command folds
+        // onto the existing `ControlSet` observability kind so the
+        // `chromaticity-observability` `#[non_exhaustive]` catalog
+        // enum needs no cross-crate change; an XY write counts as a
+        // control write.
+        Command::ControlSet2D { .. } => CommandKind::ControlSet,
         Command::PresetRecall { .. } => CommandKind::PresetRecall,
         Command::PresetSave { .. } => CommandKind::PresetSave,
         Command::PlaylistAdvance { .. } => CommandKind::PlaylistAdvance,
@@ -548,6 +581,9 @@ fn command_kind(command: &Command) -> CommandKind {
 fn event_kind(payload: &EventPayload) -> EventKind {
     match payload {
         EventPayload::ControlChanged { .. } => EventKind::ControlChanged,
+        // Parity-closure wave 2 Lane D item 1: folds onto the
+        // existing `ControlChanged` kind — see `command_kind`.
+        EventPayload::ControlChanged2D { .. } => EventKind::ControlChanged,
         EventPayload::PresetRecalled { .. } => EventKind::PresetRecalled,
         EventPayload::PresetSaved { .. } => EventKind::PresetSaved,
         EventPayload::PlaylistAdvanced { .. } => EventKind::PlaylistAdvanced,
