@@ -5,11 +5,12 @@
  * [`chromaticity_runtime::settings::OscSettings`].
  *
  * Wave 2.1 Lane D.3: backs the OSC view's listening (`local_ip` +
- * `port`) + TX/RX toggle inputs. Lane D (OSC outbound sender)
- * widens this payload with `out_host` — the operator-configurable
- * outbound target IP per ADR-013 §1/§6. The frontend's
+ * `port`) + TX/RX toggle inputs. Parity-closure wave 2 Lane D
+ * widens this payload with `out_host` (the operator-configurable
+ * outbound target IP per ADR-013 §1/§6) and the `dual_emit_*`
+ * compat-window controls. The frontend's
  * `settingsStore` reads / writes these via the `get_settings` /
- * `set_settings` handler pair; the engine-side `Settings` document
+ * `set_settings` handler pair; the engine-side `Settings` documen
  * already composes [`OscSettings`] as a top-level section so this
  * bridge extension is purely additive.
  */
@@ -20,16 +21,13 @@ export type OscSettingsPayload = { local_ip: string, port: number,
  */
 out_host: string, out_port: number, tx_enabled: boolean, rx_enabled: boolean,
 /**
- * When true the outbound sender emits each message twice — once on
- * the canonical plural-root address and once on the compat-syn-v1
- * alias address — so legacy controllers subscribed to the singular
- * form receive both during a migration window. Off by default.
- * Parity-closure wave 2 Lane D PR10.
+ * Compat dual-emit window: when `true`, outbound OSC is also
+ * emitted on the singular compat-alias address. Parity-closure
+ * wave 2 Lane D.
  */
 dual_emit_enabled: boolean,
 /**
- * Optional RFC 3339 deadline string after which dual-emit stops
- * automatically. `null` means the window stays open until the
- * operator toggles it off.
+ * Optional dual-emit deadline (RFC3339); after it, dual-emi
+ * stops even when enabled. `None` = no deadline.
  */
 dual_emit_until: string | null, };
