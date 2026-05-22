@@ -93,6 +93,8 @@ fn nonzero_settings() -> Settings {
             out_port: 9101,
             tx_enabled: false,
             rx_enabled: true,
+            dual_emit_enabled: false,
+            dual_emit_until: None,
         },
         tempo: TempoSettings {
             ableton_link_enabled: false,

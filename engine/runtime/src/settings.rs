@@ -355,7 +355,9 @@ impl Default for LiveSourcesSettings {
 }
 
 /// OSC adapter operator-facing network defaults — Wave 2.1 Lane D.3,
-/// widened with outbound target host in Lane D (OSC outbound sender).
+/// widened with outbound target host in Lane D (OSC outbound sender),
+/// and further widened with compat-alias dual-emit control in Lane D
+/// PR10 (parity-wave Lane D OSC compat dual-emit window).
 ///
 /// `local_ip` carries the bind-side interface (ADR-013 §1 default is
 /// `127.0.0.1` loopback; non-loopback values are an explicit operator
@@ -366,6 +368,22 @@ impl Default for LiveSourcesSettings {
 /// so fresh-install settings and adapter defaults cannot drift.
 /// `tx_enabled` gates outbound transmission; `rx_enabled` gates
 /// inbound packet processing per ADR-013 §6.
+///
+/// `dual_emit_enabled` — when `true`, every outbound OSC message whose
+/// canonical address has a `compat_alias` in the route registry is also
+/// emitted on the alias address with an identical payload. Defaults to
+/// `false` (opt-in; off for V1-RC so operators running canonical-only
+/// controllers are not exposed to double traffic). Operators running
+/// older controllers that subscribe to the singular alias form (e.g.
+/// `/scene/foo` instead of `/scenes/foo`) can enable this during the
+/// migration window.
+///
+/// `dual_emit_until` — optional RFC 3339 / ISO 8601 date-time string
+/// (e.g. `"2026-12-31T00:00:00Z"`). When `Some`, dual-emit is
+/// suppressed once the wall-clock time passes this deadline, even if
+/// `dual_emit_enabled` remains `true`. The comparison is lexicographic
+/// over RFC 3339 strings, which preserves temporal ordering for
+/// well-formed values. `None` means no expiry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OscSettings {
     #[serde(default = "OscSettings::default_local_ip")]
@@ -382,6 +400,16 @@ pub struct OscSettings {
     pub tx_enabled: bool,
     #[serde(default = "OscSettings::default_rx_enabled")]
     pub rx_enabled: bool,
+    /// Compat-alias dual-emit window — off by default (opt-in; V1-RC
+    /// posture). When `true` and `dual_emit_until` has not expired, the
+    /// outbound sender emits on both the canonical address and the alias.
+    #[serde(default)]
+    pub dual_emit_enabled: bool,
+    /// Optional expiry deadline for dual-emit as an RFC 3339 string.
+    /// `None` means no expiry. Compared lexicographically; well-formed
+    /// RFC 3339 strings sort temporally.
+    #[serde(default)]
+    pub dual_emit_until: Option<String>,
 }
 
 impl OscSettings {
@@ -416,6 +444,8 @@ impl Default for OscSettings {
             out_port: Self::default_out_port(),
             tx_enabled: Self::default_tx_enabled(),
             rx_enabled: Self::default_rx_enabled(),
+            dual_emit_enabled: false,
+            dual_emit_until: None,
         }
     }
 }
@@ -1244,6 +1274,69 @@ mod tests {
         // Other sections still resolve as expected.
         assert_eq!(loaded.general.theme, Theme::Pulse);
         assert_eq!(loaded.audio.sample_rate_hz, 48_000);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // Evidence: EV-NET-HARDENING (T1) — PR10 dual-emit settings
+    // forward-compat and round-trip pins.
+
+    #[test]
+    fn osc_dual_emit_defaults_to_off() {
+        // PR10: dual_emit_enabled must default to false (opt-in; off for
+        // V1-RC) and dual_emit_until must default to None.
+        let defaults = Settings::default();
+        assert!(
+            !defaults.osc.dual_emit_enabled,
+            "dual_emit_enabled must default to false (opt-in; off for V1-RC)",
+        );
+        assert!(
+            defaults.osc.dual_emit_until.is_none(),
+            "dual_emit_until must default to None",
+        );
+    }
+
+    #[test]
+    fn legacy_osc_toml_without_dual_emit_fields_loads_via_serde_default() {
+        // Forward-compat: a settings file written before PR10 added the
+        // dual_emit_enabled / dual_emit_until fields MUST deserialise
+        // cleanly. The missing fields fill via #[serde(default)] to the
+        // V1-RC opt-in-off defaults.
+        let path = tmp_path("osc-no-dual-emit");
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(
+                b"[osc]\nlocal_ip = \"127.0.0.1\"\nport = 9000\n\
+                  out_host = \"127.0.0.1\"\nout_port = 9001\n\
+                  tx_enabled = true\nrx_enabled = true\n",
+            )
+            .unwrap();
+        }
+        let loaded = Settings::load_from_path(&path).unwrap();
+        assert!(
+            !loaded.osc.dual_emit_enabled,
+            "missing dual_emit_enabled must default to false",
+        );
+        assert!(
+            loaded.osc.dual_emit_until.is_none(),
+            "missing dual_emit_until must default to None",
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn osc_dual_emit_settings_round_trip_preserves_values() {
+        // Mutate both dual-emit fields and round-trip through TOML.
+        let path = tmp_path("osc-dual-emit-round-trip");
+        let mut settings = Settings::default();
+        settings.osc.dual_emit_enabled = true;
+        settings.osc.dual_emit_until = Some("2026-12-31T00:00:00Z".to_string());
+        settings.save_to_path(&path).unwrap();
+        let loaded = Settings::load_from_path(&path).unwrap();
+        assert!(loaded.osc.dual_emit_enabled);
+        assert_eq!(
+            loaded.osc.dual_emit_until.as_deref(),
+            Some("2026-12-31T00:00:00Z"),
+        );
         let _ = std::fs::remove_file(&path);
     }
 }
