@@ -25,12 +25,14 @@ const SAMPLE_HEALTHY: OscHealthSnapshot = {
   state: 'Healthy',
   attempted_binds: 1,
   local_addr: '0.0.0.0:7000',
+  compat_alias_emits: 0n,
 };
 
 const SAMPLE_RECOVERING: OscHealthSnapshot = {
   state: 'Recovering',
   attempted_binds: 3,
   local_addr: null,
+  compat_alias_emits: 0n,
 };
 
 describe('oscHealthStore', () => {

@@ -16,5 +16,16 @@ import type { OscHealthState } from "./OscHealthState";
  *   `None` when unbound (initial state, or after a fatal
  *   bind-loop exit). Stringified at the IPC boundary because
  *   [`std::net::SocketAddr`] doesn't have a ts-rs binding.
+ * - `compat_alias_emits` — running count of compat-alias duplicate
+ *   datagrams sent since the sender was created. Zero when dual-emit
+ *   is disabled. Surfaced so the operator can verify dual-emit
+ *   traffic is flowing to legacy controllers during a migration
+ *   window. PR10 (parity-wave Lane D OSC compat dual-emit window).
  */
-export type OscHealthSnapshot = { state: OscHealthState, attempted_binds: number, local_addr: string | null, };
+export type OscHealthSnapshot = { state: OscHealthState, attempted_binds: number, local_addr: string | null,
+/**
+ * Running count of compat-alias duplicate datagrams emitted by
+ * the outbound sender since it was created. Zero when dual-emit
+ * is disabled. Resets to zero when the sender is reconfigured.
+ */
+compat_alias_emits: bigint, };

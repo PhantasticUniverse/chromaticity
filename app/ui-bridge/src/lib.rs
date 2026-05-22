@@ -493,12 +493,21 @@ pub struct LoadedScenePayload {
 ///   `None` when unbound (initial state, or after a fatal
 ///   bind-loop exit). Stringified at the IPC boundary because
 ///   [`std::net::SocketAddr`] doesn't have a ts-rs binding.
+/// - `compat_alias_emits` — running count of compat-alias duplicate
+///   datagrams sent since the sender was created. Zero when dual-emit
+///   is disabled. Surfaced so the operator can verify dual-emit
+///   traffic is flowing to legacy controllers during a migration
+///   window. PR10 (parity-wave Lane D OSC compat dual-emit window).
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq, Eq)]
 #[ts(export)]
 pub struct OscHealthSnapshot {
     pub state: OscHealthState,
     pub attempted_binds: u32,
     pub local_addr: Option<String>,
+    /// Running count of compat-alias duplicate datagrams emitted by
+    /// the outbound sender since it was created. Zero when dual-emit
+    /// is disabled. Resets to zero when the sender is reconfigured.
+    pub compat_alias_emits: u64,
 }
 
 /// IPC-facing readiness flag for snapshot axes that need an
@@ -1685,6 +1694,12 @@ impl From<OscSettingsPayload> for chromaticity_runtime::settings::OscSettings {
             out_port: p.out_port,
             tx_enabled: p.tx_enabled,
             rx_enabled: p.rx_enabled,
+            // PR10: dual-emit fields not yet surfaced in the settings
+            // payload; default to disabled / no deadline when converting
+            // from the IPC payload shape (operator TOML is the authoritative
+            // store for these fields).
+            dual_emit_enabled: false,
+            dual_emit_until: None,
         }
     }
 }

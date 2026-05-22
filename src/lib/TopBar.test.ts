@@ -423,6 +423,7 @@ describe('TopBar shell component', () => {
         state: 'Healthy',
         attempted_binds: 1,
         local_addr: '127.0.0.1:7000',
+        compat_alias_emits: 0n,
       };
       oscHealthStore.snapshot = snapshot;
       const { container } = render(TopBar);
@@ -437,6 +438,7 @@ describe('TopBar shell component', () => {
         state: 'Recovering',
         attempted_binds: 3,
         local_addr: null,
+        compat_alias_emits: 0n,
       };
       const { container } = render(TopBar);
       await Promise.resolve();
@@ -449,6 +451,7 @@ describe('TopBar shell component', () => {
         state: 'Degraded',
         attempted_binds: 17,
         local_addr: null,
+        compat_alias_emits: 0n,
       };
       const { container } = render(TopBar);
       await Promise.resolve();
