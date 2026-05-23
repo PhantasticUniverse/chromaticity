@@ -96,23 +96,11 @@ describe('Help view', () => {
     expect(getByRole('status')).toHaveTextContent(/mkdocs build/);
   });
 
-  it('exports a HELP_PAGES catalog matching the wave 1d-alpha corpus pages', () => {
-    expect(HELP_PAGES.map((p) => p.slug)).toEqual([
-      'index',
-      'perform-mode',
-      'scene-workflow',
-      'library-workflow',
-      'audio-reactivity',
-      'import-shadertoy',
-      'hotkeys-reference',
-      'osc-routes',
-      'chroma-uniforms',
-      'settings-reference',
-      'about',
-    ]);
-    // Every htmlPath must point under the `help/` resource prefix so
-    // it lines up with the per-page `bundle.resources` entries in
-    // `app/shell/tauri.conf.json`.
+  it('exports a HELP_PAGES catalog whose htmlPaths point under the `help/` bundle prefix', () => {
+    // Drift pin on the catalog slug order + length lives in
+    // `src/lib/stores/helpStore.test.ts`; the Help view test only
+    // verifies the htmlPath shape contract every page must satisfy
+    // for `app/shell/tauri.conf.json` `bundle.resources` to resolve.
     for (const page of HELP_PAGES) {
       expect(page.htmlPath.startsWith('help/')).toBe(true);
       expect(page.htmlPath.endsWith('.html')).toBe(true);
