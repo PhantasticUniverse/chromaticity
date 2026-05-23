@@ -84,9 +84,10 @@ goldens via the additive design (`commit_all_into` directly with `frame=0` state
   Residual: Spectrum widget retrofit + 48-bar FFT visualiser stay synthetic
   (post-MVP UX).
 - `EV-ENTITLEMENT-ENFORCEMENT` + `EV-ENTITLEMENT-REVOCATION` — `Pass` at the
-  13-cap honored set (`HONORED_TOKEN_CAPABILITIES`, data-only); IO_CAMERA
-  excluded (free at MVP per ADR-009); revocation expiry-based only, deny-list
-  activation deferred post-MVP.
+  16-cap honored set (`HONORED_TOKEN_CAPABILITIES`, data-only — watermark + 8
+  I/O + 4 authoring + custom-resolution + 2 meta); IO_CAMERA excluded (free at
+  MVP per ADR-009); revocation expiry-based only, deny-list activation
+  deferred post-MVP.
 - Hotkey trio (`EV-HOTKEY-PARITY-CONFORMANCE` / `-COMPLETENESS` / `-CONFLICT`),
   `EV-NET-HARDENING`, `EV-ENTITLEMENT-OFFLINE` / `-FREE-FEATURES`,
   `EV-HEALTH-METRICS-LOOPBACK-ONLY` — full scope.
@@ -118,15 +119,17 @@ goldens via the additive design (`commit_all_into` directly with `frame=0` state
 
 - `EV-SOAK-CHAOS` — CI-short synthetic-workload soak; ≥4-hour target deferred to
   a calendar-gated nightly harness (mirrors `EV-PERF-BUDGETS` Path B).
-- `EV-GPU-SELECTION` — synthetic 10-fixture inline T2 corpus
+- `EV-GPU-SELECTION` — synthetic 12-fixture inline T2 corpus
   (`engine/render/src/adapter_selection.rs`); physical dual-adapter validation
   hardware-gated; TDR-history warning UI deferred.
 - `EV-SHADER-CACHE` — observation-only (see Phase-4b).
-- `EV-CRASH-RESUME` — all 7 restoration classes (a–g) shipped as
-  `restore_class_<x>` helpers (`engine/runtime/src/crash_resume.rs`); class d
-  extends `State` with `SessionBindings` + V2 envelope
-  `EXT_ID_V2_SESSION_BINDINGS` without breaking V1→V2 forward-only migration.
-  Full crash-injection drill deferred to a future-wave harness.
+- `EV-CRASH-RESUME` — `restore_class_<x>` helpers shipped for all 7
+  restoration classes (a–g) at `engine/runtime/src/crash_resume.rs`; a–d are
+  wired into `restore_all_supported_classes`, e/f/g land as no-op stubs
+  pending future `State`-shape extensions. Class d extends `State` with
+  `SessionBindings` + V2 envelope `EXT_ID_V2_SESSION_BINDINGS` without
+  breaking V1→V2 forward-only migration. Full crash-injection drill deferred
+  to a future-wave harness.
 - `EV-CRASH-PAYLOAD-REDACTION` — synthetic crash-payload harness
   (`engine/observability/src/crash_harness.rs`); real platform crash-handler
   injection deferred (same precedent as `EV-SOAK-CHAOS`).
@@ -161,9 +164,8 @@ Pre-alpha hardening (rounds 1–3, PRs `#482`–`#489`) closed a `/ultrareview`
 mega-review + a clean-room reference-comparison sweep. The Synesthesia parity
 sweep + parity-closure wave 1 (PRs `#493`–`#498`, 2026-05-22) benchmarked
 against public Synesthesia docs under `docs/comparison/` (clean-room observation
-only per `docs/29`) and closed the highest-leverage clusters (Intel build matrix
-
-- bundle-resources widening, 5 docs-corpus pages, hg_sdf vendoring).
+only per `docs/29`) and closed the highest-leverage clusters (Intel build
+matrix + bundle-resources widening, 5 docs-corpus pages, hg_sdf vendoring).
 
 **Parity-closure wave 2 (Lane D, PRs `#499`–`#509`, 2026-05-22)** closed the
 deferred Lane D cluster: an interactive XY 2D control pad (additive runtime
