@@ -10,7 +10,7 @@
  * outbound target IP per ADR-013 §1/§6) and the `dual_emit_*`
  * compat-window controls. The frontend's
  * `settingsStore` reads / writes these via the `get_settings` /
- * `set_settings` handler pair; the engine-side `Settings` documen
+ * `set_settings` handler pair; the engine-side `Settings` document
  * already composes [`OscSettings`] as a top-level section so this
  * bridge extension is purely additive.
  */
@@ -27,7 +27,7 @@ out_host: string, out_port: number, tx_enabled: boolean, rx_enabled: boolean,
  */
 dual_emit_enabled: boolean,
 /**
- * Optional dual-emit deadline (RFC3339); after it, dual-emi
+ * Optional dual-emit deadline (RFC3339); after it, dual-emit
  * stops even when enabled. `None` = no deadline.
  */
 dual_emit_until: string | null, };
