@@ -192,10 +192,13 @@ impl From<chromaticity_runtime::PresetId> for PresetId {
 /// Realises the W11 ship-time-bundling slice flagged by
 /// `docs/52-parity-coverage-matrix.md` row 37 ("Bundled scenes under
 /// `Resources/scenes/`"). The Library view reads the discriminant to
-/// render the `BUILT-IN` chip on bundled cards; future Phase-4b work
-/// (`EV-LIBRARY-BUNDLE-LAYOUT`) extends the bundled root to the full
+/// render the `BUILT-IN` chip on bundled cards. Phase-4b
+/// `EV-LIBRARY-BUNDLE-LAYOUT` extended the bundled root to the full
 /// `welcome / library / examples / shadertoy-fixtures` layout per
-/// `docs/38-scene-library-and-import-spec.md` §2.1.
+/// `docs/38-scene-library-and-import-spec.md` §2.1, with parity-closure
+/// wave 1 Lane A (PR 495, 2026-05-22) widening `app/shell/tauri.conf.json`
+/// `bundle.resources` to map every welcome + examples + library/demo-*
+/// package.
 ///
 /// ts-rs renders the enum as a flat string union (`"Bundled" | "User"`)
 /// because there are no payload-bearing variants, so the wire shape
@@ -242,14 +245,13 @@ pub struct SceneCard {
 /// Surfaces the OSC adapter's bind-retry state machine to the UI per
 /// `docs/08-io-integrations.md` §OSC. The W4 hardening pass added
 /// `Healthy / Recovering / Degraded` to the internal adapter; this
-/// IPC mirror lets the W14 OSC view render the operator-facing
+/// IPC mirror lets the OSC view render the operator-facing
 /// adapter-health pill.
 ///
-/// W14 scope: the stub `osc_health_snapshot` command in
-/// `app/shell/src/commands/osc.rs` returns a placeholder
-/// `Healthy / 0 attempted / unbound` snapshot since the OSC adapter
-/// is not yet wired into [`AppState`]. Phase-3 wiring will replace
-/// the stub with a real read-through to the live adapter.
+/// Wave 2.1 D.3 (PR 444) wired `osc_health_snapshot` in
+/// `app/shell/src/commands/osc.rs` to read through the live
+/// `app.osc_adapter` lock and return real state; the prior W14
+/// placeholder-stub framing in this doc no longer applies.
 ///
 /// ts-rs renders the enum as a flat string union
 /// (`"Healthy" | "Recovering" | "Degraded"`).

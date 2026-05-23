@@ -84,10 +84,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `event.preventDefault()` suppresses the browser default. The two
   // routable rows (`launch-scene` → Library, `open-hotkeys` → Settings)
   // attach their `onSelect` here so the widget fixture stays free of
-  // `routeStore` import coupling. The remaining five rows are
-  // dismiss-on-click no-ops pending Phase-3+/4a `EV-INTEGRATION-MATRIX`
-  // wiring (Snap recall, OSC address surfacing, support-bundle
-  // generation, offline-docs dispatch).
+  // `routeStore` import coupling. The remaining dismiss-on-click no-op
+  // rows (Snap recall, OSC address surfacing, support-bundle
+  // generation, offline-docs dispatch) stay fixture-only per the
+  // `EV-INTEGRATION-MATRIX` synthetic narrowing — the row is `Pass` at
+  // synthetic-coverage scope, with operator-facing wiring deferred
+  // post-MVP.
   //
   // Wave-44 mounts `<CrashResumeBanner>` directly under the
   // `<DegradedBanner>` and above the routed view, matching the

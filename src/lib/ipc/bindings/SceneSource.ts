@@ -8,10 +8,13 @@
  * Realises the W11 ship-time-bundling slice flagged by
  * `docs/52-parity-coverage-matrix.md` row 37 ("Bundled scenes under
  * `Resources/scenes/`"). The Library view reads the discriminant to
- * render the `BUILT-IN` chip on bundled cards; future Phase-4b work
- * (`EV-LIBRARY-BUNDLE-LAYOUT`) extends the bundled root to the full
+ * render the `BUILT-IN` chip on bundled cards. Phase-4b
+ * `EV-LIBRARY-BUNDLE-LAYOUT` extended the bundled root to the full
  * `welcome / library / examples / shadertoy-fixtures` layout per
- * `docs/38-scene-library-and-import-spec.md` §2.1.
+ * `docs/38-scene-library-and-import-spec.md` §2.1, with parity-closure
+ * wave 1 Lane A (PR 495, 2026-05-22) widening `app/shell/tauri.conf.json`
+ * `bundle.resources` to map every welcome + examples + library/demo-*
+ * package.
  *
  * ts-rs renders the enum as a flat string union (`"Bundled" | "User"`)
  * because there are no payload-bearing variants, so the wire shape
