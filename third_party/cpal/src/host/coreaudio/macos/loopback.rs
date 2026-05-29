@@ -90,9 +90,9 @@ impl LoopbackDevice {
         // CHROMATICITY PATCH (vs upstream cpal 0.17.1 — see
         // third_party/cpal/UPSTREAM-VERSION.md): build a GLOBAL stereo tap via
         // `initStereoGlobalTapButExcludeProcesses:` instead of the
-        // device-scoped `initWithProcesses:andDeviceUID:withStream:`. On macOS
-        // 14.4+ the device-scoped initializer with an empty exclusive process
-        // list creates a tap that silently delivers all-zero buffers
+        // device-scoped `initWithProcesses:andDeviceUID:withStream:`. On
+        // current macOS the device-scoped initializer with an empty exclusive
+        // process list creates a tap that silently delivers all-zero buffers
         // (RustAudio/cpal#329); the global initializer is the
         // AudioCap/MiniMeters-proven path that actually captures system
         // output. An empty exclude-list taps every process that outputs audio.
@@ -120,12 +120,22 @@ impl LoopbackDevice {
         let tap_uid = unsafe { tap_desc.UUID().UUIDString() };
 
         // 2 - Create aggregate device
+
+        // CHROMATICITY PATCH (soundness, vs upstream cpal 0.17.1): bind the
+        // out-param `mut` and take `&mut` for the pointer.
+        // `AudioHardwareCreateAggregateDevice` WRITES the new device id through
+        // this pointer, but upstream derives it from a shared `&` of a
+        // non-`mut` binding — a write through a read-only-provenance pointer is
+        // UB, and the optimizer is permitted to fold the later read back to 0.
+        // This matches the out-param idiom already used in this file
+        // (`Device::uid`'s `&mut size` / `&mut cfstring`, and `tap_obj_id`'s
+        // `MaybeUninit`). See third_party/cpal/UPSTREAM-VERSION.md.
         let aggregate_device_properties = create_audio_aggregate_device_properties(tap_uid);
-        let aggregate_device_id: AudioObjectID = 0;
+        let mut aggregate_device_id: AudioObjectID = 0;
         let status = unsafe {
             AudioHardwareCreateAggregateDevice(
                 aggregate_device_properties.as_ref(),
-                NonNull::from(&aggregate_device_id),
+                NonNull::from(&mut aggregate_device_id),
             )
         };
         check_os_status(status)?;

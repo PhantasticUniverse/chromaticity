@@ -22,10 +22,13 @@ SPDX-License-Identifier: CC-BY-4.0
   not apply to it — the CoreAudio FFI `unsafe` stays contained inside the
   dependency, exactly as it is for the registry build.
 
-## The Chromaticity patch (the only deviation from upstream)
+## The Chromaticity patches (the only deviations from upstream)
 
 One file is modified vs the verbatim 0.17.1 crate:
-`src/host/coreaudio/macos/loopback.rs`.
+`src/host/coreaudio/macos/loopback.rs`. Two focused changes — the tap-init fix
+(the reason this vendor exists) and a one-line soundness fix.
+
+### Patch 1 — global tap initializer (the all-zero-buffer fix)
 
 **Problem.** Upstream constructs the macOS system-output tap with the
 device-scoped initializer:
@@ -37,12 +40,12 @@ CATapDescription::initWithProcesses_andDeviceUID_withStream(
 // + setExclusive(true)
 ```
 
-On macOS 14.4+ this initializer, combined with an empty exclusive process
+On current macOS this initializer, combined with an empty exclusive process
 list, creates a Core Audio process tap that succeeds, starts, and delivers
 **all-zero buffers** — system audio is never actually captured. This is
 the long-standing cpal loopback bug tracked upstream as
 [RustAudio/cpal#329]. It reproduced 1:1 in Chromaticity's pre-alpha smoke
-run (PR #515): the TCC consent prompt fired, capture "ran", but every
+run (PR 515): the TCC consent prompt fired, capture "ran", but every
 `READY` snapshot reported `rms = 0.0000`.
 
 **Fix.** Use the **global** stereo tap initializer instead:
@@ -53,11 +56,32 @@ CATapDescription::initStereoGlobalTapButExcludeProcesses(alloc, &empty_processes
 
 An empty exclude-list taps every process that outputs audio, i.e. the whole
 system mix. This is the initializer used by AudioCap, MiniMeters, and other
-known-working macOS system-audio capture apps. The aggregate-device wrapper
-and drift compensation are unchanged. `setExclusive` is dropped (the
-"...ButExcludeProcesses" initializer already encodes exclude semantics), and
-the now-unused device-UID helper (`Device::uid`) is retained verbatim under
-`#[allow(dead_code)]` to keep the vendor diff to a single semantic change.
+known-working macOS system-audio capture apps. The drift compensation is
+unchanged. `setExclusive` is dropped (the "...ButExcludeProcesses" initializer
+already encodes exclude semantics), and the now-unused device-UID helper
+(`Device::uid`) is retained verbatim under `#[allow(dead_code)]` to keep the
+tap-init diff minimal.
+
+### Patch 2 — aggregate-device out-param soundness fix
+
+Right below the tap, upstream creates the aggregate device with:
+
+```rust
+let aggregate_device_id: AudioObjectID = 0;
+AudioHardwareCreateAggregateDevice(props, NonNull::from(&aggregate_device_id));
+// ...later: Device::new(aggregate_device_id)
+```
+
+`AudioHardwareCreateAggregateDevice` **writes** the new device id through that
+pointer, but upstream derives it from a shared `&` of a non-`mut` binding.
+Writing through a read-only-provenance pointer is UB, and the optimizer is
+permitted to fold the later read of `aggregate_device_id` back to `0` — which
+would yield a broken (id-0) aggregate device. It works in practice today only
+because the opaque FFI call forces a reload. The patch binds it `let mut` and
+takes `NonNull::from(&mut aggregate_device_id)`, matching the out-param idiom
+already used elsewhere in this same file (`Device::uid`'s `&mut size` /
+`&mut cfstring`, and `tap_obj_id`'s `MaybeUninit` + `assume_init`). Surfaced by
+the PR 516 review; a one-line change that removes the UB from code we now own.
 
 **Verification posture.** The fix is **hardware-gated**: whether a tap
 delivers non-zero buffers can only be confirmed on real macOS hardware with
@@ -76,11 +100,11 @@ See `docs/adr/ADR-022-system-audio-capture.md` for the capture decision and
 ## What we vendored
 
 The complete crates.io `cpal` 0.17.1 source needed to build it as a path
-dependency: `src/` (all backends — the macOS patch is the only change),
-`build.rs`, the normalized `Cargo.toml`, `examples/`, and the upstream
-docs (`README.md`, `CHANGELOG.md`, `UPGRADING.md`, `LICENSE`). A reviewer
-can diff `third_party/cpal/` against a fresh `cargo` download of cpal
-0.17.1 and see exactly the `loopback.rs` change above and these added
+dependency: `src/` (all backends — the macOS `loopback.rs` patches are the
+only changes), `build.rs`, the normalized `Cargo.toml`, `examples/`, and the
+upstream docs (`README.md`, `CHANGELOG.md`, `UPGRADING.md`, `LICENSE`). A
+reviewer can diff `third_party/cpal/` against a fresh `cargo` download of cpal
+0.17.1 and see exactly the two `loopback.rs` changes above and these added
 provenance/marker files.
 
 ## What's NOT included
@@ -104,7 +128,7 @@ existing `third_party/` precedent (lygia, Syphon-Framework, hg_sdf).
 - The snapshot was copied from the local `cargo` registry cache of the
   crates.io-published `cpal` 0.17.1 — no Synesthesia intermediation, no
   third-party mirror.
-- Apart from the documented `loopback.rs` patch and the stripped cruft
+- Apart from the documented `loopback.rs` patches and the stripped cruft
   above, the tree is bit-for-bit the published crate.
 - Per `docs/29-cleanroom-legal-policy-baseline.md`, source tooling MUST NOT
   parse `Contents/` or `chromaticity-planning/` — neither was consulted for
@@ -118,5 +142,5 @@ existing `third_party/` precedent (lygia, Syphon-Framework, hg_sdf).
   `engine/audio` cpal requirement to the fixed version. That is the
   preferred end-state — this vendor exists only to carry the one patch.
 - To bump within the patched-vendor model: re-vendor the new crate version
-  verbatim, re-apply the `loopback.rs` change, and bump the `Version` /
+  verbatim, re-apply the `loopback.rs` changes, and bump the `Version` /
   `Snapshot date` fields above.

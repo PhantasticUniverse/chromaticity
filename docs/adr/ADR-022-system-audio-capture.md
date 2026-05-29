@@ -113,17 +113,19 @@ and the frontend device-id contract (a deliberate follow-up, not part of this bu
 **Vendored patch (post-smoke-run amendment).** The pre-alpha smoke run surfaced
 that stock cpal 0.17.1's macOS process-tap initializer
 (`initWithProcesses:andDeviceUID:withStream:` with an empty exclusive process
-list) succeeds, starts, and then delivers **all-zero buffers** on macOS 14.4+ —
+list) succeeds, starts, and then delivers **all-zero buffers** on current macOS —
 the long-standing [RustAudio/cpal#329]. `cpal = "0.17"` is therefore wired as a
-vendored `[patch.crates-io]` path override at `third_party/cpal/` carrying a
-single change to `src/host/coreaudio/macos/loopback.rs`: the **global**
+vendored `[patch.crates-io]` path override at `third_party/cpal/` carrying two
+focused changes to `src/host/coreaudio/macos/loopback.rs`: (1) the **global**
 `initStereoGlobalTapButExcludeProcesses:` initializer (the AudioCap/MiniMeters-
-proven path) replaces the device-scoped one. The vendored crate is not a
-workspace member, so the FFI `unsafe` containment is unchanged; Apache-2.0 needs
-no `deny.toml` change and a path patch needs no `allow-git` widening (a git fork
-would). Full provenance + diff rationale live at
-`third_party/cpal/UPSTREAM-VERSION.md`. Windows (WASAPI loopback) is unaffected by
-the patch.
+proven path) replaces the device-scoped one; (2) a one-line soundness fix making
+the aggregate-device out-param `mut` (upstream wrote through a shared-`&`
+pointer — UB the optimizer may fold to a 0 device id), matching the file's own
+`Device::uid` out-param idiom. The vendored crate is not a workspace member, so
+the FFI `unsafe` containment is unchanged; Apache-2.0 needs no `deny.toml` change
+and a path patch needs no `allow-git` widening (a git fork would). Full
+provenance + diff rationale live at `third_party/cpal/UPSTREAM-VERSION.md`.
+Windows (WASAPI loopback) is unaffected by the patch.
 
 [RustAudio/cpal#329]: https://github.com/RustAudio/cpal/issues/329
 
