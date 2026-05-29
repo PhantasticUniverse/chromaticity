@@ -222,11 +222,14 @@ device chosen in Settings → Audio → Input Device:
   your machine is PLAYING (music / DJ / media) with no extra software, on
   macOS 14.6+ (Core Audio process taps; macOS asks once for
   audio-recording permission — the purple recording indicator) and
-  Windows (WASAPI loopback). **Known limitation:** on the current macOS
-  the cpal Core Audio tap delivers all-zero buffers (a known upstream
-  cpal / Core-Audio bug); a tap-init fix is tracked, so until it lands
-  this path may capture silence on macOS — use the virtual loopback
-  below as the reliable system-audio route.
+  Windows (WASAPI loopback). **This is the primary path to verify in this
+  run.** An earlier round found stock cpal's macOS tap delivering all-zero
+  buffers (upstream cpal#329); the vendored global-tap patch
+  (`third_party/cpal/`, ADR-022 §1) is now applied to fix it. **Verify:**
+  grant the consent prompt, play music, and confirm the Settings → Audio
+  monitoring meter and the 4 band tiles move from real audio. If it still
+  reads silent on the patched build, capture the macOS version + console
+  and fall back to the virtual loopback below.
 - **Default Input / a microphone** — reacts to whatever the input device
   hears; play music near the built-in mic (or speak / clap) for a quick
   acoustic test.

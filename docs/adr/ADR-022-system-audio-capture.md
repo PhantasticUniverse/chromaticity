@@ -110,6 +110,23 @@ source adjustments: `StreamConfig.sample_rate` is now a `u32` (was a
 stable `id()` would change the persisted `settings.audio.input_device` id format
 and the frontend device-id contract (a deliberate follow-up, not part of this bump).
 
+**Vendored patch (post-smoke-run amendment).** The pre-alpha smoke run surfaced
+that stock cpal 0.17.1's macOS process-tap initializer
+(`initWithProcesses:andDeviceUID:withStream:` with an empty exclusive process
+list) succeeds, starts, and then delivers **all-zero buffers** on macOS 14.4+ —
+the long-standing [RustAudio/cpal#329]. `cpal = "0.17"` is therefore wired as a
+vendored `[patch.crates-io]` path override at `third_party/cpal/` carrying a
+single change to `src/host/coreaudio/macos/loopback.rs`: the **global**
+`initStereoGlobalTapButExcludeProcesses:` initializer (the AudioCap/MiniMeters-
+proven path) replaces the device-scoped one. The vendored crate is not a
+workspace member, so the FFI `unsafe` containment is unchanged; Apache-2.0 needs
+no `deny.toml` change and a path patch needs no `allow-git` widening (a git fork
+would). Full provenance + diff rationale live at
+`third_party/cpal/UPSTREAM-VERSION.md`. Windows (WASAPI loopback) is unaffected by
+the patch.
+
+[RustAudio/cpal#329]: https://github.com/RustAudio/cpal/issues/329
+
 ### 2. Capture path
 
 `engine/audio/src/cpal_source.rs` adds `try_system_audio_loopback()`, mirroring
@@ -164,12 +181,18 @@ taps + WASAPI loopback are the only route to true zero-install.
 
 ### Negative / risks
 
-- **Hardware-unverified.** Compile + clippy `-D warnings` + unit tests pass, and
-  the loopback API is validated against cpal 0.17.1's own `record_wav` example +
-  source, but no real-device audio capture or TCC consent flow was exercised (no
-  Windows box; the macOS tap path is not runtime-validated and its device-opening
-  smoke tests are `#[ignore]` to avoid a CI consent prompt). Live-hardware
-  validation is a follow-up the AO accepted the risk on for this pass.
+- **macOS tap re-test pending (patched path).** The macOS TCC consent flow *was*
+  exercised in the pre-alpha smoke run — the purple-dot prompt fired and capture
+  ran — but every snapshot reported `rms = 0.0000`, surfacing the stock-cpal
+  all-zero bug (cpal#329) that the vendored global-tap patch (§1) addresses. The
+  patch mirrors the AudioCap/MiniMeters reference path, but whether it now
+  delivers non-zero buffers can only be confirmed on macOS hardware with consent
+  granted (no public preflight API; CI runners have no audio device, and the
+  device-opening smoke tests stay `#[ignore]` to avoid a CI consent prompt). This
+  AO hardware re-test on the patched path is the remaining gate.
+- **Windows compile-only.** The WASAPI loopback path is unaffected by the patch
+  and uses the correct upstream API, but is verified by `clippy` (windows-latest)
+  only — no Windows hardware was exercised.
 - New transitive deps (`objc2-core-audio` family, `alsa`) enter the graph;
   license-clean today, but expand the audit surface.
 - A loopback device delivering a sample format outside `{f32, i16, u16}` (e.g.
@@ -193,7 +216,12 @@ taps + WASAPI loopback are the only route to true zero-install.
 - `cargo check / clippy -D warnings / fmt --check` clean; `cargo test -p
   chromaticity-audio` green (logic pins for the sentinel + `CaptureDirection`;
   device-opening loopback smoke tests `#[ignore]`).
-- `cargo deny check licenses bans sources` clean; `cargo hakari generate` in sync.
+- `cargo deny check licenses bans sources` clean (the vendored `third_party/cpal`
+  is a `[patch.crates-io]` *path* source — not git/registry — so `sources` passes
+  with no `allow-git` change; Apache-2.0 is pre-allowed); `cargo hakari generate`
+  in sync (the patch re-unified cpal's Windows `windows` dep onto the shared
+  `0.61.3`, reducing duplication — `workspace-hack` regenerated to match).
+- `reuse lint` covers `third_party/cpal/**` (Apache-2.0) via `REUSE.toml`.
 - Frontend `tsc` / `svelte-check` / Settings tests green.
 
 ## Evidence

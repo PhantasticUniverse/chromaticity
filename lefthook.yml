@@ -102,6 +102,12 @@ pre-commit:
 
     rustfmt:
       glob: '*.rs'
+      # Vendored third-party crates (e.g. third_party/cpal) preserve upstream
+      # formatting per docs/29 Sec.Bundled GLSL Library Handling and are not
+      # workspace members, so `cargo fmt --all` (and CI's fmt job) skip them;
+      # this file-globbing hook must match — never rewrite vendored source.
+      exclude:
+        - 'third_party/**'
       run: |
         if command -v rustfmt >/dev/null 2>&1; then
           rustfmt --style-edition=2024 --check {staged_files}

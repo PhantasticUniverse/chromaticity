@@ -83,3 +83,19 @@ incremental = true
 # `[workspace.metadata.hakari]` embedded form is not read by
 # cargo-hakari 0.9.36 and must not be re-introduced here — having
 # both locations invites silent drift.
+
+# Vendored cpal override (system-audio loopback fix, ADR-022).
+# `third_party/cpal/` is the unmodified crates.io cpal 0.17.1 snapshot
+# carrying a single Chromaticity patch to its macOS process-tap initializer
+# (`src/host/coreaudio/macos/loopback.rs`): upstream's device-scoped
+# `initWithProcesses:andDeviceUID:withStream:` with an empty exclusive
+# process list delivers all-zero buffers on macOS 14.4+ (RustAudio/cpal#329);
+# the patch uses the global `initStereoGlobalTapButExcludeProcesses:` path
+# instead. The patch + provenance live at third_party/cpal/UPSTREAM-VERSION.md.
+# A vendored path patch (not a git fork) keeps the override in-tree and
+# reproducible without widening deny.toml `[sources]` `allow-git`. The
+# vendored crate is NOT a workspace member, so workspace lints
+# (unsafe_code = "forbid", clippy unwrap/expect denials) do not apply to it —
+# the CoreAudio FFI `unsafe` stays contained inside the dependency.
+[patch.crates-io]
+cpal = { path = "third_party/cpal" }

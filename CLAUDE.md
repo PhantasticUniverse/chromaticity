@@ -171,7 +171,11 @@ process taps on macOS 14.6+ / WASAPI loopback on Windows, all `unsafe` inside
 cpal; ADR-022); a device id/name binds that device (incl. an operator-installed
 BlackHole/Loopback). System-audio below the macOS 14.6 floor or on denied
 `NSAudioCaptureUsageDescription` consent degrades to the default input, never
-silent. Apply-on-restart only (live re-bind deferred).
+silent. Apply-on-restart only (live re-bind deferred). **cpal is a vendored
+`[patch.crates-io]` override at `third_party/cpal/`**: stock cpal 0.17.1's macOS
+tap delivers all-zero buffers (cpal#329), so `loopback.rs` is patched to the
+global `initStereoGlobalTapButExcludeProcesses:` initializer — the macOS capture
+path is **AO-hardware-re-test-gated** on that patch (`third_party/cpal/UPSTREAM-VERSION.md`).
 
 Pre-alpha hardening (rounds 1–3, PRs `#482`–`#489`) closed a `/ultrareview`
 mega-review + a clean-room reference-comparison sweep. The Synesthesia parity
@@ -263,7 +267,7 @@ chromaticity/
 │   └── ui-bridge/        # ts-rs IPC type generator (Rust → TypeScript bindings)
 ├── engine/               # runtime/, scene/, audio/, authoring/, observability/, render/, script/, entitlement/
 ├── integrations/         # osc-adapter/, midi-adapter/, camera-adapter/, syphon-adapter/
-├── third_party/          # vendored snapshots — lygia/ (Lygia v1.1.4 trial vendor) + Syphon-Framework/ (BSD-3-Clause clean-room) + hg_sdf/ (Mercury Demogroup MIT-elected)
+├── third_party/          # vendored snapshots — lygia/ (Lygia v1.1.4 trial vendor) + Syphon-Framework/ (BSD-3-Clause clean-room) + hg_sdf/ (Mercury Demogroup MIT-elected) + cpal/ (Apache-2.0 0.17.1 + macOS global-tap patch, [patch.crates-io])
 ├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
 ├── .config/hakari.toml   # cargo-hakari config; platforms mirror deny.toml graph.targets
 ├── src/                  # Svelte web root; may migrate under app/ui/ later
