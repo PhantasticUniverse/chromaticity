@@ -202,3 +202,27 @@ taps + WASAPI loopback are the only route to true zero-install.
 hand-installed virtual loopback device. Related: `docs/06-audio-engine.md`,
 `ADR-019-audio-uniform-ipc-bridge.md`, `ADR-011-rendering-backend.md` Sec.4,
 `ADR-014-signing-notarization-auto-update.md` (entitlements / hardened runtime).
+
+## Traceability
+
+- `adr/ADR-019-audio-uniform-ipc-bridge.md` — the producer-thread audio seam
+  (`AudioRuntime` → `Arc<Mutex<AudioUniformSnapshot>>`) this capture source feeds; the
+  loopback `CpalSource` is an additional `IngestBoundary` implementor with no change to
+  the snapshot contract.
+- `adr/ADR-014-signing-notarization-auto-update.md` — hardened-runtime entitlements;
+  `com.apple.security.device.audio-input` (in `release-eng/entitlements.plist`) plus the
+  new `NSAudioCaptureUsageDescription` / `NSMicrophoneUsageDescription` Info.plist keys
+  gate the Core Audio tap + mic TCC consent.
+- `adr/ADR-011-rendering-backend.md` Sec.4 — macOS platform-interop posture the
+  CoreAudio-tap path sits alongside.
+- `adr/ADR-013-network-and-data-defaults.md` — loopback-only / no-network posture;
+  system-audio capture is local-only and adds no outbound surface.
+- `26-evidence-artifact-registry.md` — `EV-INTEGRATION-MATRIX` (audio arm) remains the
+  tagged surface; no new evidence row is added.
+- `29-cleanroom-legal-policy-baseline.md` — the reference's system-audio behaviour was
+  observed clean-room (published FAQ + declarative manifests only); BlackHole's GPL-3.0
+  bars bundling, which is why OS-native taps are the only zero-install route.
+- `30-mvp-support-matrix.md` — macOS + Windows scope that bounds the per-platform tap /
+  WASAPI-loopback applicability.
+- `06-audio-engine.md` — the §7.1 ingest baseline + Reliability/Fallback policy the
+  loopback source's degrade-to-default-input path honours.
