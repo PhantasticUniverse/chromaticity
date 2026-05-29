@@ -121,7 +121,7 @@ describe('TopBar shell component', () => {
     // the next microtask to give the effect graph one tick to flush.
     await Promise.resolve();
     expect(container.querySelector('.top-bar__title')?.textContent).toBe(
-      'OSC · LISTENING — Port 7000',
+      'OSC · LISTENING — Port 9000',
     );
   });
 
@@ -422,7 +422,7 @@ describe('TopBar shell component', () => {
       const snapshot: OscHealthSnapshot = {
         state: 'Healthy',
         attempted_binds: 1,
-        local_addr: '127.0.0.1:7000',
+        local_addr: '127.0.0.1:9000',
         compat_alias_emits: 0n,
       };
       oscHealthStore.snapshot = snapshot;
@@ -430,7 +430,7 @@ describe('TopBar shell component', () => {
       await Promise.resolve();
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
       expect(pills[3]?.getAttribute('data-state')).toBe('ok');
-      expect(pills[3]?.getAttribute('title')).toContain('127.0.0.1:7000');
+      expect(pills[3]?.getAttribute('title')).toContain('127.0.0.1:9000');
     });
 
     it('maps OSC Recovering snapshot to the warming pill state', async () => {

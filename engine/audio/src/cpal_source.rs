@@ -193,7 +193,7 @@ pub fn enumerate_input_devices() -> Result<Vec<AudioDeviceInfo>, AudioError> {
     let infos = devices
         .enumerate()
         .map(|(idx, device)| {
-            let name = device.name().unwrap_or_else(|_| format!("Input {idx}"));
+            let name = read_device_name(&device).unwrap_or_else(|_| format!("Input {idx}"));
             // Namespace the id under `input-` to match the MIDI Lane
             // D.1 precedent and reserve room for an `output-` follow-up.
             // Sanitisation strips whitespace runs to a single dash so
@@ -245,7 +245,7 @@ pub fn enumerate_output_devices() -> Result<Vec<AudioDeviceInfo>, AudioError> {
     let infos = devices
         .enumerate()
         .map(|(idx, device)| {
-            let name = device.name().unwrap_or_else(|_| format!("Output {idx}"));
+            let name = read_device_name(&device).unwrap_or_else(|_| format!("Output {idx}"));
             let sanitized = sanitize_device_id_segment(&name);
             AudioDeviceInfo {
                 id: format!("output-{sanitized}"),
@@ -277,6 +277,23 @@ fn sanitize_device_id_segment(name: &str) -> String {
         }
     }
     out.trim_matches('-').to_string()
+}
+
+/// Read a cpal device's operator-visible name.
+///
+/// cpal 0.17 deprecated [`cpal::traits::DeviceTrait::name`] in favour
+/// of `description()` (rich name/manufacturer/type) and `id()` (a
+/// stable identifier that persists across reboots). Migrating the
+/// device-**id** derivation to the new `id()` would change the
+/// persisted `settings.audio.input_device` id format and the
+/// frontend device-id contract (the `input-`/`output-` sanitised-name
+/// scheme), so that migration is a deliberate follow-up rather than
+/// part of the 0.15→0.17 bump. This helper isolates the single
+/// `#[allow(deprecated)]` so the rest of the module — and the
+/// `cargo clippy -- -D warnings` gate — stays clean.
+#[allow(deprecated)]
+fn read_device_name(device: &cpal::Device) -> Result<String, cpal::DeviceNameError> {
+    device.name()
 }
 
 /// Bounded-channel capacity between the cpal data callback and the
@@ -580,6 +597,26 @@ struct StreamSetup;
 /// Device dropdown surfaced by the AO during pre-alpha smoke testing
 /// (2026-05-13).
 pub fn try_input_by_preference(preference: Option<&str>) -> Result<CpalSource, AudioError> {
+    // The built-in system-audio (output loopback) sentinel routes to
+    // the zero-install loopback path. On failure (macOS < 14.6, denied
+    // audio-recording consent, or no output device) fall back to the
+    // host default input so the app still reacts to *something* rather
+    // than going silent, with a one-shot warning the operator can see.
+    if let Some(pref) = preference {
+        if is_system_audio_preference(pref) {
+            return match try_system_audio_loopback() {
+                Ok(source) => Ok(source),
+                Err(_) => {
+                    eprintln!(
+                        "chromaticity-audio: built-in system-audio capture unavailable \
+                         (macOS < 14.6, denied audio-recording permission, or no output \
+                         device); falling back to the host default input"
+                    );
+                    try_default_input()
+                }
+            };
+        }
+    }
     // Resolve the operator preference to a concrete cpal device before
     // entering the owner-thread setup; on no-match this returns `None`
     // and the caller falls back to the default-input path.
@@ -628,7 +665,9 @@ pub(crate) fn resolve_preferred_input_device_name(preference: &str) -> Option<St
     let needle_raw = preference.strip_prefix("input-").unwrap_or(preference);
     let needle = sanitize_device_id_segment(needle_raw);
     for device in devices {
-        let Ok(name) = device.name() else { continue };
+        let Ok(name) = read_device_name(&device) else {
+            continue;
+        };
         if sanitize_device_id_segment(&name) == needle {
             return Some(name);
         }
@@ -643,6 +682,19 @@ pub(crate) fn resolve_preferred_input_device_name(preference: &str) -> Option<St
 /// sentinel).
 pub(crate) fn is_default_preference(preference: &str) -> bool {
     preference.is_empty() || preference.eq_ignore_ascii_case("default")
+}
+
+/// Persisted-preference sentinel routing to the built-in system-audio
+/// (output loopback) capture path. Parallel to the `"default"`
+/// sentinel; the operator-facing Settings → Audio dropdown surfaces it
+/// as the "System Audio (built-in)" entry and persists this literal in
+/// `settings.audio.input_device`.
+pub const SYSTEM_AUDIO_PREFERENCE: &str = "system-audio";
+
+/// True when `preference` selects the built-in system-audio loopback
+/// path. Matches [`SYSTEM_AUDIO_PREFERENCE`] case-insensitively.
+pub(crate) fn is_system_audio_preference(preference: &str) -> bool {
+    preference.eq_ignore_ascii_case(SYSTEM_AUDIO_PREFERENCE)
 }
 
 /// Open a specific cpal input device by exact (cpal-reported) name
@@ -749,7 +801,9 @@ fn build_named_input_stream(
     let needle = sanitize_device_id_segment(device_name);
     let mut chosen: Option<cpal::Device> = None;
     for device in devices {
-        let Ok(name) = device.name() else { continue };
+        let Ok(name) = read_device_name(&device) else {
+            continue;
+        };
         if sanitize_device_id_segment(&name) == needle {
             chosen = Some(device);
             break;
@@ -758,7 +812,7 @@ fn build_named_input_stream(
     let device = chosen.ok_or_else(|| AudioError::CpalDeviceCapture {
         reason: format!("named input device {device_name:?} not found"),
     })?;
-    build_stream_against_device(state, &device)
+    build_stream_against_device(state, &device, CaptureDirection::Input)
 }
 
 /// Owner-thread entrypoint. Builds the cpal stream, starts it,
@@ -808,26 +862,208 @@ fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream
         .ok_or_else(|| AudioError::CpalDeviceCapture {
             reason: "no default input device".into(),
         })?;
-    build_stream_against_device(state, &device)
+    build_stream_against_device(state, &device, CaptureDirection::Input)
+}
+
+/// Open the host default OUTPUT device for **system-audio loopback**
+/// capture and start a `cpal::Stream` feeding [`CpalSource`].
+///
+/// "System audio" is the mix the machine is *playing* (music / media /
+/// DJ output) — captured with NO virtual-loopback driver to install,
+/// the zero-install path that lets Chromaticity match-or-exceed the
+/// reference (which on macOS still requires a hand-installed BlackHole/
+/// Loopback device). cpal resolves it per platform behind one API:
+/// building an *input* stream on an *output* device transparently
+/// constructs a CoreAudio process-tap aggregate on macOS (> 14.6) or
+/// sets `AUDCLNT_STREAMFLAGS_LOOPBACK` on WASAPI (Windows), then drives
+/// the capture through the identical owner-thread + bounded-channel +
+/// FFI-seam-`catch_unwind` machinery as the input path.
+///
+/// # Permission and version floors
+///
+/// - **macOS**: requires macOS 14.6+ (the floor cpal's CoreAudio
+///   loopback gates on) plus a one-time system audio-recording (TCC)
+///   consent — the app bundle must declare
+///   `NSAudioCaptureUsageDescription`. Below the floor, or if consent
+///   is denied, the loopback build fails and this returns
+///   [`AudioError::CpalDeviceCapture`]; [`try_input_by_preference`]
+///   then degrades to the default input device rather than going
+///   silent. There is no public API to preflight the consent, so a
+///   persistent-silence health signal is the UI's only denial cue.
+/// - **Windows**: WASAPI loopback needs no install and no capability.
+/// - A loopback stream produces NO callbacks while nothing is playing;
+///   that surfaces as [`IngestStatus::Pending`] (a neutral warmup gap)
+///   via the `pending_on_empty` flag, never as a device failure —
+///   identical to the input path's empty-poll behaviour, so the
+///   [`crate::ingest_negotiation::IngestNegotiator`] never demotes a
+///   merely-idle system-output source to silent.
+///
+/// # Device assumption
+///
+/// cpal builds the loopback (process-tap aggregate / WASAPI loopback)
+/// path only for an output device that does NOT support input
+/// (`!supports_input()`). For the normal default output (built-in
+/// speakers / headphones) that holds. A default output that ALSO reports
+/// input support — an aggregate / virtual device (e.g. BlackHole itself)
+/// set as the system output — would instead bind that device's real
+/// input side, so capture could land on the wrong (possibly silent) side
+/// without the `Err`-fallback in [`try_input_by_preference`] firing. A
+/// follow-up should surface a degraded signal when the resolved default
+/// output `supports_input()`.
+///
+/// Evidence: `EV-INTEGRATION-MATRIX` (audio arm) — system-audio routing
+/// parity reached without a hand-installed virtual loopback device.
+pub fn try_system_audio_loopback() -> Result<CpalSource, AudioError> {
+    let (sender, consumer) = bounded::<AudioFrame>(CHANNEL_CAPACITY);
+    let closed = Arc::new(AtomicBool::new(false));
+
+    let (build_tx, build_rx) = bounded::<Result<StreamSetup, AudioError>>(1);
+    let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
+
+    let state = Arc::new(CallbackState {
+        sender,
+        closed: closed.clone(),
+        config: std::sync::Mutex::new(StreamFormat {
+            sample_rate_hz: 0,
+            channels: 0,
+        }),
+    });
+    let state_for_owner = state.clone();
+
+    let owner = thread::Builder::new()
+        .name("chromaticity-cpal-loopback-owner".into())
+        .spawn(move || {
+            run_loopback_stream_owner(state_for_owner, build_tx, shutdown_rx);
+        })
+        .map_err(|e| AudioError::CpalDeviceCapture {
+            reason: format!("failed to spawn cpal-loopback-owner thread: {e}"),
+        })?;
+
+    let setup = match build_rx.recv() {
+        Ok(result) => result,
+        Err(_) => Err(AudioError::CpalDeviceCapture {
+            reason: "cpal-loopback-owner thread exited before reporting build outcome".into(),
+        }),
+    };
+
+    match setup {
+        Ok(_) => Ok(CpalSource::from_parts_with_empty_poll_status(
+            consumer,
+            closed,
+            Box::new(CpalStreamGuard {
+                shutdown: Some(shutdown_tx),
+                owner: Some(owner),
+            }),
+            true,
+        )),
+        Err(err) => {
+            drop(shutdown_tx);
+            let _ = owner.join();
+            Err(err)
+        }
+    }
+}
+
+/// Owner-thread entrypoint for the system-audio loopback path. Mirrors
+/// [`run_stream_owner`] but builds against the default OUTPUT device.
+fn run_loopback_stream_owner(
+    state: Arc<CallbackState>,
+    build_tx: Sender<Result<StreamSetup, AudioError>>,
+    shutdown_rx: Receiver<()>,
+) {
+    let stream = match build_default_output_loopback_stream(&state) {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = build_tx.send(Err(e));
+            return;
+        }
+    };
+    if let Err(e) = stream.play() {
+        let _ = build_tx.send(Err(AudioError::CpalDeviceCapture {
+            reason: format!("stream.play() failed: {e}"),
+        }));
+        return;
+    }
+    if build_tx.send(Ok(StreamSetup)).is_err() {
+        return;
+    }
+    let _ = shutdown_rx.recv();
+    let _ = stream.pause();
+    drop(stream);
+}
+
+/// Resolve the host default OUTPUT device and build a loopback capture
+/// stream against it. Mirrors [`build_default_input_stream`] except it
+/// resolves `default_output_device()` and drives the
+/// [`CaptureDirection::OutputLoopback`] config path.
+fn build_default_output_loopback_stream(
+    state: &Arc<CallbackState>,
+) -> Result<cpal::Stream, AudioError> {
+    let host = cpal::default_host();
+    let device = host
+        .default_output_device()
+        .ok_or_else(|| AudioError::CpalDeviceCapture {
+            reason: "no default output device for system-audio loopback".into(),
+        })?;
+    build_stream_against_device(state, &device, CaptureDirection::OutputLoopback)
+}
+
+/// Which side of the device the capture stream reads from.
+///
+/// [`CaptureDirection::Input`] is the classic microphone / line-in
+/// path; [`CaptureDirection::OutputLoopback`] captures the system audio
+/// the device is *playing* (see [`try_system_audio_loopback`]). The
+/// only behavioural difference downstream is which `cpal` config
+/// resolver supplies the format — `build_input_stream` then drives both
+/// identically (cpal builds the platform loopback path internally for a
+/// device that does not support input).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaptureDirection {
+    /// Microphone / line-in capture via `default_input_config`.
+    Input,
+    /// System-output loopback capture via `default_output_config`.
+    OutputLoopback,
 }
 
 /// Per-format dispatch + stream-build for a resolved `cpal::Device`.
-/// Shared between [`build_default_input_stream`] and
-/// [`build_named_input_stream`]; the only difference between the two
-/// is the device-resolution step.
+/// Shared between the input paths ([`build_default_input_stream`] /
+/// [`build_named_input_stream`]) and the loopback path
+/// ([`build_default_output_loopback_stream`]); the differences are the
+/// device-resolution step and which `cpal` config resolver
+/// (`default_input_config` vs `default_output_config`) supplies the
+/// format, selected by `direction`.
 fn build_stream_against_device(
     state: &Arc<CallbackState>,
     device: &cpal::Device,
+    direction: CaptureDirection,
 ) -> Result<cpal::Stream, AudioError> {
-    let supported_config =
-        device
-            .default_input_config()
-            .map_err(|e| AudioError::CpalDeviceCapture {
-                reason: format!("default_input_config failed: {e}"),
-            })?;
+    // Loopback capture reads an OUTPUT (render) device, whose format
+    // comes from `default_output_config`; an input device uses
+    // `default_input_config`. cpal drives the capture the same way for
+    // both: `build_input_stream` on a device that does not support
+    // input (`!supports_input()`) transparently builds the platform
+    // loopback path (CoreAudio process-tap aggregate on macOS 14.6+,
+    // `AUDCLNT_STREAMFLAGS_LOOPBACK` on WASAPI). See
+    // [`try_system_audio_loopback`].
+    let supported_config = match direction {
+        CaptureDirection::Input => {
+            device
+                .default_input_config()
+                .map_err(|e| AudioError::CpalDeviceCapture {
+                    reason: format!("default_input_config failed: {e}"),
+                })?
+        }
+        CaptureDirection::OutputLoopback => {
+            device
+                .default_output_config()
+                .map_err(|e| AudioError::CpalDeviceCapture {
+                    reason: format!("default_output_config failed: {e}"),
+                })?
+        }
+    };
     let sample_format = supported_config.sample_format();
     let config = supported_config.config();
-    let sample_rate_hz = config.sample_rate.0;
+    let sample_rate_hz = config.sample_rate;
     let channels = config.channels;
     if let Ok(mut guard) = state.config.lock() {
         guard.sample_rate_hz = sample_rate_hz;
@@ -1385,6 +1621,67 @@ mod cpal_source_pins {
         match try_input_by_preference(None) {
             Ok(_) | Err(AudioError::CpalDeviceCapture { .. }) => {}
             other => panic!("unexpected result from try_input_by_preference(None): {other:?}"),
+        }
+    }
+
+    // ---- System-audio loopback (zero-install system-output capture) ----
+    //
+    // T1 per docs/43 §15.5: pins the documented routing-decision
+    // invariants for the loopback path — the sentinel predicate the
+    // runtime branches on, and the `CaptureDirection` discriminant the
+    // shared stream builder selects on. Device-opening loopback smoke
+    // tests are `#[ignore]` (they can trigger a macOS audio-recording
+    // TCC prompt on a capable host), mirroring the ignored
+    // `try_default_input_smoke` posture in `tests/cpal_source.rs`.
+    // Evidence: `EV-INTEGRATION-MATRIX` (audio arm).
+
+    #[test]
+    fn is_system_audio_preference_matches_sentinel_case_insensitively() {
+        assert!(is_system_audio_preference("system-audio"));
+        assert!(is_system_audio_preference("System-Audio"));
+        assert!(is_system_audio_preference("SYSTEM-AUDIO"));
+        assert!(is_system_audio_preference(SYSTEM_AUDIO_PREFERENCE));
+        // The system-audio sentinel and the "default" sentinel are
+        // distinct routing targets; neither matches the other's predicate.
+        assert!(!is_system_audio_preference("default"));
+        assert!(!is_system_audio_preference(""));
+        assert!(!is_system_audio_preference("input-blackhole-16ch"));
+        assert!(!is_default_preference(SYSTEM_AUDIO_PREFERENCE));
+    }
+
+    #[test]
+    fn capture_direction_variants_are_distinct() {
+        assert_ne!(CaptureDirection::Input, CaptureDirection::OutputLoopback);
+        let d = CaptureDirection::OutputLoopback;
+        assert_eq!(d, d);
+    }
+
+    #[test]
+    #[ignore = "opens the default output device for loopback; can trigger a macOS \
+                audio-recording (TCC) prompt — requires a capable host + granted permission"]
+    fn try_system_audio_loopback_smoke() {
+        // On a capable host (macOS 14.6+ with consent, or any Windows
+        // box) this yields Ok; on a headless host with no output device
+        // it yields the structured CpalDeviceCapture error. Both are
+        // acceptable — the function MUST NOT panic.
+        let _serialize = observability::test_serialize_lock();
+        match try_system_audio_loopback() {
+            Ok(_) | Err(AudioError::CpalDeviceCapture { .. }) => {}
+            other => panic!("unexpected result from try_system_audio_loopback(): {other:?}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "routes through try_system_audio_loopback(); same TCC-prompt caveat as \
+                try_system_audio_loopback_smoke"]
+    fn try_input_by_preference_routes_system_audio_sentinel() {
+        // The sentinel routes to the loopback path and, on failure,
+        // gracefully falls back to the default input — so the result is
+        // still either Ok or the structured headless error, never a panic.
+        let _serialize = observability::test_serialize_lock();
+        match try_input_by_preference(Some(SYSTEM_AUDIO_PREFERENCE)) {
+            Ok(_) | Err(AudioError::CpalDeviceCapture { .. }) => {}
+            other => panic!("unexpected result from system-audio preference: {other:?}"),
         }
     }
 }

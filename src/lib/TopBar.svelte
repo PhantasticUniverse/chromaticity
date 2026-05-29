@@ -69,6 +69,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { oscHealthStore } from './stores/oscHealth.svelte';
   import { performVariantStore, type PerformVariant } from './stores/performVariant.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
+  import { settingsStore } from './stores/settings.svelte';
   import { transportStore } from './stores/transport.svelte';
   import { AdapterPill, BeatDots, VuStereo, type AdapterPillState } from './widgets';
 
@@ -147,7 +148,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     playlist: 'Playlist',
     sources: 'Sources',
     midi: 'MIDI',
-    osc: 'OSC · LISTENING — Port 7000',
+    // OSC subtitle is computed reactively (see `routeSubtitle`) so the
+    // port tracks the live engine binding; this entry is the fallback
+    // label and is never rendered for the `osc` route itself.
+    osc: 'OSC',
     import: 'IMPORT',
     patch: 'PATCH',
     settings: 'Settings',
@@ -155,6 +159,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     welcome: 'Welcome',
     help: 'Help',
   };
+
+  // The OSC subtitle interpolates the live inbound port from
+  // settingsStore (default 9000, NOT the historical 7000 placeholder),
+  // mirroring the OSC view body (`Osc.svelte` `listenPort`). Reading the
+  // settings-backed value keeps the top bar from drifting away from the
+  // port the OSC adapter actually binds on launch.
+  const oscListenPort = $derived(settingsStore.snapshot.osc.port);
+  const routeSubtitle = $derived(
+    routeStore.current === 'osc'
+      ? `OSC · LISTENING — Port ${oscListenPort}`
+      : ROUTE_TITLES[routeStore.current],
+  );
 
   // Adapter status pills mirroring the v0.2 wireframe pack's top-right
   // session HUD chrome (consistent across welcome / library / perform /
@@ -186,6 +202,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // fires outside Tauri.
   $effect(() => {
     void midiStore.refresh();
+    // Hydrate settings so the OSC subtitle reflects a non-default
+    // configured port; `load()` swallows the non-Tauri rejection and is
+    // idempotent (same call the OSC + Settings views make).
+    void settingsStore.load();
   });
 
   // Start the OSC health polling loop on TopBar mount; halt on
@@ -279,7 +299,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <span class="top-bar__brand-mark" aria-hidden="true"></span>
     <span class="top-bar__brand-text">
       <span class="top-bar__wordmark">Chromaticity</span>
-      <span class="top-bar__title">{ROUTE_TITLES[routeStore.current]}</span>
+      <span class="top-bar__title">{routeSubtitle}</span>
     </span>
   </div>
 

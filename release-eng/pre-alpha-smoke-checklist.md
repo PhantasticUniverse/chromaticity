@@ -215,25 +215,26 @@ Aim for ~15–20 minutes end-to-end. File anything that surprises you per
 > AudioUniforms Spectrum widget remain synthetic — see "Known synthetic
 > surfaces".
 
-**Important — what "real audio" means on macOS.** The producer uses
-cpal's default INPUT device (i.e. your microphone), NOT system audio
-output. macOS doesn't expose system-output capture through standard
-audio APIs. To get a meaningful reaction:
+**Important — selecting an audio source.** The producer captures from the
+device chosen in Settings → Audio → Input Device:
 
-- **Easy path**: play music on your computer speakers and let the
-  built-in mic pick it up acoustically. Speak / clap near the mic.
-- **Cleaner path**: install a virtual audio loopback that routes
-  system output to a virtual input device:
-  - [BlackHole](https://existential.audio/blackhole/) — free,
-    MIT-licensed, ships a 2-channel or 16-channel virtual driver.
-  - [Loopback](https://rogueamoeba.com/loopback/) — paid, more
-    flexible GUI-driven routing.
-    After installing, restart Chromaticity, open Settings → Audio,
-    pick the BlackHole / Loopback device in the Input Device dropdown.
-    Wave 2.8 Lane AUD.SRC: `AudioRuntime` now honours the persisted
-    selection at startup (previously the dropdown was cosmetic).
-    Most performers prefer this path over the acoustic mic-pickup
-    route above.
+- **System Audio (built-in)** — the zero-install path: captures whatever
+  your machine is PLAYING (music / DJ / media) with no extra software, on
+  macOS 14.6+ (Core Audio process taps; macOS asks once for
+  audio-recording permission — the purple recording indicator) and
+  Windows (WASAPI loopback). **Known limitation:** on the current macOS
+  the cpal Core Audio tap delivers all-zero buffers (a known upstream
+  cpal / Core-Audio bug); a tap-init fix is tracked, so until it lands
+  this path may capture silence on macOS — use the virtual loopback
+  below as the reliable system-audio route.
+- **Default Input / a microphone** — reacts to whatever the input device
+  hears; play music near the built-in mic (or speak / clap) for a quick
+  acoustic test.
+- **A virtual loopback** — install
+  [BlackHole](https://existential.audio/blackhole/) (free, MIT) or
+  [Loopback](https://rogueamoeba.com/loopback/), route system output into
+  it, restart Chromaticity, and pick that device in the Input Device
+  dropdown. `AudioRuntime` honours the persisted selection at startup.
 - **No-mic path**: if your machine has no input device at all, the
   producer falls back to a `SilentSource` and emits all-zero
   snapshots. Visualizers stay on synthetic fallback — that's

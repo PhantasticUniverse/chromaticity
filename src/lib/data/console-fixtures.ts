@@ -111,14 +111,14 @@ export const CONSOLE_FIXTURES: readonly ConsoleEntry[] = [
     time: '13:25:01',
     severity: 'scan',
     source: 'osc',
-    message: 'Binding UDP port 7000 (0.0.0.0)',
+    message: 'Binding UDP port 9000 (0.0.0.0)',
   },
   {
     id: 'osc-info-1',
     time: '13:25:02',
     severity: 'info',
     source: 'osc',
-    message: 'Listening for OSC on udp://0.0.0.0:7000',
+    message: 'Listening for OSC on udp://0.0.0.0:9000',
   },
   {
     id: 'osc-warn-1',
@@ -224,7 +224,7 @@ export const CONSOLE_FIXTURES: readonly ConsoleEntry[] = [
     time: '13:31:09',
     severity: 'error',
     source: 'osc',
-    message: 'Bind failed: udp://0.0.0.0:7000 already in use',
+    message: 'Bind failed: udp://0.0.0.0:9000 already in use',
   },
   {
     id: 'osc-info-2',

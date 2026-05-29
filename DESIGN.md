@@ -214,9 +214,13 @@ components:
   pill-red:
     accent: '{colors.signal-red}'
   meter:
-    segment-color: '{colors.primary}'
-    peak-color: '{colors.warning}'
-    clip-color: '{colors.danger}'
+    scale: 'logarithmic dBFS, fixed -60..0 range'
+    zone-nominal: '{colors.primary}'
+    zone-caution: '{colors.warning}'
+    zone-hot: '{colors.danger}'
+    peak-hold: '{colors.text-1}'
+    no-signal: '{colors.danger}'
+    reference-tick: '{colors.line-3}'
     background: '{colors.bg-3}'
   timecode-display:
     typography: '{typography.timecode}'
@@ -339,8 +343,9 @@ The frontmatter encodes the core 22 primitives. Variants live as suffix-keyed si
 Beyond the frontmatter contract, the operator-facing surface includes these primitives whose anatomy is documented in the port plan but whose tokens compose from the contract above:
 
 - **Tabs (segmented)** — underline style. Active tab gets `text-0` plus `tab-active.underline`. No pill treatment.
+- **Level meter** — logarithmic **dBFS** segment ladder (`src/lib/widgets/Meter.svelte`) driven by the shared dt-aware ballistics primitive (`src/lib/audio/metering.ts`): a VU-style 300 ms RMS fill, Digital/Type-I PPM peak (fast attack / ~12 dB·s⁻¹ release), and a peak-hold cap (1.5 s hold then ~12 dB·s⁻¹ decay), all integrated on wall-clock `dt` so the meter is frame-rate-independent. The scale is fixed `-60…0 dBFS` (so a healthy but quiet program reads mid-bar instead of being crushed into the bottom tenth a linear `[0,1]` fill would give). Each segment is colored by the dB it represents — nominal (`primary`/lime) < −9 dBFS, caution (`warning`/amber) −9…−1, hot (`danger`/red) ≥ −1 — with an EBU R68 **−18 dBFS reference tick**, a floating peak-hold cap, an optional numeric dB readout + click-to-reset, and a whole-bar **no-signal** state on sustained silence (≤ −60 dBFS dwell, mirroring the reference's whole-bar cue while the AUDIO chain pill carries the richer warming/ready/degraded state). **Engine-gated follow-ups** (ADR-019 amendment): true clip/over detection above 0 dBFS (the engine currently clamps the level path to `[0,1]`, so the red zone is an honest "very hot" cue, not a clip latch) and real per-channel stereo.
 - **Spectrum** — audio band coloring per `band-*`. LED-segment style (uniform bar heights, not staircase). Peak-hold tick.
-- **VU stereo** — L/R level pair with peak-hold and live animation.
+- **VU stereo** — L/R level pair with peak-hold and live animation. Migration onto the dBFS metering primitive + genuine per-channel L/R (retiring the interim mono-mirror) rides the same engine stereo widening as the Level meter (ADR-019 amendment).
 - **Cue transition curve** — SVG bezier editor; three modes (Cut / Fade / Beat Snap). Respects `prefers-reduced-motion`.
 - **Empty state** — dotted orbit-ring (40s slow rotation, reduce-motion-safe) + accent-glowing icon disc + title + body + action row + mono meta.
 - **Snap panel** — 8-slot grid above status bar, Perform view only. (Engine surface is 16 slots — `SnapSlotId::MAX = 15` — the SnapBar widget trims to the first 8 per the bundle's `extras.jsx` fixture.) Empty slots `text-4` / `bg-3`. Filled slots `text-1` / `bg-2` with category-colored 2px left accent. Active slot adds a `primary` underline. Each slot carries an operator-editable label below the slot number (localStorage-persisted; right-click to rename).
@@ -420,6 +425,7 @@ Items closed since the 2026-05-18 comparison sweep, with the PR that landed each
 - ✓ **StatusBar audio dBFS chip** — bundle-faithful `<Icon name="audio" /> {peak} dB` chip between MEM and warnings; reads `audioSnapshotStore.snapshot?.peak` (analysis-window peak per Round 3 Lane Q windowing) converted via `20 · log10`. `—` placeholder when no snapshot; `-∞ dB` floor on silent audio.
 - ✓ **EmptyState `tertiaryAction`** — `EmptyStateCopy` widened with `readonly tertiaryAction?: EmptyStateAction`; `EMPTY_LIBRARY` now carries the bundle's 3-action pattern (Install Built-Ins / New Scene / Import). Consumers that render 3-action empty states iterate `[primary, secondary, tertiary].filter(Boolean)`. View-level adoption (Library.svelte rendering all three buttons) is a future visual-port follow-up.
 - ✓ **`CueTransitionCurve` 2D keyboard nudge** — both bezier handles (cp1 / cp2) now respond to ArrowLeft / ArrowRight (X nudge) and ArrowUp / ArrowDown (Y nudge) per WAI-ARIA APG slider pattern extended for the 2D case. PageUp / PageDown nudge Y; Home / End snap X to extremes. 5 % small step / 20 % large step with Shift modifier. Clamped to [0, 1] both axes.
+- ✓ **World-class dBFS level meter** (2026-05-29). `Meter.svelte` rebuilt onto a logarithmic dBFS scale via a new shared ballistics primitive (`src/lib/audio/metering.ts`: dt-aware PPM peak + VU RMS + peak-hold + dB color zones + silence gate, 20 unit tests), replacing the linear `[0,1]` fill + frame-rate-dependent `EMA 0.25 + 0.004/frame` smoothing + top-decile-red heuristic. Adds dB-placed zones, an EBU −18 dBFS tick, numeric readout + click-to-reset, and a no-signal state. The Settings monitoring meter consumes it (calibrated dt-aware ballistics in place of the ad-hoc EMA); **remaining**: migrate `VuStereo` + `AudioUniforms` onto the primitive, and the engine-side true-peak/clip + real-stereo + AGC/BPM-confidence data-model widening (tracked in the ADR-019 amendment, profile-impact + golden-corpus gated). This is an _exceed_ over the reference, whose input meter is a single self-normalizing bar with no dB scale, no peak-hold cap, and no numeric readout.
 
 ### Calibration anchors (false positives caught during the closeout)
 
