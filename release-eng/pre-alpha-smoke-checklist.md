@@ -217,8 +217,11 @@ Aim for ~15–20 minutes end-to-end. File anything that surprises you per
 
 **Important — what "real audio" means on macOS.** The producer uses
 cpal's default INPUT device (i.e. your microphone), NOT system audio
-output. macOS doesn't expose system-output capture through standard
-audio APIs. To get a meaningful reaction:
+output. Capturing system output natively IS possible on macOS 14.4+
+(Core Audio process taps) and Windows (WASAPI loopback), but
+Chromaticity does not yet implement that path (the engine is on cpal
+0.15, which predates cpal's 0.17 loopback support). Until it lands, to
+get a meaningful reaction:
 
 - **Easy path**: play music on your computer speakers and let the
   built-in mic pick it up acoustically. Speak / clap near the mic.

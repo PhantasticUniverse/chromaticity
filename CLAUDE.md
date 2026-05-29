@@ -32,8 +32,10 @@ the cumulative narrowing axes and milestone commits.
   2026-05-07 (`#406` / `fb2bc75`) under synthetic-narrowing.
 - **Phase 4b EXIT** — passable at AO discretion 2026-05-07; all 11 rows `Pass`
   under Wave 4b.1–4b.8 narrowings.
-- **Phase 4d** — 5/6 rows `Pass`; `EV-ANALYTICS-ZERO-DEFAULT` calendar-gated to
-  ~2026-05-20 (14-day soak window).
+- **Phase 4d** — 4/6 rows `Pass`. `EV-CRASH-RESUME` `InProgress` (restore
+  classes e/f/g are no-op stubs awaiting `State`-shape extensions) and
+  `EV-ANALYTICS-ZERO-DEFAULT` `Planned` (14-day soak calendar-gated ~2026-05-20;
+  the closing-docs flip has not been committed as of 2026-05-29).
 - Phase 4 EXIT decisions remain AO-held per `docs/11-roadmap-phases.md`; closure
   events above do not pre-empt the gate decisions.
 
@@ -145,6 +147,10 @@ goldens via the additive design (`commit_all_into` directly with `frame=0` state
   `EV-CRASH-PAYLOAD-REDACTION` full-injection crash harness.
 - **Post-MVP UX** — Spectrum widget retrofit + `AudioReactivity` 48-bar FFT
   visualiser live wiring.
+- **First-release artifact** — `EV-OBSERVABILITY-INVENTORY` (Phase-0-exit
+  engine-side row) stays `InProgress`: the posture ADR-016 + metric catalog are
+  set, but the shipped `OBSERVABILITY-INVENTORY.md` enumerating every outbound
+  endpoint is authored at first release per ADR-016.
 
 ### Cross-seam wiring status
 
@@ -156,9 +162,16 @@ audio snapshots. Audio seam: `engine/audio::AudioRuntime` producer thread feeds
 `Arc<Mutex<AudioUniformSnapshot>>`; `app/shell::TauriIpcEmitter` is the concrete
 `IpcEmit` adapter; `app/shell/src/lib.rs::run` spawns the drift-corrected 60 Hz
 scheduler-tick thread that pulls from `MutexAudioPull` and emits
-`audio_uniform_snapshot_changed`. **cpal binds the DEFAULT INPUT device
-(microphone) on macOS, not system audio output** — a virtual loopback
-(BlackHole / Loopback) is the operator path for system-output capture.
+`audio_uniform_snapshot_changed`. Capture source is operator-selectable via
+`settings.audio.input_device` → `AudioRuntime::with_preferred_device` →
+`try_input_by_preference`: the `default` sentinel binds the host default input
+(microphone on macOS); a `system-audio` sentinel binds **zero-install
+system-output loopback** (`try_system_audio_loopback`, cpal 0.17 — Core Audio
+process taps on macOS 14.6+ / WASAPI loopback on Windows, all `unsafe` inside
+cpal; ADR-022); a device id/name binds that device (incl. an operator-installed
+BlackHole/Loopback). System-audio below the macOS 14.6 floor or on denied
+`NSAudioCaptureUsageDescription` consent degrades to the default input, never
+silent. Apply-on-restart only (live re-bind deferred).
 
 Pre-alpha hardening (rounds 1–3, PRs `#482`–`#489`) closed a `/ultrareview`
 mega-review + a clean-room reference-comparison sweep. The Synesthesia parity
