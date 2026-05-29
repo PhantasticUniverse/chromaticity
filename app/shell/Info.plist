@@ -12,13 +12,30 @@
   dialog entirely (the OS denies access without surfacing a UI), per
   `docs/54-wave-1c-beta-research-lessons.md` Phase-2 lesson 5.
 
+  Audio capture (ADR-022) declares two TCC usage strings:
+    - NSMicrophoneUsageDescription gates the default-input (microphone /
+      line-in) cpal capture path.
+    - NSAudioCaptureUsageDescription gates the zero-install system-audio
+      LOOPBACK path (cpal 0.17 Core Audio process taps, macOS 14.6+;
+      `engine/audio::try_system_audio_loopback`). That consent surfaces as
+      the purple recording indicator, NOT the orange mic dot.
+  Both pair with `com.apple.security.device.audio-input` in
+  `release-eng/entitlements.plist`. A missing usage string makes the OS
+  deny access without a UI, so a denied / sub-14.6 system-audio request
+  degrades to the default input rather than prompting (there is no public
+  API to preflight tap consent).
+
   The release-validation script `scripts/check-camera-info-plist.sh`
-  asserts the key survives Tauri's plist merge into the bundled output.
+  asserts the camera key survives Tauri's plist merge into the bundled output.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>NSCameraUsageDescription</key>
   <string>Chromaticity uses the camera to provide live video input for visual scenes selected by the operator.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Chromaticity uses the microphone or selected audio input to drive audio-reactive visuals.</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>Chromaticity captures the audio your computer is playing so visuals can react to it, without installing a virtual audio device.</string>
 </dict>
 </plist>

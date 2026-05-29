@@ -109,19 +109,18 @@ syn = { version = "2", default-features = false, features = ["visit-mut"] }
 
 [target.aarch64-apple-darwin.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
+block2 = { version = "0.6" }
 core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics-types = { version = "0.2" }
-either = { version = "1", default-features = false, features = ["use_std"] }
+dispatch2 = { version = "0.3" }
 futures-core = { version = "0.3" }
 futures-sink = { version = "0.3" }
-libc = { version = "0.2" }
-minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
-nom = { version = "7", default-features = false, features = ["std"] }
 objc = { version = "0.2", default-features = false, features = ["exception"] }
-objc2 = { version = "0.5" }
+objc2-3b31131e45eafb45 = { package = "objc2", version = "0.6", features = ["disable-encoding-assertions", "exception"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAccessibilityProtocols", "NSAlert", "NSAnimation", "NSAppearance", "NSApplication", "NSAttributedString", "NSButton", "NSCell", "NSColor", "NSColorPanel", "NSControl", "NSController", "NSDragging", "NSEvent", "NSGraphics", "NSImage", "NSInputManager", "NSKeyValueBinding", "NSLayoutManager", "NSMenu", "NSMenuItem", "NSOpenGLView", "NSOpenPanel", "NSPanel", "NSPasteboard", "NSPopover", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScreen", "NSSpellProtocol", "NSText", "NSTextContainer", "NSTextContent", "NSTextFinder", "NSTextInputClient", "NSTextView", "NSUserActivity", "NSUserInterfaceItemIdentification", "NSUserInterfaceValidation", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation", "std"] }
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["CFArray", "CFAttributedString", "CFBase", "CFCGTypes", "CFCalendar", "CFCharacterSet", "CFData", "CFDate", "CFDictionary", "CFError", "CFFileSecurity", "CFLocale", "CFMachPort", "CFMessagePort", "CFRunLoop", "CFSet", "CFStream", "CFString", "CFURL", "CFUserNotification", "objc2", "std"] }
+objc2-core-foundation = { version = "0.3", features = ["CFBase"] }
+objc2-d8f496e17d97b5cb = { package = "objc2", version = "0.5" }
 objc2-foundation-468e82937335b1c9 = { package = "objc2-foundation", version = "0.3" }
 objc2-foundation-6f8ce4dd05d13bba = { package = "objc2-foundation", version = "0.2", features = ["NSArray", "NSBundle", "NSCoder", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSGeometry", "NSItemProvider", "NSLocale", "NSObject", "NSString", "NSURL"] }
 rustix = { version = "1", features = ["fs"] }
@@ -129,30 +128,23 @@ smallvec = { version = "1", default-features = false, features = ["const_new"] }
 tokio = { version = "1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
-bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
-either = { version = "1", default-features = false, features = ["use_std"] }
-libc = { version = "0.2" }
-minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
-nom = { version = "7", default-features = false, features = ["std"] }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
-syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-apple-darwin.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
+block2 = { version = "0.6" }
 core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics-types = { version = "0.2" }
-either = { version = "1", default-features = false, features = ["use_std"] }
+dispatch2 = { version = "0.3" }
 futures-core = { version = "0.3" }
 futures-sink = { version = "0.3" }
-libc = { version = "0.2" }
-minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
-nom = { version = "7", default-features = false, features = ["std"] }
 objc = { version = "0.2", default-features = false, features = ["exception"] }
-objc2 = { version = "0.5" }
+objc2-3b31131e45eafb45 = { package = "objc2", version = "0.6", features = ["disable-encoding-assertions", "exception"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAccessibilityProtocols", "NSAlert", "NSAnimation", "NSAppearance", "NSApplication", "NSAttributedString", "NSButton", "NSCell", "NSColor", "NSColorPanel", "NSControl", "NSController", "NSDragging", "NSEvent", "NSGraphics", "NSImage", "NSInputManager", "NSKeyValueBinding", "NSLayoutManager", "NSMenu", "NSMenuItem", "NSOpenGLView", "NSOpenPanel", "NSPanel", "NSPasteboard", "NSPopover", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScreen", "NSSpellProtocol", "NSText", "NSTextContainer", "NSTextContent", "NSTextFinder", "NSTextInputClient", "NSTextView", "NSUserActivity", "NSUserInterfaceItemIdentification", "NSUserInterfaceValidation", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation", "std"] }
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["CFArray", "CFAttributedString", "CFBase", "CFCGTypes", "CFCalendar", "CFCharacterSet", "CFData", "CFDate", "CFDictionary", "CFError", "CFFileSecurity", "CFLocale", "CFMachPort", "CFMessagePort", "CFRunLoop", "CFSet", "CFStream", "CFString", "CFURL", "CFUserNotification", "objc2", "std"] }
+objc2-core-foundation = { version = "0.3", features = ["CFBase"] }
+objc2-d8f496e17d97b5cb = { package = "objc2", version = "0.5" }
 objc2-foundation-468e82937335b1c9 = { package = "objc2-foundation", version = "0.3" }
 objc2-foundation-6f8ce4dd05d13bba = { package = "objc2-foundation", version = "0.2", features = ["NSArray", "NSBundle", "NSCoder", "NSData", "NSDictionary", "NSDistributedNotificationCenter", "NSGeometry", "NSItemProvider", "NSLocale", "NSObject", "NSString", "NSURL"] }
 rustix = { version = "1", features = ["fs"] }
@@ -160,13 +152,7 @@ smallvec = { version = "1", default-features = false, features = ["const_new"] }
 tokio = { version = "1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 
 [target.x86_64-apple-darwin.build-dependencies]
-bitflags = { version = "2", default-features = false, features = ["serde", "std"] }
-either = { version = "1", default-features = false, features = ["use_std"] }
-libc = { version = "0.2" }
-minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
-nom = { version = "7", default-features = false, features = ["std"] }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
-syn = { version = "2", default-features = false, features = ["visit-mut"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-pc-windows-msvc.dependencies]
@@ -176,6 +162,7 @@ smallvec = { version = "1", default-features = false, features = ["const_new", "
 tokio = { version = "1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-core = { version = "0.1", default-features = false, features = ["std"] }
+windows = { version = "0.62", features = ["Win32_Devices_Properties", "Win32_Media_Audio", "Win32_Media_DirectShow", "Win32_Media_KernelStreaming", "Win32_Media_MediaFoundation", "Win32_Media_Multimedia", "Win32_Security", "Win32_System_Com_StructuredStorage", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem"] }
 windows-sys-4db8c43aad08e7ae = { package = "windows-sys", version = "0.60", features = ["Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }
 windows-sys-73dcd821b1037cfd = { package = "windows-sys", version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Time", "Win32_UI_WindowsAndMessaging"] }
 windows-sys-d4189bed749088b6 = { package = "windows-sys", version = "0.61", features = ["Wdk_Foundation", "Wdk_Storage_FileSystem", "Wdk_System_IO", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Networking_WinSock", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

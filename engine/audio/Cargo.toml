@@ -52,7 +52,7 @@ chromaticity-observability = { version = "0.0.0", path = "../observability" }
 # per crate metadata; transitive platform shims — coreaudio-rs/sys on
 # macOS, alsa-sys on Linux, wasapi on Windows — are license-audited
 # via cargo deny check licenses in the preflight).
-cpal = "0.15"
+cpal = "0.17"
 
 # crossbeam-channel 0.5 backs the bounded SPSC channel between the
 # cpal data callback (audio thread) and the analyser-side
