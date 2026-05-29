@@ -898,6 +898,19 @@ fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream
 ///   [`crate::ingest_negotiation::IngestNegotiator`] never demotes a
 ///   merely-idle system-output source to silent.
 ///
+/// # Device assumption
+///
+/// cpal builds the loopback (process-tap aggregate / WASAPI loopback)
+/// path only for an output device that does NOT support input
+/// (`!supports_input()`). For the normal default output (built-in
+/// speakers / headphones) that holds. A default output that ALSO reports
+/// input support — an aggregate / virtual device (e.g. BlackHole itself)
+/// set as the system output — would instead bind that device's real
+/// input side, so capture could land on the wrong (possibly silent) side
+/// without the `Err`-fallback in [`try_input_by_preference`] firing. A
+/// follow-up should surface a degraded signal when the resolved default
+/// output `supports_input()`.
+///
 /// Evidence: `EV-INTEGRATION-MATRIX` (audio arm) — system-audio routing
 /// parity reached without a hand-installed virtual loopback device.
 pub fn try_system_audio_loopback() -> Result<CpalSource, AudioError> {

@@ -3,11 +3,13 @@
 
 /**
  * Shared audio-metering DSP primitive — the single source of truth for
- * level→display conversion + ballistics across every meter widget
- * (Meter, VuStereo, the Settings monitoring meter, AudioUniforms).
+ * level→display conversion + ballistics. Consumed today by the Meter
+ * widget and the Settings monitoring meter; VuStereo and AudioUniforms
+ * are tracked to migrate onto it (each still runs its own legacy EMA
+ * until then).
  *
  * Replaces the ad-hoc, frame-rate-dependent `EMA 0.25 + 0.004/frame`
- * smoothing that was duplicated across four widgets with one calibrated,
+ * smoothing (previously duplicated per-widget) with one calibrated,
  * **wall-clock-dt-aware** implementation derived from named pro-audio time
  * constants, plus a logarithmic **dBFS** scale (human hearing is
  * logarithmic; a linear `[0,1]` fill crushes everything below ~-20 dBFS
@@ -74,9 +76,11 @@ export const PPM_ATTACK_TAU_MS = 1.7;
 export const PPM_RELEASE_DB_PER_S = 20 / 1.7;
 
 /**
- * VU-style RMS/loudness integration time constant (symmetric attack and
- * fall-back). Classic VU is ~300 ms; used as the exponential time
- * constant for the perceived-level bar fill.
+ * RMS/loudness integration time constant for the perceived-level bar fill
+ * (symmetric attack and fall-back). 300 ms gives a deliberately slow,
+ * smooth loudness bar in the spirit of a VU meter — note the classic VU
+ * "300 ms" spec is the ~99% RISE TIME (τ ≈ 65 ms), so this is a slower
+ * loudness average by choice, not a VU-faithful τ.
  */
 export const VU_INTEGRATION_TAU_MS = 300;
 
@@ -237,7 +241,11 @@ export class PeakHold {
     } else {
       this.#sinceUpdateMs += dt;
       if (this.#sinceUpdateMs > this.#holdMs) {
-        const drop = this.#decayDbPerS * (dt / 1000);
+        // Decay only the portion of this step PAST the hold window, so
+        // the boundary frame stays dt-invariant (one coarse step and
+        // many fine steps over the same span land identically).
+        const decayMs = Math.min(dt, this.#sinceUpdateMs - this.#holdMs);
+        const drop = this.#decayDbPerS * (decayMs / 1000);
         this.#heldDb = Math.max(currentDb, this.#heldDb - drop);
       }
     }

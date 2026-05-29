@@ -43,7 +43,7 @@ calibrated ballistics, dB color zones, peak-hold, and a no-signal state.
 Below 0 dBFS the existing `rms`/`peak` are immediately usable on the dB
 scale; **what the UI cannot synthesise** is anything the engine clamps
 away or never computes. This ADR locks the engine-side widening that
-closes the rest of the gap, and corrects the related over-claim in
+closes the rest of the gap, and will correct the related over-claim in
 `docs/comparison/features/faq.md:293` ("Yellow=clipping EXCEEDS" — today
 the engine **clamps**, it does not **detect** clipping).
 
@@ -101,7 +101,7 @@ Add a ≥4× oversampled true-peak stage (ITU-R BS.1770) in
 `compute_peak`'s neighbourhood and stop clamping the level path at `1.0`,
 so a clean 0 dBFS signal is distinguishable from a clipped one. `clip`
 latches when `true_peak ≥ -1 dBTP` (or sample ≥ 0 dBFS); the UI owns the
-hold time + reset. Honest clip light; retires the `faq.md:293` over-claim.
+hold time + reset. Honest clip light; will retire the `faq.md:293` over-claim.
 
 ### 2. Real stereo — `rms_l/rms_r` + `peak_l/peak_r: f32`
 

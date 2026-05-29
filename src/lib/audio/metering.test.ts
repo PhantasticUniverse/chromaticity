@@ -130,12 +130,25 @@ describe('PeakHold', () => {
     expect(h.value()).toBeCloseTo(-10, 6);
   });
 
-  it('decays at the configured dB/s after the hold expires', () => {
+  it('decays only over the post-hold overshoot at the configured dB/s', () => {
     const h = new PeakHold(1500, PPM_RELEASE_DB_PER_S);
     h.process(-10, 16); // latch -10
-    const v = h.process(-40, 1600); // past the 1500 ms hold
-    // dropped by ~PPM_RELEASE_DB_PER_S * 1.6 s from -10
-    expect(v).toBeCloseTo(-10 - PPM_RELEASE_DB_PER_S * 1.6, 1);
+    // A 1600 ms step crosses the 1500 ms hold by 100 ms; only that 100 ms
+    // of overshoot decays (the boundary frame is dt-invariant).
+    const v = h.process(-40, 1600);
+    expect(v).toBeCloseTo(-10 - PPM_RELEASE_DB_PER_S * 0.1, 2);
+  });
+
+  it('decay is dt-invariant across the hold boundary', () => {
+    const big = new PeakHold(1500, PPM_RELEASE_DB_PER_S);
+    const small = new PeakHold(1500, PPM_RELEASE_DB_PER_S);
+    big.process(-10, 16);
+    small.process(-10, 16);
+    // 2 s of silence after the latch (500 ms past the hold) — one coarse
+    // step must equal 200 fine steps over the same span.
+    big.process(-60, 2000);
+    for (let i = 0; i < 200; i++) small.process(-60, 10);
+    expect(big.value()).toBeCloseTo(small.value(), 2);
   });
 
   it('click-to-reset clears the held marker', () => {

@@ -76,7 +76,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }),
   );
 
-  const label = $derived(ariaLabel ?? (silent ? 'No signal' : `Level ${formatDb(levelDb)} dBFS`));
+  // Always surface the no-signal state to assistive tech, even when a
+  // caller passes an explicit ariaLabel (otherwise the visible
+  // "no signal" cue is invisible behind role="img" + the override).
+  const label = $derived(
+    silent
+      ? `${ariaLabel ?? 'Level'} — no signal`
+      : (ariaLabel ?? `Level ${formatDb(levelDb)} dBFS`),
+  );
 </script>
 
 <div class="meter-row">

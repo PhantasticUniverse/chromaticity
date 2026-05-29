@@ -110,10 +110,10 @@ export const AUDIO_CHANNEL_RIGHT_OPTIONS: readonly AudioChannelOption[] = [
   { id: 'R6', label: 'R = 6' },
 ];
 
-/* Frozen-frame audio meter snapshot mirroring the bundle's
- * `<Meter level={0.68} peak={0.82} bars={28} />` Settings monitoring
- * row. Phase-3+/4a `EV-OBSERVABILITY` runtime metric stream replaces
- * these with live RMS / peak-hold from the cpal capture loop. */
+/* Frozen-frame audio meter snapshot for the Settings monitoring row.
+ * The amplitudes below are converted to dBFS by the Settings meter and
+ * fed to `<Meter levelDb peakDb bars={28} />`; the live cpal capture
+ * loop's RMS / peak-hold replaces them once a snapshot arrives. */
 export const AUDIO_METER_BARS = 28;
 export const AUDIO_METER_LEVEL = 0.68;
 export const AUDIO_METER_PEAK = 0.82;

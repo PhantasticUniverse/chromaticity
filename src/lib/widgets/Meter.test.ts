@@ -77,7 +77,16 @@ describe('Meter widget (dBFS)', () => {
     const { container } = render(Meter, { props: { levelDb: -80, silent: true, bars: 20 } });
     expect(container.querySelector('.meter')?.classList.contains('silent')).toBe(true);
     expect(container.querySelector('.meter__no-signal')?.textContent?.trim()).toBe('no signal');
-    expect(container.querySelector('.meter')?.getAttribute('aria-label')).toBe('No signal');
+    expect(container.querySelector('.meter')?.getAttribute('aria-label')).toBe('Level — no signal');
+  });
+
+  it('announces the no-signal state via aria even when a custom ariaLabel is set', () => {
+    const { container } = render(Meter, {
+      props: { levelDb: -80, silent: true, bars: 20, ariaLabel: 'Audio input monitor' },
+    });
+    expect(container.querySelector('.meter')?.getAttribute('aria-label')).toBe(
+      'Audio input monitor — no signal',
+    );
   });
 
   it('shows the numeric dB readout when requested', () => {

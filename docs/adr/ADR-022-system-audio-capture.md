@@ -215,7 +215,7 @@ hand-installed virtual loopback device. Related: `docs/06-audio-engine.md`,
   gate the Core Audio tap + mic TCC consent.
 - `adr/ADR-011-rendering-backend.md` Sec.4 — macOS platform-interop posture the
   CoreAudio-tap path sits alongside.
-- `adr/ADR-013-network-and-data-defaults.md` — loopback-only / no-network posture;
+- `adr/ADR-013-networking-defaults-and-security.md` — loopback-only / no-network posture;
   system-audio capture is local-only and adds no outbound surface.
 - `26-evidence-artifact-registry.md` — `EV-INTEGRATION-MATRIX` (audio arm) remains the
   tagged surface; no new evidence row is added.
