@@ -99,6 +99,6 @@ export const EMPTY_MIDI_DEVICES: EmptyStateCopy = {
 export const EMPTY_OSC: EmptyStateCopy = {
   title: 'No OSC port bound',
   body: 'Receive OSC from any device on your network — iPad, TouchOSC, Ableton, QLab, or another Chromaticity instance. Bind a port to start routing messages.',
-  primaryAction: { label: 'Bind Port 7000' },
+  primaryAction: { label: 'Bind Port 9000' },
   secondaryAction: { label: 'Choose Port…' },
 };

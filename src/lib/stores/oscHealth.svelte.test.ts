@@ -24,7 +24,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 const SAMPLE_HEALTHY: OscHealthSnapshot = {
   state: 'Healthy',
   attempted_binds: 1,
-  local_addr: '0.0.0.0:7000',
+  local_addr: '0.0.0.0:9000',
   compat_alias_emits: 0n,
 };
 
