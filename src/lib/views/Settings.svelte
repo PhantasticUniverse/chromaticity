@@ -39,8 +39,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // The form fields below read and write the persisted settings store.
   // Runtime application of a few preferences is still subsystem-owned,
   // but the operator document itself survives restart.
-  import { untrack } from 'svelte';
-
+  import {
+    ampToDb,
+    ExpEnvelope,
+    PeakBallistics,
+    PeakHold,
+    SilenceGate,
+    VU_INTEGRATION_TAU_MS,
+  } from '../audio/metering';
   import { HOTKEYS } from '../data/hotkeys';
   import {
     ABLETON_LINK_PEER_FIXTURE,
@@ -150,59 +156,84 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void audioSnapshotStore.subscribe();
   });
 
-  // Wave 2.8 Q.1 — the raw `peak` value from the engine producer updates
-  // at ~60 Hz with bin-level jitter, so passing it directly to <Meter>
-  // makes the held-peak LED dart from segment to segment each tick.
-  // Apply a peak-hold + decay envelope (mirrors the VuStereo synthetic
-  // path) plus a brief EMA on `level` so the segments don't fidget on
-  // tiny background-noise RMS variations.
-  //
-  // Pattern: synchronous seed off the current store snapshot for
-  // first-paint, then a `$effect` watching `audioSnapshotStore.snapshot`
-  // advances the smoother per-snapshot-write. Each engine tick
-  // synchronously re-runs the effect (no rAF in the loop) so the
-  // displayed values track the producer cadence without an external
-  // animation frame.
-  const _initialAudioSnap = audioSnapshotStore.snapshot;
-  let smoothedLevel = $state<number>(_initialAudioSnap?.rms ?? AUDIO_METER_LEVEL);
-  let smoothedPeak = $state<number>(_initialAudioSnap?.peak ?? AUDIO_METER_PEAK);
-  let _meterInit = _initialAudioSnap !== null;
+  // World-class metering — drive the Monitoring meter through the shared
+  // dt-aware ballistics primitive (`src/lib/audio/metering.ts`) instead
+  // of an ad-hoc per-frame EMA. Level uses a VU-style RMS integration;
+  // the held peak uses PPM fast-attack + linear release into a peak-hold
+  // (hold-time + dB/s decay); a silence gate drives the no-signal state.
+  // All operate in the dBFS domain on the real wall-clock dt between
+  // engine snapshots, so the meter is calibrated and frame-rate
+  // independent. When no snapshot has arrived (outside Tauri / CI /
+  // device-less hosts) the meter shows the bundle-faithful frozen-frame
+  // fixture levels and the ballistics reset so the next live snapshot
+  // seeds cleanly.
+  const levelEnv = new ExpEnvelope(VU_INTEGRATION_TAU_MS);
+  const peakBallistics = new PeakBallistics();
+  const peakHold = new PeakHold();
+  const silenceGate = new SilenceGate();
+
+  const FIXTURE_LEVEL_DB = ampToDb(AUDIO_METER_LEVEL);
+  const FIXTURE_PEAK_DB = ampToDb(AUDIO_METER_PEAK);
+
+  let meterLevelDb = $state<number>(FIXTURE_LEVEL_DB);
+  let meterPeakDb = $state<number>(FIXTURE_PEAK_DB);
+  let meterSilent = $state<boolean>(false);
+  let _lastSnapMs = 0;
+  let _meterSeeded = false;
+
   $effect(() => {
-    const LEVEL_EMA = 0.25;
-    const PEAK_DECAY = 0.004;
     const snap = audioSnapshotStore.snapshot;
     if (!snap) {
-      _meterInit = false;
-      smoothedLevel = AUDIO_METER_LEVEL;
-      smoothedPeak = AUDIO_METER_PEAK;
+      meterLevelDb = FIXTURE_LEVEL_DB;
+      meterPeakDb = FIXTURE_PEAK_DB;
+      meterSilent = false;
+      _meterSeeded = false;
+      levelEnv.reset();
+      peakBallistics.reset();
+      peakHold.reset();
+      silenceGate.reset();
       return;
     }
-    const rms = Math.max(0, Math.min(1, snap.rms));
-    const pk = Math.max(0, Math.min(1, snap.peak));
-    if (!_meterInit) {
-      _meterInit = true;
-      smoothedLevel = rms;
-      smoothedPeak = pk;
-    } else {
-      const l = untrack(() => smoothedLevel);
-      const p = untrack(() => smoothedPeak);
-      smoothedLevel = l + (rms - l) * LEVEL_EMA;
-      smoothedPeak = Math.max(pk, p - PEAK_DECAY);
-    }
+    const now = typeof performance !== 'undefined' ? performance.now() : 0;
+    // First live snapshot seeds instantly (large dt saturates the
+    // envelopes onto the target); subsequent steps use the real dt,
+    // capped so a backgrounded tab doesn't fast-forward the decay.
+    const dtMs = _meterSeeded ? Math.min(250, Math.max(0, now - _lastSnapMs)) : 1e4;
+    _lastSnapMs = now;
+    _meterSeeded = true;
+
+    const levelDb = levelEnv.process(ampToDb(snap.rms), dtMs);
+    const fastPeakDb = peakBallistics.process(ampToDb(snap.peak), dtMs);
+    meterLevelDb = levelDb;
+    meterPeakDb = peakHold.process(fastPeakDb, dtMs);
+    meterSilent = silenceGate.update(levelDb, dtMs);
   });
-  const meterLevel = $derived(smoothedLevel);
-  const meterPeak = $derived(smoothedPeak);
+
+  // Always-present built-in capture source rendered ahead of the
+  // enumerated devices. `system-audio` is the zero-install
+  // system-output loopback capture (macOS 14.6+ Core Audio taps /
+  // Windows WASAPI loopback) that engine/audio's
+  // `try_input_by_preference` routes to `try_system_audio_loopback`.
+  // Exposing it as a first-class entry (parallel to the reference's
+  // "Desktop Audio") means reacting to whatever the machine is PLAYING
+  // needs no hand-installed BlackHole/Loopback driver. The host default
+  // input (`default`) is already provided by the enumerated / fixture
+  // list, so only `system-audio` is prepended here.
+  const FIXED_AUDIO_INPUT_OPTIONS = [{ id: 'system-audio', label: 'System Audio (built-in)' }];
 
   // Wave 2.6 Lane AUD.A — derive the Input Device dropdown option set
   // from `audioDevicesStore.devices`. Empty live list falls back to
   // the W21 PR1 fixture so the dropdown always has something to
-  // render (e.g. running outside Tauri).
+  // render (e.g. running outside Tauri). The fixed system sources are
+  // always prepended so `system-audio` / `default` are selectable
+  // regardless of the enumerated-device state.
   const liveAudioInputOptions = $derived(
     audioDevicesStore.devices.map((d) => ({ id: d.id, label: d.name })),
   );
-  const audioInputOptions = $derived(
-    liveAudioInputOptions.length > 0 ? liveAudioInputOptions : AUDIO_INPUT_DEVICES,
-  );
+  const audioInputOptions = $derived([
+    ...FIXED_AUDIO_INPUT_OPTIONS,
+    ...(liveAudioInputOptions.length > 0 ? liveAudioInputOptions : AUDIO_INPUT_DEVICES),
+  ]);
 
   // Wave 2.7 Lane SET.C — same dual-mode pattern for Output Device.
   const liveAudioOutputOptions = $derived(
@@ -520,16 +551,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             {/each}
           </select>
           <p class="settings__hint">
-            Restart to apply audio device changes. On macOS, system audio output isn't directly
-            capturable — install <a
-              href="https://existential.audio/blackhole/"
-              target="_blank"
-              rel="noopener noreferrer">BlackHole</a
+            Pick <strong>System Audio (built-in)</strong> to react to whatever your computer is
+            playing — no extra software to install (macOS 14.6+ / Windows; macOS asks once for
+            audio-recording permission). On older macOS, or to capture one specific app, install
+            <a href="https://existential.audio/blackhole/" target="_blank" rel="noopener noreferrer"
+              >BlackHole</a
             >
             (free, MIT) or
             <a href="https://rogueamoeba.com/loopback/" target="_blank" rel="noopener noreferrer"
               >Loopback</a
-            > and select it here to route system audio into Chromaticity.
+            >
+            and select it here. Restart to apply device changes.
           </p>
         </div>
         <div class="settings__field">
@@ -646,9 +678,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <span class="settings__label">Monitoring</span>
           <div class="settings__field-row settings__field-row--meter">
             <Meter
-              level={meterLevel}
-              peak={meterPeak}
+              levelDb={meterLevelDb}
+              peakDb={meterPeakDb}
+              silent={meterSilent}
               bars={AUDIO_METER_BARS}
+              showReadout
+              onResetPeak={() => peakHold.reset()}
               ariaLabel="Audio input monitor"
             />
           </div>

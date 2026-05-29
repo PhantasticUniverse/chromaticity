@@ -55,6 +55,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 }));
 
 import Settings from './Settings.svelte';
+import { ampToDb, dbToFraction } from '../audio/metering';
 import {
   AUDIO_INPUT_DEVICES,
   AUDIO_METER_BARS,
@@ -186,11 +187,16 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
     const options = Array.from(input.querySelectorAll('option'));
-    // Live list replaces the fixture entirely; the option count
-    // matches the seeded device count, not the fixture length.
-    expect(options.length).toBe(live.length);
-    expect(options.map((o) => o.value)).toEqual(live.map((d) => d.id));
-    expect(options.map((o) => o.textContent?.trim())).toEqual(live.map((d) => d.name));
+    // The built-in System Audio loopback entry is always prepended; the
+    // live list replaces the fixture for the enumerated tail.
+    const FIXED_INPUT_IDS = ['system-audio'];
+    const FIXED_INPUT_LABELS = ['System Audio (built-in)'];
+    expect(options.length).toBe(FIXED_INPUT_IDS.length + live.length);
+    expect(options.map((o) => o.value)).toEqual([...FIXED_INPUT_IDS, ...live.map((d) => d.id)]);
+    expect(options.map((o) => o.textContent?.trim())).toEqual([
+      ...FIXED_INPUT_LABELS,
+      ...live.map((d) => d.name),
+    ]);
   });
 
   it('Input Device dropdown falls back to the fixture when audioDevicesStore is empty', () => {
@@ -203,8 +209,14 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
     const options = Array.from(input.querySelectorAll('option'));
-    expect(options.length).toBe(AUDIO_INPUT_DEVICES.length);
-    expect(options.map((o) => o.value)).toEqual(AUDIO_INPUT_DEVICES.map((d) => d.id));
+    // The built-in System Audio loopback entry is prepended ahead of
+    // the fixture fallback.
+    const FIXED_INPUT_IDS = ['system-audio'];
+    expect(options.length).toBe(FIXED_INPUT_IDS.length + AUDIO_INPUT_DEVICES.length);
+    expect(options.map((o) => o.value)).toEqual([
+      ...FIXED_INPUT_IDS,
+      ...AUDIO_INPUT_DEVICES.map((d) => d.id),
+    ]);
   });
 
   it('Output Device dropdown shows enumerated output devices when audioDevicesStore.outputDevices populated', () => {
@@ -286,22 +298,24 @@ describe('Settings view', () => {
   });
 
   it('Audio Device monitoring meter reflects audioSnapshotStore.snapshot.rms', async () => {
-    // Wave 2.6 AUD.B dual-mode posture: with no live snapshot, the
-    // Meter falls back to the bundle-faithful fixture (`rms = 0.68`,
-    // `peak = 0.82`). Injecting a snapshot directly on the singleton
-    // store flips the derived `meterLevel` / `meterPeak`, and the
-    // Meter widget's `level * bars` segment classification reflects
-    // the change. Asserts at the segment-count level rather than
-    // string-content because Meter exposes its level through the
-    // LED-segment `.on` class density, not text content.
+    // Dual-mode posture: with no live snapshot the Meter shows the
+    // bundle-faithful fixture (`rms = 0.68`). Injecting a snapshot drives
+    // the shared dt-aware ballistics (which seed instantly on the first
+    // live sample), and the Meter's on-segment density reflects the new
+    // level — now on the LOGARITHMIC dBFS scale, so the lit count is
+    // `round(dbToFraction(ampToDb(rms)) * bars)`, not `floor(rms*bars)`.
+    // Expectations are derived from the metering helpers so they track
+    // any scale retune.
+    const onCountFor = (amp: number): number =>
+      Math.round(dbToFraction(ampToDb(amp)) * AUDIO_METER_BARS);
+
     const { container } = render(Settings);
     const audio = getSection(container, 'Audio Device');
     const meter = within(audio).getByLabelText('Audio input monitor');
-    // Baseline: fixture-driven (`AUDIO_METER_LEVEL = 0.68` → floor(0.68 * 28) = 19 on-segments).
-    const fixtureOnCount = Math.floor(AUDIO_METER_LEVEL * AUDIO_METER_BARS);
-    const baselineOn = meter.querySelectorAll('.meter-bar.on, .meter-bar.clip').length;
-    expect(baselineOn).toBe(fixtureOnCount);
-    // Inject a live snapshot with a distinct rms value and re-assert.
+    // Baseline: fixture-driven (AUDIO_METER_LEVEL), dB-scaled.
+    const baselineOn = meter.querySelectorAll('.meter-bar.on').length;
+    expect(baselineOn).toBe(onCountFor(AUDIO_METER_LEVEL));
+    // Inject a live snapshot with a distinct (quieter) rms and re-assert.
     audioSnapshotStore.snapshot = {
       bpm: 120,
       bpm_availability: 'Ready',
@@ -311,11 +325,11 @@ describe('Settings view', () => {
       fft_availability: 'Ready',
       degraded: false,
     };
-    // Allow Svelte to flush the $derived re-evaluation.
+    // Allow Svelte to flush the $effect that advances the ballistics.
     await Promise.resolve();
-    const liveOn = meter.querySelectorAll('.meter-bar.on, .meter-bar.clip').length;
-    expect(liveOn).toBe(Math.floor(0.25 * AUDIO_METER_BARS));
-    expect(liveOn).not.toBe(fixtureOnCount);
+    const liveOn = meter.querySelectorAll('.meter-bar.on').length;
+    expect(liveOn).toBe(onCountFor(0.25));
+    expect(liveOn).not.toBe(baselineOn);
   });
 
   it('Graphics / Output renders all expected rows including the W41 expansion', () => {
