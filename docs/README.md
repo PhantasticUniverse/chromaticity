@@ -24,7 +24,7 @@ docs/
 │   └── 01-intro.md … 04-first-scene-tutorial.md
 └── adr/                          # Architecture Decision Records (MADR 4.0.0)
     ├── TEMPLATE.md
-    └── ADR-001-*.md … ADR-018-*.md
+    └── ADR-001-*.md … ADR-024-*.md
 ```
 
 ## Reading Order for New Contributors
@@ -158,6 +158,19 @@ docs/
   not yet authored. Design begins post-MVP per doc 41.
 - `adr/ADR-018-non-scene-ui-toolkit.md` — Tauri 2 + Svelte 5 + TS +
   CodeMirror 6 stack for the non-scene UI surface.
+- `adr/ADR-019-audio-uniform-ipc-bridge.md` — Engine→UI audio-uniform
+  push-event IPC contract (producer → Tauri-emit → Svelte consumer).
+- `adr/ADR-020-camera-adapter.md` — camera capture adapter.
+- `adr/ADR-021-syphon-adapter.md` — Syphon video I/O adapter (macOS).
+- `adr/ADR-022-system-audio-capture.md` — zero-install system-audio
+  loopback capture; the 2026-06-03 Amendment moves the macOS tap read
+  off cpal's AUHAL onto a direct Core Audio `IOProc`.
+- `adr/ADR-023-audio-metering-data-model.md` — `AudioUniformSnapshot`
+  widening for the operator-facing metering surface (true-peak, LUFS,
+  stereo, clip, tempo confidence, discrete beat).
+- `adr/ADR-024-audio-reactivity-analysis-model.md` — the scene-facing
+  reactivity model: MilkDrop-class per-band auto-gain + perceptual DSP
+  (complementary to ADR-023; both amend one snapshot).
 
 ## Working Rules
 

@@ -3,7 +3,7 @@ SPDX-License-Identifier: CC-BY-4.0
 SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
-# ADR-023: Audio-Reactivity Analysis Model (MilkDrop-class AGC + perceptual DSP)
+# ADR-024: Audio-Reactivity Analysis Model (MilkDrop-class AGC + perceptual DSP)
 
 ## Status
 
@@ -195,6 +195,15 @@ the reference (clean-room, behavioral — never implementation).
 
 - `adr/ADR-019-audio-uniform-ipc-bridge.md` — the IPC bridge this analysis feeds;
   the snapshot widens, the bridge contract is unchanged.
+- `adr/ADR-023-audio-metering-data-model.md` — the COMPLEMENTARY snapshot
+  widening, and the one that must be coordinated with this. ADR-023 owns the
+  operator-facing **metering** surface (true-peak, LUFS, stereo, clip flag, tempo
+  confidence, discrete beat — the raw/calibrated half); this ADR owns the
+  scene-facing **reactivity** surface (AGC relative bands + perceptual DSP — the
+  normalized half). Both amend one `AudioUniformSnapshot` and MUST land
+  coordinated: the K-weighted LUFS level is computed once and shared, and this
+  ADR's "dual raw+normalized" surface IS ADR-023's calibrated surface + this
+  model's normalized surface.
 - `adr/ADR-022-system-audio-capture.md` — the capture source feeding the analysis.
 - `adr/ADR-011-rendering-backend.md` — live spectrum rasterization (Phase 2 gate).
 - `06-audio-engine.md` — the normative analysis spec (updated for this model).

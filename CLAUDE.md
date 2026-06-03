@@ -173,15 +173,19 @@ BlackHole/Loopback). System-audio below the macOS 14.6 floor or on denied
 `NSAudioCaptureUsageDescription` consent degrades to the default input, never
 silent. Apply-on-restart only (live re-bind deferred). **cpal is a vendored
 `[patch.crates-io]` override at `third_party/cpal/`** (5 macOS-tap patches; see
-`UPSTREAM-VERSION.md`). **macOS system-audio TAP capture is NOT yet functional:**
-the tap creation is correct (global initializer + auto-start + private aggregate),
-but cpal's AUHAL read stage corrupts the captured data (a 440 Hz sine returns a peak
-exceeding the source + flat FFT — byte/stride misinterpretation). The fix is a
-direct `AudioDeviceCreateIOProcIDWithBlock` `IOProc` (no AUHAL) via the
-already-transitive `objc2-core-audio`, hardware-gated — see ADR-022 → Amendment
-(2026-06-03). Until then `system-audio` degrades to the default input (mic); the IPC
-transport + analyser + webview render ARE proven working. Windows WASAPI loopback is
-unaffected. Run/test + audio-diagnostics guide: `docs/dev/macos-desktop-run-and-audio-diagnostics.md`.
+`UPSTREAM-VERSION.md`). **macOS system-audio CAPTURE is fixed** — a direct
+`AudioDeviceCreateIOProcIDWithBlock` `IOProc` (no AUHAL; `objc2-core-audio`)
+replaced the AUHAL read stage that corrupted the stream (a 440 Hz sine returned a
+peak exceeding the source); hardware-verified clean (raw_peak exactly 0.5). See
+ADR-022 → Amendment (2026-06-03). The reactivity-analysis **quality** upgrade is in
+progress (ADR-024): a MilkDrop-class per-band auto-gain (volume-independent bands
+centred on 1.0) replaces the raw-absolute analysis — `engine/audio` `reactive_bands`
+
+- the `mini_meter` example landed; the drain-all/fixed-cadence drop-fix, the snapshot
+  wiring, and the EXCEED levers (K-weighted LUFS, Mel bands, hysteresis gate, dual
+  raw/normalized uniforms) follow. IPC transport + webview render proven; Windows
+  WASAPI loopback unaffected. Run/test + audio-diagnostics guide:
+  `docs/dev/macos-desktop-run-and-audio-diagnostics.md`.
 
 Pre-alpha hardening (rounds 1–3, PRs `#482`–`#489`) closed a `/ultrareview`
 mega-review + a clean-room reference-comparison sweep. The Synesthesia parity
