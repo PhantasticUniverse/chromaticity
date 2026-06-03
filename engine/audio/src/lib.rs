@@ -219,6 +219,7 @@ pub mod frame;
 pub mod ingest;
 pub mod ingest_negotiation;
 pub mod observability;
+pub mod reactive_bands;
 pub mod runtime;
 pub mod silent;
 pub mod uniforms;
@@ -230,6 +231,9 @@ pub use cpal_source::{
 };
 pub use error::AudioError;
 pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource};
+pub use reactive_bands::{
+    REACTIVE_BAND_COUNT, REACTIVE_FFT_SIZE, ReactiveBandValues, ReactiveBands,
+};
 pub use uniforms::{AudioAxisAvailability, AudioUniformSnapshot, extract_uniform_snapshot};
 
 #[cfg(test)]
