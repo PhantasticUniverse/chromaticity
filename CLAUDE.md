@@ -172,10 +172,16 @@ cpal; ADR-022); a device id/name binds that device (incl. an operator-installed
 BlackHole/Loopback). System-audio below the macOS 14.6 floor or on denied
 `NSAudioCaptureUsageDescription` consent degrades to the default input, never
 silent. Apply-on-restart only (live re-bind deferred). **cpal is a vendored
-`[patch.crates-io]` override at `third_party/cpal/`**: stock cpal 0.17.1's macOS
-tap delivers all-zero buffers (cpal#329), so `loopback.rs` is patched to the
-global `initStereoGlobalTapButExcludeProcesses:` initializer — the macOS capture
-path is **AO-hardware-re-test-gated** on that patch (`third_party/cpal/UPSTREAM-VERSION.md`).
+`[patch.crates-io]` override at `third_party/cpal/`** (5 macOS-tap patches; see
+`UPSTREAM-VERSION.md`). **macOS system-audio TAP capture is NOT yet functional:**
+the tap creation is correct (global initializer + auto-start + private aggregate),
+but cpal's AUHAL read stage corrupts the captured data (a 440 Hz sine returns a peak
+exceeding the source + flat FFT — byte/stride misinterpretation). The fix is a
+direct `AudioDeviceCreateIOProcIDWithBlock` `IOProc` (no AUHAL) via the
+already-transitive `objc2-core-audio`, hardware-gated — see ADR-022 → Amendment
+(2026-06-03). Until then `system-audio` degrades to the default input (mic); the IPC
+transport + analyser + webview render ARE proven working. Windows WASAPI loopback is
+unaffected. Run/test + audio-diagnostics guide: `docs/dev/macos-desktop-run-and-audio-diagnostics.md`.
 
 Pre-alpha hardening (rounds 1–3, PRs `#482`–`#489`) closed a `/ultrareview`
 mega-review + a clean-room reference-comparison sweep. The Synesthesia parity

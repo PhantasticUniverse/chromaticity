@@ -210,29 +210,33 @@ Aim for ~15–20 minutes end-to-end. File anything that surprises you per
 
 ### E. Audio reactivity — LIVE IPC (≈ 3 min)
 
-> The audio IPC seam is live in production per Wave 1c-α-2. The 4 named
-> band tiles + BPM strip drive from real audio. The 48-bar FFT and the
-> AudioUniforms Spectrum widget remain synthetic — see "Known synthetic
-> surfaces".
+> The audio IPC seam (producer → Tauri emit → webview) is live in production
+> per Wave 1c-α-2 and proven end-to-end **when a working capture source is
+> selected** (microphone or a virtual loopback). The 4 named band tiles + BPM
+> strip drive from real audio in that case. The 48-bar FFT and the AudioUniforms
+> Spectrum widget remain synthetic — see "Known synthetic surfaces".
+>
+> **macOS "System Audio (built-in)" is NOT functional in this build.** The
+> zero-install tap delivers data but corrupts it (cpal's AUHAL read stage; a
+> 440 Hz sine returns a flat FFT + a peak exceeding the source — ADR-022
+> Amendment 2026-06-03). Verify with the **microphone** path instead; on macOS,
+> capture system output via a hand-installed virtual loopback.
 
 **Important — selecting an audio source.** The producer captures from the
 device chosen in Settings → Audio → Input Device:
 
-- **System Audio (built-in)** — the zero-install path: captures whatever
-  your machine is PLAYING (music / DJ / media) with no extra software, on
-  macOS 14.6+ (Core Audio process taps; macOS asks once for
-  audio-recording permission — the purple recording indicator) and
-  Windows (WASAPI loopback). **This is the primary path to verify in this
-  run.** An earlier round found stock cpal's macOS tap delivering all-zero
-  buffers (upstream cpal#329); the vendored global-tap patch
-  (`third_party/cpal/`, ADR-022 §1) is now applied to fix it. **Verify:**
-  grant the consent prompt, play music, and confirm the Settings → Audio
-  monitoring meter and the 4 band tiles move from real audio. If it still
-  reads silent on the patched build, capture the macOS version + console
-  and fall back to the virtual loopback below.
-- **Default Input / a microphone** — reacts to whatever the input device
-  hears; play music near the built-in mic (or speak / clap) for a quick
-  acoustic test.
+- **Default Input / a microphone (primary verify path on macOS)** — reacts to
+  whatever the input device hears. Grant the microphone permission when prompted,
+  then play music near the built-in mic (or speak / clap) for a quick acoustic
+  test; the Settings → Audio monitoring meter and the 4 band tiles should move.
+- **System Audio (built-in)** — the intended zero-install path (capture whatever
+  your machine is PLAYING, no extra software, macOS 14.6+ / Windows WASAPI).
+  **NOT functional on macOS in this build** — the tap delivers data but corrupts
+  it (cpal's AUHAL read stage). The fix (a direct Core Audio `IOProc`, bypassing
+  the AUHAL) is in progress; see ADR-022 → Amendment (2026-06-03) and
+  `third_party/cpal/UPSTREAM-VERSION.md`. On macOS, use the microphone or a
+  virtual loopback. Windows WASAPI loopback uses correct upstream code but is
+  untested on hardware.
 - **A virtual loopback** — install
   [BlackHole](https://existential.audio/blackhole/) (free, MIT) or
   [Loopback](https://rogueamoeba.com/loopback/), route system output into
