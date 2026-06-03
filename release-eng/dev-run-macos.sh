@@ -111,8 +111,17 @@ EOF
 
   openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
     -keyout "$tmp/key.pem" -out "$tmp/cert.pem" -config "$tmp/cert.cnf" >/dev/null 2>&1
-  openssl pkcs12 -export -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
-    -out "$tmp/cert.p12" -passout pass:"$DEV_KEYCHAIN_PW" -name "$CERT_CN" >/dev/null 2>&1
+  # Build a macOS-importable PKCS#12. OpenSSL 3.x defaults to AES-256 + SHA-256,
+  # which Apple's Security framework cannot import ("MAC verification failed").
+  # `-legacy` (OpenSSL 3.x) forces the old 3DES/SHA1 format macOS accepts; on
+  # LibreSSL / OpenSSL 1.x (which already default to that format and reject the
+  # `-legacy` flag) fall back to the explicit legacy PBE + SHA1-MAC algorithms.
+  if ! openssl pkcs12 -export -legacy -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
+        -out "$tmp/cert.p12" -passout pass:"$DEV_KEYCHAIN_PW" -name "$CERT_CN" >/dev/null 2>&1; then
+    openssl pkcs12 -export -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+      -inkey "$tmp/key.pem" -in "$tmp/cert.pem" \
+      -out "$tmp/cert.p12" -passout pass:"$DEV_KEYCHAIN_PW" -name "$CERT_CN" >/dev/null 2>&1
+  fi
 
   # Dedicated keychain so we own the password -> no login-keychain GUI prompts.
   security create-keychain -p "$DEV_KEYCHAIN_PW" "$DEV_KEYCHAIN" 2>/dev/null || true
