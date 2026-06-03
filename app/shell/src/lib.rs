@@ -22,6 +22,7 @@
 // last tick, which is a no-op when no command handler ran in the
 // intervening ~16ms.
 
+pub mod audio_diag;
 pub mod commands;
 pub mod state;
 
@@ -223,6 +224,12 @@ pub fn run() -> Result<(), tauri::Error> {
                 AudioRuntimeConfig::default(),
             );
             let snapshot_handle = runtime.snapshot_handle();
+            // Opt-in live capture telemetry (CHROMATICITY_AUDIO_DIAG).
+            // Clone the shared snapshot handle BEFORE it is moved into the
+            // scheduler's `MutexAudioPull` so the readout reports exactly
+            // what the scheduler-tick consumer pulls. Spawned below once
+            // the scheduler `shutdown` flag exists.
+            let diag_snapshot = chromaticity_audio::diagnostics_enabled().then(|| snapshot_handle.clone());
             let audio_handle = runtime.spawn();
 
             // (b) Scheduler-tick consumer. `MutexAudioPull` reads the
@@ -238,6 +245,10 @@ pub fn run() -> Result<(), tauri::Error> {
             // (c) State-commit thread. Coalescing 60 Hz loop; see
             // the function-level prose for the timing rationale.
             let shutdown = Arc::new(AtomicBool::new(false));
+            // Detached telemetry reader; self-terminates on `shutdown`.
+            if let Some(diag_snapshot) = diag_snapshot {
+                audio_diag::spawn(diag_snapshot, Arc::clone(&shutdown));
+            }
             let shutdown_for_thread = Arc::clone(&shutdown);
             let app_handle = app.handle().clone();
             let mut scheduler_owned = scheduler;
@@ -362,6 +373,7 @@ pub fn run() -> Result<(), tauri::Error> {
         .invoke_handler(tauri::generate_handler![
             commands::audio::list_audio_devices,
             commands::audio::list_audio_output_devices,
+            commands::audio::audio_diag_rx,
             commands::camera::list_camera_devices,
             commands::control::set_control,
             commands::control::get_control,

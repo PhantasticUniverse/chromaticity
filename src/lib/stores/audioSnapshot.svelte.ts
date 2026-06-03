@@ -12,20 +12,31 @@
 // `capabilities.svelte.ts` sibling is the live precedent for this
 // shape (class-instance singleton + module-level export).
 //
-// **Production bootstrap status.** Live in production since Wave
-// 1c-α-2: `engine/audio::AudioRuntime` spawns the producer thread
+// **Production bootstrap status (narrowed).** The producer→IPC→consumer
+// transport is live in production since Wave 1c-α-2 and is proven
+// end-to-end: `engine/audio::AudioRuntime` spawns the producer thread
 // feeding `Arc<Mutex<AudioUniformSnapshot>>`;
 // `app/shell::TauriIpcEmitter` is the concrete `IpcEmit` adapter; the
 // drift-corrected 60 Hz scheduler-tick thread in
 // `app/shell/src/lib.rs::run` pulls from `MutexAudioPull` and emits via
-// `app.emit("audio_uniform_snapshot_changed", ...)`. When `npm run
-// tauri build` produces a binary on a host with a default cpal input
-// device (microphone), this store receives live snapshots on every
-// tick. On hosts without a default input device (CI / headless /
-// device-less), the producer falls back to `SilentSource` and the
-// snapshot stays at the all-zero default — visualizer widgets keep
-// their dual-mode synthetic fallback for that case (per ADR-019
-// §Decision §6 stale-but-last-good).
+// `app.emit("audio_uniform_snapshot_changed", ...)`. With a working
+// capture source (microphone, or an operator-installed virtual loopback
+// such as BlackHole/Loopback), this store receives live snapshots on
+// every tick — the IPC transport, the analyser, and this consumer were
+// verified carrying real, varying values end-to-end (a
+// `CHROMATICITY_AUDIO_DIAG` round-trip confirmed the webview receives
+// exactly what the engine emits).
+//
+// **macOS system-audio (built-in) TAP capture is NOT yet functional.**
+// The zero-install system-output tap on macOS 14.6+ corrupts its captured
+// data in cpal's AUHAL read stage (see `docs/adr/ADR-022` → Amendment
+// 2026-06-03 and `third_party/cpal/UPSTREAM-VERSION.md`); until the
+// direct-`IOProc` fix lands and is hardware-verified, the `system-audio`
+// preference degrades to the default input. On hosts without any input
+// device (CI / headless / device-less), the producer falls back to
+// `SilentSource` and the snapshot stays at the all-zero default —
+// visualizer widgets keep their dual-mode synthetic fallback for that
+// case (per ADR-019 §Decision §6 stale-but-last-good).
 //
 // `subscribe()` is idempotent so widgets can call it on every mount
 // without leaking listener registrations. When the import or `listen`
@@ -41,6 +52,22 @@ type UnlistenFn = () => void;
 class AudioSnapshotStore {
   /** Latest snapshot from the engine, or `null` if no event has arrived yet. */
   snapshot: AudioUniformSnapshotPayload | null = $state(null);
+
+  /**
+   * Count of `audio_uniform_snapshot_changed` events received since subscribe.
+   * Stays `0` if the engine never emits OR the event never reaches the webview
+   * — the discriminator (vs a live-but-zero snapshot) for diagnosing a dead
+   * IPC seam. Surfaced for diagnostics/observability, not product UI.
+   */
+  received = $state(0);
+
+  /**
+   * Non-null when `subscribe()` failed to attach the listener (Tauri API
+   * import or `listen()` threw). Mirrors the `midiLearn` store's error-surface
+   * pattern so a dead seam is visible instead of silently masked behind the
+   * synthetic fixture fallback. `null` both before subscribe and on success.
+   */
+  error: string | null = $state(null);
 
   /** In-flight or settled subscribe promise (idempotency latch). */
   #subscribePromise: Promise<void> | null = null;
@@ -71,12 +98,40 @@ class AudioSnapshotStore {
         'audio_uniform_snapshot_changed',
         (event) => {
           this.snapshot = event.payload;
+          this.received += 1;
+          // Diagnostic round-trip (no-op unless CHROMATICITY_AUDIO_DIAG is set
+          // on the shell): mirror the received rms/peak back to the engine
+          // capture log so the webview-side values appear alongside the
+          // producer-side ones — bisecting "static meter despite live engine".
+          if (this.received % 60 === 0) {
+            void this.#reportRx(event.payload.rms, event.payload.peak, this.received);
+          }
         },
       );
       this.#unlisten = handle;
+      this.error = null;
+    } catch (e) {
+      // Record (don't silently swallow) so a dead seam is diagnosable. Outside
+      // Tauri (vite dev / Vitest) this is expected and the widget fixture
+      // fallback still renders; in a real shell this surfaces a broken bridge.
+      this.error = e instanceof Error ? e.message : String(e);
+      console.warn('[audioSnapshot] listen() subscribe failed; snapshot stays null:', e);
+    }
+  }
+
+  /**
+   * Diagnostics-only: mirror a received payload's rms/peak back to the shell
+   * via the `audio_diag_rx` command so the engine-side `CHROMATICITY_AUDIO_DIAG`
+   * capture log shows webview-received values next to producer-emitted ones.
+   * The shell no-ops the command unless diagnostics are enabled; failures
+   * (outside Tauri) are swallowed.
+   */
+  async #reportRx(rms: number, peak: number, received: number): Promise<void> {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('audio_diag_rx', { rms, peak, received });
     } catch {
-      // Swallow — no Tauri runtime available; snapshot stays `null` and
-      // the dual-mode widget fallback path keeps rendering synthetic.
+      // diagnostics only — ignore (no Tauri runtime / command unavailable).
     }
   }
 
@@ -91,6 +146,8 @@ class AudioSnapshotStore {
     }
     this.#subscribePromise = null;
     this.snapshot = null;
+    this.received = 0;
+    this.error = null;
   }
 }
 

@@ -54,6 +54,11 @@ use tauri::{AppHandle, Emitter, Runtime};
 /// literal; keeping the constant in one place pins the contract.
 pub const AUDIO_UNIFORM_SNAPSHOT_EVENT: &str = "audio_uniform_snapshot_changed";
 
+/// Opt-in emit counter for `CHROMATICITY_AUDIO_DIAG` telemetry (see
+/// [`IpcEmit::emit_snapshot`]). Module-level so it survives across the single
+/// production emitter instance.
+static DIAG_EMIT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Tauri-event concrete adapter for
 /// [`chromaticity_runtime::scheduler::ipc::IpcEmit`].
 ///
@@ -77,12 +82,28 @@ impl<R: Runtime> TauriIpcEmitter<R> {
 
 impl<R: Runtime> IpcEmit for TauriIpcEmitter<R> {
     fn emit_snapshot(&self, snapshot: AudioUniformSnapshot) {
+        use std::sync::atomic::Ordering;
         let payload = AudioUniformSnapshotPayload::from(snapshot);
         // Silent drop on emit failure per ADR-019 §3 + §4. Tauri's
         // emit can fail if the event queue is full or the app is
         // shutting down; neither failure mode warrants a panic and
         // the scheduler tick must continue advancing regardless.
-        let _ = self.app.emit(AUDIO_UNIFORM_SNAPSHOT_EVENT, &payload);
+        let result = self.app.emit(AUDIO_UNIFORM_SNAPSHOT_EVENT, &payload);
+        // Opt-in emit telemetry (CHROMATICITY_AUDIO_DIAG): confirm the engine
+        // side actually fires + how often, so a "static UI meter" can be
+        // bisected — engine-emits-but-webview-silent (delivery seam) vs
+        // engine-never-emits (scheduler/pull seam). Throttled to ~once/2s at
+        // 60 Hz so it does not flood the captured log.
+        if chromaticity_audio::diagnostics_enabled() {
+            let n = DIAG_EMIT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            if n % 120 == 0 {
+                eprintln!(
+                    "[audio-diag] ipc emit #{n} -> '{AUDIO_UNIFORM_SNAPSHOT_EVENT}' (result={})",
+                    if result.is_ok() { "ok" } else { "err" },
+                );
+            }
+        }
+        let _ = result;
     }
 }
 
