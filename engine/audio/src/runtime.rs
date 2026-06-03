@@ -131,6 +131,29 @@ const CLOSED_BACKOFF: Duration = Duration::from_millis(2);
 /// Drop-time best-effort join timeout for [`AudioRuntimeHandle`].
 const DROP_JOIN_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Fixed cadence for the heavy extract (FFT + BPM autocorrelation), decoupled
+/// from the per-tick frame drain.
+///
+/// The producer loop drains ALL buffered frames into the rolling window every
+/// tick (cheap), but runs the heavy `extract_uniform_snapshot` + BPM estimator
+/// only this often. ~100 Hz — fresh for the 60 Hz scheduler-tick consumer, and
+/// far below the macOS tap's ~1500-frame/s callback rate, so the bounded ingest
+/// channel never overflows (the prior pull-one-then-heavy-analyze loop fell
+/// behind and the producer silently dropped frames → gappy windows → low,
+/// jittery rms). Tempo is a backup feature; a single cadence covers both axes
+/// here, with a finer bands-fast / BPM-slow split as a follow-up.
+const ANALYSIS_INTERVAL: Duration = Duration::from_millis(10);
+
+/// Max frames the producer loop drains into the rolling window per tick.
+///
+/// Bounds the drain so an always-`Ready` source (the `SilentSource` fallback,
+/// or a test double with no backpressure) can never spin the inner loop forever
+/// — it always returns to the outer loop to check shutdown + pace. Generously
+/// above the cpal ingest channel's 16-frame capacity, so a genuine backlog is
+/// cleared in a single tick while a real backpressured source naturally stops at
+/// `WouldBlock` long before the cap.
+const MAX_DRAIN_PER_TICK: usize = 64;
+
 /// Configuration for [`AudioRuntime`].
 ///
 /// Tweakable knobs for the composed runtime. Defaults match the
@@ -313,6 +336,13 @@ impl AudioRuntime {
             .spawn(move || {
                 let mut frame = AudioFrame::default();
                 let mut analysis_window = AudioAnalysisWindow::default();
+                // CHROMATICITY PATCH (ADR-024 drop-fix): the rolling window
+                // carried across the drain loop, plus the last-analysis time for
+                // the fixed-cadence gate. Decoupling the cheap drain from the
+                // heavy extract is what keeps the bounded ingest channel from
+                // overflowing.
+                let mut current_window: Option<AudioFrame> = None;
+                let mut last_analysis: Option<Instant> = None;
                 loop {
                     match shutdown_rx.try_recv() {
                         Ok(()) | Err(TryRecvError::Disconnected) => break,
@@ -325,12 +355,35 @@ impl AudioRuntime {
                     // of unwinding the thread. Last-good snapshot
                     // stays in place per ADR-019 §6.
                     let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                        let status = negotiator.try_pull(&mut frame);
-                        match status {
-                            IngestStatus::Ready => {
-                                let analysis_frame = analysis_window.observe(&frame);
-                                let analysis_snapshot = extract_uniform_snapshot(&analysis_frame);
-                                let smoothed_bpm = estimator.observe(&analysis_frame);
+                        // 1. Drain ALL currently-buffered frames into the rolling
+                        //    window (cheap). At the macOS tap's ~1500-frame/s rate
+                        //    the old pull-one-then-heavy-analyze loop fell behind,
+                        //    the bounded channel filled, and the producer silently
+                        //    dropped frames; draining every tick keeps it
+                        //    near-empty. `observe` returns the accumulated window.
+                        let mut closed = false;
+                        let mut drained = 0usize;
+                        while drained < MAX_DRAIN_PER_TICK {
+                            match negotiator.try_pull(&mut frame) {
+                                IngestStatus::Ready => {
+                                    current_window = Some(analysis_window.observe(&frame));
+                                    drained += 1;
+                                }
+                                IngestStatus::Pending | IngestStatus::WouldBlock => break,
+                                IngestStatus::Closed => {
+                                    closed = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // 2. Run the heavy extract + BPM at the fixed cadence
+                        //    ([`ANALYSIS_INTERVAL`]), not per frame — analyses the
+                        //    first available window immediately, then at cadence.
+                        if let Some(window) = current_window.as_ref() {
+                            if last_analysis.is_none_or(|t| t.elapsed() >= ANALYSIS_INTERVAL) {
+                                let analysis_snapshot = extract_uniform_snapshot(window);
+                                let smoothed_bpm = estimator.observe(window);
                                 let merged = AudioUniformSnapshot {
                                     bpm: smoothed_bpm,
                                     bpm_availability: analysis_snapshot.bpm_availability,
@@ -355,18 +408,26 @@ impl AudioRuntime {
                                         *guard = merged;
                                     }
                                 }
-                                LoopStep::Continue
+                                last_analysis = Some(Instant::now());
                             }
-                            IngestStatus::Pending | IngestStatus::WouldBlock => {
-                                LoopStep::Backoff(WOULD_BLOCK_BACKOFF)
-                            }
-                            IngestStatus::Closed => LoopStep::Backoff(CLOSED_BACKOFF),
+                        }
+
+                        // Always back off one short interval per tick — never a
+                        // busy-spin, even for an always-`Ready` source (the
+                        // SilentSource fallback / a test double). At ~2 kHz this
+                        // still drains the bounded channel far faster than the tap
+                        // fills it (~1500/s), and a genuine backlog is cleared in
+                        // one tick via the MAX_DRAIN_PER_TICK cap above. The body
+                        // returns the back-off interval for the outer loop.
+                        if closed {
+                            CLOSED_BACKOFF
+                        } else {
+                            WOULD_BLOCK_BACKOFF
                         }
                     }));
 
                     match outcome {
-                        Ok(LoopStep::Continue) => {}
-                        Ok(LoopStep::Backoff(d)) => thread::sleep(d),
+                        Ok(backoff) => thread::sleep(backoff),
                         Err(_panic) => {
                             // Caught panic: don't touch the snapshot
                             // (last-good stays in place per ADR-019
@@ -391,16 +452,6 @@ impl AudioRuntime {
             join,
         }
     }
-}
-
-/// Internal control-flow tag for the producer-thread loop body.
-///
-/// Returned by the per-iteration `catch_unwind` closure so the outer
-/// loop can decide whether to back off the negotiator or just
-/// continue.
-enum LoopStep {
-    Continue,
-    Backoff(Duration),
 }
 
 /// Handle to a spawned audio runtime.
@@ -745,6 +796,70 @@ mod runtime_pins {
             stabilised,
             "pull counter never stabilised after drop; thread didn't exit (last={last})",
         );
+    }
+
+    #[test]
+    fn drains_full_backlog_within_one_settle_then_analyzes() {
+        let _serialize = observability::test_serialize_lock();
+
+        // ADR-024 drop-fix: the producer drains ALL buffered frames per tick
+        // (capped) and runs the heavy analysis at a fixed cadence, instead of
+        // pull-one-then-heavy-analyze. A buffered backlog far larger than one
+        // pull (and larger than a one-per-tick loop could clear in one settle)
+        // must drain quickly, and the loud frames must reach the snapshot.
+        #[derive(Debug)]
+        struct BurstThenIdle {
+            remaining: u32,
+            delivered: Arc<std::sync::atomic::AtomicU32>,
+        }
+        impl IngestBoundary for BurstThenIdle {
+            fn try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus {
+                if self.remaining > 0 {
+                    self.remaining -= 1;
+                    *out = AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, vec![1.0; 128]);
+                    self.delivered.fetch_add(1, Ordering::Relaxed);
+                    let status = IngestStatus::Ready;
+                    observability::record_pull_outcome(&status, 128);
+                    status
+                } else {
+                    let status = IngestStatus::WouldBlock;
+                    observability::record_pull_outcome(&status, 0);
+                    status
+                }
+            }
+        }
+
+        // > MAX_DRAIN_PER_TICK (64) so it spans multiple drain ticks, proving
+        // multi-frame-per-tick draining (a one-per-tick loop would not clear it
+        // in one SETTLE_DURATION).
+        const BURST: u32 = 200;
+        let delivered = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let source = BurstThenIdle {
+            remaining: BURST,
+            delivered: Arc::clone(&delivered),
+        };
+        let runtime = AudioRuntime::from_primary(source, AudioRuntimeConfig::default());
+        let snapshot_handle = runtime.snapshot_handle();
+        let handle = runtime.spawn();
+
+        thread::sleep(SETTLE_DURATION);
+
+        assert_eq!(
+            delivered.load(Ordering::Relaxed),
+            BURST,
+            "the full backlog should drain within one settle (drain-all per tick)",
+        );
+        let snapshot = match snapshot_handle.lock() {
+            Ok(g) => *g,
+            Err(p) => *p.into_inner(),
+        };
+        assert!(
+            snapshot.rms > 0.0,
+            "drained loud frames should analyse to rms > 0, got {}",
+            snapshot.rms,
+        );
+
+        handle.shutdown();
     }
 
     #[test]
