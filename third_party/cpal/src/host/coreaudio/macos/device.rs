@@ -747,16 +747,43 @@ impl Device {
         let scope = Scope::Output;
         let element = Element::Input;
 
-        // Potentially change the device sample rate to match the config.
-        set_sample_rate(self.audio_device_id, config.sample_rate)?;
-
+        // CHROMATICITY PATCH (vs upstream cpal 0.17.1): the loopback path must
+        // drive the AudioUnit from the TAP AGGREGATE DEVICE's real input format,
+        // not the source OUTPUT device's format. A global process tap delivers
+        // its own sample rate + channel layout (commonly 48 kHz stereo);
+        // upstream forced the output device's ASBD (and sample rate) onto the
+        // aggregate unit, so CoreAudio misread the tap buffers — mostly-zeros
+        // with rare spikes (verified on macOS 26: raw peak +4.9 dBFS, an
+        // impossible f32 amplitude, while the analysed rms stayed at -48 dBFS).
+        // Build the aggregate first, query its actual input config, and
+        // configure the unit + callback from THAT; do not force the output
+        // device's sample rate on this path (it desyncs the tap clock). The
+        // microphone path is unchanged. See third_party/cpal/UPSTREAM-VERSION.md.
         let mut loopback_aggregate: Option<LoopbackDevice> = None;
-        let mut audio_unit = if self.supports_input() {
-            audio_unit_from_device(self, true)?
+        let (mut audio_unit, effective_config, sample_format) = if self.supports_input() {
+            // Microphone / line-in: honour the caller config (upstream behaviour).
+            set_sample_rate(self.audio_device_id, config.sample_rate)?;
+            (audio_unit_from_device(self, true)?, config.clone(), sample_format)
         } else {
-            loopback_aggregate.replace(LoopbackDevice::from_device(self)?);
-            audio_unit_from_device(&loopback_aggregate.as_ref().unwrap().aggregate_device, true)?
+            let aggregate = LoopbackDevice::from_device(self)?;
+            let unit = audio_unit_from_device(&aggregate.aggregate_device, true)?;
+            let (eff_config, eff_format) =
+                match aggregate.aggregate_device.default_input_config() {
+                    Ok(supported) => (supported.config(), supported.sample_format()),
+                    // Fallback: a stereo f32 view of the caller config if the
+                    // aggregate's input format query fails.
+                    Err(_) => {
+                        let mut cfg = config.clone();
+                        cfg.channels = 2;
+                        (cfg, SampleFormat::F32)
+                    }
+                };
+            loopback_aggregate.replace(aggregate);
+            (unit, eff_config, eff_format)
         };
+        // From here, drive everything from the negotiated (effective) config so
+        // the loopback and microphone paths share the rest of the setup.
+        let config = &effective_config;
 
         // Configure stream format and buffer size for predictable callback behavior.
         configure_stream_format_and_buffer(&mut audio_unit, config, sample_format, scope, element)?;
@@ -771,18 +798,46 @@ impl Device {
 
         type Args = render_callback::Args<data::Raw>;
         audio_unit.set_input_callback(move |args: Args| unsafe {
-            // SAFETY: We configure the stream format as interleaved (via asbd_from_config which
-            // does not set kAudioFormatFlagIsNonInterleaved). Interleaved format always has
-            // exactly one buffer containing all channels, so mBuffers[0] is always valid.
-            let AudioBuffer {
-                mNumberChannels: channels,
-                mDataByteSize: data_byte_size,
-                mData: data,
-            } = (*args.data.data).mBuffers[0];
+            // CHROMATICITY PATCH (vs upstream cpal 0.17.1): handle BOTH
+            // interleaved and NON-INTERLEAVED (planar) input. `asbd_from_config`
+            // requests interleaved, and an ordinary input device delivers a
+            // single buffer (mNumberBuffers == 1) holding every channel. But a
+            // macOS Core Audio process tap (system-audio loopback) delivers
+            // PLANAR stereo: one mono buffer per channel (mNumberBuffers ==
+            // channel count). Upstream reads only mBuffers[0], which on that
+            // path captures a single channel at half power — the cause of the
+            // low-level / flat-FFT loopback capture (verified on macOS 26:
+            // music at ~-49 dBFS, raw peak 0.18). When >1 buffer arrives we
+            // interleave the planar f32 channels into a scratch buffer so the
+            // downstream interleaved contract (and the engine de-interleave)
+            // stays correct. `interleave_scratch` lives until `data_callback`
+            // returns below.
+            let buffer_list = &*args.data.data;
+            let num_buffers = (buffer_list.mNumberBuffers as usize).max(1);
+            let raw_buffers = std::slice::from_raw_parts(buffer_list.mBuffers.as_ptr(), num_buffers);
+            let mut interleave_scratch: Vec<f32> = Vec::new();
+            let (effective_channels, data_ptr, len) =
+                if num_buffers > 1 && sample_format == SampleFormat::F32 {
+                    let channels = num_buffers;
+                    let frames = raw_buffers[0].mDataByteSize as usize / std::mem::size_of::<f32>();
+                    interleave_scratch.resize(frames * channels, 0.0);
+                    for (ch, buf) in raw_buffers.iter().enumerate() {
+                        let planar = std::slice::from_raw_parts(buf.mData as *const f32, frames);
+                        for (frame, &sample) in planar.iter().enumerate() {
+                            interleave_scratch[frame * channels + ch] = sample;
+                        }
+                    }
+                    (channels, interleave_scratch.as_ptr() as *mut (), interleave_scratch.len())
+                } else {
+                    let b = raw_buffers[0];
+                    (
+                        b.mNumberChannels as usize,
+                        b.mData as *mut (),
+                        b.mDataByteSize as usize / bytes_per_channel,
+                    )
+                };
 
-            let data = data as *mut ();
-            let len = data_byte_size as usize / bytes_per_channel;
-            let data = Data::from_parts(data, len, sample_format);
+            let data = Data::from_parts(data_ptr, len, sample_format);
 
             let callback = match host_time_to_stream_instant(args.time_stamp.mHostTime) {
                 Err(err) => {
@@ -791,7 +846,7 @@ impl Device {
                 }
                 Ok(cb) => cb,
             };
-            let buffer_frames = len / channels as usize;
+            let buffer_frames = len / effective_channels.max(1);
             // Use device buffer size for latency calculation if available
             let latency_frames = device_buffer_frames.unwrap_or(
                 // Fallback to callback buffer size if device buffer size is unknown

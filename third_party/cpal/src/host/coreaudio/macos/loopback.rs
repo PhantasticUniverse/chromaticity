@@ -254,7 +254,13 @@ pub fn create_audio_aggregate_device_properties(
         CFMutableDictionary::set_value(
             Some(dict.as_ref()),
             &*to_cfstring(kAudioAggregateDeviceTapAutoStartKey) as *const _ as *const c_void,
-            &*NSNumber::initWithBool(NSNumber::alloc(), false) as *const _ as *const c_void,
+            // CHROMATICITY PATCH (vs upstream cpal 0.17.1): auto-start the tap
+            // when the aggregate device starts. With this NO, the tap never
+            // begins capturing into the aggregate device, so the input stream
+            // receives zero data callbacks (verified on macOS 26: `cb=0`).
+            // Setting it YES is what actually makes the loopback deliver
+            // buffers. See third_party/cpal/UPSTREAM-VERSION.md.
+            &*NSNumber::initWithBool(NSNumber::alloc(), true) as *const _ as *const c_void,
         );
         CFMutableDictionary::set_value(
             Some(dict.as_ref()),

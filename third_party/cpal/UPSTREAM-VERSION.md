@@ -24,9 +24,34 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## The Chromaticity patches (the only deviations from upstream)
 
-One file is modified vs the verbatim 0.17.1 crate:
-`src/host/coreaudio/macos/loopback.rs`. Two focused changes — the tap-init fix
-(the reason this vendor exists) and a one-line soundness fix.
+Two files are modified vs the verbatim 0.17.1 crate:
+`src/host/coreaudio/macos/loopback.rs` and `src/host/coreaudio/macos/device.rs`.
+Five focused changes, all confined to the macOS system-output **tap** path (the
+ordinary microphone / line-in input path and every non-macOS backend are
+untouched):
+
+1. Global tap initializer (the all-zero-buffer fix) — `loopback.rs`
+2. Aggregate-device out-param soundness fix — `loopback.rs`
+3. Tap auto-start flag — `loopback.rs`
+4. Loopback config branch (skip `set_sample_rate`) — `device.rs`
+5. Planar-interleave handling in the input callback — `device.rs`
+
+> **Important — these patches are not the full fix.** Patches 1–5 got the tap
+> *creating*, *auto-starting*, and *delivering* data, but on-hardware probing
+> (2026-06-03) showed the captured signal is still corrupted: a known 440 Hz /
+> 0.5-amplitude sine returns a flat FFT, a ~21 dB crest (a sine is 3 dB), and a
+> peak (0.64) *exceeding* the 0.5 source amplitude — byte/channel-stride
+> misinterpretation. The residual root cause is **not** in these files: it is
+> cpal's AUHAL `AudioUnit` read stage (`src/host/coreaudio/macos/mod.rs` +
+> `device.rs::build_input_stream_raw` → `AudioUnitRender`), which inserts an
+> `AudioConverter` negotiated against the aggregate's flattened format rather than
+> the tap's true `kAudioTapPropertyFormat` (Apple TN2091). The planned fix replaces
+> that read stage, **for the loopback path only**, with a direct
+> `AudioDeviceCreateIOProcIDWithBlock` `IOProc` (no AUHAL) using the
+> already-transitive `objc2-core-audio` bindings. See
+> `docs/adr/ADR-022-system-audio-capture.md` → *Amendment (2026-06-03)*. Patch 5's
+> planar-interleave logic ports into the `IOProc` block; patches 1–3 (tap +
+> aggregate creation) are retained as-is.
 
 ### Patch 1 — global tap initializer (the all-zero-buffer fix)
 
@@ -83,14 +108,71 @@ already used elsewhere in this same file (`Device::uid`'s `&mut size` /
 `&mut cfstring`, and `tap_obj_id`'s `MaybeUninit` + `assume_init`). Surfaced by
 the PR 516 review; a one-line change that removes the UB from code we now own.
 
-**Verification posture.** The fix is **hardware-gated**: whether a tap
-delivers non-zero buffers can only be confirmed on real macOS hardware with
-TCC consent granted (there is no public preflight API and CI runners have no
-audio device). The API choice mirrors the reference apps; final confirmation
-is an AO hardware re-test (play system audio, observe the Settings monitoring
-meter and the AUDIO adapter pill go live). Windows (WASAPI
-`AUDCLNT_STREAMFLAGS_LOOPBACK`) is unaffected by this patch and uses the
-correct, working upstream path.
+### Patch 3 — tap auto-start flag (`loopback.rs`)
+
+**Problem.** Upstream builds the aggregate device with
+`kAudioAggregateDeviceTapAutoStartKey = false`. With auto-start off, the tap never
+begins capturing when the aggregate device starts, so the input callback fires with
+**zero data** (observed: `cb=0` — the callback count never advances).
+
+**Fix.** Set the key to `true`:
+
+```rust
+kAudioAggregateDeviceTapAutoStartKey -> NSNumber::initWithBool(alloc, true)
+```
+
+so the tap starts with the aggregate and buffers flow. This matches the AudioCap
+reference aggregate configuration.
+
+### Patch 4 — loopback config branch: skip `set_sample_rate` (`device.rs`)
+
+**Problem.** `build_input_stream_raw` unconditionally calls
+`set_sample_rate(self.audio_device_id, config.sample_rate)` — correct for a real
+input device, wrong for the loopback case. The tap is a tap on the *system mix* and
+delivers its **own** format (commonly 48 kHz stereo). Forcing the source output
+device's sample rate / ASBD onto the tap aggregate desyncs the drift-compensated
+tap clock and makes Core Audio misread the buffers as **mostly zeros with rare
+spikes** (observed: raw peak ~+4.9 dBFS — an impossible f32 amplitude — with an
+analysed RMS near -48 dBFS).
+
+**Fix.** Add a loopback branch (taken when `!supports_input()`): build the
+`LoopbackDevice`, query the **aggregate's** `default_input_config()` for the
+effective config, and **skip** `set_sample_rate` on this path. The microphone path
+is unchanged.
+
+### Patch 5 — planar-interleave handling in the input callback (`device.rs`)
+
+**Problem.** Upstream reads only `mBuffers[0]` from the `AudioBufferList`, assuming
+an interleaved layout. A macOS Core Audio process tap delivers **non-interleaved
+(planar)** float — one mono buffer per channel, `mNumberBuffers == channel count`.
+Reading only `mBuffers[0]` captures a single channel at reduced power (observed:
+music at ~-49 dBFS, raw peak 0.18).
+
+**Fix.** When `mNumberBuffers > 1` on the F32 path, transpose the planar mono
+buffers into a short-lived interleaved `interleave_scratch` (`scratch[frame *
+channels + ch] = planar[frame]`) and hand that to the downstream `Data` contract;
+fall back to the single-buffer read otherwise. `effective_channels` (from the
+aggregate config, Patch 4) replaces the hard-coded channel count in the
+frames-per-buffer math.
+
+> **Note.** Patches 4–5 made the tap deliver *non-zero, channel-correct-ish* data,
+> but did not eliminate the corruption — see the **Important** box above. They are
+> retained because Patch 5's interleave logic ports directly into the planned
+> `IOProc` reader, and Patches 1–3 (tap + aggregate creation) stay as-is.
+
+**Verification posture.** All of this is **hardware-gated**: whether a tap
+delivers *non-zero, undistorted* buffers can only be confirmed on real macOS
+hardware with TCC consent granted (there is no public preflight API and CI
+runners have no audio device). The authoritative probe is a known **440 Hz /
+0.5-amplitude sine** played through the system output (pass = peak ≤ 0.5, crest
+~3 dB, a single 440 Hz FFT bin, rms ≈ -9 dBFS). The 2026-06-03 re-test on the
+patched (AUHAL) path **failed** that probe — see the *Important* box above and the
+ADR-022 Amendment — which is why the read stage is moving to a direct `IOProc`. The
+stable-signing dev harness in
+`docs/dev/macos-desktop-run-and-audio-diagnostics.md` keeps TCC consent persistent
+across rebuilds so the rewrite can be hardware-iterated without a fresh prompt each
+cycle. Windows (WASAPI `AUDCLNT_STREAMFLAGS_LOOPBACK`) is unaffected by these
+patches and uses the correct, working upstream path.
 
 See `docs/adr/ADR-022-system-audio-capture.md` for the capture decision and
 `engine/audio/src/cpal_source.rs` for the Chromaticity-side loopback routing.
@@ -100,12 +182,12 @@ See `docs/adr/ADR-022-system-audio-capture.md` for the capture decision and
 ## What we vendored
 
 The complete crates.io `cpal` 0.17.1 source needed to build it as a path
-dependency: `src/` (all backends — the macOS `loopback.rs` patches are the
-only changes), `build.rs`, the normalized `Cargo.toml`, `examples/`, and the
+dependency: `src/` (all backends — the macOS `{loopback,device}.rs` patches are
+the only changes), `build.rs`, the normalized `Cargo.toml`, `examples/`, and the
 upstream docs (`README.md`, `CHANGELOG.md`, `UPGRADING.md`, `LICENSE`). A
 reviewer can diff `third_party/cpal/` against a fresh `cargo` download of cpal
-0.17.1 and see exactly the two `loopback.rs` changes above and these added
-provenance/marker files.
+0.17.1 and see exactly the five `{loopback,device}.rs` changes above and these
+added provenance/marker files.
 
 ## What's NOT included
 
@@ -142,5 +224,5 @@ existing `third_party/` precedent (lygia, Syphon-Framework, hg_sdf).
   `engine/audio` cpal requirement to the fixed version. That is the
   preferred end-state — this vendor exists only to carry the one patch.
 - To bump within the patched-vendor model: re-vendor the new crate version
-  verbatim, re-apply the `loopback.rs` changes, and bump the `Version` /
+  verbatim, re-apply the `{loopback,device}.rs` changes, and bump the `Version` /
   `Snapshot date` fields above.
