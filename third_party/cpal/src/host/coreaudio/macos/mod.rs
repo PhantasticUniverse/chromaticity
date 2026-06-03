@@ -13,7 +13,8 @@ pub use self::enumerate::{default_input_device, default_output_device, Devices};
 
 use objc2_core_audio::{
     kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyElementMain,
-    kAudioObjectPropertyScopeGlobal, AudioObjectPropertyAddress,
+    kAudioObjectPropertyScopeGlobal, AudioDeviceDestroyIOProcID, AudioDeviceIOProcID,
+    AudioDeviceStart, AudioDeviceStop, AudioObjectPropertyAddress,
 };
 use property_listener::AudioObjectPropertyListener;
 
@@ -169,10 +170,53 @@ impl DisconnectManager {
     }
 }
 
+/// CHROMATICITY PATCH: controls a direct Core Audio device IOProc — the macOS
+/// system-audio loopback read path that replaces cpal's AUHAL `AudioUnit` (see
+/// `third_party/cpal/UPSTREAM-VERSION.md` and `docs/adr/ADR-022` Amendment
+/// 2026-05..06-03). The `AudioDeviceIOProcID` is a fn-pointer-shaped handle, so
+/// this struct is `Send`; the realtime block holds its own captured state,
+/// which Core Audio `Block_copy`s at creation and releases at
+/// `AudioDeviceDestroyIOProcID`.
+struct IoProcController {
+    device_id: AudioDeviceID,
+    io_proc_id: AudioDeviceIOProcID,
+}
+
+impl IoProcController {
+    fn start(&self) -> Result<(), PlayStreamError> {
+        check_os_status(unsafe { AudioDeviceStart(self.device_id, self.io_proc_id) })
+            .map_err(Into::into)
+    }
+
+    fn stop(&self) -> Result<(), PauseStreamError> {
+        check_os_status(unsafe { AudioDeviceStop(self.device_id, self.io_proc_id) })
+            .map_err(Into::into)
+    }
+}
+
+impl Drop for IoProcController {
+    fn drop(&mut self) {
+        // Stop + uninstall the IOProc BEFORE the aggregate device (and tap) are
+        // destroyed by `_loopback_device`'s Drop. Field order in `StreamInner`
+        // (this controller declared before `_loopback_device`) guarantees that.
+        // Status is unchecked to avoid panicking during drop.
+        unsafe {
+            let _ = AudioDeviceStop(self.device_id, self.io_proc_id);
+            let _ = AudioDeviceDestroyIOProcID(self.device_id, self.io_proc_id);
+        }
+    }
+}
+
 struct StreamInner {
     playing: bool,
-    audio_unit: AudioUnit,
-    // Track the device with which the audio unit was spawned.
+    /// `Some` for the AUHAL paths (microphone input + output streams); `None`
+    /// for the direct-IOProc system-audio loopback path.
+    audio_unit: Option<AudioUnit>,
+    /// CHROMATICITY PATCH: `Some` only for the direct-IOProc loopback path.
+    /// Declared BEFORE `_loopback_device` so it drops first — stopping +
+    /// destroying the IOProc before its aggregate device + tap are torn down.
+    io_proc: Option<IoProcController>,
+    // Track the device with which the stream was spawned.
     //
     // We must do this so that we can avoid changing the device sample rate if there is already
     // a stream associated with the device.
@@ -186,10 +230,14 @@ struct StreamInner {
 impl StreamInner {
     fn play(&mut self) -> Result<(), PlayStreamError> {
         if !self.playing {
-            if let Err(e) = self.audio_unit.start() {
-                let description = format!("{e}");
-                let err = BackendSpecificError { description };
-                return Err(err.into());
+            if let Some(audio_unit) = self.audio_unit.as_mut() {
+                if let Err(e) = audio_unit.start() {
+                    let description = format!("{e}");
+                    let err = BackendSpecificError { description };
+                    return Err(err.into());
+                }
+            } else if let Some(io_proc) = self.io_proc.as_ref() {
+                io_proc.start()?;
             }
             self.playing = true;
         }
@@ -198,14 +246,31 @@ impl StreamInner {
 
     fn pause(&mut self) -> Result<(), PauseStreamError> {
         if self.playing {
-            if let Err(e) = self.audio_unit.stop() {
-                let description = format!("{e}");
-                let err = BackendSpecificError { description };
-                return Err(err.into());
+            if let Some(audio_unit) = self.audio_unit.as_mut() {
+                if let Err(e) = audio_unit.stop() {
+                    let description = format!("{e}");
+                    let err = BackendSpecificError { description };
+                    return Err(err.into());
+                }
+            } else if let Some(io_proc) = self.io_proc.as_ref() {
+                io_proc.stop()?;
             }
             self.playing = false;
         }
         Ok(())
+    }
+}
+
+impl Drop for StreamInner {
+    fn drop(&mut self) {
+        // CHROMATICITY PATCH: enforce the loopback teardown order EXPLICITLY
+        // rather than relying on field-declaration drop order — stop + destroy
+        // the IOProc (`IoProcController::drop`) BEFORE the aggregate device + tap
+        // that `_loopback_device` owns (`LoopbackDevice::drop`). Reorder-proof
+        // belt-and-suspenders for this load-bearing unsafe teardown. The AUHAL
+        // paths leave both fields `None`, so these are no-ops there.
+        self.io_proc = None;
+        self._loopback_device = None;
     }
 }
 

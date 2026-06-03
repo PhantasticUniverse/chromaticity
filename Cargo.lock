@@ -920,6 +920,7 @@ name = "cpal"
 version = "0.17.1"
 dependencies = [
  "alsa 0.10.0",
+ "block2 0.6.2",
  "coreaudio-rs",
  "dasp_sample",
  "jni",
@@ -3262,6 +3263,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1eebcea8b0dbff5f7c8504f3107c68fc061a3eb44932051c8cf8a68d969c3b2"
 dependencies = [
+ "block2 0.6.2",
  "dispatch2",
  "objc2 0.6.4",
  "objc2-core-audio-types",
@@ -7154,7 +7156,6 @@ name = "workspace-hack"
 version = "0.0.0"
 dependencies = [
  "bitflags 2.11.1",
- "block2 0.6.2",
  "bytemuck",
  "byteorder",
  "core-foundation 0.10.1",

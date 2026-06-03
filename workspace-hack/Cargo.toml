@@ -109,7 +109,6 @@ syn = { version = "2", default-features = false, features = ["visit-mut"] }
 
 [target.aarch64-apple-darwin.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
-block2 = { version = "0.6" }
 core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics-types = { version = "0.2" }
@@ -133,7 +132,6 @@ time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [target.x86_64-apple-darwin.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
-block2 = { version = "0.6" }
 core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics-types = { version = "0.2" }

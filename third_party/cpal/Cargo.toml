@@ -270,8 +270,22 @@ features = [
     "AudioHardwareDeprecated",
     "objc2",
     "objc2-foundation",
+    # CHROMATICITY PATCH: enable the block-based device IOProc API
+    # (AudioDeviceCreateIOProcIDWithBlock + AudioDeviceStart/Stop/DestroyIOProcID)
+    # used by the macOS system-audio loopback read path. See
+    # third_party/cpal/UPSTREAM-VERSION.md and docs/adr/ADR-022 (Amendment).
+    "block2",
+    "dispatch2",
+    "objc2-core-audio-types",
 ]
 default-features = false
+
+# CHROMATICITY PATCH: block2 is needed directly to construct the
+# AudioDeviceIOBlock (block2::RcBlock) for the loopback IOProc reader. The
+# constraint mirrors objc2-core-audio 0.3's own block2 requirement exactly so the
+# two always unify on one block2 version (no Cargo.lock duplication).
+[target.'cfg(target_vendor = "apple")'.dependencies.block2]
+version = ">=0.6.1, <0.8"
 
 [target.'cfg(target_vendor = "apple")'.dependencies.objc2-core-audio-types]
 version = "0.3"

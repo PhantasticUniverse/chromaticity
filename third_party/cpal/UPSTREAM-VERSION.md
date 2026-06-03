@@ -24,17 +24,25 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## The Chromaticity patches (the only deviations from upstream)
 
-Two files are modified vs the verbatim 0.17.1 crate:
-`src/host/coreaudio/macos/loopback.rs` and `src/host/coreaudio/macos/device.rs`.
-Five focused changes, all confined to the macOS system-output **tap** path (the
-ordinary microphone / line-in input path and every non-macOS backend are
-untouched):
+Changes span the macOS system-output **tap** path only: `Cargo.toml` and
+`src/host/coreaudio/macos/{loopback,mod,device}.rs`. The ordinary microphone /
+line-in input path and every non-macOS backend are untouched. Six focused changes
+— the tap is now READ through a direct Core Audio IOProc (Patch 6), which
+supersedes the earlier attempt to read it through cpal's AUHAL `AudioUnit`
+(Patch 4):
 
 1. Global tap initializer (the all-zero-buffer fix) — `loopback.rs`
 2. Aggregate-device out-param soundness fix — `loopback.rs`
 3. Tap auto-start flag — `loopback.rs`
-4. Loopback config branch (skip `set_sample_rate`) — `device.rs`
-5. Planar-interleave handling in the input callback — `device.rs`
+4. Loopback config branch (skip `set_sample_rate`) — `device.rs` _(superseded by
+   Patch 6: the loopback path no longer builds an AUHAL `AudioUnit` at all)_
+5. Planar-interleave read — `device.rs` _(factored into `read_loopback_buffers`
+   and reused by the Patch 6 IOProc reader; the AUHAL input callback retains an
+   equivalent branch for the — interleaved-only — mic path)_
+6. Direct-IOProc loopback read (no AUHAL) — `loopback.rs` (`tap_stream_format`) +
+   `device.rs` (`build_loopback_ioproc_stream`) + `mod.rs` (`StreamInner`
+   AUHAL-or-IOProc + `IoProcController`) + `Cargo.toml` (objc2-core-audio block
+   feature flags + `block2` dep)
 
 > **Important — these patches are not the full fix.** Patches 1–5 got the tap
 > *creating*, *auto-starting*, and *delivering* data, but on-hardware probing
@@ -45,13 +53,14 @@ untouched):
 > cpal's AUHAL `AudioUnit` read stage (`src/host/coreaudio/macos/mod.rs` +
 > `device.rs::build_input_stream_raw` → `AudioUnitRender`), which inserts an
 > `AudioConverter` negotiated against the aggregate's flattened format rather than
-> the tap's true `kAudioTapPropertyFormat` (Apple TN2091). The planned fix replaces
-> that read stage, **for the loopback path only**, with a direct
+> the tap's true `kAudioTapPropertyFormat` (Apple TN2091). **Patch 6 below
+> replaces** that read stage, **for the loopback path only**, with a direct
 > `AudioDeviceCreateIOProcIDWithBlock` `IOProc` (no AUHAL) using the
-> already-transitive `objc2-core-audio` bindings. See
-> `docs/adr/ADR-022-system-audio-capture.md` → *Amendment (2026-06-03)*. Patch 5's
-> planar-interleave logic ports into the `IOProc` block; patches 1–3 (tap +
-> aggregate creation) are retained as-is.
+> already-transitive `objc2-core-audio` bindings — **now implemented**
+> (compile-clean + adversarially reviewed); on-hardware sine-probe verification is
+> the remaining gate. See `docs/adr/ADR-022-system-audio-capture.md` →
+> *Amendment (2026-06-03)*. Patch 5's planar-interleave logic is reused by the
+> `IOProc` reader; patches 1–3 (tap + aggregate creation) are retained as-is.
 
 ### Patch 1 — global tap initializer (the all-zero-buffer fix)
 
@@ -155,10 +164,45 @@ fall back to the single-buffer read otherwise. `effective_channels` (from the
 aggregate config, Patch 4) replaces the hard-coded channel count in the
 frames-per-buffer math.
 
-> **Note.** Patches 4–5 made the tap deliver *non-zero, channel-correct-ish* data,
-> but did not eliminate the corruption — see the **Important** box above. They are
-> retained because Patch 5's interleave logic ports directly into the planned
-> `IOProc` reader, and Patches 1–3 (tap + aggregate creation) stay as-is.
+> **Note.** Patches 4–5 (AUHAL era) made the tap deliver *non-zero,
+> channel-correct-ish* data but did not eliminate the corruption — see the
+> **Important** box above. Patch 4's AUHAL loopback branch is superseded by
+> Patch 6; Patch 5's interleave logic is reused by the IOProc reader; Patches 1–3
+> (tap + aggregate creation) stay as-is.
+
+### Patch 6 — direct IOProc loopback read (replaces the AUHAL for the tap path)
+
+**Problem.** Reading the tap aggregate through cpal's AUHAL `AudioUnit`
+(`AudioUnitRender`) routes the planar-float tap stream through the AUHAL's
+built-in `AudioConverter`, which negotiates against the aggregate's flattened
+format rather than the tap's true `kAudioTapPropertyFormat` (Apple TN2091). On a
+known 440 Hz / 0.5 sine that produced a flat FFT, a ~21 dB crest (a sine is 3 dB),
+and a captured peak (0.64) **exceeding** the 0.5 source — byte/channel-stride
+misinterpretation, not attenuation. This is structural to the AUHAL and cannot be
+patched away inside the tap-creation code.
+
+**Fix.** Read the tap aggregate with a **direct
+`AudioDeviceCreateIOProcIDWithBlock` IOProc** (no AudioUnit, no implicit
+converter) — the AudioCap/MiniMeters-proven mechanism:
+
+- `loopback.rs::tap_stream_format()` reads `kAudioTapPropertyFormat` from the
+  **tap object** for the authoritative format.
+- `device.rs::build_loopback_ioproc_stream` installs a `block2::RcBlock` IOProc on
+  the aggregate device, reads the `AudioBufferList` per the tap format via
+  `read_loopback_buffers` (planar → interleaved scratch, pre-allocated so the
+  realtime thread never reallocs), and bridges into cpal's `Data` /
+  `InputCallbackInfo` contract. `build_input_stream_raw` early-returns to this for
+  `!supports_input()`; the microphone path stays on the AUHAL.
+- `mod.rs::StreamInner` becomes AUHAL-**or**-IOProc; `IoProcController` (with an
+  explicit `StreamInner` `Drop`) reproduces the AudioCap teardown order: stop →
+  `AudioDeviceDestroyIOProcID` → destroy aggregate → destroy tap.
+- `Cargo.toml` enables the `block2` / `dispatch2` / `objc2-core-audio-types`
+  features on `objc2-core-audio` and adds `block2` directly. All FFI `unsafe`
+  stays in this vendored crate (not a workspace member).
+
+Compile-clean, existing audio tests green, and adversarially reviewed (unsafe
+soundness + realtime safety + AudioCap-correctness). On-hardware sine-probe
+verification is the remaining gate (see below).
 
 **Verification posture.** All of this is **hardware-gated**: whether a tap
 delivers *non-zero, undistorted* buffers can only be confirmed on real macOS

@@ -8,11 +8,12 @@ use objc2_core_audio::{
     kAudioAggregateDeviceTapListKey, kAudioAggregateDeviceUIDKey, kAudioDevicePropertyDeviceUID,
     kAudioEndPointDeviceIsPrivateKey, kAudioObjectPropertyElementMain,
     kAudioObjectPropertyScopeGlobal, kAudioSubTapDriftCompensationKey, kAudioSubTapUIDKey,
-    AudioHardwareCreateAggregateDevice, AudioHardwareCreateProcessTap,
+    kAudioTapPropertyFormat, AudioHardwareCreateAggregateDevice, AudioHardwareCreateProcessTap,
     AudioHardwareDestroyAggregateDevice, AudioHardwareDestroyProcessTap,
     AudioObjectGetPropertyData, AudioObjectID, AudioObjectPropertyAddress, CATapDescription,
     CATapMuteBehavior,
 };
+use objc2_core_audio_types::AudioStreamBasicDescription;
 use objc2_core_foundation::{
     kCFAllocatorDefault, kCFTypeArrayCallBacks, kCFTypeDictionaryKeyCallBacks,
     kCFTypeDictionaryValueCallBacks, CFArray, CFDictionary, CFMutableDictionary, CFRetained,
@@ -144,6 +145,39 @@ impl LoopbackDevice {
             tap_id: tap_obj_id,
             aggregate_device: Device::new(aggregate_device_id),
         })
+    }
+
+    /// Read the tap's authoritative capture format via `kAudioTapPropertyFormat`
+    /// from the TAP object (not the aggregate device).
+    ///
+    /// CHROMATICITY PATCH: this is the format the direct-IOProc loopback reader
+    /// must honour. Deriving the format from the aggregate device's
+    /// `default_input_config()` instead is what corrupted the AUHAL read path —
+    /// the AUHAL's internal `AudioConverter` negotiated against the aggregate's
+    /// flattened format rather than the tap's true stream description (planar
+    /// Float32). See `third_party/cpal/UPSTREAM-VERSION.md` and
+    /// `docs/adr/ADR-022-system-audio-capture.md` (Amendment 2026-06-03).
+    pub fn tap_stream_format(&self) -> Result<AudioStreamBasicDescription, BackendSpecificError> {
+        let property = AudioObjectPropertyAddress {
+            mSelector: kAudioTapPropertyFormat,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain,
+        };
+        // `AudioStreamBasicDescription` is a plain C POD; zero-init then fill.
+        let mut asbd: AudioStreamBasicDescription = unsafe { std::mem::zeroed() };
+        let mut size = std::mem::size_of::<AudioStreamBasicDescription>() as u32;
+        let status = unsafe {
+            AudioObjectGetPropertyData(
+                self.tap_id,
+                NonNull::from(&property),
+                0,
+                std::ptr::null(),
+                NonNull::from(&mut size),
+                NonNull::from(&mut asbd).cast(),
+            )
+        };
+        check_os_status(status)?;
+        Ok(asbd)
     }
 }
 

@@ -182,8 +182,12 @@ taps + WASAPI loopback are the only route to true zero-install.
 
 ## Amendment (2026-06-03): macOS tap read moves off AUHAL to a direct `IOProc`
 
-**Status of this amendment:** drafted within the implementing effort; awaits AO
-acceptance at merge (same convention as the parent ADR).
+**Status of this amendment:** the direct-`IOProc` read described below is
+**implemented** in the vendored cpal — compile-clean, existing audio tests green,
+and adversarially reviewed (unsafe-soundness / realtime-safety / AudioCap-
+correctness); on-hardware sine-probe verification is the remaining gate. Drafted
+within the implementing effort; awaits AO acceptance at merge (same convention as
+the parent ADR).
 
 ### What we found
 
@@ -304,10 +308,11 @@ TN2091, cpal#329, and the `objc2-core-audio` docs; no `Contents/` or
   source). That signature is byte/channel-stride misinterpretation, not the
   stock-cpal all-zero bug. Root cause: cpal's AUHAL `AudioUnit` pull stage — **not**
   the tap init (which is correct). The fix is the direct-`IOProc` rewrite in the
-  Amendment; until it lands and is hardware-verified, the macOS system-audio path
-  is non-functional and `try_input_by_preference` degrades to the default input
-  (microphone). Windows WASAPI loopback is unaffected. CI runners have no audio
-  device and the device-opening smoke tests stay `#[ignore]`.
+  Amendment (now implemented + reviewed); until it is hardware-verified, the macOS
+  system-audio path is treated as non-functional and `try_input_by_preference`
+  degrades to the default input (microphone). Windows WASAPI loopback is
+  unaffected. CI runners have no audio device and the device-opening smoke tests
+  stay `#[ignore]`.
 - **Windows compile-only.** The WASAPI loopback path is unaffected by the patch
   and uses the correct upstream API, but is verified by `clippy` (windows-latest)
   only — no Windows hardware was exercised.

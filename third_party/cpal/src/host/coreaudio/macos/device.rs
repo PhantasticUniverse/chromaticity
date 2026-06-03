@@ -24,15 +24,21 @@ use objc2_core_audio::{
     kAudioDevicePropertyNominalSampleRate, kAudioDevicePropertyStreamConfiguration,
     kAudioDevicePropertyStreamFormat, kAudioObjectPropertyClass, kAudioObjectPropertyElementMaster,
     kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyScopeInput,
-    kAudioObjectPropertyScopeOutput, AudioClassID, AudioDeviceID, AudioObjectGetPropertyData,
+    kAudioObjectPropertyScopeOutput, AudioClassID, AudioDeviceCreateIOProcIDWithBlock,
+    AudioDeviceID, AudioDeviceIOProcID, AudioDeviceStart, AudioObjectGetPropertyData,
     AudioObjectGetPropertyDataSize, AudioObjectID, AudioObjectPropertyAddress,
     AudioObjectPropertyScope, AudioObjectSetPropertyData,
 };
 use objc2_core_audio_types::{
-    AudioBuffer, AudioBufferList, AudioStreamBasicDescription, AudioValueRange,
+    kAudioFormatFlagIsNonInterleaved, AudioBuffer, AudioBufferList, AudioStreamBasicDescription,
+    AudioTimeStamp, AudioValueRange,
 };
 use objc2_core_foundation::CFString;
 use objc2_core_foundation::Type;
+// CHROMATICITY PATCH: the macOS system-audio loopback path reads the tap
+// aggregate with a direct Core Audio IOProc block instead of cpal's AUHAL.
+use crate::host::coreaudio::macos::IoProcController;
+use block2::RcBlock;
 
 pub use super::enumerate::{
     default_input_device, default_output_device, SupportedInputConfigs, SupportedOutputConfigs,
@@ -727,6 +733,67 @@ impl fmt::Debug for Device {
     }
 }
 
+/// CHROMATICITY PATCH: shared, pre-allocated state for the loopback IOProc
+/// realtime block (the macOS system-audio tap reader). Holding the user callback
+/// and a reusable interleave scratch behind one `Mutex` lets the block `try_lock`
+/// once per IO cycle and avoids per-callback heap allocation on the Core Audio
+/// realtime thread. See [`Device::build_loopback_ioproc_stream`].
+struct LoopbackCallbackState<D> {
+    data_callback: D,
+    scratch: Vec<f32>,
+}
+
+/// CHROMATICITY PATCH: read a Core Audio process-tap input `AudioBufferList` into
+/// an interleaved f32 view, returning `(channel_count, data_ptr, total_len)`.
+///
+/// A tap delivers NON-INTERLEAVED (planar) Float32 — one mono buffer per channel
+/// — which is transposed into the reusable `scratch`. Interleaved input is used
+/// in place. Mirrors the planar handling the AUHAL input callback grew, but
+/// reuses the caller's scratch so there is no realtime-thread allocation.
+///
+/// # Safety
+/// `buffer_list` must be a valid `AudioBufferList` for the current IO cycle whose
+/// buffers contain Float32 samples.
+#[allow(clippy::cast_ptr_alignment)]
+unsafe fn read_loopback_buffers(
+    buffer_list: &AudioBufferList,
+    non_interleaved: bool,
+    scratch: &mut Vec<f32>,
+) -> (usize, *mut (), usize) {
+    let num_buffers = (buffer_list.mNumberBuffers as usize).max(1);
+    let raw_buffers = std::slice::from_raw_parts(buffer_list.mBuffers.as_ptr(), num_buffers);
+    if non_interleaved && num_buffers > 1 {
+        let channels = num_buffers;
+        // Use the MINIMUM frame count across the planar buffers so a
+        // (pathological) shorter buffer is never over-read. For a stereo tap all
+        // channel buffers are equal-length; this is a defensive floor.
+        let frames = raw_buffers
+            .iter()
+            .map(|buffer| buffer.mDataByteSize as usize / std::mem::size_of::<f32>())
+            .min()
+            .unwrap_or(0);
+        // `clear()` + `resize(_, 0.0)` zeroes the whole scratch first, so a
+        // channel whose buffer is null (silence) correctly reads as zeros below.
+        scratch.clear();
+        scratch.resize(frames * channels, 0.0);
+        for (channel, buffer) in raw_buffers.iter().enumerate() {
+            if buffer.mData.is_null() {
+                continue;
+            }
+            let planar = std::slice::from_raw_parts(buffer.mData as *const f32, frames);
+            for (frame, &sample) in planar.iter().enumerate() {
+                scratch[frame * channels + channel] = sample;
+            }
+        }
+        (channels, scratch.as_mut_ptr() as *mut (), scratch.len())
+    } else {
+        let buffer = raw_buffers[0];
+        let channels = (buffer.mNumberChannels as usize).max(1);
+        let len = buffer.mDataByteSize as usize / std::mem::size_of::<f32>();
+        (channels, buffer.mData as *mut (), len)
+    }
+}
+
 impl Device {
     #[allow(clippy::cast_ptr_alignment)]
     #[allow(clippy::while_immutable_condition)]
@@ -747,43 +814,30 @@ impl Device {
         let scope = Scope::Output;
         let element = Element::Input;
 
-        // CHROMATICITY PATCH (vs upstream cpal 0.17.1): the loopback path must
-        // drive the AudioUnit from the TAP AGGREGATE DEVICE's real input format,
-        // not the source OUTPUT device's format. A global process tap delivers
-        // its own sample rate + channel layout (commonly 48 kHz stereo);
-        // upstream forced the output device's ASBD (and sample rate) onto the
-        // aggregate unit, so CoreAudio misread the tap buffers — mostly-zeros
-        // with rare spikes (verified on macOS 26: raw peak +4.9 dBFS, an
-        // impossible f32 amplitude, while the analysed rms stayed at -48 dBFS).
-        // Build the aggregate first, query its actual input config, and
-        // configure the unit + callback from THAT; do not force the output
-        // device's sample rate on this path (it desyncs the tap clock). The
-        // microphone path is unchanged. See third_party/cpal/UPSTREAM-VERSION.md.
-        let mut loopback_aggregate: Option<LoopbackDevice> = None;
-        let (mut audio_unit, effective_config, sample_format) = if self.supports_input() {
-            // Microphone / line-in: honour the caller config (upstream behaviour).
-            set_sample_rate(self.audio_device_id, config.sample_rate)?;
-            (audio_unit_from_device(self, true)?, config.clone(), sample_format)
-        } else {
-            let aggregate = LoopbackDevice::from_device(self)?;
-            let unit = audio_unit_from_device(&aggregate.aggregate_device, true)?;
-            let (eff_config, eff_format) =
-                match aggregate.aggregate_device.default_input_config() {
-                    Ok(supported) => (supported.config(), supported.sample_format()),
-                    // Fallback: a stereo f32 view of the caller config if the
-                    // aggregate's input format query fails.
-                    Err(_) => {
-                        let mut cfg = config.clone();
-                        cfg.channels = 2;
-                        (cfg, SampleFormat::F32)
-                    }
-                };
-            loopback_aggregate.replace(aggregate);
-            (unit, eff_config, eff_format)
-        };
-        // From here, drive everything from the negotiated (effective) config so
-        // the loopback and microphone paths share the rest of the setup.
-        let config = &effective_config;
+        // CHROMATICITY PATCH (vs upstream cpal 0.17.1): the macOS system-audio
+        // LOOPBACK path does NOT use cpal's AUHAL `AudioUnit`. cpal drives the
+        // tap aggregate through an `AudioUnit` whose internal `AudioConverter`
+        // negotiates against the aggregate's flattened format rather than the
+        // tap's true `kAudioTapPropertyFormat`, corrupting the captured stream
+        // (a known 440 Hz sine returned a flat FFT and a peak EXCEEDING the
+        // source — byte/channel-stride misinterpretation, not attenuation).
+        // Read the tap aggregate with a direct `AudioDeviceCreateIOProcIDWithBlock`
+        // IOProc that honours the tap's own format instead — the
+        // AudioCap/MiniMeters-proven mechanism. The microphone / line-in path
+        // below is unchanged (upstream AUHAL). See
+        // third_party/cpal/UPSTREAM-VERSION.md and docs/adr/ADR-022 (Amendment).
+        if !self.supports_input() {
+            return self.build_loopback_ioproc_stream(
+                config,
+                sample_format,
+                data_callback,
+                error_callback,
+            );
+        }
+
+        // Microphone / line-in: honour the caller config (upstream AUHAL path).
+        set_sample_rate(self.audio_device_id, config.sample_rate)?;
+        let mut audio_unit = audio_unit_from_device(self, true)?;
 
         // Configure stream format and buffer size for predictable callback behavior.
         configure_stream_format_and_buffer(&mut audio_unit, config, sample_format, scope, element)?;
@@ -877,14 +931,15 @@ impl Device {
         let stream = Stream::new(
             StreamInner {
                 playing: true,
-                audio_unit,
+                audio_unit: Some(audio_unit),
+                io_proc: None,
                 device_id: self.audio_device_id,
-                _loopback_device: loopback_aggregate,
+                _loopback_device: None,
             },
             error_callback_for_stream,
         )?;
 
-        stream
+        if let Some(audio_unit) = stream
             .inner
             .lock()
             .map_err(|_| BuildStreamError::BackendSpecific {
@@ -893,9 +948,148 @@ impl Device {
                 },
             })?
             .audio_unit
-            .start()?;
+            .as_mut()
+        {
+            audio_unit.start()?;
+        }
 
         Ok(stream)
+    }
+
+    /// CHROMATICITY PATCH: build the macOS system-audio loopback input stream by
+    /// reading the tap aggregate with a direct Core Audio IOProc (no AUHAL). See
+    /// the head of [`Self::build_input_stream_raw`],
+    /// `third_party/cpal/UPSTREAM-VERSION.md`, and `docs/adr/ADR-022` (Amendment
+    /// 2026-06-03).
+    #[allow(clippy::cast_ptr_alignment)]
+    fn build_loopback_ioproc_stream<D, E>(
+        &self,
+        config: &StreamConfig,
+        _sample_format: SampleFormat,
+        data_callback: D,
+        error_callback: E,
+    ) -> Result<Stream, BuildStreamError>
+    where
+        D: FnMut(&Data, &InputCallbackInfo) + Send + 'static,
+        E: FnMut(StreamError) + Send + 'static,
+    {
+        // The tap's own format governs this path, not the caller config.
+        let _ = config;
+
+        // 1. Create the tap + private auto-start aggregate (the proven path).
+        let loopback = LoopbackDevice::from_device(self)?;
+        let aggregate_id = loopback.aggregate_device.audio_device_id;
+
+        // 2. Read the TAP's authoritative format (NOT the aggregate's — that was
+        //    the AUHAL corruption). Taps deliver Float32 linear PCM.
+        let asbd = loopback.tap_stream_format()?;
+        // `crate::SampleRate` is a `u32` alias in this cpal version.
+        let sample_rate: SampleRate = asbd.mSampleRate as SampleRate;
+        let non_interleaved = (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+        let expected_channels = (asbd.mChannelsPerFrame as usize).max(2);
+        let sample_format = SampleFormat::F32;
+
+        // 3. Shared realtime-block state: the user callback + a reusable
+        //    interleave scratch behind one Mutex, plus the error sink. The
+        //    scratch is pre-allocated with generous headroom (16384 frames is
+        //    ~340 ms at 48 kHz, far above any realistic tap IO buffer) so the
+        //    realtime IOProc block never reallocates on the audio thread — a
+        //    glitch source. `resize` within capacity does not allocate.
+        const MAX_LOOPBACK_FRAMES: usize = 16_384;
+        let error_callback = Arc::new(Mutex::new(error_callback));
+        let cb_state = Arc::new(Mutex::new(LoopbackCallbackState {
+            data_callback,
+            scratch: Vec::<f32>::with_capacity(MAX_LOOPBACK_FRAMES * expected_channels),
+        }));
+
+        // 4. The IOProc block. Runs on Core Audio's realtime thread: try_lock and
+        //    skip on contention, reuse the pre-allocated scratch (no per-cycle
+        //    allocation), never block. CONTRACT: the `Data` handed to
+        //    `data_callback` borrows the live AudioBufferList or the scratch and
+        //    is valid ONLY for the callback duration — consumers must copy
+        //    synchronously, never defer/store it (the same non-owning contract as
+        //    cpal's AUHAL paths).
+        let block_state = cb_state.clone();
+        let block_error = error_callback.clone();
+        let block = RcBlock::new(
+            move |in_now: NonNull<AudioTimeStamp>,
+                  in_input_data: NonNull<AudioBufferList>,
+                  _in_input_time: NonNull<AudioTimeStamp>,
+                  _out_output_data: NonNull<AudioBufferList>,
+                  _in_output_time: NonNull<AudioTimeStamp>| {
+                let mut guard = match block_state.try_lock() {
+                    Ok(guard) => guard,
+                    Err(_) => return,
+                };
+                let callback_instant =
+                    match host_time_to_stream_instant(unsafe { in_now.as_ref() }.mHostTime) {
+                        Ok(instant) => instant,
+                        Err(err) => {
+                            invoke_error_callback(&block_error, err.into());
+                            return;
+                        }
+                    };
+                let state = &mut *guard;
+                let (channels, data_ptr, len) = unsafe {
+                    read_loopback_buffers(
+                        in_input_data.as_ref(),
+                        non_interleaved,
+                        &mut state.scratch,
+                    )
+                };
+                if len == 0 {
+                    return;
+                }
+                let data = unsafe { Data::from_parts(data_ptr, len, sample_format) };
+                let buffer_frames = len / channels.max(1);
+                let delay = frames_to_duration(buffer_frames, sample_rate);
+                let capture = callback_instant.sub(delay).unwrap_or(callback_instant);
+                let info = InputCallbackInfo {
+                    timestamp: crate::InputStreamTimestamp {
+                        callback: callback_instant,
+                        capture,
+                    },
+                };
+                (state.data_callback)(&data, &info);
+            },
+        );
+
+        // 5. Install the IOProc on the AGGREGATE device, then start IO. Core Audio
+        //    `Block_copy`s the block and holds it until DestroyIOProcID, so our
+        //    `RcBlock` can drop right after the call.
+        let mut io_proc_id: AudioDeviceIOProcID = None;
+        let status = unsafe {
+            AudioDeviceCreateIOProcIDWithBlock(
+                NonNull::from(&mut io_proc_id),
+                aggregate_id,
+                None,
+                RcBlock::as_ptr(&block),
+            )
+        };
+        check_os_status(status)?;
+        drop(block);
+        check_os_status(unsafe { AudioDeviceStart(aggregate_id, io_proc_id) })?;
+
+        let error_callback_for_stream: super::ErrorCallback = {
+            let error_callback = error_callback.clone();
+            Box::new(move |err: StreamError| {
+                invoke_error_callback(&error_callback, err);
+            })
+        };
+
+        Stream::new(
+            StreamInner {
+                playing: true,
+                audio_unit: None,
+                io_proc: Some(IoProcController {
+                    device_id: aggregate_id,
+                    io_proc_id,
+                }),
+                device_id: aggregate_id,
+                _loopback_device: Some(loopback),
+            },
+            error_callback_for_stream,
+        )
     }
 
     fn build_output_stream_raw<D, E>(
@@ -980,14 +1174,15 @@ impl Device {
         let stream = Stream::new(
             StreamInner {
                 playing: true,
-                audio_unit,
+                audio_unit: Some(audio_unit),
+                io_proc: None,
                 device_id: self.audio_device_id,
                 _loopback_device: None,
             },
             error_callback_for_stream,
         )?;
 
-        stream
+        if let Some(audio_unit) = stream
             .inner
             .lock()
             .map_err(|_| BuildStreamError::BackendSpecific {
@@ -996,7 +1191,10 @@ impl Device {
                 },
             })?
             .audio_unit
-            .start()?;
+            .as_mut()
+        {
+            audio_unit.start()?;
+        }
 
         Ok(stream)
     }
