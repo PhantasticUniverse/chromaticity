@@ -18,7 +18,11 @@ import type { AudioAxisAvailability } from "./AudioAxisAvailability";
  * [`chromaticity_audio::AudioUniformSnapshot`] so the bidirectional
  * `From` impls (and the JSON wire shape consumed by the Tauri event
  * channel) preserve the widened surface (BPM + BPM readiness, RMS,
- * peak, eight FFT bands + FFT readiness, and the degraded flag).
+ * peak, eight FFT bands + FFT readiness, the six MilkDrop-class
+ * relative reactive bands — `bass`/`mid`/`treb` + their `*_att`
+ * attack/decay variants, per
+ * `docs/adr/ADR-024-audio-reactivity-analysis-model.md` — and the
+ * degraded flag).
  *
  * `Copy` rides for cheap once-per-tick emit copies; `f32` precludes
  * `Eq` / `Hash` so tests use `PartialEq` only (matching the
@@ -35,4 +39,4 @@ import type { AudioAxisAvailability } from "./AudioAxisAvailability";
  * future band-count change surfaces as a test failure rather than
  * silent wire-shape divergence.
  */
-export type AudioUniformSnapshotPayload = { bpm: number, bpm_availability: AudioAxisAvailability, rms: number, peak: number, fft_bands: [number, number, number, number, number, number, number, number], fft_availability: AudioAxisAvailability, degraded: boolean, };
+export type AudioUniformSnapshotPayload = { bpm: number, bpm_availability: AudioAxisAvailability, rms: number, peak: number, fft_bands: [number, number, number, number, number, number, number, number], fft_availability: AudioAxisAvailability, bass: number, mid: number, treb: number, bass_att: number, mid_att: number, treb_att: number, degraded: boolean, };

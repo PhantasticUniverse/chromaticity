@@ -236,6 +236,27 @@ fn adjust_rate_to_fps(rate: f32, dt_seconds: f32) -> f32 {
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod tests {
+    //! Evidence: EV-AUDIO-TRACE (T1) — drift pins on the MilkDrop-class
+    //! per-band AGC algorithm invariants (volume independence, band
+    //! selectivity, silence centring on 1.0, transient spike behaviour,
+    //! and the attack/decay smoothing relation) per
+    //! `docs/adr/ADR-024-audio-reactivity-analysis-model.md`.
+    //!
+    //! T1 per `docs/43-development-standards.md` §15.5: each test pins a
+    //! documented invariant of the auto-gain model — the
+    //! `band = instantaneous / long_avg` ratio centred on ~1.0, the
+    //! dual-EMA (fast-attack / slow-release short average + slow long
+    //! average) smoothing, and the `SILENCE_FLOOR` guard. Any drift in
+    //! the AGC constants or math fires the moment `cargo test` runs; the
+    //! broader behavioural quality rubric (volume sweep, frequency
+    //! sweep, transient) is scored by the `mini_meter` example. T1
+    //! counts toward `EV-EVIDENCE-TAG-COVERAGE`.
+    //!
+    //! Anchors:
+    //! - `docs/26-evidence-artifact-registry.md` row 30 — `EV-AUDIO-TRACE`.
+    //! - `docs/adr/ADR-024-audio-reactivity-analysis-model.md` — the AGC model.
+    //! - `docs/43-development-standards.md` §15.5 — T-tier definitions.
+
     use super::*;
     use std::f32::consts::TAU;
 

@@ -9,10 +9,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 Proposed
 
-> The AO approved the design + phasing on 2026-06-03. Phase 0 (the per-band AGC +
-> the mini-meter harness) has landed (`engine/audio/src/reactive_bands.rs`);
-> remaining phases + the cross-seam contract change await implementation. Formal
-> acceptance lands at PR merge per the AO-only ADR convention
+> The AO approved the design + phasing on 2026-06-03. **Phase 0** (the per-band
+> AGC `engine/audio/src/reactive_bands.rs` + the mini-meter harness + the
+> drain-all/fixed-cadence ingest drop-fix) has landed. **Phase 1a** (wiring
+> `ReactiveBands` into the live producer runtime + the additive
+> `AudioUniformSnapshot` / `AudioUniformSnapshotPayload` widening for the six
+> relative bands, ts-rs regenerated, round-trip green) has landed. The remaining
+> Phase 1b perceptual-DSP layer (LUFS / Mel / gate / dual surface) + the
+> render-uniform exposure await implementation. Formal acceptance lands at PR
+> merge per the AO-only ADR convention
 > (`docs/29-cleanroom-legal-policy-baseline.md`).
 
 ## Date
@@ -142,14 +147,21 @@ oscillators. Determined from the reference's **published docs** only (`docs/36`,
 
 ## Phasing
 
-- **Phase 0** *(AGC + mini-meter landed; drop-fix pending)*: `ReactiveBands`
-  auto-gain + the mini-meter benchmark harness + the drain-all/fixed-cadence
-  drop-fix. Engine-only.
-- **Phase 1**: K-weighted LUFS (`ebur128`) + Mel bands + adaptive-norm + hysteresis
-  gate + **dual raw/normalized uniforms** — widens `AudioUniformSnapshot` /
-  `AudioUniformSnapshotPayload` (+ ts-rs regen) and the `chroma_Audio*` surface.
-- **Phase 2**: live wiring — float-array spectrum carrier + per-band families +
-  BPM oscillators (some ADR-011-render-gated).
+- **Phase 0** *(landed)*: `ReactiveBands` auto-gain + the mini-meter benchmark
+  harness + the drain-all/fixed-cadence ingest drop-fix. Engine-only.
+- **Phase 1a** *(landed)*: wire `ReactiveBands` into the live producer runtime
+  (rebuilt on sample-rate change; advanced by the real analysis-cadence `dt`) and
+  surface the six relative bands (`bass`/`mid`/`treb` + `*_att`, default neutral
+  `1.0`) additively on `AudioUniformSnapshot` / `AudioUniformSnapshotPayload`
+  (ts-rs regenerated; the T2 round-trip + the producer-side runtime pins cover
+  the widened surface). Purely additive — no ADR-023 metering-field overlap.
+- **Phase 1b**: K-weighted LUFS (`ebur128` or first-party BS.1770) + Mel bands +
+  adaptive-norm + hysteresis gate + **dual raw/normalized uniforms** — further
+  widens the snapshot, **coordinated with `adr/ADR-023`** so the K-weighted LUFS
+  is computed once and shared between the metering and reactivity surfaces.
+- **Phase 2**: live consumption — the render-side `chroma_AudioBass`/… uniform
+  exposure (+ docs/36 catalog symbols), a float-array spectrum carrier, per-band
+  families, and BPM oscillators (some ADR-011-render-gated).
 - **Phase 3** *(deferred)*: first-party phase-locked beat grid, only if reprioritized.
 
 ## Consequences

@@ -170,5 +170,13 @@ These four uniforms are family `LVL` for tolerance purposes (added as family `LV
 - Output: impulse `1.0` on gate trigger, decays `exp(-dt / tau_prime)`, `tau_prime = 400 ms`. Refractory: `8 s`.
 - Acceptance criterion: fires on large-scale musical transitions in the test corpus as judged by the reviewer; not epsilon-matched to reference.
 
+### 7.15 Relative reactive bands (`chroma_AudioBass`/`Mid`/`Treb` + `*_att`, ADR-024)
+A `native-chroma-v1` quality layer that complements the raw `syn_*Level` family (Sec.7.4) with **MilkDrop-class auto-gain**: volume-independent relative band reactivity per `adr/ADR-024-audio-reactivity-analysis-model.md`.
+- **Bands** — three perceptual macro-bands (butterchurn split): bass `20-320`, mid `320-2800`, treb `2800-11025` Hz, summed from the Hann-windowed FFT magnitudes of the rolling analysis window.
+- **Auto-gain** — `band = instantaneous / long_avg` and `band_att = short_avg / long_avg`, centred on `~1.0` and volume-independent (the same response on a loud or quiet track). Two FPS-compensated EMAs: a short average (fast attack `0.2` / slower release `0.5` weight-on-old) and a slow long average (`0.9` startup for the first 50 blocks, then `0.992`). A near-silent long average (`< 1e-3`) reads the band at the neutral `1.0`.
+- **Surface** — published on `AudioUniformSnapshot` (and its IPC payload) as `bass`/`mid`/`treb` + `bass_att`/`mid_att`/`treb_att`, each defaulting to the neutral `1.0` before audio arrives (a relative band is multiplicative, so the pre-roll baseline is `1.0`, not the raw axes' `0.0`). The stateful analyser (`engine/audio::ReactiveBands`) is driven by the producer runtime at the fixed analysis cadence; the pure `extract_uniform_snapshot` returns the neutral baseline.
+- **Determinism** — pure function of the sample stream + elapsed time; not observed by `canonical_state_hash`. The AGC constants follow the Sec.7.13 profile-bump discipline (a `native-chroma-v1` analysis-path change).
+- **Forthcoming (ADR-024)** — K-weighted LUFS, Mel/perceptual sub-bands, a hysteresis noise gate, and a dual raw/normalized surface land in subsequent increments, coordinated with the `adr/ADR-023` metering widening. The render-side `chroma_AudioBass`/… uniform exposure and the docs/36 catalog symbols are the immediate follow-up to this engine-side wiring.
+
 ## Open Questions
 - GPU vs CPU acceleration opportunities for large FFT workloads (design-time choice tracked in `adr/ADR-011-rendering-backend.md` follow-ups).

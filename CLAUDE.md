@@ -179,13 +179,18 @@ replaced the AUHAL read stage that corrupted the stream (a 440 Hz sine returned 
 peak exceeding the source); hardware-verified clean (raw_peak exactly 0.5). See
 ADR-022 → Amendment (2026-06-03). The reactivity-analysis **quality** upgrade is in
 progress (ADR-024): a MilkDrop-class per-band auto-gain (volume-independent bands
-centred on 1.0) replaces the raw-absolute analysis — `engine/audio` `reactive_bands`
-
-- the `mini_meter` example landed; the drain-all/fixed-cadence drop-fix, the snapshot
-  wiring, and the EXCEED levers (K-weighted LUFS, Mel bands, hysteresis gate, dual
-  raw/normalized uniforms) follow. IPC transport + webview render proven; Windows
-  WASAPI loopback unaffected. Run/test + audio-diagnostics guide:
-  `docs/dev/macos-desktop-run-and-audio-diagnostics.md`.
+centred on 1.0) replaces the raw-absolute analysis. `engine/audio` `reactive_bands`
+plus the `mini_meter` rubric harness landed (Phase 0), and **Phase 1a wired
+`ReactiveBands` into the live producer runtime** and widened `AudioUniformSnapshot`
+/ its ts-rs payload with the six relative bands (`bass`/`mid`/`treb` + `*_att`,
+default neutral 1.0; additive, no ADR-023 metering overlap; round-trip green,
+docs/06 §7.15). The drain-all/fixed-cadence ingest drop-fix landed earlier. Still
+to come: Phase 1b EXCEED levers (K-weighted LUFS — coordinated with ADR-023 — Mel
+bands, hysteresis gate, dual raw/normalized uniforms) + Phase 2 consumption (the
+render-side `chroma_AudioBass`/… uniforms + docs/36 symbols + a frontend widget
+reading the relative bands). IPC transport + webview render proven; Windows WASAPI
+loopback unaffected. Run/test + audio-diagnostics guide:
+`docs/dev/macos-desktop-run-and-audio-diagnostics.md`.
 
 Pre-alpha hardening (rounds 1–3, PRs `#482`–`#489`) closed a `/ultrareview`
 mega-review + a clean-room reference-comparison sweep. The Synesthesia parity

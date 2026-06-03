@@ -240,7 +240,10 @@ mod audio_adapter_drift_pins {
             peak: 0.95,
             fft_bands: [0.0; 8],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            // ADR-024 reactive bands: this adapter binds bpm/rms/peak/FFT
+            // only (the relative-band → chroma_* uniforms are a follow-up
+            // increment), so the bands ride at their neutral default here.
+            ..Default::default()
         };
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
         match &uniforms[0].value {
@@ -283,7 +286,7 @@ mod audio_adapter_drift_pins {
             // Distinct values per band so the ordering is observable.
             fft_bands: [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            ..Default::default()
         };
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
         match &uniforms[3].value {
@@ -314,7 +317,7 @@ mod audio_adapter_drift_pins {
             peak: 0.5,
             fft_bands: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            ..Default::default()
         };
         let a = uniform_input_from_audio_snapshot(&snapshot);
         let b = uniform_input_from_audio_snapshot(&snapshot);

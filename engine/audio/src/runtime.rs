@@ -110,6 +110,7 @@ use crate::cpal_source::{try_default_input, try_input_by_preference};
 use crate::frame::AudioFrame;
 use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
+use crate::reactive_bands::ReactiveBands;
 use crate::silent::SilentSource;
 use crate::uniforms::{AudioAnalysisWindow, AudioUniformSnapshot, extract_uniform_snapshot};
 
@@ -343,6 +344,13 @@ impl AudioRuntime {
                 // overflowing.
                 let mut current_window: Option<AudioFrame> = None;
                 let mut last_analysis: Option<Instant> = None;
+                // MilkDrop-class per-band AGC (ADR-024). Lazily built once the
+                // first frame's sample rate is known, and rebuilt if the rate
+                // changes (its Hz→bin band map is rate-dependent) — mirroring
+                // `AudioAnalysisWindow`'s reset-on-rate-change. Lives in the
+                // thread (not the struct) because it is only ever touched here.
+                let mut reactive_bands: Option<ReactiveBands> = None;
+                let mut reactive_rate_hz: Option<u32> = None;
                 loop {
                     match shutdown_rx.try_recv() {
                         Ok(()) | Err(TryRecvError::Disconnected) => break,
@@ -384,6 +392,31 @@ impl AudioRuntime {
                             if last_analysis.is_none_or(|t| t.elapsed() >= ANALYSIS_INTERVAL) {
                                 let analysis_snapshot = extract_uniform_snapshot(window);
                                 let smoothed_bpm = estimator.observe(window);
+
+                                // Quality layer (ADR-024): the per-band AGC turns
+                                // the raw spectrum into volume-independent relative
+                                // bands. (Re)build on a sample-rate change, then
+                                // advance by the REAL elapsed time since the last
+                                // analysis so the FPS-compensated smoothing tracks
+                                // the actual cadence rather than a fixed nominal.
+                                let sample_rate_hz = window.sample_rate_hz();
+                                if reactive_rate_hz != Some(sample_rate_hz) {
+                                    reactive_bands = Some(ReactiveBands::new(sample_rate_hz));
+                                    reactive_rate_hz = Some(sample_rate_hz);
+                                }
+                                let dt = last_analysis
+                                    .map(|t| t.elapsed().as_secs_f32())
+                                    .unwrap_or_else(|| ANALYSIS_INTERVAL.as_secs_f32());
+                                // `unwrap_or_default()` is unreachable (the block
+                                // above always leaves `reactive_bands` `Some`) but
+                                // keeps the path `.unwrap()`/`.expect()`-free per
+                                // the workspace clippy lints; the default is the
+                                // neutral centred baseline.
+                                let reactive = reactive_bands
+                                    .as_mut()
+                                    .map(|rb| rb.observe(window.samples(), dt))
+                                    .unwrap_or_default();
+
                                 let merged = AudioUniformSnapshot {
                                     bpm: smoothed_bpm,
                                     bpm_availability: analysis_snapshot.bpm_availability,
@@ -391,6 +424,12 @@ impl AudioRuntime {
                                     peak: analysis_snapshot.peak,
                                     fft_bands: analysis_snapshot.fft_bands,
                                     fft_availability: analysis_snapshot.fft_availability,
+                                    bass: reactive.bass,
+                                    mid: reactive.mid,
+                                    treb: reactive.treb,
+                                    bass_att: reactive.bass_att,
+                                    mid_att: reactive.mid_att,
+                                    treb_att: reactive.treb_att,
                                     degraded: false,
                                 };
                                 match shared_for_thread.lock() {
@@ -597,6 +636,19 @@ mod runtime_pins {
         for band in snapshot.fft_bands {
             assert_eq!(band, 0.0);
         }
+        // ADR-024 reactive bands: silence drives the AGC's silence guard
+        // (long average below SILENCE_FLOOR), so every relative band reads
+        // the centred 1.0 neutral — whether this is the pre-first-write
+        // default or a written silent-frame snapshot. Asserting exactly 1.0
+        // is the deterministic proof that `ReactiveBands::observe` is wired
+        // into the producer loop (a missing call would also read 1.0 via the
+        // struct default, but a BUGGY call dividing by ~0 would not).
+        assert_eq!(snapshot.bass, 1.0);
+        assert_eq!(snapshot.mid, 1.0);
+        assert_eq!(snapshot.treb, 1.0);
+        assert_eq!(snapshot.bass_att, 1.0);
+        assert_eq!(snapshot.mid_att, 1.0);
+        assert_eq!(snapshot.treb_att, 1.0);
         // BPM is the median over the 8-frame ring of per-frame
         // autocorrelation results on the 128-sample silent frame.
         // The slice-1 short-frame fallback returns BPM_DEFAULT
@@ -665,6 +717,72 @@ mod runtime_pins {
             snapshot.rms,
         );
         assert_eq!(snapshot.peak, 1.0);
+
+        handle.shutdown();
+    }
+
+    #[test]
+    fn runtime_reactive_bands_are_finite_on_loud_input() {
+        // ADR-024: feeding real (loud, broadband) audio through the runtime
+        // must drive the per-band AGC to finite, positive relative bands —
+        // proving `ReactiveBands` is constructed at the capture rate and
+        // `observe` runs over the rolling window without producing NaN/Inf or
+        // dividing by ~0. (The AGC's *correctness* — volume independence,
+        // band selectivity — is pinned by the `reactive_bands` unit tests and
+        // the mini-meter rubric; this test pins the runtime WIRING.)
+        let _serialize = observability::test_serialize_lock();
+
+        #[derive(Debug)]
+        struct LoudBroadband {
+            phase: u64,
+        }
+        impl IngestBoundary for LoudBroadband {
+            fn try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus {
+                const CHUNK: usize = 128;
+                let sr = DEFAULT_SAMPLE_RATE_HZ as f32;
+                let samples: Vec<f32> = (0..CHUNK)
+                    .map(|i| {
+                        let t = (self.phase + i as u64) as f32 / sr;
+                        // Bass + mid + treble so every band receives energy.
+                        let tau = std::f32::consts::TAU;
+                        0.3 * (tau * 120.0 * t).sin()
+                            + 0.3 * (tau * 1_000.0 * t).sin()
+                            + 0.3 * (tau * 8_000.0 * t).sin()
+                    })
+                    .collect();
+                self.phase += CHUNK as u64;
+                *out = AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, samples);
+                let status = IngestStatus::Ready;
+                observability::record_pull_outcome(&status, CHUNK);
+                status
+            }
+        }
+
+        let runtime =
+            AudioRuntime::from_primary(LoudBroadband { phase: 0 }, AudioRuntimeConfig::default());
+        let snapshot_handle = runtime.snapshot_handle();
+        let handle = runtime.spawn();
+
+        // Let the window fill and several analysis ticks run.
+        thread::sleep(SETTLE_DURATION);
+
+        let snapshot = match snapshot_handle.lock() {
+            Ok(g) => *g,
+            Err(p) => *p.into_inner(),
+        };
+        for (name, value) in [
+            ("bass", snapshot.bass),
+            ("mid", snapshot.mid),
+            ("treb", snapshot.treb),
+            ("bass_att", snapshot.bass_att),
+            ("mid_att", snapshot.mid_att),
+            ("treb_att", snapshot.treb_att),
+        ] {
+            assert!(
+                value.is_finite() && value > 0.0,
+                "reactive band {name} must be finite and positive, got {value}",
+            );
+        }
 
         handle.shutdown();
     }

@@ -304,6 +304,12 @@ describe('TopBar shell component', () => {
         peak: 0.7,
         fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
         fft_availability: 'Ready',
+        bass: 1,
+        mid: 1,
+        treb: 1,
+        bass_att: 1,
+        mid_att: 1,
+        treb_att: 1,
         degraded: false,
       };
       const { getByTestId } = render(TopBar);
@@ -408,6 +414,12 @@ describe('TopBar shell component', () => {
         peak: 0.5,
         fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
         fft_availability: 'Ready',
+        bass: 1,
+        mid: 1,
+        treb: 1,
+        bass_att: 1,
+        mid_att: 1,
+        treb_att: 1,
         degraded: true,
       };
       const { container } = render(TopBar);

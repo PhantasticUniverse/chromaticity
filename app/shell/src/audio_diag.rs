@@ -196,7 +196,9 @@ mod tests {
             peak: 0.0,
             fft_bands: [0.0; 8],
             fft_availability: AudioAxisAvailability::Warming,
-            degraded: false,
+            // Reactive bands (ADR-024) default to the neutral 1.0; this
+            // diagnostics helper exercises the dBFS math, not the bands.
+            ..Default::default()
         }
     }
 

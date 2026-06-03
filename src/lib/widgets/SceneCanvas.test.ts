@@ -294,6 +294,12 @@ describe('SceneCanvas widget', () => {
         peak: 0.5,
         fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
         fft_availability: 'Ready',
+        bass: 1,
+        mid: 1,
+        treb: 1,
+        bass_att: 1,
+        mid_att: 1,
+        treb_att: 1,
         degraded: false,
       };
       await tick();

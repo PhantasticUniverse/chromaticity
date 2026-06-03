@@ -107,6 +107,12 @@ describe('AudioUniforms view', () => {
       peak: 0.6,
       fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
       fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
     const { getByRole } = render(AudioUniforms);
@@ -126,6 +132,12 @@ describe('AudioUniforms view', () => {
       peak: 0.81,
       fft_bands: [0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88],
       fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
     // Capture the Blob handed to URL.createObjectURL so we can read its
@@ -422,6 +434,12 @@ describe('AudioUniforms view', () => {
     peak: 0.9,
     fft_bands: [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9],
     fft_availability: 'Ready',
+    bass: 1,
+    mid: 1,
+    treb: 1,
+    bass_att: 1,
+    mid_att: 1,
+    treb_att: 1,
     degraded: false,
   };
 
@@ -502,6 +520,12 @@ describe('AudioUniforms view', () => {
       peak: 0.8,
       fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
       fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
     audioSnapshotStore.snapshot = payload;
@@ -531,6 +555,12 @@ describe('AudioUniforms view', () => {
       peak: 0,
       fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
       fft_availability: 'Warming',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
     const { container } = render(AudioUniforms);

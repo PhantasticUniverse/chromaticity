@@ -95,6 +95,7 @@ use std::sync::Arc;
 use rustfft::{Fft, FftPlanner, num_complex::Complex32};
 
 use crate::frame::AudioFrame;
+use crate::reactive_bands::ReactiveBandValues;
 
 /// Number of FFT bands the slice-1 snapshot exposes.
 ///
@@ -263,6 +264,18 @@ impl AudioAnalysisWindow {
 /// - `fft_availability`: readiness flag for whether `fft_bands`
 ///   comes from a filled FFT window (`Ready`) or should be displayed
 ///   as warming (`Warming`).
+/// - `bass` / `mid` / `treb`: MilkDrop-class **relative** band
+///   reactivity per `docs/adr/ADR-024-audio-reactivity-analysis-model.md`
+///   — instantaneous band energy ÷ a slow long-term average, centred
+///   on `~1.0` and **volume-independent** (`< 0.7` quiet, `> 1.3`
+///   loud; unbounded above on a transient). These are the
+///   quality-layer companions to the raw `fft_bands` and are populated
+///   by the runtime's stateful [`crate::reactive_bands::ReactiveBands`].
+///   The pure [`extract_uniform_snapshot`] returns the neutral `1.0`
+///   baseline because it carries no cross-frame AGC state.
+/// - `bass_att` / `mid_att` / `treb_att`: attack/decay-smoothed
+///   (short-EMA ÷ long-average) variants of the three relative bands —
+///   a damped-in-time view of the same ratios.
 /// - `degraded`: cross-seam health flag set by downstream adapters
 ///   when the last-known snapshot had to be recovered from a degraded
 ///   path (for example a poisoned snapshot mutex).
@@ -292,21 +305,43 @@ pub struct AudioUniformSnapshot {
     /// Whether `fft_bands` is safe for UI display as real spectrum
     /// data.
     pub fft_availability: AudioAxisAvailability,
+    /// MilkDrop-class relative bass reactivity (instantaneous ÷
+    /// long-term average), centred on `~1.0` and volume-independent per
+    /// ADR-024. Runtime-populated from
+    /// [`crate::reactive_bands::ReactiveBands`]; the pure
+    /// [`extract_uniform_snapshot`] returns the neutral `1.0` baseline.
+    pub bass: f32,
+    /// MilkDrop-class relative mid reactivity. See [`AudioUniformSnapshot::bass`].
+    pub mid: f32,
+    /// MilkDrop-class relative treble reactivity. See [`AudioUniformSnapshot::bass`].
+    pub treb: f32,
+    /// Attack/decay-smoothed variant of [`AudioUniformSnapshot::bass`]
+    /// (short EMA ÷ long average) — a damped-in-time view of the ratio.
+    pub bass_att: f32,
+    /// Attack/decay-smoothed variant of [`AudioUniformSnapshot::mid`].
+    pub mid_att: f32,
+    /// Attack/decay-smoothed variant of [`AudioUniformSnapshot::treb`].
+    pub treb_att: f32,
     /// True once a cross-thread snapshot adapter recovers from a
     /// degraded path and returns last-known state.
     pub degraded: bool,
 }
 
 impl Default for AudioUniformSnapshot {
-    /// All-zero snapshot, matching the silent-fallback baseline.
+    /// Silent-fallback baseline: the raw-energy axes read zero, the
+    /// relative reactive bands read the centred `1.0` neutral.
     ///
-    /// `bpm = 0.0`, `rms = 0.0`, `peak = 0.0`, every band 0.0.
-    /// Consumers that read a default-constructed snapshot should
-    /// treat it as "no audio observed yet"; the production
-    /// extractor never returns this exact shape because BPM clamps
-    /// to [`BPM_DEFAULT`] (or an autocorrelation result) on every
-    /// real frame.
+    /// `bpm = 0.0`, `rms = 0.0`, `peak = 0.0`, every raw band 0.0; the
+    /// relative `bass`/`mid`/`treb` (and `*_att`) centre on `1.0` per
+    /// MilkDrop semantics (a scene multiplying by a relative band gets
+    /// neutral behaviour, not collapse, before audio arrives — see
+    /// [`ReactiveBandValues::default`]). Consumers that read a
+    /// default-constructed snapshot should treat it as "no audio
+    /// observed yet"; the production extractor never returns this exact
+    /// shape because BPM clamps to [`BPM_DEFAULT`] (or an
+    /// autocorrelation result) on every real frame.
     fn default() -> Self {
+        let reactive = ReactiveBandValues::default();
         Self {
             bpm: 0.0,
             bpm_availability: AudioAxisAvailability::Warming,
@@ -314,6 +349,12 @@ impl Default for AudioUniformSnapshot {
             peak: 0.0,
             fft_bands: [0.0; FFT_BAND_COUNT],
             fft_availability: AudioAxisAvailability::Warming,
+            bass: reactive.bass,
+            mid: reactive.mid,
+            treb: reactive.treb,
+            bass_att: reactive.bass_att,
+            mid_att: reactive.mid_att,
+            treb_att: reactive.treb_att,
             degraded: false,
         }
     }
@@ -363,6 +404,12 @@ pub fn extract_uniform_snapshot(frame: &AudioFrame) -> AudioUniformSnapshot {
             AudioAxisAvailability::Warming
         };
 
+    // The relative reactive bands need stateful cross-frame AGC
+    // (`ReactiveBands`), which the pure single-frame extractor does not
+    // own — it returns the neutral centred baseline. The runtime
+    // overrides these from its long-lived `ReactiveBands::observe`.
+    let reactive = ReactiveBandValues::default();
+
     AudioUniformSnapshot {
         bpm,
         bpm_availability,
@@ -370,6 +417,12 @@ pub fn extract_uniform_snapshot(frame: &AudioFrame) -> AudioUniformSnapshot {
         peak,
         fft_bands,
         fft_availability,
+        bass: reactive.bass,
+        mid: reactive.mid,
+        treb: reactive.treb,
+        bass_att: reactive.bass_att,
+        mid_att: reactive.mid_att,
+        treb_att: reactive.treb_att,
         degraded: false,
     }
 }
@@ -829,7 +882,13 @@ mod uniforms_drift_pins {
     }
 
     #[test]
-    fn snapshot_default_is_all_zero() {
+    fn snapshot_default_raw_axes_zero_reactive_bands_centered() {
+        // The silent-fallback baseline: raw-energy axes read zero, but
+        // the MilkDrop-class relative bands centre on 1.0 (neutral) per
+        // ADR-024 — a scene multiplying by a relative band gets neutral
+        // behaviour, not collapse, before audio arrives. This pin fires
+        // if the dual baseline ever drifts (e.g. someone "fixes" the
+        // reactive bands back to 0.0 to match the raw axes).
         let s = AudioUniformSnapshot::default();
         assert_eq!(s.bpm, 0.0);
         assert_eq!(s.bpm_availability, AudioAxisAvailability::Warming);
@@ -837,6 +896,13 @@ mod uniforms_drift_pins {
         assert_eq!(s.peak, 0.0);
         assert_eq!(s.fft_bands, [0.0; FFT_BAND_COUNT]);
         assert_eq!(s.fft_availability, AudioAxisAvailability::Warming);
+        // Relative reactive bands centre on the neutral 1.0.
+        assert_eq!(s.bass, 1.0);
+        assert_eq!(s.mid, 1.0);
+        assert_eq!(s.treb, 1.0);
+        assert_eq!(s.bass_att, 1.0);
+        assert_eq!(s.mid_att, 1.0);
+        assert_eq!(s.treb_att, 1.0);
         assert!(!s.degraded);
     }
 

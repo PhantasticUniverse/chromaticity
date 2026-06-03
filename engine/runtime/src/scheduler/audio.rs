@@ -252,7 +252,10 @@ mod scheduler_audio_pins {
             peak: 0.75,
             fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            // ADR-024 reactive bands default to neutral 1.0; the
+            // scheduler-tick pins exercise snapshot transport, not band
+            // values.
+            ..Default::default()
         }
     }
 

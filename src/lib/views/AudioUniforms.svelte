@@ -316,6 +316,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         _smFft[7] ?? 0,
       ],
       fft_availability: snap.fft_availability,
+      // ADR-024 relative reactive bands are already AGC-smoothed by the
+      // engine; pass them through this view-local level smoothing unchanged.
+      bass: snap.bass,
+      mid: snap.mid,
+      treb: snap.treb,
+      bass_att: snap.bass_att,
+      mid_att: snap.mid_att,
+      treb_att: snap.treb_att,
       degraded: snap.degraded,
     };
   });

@@ -323,6 +323,12 @@ describe('Settings view', () => {
       peak: 0.45,
       fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
       fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
     // Allow Svelte to flush the $effect that advances the ballistics.
