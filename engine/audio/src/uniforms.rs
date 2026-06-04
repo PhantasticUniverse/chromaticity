@@ -635,19 +635,33 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
         return BPM_DEFAULT;
     }
 
-    // Lag range corresponding to [BPM_CLAMP_MIN, BPM_CLAMP_MAX].
-    // lag_samples = sample_rate / (BPM / 60) = 60 * sr / BPM.
-    let max_lag = (60.0 * sample_rate_hz as f32 / BPM_CLAMP_MIN) as usize;
-    let min_lag = (60.0 * sample_rate_hz as f32 / BPM_CLAMP_MAX) as usize;
+    // CHROMATICITY PATCH (real-time perf): tempo is a LOW-frequency feature, so
+    // the O(N·lags) autocorrelation does not need full capture resolution. At
+    // 48 kHz the [50,220]-BPM lag span is ~13k..58k samples — ~1e9 multiply-adds
+    // per call, run twice per producer tick, which overran the analysis budget
+    // and froze the live snapshot (the meter/bands looked stuck). Decimating the
+    // window to ~[`BPM_AUTOCORR_TARGET_HZ`] before the lag search preserves the
+    // dominant period (→ BPM) while cutting cost by ~decim², keeping the producer
+    // real-time. BPM stays the "low-quality parity-only backup" per ADR-024 §3;
+    // the clamp range and silent/short-frame fallbacks are unchanged.
+    const BPM_AUTOCORR_TARGET_HZ: f32 = 2000.0;
+    let decim = ((sample_rate_hz as f32 / BPM_AUTOCORR_TARGET_HZ).round() as usize).max(1);
+    let ds_sample_rate = sample_rate_hz as f32 / decim as f32;
+    let ds: Vec<f32> = mono.iter().step_by(decim).copied().collect();
 
-    if mono.len() <= max_lag || min_lag == 0 || min_lag >= max_lag {
-        // Frame too short for the longest lag we'd like to
+    // Lag range corresponding to [BPM_CLAMP_MIN, BPM_CLAMP_MAX] at the decimated
+    // rate. lag_samples = ds_sr / (BPM / 60) = 60 * ds_sr / BPM.
+    let max_lag = (60.0 * ds_sample_rate / BPM_CLAMP_MIN) as usize;
+    let min_lag = (60.0 * ds_sample_rate / BPM_CLAMP_MAX) as usize;
+
+    if ds.len() <= max_lag || min_lag == 0 || min_lag >= max_lag {
+        // Window too short for the longest lag we'd like to
         // search; return the slice-1 fallback. Silent fallback
         // frames (128 samples) hit this branch.
         return BPM_DEFAULT;
     }
 
-    let energy: f32 = mono.iter().map(|s| s * s).sum();
+    let energy: f32 = ds.iter().map(|s| s * s).sum();
     if energy <= f32::EPSILON {
         return BPM_DEFAULT;
     }
@@ -655,15 +669,15 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
     let mut best_lag = 0_usize;
     let mut best_score = 0.0_f32;
     for lag in min_lag..=max_lag {
-        let n = mono.len() - lag;
+        let n = ds.len() - lag;
         if n == 0 {
             break;
         }
         let mut acc = 0.0_f32;
         for i in 0..n {
-            // Bounds-checked: `i < n = mono.len() - lag` and
-            // `i + lag < mono.len()`.
-            acc += mono[i] * mono[i + lag];
+            // Bounds-checked: `i < n = ds.len() - lag` and
+            // `i + lag < ds.len()`.
+            acc += ds[i] * ds[i + lag];
         }
         // Normalise by overlap length so longer lags don't get
         // an artificially smaller score from the shorter overlap
@@ -679,7 +693,7 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
         return BPM_DEFAULT;
     }
 
-    let bpm = 60.0 * sample_rate_hz as f32 / best_lag as f32;
+    let bpm = 60.0 * ds_sample_rate / best_lag as f32;
     bpm.clamp(BPM_CLAMP_MIN, BPM_CLAMP_MAX)
 }
 
