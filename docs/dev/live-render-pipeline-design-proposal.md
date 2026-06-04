@@ -66,14 +66,22 @@ prerequisite (Slice R-0), not a display concern.
   Vec<(String, f32)>` → injected into `PassDef::uniforms` (resolves the
   `_uniform_count` discard at `scene_adapter.rs:~160`). T1 tests. **Unblocks
   everything; architecture-agnostic (every proposal needs all three).**
-- **R-1 — shell wiring + output window (`app/shell` + a policy PR).** New
-  `app/shell/src/render/` module (`dispatch`, `thread`, `signal`, `spec_builder`,
-  `surface`, `blit`, `output_window`). One `unsafe` block (`create_surface_unsafe`
-  in `surface.rs`). Wire `LiveRenderDispatch` into the scheduler (`lib.rs:241-243`),
-  add `render_thread` + `scene_update_tx` to `AppState` (drop order: render thread
+- **R-1 — shell wiring + output window (`app/shell`; NO policy PR — see Amendment
+  A, retired).** New `app/shell/src/render/` module (`dispatch`, `thread`,
+  `signal`, `spec_builder`, `surface`, `blit`, `output_window`). The wgpu surface
+  is created with the **safe** `Instance::create_surface(Arc<WebviewWindow>)` —
+  **no `unsafe`**. macOS main-thread constraint (load-bearing): the output window
+  AND the surface AND adapter/device are created on the MAIN thread in Tauri
+  `setup` (off-main-thread `create_surface`/window is a *panic*, not an error),
+  then the `Send` `Surface<'static>` + renderer are moved into the dedicated render
+  thread. Wire `LiveRenderDispatch` into the scheduler (`lib.rs:241-243`), add
+  `render_thread` + `scene_update_tx` to `AppState` (drop order: render thread
   before scheduler). Bounded(1) channel = natural 60 Hz pacing; overflow →
-  `Skipped`, no scheduler backpressure. Smoke test: load a `.chroma`, activate the
-  output window, see live GPU GLSL reacting to controls + audio.
+  `Skipped`, no scheduler backpressure. Built incrementally: **R-1a** output window
+  + surface + a test-pattern present (the riskiest seam, in isolation); **R-1b**
+  scene loading + `spec_builder`; **R-1c** scheduler-driven live controls/audio.
+  Smoke test: launch with the output window enabled, see live GPU GLSL reacting to
+  controls + audio.
 - **R-2 — in-app preview (`ui` only).** `SceneCanvas.svelte` listens for a
   `render_preview_frame` event → `<img>` JPEG; canvas-2d stays as fallback.
 - **R-3 — ADR-024 reactive bands.** Extend `audio_adapter.rs` with
@@ -86,11 +94,15 @@ prerequisite (Slice R-0), not a display concern.
 
 ## Decisions needing AO sign-off (§3 ADR amendments)
 
-- **A — `unsafe` surface creation.** `wgpu::create_surface_unsafe` has no safe
-  alternative. Proposal: per-module `#![allow(unsafe_code)]` on `render/surface.rs`
-  only (with a docs/43 §12.6 SAFETY comment), not a workspace-level relaxation of
-  `unsafe_code = "forbid"`. AO decides: per-module allow sufficient? policy-scoped
-  ADR amendment required?
+- **A — `unsafe` surface creation. RETIRED — no longer needed; nothing to ratify.**
+  Confirmed against the pinned sources (tauri 2.10.3, wgpu 26.0.1, a single shared
+  `raw-window-handle 0.6.2`): wgpu's **safe** `Instance::create_surface` accepts
+  `Arc<WebviewWindow>` (tauri implements the rwh-0.6 traits directly; the `unsafe`
+  lives inside tauri, not our tree), yielding `Surface<'static>` with **zero
+  `unsafe`**. `unsafe_code = "forbid"` is preserved and no policy PR is needed.
+  Guard: this rests on the single-`raw-window-handle` invariant — a `cargo deny`
+  duplicate ban on `raw-window-handle` should pin it (a future split into two
+  semver-incompatible rwh versions would break the safe path and force `unsafe`).
 - **B — second native window as the canonical VJ-output path.** ADR-018 §Scene
   canvas embedding says "composited under a transparent section of the web view,"
   but also "the operator fullscreen path exits the web view entirely and places
@@ -135,7 +147,13 @@ prerequisite (Slice R-0), not a display concern.
 - **R4** `PassDef::uniforms` is positional std140 → `spec_builder.rs` must order
   deterministically (controls in scene order, then audio in adapter order);
   deterministic by construction each frame.
-- **R5** the `unsafe_code` policy PR is a serial dependency on R-1's critical path.
+- **R5** ~~`unsafe_code` policy PR~~ — RETIRED (safe surface; Amendment A). New
+  guard: keep `raw-window-handle` to a single version (a `cargo deny` duplicate
+  ban) so the safe `create_surface(Arc<WebviewWindow>)` path holds.
+- **R6** macOS main-thread affinity → window + `create_surface` + adapter/device
+  must be created on the main thread (off-main is a *panic*); the `Send`
+  `Surface<'static>` is then moved to the render thread. Build/verify on macOS;
+  Windows has no such constraint.
 
 ## Deferred
 
