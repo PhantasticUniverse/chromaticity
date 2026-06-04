@@ -24,10 +24,14 @@
 //!   not yet route fragment shaders by node ID; the
 //!   `node`-keyed lookup is a future-slice concern.
 //! - `Scene::passes[i].uniform_bindings` (`UNIFORMS` wire key) —
-//!   reserved for the audio-uniform binding slice. Slice 4 emits
-//!   an empty [`crate::PassDef::uniforms`] list and stashes the
-//!   binding count in [`AdapterError`] diagnostics if the caller
-//!   passes a scene with unsupported bindings.
+//!   ADR-011 Phase-2 R-0 bridges these via
+//!   [`SceneAdapterOptions::control_values`]: every declared binding
+//!   whose NAME appears in the caller's control-value map yields a
+//!   scalar [`crate::PassDef::uniforms`] entry (declaration order).
+//!   With an empty `control_values` the adapter emits the prior
+//!   empty-uniforms list, preserving slice-2 corpus continuity. The
+//!   audio-uniform binding slice still owns the symbol-routed audio
+//!   uniforms; R-0 only marshals operator/runtime control scalars.
 //! - `Scene::passes[i].extensions["FLOAT"]` — when present and
 //!   parseable as `true` / `"RGBA32F"` / `"RGBA16F"`, sets
 //!   [`crate::PassDef::target_format`] to the corresponding
@@ -77,7 +81,7 @@
 use chromaticity_scene::schema::{PassSpec, Scene};
 use thiserror::Error;
 
-use crate::multipass::{MultipassSpec, PassDef, TargetFormat};
+use crate::multipass::{MultipassSpec, PassDef, TargetFormat, UniformInput, UniformValue};
 
 /// Errors returned by the scene → multipass adapter.
 ///
@@ -164,6 +168,22 @@ pub struct SceneAdapterOptions {
     /// observed sizes, mirroring the reference-app-style semantic
     /// that all passes render at one canvas size.
     pub strict_size: bool,
+    /// Live control values keyed by uniform NAME, injected into every
+    /// pass whose `UNIFORMS` block declares a binding of that name.
+    ///
+    /// ADR-011 Phase-2 R-0 prerequisite: prior slices emitted an
+    /// empty [`crate::PassDef::uniforms`] list (the audio-uniform
+    /// binding slice owned `UNIFORMS`). R-0 resolves the previously
+    /// discarded `_uniform_count` by marshalling the caller's runtime
+    /// control values onto each matching pass uniform binding: for
+    /// every [`chromaticity_scene::schema::UniformBinding`] in a pass
+    /// whose `name` appears here, the adapter pushes a
+    /// [`UniformInput`] carrying [`UniformValue::Scalar`].
+    ///
+    /// Empty (the default) is a no-op — existing callers that relied
+    /// on the empty-uniforms shape are unaffected, preserving the
+    /// slice-2 corpus continuity.
+    pub control_values: Vec<(String, f32)>,
 }
 
 impl Default for SceneAdapterOptions {
@@ -173,6 +193,7 @@ impl Default for SceneAdapterOptions {
             default_target_size: (16, 16),
             frame_count: 1,
             strict_size: false,
+            control_values: Vec::new(),
         }
     }
 }
@@ -253,12 +274,27 @@ impl MultipassSpec {
                 }
             }
 
-            // Slice-4 does not bridge UNIFORMS yet (audio binding
-            // slice owns that). Empty list keeps the structural
-            // shape; the marshalling pipeline will fire on
-            // unmatched shader uniforms downstream if the GLSL
-            // expects them.
-            let _uniform_count = pass_spec.uniform_bindings.len();
+            // ADR-011 Phase-2 R-0: bridge the pass `UNIFORMS` block by
+            // injecting the caller's live control values. For each
+            // declared binding whose NAME appears in
+            // `options.control_values`, push a scalar `UniformInput`
+            // in binding-declaration order. With an empty
+            // `control_values` (the default) this resolves to the
+            // prior empty-uniforms shape, so existing callers and the
+            // slice-2 corpus are unaffected.
+            let mut uniforms: Vec<UniformInput> = Vec::new();
+            for binding in &pass_spec.uniform_bindings {
+                if let Some((_, value)) = options
+                    .control_values
+                    .iter()
+                    .find(|(name, _)| name == &binding.name)
+                {
+                    uniforms.push(UniformInput {
+                        name: binding.name.clone(),
+                        value: UniformValue::Scalar(*value),
+                    });
+                }
+            }
 
             let label = if pass_spec.node.0.is_empty() {
                 Some(format!("scene-adapter/pass-{pass_index}"))
@@ -272,7 +308,7 @@ impl MultipassSpec {
             passes.push(PassDef {
                 label,
                 fragment_glsl,
-                uniforms: Vec::new(),
+                uniforms,
                 input_textures: Vec::new(),
                 target_format,
                 feedback_self,
@@ -433,10 +469,10 @@ mod adapter_drift_pins {
     //!   [`AdapterError::UnsupportedExtensionKey`].
 
     use super::{AdapterError, SceneAdapterOptions};
-    use chromaticity_scene::schema::{NodeRef, PassSpec, Scene};
+    use chromaticity_scene::schema::{NodeRef, PassSpec, Scene, UniformBinding};
     use serde_json::json;
 
-    use crate::multipass::{MultipassSpec, TargetFormat};
+    use crate::multipass::{MultipassSpec, TargetFormat, UniformValue};
 
     fn pass_with_extensions(node: &str, extensions: serde_json::Value) -> PassSpec {
         let extensions_map = match extensions {
@@ -447,6 +483,26 @@ mod adapter_drift_pins {
             node: NodeRef(node.to_string()),
             uniform_bindings: Vec::new(),
             extensions: extensions_map,
+        }
+    }
+
+    /// Build a pass declaring `UNIFORMS` bindings by name (the
+    /// `symbol` is irrelevant to the R-0 control-value bridge, which
+    /// matches on `name`).
+    fn pass_with_uniform_bindings(node: &str, names: &[&str]) -> PassSpec {
+        PassSpec {
+            node: NodeRef(node.to_string()),
+            uniform_bindings: names
+                .iter()
+                .map(|n| UniformBinding {
+                    // Native `chroma_*` namespace: `syn_*` is the Synesthesia
+                    // compat surface and must not be invented for new fixtures
+                    // (clean-room). The R-0 bridge keys on `name`, not `symbol`.
+                    name: (*n).to_string(),
+                    symbol: format!("chroma_{}", n.to_uppercase()),
+                })
+                .collect(),
+            extensions: serde_json::Map::new(),
         }
     }
 
@@ -576,6 +632,7 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
             default_target_size: (16, 16),
             frame_count: 1,
             strict_size: true,
+            control_values: Vec::new(),
         };
         let err = MultipassSpec::from_scene_with_options(&scene, &options)
             .expect_err("strict mode must reject mixed sizes");
@@ -604,6 +661,7 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
             default_target_size: (16, 16),
             frame_count: 1,
             strict_size: false,
+            control_values: Vec::new(),
         };
         let spec = MultipassSpec::from_scene_with_options(&scene, &options)
             .expect("non-strict mode must accept");
@@ -619,9 +677,77 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
             default_target_size: (16, 16),
             frame_count: 7,
             strict_size: false,
+            control_values: Vec::new(),
         };
         let spec = MultipassSpec::from_scene_with_options(&scene, &options)
             .expect("frame_count must thread through");
         assert_eq!(spec.frame_count, 7);
+    }
+
+    #[test]
+    fn control_values_inject_matching_uniforms() {
+        // R-0 drift pin: a control value whose key matches a declared
+        // `UNIFORMS` binding name lands as a scalar `UniformInput` on
+        // that pass, in binding-declaration order. The non-matching
+        // control value (`u_unused`) is silently dropped.
+        let mut scene = Scene::default();
+        scene
+            .passes
+            .push(pass_with_uniform_bindings("node", &["u_decay", "u_warp"]));
+        let options = SceneAdapterOptions {
+            fragment_sources: vec![Some(TRIVIAL_FRAGMENT.to_string())],
+            control_values: vec![
+                ("u_warp".to_string(), 0.75_f32),
+                ("u_decay".to_string(), 0.5_f32),
+                ("u_unused".to_string(), 9.0_f32),
+            ],
+            ..SceneAdapterOptions::default()
+        };
+        let spec = MultipassSpec::from_scene_with_options(&scene, &options)
+            .expect("control-value injection must adapt");
+        assert_eq!(spec.passes.len(), 1);
+        let uniforms = &spec.passes[0].uniforms;
+        // Two of the three control values match a declared binding;
+        // emitted in binding-declaration order (`u_decay` then
+        // `u_warp`), NOT control-value order.
+        assert_eq!(uniforms.len(), 2, "only matching bindings inject");
+        assert_eq!(uniforms[0].name, "u_decay");
+        assert!(
+            matches!(uniforms[0].value, UniformValue::Scalar(v) if (v - 0.5).abs() < f32::EPSILON),
+            "got {:?}",
+            uniforms[0].value,
+        );
+        assert_eq!(uniforms[1].name, "u_warp");
+        assert!(
+            matches!(uniforms[1].value, UniformValue::Scalar(v) if (v - 0.75).abs() < f32::EPSILON),
+            "got {:?}",
+            uniforms[1].value,
+        );
+    }
+
+    #[test]
+    fn empty_control_values_yield_no_uniforms() {
+        // R-0 drift pin: with `control_values` empty (the default),
+        // the adapter emits the prior empty-uniforms shape even when
+        // the pass DECLARES `UNIFORMS` bindings — preserving slice-2
+        // corpus continuity and the existing-caller contract.
+        let mut scene = Scene::default();
+        scene
+            .passes
+            .push(pass_with_uniform_bindings("node", &["u_decay", "u_warp"]));
+        let options = SceneAdapterOptions {
+            fragment_sources: vec![Some(TRIVIAL_FRAGMENT.to_string())],
+            ..SceneAdapterOptions::default()
+        };
+        assert!(
+            options.control_values.is_empty(),
+            "default control_values must be empty",
+        );
+        let spec = MultipassSpec::from_scene_with_options(&scene, &options)
+            .expect("empty control values must adapt");
+        assert!(
+            spec.passes[0].uniforms.is_empty(),
+            "empty control_values must be a no-op (no injected uniforms)",
+        );
     }
 }

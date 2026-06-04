@@ -454,6 +454,59 @@ pub struct MultipassRenderer {
     /// constant so the compiled module is always equivalent — no
     /// invalidation needed.
     vertex_shader: wgpu::ShaderModule,
+    /// Persistent feedback ping-pong texture cache for
+    /// [`MultipassRenderer::render_frame_live`]. `None` until the
+    /// first live frame allocates it; reallocated only when the
+    /// `spec_key` changes (scene id + target size FNV-1a). The
+    /// offscreen `render` / `render_to_texture` paths do NOT touch
+    /// this cache — they keep their per-call resource build so the
+    /// `EV-RENDER-CONFORMANCE` byte-hash corpus is unperturbed.
+    ///
+    /// ADR-011 Phase-2 R-0: this is the critical correctness fix that
+    /// lets `syn_FinalPass`-style feedback survive between scheduler
+    /// ticks. The per-call paths reallocate (and black-clear) feedback
+    /// textures every call, so feedback there only ever sees the
+    /// cold-start black; the live path persists them across calls.
+    feedback_cache: Option<FeedbackCache>,
+}
+
+/// Persistent per-pass feedback ping-pong textures cached across
+/// [`MultipassRenderer::render_frame_live`] calls and reused until the
+/// `spec_key` changes.
+///
+/// Unlike the per-call offscreen path (which rebuilds every resource
+/// each call and black-clears feedback targets), the live path keeps
+/// these textures alive between calls so a feedback pass reads the
+/// texture it WROTE on the previous call rather than a fresh black
+/// clear. The pipelines, bind-group layouts, uniform buffers, and
+/// non-feedback intermediate targets are still rebuilt per call (the
+/// per-frame uniforms change every tick), matching the per-call
+/// path's posture — only the feedback textures need to persist.
+struct FeedbackCache {
+    /// FNV-1a of scene id + target size. Reallocation key: a change
+    /// means a new scene or resize, so the persistent textures are
+    /// stale and must be rebuilt (and re-cold-started).
+    spec_key: u64,
+    /// Target size the cached textures were allocated against. A
+    /// divergent size under the same `spec_key` forces reallocation
+    /// defensively (the key SHOULD already fold size in, but a hash
+    /// collision must not alias differently-sized textures).
+    target_size: (u32, u32),
+    /// Per-pass color formats the cached textures were allocated for.
+    /// A format change forces reallocation (same defensive rationale
+    /// as `target_size`).
+    formats: Vec<TargetFormat>,
+    /// Per-feedback-pass ping-pong texture pair, keyed by pass index.
+    /// Passes without `feedback_self` have no entry. Each pair is two
+    /// textures the pass alternates between on `frame_index % 2`.
+    slots: std::collections::BTreeMap<usize, FeedbackPingPong>,
+}
+
+/// One feedback pass's persistent ping-pong texture pair plus their
+/// cached views.
+struct FeedbackPingPong {
+    textures: [wgpu::Texture; 2],
+    views: [wgpu::TextureView; 2],
 }
 
 impl MultipassRenderer {
@@ -475,6 +528,61 @@ impl MultipassRenderer {
     ///   in-source-only failure if a future workspace upgrade breaks
     ///   the shader. Not reachable on the current source.
     pub fn new() -> Result<Self, RenderError> {
+        // The offscreen ctor selects an adapter with no surface
+        // compatibility hint (the corpus renders headless). The
+        // surface-hinted variant ([`Self::new_with_surface_hint`])
+        // shares the same device-init path with `compatible_surface`
+        // set.
+        Self::new_inner(None)
+    }
+
+    /// Build a renderer whose adapter request is biased toward an
+    /// adapter compatible with the supplied presentation surface.
+    ///
+    /// ADR-011 Phase-2 R-0 prerequisite for the on-screen swapchain
+    /// path: when the renderer will present to a window surface, the
+    /// adapter MUST be one the surface can be configured against. This
+    /// ctor differs from [`Self::new`] in two ways: it passes
+    /// `compatible_surface: Some(surface)`, AND it requests the adapter
+    /// via `instance.request_adapter` (`PowerPreference::HighPerformance`)
+    /// rather than the ADR-011 deterministic `select_adapter` policy
+    /// (type-rank + per-OS backend preference + name tie-break) — surface
+    /// presentation requires a surface-compatible adapter, and folding the
+    /// ADR-011 selection policy onto the surface path is deferred to R-1.
+    /// The device descriptor, the cached vertex shader, and every
+    /// downstream resource build are otherwise identical to the offscreen
+    /// path. [`Self::new`] stays unchanged for the offscreen
+    /// `EV-RENDER-CONFORMANCE` corpus (which never has a surface).
+    ///
+    /// # Errors
+    ///
+    /// Same variants as [`Self::new`]:
+    /// [`RenderError::AdapterUnavailable`] when no adapter is
+    /// compatible with the surface, and [`RenderError::DeviceRequest`]
+    /// when the chosen adapter rejects the device descriptor.
+    ///
+    /// # Testing note
+    ///
+    /// A meaningful end-to-end test of this ctor requires a real
+    /// `wgpu::Surface`, which in turn requires a windowing handle
+    /// unavailable on the headless render-crate test runner. The R-0
+    /// drift pins therefore pin what IS testable without a surface
+    /// (the ctor compiles, `new()` still constructs an offscreen
+    /// renderer with an empty feedback cache, and both share the
+    /// device-init path via `new_inner`); full surface-presentation
+    /// coverage lands in R-1 with the swapchain wiring.
+    pub fn new_with_surface_hint(surface: &wgpu::Surface<'_>) -> Result<Self, RenderError> {
+        Self::new_inner(Some(surface))
+    }
+
+    /// Shared device-init path for [`Self::new`] and
+    /// [`Self::new_with_surface_hint`]. When `surface` is `Some`, the
+    /// adapter request carries `compatible_surface`; when `None`, the
+    /// deterministic [`crate::adapter_selection`] policy selects the
+    /// adapter exactly as the prior offscreen path did. Everything
+    /// after adapter acquisition (device descriptor, cached vertex
+    /// shader) is identical across both entry points.
+    fn new_inner(surface: Option<&wgpu::Surface<'_>>) -> Result<Self, RenderError> {
         // Adapter + device acquisition. See `single_pass.rs` lines
         // 193-205 for the in-source explanation of why each leaf
         // future is wrapped with `pollster::block_on` rather than the
@@ -486,22 +594,38 @@ impl MultipassRenderer {
             backend_options: wgpu::BackendOptions::default(),
         });
 
-        // Adapter acquisition routes through the deterministic
-        // [`crate::adapter_selection`] policy per ADR-011 §7.
-        // Wave 4d.2 Lane B PR 1 wires the default (high-performance,
-        // no operator override, no battery flag) policy here; a
-        // future widening that exposes a `MultipassRenderer::with_policy`
-        // builder method threading the caller's persisted override is
-        // post-PR-2 scope. The byte-identity contract on existing T2
-        // corpora is preserved by routing through the same
-        // `Backends::PRIMARY` filter the prior `request_adapter` call
-        // used and by the fact that single-adapter hosts (the only
-        // class the existing T2 corpora exercise) yield the same
-        // selection under either path.
-        let policy = crate::adapter_selection::GpuSelectionPolicy::new();
-        let (_chosen_summary, adapter) =
-            crate::adapter_selection::select_adapter(&instance, wgpu::Backends::PRIMARY, &policy)
+        let adapter = match surface {
+            // Surface-hinted path: route through `request_adapter`
+            // with `compatible_surface` set so the chosen adapter is
+            // guaranteed configurable against the presentation
+            // surface. This is the ONLY behavioral delta from the
+            // offscreen path.
+            Some(surface) => {
+                pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    force_fallback_adapter: false,
+                    compatible_surface: Some(surface),
+                }))
+                .map_err(|_| RenderError::AdapterUnavailable)?
+            }
+            // Offscreen path: the deterministic [`crate::adapter_selection`]
+            // policy per ADR-011 §7. Wave 4d.2 Lane B PR 1 wires the
+            // default (high-performance, no operator override, no
+            // battery flag) policy here. The byte-identity contract
+            // on existing T2 corpora is preserved by routing through
+            // the same `Backends::PRIMARY` filter and by single-adapter
+            // hosts yielding the same selection under either path.
+            None => {
+                let policy = crate::adapter_selection::GpuSelectionPolicy::new();
+                let (_chosen_summary, adapter) = crate::adapter_selection::select_adapter(
+                    &instance,
+                    wgpu::Backends::PRIMARY,
+                    &policy,
+                )
                 .ok_or(RenderError::AdapterUnavailable)?;
+                adapter
+            }
+        };
 
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("chromaticity-render multipass device"),
@@ -532,6 +656,7 @@ impl MultipassRenderer {
             device,
             queue,
             vertex_shader,
+            feedback_cache: None,
         })
     }
 
@@ -613,6 +738,213 @@ impl MultipassRenderer {
             &self.vertex_shader,
             spec,
         )
+    }
+
+    /// Render a SINGLE live frame of `spec`, reusing feedback
+    /// ping-pong textures cached across calls so feedback survives
+    /// between scheduler ticks. Returns the final pass's output
+    /// texture WITHOUT a CPU readback.
+    ///
+    /// ADR-011 Phase-2 R-0 — the critical correctness fix. The
+    /// per-call [`Self::render`] / [`Self::render_to_texture`] paths
+    /// reallocate (and black-clear) every feedback target on each
+    /// call, so a feedback pass there only ever reads the cold-start
+    /// black. The live path instead persists the feedback textures in
+    /// [`FeedbackCache`] keyed by `spec_key`, so a feedback pass on
+    /// call N reads the texture it WROTE on call N-1 — the
+    /// `syn_FinalPass` trail / decay / recursive-convolution semantic
+    /// that REQUIRES inter-tick persistence.
+    ///
+    /// # Arguments
+    ///
+    /// - `spec` — the multipass spec for this scene. Validated each
+    ///   call (structural rejection takes priority over GPU errors,
+    ///   matching the per-call path).
+    /// - `frame_index` — the live tick counter. Feedback passes
+    ///   ping-pong on `frame_index % 2`: the pass WRITES slot
+    ///   `frame_index % 2` and READS slot `(frame_index + 1) % 2`
+    ///   (the slot it wrote on the previous tick). `frame_index = 0`
+    ///   reads the black-cleared slot (cold start).
+    /// - `spec_key` — a caller-computed FNV-1a of the scene id + target
+    ///   size (see [`live_feedback_spec_key`] for the canonical hash).
+    ///   The feedback textures are REALLOCATED (and re-cold-started)
+    ///   only when this key changes; an unchanged key reuses the
+    ///   persisted textures.
+    ///
+    /// # Resource policy
+    ///
+    /// Only the feedback ping-pong textures persist across calls.
+    /// Per-pass pipelines, bind-group layouts, uniform buffers, and
+    /// non-feedback intermediate / final targets are rebuilt each call
+    /// (per-frame uniforms change every tick), mirroring the per-call
+    /// path's posture. This keeps the live path's resource lifetime
+    /// reasoning local to the feedback textures.
+    ///
+    /// # Errors
+    ///
+    /// Same structural / compile / float-target variants as
+    /// [`Self::render_to_texture`].
+    pub fn render_frame_live(
+        &mut self,
+        spec: &MultipassSpec,
+        frame_index: u64,
+        spec_key: u64,
+    ) -> Result<wgpu::Texture, RenderError> {
+        validate_spec_shape(spec)?;
+
+        // Float-target capability check (same ordering rationale as
+        // the per-call path: surfaces `FloatTargetUnsupported` before
+        // any allocation).
+        for (pass_index, pass) in spec.passes.iter().enumerate() {
+            if matches!(
+                pass.target_format,
+                TargetFormat::Rgba16Float | TargetFormat::Rgba32Float
+            ) {
+                let format = pass.target_format.to_wgpu();
+                let features = self.adapter.get_texture_format_features(format);
+                if !features
+                    .allowed_usages
+                    .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+                {
+                    return Err(RenderError::FloatTargetUnsupported {
+                        format: pass.target_format.label().to_string(),
+                        reason: format!(
+                            "adapter does not advertise RENDER_ATTACHMENT for {format:?} \
+                             (pass {pass_index})"
+                        ),
+                    });
+                }
+            }
+        }
+
+        let formats: Vec<TargetFormat> = spec.passes.iter().map(|p| p.target_format).collect();
+
+        // Reallocate the persistent feedback textures iff the cache is
+        // empty or its key / size / formats diverge. An unchanged key
+        // reuses the existing textures so feedback content carries
+        // across ticks.
+        let needs_realloc = match self.feedback_cache.as_ref() {
+            None => true,
+            Some(cache) => {
+                cache.spec_key != spec_key
+                    || cache.target_size != spec.target_size
+                    || cache.formats != formats
+            }
+        };
+        if needs_realloc {
+            let mut slots = std::collections::BTreeMap::new();
+            for (pass_index, pass) in spec.passes.iter().enumerate() {
+                if !pass.feedback_self {
+                    continue;
+                }
+                let is_final = pass_index + 1 == spec.passes.len();
+                slots.insert(
+                    pass_index,
+                    allocate_feedback_ping_pong(
+                        &self.device,
+                        spec.target_size,
+                        pass.target_format,
+                        pass_index,
+                        is_final,
+                    ),
+                );
+            }
+            self.feedback_cache = Some(FeedbackCache {
+                spec_key,
+                target_size: spec.target_size,
+                formats,
+                slots,
+            });
+        }
+
+        render_live_frame_with(
+            &self.device,
+            &self.queue,
+            &self.vertex_shader,
+            spec,
+            frame_index,
+            // The cache was just ensured present above.
+            self.feedback_cache
+                .as_ref()
+                .ok_or(RenderError::EmptyPassList)?,
+        )
+    }
+}
+
+/// Canonical FNV-1a 64-bit of a scene id + target size, the
+/// reallocation key for [`MultipassRenderer::render_frame_live`]'s
+/// persistent feedback texture cache.
+///
+/// Callers pass the scene's stable identifier (e.g. the loaded
+/// scene's node id / show-bundle key) plus the live target size. A
+/// change in either means the persisted feedback textures are stale
+/// (different scene / resized canvas) and must be rebuilt
+/// (re-cold-started). Provided so every caller hashes the same way;
+/// `render_frame_live` takes the resulting `u64` directly so callers
+/// MAY substitute their own key derivation if needed.
+pub fn live_feedback_spec_key(scene_id: &str, target_size: (u32, u32)) -> u64 {
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = FNV_OFFSET;
+    let mut fold = |byte: u8| {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    };
+    for byte in scene_id.as_bytes() {
+        fold(*byte);
+    }
+    for byte in target_size.0.to_le_bytes() {
+        fold(byte);
+    }
+    for byte in target_size.1.to_le_bytes() {
+        fold(byte);
+    }
+    hash
+}
+
+/// Allocate one feedback pass's persistent ping-pong texture pair.
+/// Both textures carry `RENDER_ATTACHMENT | TEXTURE_BINDING` (the
+/// pass writes one and samples the other); the final pass also gets
+/// `COPY_SRC` so the returned texture can be read back / copied by
+/// the caller. New wgpu textures are zero-initialized, so the first
+/// read sees black (the documented cold-start state).
+fn allocate_feedback_ping_pong(
+    device: &wgpu::Device,
+    target_size: (u32, u32),
+    target_format: TargetFormat,
+    pass_index: usize,
+    is_final: bool,
+) -> FeedbackPingPong {
+    let mut usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    if is_final {
+        usage |= wgpu::TextureUsages::COPY_SRC;
+    }
+    let format = target_format.to_wgpu();
+    let make = |slot: usize| {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!(
+                "chromaticity-render live feedback target (pass {pass_index}, ping-pong slot {slot})"
+            )),
+            size: wgpu::Extent3d {
+                width: target_size.0,
+                height: target_size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        (texture, view)
+    };
+    let (t0, v0) = make(0);
+    let (t1, v1) = make(1);
+    FeedbackPingPong {
+        textures: [t0, t1],
+        views: [v0, v1],
     }
 }
 
@@ -1170,6 +1502,355 @@ fn render_multipass_to_texture_with(
     Ok(final_target)
 }
 
+/// Render a SINGLE live frame, sourcing feedback ping-pong textures
+/// from the persistent `cache` (so feedback survives across ticks)
+/// and allocating per-call targets for non-feedback passes. Returns
+/// the final pass's output texture WITHOUT readback.
+///
+/// The per-pass pipelines / layouts / uniform buffers are rebuilt
+/// each call (matching the per-call path's posture); only the
+/// feedback textures persist (they live in `cache`). For a feedback
+/// FINAL pass the returned texture is a clone of the cached write
+/// slot — a `wgpu::Texture` is an Arc-backed handle, so the clone and
+/// the cache share one GPU resource, which is exactly the persistence
+/// the next tick relies on.
+fn render_live_frame_with(
+    device: &Arc<wgpu::Device>,
+    queue: &wgpu::Queue,
+    vertex_shader: &wgpu::ShaderModule,
+    spec: &MultipassSpec,
+    frame_index: u64,
+    cache: &FeedbackCache,
+) -> Result<wgpu::Texture, RenderError> {
+    let num_passes = spec.passes.len();
+    let final_index = num_passes - 1;
+    let frame_parity = (frame_index % 2) as usize;
+
+    let shared_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("chromaticity-render live shared sampler (nearest/clamp)"),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        lod_min_clamp: 0.0,
+        lod_max_clamp: 0.0,
+        compare: None,
+        anisotropy_clamp: 1,
+        border_color: None,
+    });
+
+    // Per-pass write/read views resolved up-front:
+    // - Non-feedback pass: one per-call target (allocated here).
+    // - Feedback pass: write slot `frame_parity`, read slot
+    //   `1 - frame_parity` (the texture it wrote last tick), both
+    //   sourced from the persistent cache.
+    // `per_call_textures` retains ownership of the non-feedback
+    // targets for the duration of the frame.
+    struct LiveSlot {
+        /// View the pass renders INTO this frame.
+        write_view: wgpu::TextureView,
+        /// View the pass samples for its self-feedback binding, if any.
+        feedback_read_view: Option<wgpu::TextureView>,
+        /// `Some` for non-feedback passes (per-call target retained
+        /// here); `None` for feedback passes (texture lives in cache).
+        per_call_texture: Option<wgpu::Texture>,
+    }
+
+    let mut live_slots: Vec<LiveSlot> = Vec::with_capacity(num_passes);
+    for (pass_index, pass) in spec.passes.iter().enumerate() {
+        let is_final = pass_index + 1 == num_passes;
+        if pass.feedback_self {
+            let ping_pong =
+                cache
+                    .slots
+                    .get(&pass_index)
+                    .ok_or_else(|| RenderError::FeedbackAliasError {
+                        pass_index,
+                        reason: "feedback pass missing from persistent live cache".to_string(),
+                    })?;
+            live_slots.push(LiveSlot {
+                write_view: ping_pong.views[frame_parity].clone(),
+                feedback_read_view: Some(ping_pong.views[1 - frame_parity].clone()),
+                per_call_texture: None,
+            });
+        } else {
+            let mut usage =
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+            if is_final {
+                usage |= wgpu::TextureUsages::COPY_SRC;
+            }
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(&format!(
+                    "chromaticity-render live target (pass {pass_index})"
+                )),
+                size: wgpu::Extent3d {
+                    width: spec.target_size.0,
+                    height: spec.target_size.1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: pass.target_format.to_wgpu(),
+                usage,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            live_slots.push(LiveSlot {
+                write_view: view,
+                feedback_read_view: None,
+                per_call_texture: Some(texture),
+            });
+        }
+    }
+
+    // Per-pass static resources (pipeline / layout / uniform buffer).
+    struct PassStatics {
+        bind_group_layout: wgpu::BindGroupLayout,
+        pipeline: wgpu::RenderPipeline,
+        uniform_buffer: Option<wgpu::Buffer>,
+        _pipeline_layout: wgpu::PipelineLayout,
+        _vertex_buffer: wgpu::Buffer,
+    }
+    let mut pass_statics: Vec<PassStatics> = Vec::with_capacity(num_passes);
+    for (pass_index, pass) in spec.passes.iter().enumerate() {
+        let pass_label = pass.label.as_deref().unwrap_or("(unlabelled)");
+
+        let mut bgl_entries: Vec<wgpu::BindGroupLayoutEntry> = Vec::new();
+        let uniform_buffer = if pass.uniforms.is_empty() {
+            None
+        } else {
+            let slots = encode_uniform_slots(&pass.uniforms, pass_label)?;
+            let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("chromaticity-render live uniform buffer"),
+                contents: bytemuck::cast_slice(&slots),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+            bgl_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            });
+            Some(buffer)
+        };
+
+        let total_input_count = pass.input_textures.len() + if pass.feedback_self { 1 } else { 0 };
+        for i in 0..total_input_count {
+            let tex_binding: u32 = 1 + 2 * (i as u32);
+            let smp_binding: u32 = tex_binding + 1;
+            bgl_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: tex_binding,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            });
+            bgl_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: smp_binding,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                count: None,
+            });
+        }
+
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("chromaticity-render live bind group layout"),
+            entries: &bgl_entries,
+        });
+
+        let fragment_module = compile_glsl_module(&pass.fragment_glsl, naga::ShaderStage::Fragment)
+            .map_err(|e| RenderError::PassRenderFailed {
+                pass_index,
+                source: Box::new(e),
+            })?;
+        let fragment_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("chromaticity-render live fragment (user GLSL)"),
+            source: wgpu::ShaderSource::Naga(Cow::Owned(fragment_module)),
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("chromaticity-render live pipeline layout"),
+            bind_group_layouts: &[&bgl],
+            push_constant_ranges: &[],
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("chromaticity-render live pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: vertex_shader,
+                entry_point: Some("main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[],
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &fragment_shader,
+                entry_point: Some("main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: pass.target_format.to_wgpu(),
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview: None,
+            cache: None,
+        });
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("chromaticity-render live reserved vertex buffer"),
+            contents: bytemuck::cast_slice(&[UniformSlot::default(); 3]),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        pass_statics.push(PassStatics {
+            bind_group_layout: bgl,
+            pipeline,
+            uniform_buffer,
+            _pipeline_layout: pipeline_layout,
+            _vertex_buffer: vertex_buffer,
+        });
+    }
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("chromaticity-render live encoder"),
+    });
+
+    // Per-pass bind groups for THIS frame. Explicit prior-pass
+    // bindings read the prior pass's CURRENT-frame write view (already
+    // rendered earlier in this loop body's submission). Feedback
+    // bindings read the persistent previous-tick slot.
+    let mut frame_bind_groups: Vec<wgpu::BindGroup> = Vec::with_capacity(num_passes);
+    for (pass_index, pass) in spec.passes.iter().enumerate() {
+        let statics = &pass_statics[pass_index];
+        let mut bg_entries: Vec<wgpu::BindGroupEntry> = Vec::new();
+        if let Some(buffer) = statics.uniform_buffer.as_ref() {
+            bg_entries.push(wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            });
+        }
+        for (i, binding) in pass.input_textures.iter().enumerate() {
+            let tex_binding: u32 = 1 + 2 * (i as u32);
+            let smp_binding: u32 = tex_binding + 1;
+            let source = live_slots.get(binding.source_pass_index).ok_or_else(|| {
+                RenderError::PassRenderFailed {
+                    pass_index,
+                    source: Box::new(RenderError::PassInputOutOfRange {
+                        pass_index,
+                        source_pass_index: binding.source_pass_index,
+                        num_passes,
+                    }),
+                }
+            })?;
+            bg_entries.push(wgpu::BindGroupEntry {
+                binding: tex_binding,
+                resource: wgpu::BindingResource::TextureView(&source.write_view),
+            });
+            bg_entries.push(wgpu::BindGroupEntry {
+                binding: smp_binding,
+                resource: wgpu::BindingResource::Sampler(&shared_sampler),
+            });
+        }
+        if pass.feedback_self {
+            let i = pass.input_textures.len();
+            let tex_binding: u32 = 1 + 2 * (i as u32);
+            let smp_binding: u32 = tex_binding + 1;
+            let read_view = live_slots[pass_index]
+                .feedback_read_view
+                .as_ref()
+                .ok_or_else(|| RenderError::FeedbackAliasError {
+                    pass_index,
+                    reason: "feedback pass missing its persistent read view".to_string(),
+                })?;
+            bg_entries.push(wgpu::BindGroupEntry {
+                binding: tex_binding,
+                resource: wgpu::BindingResource::TextureView(read_view),
+            });
+            bg_entries.push(wgpu::BindGroupEntry {
+                binding: smp_binding,
+                resource: wgpu::BindingResource::Sampler(&shared_sampler),
+            });
+        }
+
+        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("chromaticity-render live bind group"),
+            layout: &statics.bind_group_layout,
+            entries: &bg_entries,
+        });
+        frame_bind_groups.push(bg);
+    }
+
+    for (pass_index, statics) in pass_statics.iter().enumerate() {
+        let view = &live_slots[pass_index].write_view;
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("chromaticity-render live pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        rpass.set_pipeline(&statics.pipeline);
+        rpass.set_bind_group(0, &frame_bind_groups[pass_index], &[]);
+        rpass.draw(0..3, 0..1);
+    }
+
+    queue.submit(Some(encoder.finish()));
+
+    // Return the FINAL pass's output. For a feedback final pass the
+    // texture lives in the persistent cache (clone the Arc-backed
+    // handle — the cache retains its copy for the next tick). For a
+    // non-feedback final pass, take ownership of the per-call target.
+    let final_pass = &spec.passes[final_index];
+    if final_pass.feedback_self {
+        let ping_pong =
+            cache
+                .slots
+                .get(&final_index)
+                .ok_or_else(|| RenderError::FeedbackAliasError {
+                    pass_index: final_index,
+                    reason: "final feedback pass missing from persistent live cache".to_string(),
+                })?;
+        Ok(ping_pong.textures[frame_parity].clone())
+    } else {
+        live_slots[final_index]
+            .per_call_texture
+            .take()
+            .ok_or(RenderError::PassRenderFailed {
+                pass_index: final_index,
+                source: Box::new(RenderError::EmptyPassList),
+            })
+    }
+}
+
 /// Read back a wgpu texture into a `Vec<u8>` matching the
 /// [`MultipassRenderer::render`] byte format (row-major, padding
 /// stripped, `bytes_per_pixel * width * height` bytes total).
@@ -1405,12 +2086,27 @@ mod multipass_drift_pins {
     //!     `Arc<wgpu::Device>` across calls
     //!     (`Arc::ptr_eq` identity), proving the device is owned by
     //!     the renderer rather than rebuilt per `render`.
+    //! - ADR-011 Phase-2 R-0 additions:
+    //!   - [`live_feedback_spec_key`] FNV-1a is stable, folds scene
+    //!     id + target size, and diverges on either change
+    //!     (always-on structure pin, no adapter needed).
+    //!   - [`MultipassRenderer::new_with_surface_hint`] shares the
+    //!     `new_inner` device-init path; the offscreen
+    //!     [`MultipassRenderer::new`] still constructs a renderer with
+    //!     an empty feedback cache (surface-presentation coverage
+    //!     lands R-1).
+    //!   - [`MultipassRenderer::render_frame_live`] persists feedback
+    //!     ping-pong textures across two calls with the same
+    //!     `spec_key` (the second frame's output reflects the first
+    //!     via the self-feedback read) and resets when the `spec_key`
+    //!     changes (GPU-dependent — skips gracefully when no adapter).
 
     use std::sync::Arc;
 
     use super::{
         MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, RenderError, TargetFormat,
         UniformInput, UniformValue, compile_and_render_multipass, encode_uniform_slots,
+        live_feedback_spec_key,
     };
 
     #[test]
@@ -1839,5 +2535,212 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
             Arc::ptr_eq(&device_before, &device_after),
             "renderer.device() must return the same Arc<Device> allocation across render calls",
         );
+    }
+
+    // ----- ADR-011 Phase-2 R-0 drift pins. -----
+
+    #[test]
+    fn live_feedback_spec_key_is_stable_and_size_sensitive() {
+        // Always-on structure pin (no adapter): the FNV-1a key is
+        // deterministic, folds BOTH the scene id and the target size,
+        // and diverges when either changes. A stable key is what lets
+        // `render_frame_live` reuse the persistent feedback textures;
+        // a divergent key is what forces the reallocation / cold-start.
+        let a = live_feedback_spec_key("scene-alpha", (640, 480));
+        let a_again = live_feedback_spec_key("scene-alpha", (640, 480));
+        assert_eq!(a, a_again, "same inputs must hash identically");
+
+        let diff_scene = live_feedback_spec_key("scene-beta", (640, 480));
+        assert_ne!(a, diff_scene, "scene id change must diverge the key");
+
+        let diff_size = live_feedback_spec_key("scene-alpha", (641, 480));
+        assert_ne!(a, diff_size, "target-size change must diverge the key");
+
+        let diff_height = live_feedback_spec_key("scene-alpha", (640, 481));
+        assert_ne!(a, diff_height, "height change must diverge the key");
+    }
+
+    #[test]
+    fn renderer_new_starts_with_empty_feedback_cache() {
+        // R-0 structure pin: the offscreen `new()` ctor still
+        // succeeds and starts with NO persistent feedback cache (the
+        // live path lazily allocates it on first `render_frame_live`).
+        // Skips gracefully on an adapter-less runner.
+        let Some(renderer) = try_new_renderer() else {
+            eprintln!("skipping: no wgpu adapter on this runner");
+            return;
+        };
+        assert!(
+            renderer.feedback_cache.is_none(),
+            "a freshly-constructed renderer must have no persistent feedback cache",
+        );
+    }
+
+    /// Single self-feedback pass that ACCUMULATES: each frame writes
+    /// `prev + step` (saturating at 1.0 via the clamp), where `prev`
+    /// samples this pass's previous-frame output. With persistent
+    /// feedback the value climbs across ticks; a cold-start (fresh
+    /// `spec_key`) resets `prev` to the black-cleared 0.0, so the
+    /// first post-reset frame is just `step`. The accumulation makes
+    /// inter-tick persistence directly observable in the readback.
+    const ACCUMULATE_FEEDBACK_FRAGMENT: &str = r#"
+#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0) uniform Uniforms {
+    float u_step;
+};
+layout(set = 0, binding = 1) uniform texture2D prev_frame;
+layout(set = 0, binding = 2) uniform sampler prev_sampler;
+void main() {
+    vec4 prev = texture(sampler2D(prev_frame, prev_sampler), uv);
+    fragColor = clamp(prev + vec4(u_step), 0.0, 1.0);
+}
+"#;
+
+    fn accumulate_feedback_spec() -> MultipassSpec {
+        MultipassSpec {
+            passes: vec![PassDef {
+                label: Some("r0/live-feedback/accumulate".to_string()),
+                fragment_glsl: ACCUMULATE_FEEDBACK_FRAGMENT.to_string(),
+                uniforms: vec![UniformInput {
+                    name: "u_step".to_string(),
+                    value: UniformValue::Scalar(0.25),
+                }],
+                feedback_self: true,
+                ..PassDef::default()
+            }],
+            target_size: (8, 8),
+            frame_count: 1,
+        }
+    }
+
+    /// Read back a `render_frame_live` output texture to bytes. Used
+    /// only by the R-0 GPU pins to observe feedback accumulation.
+    fn readback_live(renderer: &MultipassRenderer, texture: &wgpu::Texture) -> Vec<u8> {
+        super::readback_texture(renderer.device(), renderer.queue(), texture)
+            .expect("readback of a live feedback texture must succeed")
+    }
+
+    #[test]
+    fn render_frame_live_persists_feedback_across_calls_same_spec_key() {
+        // R-0 critical-correctness pin: with the SAME `spec_key`, the
+        // feedback textures persist across calls, so the accumulator
+        // climbs — frame 1's output (`2 * step`) MUST exceed frame
+        // 0's (`1 * step`). If the live path were (incorrectly)
+        // reallocating + black-clearing per call like the offscreen
+        // path, both frames would read 0.0 prev and the outputs would
+        // be EQUAL. Skips gracefully when no adapter is present.
+        let Some(mut renderer) = try_new_renderer() else {
+            eprintln!("skipping: no wgpu adapter on this runner");
+            return;
+        };
+        let spec = accumulate_feedback_spec();
+        let key = live_feedback_spec_key("scene-persist", spec.target_size);
+
+        let tex0 = renderer
+            .render_frame_live(&spec, 0, key)
+            .expect("first live frame must render");
+        let frame0 = readback_live(&renderer, &tex0);
+        drop(tex0);
+
+        let tex1 = renderer
+            .render_frame_live(&spec, 1, key)
+            .expect("second live frame must render");
+        let frame1 = readback_live(&renderer, &tex1);
+        drop(tex1);
+
+        // R channel of pixel 0: frame 0 ≈ 0.25 (≈64), frame 1 ≈ 0.50
+        // (≈128). The exact bytes are backend-dependent; the
+        // load-bearing invariant is strict monotonic growth, which
+        // proves the previous frame's write survived to the next read.
+        assert!(
+            frame1[0] > frame0[0],
+            "with persistent feedback the accumulator must grow across ticks: \
+             frame0 R = {}, frame1 R = {}",
+            frame0[0],
+            frame1[0],
+        );
+        // Sanity floor: frame 0 itself must be non-zero (the emitter
+        // ran), so the comparison is meaningful.
+        assert!(frame0[0] > 0, "frame 0 emitter must be non-zero");
+    }
+
+    #[test]
+    fn render_frame_live_resets_feedback_on_spec_key_change() {
+        // R-0 pin: changing the `spec_key` reallocates (and
+        // cold-starts) the feedback textures, so the accumulator
+        // resets. After climbing on key A, rendering frame 0 under a
+        // NEW key B must read the black cold-start (≈ `1 * step`),
+        // strictly LESS than the climbed value just observed on key A.
+        // Skips gracefully when no adapter is present.
+        let Some(mut renderer) = try_new_renderer() else {
+            eprintln!("skipping: no wgpu adapter on this runner");
+            return;
+        };
+        let spec = accumulate_feedback_spec();
+        let key_a = live_feedback_spec_key("scene-A", spec.target_size);
+        let key_b = live_feedback_spec_key("scene-B", spec.target_size);
+        assert_ne!(key_a, key_b, "distinct scene ids must yield distinct keys");
+
+        // Climb a few ticks on key A.
+        let _ = renderer
+            .render_frame_live(&spec, 0, key_a)
+            .expect("key-A frame 0 must render");
+        let _ = renderer
+            .render_frame_live(&spec, 1, key_a)
+            .expect("key-A frame 1 must render");
+        let tex_a2 = renderer
+            .render_frame_live(&spec, 2, key_a)
+            .expect("key-A frame 2 must render");
+        let climbed = readback_live(&renderer, &tex_a2);
+        drop(tex_a2);
+
+        // New key ⇒ reallocation ⇒ cold start. Frame 0 reads black.
+        let tex_b0 = renderer
+            .render_frame_live(&spec, 0, key_b)
+            .expect("key-B frame 0 must render");
+        let reset = readback_live(&renderer, &tex_b0);
+        drop(tex_b0);
+
+        assert!(
+            reset[0] < climbed[0],
+            "a spec_key change must reset feedback to cold-start: \
+             climbed R = {}, reset R = {}",
+            climbed[0],
+            reset[0],
+        );
+        assert!(reset[0] > 0, "post-reset emitter must still be non-zero");
+    }
+
+    #[test]
+    fn render_frame_live_non_feedback_pass_returns_output() {
+        // R-0 pin: a NON-feedback live spec still renders and returns
+        // its final-pass output (the live path's per-call target
+        // branch). Exercises the no-feedback code path of
+        // `render_live_frame_with`. Skips gracefully when no adapter.
+        let Some(mut renderer) = try_new_renderer() else {
+            eprintln!("skipping: no wgpu adapter on this runner");
+            return;
+        };
+        let spec = trivial_uv_spec();
+        let key = live_feedback_spec_key("scene-no-feedback", spec.target_size);
+        let tex = renderer
+            .render_frame_live(&spec, 0, key)
+            .expect("non-feedback live frame must render");
+        let pixels = readback_live(&renderer, &tex);
+        assert_eq!(pixels.len(), 16 * 16 * 4);
+    }
+
+    /// Construct a renderer, returning `None` (rather than panicking)
+    /// when the runner has no usable wgpu adapter — mirrors how the
+    /// GPU-dependent pins gate on adapter availability. Any OTHER
+    /// construction error still panics (it is a real regression).
+    fn try_new_renderer() -> Option<MultipassRenderer> {
+        match MultipassRenderer::new() {
+            Ok(renderer) => Some(renderer),
+            Err(RenderError::AdapterUnavailable) => None,
+            Err(e) => panic!("MultipassRenderer::new failed unexpectedly: {e:?}"),
+        }
     }
 }

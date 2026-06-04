@@ -379,7 +379,7 @@ pub use composition::{PreparedScene, compose_transition_frame, compose_transitio
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
     MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat, UniformInput,
-    UniformValue, compile_and_render_multipass,
+    UniformValue, compile_and_render_multipass, live_feedback_spec_key,
 };
 #[cfg(feature = "scene-adapter")]
 pub use scene_adapter::{AdapterError, SceneAdapterOptions};
