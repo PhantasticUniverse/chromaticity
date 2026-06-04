@@ -1,0 +1,37 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Silence Rest Pose",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype (NOT a shipped library scene). A calm idle breathing field that must present a clean, sane rest pose at zero audio (RMS=peak=0, FFT all 0, syn_BPM=120) rather than an all-black or NaN frame. Covers the SILENCE edge case: the render path may feed silence, so the neutral look is driven by TIME alone while all four wired audio uniforms (chroma_AudioRMS, chroma_AudioPeak, chroma_AudioFFT[8], syn_BPM) add visible motion only when present.",
+  "TAGS": ["archetype", "silence", "rest-pose", "audio", "reactive"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "breath_rate",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "rest_brightness",
+      "TYPE": "knob",
+      "DEFAULT": 0.35,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "chroma_AudioRMS", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "chroma_AudioPeak", "SYMBOL": "chroma_AudioPeak" },
+        { "NAME": "syn_BPM", "SYMBOL": "syn_BPM" },
+        { "NAME": "chroma_AudioFFT", "SYMBOL": "chroma_AudioFFT" }
+      ]
+    }
+  ]
+}

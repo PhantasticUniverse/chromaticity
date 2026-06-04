@@ -1,0 +1,42 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Bass Bloom",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype. A centered radial disc that swells with the low end: the two lowest FFT bands (chroma_AudioFFT[0..1]) drive the bloom radius, chroma_AudioRMS lifts overall brightness, and TIME animates a slow breathing motion plus hue drift. Authored as an original clean-room GLSL archetype; not a shipped library scene.",
+  "TAGS": ["audio", "reactive", "bass", "archetype", "radial"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "bloom_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.7,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "base_radius",
+      "TYPE": "slider",
+      "DEFAULT": 0.25,
+      "MIN": 0.05,
+      "MAX": 0.6
+    },
+    {
+      "NAME": "hue_drift",
+      "TYPE": "knob",
+      "DEFAULT": 0.3,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Three-Band Lattice",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype. A grid lattice whose row, column, and cell-core channels split the bass / mid / treble groupings of chroma_AudioFFT[8] (low [0..2] -> warm rows, mid [3..5] -> green columns, high [6..7] -> blue cores). RMS lifts ambient glow, peak expands the cores, syn_BPM sets the pulse cadence, and RENDERSIZE keeps the lattice square. Renders a sane static lattice at zero audio. Not shipped in the bundled library; reference/test fixture only.",
+  "TAGS": ["archetype", "audio", "reactive", "grid", "lattice", "fft"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "grid_density",
+      "TYPE": "slider",
+      "DEFAULT": 8.0,
+      "MIN": 2.0,
+      "MAX": 24.0
+    },
+    {
+      "NAME": "line_weight",
+      "TYPE": "knob",
+      "DEFAULT": 0.06,
+      "MIN": 0.01,
+      "MAX": 0.25
+    },
+    {
+      "NAME": "band_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "drift_speed",
+      "TYPE": "slider",
+      "DEFAULT": 0.03,
+      "MIN": 0.0,
+      "MAX": 0.5
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_peak", "SYMBOL": "chroma_AudioPeak" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" },
+        { "NAME": "u_bpm", "SYMBOL": "syn_BPM" }
+      ]
+    }
+  ]
+}

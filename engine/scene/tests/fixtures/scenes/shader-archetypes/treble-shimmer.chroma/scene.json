@@ -1,0 +1,34 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Treble Shimmer",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype (complexity S). Fine high-frequency sparkle/grain across the frame, driven by the treble FFT bands chroma_AudioFFT[6..7] and animated by TIME. Produces a sane low-level shimmer at zero audio. Not shipped to the user-facing library.",
+  "TAGS": ["audio", "reactive", "treble", "shimmer", "archetype"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "shimmer_density",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "treble_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" }
+      ]
+    }
+  ]
+}

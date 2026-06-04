@@ -1,0 +1,44 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Spectrum Bars",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype: a classic 8-bar vertical spectrum analyzer driven by chroma_AudioFFT[0..7]. Each bar maps one log-spaced FFT band; bar height tracks the band magnitude, overall brightness tracks chroma_AudioRMS/chroma_AudioPeak, and a syn_BPM-phased pulse plus TIME shimmer keep the image alive at silence. Exercises the full chroma_AudioFFT[8] FloatArray binding and RENDERSIZE. Not shipped in the bundled library.",
+  "TAGS": ["audio", "reactive", "spectrum", "archetype", "test"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "fft_gain",
+      "TYPE": "slider",
+      "DEFAULT": 1.0,
+      "MIN": 0.0,
+      "MAX": 4.0
+    },
+    {
+      "NAME": "bar_gap",
+      "TYPE": "slider",
+      "DEFAULT": 0.12,
+      "MIN": 0.0,
+      "MAX": 0.5
+    },
+    {
+      "NAME": "floor_level",
+      "TYPE": "knob",
+      "DEFAULT": 0.06,
+      "MIN": 0.0,
+      "MAX": 0.5
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_peak", "SYMBOL": "chroma_AudioPeak" },
+        { "NAME": "u_bpm", "SYMBOL": "syn_BPM" }
+      ]
+    }
+  ]
+}

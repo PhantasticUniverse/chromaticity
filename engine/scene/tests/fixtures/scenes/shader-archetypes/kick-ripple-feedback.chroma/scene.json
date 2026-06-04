@@ -1,0 +1,48 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Kick Ripple Feedback",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype. Concentric ripples expand from the center on each bass transient (chroma_AudioFFT[0]), advanced by TIMEDELTA, and persist as decaying feedback trails read from the previous frame via syn_FinalPass. Covers the multipass/feedback edge case: a backbuff pass that samples its own prior output. Renders a sane non-black image at zero audio (slow idle ripples) and never produces NaN.",
+  "TAGS": ["archetype", "feedback", "ripple", "reactive", "bass"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "feedback_decay",
+      "TYPE": "slider",
+      "DEFAULT": 0.88,
+      "MIN": 0.0,
+      "MAX": 0.99
+    },
+    {
+      "NAME": "ripple_density",
+      "TYPE": "slider",
+      "DEFAULT": 14.0,
+      "MIN": 2.0,
+      "MAX": 40.0
+    },
+    {
+      "NAME": "bass_gain",
+      "TYPE": "slider",
+      "DEFAULT": 6.0,
+      "MIN": 0.0,
+      "MAX": 16.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "FLOAT": false,
+      "WRAP": "clamp",
+      "FILTER": "linear",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_timedelta", "SYMBOL": "TIMEDELTA" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_bpm", "SYMBOL": "syn_BPM" },
+        { "NAME": "u_final", "SYMBOL": "syn_FinalPass" }
+      ]
+    }
+  ]
+}
