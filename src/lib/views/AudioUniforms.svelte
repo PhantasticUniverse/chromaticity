@@ -210,13 +210,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /**
    * Map a single ~1.0-centred ADR-024 AGC reactive band onto a 0..1
    * bar fill. The engine's MilkDrop-class auto-gain bands are
-   * volume-INDEPENDENT and unbounded above (neutral 1.0, ~4.2 on a
-   * transient), unlike the `fft_bands` which are normalized-then-clamped
-   * to [0,1] and sit near 0 in a quiet room. `value / 2` puts neutral
-   * 1.0 at mid-bar (50%) and saturates a ~4.2 transient at 100%.
+   * volume-INDEPENDENT and centred on a neutral 1.0 (~4 on a transient),
+   * unlike the `fft_bands` which are normalized-then-clamped to [0,1] and
+   * sit near 0 in a quiet room. A volume-independent reactivity ratio
+   * should rest at the FLOOR, not mid-bar — so `(value - 1) / 3` maps the
+   * neutral 1.0 → 0% (dark at rest) and a ~4.0 transient → 100% (FIX 3 —
+   * fixes the "stuck half-lit at 50%" rest feel; this is excitation above
+   * neutral, not an absolute level).
    */
   function agcBarFill(value: number): number {
-    return Math.max(0, Math.min(1, value / 2));
+    return Math.max(0, Math.min(1, (value - 1) / 3));
   }
 
   /**

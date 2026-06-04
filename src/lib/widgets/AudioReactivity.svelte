@@ -71,12 +71,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   /**
    * Map a single ~1.0-centred AGC reactive band onto a 0..1 bar fill.
-   * The engine's MilkDrop-class auto-gain bands are volume-independent
-   * and unbounded above; `value / 2` puts the neutral 1.0 at mid-bar
-   * (50%) and saturates a ~4.2 transient at 100%, clamped to [0, 1].
+   * The engine's MilkDrop-class auto-gain bands are volume-INDEPENDENT
+   * and centred on a neutral 1.0 (a quiet steady tone sits at 1.0; a
+   * transient swings up toward ~4). A reactivity meter should rest at the
+   * FLOOR, not mid-bar — so `(value - 1) / 3` maps the neutral 1.0 → 0%
+   * (dark at rest) and a ~4.0 transient → 100%, clamped to [0, 1]. This
+   * is the "excitation above neutral" ratio, not an absolute level
+   * (FIX 3 — fixes the "stuck half-lit at 50%" rest feel).
    */
   function agcBarFill(value: number): number {
-    return Math.max(0, Math.min(1, value / 2));
+    return Math.max(0, Math.min(1, (value - 1) / 3));
   }
 
   /**
@@ -101,7 +105,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // mic), whereas `fft_bands` are normalized-then-clamped to [0,1] and
   // sit near 0 in a quiet room — so the old FFT-reduced tiles barely
   // moved. `agcBarFill` maps the ~1.0-centred unbounded band onto a
-  // 0..1 bar fill: neutral 1.0 → 50%, a 4.2 transient → 100%. The four
+  // 0..1 bar fill: neutral 1.0 → 0% (dark at rest), a ~4.0 transient →
+  // 100% (FIX 3 — rest-at-floor reactivity ratio). The four
   // tiles map BASS ← bass, LOW MID ← mid, HIGH MID ← treb, HIGH ← treb
   // (the engine emits three relative bands; the two upper tiles share
   // the treble band so the layout's HIGH MID / HIGH cells still react).
@@ -124,7 +129,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     let raf = 0;
     const s = [0, 0, 0, 0];
     const displayed = [-1, -1, -1, -1]; // -1 sentinel = first observation
-    const EMA = 0.25;
+    // FIX 4 — the engine AGC bands are ALREADY time-smoothed (attack
+    // ~21 ms / release ~48 ms), so a heavy UI EMA on top is redundant
+    // lag. Raise alpha from 0.25 (~58 ms tau) to 0.55 (~18 ms tau) so the
+    // UI tracks the engine ballistic closely (≥90% of a step within ~3
+    // frames, vs ~8 before); the engine remains the dominant smoothing
+    // layer.
+    const EMA = 0.55;
     // Hysteresis margin in percent points. Once a label shows N%, the
     // smoothed value must move below (N - 0.6) or to or above (N + 1.6)
     // to flip. With smoothed-frame deltas of ~1% under typical jitter,
@@ -397,7 +408,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .audio-reactivity__band-fill {
     height: 100%;
     border-radius: inherit;
-    transition: width 120ms ease;
+    /* FIX 2 — no `transition: width` here. The DSP / rAF smoothing in the
+       script is the ONLY smoothing layer; CSS-tweening the width over a
+       fixed 120 ms toward a moving target adds 120 ms of fixed lag on top
+       of the engine ballistics. The bar tracks the smoothed value directly. */
   }
   .audio-reactivity__band--warming .audio-reactivity__band-fill {
     opacity: 0.35;

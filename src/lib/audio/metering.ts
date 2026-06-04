@@ -176,6 +176,50 @@ export class ExpEnvelope {
 }
 
 /**
+ * Asymmetric one-pole follower: a fast attack tau toward a RISING target
+ * and a slow release tau toward a FALLING target, both
+ * wall-clock-dt-aware (`coeff = 1 - exp(-dt/τ)` per path). Unlike
+ * {@link ExpEnvelope}'s single symmetric τ, this lets the level bar leap
+ * onto a transient (attack ~10 ms) yet glide back down smoothly
+ * (release ~250 ms) — the DAW-grade level-follower feel where the
+ * dominant lag is no longer a symmetric 300 ms integration on the way up.
+ *
+ * Values are tracked in the dB domain; the initial value is the scale
+ * floor so a freshly-constructed follower reads as silence. dt-invariant
+ * on each path (one coarse step equals many fine steps over the same
+ * span on the same side of the target).
+ */
+export class AttackReleaseEnvelope {
+  #current = METER_FLOOR_DB;
+  readonly #attackTauMs: number;
+  readonly #releaseTauMs: number;
+
+  constructor(attackTauMs = 10, releaseTauMs = 250) {
+    this.#attackTauMs = Math.max(attackTauMs, 1e-3);
+    this.#releaseTauMs = Math.max(releaseTauMs, 1e-3);
+  }
+
+  /** Smooth toward `targetDb` over `dtMs`; fast on a rise, slow on a fall. */
+  process(targetDb: number, dtMs: number): number {
+    const dt = Math.max(dtMs, 0);
+    const tau = targetDb > this.#current ? this.#attackTauMs : this.#releaseTauMs;
+    const coeff = 1 - Math.exp(-dt / tau);
+    this.#current += (targetDb - this.#current) * coeff;
+    return this.#current;
+  }
+
+  /** Current smoothed value (dB) without advancing. */
+  value(): number {
+    return this.#current;
+  }
+
+  /** Reset to the scale floor (silence). */
+  reset(): void {
+    this.#current = METER_FLOOR_DB;
+  }
+}
+
+/**
  * PPM-style fast-peak ballistics: a fast exponential attack toward a
  * rising target and a LINEAR dB/s release on a falling target (the
  * Digital/Type-I PPM behaviour). dt-aware on both paths.

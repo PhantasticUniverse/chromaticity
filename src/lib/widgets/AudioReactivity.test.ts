@@ -36,15 +36,17 @@ const NEUTRAL_SNAPSHOT: AudioUniformSnapshotPayload = {
   degraded: false,
 };
 
-// ADR-024 — the named band tiles read the volume-independent AGC
-// reactive bands (`bass` / `mid` / `treb`), mapped onto a 0..1 bar
-// fill by `clamp(value / 2, 0, 1)` (neutral 1.0 → 50%, ~4.2 transient
-// → 100%). The two upper tiles (HIGH MID / HIGH) share the treble
-// band. `fft_bands` no longer drive the named tiles.
-//   BASS    ← bass 0.5  -> clamp(0.25)  -> 25%
-//   LOW MID ← mid  1.0  -> clamp(0.50)  -> 50%
-//   HIGH MID← treb 1.4  -> clamp(0.70)  -> 70%
-//   HIGH    ← treb 1.4  -> clamp(0.70)  -> 70%
+// ADR-024 + FIX 3 — the named band tiles read the volume-independent
+// AGC reactive bands (`bass` / `mid` / `treb`), mapped onto a 0..1 bar
+// fill by `clamp((value - 1) / 3, 0, 1)` — a REST-AT-FLOOR reactivity
+// ratio (neutral 1.0 → 0% dark, ~4.0 transient → 100%). The two upper
+// tiles (HIGH MID / HIGH) share the treble band. `fft_bands` no longer
+// drive the named tiles. Sample bands are chosen above neutral so the
+// tiles read the same percentages the prior `value/2` mapping produced:
+//   BASS    ← bass 1.75 -> clamp((0.75)/3)  -> 25%
+//   LOW MID ← mid  2.50 -> clamp((1.50)/3)  -> 50%
+//   HIGH MID← treb 3.10 -> clamp((2.10)/3)  -> 70%
+//   HIGH    ← treb 3.10 -> clamp((2.10)/3)  -> 70%
 const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
   bpm: 145,
   bpm_availability: 'Ready',
@@ -52,12 +54,12 @@ const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
   peak: 0.9,
   fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
   fft_availability: 'Ready',
-  bass: 0.5,
-  mid: 1,
-  treb: 1.4,
-  bass_att: 0.5,
-  mid_att: 1,
-  treb_att: 1.4,
+  bass: 1.75,
+  mid: 2.5,
+  treb: 3.1,
+  bass_att: 1.75,
+  mid_att: 2.5,
+  treb_att: 3.1,
   degraded: false,
 };
 
@@ -137,6 +139,30 @@ describe('AudioReactivity widget', () => {
     expect(getByText('10%')).toBeInTheDocument();
     expect(getByText('50%')).toBeInTheDocument();
     expect(getByText('90%')).toBeInTheDocument();
+  });
+
+  it('band fill width tracks the input value with no CSS transition on width (FIX 2)', () => {
+    const customBands = [
+      { name: 'SUB', value: 0.1, tint: 'red' },
+      { name: 'MID', value: 0.5, tint: 'green' },
+      { name: 'AIR', value: 0.9, tint: 'blue' },
+    ] as const;
+    const { container } = render(AudioReactivity, { props: { bands: customBands } });
+    const fills = Array.from(
+      container.querySelectorAll<HTMLElement>('.audio-reactivity__band-fill'),
+    );
+    expect(fills.length).toBe(3);
+    // The fill width reflects the input value directly (the DSP/rAF layer
+    // is the only smoothing — the bar geometry is not CSS-tweened).
+    expect(fills[0]?.style.width).toBe('10%');
+    expect(fills[1]?.style.width).toBe('50%');
+    expect(fills[2]?.style.width).toBe('90%');
+    // No `transition` is set on the moving bar geometry (FIX 2 removed
+    // the `transition: width 120ms ease` rule; nothing re-adds it inline).
+    for (const fill of fills) {
+      expect(fill.style.transition).toBe('');
+      expect(fill.getAttribute('style') ?? '').not.toContain('transition');
+    }
   });
 
   it('renders the disabled TAP button (Phase-3+ stub)', () => {
@@ -229,6 +255,51 @@ describe('AudioReactivity widget', () => {
     // Snapshot-reduced names must NOT appear when bands prop wins.
     expect(queryByText('BASS')).toBeNull();
     expect(queryByText('LOW MID')).toBeNull();
+  });
+
+  it('smoothed band fill reaches ~90% of a step within ~3 rAF frames (FIX 4)', async () => {
+    // FIX 4 raised the UI EMA from 0.25 (~8 frames to 90%) to 0.55
+    // (~3 frames to 90%), trusting the engine's already-smoothed AGC
+    // ballistic. jsdom does not auto-run rAF; capture + pump manually.
+    // Freeze the FFT-visualiser rAF loop (reduced-motion) so the ONLY
+    // rAF producer is the band-smoother — otherwise the FFT-bar ticks
+    // interleave into the captured queue and skew the frame count.
+    stubMatchMedia(true);
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const pump = async (n: number): Promise<void> => {
+      for (let i = 0; i < n; i++) {
+        const cb = rafCbs.shift();
+        if (cb) cb(performance.now());
+        await Promise.resolve();
+      }
+    };
+    const bassFillPct = (container: HTMLElement): number => {
+      const fill = container.querySelectorAll<HTMLElement>('.audio-reactivity__band-fill')[0];
+      return parseFloat(fill?.style.width ?? '0');
+    };
+
+    // Seed at neutral (bass = 1.0 → target fill 0%) and let it settle.
+    audioSnapshotStore.snapshot = { ...NEUTRAL_SNAPSHOT };
+    const { container } = render(AudioReactivity);
+    await Promise.resolve();
+    await pump(10);
+    expect(bassFillPct(container)).toBeLessThan(5);
+
+    // Step to a full transient: bass = 4.0 → target fill = clamp((4-1)/3)
+    // = 1.0 (100%). The DSP EMA reaches ≥90% in ~3 advances (0.55, 0.80,
+    // 0.91); with a 1-frame DOM-render-commit lag in the harness that is
+    // observable by ~4 pumped frames. The OLD alpha=0.25 would still be
+    // at ~68% here (needing ~8 frames), so this cleanly pins the FIX 4
+    // speed-up rather than the prior sluggish response.
+    audioSnapshotStore.snapshot = { ...NEUTRAL_SNAPSHOT, bass: 4.0 };
+    await Promise.resolve();
+    await pump(4);
+    expect(bassFillPct(container)).toBeGreaterThanOrEqual(90);
   });
 
   it('the live-store band fill changes when the AGC bass band swings (FIX B)', async () => {

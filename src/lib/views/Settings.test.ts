@@ -111,6 +111,11 @@ describe('Settings view', () => {
     // case mounts against an empty live list (falls back to the
     // fixture) unless the test explicitly seeds devices.
     audioDevicesStore.reset();
+    // FIX 5 — the rAF-pumping tests stub requestAnimationFrame /
+    // cancelAnimationFrame globally; restore them so sibling tests see
+    // the real (jsdom-noop) implementations.
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     cleanup();
   });
 
@@ -187,17 +192,30 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
     const options = Array.from(input.querySelectorAll('option'));
-    // The persisted `default` sentinel and the built-in System Audio
-    // loopback entry are always prepended (FIX A); the live list
-    // replaces the fixture for the enumerated tail.
-    const FIXED_INPUT_IDS = ['default', 'system-audio'];
-    const FIXED_INPUT_LABELS = ['Default · System Input', 'System Audio (built-in)'];
-    expect(options.length).toBe(FIXED_INPUT_IDS.length + live.length);
-    expect(options.map((o) => o.value)).toEqual([...FIXED_INPUT_IDS, ...live.map((d) => d.id)]);
-    expect(options.map((o) => o.textContent?.trim())).toEqual([
-      ...FIXED_INPUT_LABELS,
-      ...live.map((d) => d.name),
+    // FIX 8 — the dropdown is now grouped via <optgroup>:
+    //   Automatic       → [default] (mode, not a device)
+    //   System playback → [system-audio, BlackHole 16ch] (name-matched)
+    //   Hardware inputs → [Built-in Microphone]
+    // querySelectorAll('option') flattens to document order, so the
+    // BlackHole entry sorts ahead of the plain hardware mic.
+    expect(options.length).toBe(2 + live.length);
+    expect(options.map((o) => o.value)).toEqual([
+      'default',
+      'system-audio',
+      'input-blackhole-16ch',
+      'input-built-in-microphone',
     ]);
+    expect(options.map((o) => o.textContent?.trim())).toEqual([
+      'Automatic (system default)',
+      'System Audio (built-in)',
+      'BlackHole 16ch',
+      'Built-in Microphone',
+    ]);
+    // The three optgroups render with their bucket labels.
+    const groups = Array.from(input.querySelectorAll('optgroup')).map((g) => g.label);
+    expect(groups).toEqual(['Automatic', 'System playback', 'Hardware inputs']);
+    // Exactly one 'Automatic' row appears.
+    expect(options.filter((o) => o.value === 'default').length).toBe(1);
   });
 
   it('Input Device select.value stays "default" against cpal-style ids (FIX A)', () => {
@@ -230,16 +248,29 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
     const options = Array.from(input.querySelectorAll('option'));
-    // FIX A: the persisted `default` sentinel + the built-in System
-    // Audio loopback entry are prepended ahead of the fixture fallback,
-    // and the fixture's own `default` row is de-duped so only one
-    // `default` option renders.
-    const FIXED_INPUT_IDS = ['default', 'system-audio'];
+    // FIX 8: grouped via <optgroup>. The persisted `default` sentinel is
+    // the lone "Automatic" row; `system-audio` + any BlackHole / Loopback
+    // fixture device land under "System playback"; the rest are "Hardware
+    // inputs". The fixture's own `default` row is de-duped so only one
+    // `default` option renders. The BlackHole fixture sorts ahead of the
+    // plain hardware devices because of the System-playback grouping.
     const fallbackIds = AUDIO_INPUT_DEVICES.filter((d) => d.id !== 'default').map((d) => d.id);
-    expect(options.length).toBe(FIXED_INPUT_IDS.length + fallbackIds.length);
-    expect(options.map((o) => o.value)).toEqual([...FIXED_INPUT_IDS, ...fallbackIds]);
-    // Exactly one `default` option (no double-render on the no-hardware path).
+    expect(options.length).toBe(2 + fallbackIds.length);
+    expect(options.map((o) => o.value)).toEqual([
+      'default',
+      'system-audio',
+      'blackhole',
+      'yeti',
+      'iface',
+      'none',
+    ]);
+    // Exactly one `default` option (no double-render on the no-hardware path)
+    // and exactly one 'Automatic' optgroup.
     expect(options.filter((o) => o.value === 'default').length).toBe(1);
+    const automaticGroups = Array.from(input.querySelectorAll('optgroup')).filter(
+      (g) => g.label === 'Automatic',
+    );
+    expect(automaticGroups.length).toBe(1);
   });
 
   it('Output Device dropdown shows enumerated output devices when audioDevicesStore.outputDevices populated', () => {
@@ -272,7 +303,7 @@ describe('Settings view', () => {
     // so the native <select> matches `output_device === 'default'`
     // against cpal-style `output-<sanitized>` enumerated ids.
     const FIXED_OUTPUT_IDS = ['default'];
-    const FIXED_OUTPUT_LABELS = ['Default · System Output'];
+    const FIXED_OUTPUT_LABELS = ['Automatic (system default)'];
     expect(options.length).toBe(FIXED_OUTPUT_IDS.length + live.length);
     expect(options.map((o) => o.value)).toEqual([...FIXED_OUTPUT_IDS, ...live.map((d) => d.id)]);
     expect(options.map((o) => o.textContent?.trim())).toEqual([
@@ -329,6 +360,23 @@ describe('Settings view', () => {
     expect(readout?.textContent?.trim()).toBe('-18.0 dB');
   });
 
+  it('Audio Device renders Refresh buttons that re-enumerate input + output devices (FIX 8)', async () => {
+    const refreshSpy = vi.spyOn(audioDevicesStore, 'refresh').mockResolvedValue();
+    const refreshOutputSpy = vi.spyOn(audioDevicesStore, 'refreshOutput').mockResolvedValue();
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    // Mount $effects call refresh() / refreshOutput() once each; clear so
+    // the assertion isolates the button-driven calls.
+    refreshSpy.mockClear();
+    refreshOutputSpy.mockClear();
+    const refreshIn = within(audio).getByRole('button', { name: 'Refresh input devices' });
+    const refreshOut = within(audio).getByRole('button', { name: 'Refresh output devices' });
+    await fireEvent.click(refreshIn);
+    await fireEvent.click(refreshOut);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(refreshOutputSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('Audio Device renders the Monitoring meter widget with its aria label', () => {
     const { container } = render(Settings);
     const audio = getSection(container, 'Audio Device');
@@ -344,13 +392,33 @@ describe('Settings view', () => {
     // `round(dbToFraction(ampToDb(rms)) * bars)`, not `floor(rms*bars)`.
     // Expectations are derived from the metering helpers so they track
     // any scale retune.
+    //
+    // FIX 5: the ballistics now advance inside a free-running rAF loop
+    // (so decay / peak-hold keep gliding when the IPC stream coalesces),
+    // and jsdom does NOT auto-run rAF — capture the scheduled callbacks
+    // and pump them manually.
     const onCountFor = (amp: number): number =>
       Math.round(dbToFraction(ampToDb(amp)) * AUDIO_METER_BARS);
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const pump = async (n: number): Promise<void> => {
+      for (let i = 0; i < n; i++) {
+        const cb = rafCbs.shift();
+        if (cb) cb(performance.now());
+        await Promise.resolve();
+      }
+    };
 
     const { container } = render(Settings);
     const audio = getSection(container, 'Audio Device');
     const meter = within(audio).getByLabelText('Audio input monitor');
-    // Baseline: fixture-driven (AUDIO_METER_LEVEL), dB-scaled.
+    // Baseline: no snapshot yet → fixture-driven (AUDIO_METER_LEVEL),
+    // dB-scaled. Pump a frame so the rAF loop applies the fixture seed.
+    await pump(1);
     const baselineOn = meter.querySelectorAll('.meter-bar.on').length;
     expect(baselineOn).toBe(onCountFor(AUDIO_METER_LEVEL));
     // Inject a live snapshot with a distinct (quieter) rms and re-assert.
@@ -369,11 +437,92 @@ describe('Settings view', () => {
       treb_att: 1,
       degraded: false,
     };
-    // Allow Svelte to flush the $effect that advances the ballistics.
-    await Promise.resolve();
+    // The first live frame seeds the envelopes instantly onto the target.
+    await pump(2);
     const liveOn = meter.querySelectorAll('.meter-bar.on').length;
     expect(liveOn).toBe(onCountFor(0.25));
     expect(liveOn).not.toBe(baselineOn);
+  });
+
+  it('Monitoring meter peak-hold decay continues across frames with no new snapshot (FIX 5)', async () => {
+    // FIX 5 regression: the ballistics live in a free-running rAF loop,
+    // so the held-peak marker must keep gliding DOWN frame-over-frame
+    // even when the IPC stream coalesces (no fresh snapshot). Previously
+    // the snapshot-driven `$effect` only advanced on a write, freezing
+    // the decay mid-glide. Drive rAF manually (jsdom does not auto-run
+    // it) and confirm the lit segment count falls across silent frames.
+    const onCountFor = (amp: number): number =>
+      Math.round(dbToFraction(ampToDb(amp)) * AUDIO_METER_BARS);
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    // Each pumped frame advances `performance.now()` by ~16.7 ms so the
+    // real per-frame dt feeds the dt-aware release / peak-hold decay.
+    let clock = 1000;
+    const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    const pump = async (n: number): Promise<void> => {
+      for (let i = 0; i < n; i++) {
+        clock += 16.7;
+        const cb = rafCbs.shift();
+        if (cb) cb(clock);
+        await Promise.resolve();
+      }
+    };
+
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const meter = within(audio).getByLabelText('Audio input monitor');
+
+    // Loud snapshot seeds the level + peak high.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.9,
+      peak: 0.95,
+      fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    await pump(2);
+    const loudOn = meter.querySelectorAll('.meter-bar.on').length;
+    expect(loudOn).toBe(onCountFor(0.9));
+
+    // Drop to silence: the SAME snapshot keeps reporting the new low
+    // level, but the held-peak marker only decays as frames advance.
+    // Hold the snapshot constant (a single quiet sample) and pump many
+    // frames; the level must fall as the asymmetric release glides down.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.001,
+      peak: 0.001,
+      fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    await pump(4); // ~67 ms
+    const earlyDecay = meter.querySelectorAll('.meter-bar.on').length;
+    await pump(20); // ~334 ms more, NO new snapshot written between frames
+    const lateDecay = meter.querySelectorAll('.meter-bar.on').length;
+    // The level keeps falling frame-over-frame without a new snapshot.
+    expect(lateDecay).toBeLessThan(earlyDecay);
+    expect(earlyDecay).toBeLessThanOrEqual(loudOn);
+    nowSpy.mockRestore();
   });
 
   it('Monitoring caption is gated on live snapshot presence (FIX C)', async () => {

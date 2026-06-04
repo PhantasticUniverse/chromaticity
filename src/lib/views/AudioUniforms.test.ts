@@ -409,11 +409,11 @@ describe('AudioUniforms view', () => {
   });
 
   // ---------------------------------------------------------------------
-  // ADR-024 — live band-tile wiring now reads the volume-independent
-  // AGC reactive bands (`bass` / `mid` / `treb`) rather than the
-  // clamped `fft_bands`, mapped onto a 0..1 bar fill by
-  // `clamp(value / 2, 0, 1)` (neutral 1.0 → 50%, ~4.2 transient →
-  // 100%). The five tiles map:
+  // ADR-024 + FIX 3 — live band-tile wiring reads the volume-independent
+  // AGC reactive bands (`bass` / `mid` / `treb`) rather than the clamped
+  // `fft_bands`, mapped onto a 0..1 bar fill by `clamp((value - 1) / 3)`:
+  // a REST-AT-FLOOR reactivity ratio (neutral 1.0 → 0% dark, ~4.0
+  // transient → 100%), not an absolute level. The five tiles map:
   //   bass   ← bass
   //   mid    ← mid
   //   midhi  ← treb
@@ -425,10 +425,12 @@ describe('AudioUniforms view', () => {
   // singleton's `snapshot` field to `null` so the synthetic-fallback
   // tests above keep their default fixture-driven posture.
 
-  // Distinct per-band values so each tile reads a different fill, and
+  // Distinct per-band values (all above neutral so the tiles light), and
   // chosen so the mapped values bracket the HIT_THRESHOLD (0.5):
-  //   bass 0.6 -> 0.30 (below → ○), mid 1.0 -> 0.50 (at, not over → ○),
-  //   treb 1.4 -> 0.70 (over → ●), full mean(0.6,1.0,1.4)=1.0 -> 0.50.
+  //   bass 1.6 -> (0.6)/3 = 0.20 (below → ○),
+  //   mid  1.0 -> 0.00 (at floor),
+  //   treb 3.4 -> (2.4)/3 = 0.80 (over → ●),
+  //   full mean(1.6,1.0,3.4)=2.0 -> (1.0)/3 = 0.33 (below → ○).
   const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
     bpm: 120,
     bpm_availability: 'Ready',
@@ -436,12 +438,12 @@ describe('AudioUniforms view', () => {
     peak: 0.9,
     fft_bands: [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9],
     fft_availability: 'Ready',
-    bass: 0.6,
+    bass: 1.6,
     mid: 1.0,
-    treb: 1.4,
-    bass_att: 0.6,
+    treb: 3.4,
+    bass_att: 1.6,
     mid_att: 1.0,
-    treb_att: 1.4,
+    treb_att: 3.4,
     degraded: false,
   };
 
@@ -455,26 +457,56 @@ describe('AudioUniforms view', () => {
     const valueAt = (bandIdx: number, barIdx: number): string =>
       bands[bandIdx]?.querySelectorAll('.au__bar-value')[barIdx]?.textContent?.trim() ?? '';
 
-    // Bass: clamp(0.6/2) = 0.30 — below HIT_THRESHOLD, hit = 0 → ○.
-    expect(valueAt(0, 0)).toBe('0.30'); // level
+    // Bass: clamp((1.6 - 1) / 3) = 0.20 — below HIT_THRESHOLD, hit = 0 → ○.
+    expect(valueAt(0, 0)).toBe('0.20'); // level
     expect(valueAt(0, 1)).toBe('○'); // hit indicator (hollow)
-    expect(valueAt(0, 2)).toBe('0.30'); // presence mirrors level
+    expect(valueAt(0, 2)).toBe('0.20'); // presence mirrors level
 
-    // Mid-High: treb clamp(1.4/2) = 0.70 — above threshold, hit → ●.
-    expect(valueAt(2, 0)).toBe('0.70');
+    // Mid: clamp((1.0 - 1) / 3) = 0.00 — rests at the floor (FIX 3).
+    expect(valueAt(1, 0)).toBe('0.00');
+
+    // Mid-High: treb clamp((3.4 - 1) / 3) = 0.80 — above threshold, hit → ●.
+    expect(valueAt(2, 0)).toBe('0.80');
     expect(valueAt(2, 1)).toBe('●');
-    expect(valueAt(2, 2)).toBe('0.70');
+    expect(valueAt(2, 2)).toBe('0.80');
 
-    // High: also reads treb → 0.70 → ●.
-    expect(valueAt(3, 0)).toBe('0.70');
+    // High: also reads treb → 0.80 → ●.
+    expect(valueAt(3, 0)).toBe('0.80');
     expect(valueAt(3, 1)).toBe('●');
-    expect(valueAt(3, 2)).toBe('0.70');
+    expect(valueAt(3, 2)).toBe('0.80');
 
-    // Full: mean(0.6, 1.0, 1.4) = 1.0 → clamp(0.5) = 0.50 — exactly at
-    // threshold, not strictly greater, hit = 0 → ○.
-    expect(valueAt(4, 0)).toBe('0.50');
+    // Full: mean(1.6, 1.0, 3.4) = 2.0 → clamp((2.0 - 1) / 3) = 0.33 —
+    // below threshold, hit = 0 → ○.
+    expect(valueAt(4, 0)).toBe('0.33');
     expect(valueAt(4, 1)).toBe('○');
-    expect(valueAt(4, 2)).toBe('0.50');
+    expect(valueAt(4, 2)).toBe('0.33');
+  });
+
+  it('agcBarFill rests at the floor at neutral and saturates on a transient (FIX 3)', () => {
+    // Drive the view at exactly neutral (all bands 1.0) and assert every
+    // tile reads 0.00 — the rest-at-floor contract that fixes the
+    // "stuck half-lit at 50%" feel.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.01,
+      peak: 0.02,
+      fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    const { container } = render(AudioUniforms);
+    const bands = container.querySelectorAll('.au__band');
+    for (const band of bands) {
+      const level = band.querySelectorAll('.au__bar-value')[0]?.textContent?.trim();
+      expect(level).toBe('0.00');
+    }
   });
 
   it('falls back to fixture band values when audioSnapshotStore.snapshot is null', () => {

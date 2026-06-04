@@ -39,13 +39,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // The form fields below read and write the persisted settings store.
   // Runtime application of a few preferences is still subsystem-owned,
   // but the operator document itself survives restart.
+  import { untrack } from 'svelte';
+
   import {
     ampToDb,
-    ExpEnvelope,
+    AttackReleaseEnvelope,
     PeakBallistics,
     PeakHold,
     SilenceGate,
-    VU_INTEGRATION_TAU_MS,
   } from '../audio/metering';
   import { HOTKEYS } from '../data/hotkeys';
   import {
@@ -167,7 +168,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // device-less hosts) the meter shows the bundle-faithful frozen-frame
   // fixture levels and the ballistics reset so the next live snapshot
   // seeds cleanly.
-  const levelEnv = new ExpEnvelope(VU_INTEGRATION_TAU_MS);
+  // Asymmetric level follower: fast attack (~10 ms) so the bar leaps
+  // onto a transient, slow release (~250 ms) so it glides back — the
+  // DAW-grade feel. Replaces the symmetric 300 ms `ExpEnvelope` whose
+  // equal rise/fall tau was the dominant level-bar lag.
+  const levelEnv = new AttackReleaseEnvelope();
   const peakBallistics = new PeakBallistics();
   const peakHold = new PeakHold();
   const silenceGate = new SilenceGate();
@@ -189,32 +194,53 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // directly — it does NOT alter the meter `$effect` ballistics.
   const meterIsLive = $derived(audioSnapshotStore.snapshot !== null);
 
+  // Free-running rAF ballistics. The decay / peak-hold glide must keep
+  // advancing every frame on the REAL per-frame dt, not just when an
+  // engine snapshot arrives — otherwise the meter freezes mid-glide
+  // whenever the IPC stream coalesces (the snapshot-driven `$effect`
+  // only ticked the envelopes on each write, so a gap stalled the fall).
+  // Mirrors the `VuStereo.svelte` untrack-rAF pattern: the snapshot is
+  // read via `untrack()` inside the loop so the `$effect` doesn't tear
+  // down + recreate the loop on every ~60 Hz snapshot write. Reset on a
+  // null snapshot restores the frozen-frame fixture so the next live
+  // sample seeds cleanly.
   $effect(() => {
-    const snap = audioSnapshotStore.snapshot;
-    if (!snap) {
-      meterLevelDb = FIXTURE_LEVEL_DB;
-      meterPeakDb = FIXTURE_PEAK_DB;
-      meterSilent = false;
-      _meterSeeded = false;
-      levelEnv.reset();
-      peakBallistics.reset();
-      peakHold.reset();
-      silenceGate.reset();
-      return;
-    }
-    const now = typeof performance !== 'undefined' ? performance.now() : 0;
-    // First live snapshot seeds instantly (large dt saturates the
-    // envelopes onto the target); subsequent steps use the real dt,
-    // capped so a backgrounded tab doesn't fast-forward the decay.
-    const dtMs = _meterSeeded ? Math.min(250, Math.max(0, now - _lastSnapMs)) : 1e4;
-    _lastSnapMs = now;
-    _meterSeeded = true;
+    if (typeof requestAnimationFrame === 'undefined') return;
+    let raf = 0;
+    const tick = (): void => {
+      const snap = untrack(() => audioSnapshotStore.snapshot);
+      if (!snap) {
+        meterLevelDb = FIXTURE_LEVEL_DB;
+        meterPeakDb = FIXTURE_PEAK_DB;
+        meterSilent = false;
+        if (_meterSeeded) {
+          _meterSeeded = false;
+          levelEnv.reset();
+          peakBallistics.reset();
+          peakHold.reset();
+          silenceGate.reset();
+        }
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      const now = typeof performance !== 'undefined' ? performance.now() : 0;
+      // First live snapshot seeds instantly (large dt saturates the
+      // envelopes onto the target); subsequent frames use the real
+      // per-frame dt, capped so a backgrounded tab doesn't fast-forward
+      // the decay.
+      const dtMs = _meterSeeded ? Math.min(250, Math.max(0, now - _lastSnapMs)) : 1e4;
+      _lastSnapMs = now;
+      _meterSeeded = true;
 
-    const levelDb = levelEnv.process(ampToDb(snap.rms), dtMs);
-    const fastPeakDb = peakBallistics.process(ampToDb(snap.peak), dtMs);
-    meterLevelDb = levelDb;
-    meterPeakDb = peakHold.process(fastPeakDb, dtMs);
-    meterSilent = silenceGate.update(levelDb, dtMs);
+      const levelDb = levelEnv.process(ampToDb(snap.rms), dtMs);
+      const fastPeakDb = peakBallistics.process(ampToDb(snap.peak), dtMs);
+      meterLevelDb = levelDb;
+      meterPeakDb = peakHold.process(fastPeakDb, dtMs);
+      meterSilent = silenceGate.update(levelDb, dtMs);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   });
 
   // Always-present built-in capture sources rendered ahead of the
@@ -232,16 +258,30 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Exposing it as a first-class entry (parallel to the reference's
   // "Desktop Audio") means reacting to whatever the machine is PLAYING
   // needs no hand-installed BlackHole/Loopback driver.
-  const FIXED_AUDIO_INPUT_OPTIONS = [
-    { id: 'default', label: 'Default · System Input' },
-    { id: 'system-audio', label: 'System Audio (built-in)' },
-  ];
+  // FIX 8 — `default` reads as a MODE ("Automatic"), not a device, so it
+  // stops colliding visually with the enumerated host-default device
+  // (e.g. "MacBook Pro Microphone", which IS the host default). The
+  // `system-audio` zero-install loopback entry is grouped under "System
+  // playback" alongside any installed BlackHole / Loopback driver.
+  interface DeviceOption {
+    readonly id: string;
+    readonly label: string;
+  }
+  const AUTOMATIC_INPUT_OPTION: DeviceOption = {
+    id: 'default',
+    label: 'Automatic (system default)',
+  };
+  const SYSTEM_AUDIO_INPUT_OPTION: DeviceOption = {
+    id: 'system-audio',
+    label: 'System Audio (built-in)',
+  };
 
   // Wave 2.7 Lane SET.C — the persisted `output_device` sentinel
   // mirror of the input `default` fix above: always-present so the
   // native <select> has a row to match when live cpal output ids
-  // (`output-<sanitized>`) replace the fixture set.
-  const FIXED_AUDIO_OUTPUT_OPTIONS = [{ id: 'default', label: 'Default · System Output' }];
+  // (`output-<sanitized>`) replace the fixture set. FIX 8 — same
+  // mode-not-device relabel as the input side.
+  const FIXED_AUDIO_OUTPUT_OPTIONS = [{ id: 'default', label: 'Automatic (system default)' }];
 
   // Wave 2.6 Lane AUD.A — derive the Input Device dropdown option set
   // from `audioDevicesStore.devices`. Empty live list falls back to
@@ -254,12 +294,41 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const liveAudioInputOptions = $derived(
     audioDevicesStore.devices.map((d) => ({ id: d.id, label: d.name })),
   );
-  const audioInputOptions = $derived([
-    ...FIXED_AUDIO_INPUT_OPTIONS,
-    ...(liveAudioInputOptions.length > 0
+
+  // FIX 8 — group the Input <select> with <optgroup> so the operator
+  // reads the mode ("Automatic") apart from real capture sources.
+  //   • Automatic — the `default` system-default MODE (one row).
+  //   • System playback — the zero-install `system-audio` loopback plus
+  //     any installed BlackHole / Loopback driver (matched by name).
+  //   • Hardware inputs — the remaining cpal-enumerated devices (or the
+  //     W21 PR1 fixture fallback when nothing enumerates).
+  // `default` is excluded from the fixture-fallback tail so it never
+  // double-renders against the prepended Automatic row.
+  const SYSTEM_PLAYBACK_NAME_RE = /blackhole|loopback|soundflower/i;
+  const enumeratedInputDevices = $derived(
+    liveAudioInputOptions.length > 0
       ? liveAudioInputOptions
-      : AUDIO_INPUT_DEVICES.filter((d) => d.id !== 'default')),
-  ]);
+      : AUDIO_INPUT_DEVICES.filter((d) => d.id !== 'default').map((d) => ({
+          id: d.id,
+          label: d.label,
+        })),
+  );
+  const audioInputGroups = $derived<readonly { label: string; options: DeviceOption[] }[]>(
+    [
+      { label: 'Automatic', options: [AUTOMATIC_INPUT_OPTION] },
+      {
+        label: 'System playback',
+        options: [
+          SYSTEM_AUDIO_INPUT_OPTION,
+          ...enumeratedInputDevices.filter((d) => SYSTEM_PLAYBACK_NAME_RE.test(d.label)),
+        ],
+      },
+      {
+        label: 'Hardware inputs',
+        options: enumeratedInputDevices.filter((d) => !SYSTEM_PLAYBACK_NAME_RE.test(d.label)),
+      },
+    ].filter((g) => g.options.length > 0),
+  );
 
   // Wave 2.7 Lane SET.C — same dual-mode pattern for Output Device.
   // The fixed `default` source is always prepended; the fixture
@@ -571,17 +640,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <div class="settings__form">
         <div class="settings__field">
           <label for="audio-input" class="settings__label">Input Device</label>
-          <select
-            id="audio-input"
-            class="settings__select"
-            value={audioSnapshot.input_device}
-            onchange={(e) =>
-              settingsStore.update({ audio: { input_device: e.currentTarget.value } })}
-          >
-            {#each audioInputOptions as opt (opt.id)}
-              <option value={opt.id}>{opt.label}</option>
-            {/each}
-          </select>
+          <div class="settings__field-row settings__field-row--device">
+            <select
+              id="audio-input"
+              class="settings__select"
+              value={audioSnapshot.input_device}
+              onchange={(e) =>
+                settingsStore.update({ audio: { input_device: e.currentTarget.value } })}
+            >
+              {#each audioInputGroups as group (group.label)}
+                <optgroup label={group.label}>
+                  {#each group.options as opt (opt.id)}
+                    <option value={opt.id}>{opt.label}</option>
+                  {/each}
+                </optgroup>
+              {/each}
+            </select>
+            <button
+              type="button"
+              class="settings__btn settings__btn--ghost"
+              onclick={() => audioDevicesStore.refresh()}
+              disabled={audioDevicesStore.isLoading}
+              aria-label="Refresh input devices"
+            >
+              <Icon name="refresh" size={12} /> Refresh
+            </button>
+          </div>
           <p class="settings__hint">
             Pick <strong>System Audio (built-in)</strong> to react to whatever your computer is
             playing — no extra software to install (macOS 14.6+ / Windows; macOS asks once for
@@ -598,17 +682,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
         <div class="settings__field">
           <label for="audio-output" class="settings__label">Output Device</label>
-          <select
-            id="audio-output"
-            class="settings__select"
-            value={audioSnapshot.output_device}
-            onchange={(e) =>
-              settingsStore.update({ audio: { output_device: e.currentTarget.value } })}
-          >
-            {#each audioOutputOptions as opt (opt.id)}
-              <option value={opt.id}>{opt.label}</option>
-            {/each}
-          </select>
+          <div class="settings__field-row settings__field-row--device">
+            <select
+              id="audio-output"
+              class="settings__select"
+              value={audioSnapshot.output_device}
+              onchange={(e) =>
+                settingsStore.update({ audio: { output_device: e.currentTarget.value } })}
+            >
+              {#each audioOutputOptions as opt (opt.id)}
+                <option value={opt.id}>{opt.label}</option>
+              {/each}
+            </select>
+            <button
+              type="button"
+              class="settings__btn settings__btn--ghost"
+              onclick={() => audioDevicesStore.refreshOutput()}
+              disabled={audioDevicesStore.isLoadingOutput}
+              aria-label="Refresh output devices"
+            >
+              <Icon name="refresh" size={12} /> Refresh
+            </button>
+          </div>
         </div>
         <div class="settings__field">
           <label for="sample-rate" class="settings__label">Sample Rate</label>
@@ -1879,6 +1974,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+
+  /* FIX 8 — Input / Output device picker + inline Refresh button. */
+  .settings__field-row--device {
+    flex-wrap: nowrap;
+    max-width: 420px;
+    width: 100%;
+  }
+  .settings__field-row--device .settings__select {
+    flex: 1;
+    min-width: 0;
   }
 
   .settings__field-row--gain {
