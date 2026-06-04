@@ -132,12 +132,17 @@ pub fn format_readout(snapshot: &AudioUniformSnapshot) -> String {
         " --".to_string()
     };
     format!(
-        "[audio-diag] {state:<8} rms {rms} peak {peak} dBFS  [{bar}]  bpm {bpm}  fft {fft}",
+        "[audio-diag] {state:<8} rms {rms} peak {peak} dBFS  [{bar}]  bpm {bpm}  fft {fft}  \
+         bands b{bass:.2} m{mid:.2} t{treb:.2}  fftpk {fftpk:.3}",
         state = state_label(snapshot),
         rms = format_dbfs(rms_db),
         peak = format_dbfs(peak_db),
         bar = meter_bar(rms_db, BAR_WIDTH),
         fft = fft_sparkline(&snapshot.fft_bands),
+        bass = snapshot.bass,
+        mid = snapshot.mid,
+        treb = snapshot.treb,
+        fftpk = snapshot.fft_bands.iter().copied().fold(0.0_f32, f32::max),
     )
 }
 
