@@ -181,6 +181,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let _lastSnapMs = 0;
   let _meterSeeded = false;
 
+  // True once a live engine snapshot is present (i.e. the meter is
+  // tracking real RMS / peak rather than the frozen-frame fixture).
+  // Gates the Monitoring-meter caption below so the "falling back to a
+  // frozen-frame fixture" wording only renders in the no-snapshot /
+  // error startup window, not during live capture. Reads the store
+  // directly — it does NOT alter the meter `$effect` ballistics.
+  const meterIsLive = $derived(audioSnapshotStore.snapshot !== null);
+
   $effect(() => {
     const snap = audioSnapshotStore.snapshot;
     if (!snap) {
@@ -209,39 +217,63 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     meterSilent = silenceGate.update(levelDb, dtMs);
   });
 
-  // Always-present built-in capture source rendered ahead of the
-  // enumerated devices. `system-audio` is the zero-install
+  // Always-present built-in capture sources rendered ahead of the
+  // enumerated devices. `default` is the persisted-settings sentinel
+  // (`DEFAULT_SETTINGS.audio.input_device === 'default'`) that binds
+  // the host default input via `AudioRuntime::with_preferred_device`;
+  // once real cpal devices enumerate their ids become
+  // `input-<sanitized>` and there is otherwise no `<option value="default">`
+  // for the native <select> to match, so the control renders blank.
+  // Prepending it here keeps it selectable on BOTH the live-enumerated
+  // and fixture-fallback branches. `system-audio` is the zero-install
   // system-output loopback capture (macOS 14.6+ Core Audio taps /
   // Windows WASAPI loopback) that engine/audio's
   // `try_input_by_preference` routes to `try_system_audio_loopback`.
   // Exposing it as a first-class entry (parallel to the reference's
   // "Desktop Audio") means reacting to whatever the machine is PLAYING
-  // needs no hand-installed BlackHole/Loopback driver. The host default
-  // input (`default`) is already provided by the enumerated / fixture
-  // list, so only `system-audio` is prepended here.
-  const FIXED_AUDIO_INPUT_OPTIONS = [{ id: 'system-audio', label: 'System Audio (built-in)' }];
+  // needs no hand-installed BlackHole/Loopback driver.
+  const FIXED_AUDIO_INPUT_OPTIONS = [
+    { id: 'default', label: 'Default · System Input' },
+    { id: 'system-audio', label: 'System Audio (built-in)' },
+  ];
+
+  // Wave 2.7 Lane SET.C — the persisted `output_device` sentinel
+  // mirror of the input `default` fix above: always-present so the
+  // native <select> has a row to match when live cpal output ids
+  // (`output-<sanitized>`) replace the fixture set.
+  const FIXED_AUDIO_OUTPUT_OPTIONS = [{ id: 'default', label: 'Default · System Output' }];
 
   // Wave 2.6 Lane AUD.A — derive the Input Device dropdown option set
   // from `audioDevicesStore.devices`. Empty live list falls back to
   // the W21 PR1 fixture so the dropdown always has something to
   // render (e.g. running outside Tauri). The fixed system sources are
   // always prepended so `system-audio` / `default` are selectable
-  // regardless of the enumerated-device state.
+  // regardless of the enumerated-device state. The fixture fallback
+  // de-dupes its own `default` row so the no-hardware path renders a
+  // single `default` option (the prepended one).
   const liveAudioInputOptions = $derived(
     audioDevicesStore.devices.map((d) => ({ id: d.id, label: d.name })),
   );
   const audioInputOptions = $derived([
     ...FIXED_AUDIO_INPUT_OPTIONS,
-    ...(liveAudioInputOptions.length > 0 ? liveAudioInputOptions : AUDIO_INPUT_DEVICES),
+    ...(liveAudioInputOptions.length > 0
+      ? liveAudioInputOptions
+      : AUDIO_INPUT_DEVICES.filter((d) => d.id !== 'default')),
   ]);
 
   // Wave 2.7 Lane SET.C — same dual-mode pattern for Output Device.
+  // The fixed `default` source is always prepended; the fixture
+  // fallback de-dupes its own `default` row so a single `default`
+  // option renders on the no-hardware path.
   const liveAudioOutputOptions = $derived(
     audioDevicesStore.outputDevices.map((d) => ({ id: d.id, label: d.name })),
   );
-  const audioOutputOptions = $derived(
-    liveAudioOutputOptions.length > 0 ? liveAudioOutputOptions : AUDIO_OUTPUT_DEVICES,
-  );
+  const audioOutputOptions = $derived([
+    ...FIXED_AUDIO_OUTPUT_OPTIONS,
+    ...(liveAudioOutputOptions.length > 0
+      ? liveAudioOutputOptions
+      : AUDIO_OUTPUT_DEVICES.filter((d) => d.id !== 'default')),
+  ]);
 
   // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
   // mirroring `views/settings.jsx` lines 187-194 (the right-column
@@ -690,9 +722,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
       </div>
       <p class="settings__hint">
-        Device choices are persisted and applied on restart. The Monitoring meter reads live RMS /
-        peak from the audio-uniform IPC seam when a snapshot is present, falling back to a
-        frozen-frame fixture during the no-snapshot startup window.
+        Device choices are persisted and applied on restart.
+        {#if meterIsLive}
+          The Monitoring meter is reading live RMS / peak from the audio-uniform IPC seam.
+        {:else}
+          The Monitoring meter reads live RMS / peak from the audio-uniform IPC seam when a snapshot
+          is present, falling back to a frozen-frame fixture during the no-snapshot startup window.
+        {/if}
       </p>
     </article>
 

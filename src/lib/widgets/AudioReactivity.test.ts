@@ -18,17 +18,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AudioReactivity from './AudioReactivity.svelte';
 import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
+import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
-const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
-  bpm: 145,
+const NEUTRAL_SNAPSHOT: AudioUniformSnapshotPayload = {
+  bpm: 120,
   bpm_availability: 'Ready',
-  rms: 0.5,
-  peak: 0.9,
-  // BASS = avg(0.10, 0.20) = 0.15 -> 15%
-  // LOW MID = avg(0.30, 0.40) = 0.35 -> 35%
-  // HIGH MID = avg(0.50, 0.60) = 0.55 -> 55%
-  // HIGH = avg(0.70, 0.80) = 0.75 -> 75%
-  fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+  rms: 0.01,
+  peak: 0.02,
+  fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
   fft_availability: 'Ready',
   bass: 1,
   mid: 1,
@@ -36,6 +33,31 @@ const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
   bass_att: 1,
   mid_att: 1,
   treb_att: 1,
+  degraded: false,
+};
+
+// ADR-024 — the named band tiles read the volume-independent AGC
+// reactive bands (`bass` / `mid` / `treb`), mapped onto a 0..1 bar
+// fill by `clamp(value / 2, 0, 1)` (neutral 1.0 → 50%, ~4.2 transient
+// → 100%). The two upper tiles (HIGH MID / HIGH) share the treble
+// band. `fft_bands` no longer drive the named tiles.
+//   BASS    ← bass 0.5  -> clamp(0.25)  -> 25%
+//   LOW MID ← mid  1.0  -> clamp(0.50)  -> 50%
+//   HIGH MID← treb 1.4  -> clamp(0.70)  -> 70%
+//   HIGH    ← treb 1.4  -> clamp(0.70)  -> 70%
+const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
+  bpm: 145,
+  bpm_availability: 'Ready',
+  rms: 0.5,
+  peak: 0.9,
+  fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+  fft_availability: 'Ready',
+  bass: 0.5,
+  mid: 1,
+  treb: 1.4,
+  bass_att: 0.5,
+  mid_att: 1,
+  treb_att: 1.4,
   degraded: false,
 };
 
@@ -59,6 +81,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  audioSnapshotStore.snapshot = null;
+  audioSnapshotStore.unsubscribe();
   cleanup();
 });
 
@@ -136,7 +160,11 @@ describe('AudioReactivity widget', () => {
     );
   });
 
-  it('renders placeholders while snapshot BPM and FFT are warming', () => {
+  it('still shows the BPM placeholder while the snapshot BPM axis is warming', () => {
+    // ADR-024: the named tiles read the AGC bands (which carry a
+    // neutral 1.0 default and never report `Warming`), so the
+    // FFT-warming dim treatment no longer blanks them. BPM warming
+    // still surfaces the `-- BPM` placeholder.
     const { container } = render(AudioReactivity, {
       props: {
         bpm: 100,
@@ -150,14 +178,16 @@ describe('AudioReactivity widget', () => {
     expect(container.querySelector('.audio-reactivity__tempo-bpm')?.textContent?.trim()).toBe(
       '-- BPM',
     );
+    // Tiles render their AGC-derived percentages, NOT the `--` warming
+    // placeholder, and carry no warming modifier class.
     const pct = Array.from(container.querySelectorAll('.audio-reactivity__band-pct')).map((el) =>
       el.textContent?.trim(),
     );
-    expect(pct).toEqual(['--', '--', '--', '--']);
-    expect(container.querySelectorAll('.audio-reactivity__band--warming')).toHaveLength(4);
+    expect(pct).toEqual(['25%', '50%', '70%', '70%']);
+    expect(container.querySelectorAll('.audio-reactivity__band--warming')).toHaveLength(0);
   });
 
-  it('reduces snapshot.fft_bands (8) into the four named band tiles by averaging adjacent pairs', () => {
+  it('maps the AGC bands (bass/mid/treb) onto the four named tile fills', () => {
     const { container, getByText } = render(AudioReactivity, {
       props: { snapshot: SAMPLE_SNAPSHOT },
     });
@@ -166,11 +196,14 @@ describe('AudioReactivity widget', () => {
     expect(getByText('LOW MID')).toBeInTheDocument();
     expect(getByText('HIGH MID')).toBeInTheDocument();
     expect(getByText('HIGH')).toBeInTheDocument();
-    // Reduced values: 0.15 / 0.35 / 0.55 / 0.75 -> 15% / 35% / 55% / 75%
-    expect(getByText('15%')).toBeInTheDocument();
-    expect(getByText('35%')).toBeInTheDocument();
-    expect(getByText('55%')).toBeInTheDocument();
-    expect(getByText('75%')).toBeInTheDocument();
+    // clamp(value/2): bass 0.5 -> 25%, mid 1.0 -> 50%, treb 1.4 -> 70%
+    // (HIGH MID and HIGH both read treb).
+    expect(getByText('25%')).toBeInTheDocument();
+    expect(getByText('50%')).toBeInTheDocument();
+    const seventy = Array.from(container.querySelectorAll('.audio-reactivity__band-pct')).filter(
+      (el) => el.textContent?.trim() === '70%',
+    );
+    expect(seventy).toHaveLength(2);
   });
 
   it('falls back to default band fixtures when snapshot is null', () => {
@@ -196,5 +229,48 @@ describe('AudioReactivity widget', () => {
     // Snapshot-reduced names must NOT appear when bands prop wins.
     expect(queryByText('BASS')).toBeNull();
     expect(queryByText('LOW MID')).toBeNull();
+  });
+
+  it('the live-store band fill changes when the AGC bass band swings (FIX B)', async () => {
+    // No `bands` / `snapshot` prop → the rAF-smoothing path observes
+    // `audioSnapshotStore.snapshot` directly. jsdom does NOT auto-run
+    // rAF, so capture the scheduled callback and pump it manually.
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const pump = async (n: number): Promise<void> => {
+      for (let i = 0; i < n; i++) {
+        const cb = rafCbs.shift();
+        if (cb) cb(performance.now());
+        await Promise.resolve();
+      }
+    };
+
+    const bassFillWidth = (container: HTMLElement): string => {
+      const fill = container.querySelectorAll<HTMLElement>('.audio-reactivity__band-fill')[0];
+      // Read the inline `width: NN%` literal off the first (BASS) tile.
+      return fill?.style.width ?? '';
+    };
+
+    // Neutral snapshot: bass = 1.0 → fill drifts toward 50%.
+    audioSnapshotStore.snapshot = { ...NEUTRAL_SNAPSHOT };
+    const { container } = render(AudioReactivity);
+    await Promise.resolve();
+    await pump(30);
+    const neutralWidth = bassFillWidth(container);
+    expect(neutralWidth).not.toBe('');
+
+    // Transient: bass = 4.2 → fill drifts toward 100%. The smoothed
+    // value MUST move, so the inline width string changes.
+    audioSnapshotStore.snapshot = { ...NEUTRAL_SNAPSHOT, bass: 4.2 };
+    await Promise.resolve();
+    await pump(30);
+    const loudWidth = bassFillWidth(container);
+    expect(loudWidth).not.toBe(neutralWidth);
+    // Sanity: the loud transient saturates the bar (clamped to 100%).
+    expect(parseFloat(loudWidth)).toBeGreaterThan(parseFloat(neutralWidth));
   });
 });

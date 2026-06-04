@@ -208,26 +208,43 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const HIT_THRESHOLD = 0.5;
 
   /**
-   * Reduce the engine's 8-band FFT array into the bundle's 5 named
-   * tiles (Bass / Mid / Mid-High / High / Full). The four
-   * frequency-specific tiles average adjacent pairs (8 → 4); the
-   * broadband `Full` tile averages all eight bins. Per-tile bar
-   * derivations are kept simple: level = reduced value, hit = step
-   * flash above `HIT_THRESHOLD`, presence = reduced value (mirrors
+   * Map a single ~1.0-centred ADR-024 AGC reactive band onto a 0..1
+   * bar fill. The engine's MilkDrop-class auto-gain bands are
+   * volume-INDEPENDENT and unbounded above (neutral 1.0, ~4.2 on a
+   * transient), unlike the `fft_bands` which are normalized-then-clamped
+   * to [0,1] and sit near 0 in a quiet room. `value / 2` puts neutral
+   * 1.0 at mid-bar (50%) and saturates a ~4.2 transient at 100%.
+   */
+  function agcBarFill(value: number): number {
+    return Math.max(0, Math.min(1, value / 2));
+  }
+
+  /**
+   * Reduce the engine's three ADR-024 AGC reactive bands
+   * (`bass` / `mid` / `treb`) into the bundle's 5 named tiles
+   * (Bass / Mid / Mid-High / High / Full). The named tiles now read
+   * the volume-independent AGC bands rather than the clamped
+   * `fft_bands`, so the visible bars actually move on a quiet mic:
+   *   bass    ← bass
+   *   mid     ← mid
+   *   mid-hi  ← treb
+   *   high    ← treb
+   *   full    ← mean(bass, mid, treb)
+   * Each value is mapped through `agcBarFill`. Per-tile bar
+   * derivations are kept simple: level = mapped value, hit = step
+   * flash above `HIT_THRESHOLD`, presence = mapped value (mirrors
    * level — proper peak-hold is post-MVP UX). Preserves the fixture's
    * tile id / label / sub-label / tint / bar-key shape so the visual
    * layout never drifts; only the per-bar `value` switches to live data.
    */
   function reduceFftToBands(payload: AudioUniformSnapshotPayload): readonly FrequencyBand[] {
-    const f = payload.fft_bands;
-    const avg2 = (a: number, b: number): number => (a + b) / 2;
-    const avgAll = (f[0] + f[1] + f[2] + f[3] + f[4] + f[5] + f[6] + f[7]) / 8;
+    const fullFill = agcBarFill((payload.bass + payload.mid + payload.treb) / 3);
     const reducedByBandId: Readonly<Record<string, number>> = {
-      bass: avg2(f[0], f[1]),
-      mid: avg2(f[2], f[3]),
-      midhi: avg2(f[4], f[5]),
-      high: avg2(f[6], f[7]),
-      full: avgAll,
+      bass: agcBarFill(payload.bass),
+      mid: agcBarFill(payload.mid),
+      midhi: agcBarFill(payload.treb),
+      high: agcBarFill(payload.treb),
+      full: fullFill,
     };
     return AUDIO_UNIFORMS_FIXTURE.bands.map((band) => {
       const v = reducedByBandId[band.id] ?? 0;
@@ -328,10 +345,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     };
   });
 
+  // The named tiles read the ADR-024 AGC bands, which carry a neutral
+  // 1.0 default and are present on every snapshot, so gate on snapshot
+  // presence rather than `fft_availability` (the AGC bands are valid
+  // even while the FFT axis is still warming).
   const liveBands = $derived<readonly FrequencyBand[]>(
-    smoothedSnapshot?.fft_availability === 'Ready'
-      ? reduceFftToBands(smoothedSnapshot)
-      : AUDIO_UNIFORMS_FIXTURE.bands,
+    smoothedSnapshot !== null ? reduceFftToBands(smoothedSnapshot) : AUDIO_UNIFORMS_FIXTURE.bands,
   );
 
   // Wave 2.6 AUD.C — live peak / RMS dB readout in the hero stats strip.

@@ -64,29 +64,59 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
   const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
   const bpmDisplay = $derived(liveSnapshot && !bpmReady ? '-- BPM' : `${liveBpm.toFixed(2)} BPM`);
-  const fftWarming = $derived(
-    !bands && liveSnapshot !== null && liveSnapshot.fft_availability !== 'Ready',
-  );
+  // The named tiles read the ADR-024 AGC bands, which carry a neutral
+  // 1.0 default and never report a per-axis `Warming` state, so the
+  // dim warming-placeholder treatment no longer applies to them.
+  const fftWarming = false;
 
-  // Wave 2.8 Q.1 — smooth the per-band FFT values before they drive
-  // the 4 named tiles. The engine producer emits a fresh snapshot
-  // ~60 Hz with bin-level jitter (background mic noise reports
-  // multi-millisecond bursts even when the room is quiet), and the
-  // band-fill `transition: width 120ms ease` on top of every-frame %
-  // writes amplifies that into a perceptible flicker. A short EMA on
-  // each band damps the noise without erasing real audio onsets.
-  // Skipped entirely when `bands` is caller-supplied (tests / custom
-  // device-driven values) and when there's no snapshot.
+  /**
+   * Map a single ~1.0-centred AGC reactive band onto a 0..1 bar fill.
+   * The engine's MilkDrop-class auto-gain bands are volume-independent
+   * and unbounded above; `value / 2` puts the neutral 1.0 at mid-bar
+   * (50%) and saturates a ~4.2 transient at 100%, clamped to [0, 1].
+   */
+  function agcBarFill(value: number): number {
+    return Math.max(0, Math.min(1, value / 2));
+  }
+
+  /**
+   * Reduce a snapshot's three AGC reactive bands into the four named
+   * tile fills (BASS / LOW MID / HIGH MID / HIGH). The engine emits
+   * three relative bands; the two upper tiles share the treble band so
+   * the bundle's four-tile layout stays intact and every cell reacts.
+   */
+  function agcTileFills(snap: AudioUniformSnapshotPayload): [number, number, number, number] {
+    return [
+      agcBarFill(snap.bass),
+      agcBarFill(snap.mid),
+      agcBarFill(snap.treb),
+      agcBarFill(snap.treb),
+    ];
+  }
+
+  // ADR-024 — drive the four named tiles from the MilkDrop-class AGC
+  // reactive bands (`snapshot.bass` / `mid` / `treb`), NOT the raw
+  // `fft_bands`. The AGC bands are volume-INDEPENDENT (centred on the
+  // neutral 1.0, swinging up to ~4.2 on a transient even at a quiet
+  // mic), whereas `fft_bands` are normalized-then-clamped to [0,1] and
+  // sit near 0 in a quiet room — so the old FFT-reduced tiles barely
+  // moved. `agcBarFill` maps the ~1.0-centred unbounded band onto a
+  // 0..1 bar fill: neutral 1.0 → 50%, a 4.2 transient → 100%. The four
+  // tiles map BASS ← bass, LOW MID ← mid, HIGH MID ← treb, HIGH ← treb
+  // (the engine emits three relative bands; the two upper tiles share
+  // the treble band so the layout's HIGH MID / HIGH cells still react).
   //
-  // Wave 2.9 SC.C — the smoothed bar *fill width* was stable but the
-  // integer-percent text label still flickered ±1% across consecutive
-  // frames because `Math.round(value * 100)` quantizes the smooth
-  // 21.0-23.4% drift into discrete `46→47→46→45→46` integers. Add a
-  // small hysteresis on the *displayed* integer percent (separate from
-  // the smoothed value driving the bar width) so the label only flips
-  // when the smoothed value crosses ±0.6 past the previous integer
-  // boundary. The fill width stays unchanged so visual responsiveness
-  // is preserved.
+  // Wave 2.8 Q.1 — a short EMA still damps the ~60 Hz per-frame jitter
+  // on top of the AGC bands so the `transition: width 120ms ease`
+  // band-fill doesn't flicker; skipped entirely when `bands` is
+  // caller-supplied (tests / custom device-driven values) and when
+  // there's no snapshot.
+  //
+  // Wave 2.9 SC.C — the integer-percent text label gets a small
+  // hysteresis (separate from the smoothed value driving the bar
+  // width) so the label only flips when the smoothed value crosses
+  // ±0.6 past the previous integer boundary. The fill width stays
+  // unchanged so visual responsiveness is preserved.
   let smoothedBands = $state<readonly number[]>([0, 0, 0, 0]);
   let displayedBandPct = $state<readonly number[]>([0, 0, 0, 0]);
   $effect(() => {
@@ -102,9 +132,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const HYST = 0.6;
     const tick = (): void => {
       const snap = untrack(() => audioSnapshotStore.snapshot);
-      if (snap && snap.fft_availability === 'Ready') {
-        const f = snap.fft_bands;
-        const tiles = [(f[0] + f[1]) / 2, (f[2] + f[3]) / 2, (f[4] + f[5]) / 2, (f[6] + f[7]) / 2];
+      if (snap) {
+        const tiles = agcTileFills(snap);
         for (let i = 0; i < 4; i++) {
           s[i] = (s[i] ?? 0) + ((tiles[i] ?? 0) - (s[i] ?? 0)) * EMA;
           const pct = (s[i] ?? 0) * 100;
@@ -180,12 +209,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       (fftWarming
         ? WARMING_BANDS
         : snapshot
-          ? tilesFromValues([
-              (snapshot.fft_bands[0] + snapshot.fft_bands[1]) / 2,
-              (snapshot.fft_bands[2] + snapshot.fft_bands[3]) / 2,
-              (snapshot.fft_bands[4] + snapshot.fft_bands[5]) / 2,
-              (snapshot.fft_bands[6] + snapshot.fft_bands[7]) / 2,
-            ])
+          ? tilesFromValues(agcTileFills(snapshot))
           : liveSnapshot
             ? tilesFromValues(smoothedBands)
             : DEFAULT_BANDS),

@@ -187,16 +187,37 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
     const options = Array.from(input.querySelectorAll('option'));
-    // The built-in System Audio loopback entry is always prepended; the
-    // live list replaces the fixture for the enumerated tail.
-    const FIXED_INPUT_IDS = ['system-audio'];
-    const FIXED_INPUT_LABELS = ['System Audio (built-in)'];
+    // The persisted `default` sentinel and the built-in System Audio
+    // loopback entry are always prepended (FIX A); the live list
+    // replaces the fixture for the enumerated tail.
+    const FIXED_INPUT_IDS = ['default', 'system-audio'];
+    const FIXED_INPUT_LABELS = ['Default · System Input', 'System Audio (built-in)'];
     expect(options.length).toBe(FIXED_INPUT_IDS.length + live.length);
     expect(options.map((o) => o.value)).toEqual([...FIXED_INPUT_IDS, ...live.map((d) => d.id)]);
     expect(options.map((o) => o.textContent?.trim())).toEqual([
       ...FIXED_INPUT_LABELS,
       ...live.map((d) => d.name),
     ]);
+  });
+
+  it('Input Device select.value stays "default" against cpal-style ids (FIX A)', () => {
+    // Regression for the blank-dropdown bug: with live cpal-style ids
+    // (`input-<sanitized>`) enumerated AND the persisted sentinel
+    // `input_device === 'default'`, the native <select> must still have
+    // a matching `<option value="default">` so it renders that row
+    // rather than going blank.
+    audioDevicesStore.devices = [
+      { id: 'input-built-in-microphone', name: 'Built-in Microphone', kind: 'Input' },
+    ];
+    expect(settingsStore.snapshot.audio.input_device).toBe('default');
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
+    expect(input.value).toBe('default');
+    const defaultOpt = Array.from(input.querySelectorAll('option')).find(
+      (o) => o.value === 'default',
+    );
+    expect(defaultOpt).toBeDefined();
   });
 
   it('Input Device dropdown falls back to the fixture when audioDevicesStore is empty', () => {
@@ -209,14 +230,16 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
     const options = Array.from(input.querySelectorAll('option'));
-    // The built-in System Audio loopback entry is prepended ahead of
-    // the fixture fallback.
-    const FIXED_INPUT_IDS = ['system-audio'];
-    expect(options.length).toBe(FIXED_INPUT_IDS.length + AUDIO_INPUT_DEVICES.length);
-    expect(options.map((o) => o.value)).toEqual([
-      ...FIXED_INPUT_IDS,
-      ...AUDIO_INPUT_DEVICES.map((d) => d.id),
-    ]);
+    // FIX A: the persisted `default` sentinel + the built-in System
+    // Audio loopback entry are prepended ahead of the fixture fallback,
+    // and the fixture's own `default` row is de-duped so only one
+    // `default` option renders.
+    const FIXED_INPUT_IDS = ['default', 'system-audio'];
+    const fallbackIds = AUDIO_INPUT_DEVICES.filter((d) => d.id !== 'default').map((d) => d.id);
+    expect(options.length).toBe(FIXED_INPUT_IDS.length + fallbackIds.length);
+    expect(options.map((o) => o.value)).toEqual([...FIXED_INPUT_IDS, ...fallbackIds]);
+    // Exactly one `default` option (no double-render on the no-hardware path).
+    expect(options.filter((o) => o.value === 'default').length).toBe(1);
   });
 
   it('Output Device dropdown shows enumerated output devices when audioDevicesStore.outputDevices populated', () => {
@@ -245,9 +268,19 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const output = within(audio).getByLabelText('Output Device') as HTMLSelectElement;
     const options = Array.from(output.querySelectorAll('option'));
-    expect(options.length).toBe(live.length);
-    expect(options.map((o) => o.value)).toEqual(live.map((d) => d.id));
-    expect(options.map((o) => o.textContent?.trim())).toEqual(live.map((d) => d.name));
+    // FIX A: the persisted `default` output sentinel is always prepended
+    // so the native <select> matches `output_device === 'default'`
+    // against cpal-style `output-<sanitized>` enumerated ids.
+    const FIXED_OUTPUT_IDS = ['default'];
+    const FIXED_OUTPUT_LABELS = ['Default · System Output'];
+    expect(options.length).toBe(FIXED_OUTPUT_IDS.length + live.length);
+    expect(options.map((o) => o.value)).toEqual([...FIXED_OUTPUT_IDS, ...live.map((d) => d.id)]);
+    expect(options.map((o) => o.textContent?.trim())).toEqual([
+      ...FIXED_OUTPUT_LABELS,
+      ...live.map((d) => d.name),
+    ]);
+    // The select keeps its persisted `default` value rather than rendering blank.
+    expect(output.value).toBe('default');
   });
 
   it('Output Device dropdown falls back to the fixture when audioDevicesStore.outputDevices is empty', () => {
@@ -260,8 +293,13 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const output = within(audio).getByLabelText('Output Device') as HTMLSelectElement;
     const options = Array.from(output.querySelectorAll('option'));
-    expect(options.length).toBe(AUDIO_OUTPUT_DEVICES.length);
-    expect(options.map((o) => o.value)).toEqual(AUDIO_OUTPUT_DEVICES.map((d) => d.id));
+    // FIX A: the `default` sentinel is prepended and the fixture's own
+    // `default` row is de-duped so a single `default` option renders.
+    const FIXED_OUTPUT_IDS = ['default'];
+    const fallbackIds = AUDIO_OUTPUT_DEVICES.filter((d) => d.id !== 'default').map((d) => d.id);
+    expect(options.length).toBe(FIXED_OUTPUT_IDS.length + fallbackIds.length);
+    expect(options.map((o) => o.value)).toEqual([...FIXED_OUTPUT_IDS, ...fallbackIds]);
+    expect(options.filter((o) => o.value === 'default').length).toBe(1);
   });
 
   it('Audio Device input-gain slider updates the dB readout aria-valuetext', async () => {
@@ -336,6 +374,37 @@ describe('Settings view', () => {
     const liveOn = meter.querySelectorAll('.meter-bar.on').length;
     expect(liveOn).toBe(onCountFor(0.25));
     expect(liveOn).not.toBe(baselineOn);
+  });
+
+  it('Monitoring caption is gated on live snapshot presence (FIX C)', async () => {
+    // No live snapshot → the caption keeps the "frozen-frame fixture"
+    // startup-window wording.
+    audioSnapshotStore.snapshot = null;
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    expect(audio.textContent).toMatch(/frozen-frame fixture/);
+
+    // A live snapshot → the `meterIsLive` $derived flips and the
+    // caption drops the "frozen-frame fixture" clause, reflecting live
+    // data instead.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.25,
+      peak: 0.45,
+      fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    await Promise.resolve();
+    expect(audio.textContent).not.toMatch(/frozen-frame fixture/);
+    expect(audio.textContent).toMatch(/reading live RMS \/ peak/);
   });
 
   it('Graphics / Output renders all expected rows including the W41 expansion', () => {

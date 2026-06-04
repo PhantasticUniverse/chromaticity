@@ -409,24 +409,26 @@ describe('AudioUniforms view', () => {
   });
 
   // ---------------------------------------------------------------------
-  // Wave 2.6 AUD.D — live band-tile wiring. Five fixture tiles now read
-  // live values reduced from `audioSnapshotStore.snapshot.fft_bands` via
-  // the 8 → 5 idiom documented in `AudioUniforms.svelte`:
-  //   bass   ← avg(fft_bands[0], fft_bands[1])
-  //   mid    ← avg(fft_bands[2], fft_bands[3])
-  //   midhi  ← avg(fft_bands[4], fft_bands[5])
-  //   high   ← avg(fft_bands[6], fft_bands[7])
-  //   full   ← avg(fft_bands[0..7])
+  // ADR-024 — live band-tile wiring now reads the volume-independent
+  // AGC reactive bands (`bass` / `mid` / `treb`) rather than the
+  // clamped `fft_bands`, mapped onto a 0..1 bar fill by
+  // `clamp(value / 2, 0, 1)` (neutral 1.0 → 50%, ~4.2 transient →
+  // 100%). The five tiles map:
+  //   bass   ← bass
+  //   mid    ← mid
+  //   midhi  ← treb
+  //   high   ← treb
+  //   full   ← mean(bass, mid, treb)
   // The store is mutated directly because the view subscribes to the
   // singleton (no `snapshot` prop on AudioUniforms — divergence from
   // the AudioReactivity widget surface). `afterEach` resets the
   // singleton's `snapshot` field to `null` so the synthetic-fallback
   // tests above keep their default fixture-driven posture.
 
-  // Carefully chosen so the reduced values bracket the HIT_THRESHOLD
-  // (0.5) without ties: bass / mid stay below, midhi / high fire, and
-  // the broadband full lands exactly at 0.5 (not strictly greater, so
-  // no hit). Per-bar `.toFixed(2)` matches the view's value rendering.
+  // Distinct per-band values so each tile reads a different fill, and
+  // chosen so the mapped values bracket the HIT_THRESHOLD (0.5):
+  //   bass 0.6 -> 0.30 (below → ○), mid 1.0 -> 0.50 (at, not over → ○),
+  //   treb 1.4 -> 0.70 (over → ●), full mean(0.6,1.0,1.4)=1.0 -> 0.50.
   const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
     bpm: 120,
     bpm_availability: 'Ready',
@@ -434,44 +436,42 @@ describe('AudioUniforms view', () => {
     peak: 0.9,
     fft_bands: [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9],
     fft_availability: 'Ready',
-    bass: 1,
-    mid: 1,
-    treb: 1,
-    bass_att: 1,
-    mid_att: 1,
-    treb_att: 1,
+    bass: 0.6,
+    mid: 1.0,
+    treb: 1.4,
+    bass_att: 0.6,
+    mid_att: 1.0,
+    treb_att: 1.4,
     degraded: false,
   };
 
-  it('reduces 8 fft_bands into the 5 band tiles when audioSnapshotStore.snapshot is set', () => {
+  it('maps the AGC bands onto the 5 band tiles when audioSnapshotStore.snapshot is set', () => {
     audioSnapshotStore.snapshot = SAMPLE_SNAPSHOT;
     const { container } = render(AudioUniforms);
     const bands = container.querySelectorAll('.au__band');
     expect(bands.length).toBe(5);
 
-    // Index 0 (bass) / 2 (midhi) / 3 (high) / 4 (full) — exercise the
-    // four frequency-specific pair reductions plus the broadband mean.
     // Each band's bars are level / hit / presence in template order.
     const valueAt = (bandIdx: number, barIdx: number): string =>
       bands[bandIdx]?.querySelectorAll('.au__bar-value')[barIdx]?.textContent?.trim() ?? '';
 
-    // Bass: avg(0.1, 0.2) = 0.15 — below HIT_THRESHOLD, hit = 0 → ○.
-    expect(valueAt(0, 0)).toBe('0.15'); // level
+    // Bass: clamp(0.6/2) = 0.30 — below HIT_THRESHOLD, hit = 0 → ○.
+    expect(valueAt(0, 0)).toBe('0.30'); // level
     expect(valueAt(0, 1)).toBe('○'); // hit indicator (hollow)
-    expect(valueAt(0, 2)).toBe('0.15'); // presence mirrors level
+    expect(valueAt(0, 2)).toBe('0.30'); // presence mirrors level
 
-    // Mid-High: avg(0.6, 0.7) = 0.65 — above threshold, hit = 0.30 → ●.
-    expect(valueAt(2, 0)).toBe('0.65');
+    // Mid-High: treb clamp(1.4/2) = 0.70 — above threshold, hit → ●.
+    expect(valueAt(2, 0)).toBe('0.70');
     expect(valueAt(2, 1)).toBe('●');
-    expect(valueAt(2, 2)).toBe('0.65');
+    expect(valueAt(2, 2)).toBe('0.70');
 
-    // High: avg(0.8, 0.9) = 0.85 — well above threshold, hit = 0.70 → ●.
-    expect(valueAt(3, 0)).toBe('0.85');
+    // High: also reads treb → 0.70 → ●.
+    expect(valueAt(3, 0)).toBe('0.70');
     expect(valueAt(3, 1)).toBe('●');
-    expect(valueAt(3, 2)).toBe('0.85');
+    expect(valueAt(3, 2)).toBe('0.70');
 
-    // Full: avg of all eight bins = 0.50 — exactly at threshold, not
-    // strictly greater, hit = 0 → ○.
+    // Full: mean(0.6, 1.0, 1.4) = 1.0 → clamp(0.5) = 0.50 — exactly at
+    // threshold, not strictly greater, hit = 0 → ○.
     expect(valueAt(4, 0)).toBe('0.50');
     expect(valueAt(4, 1)).toBe('○');
     expect(valueAt(4, 2)).toBe('0.50');
@@ -576,6 +576,42 @@ describe('AudioUniforms view', () => {
     const stats = container.querySelector('.au__hero-stats');
     expect(stats?.textContent).toContain(`${AUDIO_UNIFORMS_FIXTURE.peakDb.toFixed(1)} dB`);
     expect(stats?.textContent).toContain(`${AUDIO_UNIFORMS_FIXTURE.rmsDb.toFixed(1)} dB`);
+  });
+
+  it('band tile fill changes when the AGC bass band swings from neutral to a transient (FIX B)', async () => {
+    // Neutral snapshot: bass = 1.0 → bass tile fill ≈ 50%.
+    const neutral: AudioUniformSnapshotPayload = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.01,
+      peak: 0.02,
+      fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    audioSnapshotStore.snapshot = neutral;
+    const { container } = render(AudioUniforms);
+    await Promise.resolve();
+
+    const bassLevelFill = (): HTMLElement | null =>
+      (container
+        .querySelectorAll('.au__band')[0]
+        ?.querySelector('.au__bar-fill') as HTMLElement | null) ?? null;
+    const neutralFill = bassLevelFill()?.style.height ?? '';
+    expect(neutralFill).not.toBe('');
+
+    // Transient: bass = 4.2 → bass tile fill saturates toward 100%.
+    audioSnapshotStore.snapshot = { ...neutral, bass: 4.2 };
+    await Promise.resolve();
+    const loudFill = bassLevelFill()?.style.height ?? '';
+    expect(loudFill).not.toBe(neutralFill);
+    expect(parseFloat(loudFill)).toBeGreaterThan(parseFloat(neutralFill));
   });
 
   it('source label reads settingsStore.snapshot.audio.input_device when set', () => {
