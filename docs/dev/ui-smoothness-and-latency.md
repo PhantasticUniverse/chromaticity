@@ -88,14 +88,16 @@ and the shared primitive `src/lib/audio/metering.ts`.
 - Engine `engine/audio/src/runtime.rs` — drain-all + fixed-cadence analysis;
   reactivity-critical rms/peak/FFT on the fast tick, BPM autocorrelation on a
   250 ms background cadence (principle 1).
+- `VuStereo.svelte` — migrated onto the dt-aware `metering.ts` followers + dBFS
+  scale (principles 3, 4); its live fill no longer uses a per-frame EMA.
 - `Meter.svelte`, `AudioReactivity.svelte` — no CSS transition on the live fill
   (principle 5).
 
 ## Tracked follow-ups (not yet on the primitive)
 
-- `VuStereo.svelte` and `AudioUniforms.svelte` historically ran a per-frame EMA +
-  per-frame peak decay (principle 4 violation); migrating them onto
-  `metering.ts` is in progress.
+- `AudioUniforms.svelte` still runs its own EMA + per-frame peak decay on the dB
+  readout (principle 4); it is data-cadence (per-snapshot, ~60 Hz), not a
+  display-refresh-jank source, but migrating it onto `metering.ts` is tracked.
 - Meter fills animate `width%` / `height%`; moving them to `transform: scaleX/Y`
   (principle 6) is a candidate optimization once the primitive migration lands.
 

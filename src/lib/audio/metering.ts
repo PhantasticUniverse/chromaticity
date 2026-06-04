@@ -3,10 +3,10 @@
 
 /**
  * Shared audio-metering DSP primitive — the single source of truth for
- * level→display conversion + ballistics. Consumed today by the Meter
- * widget and the Settings monitoring meter; VuStereo and AudioUniforms
- * are tracked to migrate onto it (each still runs its own legacy EMA
- * until then).
+ * level→display conversion + ballistics. Consumed by the Meter widget,
+ * the Settings monitoring meter, and VuStereo (migrated onto the dt-aware
+ * followers + dBFS scale). AudioUniforms still runs its own data-cadence
+ * EMA + dB readout and is tracked to migrate onto it.
  *
  * Replaces the ad-hoc, frame-rate-dependent `EMA 0.25 + 0.004/frame`
  * smoothing (previously duplicated per-widget) with one calibrated,
