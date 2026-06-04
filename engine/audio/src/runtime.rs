@@ -155,6 +155,29 @@ const ANALYSIS_INTERVAL: Duration = Duration::from_millis(10);
 /// `WouldBlock` long before the cap.
 const MAX_DRAIN_PER_TICK: usize = 64;
 
+/// How long the producer waits for the FIRST `Ready` capture frame before
+/// emitting a one-shot "no input buffers" warning.
+///
+/// An open input stream delivers buffers *continuously* regardless of signal
+/// level (a silent room is still near-zero-amplitude `Ready` frames), and the
+/// [`SilentSource`] fallback also yields `Ready` frames — so zero `Ready`
+/// frames past this window almost always means the OS is delivering no capture
+/// callbacks at all: the silent capture-denial failure mode (notably macOS TCC
+/// denying audio consent to a raw binary that has no `Info.plist`, while cpal
+/// still reports the stream "playing"). Generous, so a slow-initialising device
+/// is not mistaken for a denied one. See
+/// `docs/dev/macos-desktop-run-and-audio-diagnostics.md`.
+const NO_INPUT_WARN_AFTER: Duration = Duration::from_secs(3);
+
+/// Decide whether to emit the one-shot no-input-buffers warning: a bound
+/// capture stream that has produced *zero* `Ready` frames for at least
+/// [`NO_INPUT_WARN_AFTER`], and has not already warned. Pure + total so the
+/// producer loop's fail-loud guard is unit-testable without a real device or
+/// capture consent.
+fn should_warn_no_input(total_ready: u64, elapsed: Duration, already_warned: bool) -> bool {
+    !already_warned && total_ready == 0 && elapsed >= NO_INPUT_WARN_AFTER
+}
+
 /// Configuration for [`AudioRuntime`].
 ///
 /// Tweakable knobs for the composed runtime. Defaults match the
@@ -351,6 +374,14 @@ impl AudioRuntime {
                 // thread (not the struct) because it is only ever touched here.
                 let mut reactive_bands: Option<ReactiveBands> = None;
                 let mut reactive_rate_hz: Option<u32> = None;
+                // Fail-loud guard for the silent capture-denial failure mode
+                // (see [`should_warn_no_input`] / [`NO_INPUT_WARN_AFTER`]).
+                // One-shot, always-on, never an error — it surfaces the most
+                // expensive-to-debug audio failure: the OS delivering no capture
+                // callbacks while cpal reports the stream "playing".
+                let producer_started = Instant::now();
+                let mut total_ready: u64 = 0;
+                let mut no_input_warned = false;
                 loop {
                     match shutdown_rx.try_recv() {
                         Ok(()) | Err(TryRecvError::Disconnected) => break,
@@ -376,6 +407,7 @@ impl AudioRuntime {
                                 IngestStatus::Ready => {
                                     current_window = Some(analysis_window.observe(&frame));
                                     drained += 1;
+                                    total_ready = total_ready.saturating_add(1);
                                 }
                                 IngestStatus::Pending | IngestStatus::WouldBlock => break,
                                 IngestStatus::Closed => {
@@ -466,7 +498,35 @@ impl AudioRuntime {
                     }));
 
                     match outcome {
-                        Ok(backoff) => thread::sleep(backoff),
+                        Ok(backoff) => {
+                            // Fail-loud guard (one-shot): a bound capture stream
+                            // that has delivered ZERO frames within
+                            // NO_INPUT_WARN_AFTER almost always means the OS is
+                            // denying audio-capture consent — on macOS a raw
+                            // binary with no Info.plist is denied SILENTLY while
+                            // cpal still reports the stream "playing". A working
+                            // mic in a silent room still delivers near-zero
+                            // buffers (Ready), and the SilentSource fallback
+                            // yields Ready frames, so neither trips this.
+                            if should_warn_no_input(
+                                total_ready,
+                                producer_started.elapsed(),
+                                no_input_warned,
+                            ) {
+                                no_input_warned = true;
+                                eprintln!(
+                                    "[audio] capture stream is running but NO input buffers \
+                                     have arrived in {:.0}s — the OS is most likely denying \
+                                     microphone / audio-capture permission. On macOS a raw \
+                                     binary cannot obtain consent (no Info.plist); launch a \
+                                     signed .app via release-eng/dev-run-macos.sh. Set {}=1 \
+                                     for live capture telemetry.",
+                                    NO_INPUT_WARN_AFTER.as_secs_f32(),
+                                    crate::cpal_source::AUDIO_DIAG_ENV,
+                                );
+                            }
+                            thread::sleep(backoff);
+                        }
                         Err(_panic) => {
                             // Caught panic: don't touch the snapshot
                             // (last-good stays in place per ADR-019
@@ -599,6 +659,12 @@ mod runtime_pins {
     //! - `runtime_default_input_device_unavailable_falls_back_to_silent`
     //!   pins the [`AudioRuntime::new`] cpal-failure fallback path
     //!   via the `from_primary` test seam.
+    //! - `should_warn_no_input_only_fires_on_dead_capture` pins the
+    //!   fail-loud no-input guard's decision: zero `Ready` frames past
+    //!   [`super::NO_INPUT_WARN_AFTER`] ⇒ warn once; any `Ready` frame
+    //!   (a quiet mic — silence is still `Ready` — or the `SilentSource`
+    //!   fallback) or the already-warned / pre-window states ⇒ silent, so
+    //!   a denied capture surfaces loudly while a live one never false-fires.
 
     use super::*;
     use crate::frame::DEFAULT_SAMPLE_RATE_HZ;
@@ -614,6 +680,42 @@ mod runtime_pins {
 
     /// Polling step duration when waiting for thread exit.
     const POLL_STEP: Duration = Duration::from_millis(5);
+
+    #[test]
+    fn should_warn_no_input_only_fires_on_dead_capture() {
+        // The fail-loud guard must fire EXACTLY once, and ONLY when a bound
+        // capture stream has produced zero `Ready` frames past the window —
+        // the silent capture-denial signature (macOS TCC deny / no OS
+        // callbacks while cpal reports the stream "playing").
+        let win = NO_INPUT_WARN_AFTER;
+        // Before the window elapses: never warn, even with zero frames.
+        assert!(!should_warn_no_input(
+            0,
+            win - Duration::from_millis(1),
+            false
+        ));
+        // Zero frames, window elapsed, not yet warned: warn.
+        assert!(should_warn_no_input(0, win, false));
+        assert!(should_warn_no_input(
+            0,
+            win + Duration::from_secs(10),
+            false
+        ));
+        // Already warned: stay silent (one-shot, no per-tick spam).
+        assert!(!should_warn_no_input(
+            0,
+            win + Duration::from_secs(10),
+            true
+        ));
+        // Any `Ready` frame — a working mic (silence is still `Ready`) or the
+        // `SilentSource` fallback — means capture is alive: never warn.
+        assert!(!should_warn_no_input(
+            1,
+            win + Duration::from_secs(10),
+            false
+        ));
+        assert!(!should_warn_no_input(1_000_000, win, false));
+    }
 
     #[test]
     fn runtime_with_silent_only_config_produces_zero_snapshots() {
