@@ -94,6 +94,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         class:on={seg.on}
         class:green={seg.on && seg.zone === 'green'}
         class:amber={seg.on && seg.zone === 'amber'}
+        class:orange={seg.on && seg.zone === 'orange'}
         class:red={seg.on && seg.zone === 'red'}
         class:peak={seg.isPeak}
         class:ref={seg.isRef}
@@ -153,6 +154,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .meter-bar.amber {
     background: var(--color-warning);
     border-color: var(--color-warning);
+  }
+  .meter-bar.orange {
+    background: var(--color-signal-orange);
+    border-color: var(--color-signal-orange);
   }
   .meter-bar.red {
     background: var(--color-danger);

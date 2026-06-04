@@ -19,6 +19,7 @@ import {
   zoneForDb,
   ZONE_AMBER_MAX_DB,
   ZONE_GREEN_MAX_DB,
+  ZONE_ORANGE_MAX_DB,
 } from './metering';
 
 describe('dBFS conversion', () => {
@@ -59,13 +60,15 @@ describe('dbToFraction', () => {
 });
 
 describe('zoneForDb breakpoints', () => {
-  it('places zones at real dB breakpoints, not linear positions', () => {
-    expect(zoneForDb(-12)).toBe('green');
+  it('places zones at the DAW reference grid (green/amber/orange/red), not linear positions', () => {
+    // green ≤ -12, amber -12..-6, orange -6..-3, red ≥ -3.
+    expect(zoneForDb(-20)).toBe('green'); // -18 dBFS nominal sits in green
     expect(zoneForDb(ZONE_GREEN_MAX_DB - 0.01)).toBe('green');
     expect(zoneForDb(ZONE_GREEN_MAX_DB)).toBe('amber');
-    expect(zoneForDb(-5)).toBe('amber');
     expect(zoneForDb(ZONE_AMBER_MAX_DB - 0.01)).toBe('amber');
-    expect(zoneForDb(ZONE_AMBER_MAX_DB)).toBe('red');
+    expect(zoneForDb(ZONE_AMBER_MAX_DB)).toBe('orange');
+    expect(zoneForDb(ZONE_ORANGE_MAX_DB - 0.01)).toBe('orange');
+    expect(zoneForDb(ZONE_ORANGE_MAX_DB)).toBe('red');
     expect(zoneForDb(0)).toBe('red');
   });
 });

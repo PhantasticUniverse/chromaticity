@@ -22,6 +22,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // would otherwise re-run the effect on every snapshot write.
   import { untrack } from 'svelte';
 
+  import { AttackReleaseEnvelope, PeakHold, ampToDb, dbToFraction } from '../audio/metering';
   import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
 
@@ -37,6 +38,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     snapshot?: AudioUniformSnapshotPayload | null;
   } = $props();
 
+  // Frozen demo pose (live=false / reduced-motion): meter-travel FRACTIONS
+  // (0..1), so 0.6 reads as a 60%-filled bar. The live path writes these
+  // same [0,1] fractions via the dBFS map, so frozen and live share units.
   const FROZEN_L = 0.6;
   const FROZEN_R = 0.55;
 
@@ -69,57 +73,49 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       return;
     }
 
-    // Wave 2.8 Q.1 — both live-snapshot and synthetic paths share a
-    // single rAF loop with peak-hold + decay state. Prior code wrote
-    // `peakL = liveSnapshot.peak` raw each time the snapshot updated,
-    // which caused the peak marker line to dart with every engine tick
-    // (~60 Hz) — visually that looks like the meter is flashing. With
-    // peak-hold + decay the marker tracks the loudest recent peak and
-    // glides down smoothly, matching the synthetic-path behaviour the
-    // bundle baked in.
-    //
-    // The level (`--lvl`) is smoothed with a brief EMA so the gradient
-    // stripe doesn't fidget on tiny RMS jitter (background mic noise
-    // reports ~0.005-0.01 RMS even with no audible signal — without
-    // smoothing the stripe width oscillates visibly).
-    let frame = 0;
-    const start = performance.now();
-    let pL = 0;
-    let pR = 0;
-    let smL = 0;
-    let smR = 0;
-    const LEVEL_EMA = 0.25; // higher = more responsive, lower = more glide
+    // DAW-grade, dt-aware ballistics on a logarithmic dBFS scale (see
+    // docs/dev/ui-smoothness-and-latency.md). A fast-attack / slow-release
+    // follower drives the gradient fill; a peak-hold marker latches the
+    // loudest recent peak and glides down. Both are wall-clock-dt-aware
+    // (`coeff = 1 - exp(-dt/tau)`), so the feel is identical on 60 / 120 /
+    // 144 Hz displays — the prior per-frame EMA (`* 0.25`) + per-frame
+    // decay (`- 0.004`) ran twice as fast on a 120 Hz panel. `dbToFraction`
+    // replaces the old LINEAR `[0,1]` fill that crushed a healthy-but-quiet
+    // program into the bottom tenth of the bar. rms/peak are mono today,
+    // mirrored to L/R with a small -1 dB R offset for visual separation,
+    // until a stereo uniform-snapshot extension lands (ADR-023 §2).
+    const levelL = new AttackReleaseEnvelope();
+    const levelR = new AttackReleaseEnvelope();
+    const peakHoldL = new PeakHold();
+    const peakHoldR = new PeakHold();
 
-    const tick = (now: number) => {
-      let rawL: number;
-      let rawR: number;
-      let peakIn: number;
-      // Untrack the live-snapshot read so $effect doesn't re-fire on
-      // every engine tick (which would tear down + recreate the rAF
-      // loop ~60x per second).
+    let frame = 0;
+    let lastTs = performance.now();
+    const startTs = lastTs;
+
+    const tick = (now: number): void => {
+      const dtMs = Math.max(0, now - lastTs);
+      lastTs = now;
+      // Untrack the live-snapshot read so the $effect doesn't tear down +
+      // recreate the rAF loop on every ~60 Hz engine snapshot write.
       const liveNow = untrack(() => liveSnapshot);
+      let rmsAmp: number;
+      let peakAmp: number;
       if (liveNow) {
-        // Live snapshot: mono rms / peak mirrored to both rows with a
-        // tiny offset so the two rows aren't visually identical.
-        rawL = clamp(liveNow.rms);
-        rawR = clamp(liveNow.rms * 0.94);
-        peakIn = clamp(liveNow.peak);
+        rmsAmp = liveNow.rms;
+        peakAmp = liveNow.peak;
       } else {
-        const t = (now - start) / 1000;
-        rawL = Math.abs(Math.sin(t * 1.7)) * 0.6 + Math.abs(Math.sin(t * 5)) * 0.3;
-        rawR = Math.abs(Math.sin(t * 1.5 + 0.3)) * 0.6 + Math.abs(Math.sin(t * 4.7 + 0.2)) * 0.3;
-        peakIn = Math.max(rawL, rawR);
+        // Synthetic demo motion when no live IPC is present (bundle pose).
+        const t = (now - startTs) / 1000;
+        rmsAmp = Math.abs(Math.sin(t * 1.7)) * 0.6 + Math.abs(Math.sin(t * 5)) * 0.3;
+        peakAmp = Math.min(0.995, rmsAmp + 0.1);
       }
-      // EMA smoothing on level
-      smL = smL + (rawL - smL) * LEVEL_EMA;
-      smR = smR + (rawR - smR) * LEVEL_EMA;
-      // Peak hold + decay
-      pL = Math.max(peakIn, pL - 0.004);
-      pR = Math.max(clamp(peakIn * 0.94), pR - 0.004);
-      lvlL = smL;
-      lvlR = smR;
-      peakL = pL;
-      peakR = pR;
+      const rmsDb = ampToDb(rmsAmp);
+      const peakDb = ampToDb(peakAmp);
+      lvlL = dbToFraction(levelL.process(rmsDb, dtMs));
+      lvlR = dbToFraction(levelR.process(rmsDb - 1, dtMs));
+      peakL = dbToFraction(peakHoldL.process(peakDb, dtMs));
+      peakR = dbToFraction(peakHoldR.process(peakDb - 1, dtMs));
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
@@ -165,12 +161,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     top: 0;
     bottom: 0;
     width: var(--lvl, 50%);
+    /* Stops anchored to dB zone boundaries on the -60..0 dBFS travel the
+       fill width now maps to (dbToFraction): -12 dBFS = 80%, -6 = 90%,
+       -3 = 95%, 0 = 100%. Matches metering.ts zoneForDb + Meter.svelte. */
     background: linear-gradient(
       90deg,
       var(--color-primary) 0%,
-      var(--color-primary) 60%,
-      var(--color-signal-amber) 80%,
-      var(--color-signal-orange) 95%
+      var(--color-primary) 80%,
+      var(--color-signal-amber) 88%,
+      var(--color-signal-orange) 95%,
+      var(--color-danger) 100%
     );
   }
   .vu-row::after {

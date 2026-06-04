@@ -46,10 +46,17 @@ export const METER_CEIL_DB = 0;
  */
 export const REFERENCE_TICK_DB = -18;
 
-/** Top of the GREEN working zone. At/below this is the healthy nominal band. */
-export const ZONE_GREEN_MAX_DB = -9;
-/** Top of the AMBER caution zone. Above this is RED (clip/over territory). */
-export const ZONE_AMBER_MAX_DB = -1;
+/**
+ * Top of the GREEN nominal zone. At/below this is the safe working band
+ * (EBU R68 places 0 VU at -18 dBFS, comfortably inside green). The zone
+ * breakpoints follow the standard dBFS reference grid -18/-12/-6/-3/0
+ * used by DAW channel meters (Pro Tools / Logic), not a linear position.
+ */
+export const ZONE_GREEN_MAX_DB = -12;
+/** Top of the AMBER ("hot but fine") zone; above this is ORANGE. */
+export const ZONE_AMBER_MAX_DB = -6;
+/** Top of the ORANGE ("approaching the ceiling") zone; above this is RED. */
+export const ZONE_ORANGE_MAX_DB = -3;
 
 /**
  * Floor amplitude for the dB conversion. `20·log10(0)` is `-Infinity`;
@@ -95,7 +102,7 @@ export const NO_SIGNAL_DB = METER_FLOOR_DB;
 export const NO_SIGNAL_MS = 500;
 
 /** Meter color zone, placed at real dB breakpoints (not linear position). */
-export type MeterZone = 'green' | 'amber' | 'red';
+export type MeterZone = 'green' | 'amber' | 'orange' | 'red';
 
 /**
  * Convert a linear amplitude (`0..1`, or above for over-0-dBFS once the
@@ -133,9 +140,13 @@ export function fractionToDb(fraction: number): number {
   return METER_FLOOR_DB + f * (METER_CEIL_DB - METER_FLOOR_DB);
 }
 
-/** Classify a dBFS value into its color zone at the dB breakpoints. */
+/**
+ * Classify a dBFS value into its color zone at the documented DAW
+ * reference grid: green ≤ -12, amber -12..-6, orange -6..-3, red ≥ -3.
+ */
 export function zoneForDb(db: number): MeterZone {
-  if (db >= ZONE_AMBER_MAX_DB) return 'red';
+  if (db >= ZONE_ORANGE_MAX_DB) return 'red';
+  if (db >= ZONE_AMBER_MAX_DB) return 'orange';
   if (db >= ZONE_GREEN_MAX_DB) return 'amber';
   return 'green';
 }

@@ -43,17 +43,20 @@ describe('Meter widget (dBFS)', () => {
     // Full scale → every segment on, colored by its own dB position.
     let green = 0;
     let amber = 0;
+    let orange = 0;
     let red = 0;
     for (let i = 0; i < bars; i++) {
       const z = zoneForDb(fractionToDb((i + 1) / bars));
       if (z === 'green') green++;
       else if (z === 'amber') amber++;
+      else if (z === 'orange') orange++;
       else red++;
     }
     expect(green).toBeGreaterThan(0);
     expect(red).toBeGreaterThan(0);
     expect(container.querySelectorAll('.meter-bar.green').length).toBe(green);
     expect(container.querySelectorAll('.meter-bar.amber').length).toBe(amber);
+    expect(container.querySelectorAll('.meter-bar.orange').length).toBe(orange);
     expect(container.querySelectorAll('.meter-bar.red').length).toBe(red);
   });
 
