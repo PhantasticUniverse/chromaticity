@@ -112,7 +112,10 @@ use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
 use crate::reactive_bands::ReactiveBands;
 use crate::silent::SilentSource;
-use crate::uniforms::{AudioAnalysisWindow, AudioUniformSnapshot, extract_uniform_snapshot};
+use crate::uniforms::{
+    AudioAnalysisWindow, AudioAxisAvailability, AudioUniformSnapshot, FFT_WINDOW_SIZE,
+    analysis_window_samples, extract_uniform_snapshot,
+};
 
 /// Back-off when [`IngestStatus::Pending`] or
 /// [`IngestStatus::WouldBlock`] is observed.
@@ -144,6 +147,16 @@ const DROP_JOIN_TIMEOUT: Duration = Duration::from_secs(2);
 /// jittery rms). Tempo is a backup feature; a single cadence covers both axes
 /// here, with a finer bands-fast / BPM-slow split as a follow-up.
 const ANALYSIS_INTERVAL: Duration = Duration::from_millis(10);
+
+/// Background cadence for the heavy BPM autocorrelation, decoupled from the
+/// fast reactivity tick.
+///
+/// Tempo is a parity-only backup and changes slowly, so the autocorrelation
+/// (over the full ~1.2 s window) runs at this much lower rate while the cached
+/// BPM rides every fast [`ANALYSIS_INTERVAL`] snapshot in between. This keeps
+/// BPM OFF the reactivity-critical path — rms / peak / FFT / AGC bands are
+/// never slowed by a tempo pass.
+const BPM_ANALYSIS_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Max frames the producer loop drains into the rolling window per tick.
 ///
@@ -382,6 +395,13 @@ impl AudioRuntime {
                 let producer_started = Instant::now();
                 let mut total_ready: u64 = 0;
                 let mut no_input_warned = false;
+                // BPM runs in the background at a low cadence (see the analysis
+                // block + [`BPM_ANALYSIS_INTERVAL`]); the cached tempo + readiness
+                // ride every fast reactivity snapshot in between so a tempo pass
+                // never blocks the per-tick rms / peak / FFT / AGC analysis.
+                let mut last_bpm_analysis: Option<Instant> = None;
+                let mut cached_bpm = AudioUniformSnapshot::default().bpm;
+                let mut cached_bpm_availability = AudioUniformSnapshot::default().bpm_availability;
                 loop {
                     match shutdown_rx.try_recv() {
                         Ok(()) | Err(TryRecvError::Disconnected) => break,
@@ -422,16 +442,30 @@ impl AudioRuntime {
                         //    first available window immediately, then at cadence.
                         if let Some(window) = current_window.as_ref() {
                             if last_analysis.is_none_or(|t| t.elapsed() >= ANALYSIS_INTERVAL) {
-                                let analysis_snapshot = extract_uniform_snapshot(window);
-                                let smoothed_bpm = estimator.observe(window);
-
-                                // Quality layer (ADR-024): the per-band AGC turns
-                                // the raw spectrum into volume-independent relative
-                                // bands. (Re)build on a sample-rate change, then
-                                // advance by the REAL elapsed time since the last
-                                // analysis so the FPS-compensated smoothing tracks
-                                // the actual cadence rather than a fixed nominal.
                                 let sample_rate_hz = window.sample_rate_hz();
+
+                                // Reactivity-critical, every fast tick: rms / peak /
+                                // FFT over the RECENT window. The rolling buffer is
+                                // sized for the BPM autocorrelation (~1.2 s); computing
+                                // rms / peak over all of it produced a sluggish meter
+                                // (a ~1.2 s RMS average + a ~1.2 s peak-hold). The long
+                                // buffer is used only for the background BPM, below.
+                                let recent = {
+                                    let all = window.samples();
+                                    let n = all.len().min(FFT_WINDOW_SIZE);
+                                    AudioFrame::new(
+                                        sample_rate_hz,
+                                        1,
+                                        all[all.len() - n..].to_vec(),
+                                    )
+                                };
+                                let analysis_snapshot = extract_uniform_snapshot(&recent);
+
+                                // Quality layer (ADR-024): the per-band AGC turns the
+                                // raw spectrum into volume-independent relative bands.
+                                // (Re)build on a sample-rate change, then advance by the
+                                // REAL elapsed time since the last analysis so the
+                                // FPS-compensated smoothing tracks the actual cadence.
                                 if reactive_rate_hz != Some(sample_rate_hz) {
                                     reactive_bands = Some(ReactiveBands::new(sample_rate_hz));
                                     reactive_rate_hz = Some(sample_rate_hz);
@@ -439,19 +473,39 @@ impl AudioRuntime {
                                 let dt = last_analysis
                                     .map(|t| t.elapsed().as_secs_f32())
                                     .unwrap_or_else(|| ANALYSIS_INTERVAL.as_secs_f32());
-                                // `unwrap_or_default()` is unreachable (the block
-                                // above always leaves `reactive_bands` `Some`) but
-                                // keeps the path `.unwrap()`/`.expect()`-free per
-                                // the workspace clippy lints; the default is the
-                                // neutral centred baseline.
+                                // `unwrap_or_default()` is unreachable (the block above
+                                // always leaves `reactive_bands` `Some`) but keeps the
+                                // path `.unwrap()`/`.expect()`-free per the workspace
+                                // clippy lints; the default is the neutral baseline.
                                 let reactive = reactive_bands
                                     .as_mut()
                                     .map(|rb| rb.observe(window.samples(), dt))
                                     .unwrap_or_default();
 
+                                // BPM in the BACKGROUND, off the reactivity-critical
+                                // path: the autocorrelation runs over the full window
+                                // only at [`BPM_ANALYSIS_INTERVAL`] (tempo is a
+                                // parity-only backup and changes slowly); the cached
+                                // value + readiness ride every fast snapshot between
+                                // passes, so a tempo pass never slows reactivity.
+                                if last_bpm_analysis
+                                    .is_none_or(|t| t.elapsed() >= BPM_ANALYSIS_INTERVAL)
+                                {
+                                    cached_bpm = estimator.observe(window);
+                                    cached_bpm_availability = if sample_rate_hz != 0
+                                        && window.samples().len()
+                                            >= analysis_window_samples(sample_rate_hz)
+                                    {
+                                        AudioAxisAvailability::Ready
+                                    } else {
+                                        AudioAxisAvailability::Warming
+                                    };
+                                    last_bpm_analysis = Some(Instant::now());
+                                }
+
                                 let merged = AudioUniformSnapshot {
-                                    bpm: smoothed_bpm,
-                                    bpm_availability: analysis_snapshot.bpm_availability,
+                                    bpm: cached_bpm,
+                                    bpm_availability: cached_bpm_availability,
                                     rms: analysis_snapshot.rms,
                                     peak: analysis_snapshot.peak,
                                     fft_bands: analysis_snapshot.fft_bands,
@@ -1062,17 +1116,28 @@ mod runtime_pins {
         let snapshot_handle = runtime.snapshot_handle();
         let handle = runtime.spawn();
 
-        thread::sleep(SETTLE_DURATION);
+        // Poll (bounded) rather than a single fixed settle: under heavy machine
+        // load the producer thread can drain the whole backlog yet be descheduled
+        // before the analysis writes the snapshot, making a one-shot 50 ms sleep
+        // flaky. Wait for the backlog to drain AND a loud snapshot to land.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let snapshot = loop {
+            let snap = match snapshot_handle.lock() {
+                Ok(g) => *g,
+                Err(p) => *p.into_inner(),
+            };
+            let drained_all = delivered.load(Ordering::Relaxed) == BURST;
+            if (drained_all && snap.rms > 0.0) || Instant::now() >= deadline {
+                break snap;
+            }
+            thread::sleep(POLL_STEP);
+        };
 
         assert_eq!(
             delivered.load(Ordering::Relaxed),
             BURST,
-            "the full backlog should drain within one settle (drain-all per tick)",
+            "the full backlog should drain (drain-all per tick)",
         );
-        let snapshot = match snapshot_handle.lock() {
-            Ok(g) => *g,
-            Err(p) => *p.into_inner(),
-        };
         assert!(
             snapshot.rms > 0.0,
             "drained loud frames should analyse to rms > 0, got {}",
