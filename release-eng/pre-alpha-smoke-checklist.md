@@ -147,6 +147,11 @@ The binary is unsigned. Gatekeeper does not block raw binaries (only
 `.app` bundles + `.dmg` images), so it launches without a warning
 dialog. The window opens at 1280×800.
 
+> **Audio reactivity (§E) does NOT work from this raw binary on macOS.** With no
+> `Contents/Info.plist` it cannot obtain microphone / system-audio capture consent
+> (TCC denies silently, no prompt), so the band tiles stay frozen regardless of
+> what is playing. Use `release-eng/dev-run-macos.sh` for the audio step — see §E.
+
 ### Windows
 
 Double-click `target\release\chromaticity-app.exe` from Explorer, or
@@ -222,13 +227,32 @@ Aim for ~15–20 minutes end-to-end. File anything that surprises you per
 > Amendment 2026-06-03). Verify with the **microphone** path instead; on macOS,
 > capture system output via a hand-installed virtual loopback.
 
+> **macOS — launch the signed `.app`, NOT the raw binary, for every audio step.**
+> The §Launch `./target/release/chromaticity-app` has no `Contents/Info.plist`
+> (bundle is off), so its `NSMicrophoneUsageDescription` /
+> `NSAudioCaptureUsageDescription` strings never reach the OS. macOS TCC then
+> **silently denies** capture with **no prompt** — `cpal` still reports the stream
+> as playing, but zero buffers arrive, the snapshot stays at its neutral default,
+> and the band tiles sit frozen even with a working mic and audio playing. Run the
+> audio steps via `release-eng/dev-run-macos.sh` instead: it assembles +
+> stably-signs `Chromaticity.app` (both usage strings; consent persists across
+> rebuilds) and launches it via LaunchServices, so the one-time consent prompt
+> appears. Add `--diag` to stream the `[audio-diag]` readout to
+> `/tmp/chroma-diag.log` — a healthy capture shows `cb=` climbing with a
+> non-`-inf` `raw_peak`; `cb=0` means consent denied / no buffers (re-arm with
+> `tccutil reset Microphone app.chromaticity.desktop`).
+
 **Important — selecting an audio source.** The producer captures from the
 device chosen in Settings → Audio → Input Device:
 
 - **Default Input / a microphone (primary verify path on macOS)** — reacts to
-  whatever the input device hears. Grant the microphone permission when prompted,
-  then play music near the built-in mic (or speak / clap) for a quick acoustic
+  whatever the input device hears. Launched via `dev-run-macos.sh` (see the macOS
+  launch note above), macOS shows the one-time microphone consent prompt — grant
+  it; then play music near the built-in mic (or speak / clap) for a quick acoustic
   test; the Settings → Audio monitoring meter and the 4 band tiles should move.
+  (Under the raw §Launch binary no prompt ever appears and capture is silently
+  denied, so the tiles stay frozen — that is the launch-method trap above, not a
+  dead mic.)
 - **System Audio (built-in)** — the intended zero-install path (capture whatever
   your machine is PLAYING, no extra software, macOS 14.6+ / Windows WASAPI).
   **NOT functional on macOS in this build** — the tap delivers data but corrupts
