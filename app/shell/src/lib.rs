@@ -24,6 +24,7 @@
 
 pub mod audio_diag;
 pub mod commands;
+pub mod render;
 pub mod state;
 
 use crate::state::AppState;
@@ -367,6 +368,28 @@ pub fn run() -> Result<(), tauri::Error> {
             let scheduler_thread = crate::state::SchedulerThreadHandle::new(join, shutdown);
             let app_state = app.state::<AppState>();
             app_state.install_audio_and_scheduler(audio_handle, scheduler_thread);
+
+            // (e) ADR-011 Phase-2 Slice R-1a — opt-in native GPU output
+            // window. No-op unless `CHROMA_RENDER_OUTPUT` is truthy, so
+            // default launches are completely unchanged. The window +
+            // surface + adapter/device are created HERE on the main
+            // thread (mandatory on macOS / Metal — off-main-thread
+            // surface creation is a PANIC); the resulting `Send` bundle
+            // is then MOVED onto a dedicated render thread that owns the
+            // present loop. A bootstrap failure under the opt-in gate is
+            // logged but never fatal — the rest of the app keeps running.
+            match render::maybe_spawn_output_window(app.handle()) {
+                Ok(Some(render_thread)) => {
+                    app.state::<AppState>().install_render_thread(render_thread);
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    eprintln!(
+                        "chromaticity-app: CHROMA_RENDER_OUTPUT set but render-output \
+                         bootstrap failed: {err}"
+                    );
+                }
+            }
 
             Ok(())
         })

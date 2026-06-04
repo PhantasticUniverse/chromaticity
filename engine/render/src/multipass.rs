@@ -529,11 +529,12 @@ impl MultipassRenderer {
     ///   the shader. Not reachable on the current source.
     pub fn new() -> Result<Self, RenderError> {
         // The offscreen ctor selects an adapter with no surface
-        // compatibility hint (the corpus renders headless). The
-        // surface-hinted variant ([`Self::new_with_surface_hint`])
-        // shares the same device-init path with `compatible_surface`
-        // set.
-        Self::new_inner(None)
+        // compatibility hint (the corpus renders headless) and creates
+        // its own owned instance (`None`). The surface-hinted variant
+        // ([`Self::new_with_surface_hint`]) shares the same device-init
+        // path with `compatible_surface` set AND a caller-supplied
+        // instance (so the surface + device share one wgpu instance).
+        Self::new_inner(None, None)
     }
 
     /// Build a renderer whose adapter request is biased toward an
@@ -571,8 +572,19 @@ impl MultipassRenderer {
     /// renderer with an empty feedback cache, and both share the
     /// device-init path via `new_inner`); full surface-presentation
     /// coverage lands in R-1 with the swapchain wiring.
-    pub fn new_with_surface_hint(surface: &wgpu::Surface<'_>) -> Result<Self, RenderError> {
-        Self::new_inner(Some(surface))
+    pub fn new_with_surface_hint(
+        instance: wgpu::Instance,
+        surface: &wgpu::Surface<'_>,
+    ) -> Result<Self, RenderError> {
+        // `instance` MUST be the same `wgpu::Instance` that created
+        // `surface`. The renderer's device and the presentation surface
+        // have to originate from ONE instance — wgpu tracks resources in
+        // per-instance storage, so a device built from a *different*
+        // instance panics with "Surface does not exist" the moment it
+        // configures or acquires the surface. The renderer takes
+        // ownership of `instance` (stored as `_instance`) so it outlives
+        // the surface it presents to.
+        Self::new_inner(Some(instance), Some(surface))
     }
 
     /// Shared device-init path for [`Self::new`] and
@@ -582,16 +594,26 @@ impl MultipassRenderer {
     /// adapter exactly as the prior offscreen path did. Everything
     /// after adapter acquisition (device descriptor, cached vertex
     /// shader) is identical across both entry points.
-    fn new_inner(surface: Option<&wgpu::Surface<'_>>) -> Result<Self, RenderError> {
+    fn new_inner(
+        instance: Option<wgpu::Instance>,
+        surface: Option<&wgpu::Surface<'_>>,
+    ) -> Result<Self, RenderError> {
         // Adapter + device acquisition. See `single_pass.rs` lines
         // 193-205 for the in-source explanation of why each leaf
         // future is wrapped with `pollster::block_on` rather than the
         // body being declared `async`.
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY,
-            flags: wgpu::InstanceFlags::default(),
-            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
-            backend_options: wgpu::BackendOptions::default(),
+        //
+        // The caller MAY supply the instance (the surface-hinted path
+        // passes the instance that created the surface, so the device +
+        // surface share one wgpu instance); otherwise the offscreen path
+        // owns a freshly-created instance.
+        let instance = instance.unwrap_or_else(|| {
+            wgpu::Instance::new(&wgpu::InstanceDescriptor {
+                backends: wgpu::Backends::PRIMARY,
+                flags: wgpu::InstanceFlags::default(),
+                memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+                backend_options: wgpu::BackendOptions::default(),
+            })
         });
 
         let adapter = match surface {

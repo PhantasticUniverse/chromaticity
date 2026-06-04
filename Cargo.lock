@@ -469,10 +469,12 @@ dependencies = [
  "chromaticity-camera-adapter",
  "chromaticity-midi-adapter",
  "chromaticity-osc-adapter",
+ "chromaticity-render",
  "chromaticity-runtime",
  "chromaticity-scene",
  "chromaticity-syphon-adapter",
  "chromaticity-ui-bridge",
+ "pollster",
  "rosc",
  "serde",
  "serde_json",
@@ -482,6 +484,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-updater",
  "ts-rs",
+ "wgpu",
  "workspace-hack",
 ]
 
