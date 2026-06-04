@@ -926,6 +926,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     grid-template-columns: minmax(0, 1fr) 420px;
     gap: var(--space-lg);
     align-items: stretch;
+    /* Bound the grid to the view frame (the bundle's scene.jsx root is
+       height:100% + minHeight:0) so the inner overflow:auto regions scroll
+       instead of the whole view page-scrolling past the viewport. */
+    height: 100%;
     min-height: 0;
   }
 
@@ -941,6 +945,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     flex-direction: column;
     gap: var(--space-lg);
     min-width: 0;
+    /* Allow the columns to shrink to the bounded grid cell so their inner
+       overflow:auto regions engage (otherwise a flex column refuses to
+       shrink below content height and the view overflows). */
+    min-height: 0;
   }
 
   .au-author__panel {
