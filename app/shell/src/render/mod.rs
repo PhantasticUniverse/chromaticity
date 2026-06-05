@@ -34,6 +34,7 @@
 //!   a dedicated render thread that runs the present loop. It never
 //!   creates a surface or window.
 
+pub mod audio_smooth;
 pub mod blit;
 pub mod output_window;
 pub mod pattern;

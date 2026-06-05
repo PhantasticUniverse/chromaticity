@@ -32,8 +32,12 @@
 //! 4. builds the live output scene's frame spec (Slice R-1b — via
 //!    `from_scene_live`, or the R-1a test pattern as fallback) — driven
 //!    by the LIVE audio snapshot so the scene reacts to sound (Slice
-//!    R-1c; silent only when no audio source is present) — and renders
-//!    it via [`MultipassRenderer::render_frame_live`],
+//!    R-1c; silent only when no audio source is present). The audio
+//!    uniforms are ballistically smoothed per frame
+//!    (fast-attack/slow-release one-pole, dt-aware — see
+//!    [`crate::render::audio_smooth`]) so reactive motion is snappy on
+//!    transients and smooth on decay — then renders it via
+//!    [`MultipassRenderer::render_frame_live`],
 //! 5. blits that texture onto the swapchain view, and
 //! 6. presents, then sleeps to pace at ~60 fps.
 //!
@@ -57,6 +61,7 @@ use chromaticity_render::{MultipassRenderer, live_feedback_spec_key};
 use tauri::Runtime;
 use tauri::window::Window;
 
+use crate::render::audio_smooth::AudioSmoother;
 use crate::render::blit::BlitPass;
 use crate::render::pattern::{PATTERN_SCENE_ID, test_pattern_spec};
 use crate::render::scene_source::{LoadedScene, OUTPUT_SCENE_SPEC_ID, live_uniforms_from_audio};
@@ -194,6 +199,10 @@ fn run_loop<R: Runtime>(mut res: RenderThreadResources<R>, shutdown: &AtomicBool
     let mut frame_index: u64 = 0;
     let mut last_time_secs = 0.0f32;
     let mut next_deadline = Instant::now() + FRAME_PERIOD;
+    // dt-aware fast-attack/slow-release ballistics for the live audio
+    // uniforms; carries follower state across frames (see
+    // [`crate::render::audio_smooth`]).
+    let mut audio_smoother = AudioSmoother::new();
 
     while !shutdown.load(Ordering::Relaxed) {
         // Resize handling: read the window's current physical size and
@@ -256,11 +265,17 @@ fn run_loop<R: Runtime>(mut res: RenderThreadResources<R>, shutdown: &AtomicBool
             Some(audio) => {
                 // `AudioUniformSnapshot` is `Copy`; deref-copy out of the
                 // guard so the lock is released immediately (before the
-                // spec build) and we never hold it across `from_scene_live`.
-                let snapshot: AudioUniformSnapshot = match audio.lock() {
+                // ballistics + spec build) and we never hold it across
+                // `from_scene_live`.
+                let raw_snapshot: AudioUniformSnapshot = match audio.lock() {
                     Ok(guard) => *guard,
                     Err(poisoned) => *poisoned.into_inner(),
                 };
+                // Ballistics run OUTSIDE the lock: apply per-channel
+                // fast-attack/slow-release smoothing so the scene reacts
+                // snappily on transients and decays smoothly (kills the
+                // raw snapshot's frame-to-frame lag + jitter).
+                let snapshot = audio_smoother.smooth(&raw_snapshot, time_delta);
                 live_uniforms_from_audio(
                     time_secs,
                     time_delta,
