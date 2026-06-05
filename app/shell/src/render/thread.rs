@@ -30,8 +30,10 @@
 //!    `Lost` / `Outdated`, retrying next frame on `Timeout`, exiting on
 //!    `OutOfMemory` / `Other`),
 //! 4. builds the live output scene's frame spec (Slice R-1b — via
-//!    `from_scene_live`, or the R-1a test pattern as fallback) and
-//!    renders it via [`MultipassRenderer::render_frame_live`],
+//!    `from_scene_live`, or the R-1a test pattern as fallback) — driven
+//!    by the LIVE audio snapshot so the scene reacts to sound (Slice
+//!    R-1c; silent only when no audio source is present) — and renders
+//!    it via [`MultipassRenderer::render_frame_live`],
 //! 5. blits that texture onto the swapchain view, and
 //! 6. presents, then sleeps to pace at ~60 fps.
 //!
@@ -44,17 +46,20 @@
 //! `unsafe_code = "forbid"` lint is inherited.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use chromaticity_audio::AudioUniformSnapshot;
+use chromaticity_render::scene_adapter::LiveUniforms;
 use chromaticity_render::{MultipassRenderer, live_feedback_spec_key};
 use tauri::Runtime;
 use tauri::window::Window;
 
 use crate::render::blit::BlitPass;
 use crate::render::pattern::{PATTERN_SCENE_ID, test_pattern_spec};
-use crate::render::scene_source::{LoadedScene, OUTPUT_SCENE_SPEC_ID};
+use crate::render::scene_source::{LoadedScene, OUTPUT_SCENE_SPEC_ID, live_uniforms_from_audio};
 
 /// Target frame period for the present loop (~60 fps).
 const FRAME_PERIOD: Duration = Duration::from_micros(16_667);
@@ -95,6 +100,11 @@ pub struct RenderThreadResources<R: Runtime> {
     /// (Slice R-1b), loaded on the main thread. `None` falls the loop back
     /// to the R-1a test pattern.
     pub scene: Option<LoadedScene>,
+    /// The shared LIVE audio snapshot produced by `AudioRuntime`, read
+    /// (cloned under the lock) once per frame to build the scene's
+    /// [`LiveUniforms`] (Slice R-1c). `None` => the scene renders at
+    /// silent audio.
+    pub audio: Option<Arc<Mutex<AudioUniformSnapshot>>>,
 }
 
 /// Owns the spawned render thread + its shutdown signal.
@@ -182,6 +192,7 @@ fn run_loop<R: Runtime>(mut res: RenderThreadResources<R>, shutdown: &AtomicBool
 
     let started = Instant::now();
     let mut frame_index: u64 = 0;
+    let mut last_time_secs = 0.0f32;
     let mut next_deadline = Instant::now() + FRAME_PERIOD;
 
     while !shutdown.load(Ordering::Relaxed) {
@@ -231,13 +242,36 @@ fn run_loop<R: Runtime>(mut res: RenderThreadResources<R>, shutdown: &AtomicBool
 
         // Build one live frame: the loaded output scene resolved through
         // `from_scene_live` (Slice R-1b) at the current swapchain size +
-        // elapsed time, SILENT audio (live audio is R-1c). Fall back to the
-        // R-1a test pattern when no scene loaded, or if a frame fails to
-        // resolve (validated at load, so the Err arm is a safety net).
+        // elapsed time, driven by the LIVE audio snapshot (Slice R-1c —
+        // silent only when no audio source is present). The audio lock is
+        // held only long enough to CLONE the small snapshot, then released
+        // before the spec build. Fall back to the R-1a test pattern when no
+        // scene loaded, or if a frame fails to resolve (validated at load,
+        // so the Err arm is a safety net).
         let time_secs = started.elapsed().as_secs_f32();
+        let time_delta = (time_secs - last_time_secs).max(0.0);
+        last_time_secs = time_secs;
         let (width, height) = (res.config.width, res.config.height);
+        let live = match &res.audio {
+            Some(audio) => {
+                // `AudioUniformSnapshot` is `Copy`; deref-copy out of the
+                // guard so the lock is released immediately (before the
+                // spec build) and we never hold it across `from_scene_live`.
+                let snapshot: AudioUniformSnapshot = match audio.lock() {
+                    Ok(guard) => *guard,
+                    Err(poisoned) => *poisoned.into_inner(),
+                };
+                live_uniforms_from_audio(
+                    time_secs,
+                    time_delta,
+                    (width as f32, height as f32),
+                    &snapshot,
+                )
+            }
+            None => LiveUniforms::silent(time_secs, (width as f32, height as f32)),
+        };
         let (spec, scene_id) = match &res.scene {
-            Some(loaded) => match loaded.frame_spec(width, height, time_secs) {
+            Some(loaded) => match loaded.frame_spec(width, height, &live) {
                 Ok(spec) => (spec, OUTPUT_SCENE_SPEC_ID),
                 Err(_) => (
                     test_pattern_spec(width, height, time_secs),

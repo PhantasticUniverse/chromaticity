@@ -66,7 +66,9 @@
 //! and this module adds none.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 
+use chromaticity_audio::AudioUniformSnapshot;
 use chromaticity_render::MultipassRenderer;
 use tauri::window::WindowBuilder;
 use tauri::{Manager, Runtime};
@@ -128,9 +130,11 @@ impl std::error::Error for OutputWindowError {}
 /// MAIN THREAD.
 ///
 /// `app` is the Tauri manager handle from inside the `setup` callback
-/// (which runs on the main thread). The returned bundle is `Send` and
-/// is meant to be moved straight into
-/// [`crate::render::thread::spawn`].
+/// (which runs on the main thread). `audio` is the shared LIVE audio
+/// snapshot produced by `AudioRuntime`, threaded into the render-thread
+/// resources so the scene reacts to sound (Slice R-1c); `None` => the
+/// scene renders at silent audio. The returned bundle is `Send` and is
+/// meant to be moved straight into [`crate::render::thread::spawn`].
 ///
 /// # Errors
 ///
@@ -139,6 +143,7 @@ impl std::error::Error for OutputWindowError {}
 /// app keeps running).
 pub fn build_output_window_resources<R, M>(
     app: &M,
+    audio: Option<Arc<Mutex<AudioUniformSnapshot>>>,
 ) -> Result<RenderThreadResources<R>, OutputWindowError>
 where
     R: Runtime,
@@ -251,5 +256,6 @@ where
         blit,
         window,
         scene,
+        audio,
     })
 }

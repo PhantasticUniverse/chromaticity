@@ -144,7 +144,31 @@ fn render_scene(scene_dir: &str, out_path: &str) -> Result<(), Box<dyn Error>> {
         default_target_size: RENDER_SIZE,
         ..SceneAdapterOptions::default()
     };
-    let live = LiveUniforms::silent(1.0, (RENDER_SIZE.0 as f32, RENDER_SIZE.1 as f32));
+    // Optional synthetic audio for reactivity self-checks:
+    // `CHROMA_RENDER_AUDIO=<level>` (0..1) drives rms / peak / fft / bands so
+    // a reactive scene shows its LOUD state offscreen; unset renders silent.
+    let render_size = (RENDER_SIZE.0 as f32, RENDER_SIZE.1 as f32);
+    let live = match std::env::var("CHROMA_RENDER_AUDIO")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+    {
+        Some(level) => LiveUniforms {
+            time_secs: 1.0,
+            time_delta: 0.0,
+            render_size,
+            bpm: 120.0,
+            rms: level,
+            peak: level,
+            fft: [level; 8],
+            bass: 1.0 + level,
+            mid: 1.0 + level,
+            treb: 1.0 + level,
+            bass_att: 1.0 + level,
+            mid_att: 1.0 + level,
+            treb_att: 1.0 + level,
+        },
+        None => LiveUniforms::silent(1.0, render_size),
+    };
 
     let spec = MultipassSpec::from_scene_live(&scene, &options, &live)?;
     let (width, height) = spec.target_size;

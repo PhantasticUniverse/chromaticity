@@ -10,9 +10,12 @@
 //! ([`scene_source::LoadedScene`]) and resolved per frame through the
 //! engine's `from_scene_live` resolver — blitted to the swapchain and
 //! presented in a dedicated render-thread loop, with the R-1a test
-//! pattern as the fallback. Still NO scheduler wiring or live audio
-//! reactivity (the scene animates via `TIME` at silent audio) — that is
-//! R-1c.
+//! pattern as the fallback. R-1c threads the LIVE audio snapshot
+//! (`AudioRuntime`'s shared `Arc<Mutex<AudioUniformSnapshot>>`) into the
+//! render thread, so the scene now REACTS to sound (it renders at silent
+//! audio only when no audio source is present). Scheduler wiring stays
+//! out of this path — the render thread reads the audio snapshot
+//! directly.
 //!
 //! ## Opt-in via `CHROMA_RENDER_OUTPUT`
 //!
@@ -37,12 +40,20 @@ pub mod pattern;
 pub mod scene_source;
 pub mod thread;
 
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use chromaticity_audio::AudioUniformSnapshot;
 use tauri::{Manager, Runtime};
 
 use crate::render::thread::RenderThreadHandle;
 
 /// Spawn the R-1a output window + render thread IFF
 /// `CHROMA_RENDER_OUTPUT` is truthy.
+///
+/// `audio` is the shared LIVE audio snapshot produced by `AudioRuntime`,
+/// threaded through to the render thread so the scene reacts to sound
+/// (Slice R-1c); `None` => the scene renders at silent audio.
 ///
 /// Returns `Ok(Some(handle))` when the output window was built and the
 /// render thread spawned; `Ok(None)` when the env-gate is unset (the
@@ -58,6 +69,7 @@ use crate::render::thread::RenderThreadHandle;
 /// [`std::io::Error`] surfaced as a boxed error.
 pub fn maybe_spawn_output_window<R, M>(
     app: &M,
+    audio: Option<Arc<Mutex<AudioUniformSnapshot>>>,
 ) -> Result<Option<RenderThreadHandle>, Box<dyn std::error::Error>>
 where
     R: Runtime,
@@ -68,7 +80,7 @@ where
     }
 
     // Main-thread: build the window + surface + renderer + blit.
-    let resources = output_window::build_output_window_resources::<R, M>(app)?;
+    let resources = output_window::build_output_window_resources::<R, M>(app, audio)?;
     // Hand the Send bundle to the render thread (it MOVES it).
     let handle = thread::spawn(resources)?;
     Ok(Some(handle))

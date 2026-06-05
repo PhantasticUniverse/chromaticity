@@ -10,8 +10,10 @@
 //! [`chromaticity_render::MultipassSpec`] builder via the engine's
 //! `from_scene_live` resolver. The render thread owns the resulting
 //! [`LoadedScene`] and calls [`LoadedScene::frame_spec`] each frame with
-//! the current swapchain size + elapsed time at SILENT audio (live audio
-//! reactivity is Slice R-1c).
+//! the current swapchain size + a pre-built [`LiveUniforms`]. Slice R-1c
+//! threads the LIVE audio snapshot in: when an audio source is present
+//! the scene renders at live audio (built via [`live_uniforms_from_audio`]);
+//! it renders at SILENT audio only when no audio source is present.
 //!
 //! The scene is the `CHROMA_RENDER_SCENE` env path, or the default
 //! wide-energy-plasma archetype — a reconciled, render-verified scene
@@ -27,6 +29,7 @@
 
 use std::path::{Path, PathBuf};
 
+use chromaticity_audio::AudioUniformSnapshot;
 use chromaticity_render::MultipassSpec;
 use chromaticity_render::scene_adapter::{AdapterError, LiveUniforms, SceneAdapterOptions};
 use chromaticity_scene::loader::load_chroma_dir;
@@ -107,7 +110,8 @@ impl LoadedScene {
         // Validate the scene resolves before committing to it. Structural
         // failures (e.g. a feedback texture mis-listed in UNIFORMS) are
         // size-independent, so one probe confirms every subsequent frame.
-        if let Err(err) = loaded.frame_spec(1280, 720, 0.0) {
+        if let Err(err) = loaded.frame_spec(1280, 720, &LiveUniforms::silent(0.0, (1280.0, 720.0)))
+        {
             eprintln!(
                 "chromaticity-app: output scene '{}' does not resolve ({err}); \
                  falling back to the test pattern",
@@ -123,8 +127,9 @@ impl LoadedScene {
         Some(loaded)
     }
 
-    /// Build the per-frame renderable spec at `(width, height)` and
-    /// `time_secs`, SILENT audio (live audio is R-1c).
+    /// Build the per-frame renderable spec at `(width, height)` from a
+    /// pre-built [`LiveUniforms`] (live audio per Slice R-1c, or silent
+    /// when no audio source is present).
     ///
     /// # Errors
     ///
@@ -135,22 +140,44 @@ impl LoadedScene {
         &self,
         width: u32,
         height: u32,
-        time_secs: f32,
+        live: &LiveUniforms,
     ) -> Result<MultipassSpec, AdapterError> {
-        let width = width.max(1);
-        let height = height.max(1);
         let options = SceneAdapterOptions {
             fragment_sources: self.fragment_sources.clone(),
-            default_target_size: (width, height),
+            default_target_size: (width.max(1), height.max(1)),
             ..SceneAdapterOptions::default()
         };
-        let live = LiveUniforms::silent(time_secs, (width as f32, height as f32));
-        MultipassSpec::from_scene_live(&self.scene, &options, &live)
+        MultipassSpec::from_scene_live(&self.scene, &options, live)
     }
 
     /// The scene's display label (source path), for diagnostics.
     #[must_use]
     pub fn label(&self) -> &str {
         &self.label
+    }
+}
+
+/// Build per-frame LiveUniforms from the live audio snapshot (Slice R-1c).
+#[must_use]
+pub fn live_uniforms_from_audio(
+    time_secs: f32,
+    time_delta: f32,
+    render_size: (f32, f32),
+    snapshot: &AudioUniformSnapshot,
+) -> LiveUniforms {
+    LiveUniforms {
+        time_secs,
+        time_delta,
+        render_size,
+        bpm: snapshot.bpm,
+        rms: snapshot.rms,
+        peak: snapshot.peak,
+        fft: snapshot.fft_bands,
+        bass: snapshot.bass,
+        mid: snapshot.mid,
+        treb: snapshot.treb,
+        bass_att: snapshot.bass_att,
+        mid_att: snapshot.mid_att,
+        treb_att: snapshot.treb_att,
     }
 }

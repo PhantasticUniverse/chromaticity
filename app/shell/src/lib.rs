@@ -225,6 +225,11 @@ pub fn run() -> Result<(), tauri::Error> {
                 AudioRuntimeConfig::default(),
             );
             let snapshot_handle = runtime.snapshot_handle();
+            // Clone the shared snapshot handle for the GPU output window
+            // BEFORE it is moved into the scheduler's `MutexAudioPull`
+            // below, so the render thread reads the same live audio the
+            // scheduler-tick consumer does (Slice R-1c).
+            let output_audio = snapshot_handle.clone();
             // Opt-in live capture telemetry (CHROMATICITY_AUDIO_DIAG).
             // Clone the shared snapshot handle BEFORE it is moved into the
             // scheduler's `MutexAudioPull` so the readout reports exactly
@@ -378,7 +383,7 @@ pub fn run() -> Result<(), tauri::Error> {
             // is then MOVED onto a dedicated render thread that owns the
             // present loop. A bootstrap failure under the opt-in gate is
             // logged but never fatal — the rest of the app keeps running.
-            match render::maybe_spawn_output_window(app.handle()) {
+            match render::maybe_spawn_output_window(app.handle(), Some(output_audio)) {
                 Ok(Some(render_thread)) => {
                     app.state::<AppState>().install_render_thread(render_thread);
                 }
