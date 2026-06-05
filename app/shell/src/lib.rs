@@ -213,13 +213,26 @@ pub fn run() -> Result<(), tauri::Error> {
             // Unresolvable preferences (operator unplugged BlackHole
             // between sessions, etc.) fall back to the host default
             // with a one-shot stderr warning per `try_input_by_preference`.
-            let preferred_input = {
-                let bootstrap_state = app.state::<AppState>();
-                match bootstrap_state.settings.lock() {
-                    Ok(guard) => Some(guard.audio.input_device.clone()),
-                    Err(poisoned) => Some(poisoned.into_inner().audio.input_device.clone()),
-                }
-            };
+            // `CHROMA_AUDIO_DEVICE` startup override (dev/test): when set
+            // and non-empty, it forces the capture source regardless of the
+            // persisted setting — e.g. `CHROMA_AUDIO_DEVICE=system-audio`
+            // to evaluate the live output window against clean system
+            // playback, free of mic / room noise. Live re-bind from the
+            // Settings UI is deferred (apply-on-restart), so this is the
+            // reliable way to pick a source for a test launch.
+            let preferred_input = std::env::var("CHROMA_AUDIO_DEVICE")
+                .ok()
+                .map(|raw| raw.trim().to_string())
+                .filter(|raw| !raw.is_empty())
+                .or_else(|| {
+                    let bootstrap_state = app.state::<AppState>();
+                    match bootstrap_state.settings.lock() {
+                        Ok(guard) => Some(guard.audio.input_device.clone()),
+                        Err(poisoned) => {
+                            Some(poisoned.into_inner().audio.input_device.clone())
+                        }
+                    }
+                });
             let runtime = AudioRuntime::with_preferred_device(
                 preferred_input.as_deref(),
                 AudioRuntimeConfig::default(),
