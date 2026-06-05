@@ -13,14 +13,27 @@
 //! native window.
 //!
 //! ```sh
+//! # inline test pattern (default; no scene-adapter feature required)
 //! cargo run -p chromaticity-render --example render_to_image -- /tmp/r.bmp
+//!
+//! # real .chroma scene through the live-spec resolver (scene-adapter feature)
+//! cargo run -p chromaticity-render --example render_to_image \
+//!   --features scene-adapter -- path/to/scene.chroma /tmp/r.bmp
+//!
 //! sips -s format png /tmp/r.bmp --out /tmp/r.png   # macOS built-in
 //! ```
 //!
-//! Today it renders an inline animated UV-gradient test pattern (the same
-//! shape the R-1a output window presents) to validate the offscreen →
-//! image path end-to-end. ADR-011 Phase-2 Slice R-1b will extend it to
-//! load a `.chroma` scene through the scene → live-spec builder.
+//! Default invocation renders an inline animated UV-gradient test pattern
+//! (the same shape the R-1a output window presents) to validate the
+//! offscreen → image path end-to-end.
+//!
+//! When the first CLI arg ends in `.chroma` AND the binary was built with
+//! the `scene-adapter` feature, it instead loads that scene directory
+//! through the ADR-011 Phase-2 Slice R-1b live-spec builder
+//! ([`chromaticity_render::MultipassSpec::from_scene_live`]) and renders
+//! the resolved [`chromaticity_render::MultipassSpec`]. The render is
+//! SILENT (neutral/zero audio, reactive bands at 1.0) at a fixed non-zero
+//! `TIME` so time-animated scenes still show motion.
 
 use std::error::Error;
 use std::fs::File;
@@ -65,9 +78,22 @@ fn test_pattern_spec(width: u32, height: u32, time_secs: f32) -> MultipassSpec {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let out_path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "render-out.bmp".to_string());
+    let arg1 = std::env::args().nth(1);
+
+    // Scene mode: first arg is a `.chroma` directory, second is the output
+    // `.bmp`. Gated behind the `scene-adapter` feature so the default-
+    // feature build still compiles the inline test-pattern path only.
+    #[cfg(feature = "scene-adapter")]
+    if let Some(scene_arg) = arg1.as_deref() {
+        if scene_arg.ends_with(".chroma") {
+            let out_path = std::env::args()
+                .nth(2)
+                .ok_or("scene mode requires an output .bmp path as the second argument")?;
+            return render_scene(scene_arg, &out_path);
+        }
+    }
+
+    let out_path = arg1.unwrap_or_else(|| "render-out.bmp".to_string());
     let width: u32 = 640;
     let height: u32 = 360;
     let time_secs: f32 = 1.0;
@@ -87,6 +113,56 @@ fn main() -> Result<(), Box<dyn Error>> {
     write_bmp_24(&out_path, width, height, &rgba)?;
     println!(
         "wrote {out_path} ({width}x{height}); view: sips -s format png {out_path} --out {out_path}.png"
+    );
+    Ok(())
+}
+
+/// Render a real `.chroma` scene directory through the ADR-011 Phase-2
+/// Slice R-1b live-spec builder and write the result as a 24-bit BMP.
+///
+/// Loads `scene.json` via [`chromaticity_scene::loader::load_chroma_dir`],
+/// reads the sibling `main.glsl`, resolves the scene's `UNIFORMS` against a
+/// SILENT [`LiveUniforms`] at a fixed non-zero `TIME`, and rasterises the
+/// single-pass [`MultipassSpec`] at `1280x720` (the scene carries no
+/// `WIDTH` / `HEIGHT`, so the adapter default target size is the render
+/// size).
+#[cfg(feature = "scene-adapter")]
+fn render_scene(scene_dir: &str, out_path: &str) -> Result<(), Box<dyn Error>> {
+    use std::path::Path;
+
+    use chromaticity_render::scene_adapter::{LiveUniforms, SceneAdapterOptions};
+    use chromaticity_scene::loader::load_chroma_dir;
+
+    const RENDER_SIZE: (u32, u32) = (1280, 720);
+
+    let dir = Path::new(scene_dir);
+    let scene = load_chroma_dir(dir)?;
+    let main_glsl = std::fs::read_to_string(dir.join("main.glsl"))?;
+
+    let options = SceneAdapterOptions {
+        fragment_sources: vec![Some(main_glsl)],
+        default_target_size: RENDER_SIZE,
+        ..SceneAdapterOptions::default()
+    };
+    let live = LiveUniforms::silent(1.0, (RENDER_SIZE.0 as f32, RENDER_SIZE.1 as f32));
+
+    let spec = MultipassSpec::from_scene_live(&scene, &options, &live)?;
+    let (width, height) = spec.target_size;
+    let rgba = compile_and_render_multipass(&spec)?;
+
+    let expected = (width as usize) * (height as usize) * 4;
+    if rgba.len() != expected {
+        return Err(format!(
+            "render produced {} bytes, expected {expected} ({width}x{height} RGBA8)",
+            rgba.len()
+        )
+        .into());
+    }
+
+    write_bmp_24(out_path, width, height, &rgba)?;
+    println!(
+        "wrote {out_path} ({width}x{height}) from scene {scene_dir}; \
+         view: sips -s format png {out_path} --out {out_path}.png"
     );
     Ok(())
 }
