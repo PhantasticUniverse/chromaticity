@@ -29,8 +29,9 @@
 //! 3. acquires the swapchain texture (reconfiguring on
 //!    `Lost` / `Outdated`, retrying next frame on `Timeout`, exiting on
 //!    `OutOfMemory` / `Other`),
-//! 4. renders one test-pattern frame via
-//!    [`MultipassRenderer::render_frame_live`],
+//! 4. builds the live output scene's frame spec (Slice R-1b — via
+//!    `from_scene_live`, or the R-1a test pattern as fallback) and
+//!    renders it via [`MultipassRenderer::render_frame_live`],
 //! 5. blits that texture onto the swapchain view, and
 //! 6. presents, then sleeps to pace at ~60 fps.
 //!
@@ -53,6 +54,7 @@ use tauri::window::Window;
 
 use crate::render::blit::BlitPass;
 use crate::render::pattern::{PATTERN_SCENE_ID, test_pattern_spec};
+use crate::render::scene_source::{LoadedScene, OUTPUT_SCENE_SPEC_ID};
 
 /// Target frame period for the present loop (~60 fps).
 const FRAME_PERIOD: Duration = Duration::from_micros(16_667);
@@ -89,6 +91,10 @@ pub struct RenderThreadResources<R: Runtime> {
     /// read its physical size each frame for resize handling. The
     /// surface ALSO holds an `Arc` clone of this window internally.
     pub window: Arc<Window<R>>,
+    /// The live output scene resolved per frame via `from_scene_live`
+    /// (Slice R-1b), loaded on the main thread. `None` falls the loop back
+    /// to the R-1a test pattern.
+    pub scene: Option<LoadedScene>,
 }
 
 /// Owns the spawned render thread + its shutdown signal.
@@ -223,11 +229,27 @@ fn run_loop<R: Runtime>(mut res: RenderThreadResources<R>, shutdown: &AtomicBool
             }
         };
 
-        // Render one live frame of the animated test pattern.
+        // Build one live frame: the loaded output scene resolved through
+        // `from_scene_live` (Slice R-1b) at the current swapchain size +
+        // elapsed time, SILENT audio (live audio is R-1c). Fall back to the
+        // R-1a test pattern when no scene loaded, or if a frame fails to
+        // resolve (validated at load, so the Err arm is a safety net).
         let time_secs = started.elapsed().as_secs_f32();
-        let target = (res.config.width, res.config.height);
-        let spec = test_pattern_spec(target.0, target.1, time_secs);
-        let spec_key = live_feedback_spec_key(PATTERN_SCENE_ID, spec.target_size);
+        let (width, height) = (res.config.width, res.config.height);
+        let (spec, scene_id) = match &res.scene {
+            Some(loaded) => match loaded.frame_spec(width, height, time_secs) {
+                Ok(spec) => (spec, OUTPUT_SCENE_SPEC_ID),
+                Err(_) => (
+                    test_pattern_spec(width, height, time_secs),
+                    PATTERN_SCENE_ID,
+                ),
+            },
+            None => (
+                test_pattern_spec(width, height, time_secs),
+                PATTERN_SCENE_ID,
+            ),
+        };
+        let spec_key = live_feedback_spec_key(scene_id, spec.target_size);
         let rendered = match res.renderer.render_frame_live(&spec, frame_index, spec_key) {
             Ok(texture) => texture,
             Err(err) => {

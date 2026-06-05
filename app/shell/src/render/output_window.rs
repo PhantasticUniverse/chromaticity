@@ -158,7 +158,7 @@ where
     //    and verify than a borderless one); the borderless / fullscreen
     //    VJ-output presentation is a later slice (R-6).
     let window = WindowBuilder::new(app, OUTPUT_WINDOW_LABEL)
-        .title("Chromaticity Output (R-1a test pattern)")
+        .title("Chromaticity Output")
         .decorations(true)
         .resizable(true)
         .visible(true)
@@ -237,11 +237,19 @@ where
 
     let blit = BlitPass::new(renderer.device(), format);
 
+    // Load the live output scene (CHROMA_RENDER_SCENE, or the default
+    // wide-energy-plasma archetype) on the main thread — plain file I/O.
+    // `None` (load / resolve failure) makes the render thread fall back to
+    // the test pattern, so a missing scene never crashes the opt-in output
+    // window.
+    let scene = crate::render::scene_source::LoadedScene::load();
+
     Ok(RenderThreadResources {
         surface,
         config,
         renderer,
         blit,
         window,
+        scene,
     })
 }

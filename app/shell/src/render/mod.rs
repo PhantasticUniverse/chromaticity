@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Native GPU output-window pipeline for ADR-011 Phase-2 Slice R-1a.
+//! Native GPU output-window pipeline for ADR-011 Phase-2 Slices R-1a/R-1b.
 //!
-//! This module proves the `wgpu` ↔ Tauri surface pipeline + the macOS
-//! main-thread handoff IN ISOLATION: a borderless output window
-//! displaying a live-rendered, time-animated test pattern produced by
-//! the R-0 [`chromaticity_render::MultipassRenderer::render_frame_live`]
-//! path, blitted to the swapchain and presented in a dedicated
-//! render-thread loop. NO scene loading, scene adapter, scheduler
-//! wiring, or live audio — those are R-1b / R-1c.
+//! R-1a proved the `wgpu` ↔ Tauri surface pipeline + the macOS
+//! main-thread handoff in isolation (a titled output window presenting a
+//! time-animated test pattern). R-1b builds on it: the window now renders
+//! a real `.chroma` SCENE — loaded on the main thread
+//! ([`scene_source::LoadedScene`]) and resolved per frame through the
+//! engine's `from_scene_live` resolver — blitted to the swapchain and
+//! presented in a dedicated render-thread loop, with the R-1a test
+//! pattern as the fallback. Still NO scheduler wiring or live audio
+//! reactivity (the scene animates via `TIME` at silent audio) — that is
+//! R-1c.
 //!
 //! ## Opt-in via `CHROMA_RENDER_OUTPUT`
 //!
@@ -31,6 +34,7 @@
 pub mod blit;
 pub mod output_window;
 pub mod pattern;
+pub mod scene_source;
 pub mod thread;
 
 use tauri::{Manager, Runtime};
