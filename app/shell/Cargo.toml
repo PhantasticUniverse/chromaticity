@@ -29,7 +29,13 @@ workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `unstable` exposes `tauri::window::{Window, WindowBuilder}` — a native
+# window with NO webview, required for the ADR-011 Phase-2 GPU output
+# window (Slice R-1a): a WebviewWindow's WKWebView paints opaque over the
+# wgpu Metal surface. See `src/render/output_window.rs`. The dependency on
+# Tauri's unstable surface is a consideration for design-proposal
+# Amendment B (second-window VJ output) ratification.
+tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }

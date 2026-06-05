@@ -8,9 +8,12 @@
 //! from the Tauri `setup` callback) and performs every operation that
 //! is main-thread-only on macOS / Metal:
 //!
-//! 1. builds a borderless [`tauri::WebviewWindow`] (`"gpu-output"`),
+//! 1. builds a plain [`tauri::window::Window`] (`"gpu-output"`) with NO
+//!    webview — a Tauri `WebviewWindow` hosts a `WKWebView` that paints
+//!    OPAQUE white over the wgpu Metal layer (an `about:blank` webview
+//!    hides every presented frame), so the output window is webview-free,
 //! 2. wraps it in an `Arc` and creates a `wgpu::Surface<'static>` from
-//!    it (the `Arc<WebviewWindow>` satisfies wgpu's `WindowHandle`
+//!    it (the `Arc<Window>` satisfies wgpu's `WindowHandle`
 //!    super-trait via the `raw-window-handle` 0.6 `Arc` blanket impl,
 //!    and is `Send + Sync + 'static` so the surface is `'static`),
 //! 3. acquires a surface-compatible `wgpu::Adapter` from the SAME
@@ -65,8 +68,8 @@
 use std::sync::Arc;
 
 use chromaticity_render::MultipassRenderer;
-use tauri::webview::WebviewWindowBuilder;
-use tauri::{Manager, Runtime, WebviewUrl};
+use tauri::window::WindowBuilder;
+use tauri::{Manager, Runtime};
 
 use crate::render::blit::{BlitPass, preferred_surface_format};
 use crate::render::thread::RenderThreadResources;
@@ -141,22 +144,29 @@ where
     R: Runtime,
     M: Manager<R>,
 {
-    // 1. Borderless, resizable output window. Built VISIBLE so the
-    //    operator sees it immediately; the render thread presents a
-    //    black frame then the live pattern within ~16ms of the first
-    //    swapchain acquire.
-    let window = WebviewWindowBuilder::new(
-        app,
-        OUTPUT_WINDOW_LABEL,
-        WebviewUrl::App("about:blank".into()),
-    )
-    .title("Chromaticity Output")
-    .decorations(false)
-    .resizable(true)
-    .visible(true)
-    .inner_size(DEFAULT_LOGICAL_WIDTH, DEFAULT_LOGICAL_HEIGHT)
-    .build()
-    .map_err(OutputWindowError::WindowBuild)?;
+    // 1. Plain native output window — NO webview. A Tauri
+    //    `WebviewWindow` hosts a `WKWebView` that paints OPAQUE over the
+    //    wgpu Metal layer (an `about:blank` webview renders solid white
+    //    on top of the surface, hiding every presented frame); a plain
+    //    `tauri::window::Window` has no webview, so the surface's
+    //    `CAMetalLayer` is the window's visible content.
+    //
+    //    Built VISIBLE + FOCUSED + CENTERED so the operator sees it
+    //    immediately; the render thread presents the live pattern within
+    //    ~16ms of the first swapchain acquire. Decorations are ON for
+    //    R-1a bring-up (a titled, movable window is far easier to locate
+    //    and verify than a borderless one); the borderless / fullscreen
+    //    VJ-output presentation is a later slice (R-6).
+    let window = WindowBuilder::new(app, OUTPUT_WINDOW_LABEL)
+        .title("Chromaticity Output (R-1a test pattern)")
+        .decorations(true)
+        .resizable(true)
+        .visible(true)
+        .focused(true)
+        .center()
+        .inner_size(DEFAULT_LOGICAL_WIDTH, DEFAULT_LOGICAL_HEIGHT)
+        .build()
+        .map_err(OutputWindowError::WindowBuild)?;
 
     // 2. Physical size for the swapchain (inner_size on the builder is
     //    LOGICAL; the surface configures in PHYSICAL pixels).
@@ -164,7 +174,7 @@ where
     let width = physical.width.max(1);
     let height = physical.height.max(1);
 
-    // 3. Safe surface creation. `Arc<WebviewWindow>` is Send + Sync +
+    // 3. Safe surface creation. `Arc<Window>` is Send + Sync +
     //    'static and implements wgpu's WindowHandle super-trait via the
     //    raw-window-handle 0.6 Arc blanket impl, so the surface is
     //    'static and wgpu keeps the window alive for the surface's

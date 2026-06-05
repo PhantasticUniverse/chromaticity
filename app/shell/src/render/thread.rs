@@ -14,7 +14,7 @@
 //! main thread, so [`crate::render::output_window`] creates the window,
 //! the surface, and acquires the adapter / device there. The resulting
 //! `wgpu::Surface<'static>` is `Send + Sync` (it owns the
-//! `Arc<WebviewWindow>` handle), so this module's [`spawn`] MOVES it —
+//! `Arc<Window>` handle), so this module's [`spawn`] MOVES it —
 //! together with the already-built [`MultipassRenderer`] and
 //! [`BlitPass`] — into a dedicated render thread. Nothing in this
 //! module ever calls `create_surface` or touches the window builder;
@@ -48,7 +48,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use chromaticity_render::{MultipassRenderer, live_feedback_spec_key};
-use tauri::{Runtime, WebviewWindow};
+use tauri::Runtime;
+use tauri::window::Window;
 
 use crate::render::blit::BlitPass;
 use crate::render::pattern::{PATTERN_SCENE_ID, test_pattern_spec};
@@ -72,10 +73,10 @@ const RENDER_JOIN_POLL_STEP: Duration = Duration::from_millis(10);
 /// the Tauri main thread (the macOS main-thread constraint applies to
 /// the surface / adapter / device acquisition, all of which already
 /// happened by the time this struct is built). `surface` is
-/// `Surface<'static>` because it owns the `Arc<WebviewWindow>` handle,
+/// `Surface<'static>` because it owns the `Arc<Window>` handle,
 /// making the whole bundle `Send`.
 pub struct RenderThreadResources<R: Runtime> {
-    /// The presentation surface (owns the `Arc<WebviewWindow>` handle).
+    /// The presentation surface (owns the `Arc<Window>` handle).
     pub surface: wgpu::Surface<'static>,
     /// The surface configuration to apply on first frame + after resize.
     pub config: wgpu::SurfaceConfiguration,
@@ -87,7 +88,7 @@ pub struct RenderThreadResources<R: Runtime> {
     /// The output window, kept alive for the loop's lifetime so we can
     /// read its physical size each frame for resize handling. The
     /// surface ALSO holds an `Arc` clone of this window internally.
-    pub window: Arc<WebviewWindow<R>>,
+    pub window: Arc<Window<R>>,
 }
 
 /// Owns the spawned render thread + its shutdown signal.

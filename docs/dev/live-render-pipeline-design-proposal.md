@@ -69,8 +69,13 @@ prerequisite (Slice R-0), not a display concern.
 - **R-1 — shell wiring + output window (`app/shell`; NO policy PR — see Amendment
   A, retired).** New `app/shell/src/render/` module (`dispatch`, `thread`,
   `signal`, `spec_builder`, `surface`, `blit`, `output_window`). The wgpu surface
-  is created with the **safe** `Instance::create_surface(Arc<WebviewWindow>)` —
-  **no `unsafe`**. macOS main-thread constraint (load-bearing): the output window
+  is created with the **safe** `Instance::create_surface(Arc<Window>)` —
+  **no `unsafe`** — against a **plain, no-webview** `tauri::window::Window` (Tauri's
+  `unstable` feature): a `WebviewWindow`'s `WKWebView` paints opaque over the Metal
+  layer (`about:blank` renders solid white on top), so the GPU output window must be
+  webview-free. **Confirmed end-to-end on macOS Metal (R-1a, 2026-06-05: animated
+  gradient, correct RGBA channel order, ~60fps).** macOS main-thread constraint
+  (load-bearing): the output window
   AND the surface AND adapter/device are created on the MAIN thread in Tauri
   `setup` (off-main-thread `create_surface`/window is a *panic*, not an error),
   then the `Send` `Surface<'static>` + renderer are moved into the dedicated render
@@ -107,7 +112,9 @@ prerequisite (Slice R-0), not a display concern.
   canvas embedding says "composited under a transparent section of the web view,"
   but also "the operator fullscreen path exits the web view entirely and places
   the wgpu surface full-screen natively." Proposal: ratify the second window as
-  that native path. AO decides: in scope for ADR-011 Phase-2, or new ADR?
+  that native path. AO decides: in scope for ADR-011 Phase-2, or new ADR? **Note:**
+  R-1a implements this as a no-webview `tauri::window::Window`, which requires
+  Tauri's `unstable` cargo feature — a dependency to weigh in this ratification.
 - **C — CPU readback preview as the initial in-app preview.** Proposal: ratify
   320×180 / ~15 Hz readback as the MVP preview, overlay (R-5) as the upgrade. AO
   decides: acceptable shipped state, or overlay required before any preview lands?
