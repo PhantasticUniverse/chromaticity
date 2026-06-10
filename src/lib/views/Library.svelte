@@ -179,10 +179,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         return a.id.localeCompare(b.id);
       });
     } else if (sortMode === 'favorites') {
-      // TODO(wave-2.5-lib-b): swap the no-op partition for
-      // `libraryFavoritesStore.has(card.id)` once Lane LIB.B merges.
-      // Until then `favorites` is a stub that preserves id-asc order.
-      sorted.sort((a, b) => a.id.localeCompare(b.id));
+      // Favorites-first partition (Lane LIB.B `libraryFavoritesStore`),
+      // id-asc tie-break within each partition. `isFavorite` reads the
+      // reactive `SvelteSet`, so heart toggles re-sort live inside this
+      // `$derived` — the same reactivity wire as the FAVORITES chip
+      // above.
+      sorted.sort(
+        (a, b) =>
+          Number(libraryFavoritesStore.isFavorite(b.id)) -
+            Number(libraryFavoritesStore.isFavorite(a.id)) || a.id.localeCompare(b.id),
+      );
     }
     // `id` sort is the default; the engine returns id-sorted already
     // so `sorted` is already in id order at this branch.
@@ -213,6 +219,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     event.stopPropagation();
     libraryFavoritesStore.toggle(card.id);
   }
+
+  // Friendly copy for the no-Tauri-context failure mode. `toIpcError`
+  // classifies the V8 "Cannot read properties of undefined (reading
+  // 'invoke')" TypeError as `invoke_unavailable` but passes the raw
+  // message through unchanged, so call sites must branch on `.kind`
+  // to swap in operator-readable prose. Wording mirrors the
+  // Osc.svelte browser-mode hint.
+  const IPC_UNAVAILABLE_COPY =
+    'Engine IPC unavailable — typically expected in browser-mode (Tauri internals unset).';
 
   // W11 PR2 / Wave 2.8 LIB.LOCAL: merge bundled (ship-time) + user-
   // staged scene cards + every custom scene folder the operator has
@@ -270,8 +285,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             merged.push(card);
           }
         } else {
-          const reason = result.reason;
-          errors.push(reason instanceof Error ? reason.message : String(reason));
+          // Classify + dedupe per-source rejections. In browser-mode
+          // every invoke-backed source rejects with the identical V8
+          // TypeError; map the `invoke_unavailable` kind to the
+          // friendly browser-mode hint and skip duplicates so the
+          // banner never renders the same message twice.
+          // `errors.includes` keeps the transient array builtin-Set-
+          // free per the `svelte/prefer-svelte-reactivity` posture
+          // pinned at `seenIds` above.
+          const ipcErr = toIpcError(result.reason, 'list_scene_packages');
+          const msg = ipcErr.kind === 'invoke_unavailable' ? IPC_UNAVAILABLE_COPY : ipcErr.message;
+          if (!errors.includes(msg)) errors.push(msg);
         }
       }
 
@@ -323,7 +347,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // change.
   let lastCustomRootsKey: string | null = $state(null);
   $effect(() => {
-    const key = settingsStore.snapshot.storage.scene_folders.join(' ');
+    const key = settingsStore.snapshot.storage.scene_folders.join('\u0000');
     if (lastCustomRootsKey === null) {
       lastCustomRootsKey = key;
       return;
@@ -380,15 +404,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Perform view's Scene Controls header + control-panel surfaces
   // re-render against the loaded scene's control schema instead of
   // the `perform-fixtures.ts` placeholder. Errors bubble through
-  // `loadedSceneStore.error` so the UI can surface a non-fatal
-  // banner; the route navigation is gated on a successful load (LIB.E
-  // canonical "load → play" flow for pre-alpha smoke testing).
+  // `loadedSceneStore.error` and surface via the `sceneLoadError`
+  // non-fatal banner below; the route navigation is gated on a
+  // successful load (LIB.E canonical "load → play" flow for pre-alpha
+  // smoke testing).
   //
   // `loadingPath` tracks the in-flight card so the tile can render a
   // dimmed `aria-busy="true"` affordance — `loadedSceneStore.loading`
   // is global and would dim every tile, which the reviewer flagged as
   // confusing on a multi-tile grid.
   let loadingPath = $state<string | null>(null);
+
+  // Non-fatal scene-load failure banner copy. Before this wire a
+  // failed `load_scene` (corrupt / unparseable `.chroma` package) was
+  // completely invisible — `handleSceneOpen` gets `payload === null`,
+  // skips the route change, and nothing rendered the store error. The
+  // derived mapping prefixes a friendly leader while keeping the
+  // engine's technical detail on the same line (the `<ErrorMessage>`
+  // idiom is a single-line `role="alert"` paragraph — no tooltip
+  // surface), and swaps the browser-mode invoke-unavailable TypeError
+  // for the standard hint. No clear-on-success wiring is needed:
+  // `loadedSceneStore.load()` resets `error = null` at the start of
+  // every attempt.
+  const sceneLoadError = $derived.by(() => {
+    const raw = loadedSceneStore.error;
+    if (raw === null) return null;
+    const ipcErr = toIpcError(raw, 'load_scene');
+    return ipcErr.kind === 'invoke_unavailable'
+      ? IPC_UNAVAILABLE_COPY
+      : `Scene failed to load — ${ipcErr.message}`;
+  });
 
   async function handleSceneOpen(card: SceneCard): Promise<void> {
     if (loadingPath !== null) return;
@@ -588,6 +633,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </label>
       </div>
     {/if}
+
+    <!-- Non-fatal scene-load failure banner (the LIB.E promised
+         surface). Standalone — NOT part of the loading/error grid
+         chain below — so a failed double-click / Load click surfaces
+         next to the still-rendered grid; the route handoff in
+         `handleSceneOpen` is success-gated, so the operator stays
+         here with the banner. -->
+    <ErrorMessage error={sceneLoadError} />
 
     {#if loading}
       <p class="library__status">loading…</p>

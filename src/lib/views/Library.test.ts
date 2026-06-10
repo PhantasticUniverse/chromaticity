@@ -567,6 +567,39 @@ describe('Library view', () => {
     expect(container.querySelector('.empty-state')).toBeNull();
   });
 
+  it('dedupes identical per-source failure messages in the error banner', async () => {
+    // Both roots reject with the SAME message — the banner must render
+    // it once, not "scan offline; scan offline".
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => Promise.reject(new Error('scan offline')),
+      list_scene_packages: () => Promise.reject(new Error('scan offline')),
+    });
+    const { findByRole } = render(Library);
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toBe('scan offline');
+  });
+
+  it('maps the browser-mode invoke TypeError to the friendly IPC-unavailable copy (deduped)', async () => {
+    // The V8 TypeError raised when `window.__TAURI_INTERNALS__.invoke`
+    // is undefined is the canonical no-Tauri-context signal; the banner
+    // must show the operator-readable hint, not raw exception prose
+    // (and only once even though every source fails identically).
+    const invokeTypeError = () =>
+      Promise.reject(new TypeError("Cannot read properties of undefined (reading 'invoke')"));
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: invokeTypeError,
+      list_scene_packages: invokeTypeError,
+    });
+    const { findByRole } = render(Library);
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toBe(
+      'Engine IPC unavailable — typically expected in browser-mode (Tauri internals unset).',
+    );
+    expect(alert.textContent).not.toContain('Cannot read properties');
+  });
+
   it('preserves merged cards when only one root rejects (Promise.allSettled partial-result branch)', async () => {
     dispatchInvoke({
       default_scene_root: () => '/user-root',
@@ -765,6 +798,37 @@ describe('Library view', () => {
     });
   });
 
+  it('sort "favorites" puts favorited cards first; default id sort does not (LIB.B wire)', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+    });
+    // Favorite ONLY the user card — its id (`pkg.user.geo`) sorts last
+    // in id order, so favorites-first is distinguishable from the
+    // id-asc stub the sort option used to be.
+    libraryFavoritesStore.toggle('pkg.user.geo');
+    const { findByLabelText, container } = render(Library);
+    const sortSelect = (await findByLabelText('sort scenes')) as HTMLSelectElement;
+    const gridTitles = () =>
+      Array.from(container.querySelectorAll('.scene-tile__title')).map(
+        (el) => el.textContent?.trim() ?? '',
+      );
+    // Default id sort: merged insertion order, favorited card last.
+    expect(sortSelect.value).toBe('id');
+    expect(gridTitles()).toEqual(['Welcome', 'Glitch', 'My Geometric Sketch']);
+    // Favorites sort: favorited card first, id-asc tie-break for the
+    // non-favorited partition (glitch < welcome by id).
+    await fireEvent.change(sortSelect, { target: { value: 'favorites' } });
+    expect(gridTitles()).toEqual(['My Geometric Sketch', 'Glitch', 'Welcome']);
+    // Heart-toggle re-sorts live — un-favoriting drops the card back
+    // into the id-asc partition while the sort stays on favorites.
+    libraryFavoritesStore.toggle('pkg.user.geo');
+    await waitFor(() => {
+      expect(gridTitles()).toEqual(['Glitch', 'Welcome', 'My Geometric Sketch']);
+    });
+  });
+
   it('RECENT chip narrows the grid to ids tracked in libraryRecentStore', async () => {
     dispatchInvoke({
       default_scene_root: () => '/user-root',
@@ -864,6 +928,32 @@ describe('Library view', () => {
     });
     expect(loadedSceneStore.snapshot).toBeNull();
     // Route stays on Library — handoff is success-gated.
+    expect(routeStore.current).toBe('library');
+  });
+
+  it('failed load_scene renders the non-fatal error banner with the friendly leader and keeps the grid', async () => {
+    dispatchInvoke({
+      default_scene_root: () => '/user-root',
+      list_bundled_scene_packages: () => BUNDLED_CARDS,
+      list_scene_packages: () => USER_CARDS,
+      load_scene: () => Promise.reject(new Error('scene.json malformed')),
+    });
+    const { findByText, findByRole, container } = render(Library);
+    await findByText('My Geometric Sketch');
+    const tiles = container.querySelectorAll('.scene-tile');
+    const userTile = Array.from(tiles).find((t) =>
+      t.textContent?.includes('My Geometric Sketch'),
+    ) as HTMLElement | undefined;
+    expect(userTile).not.toBeUndefined();
+    await fireEvent.dblClick(userTile as HTMLElement);
+    // The banner surfaces with the friendly leader + the engine's
+    // technical detail on the same line (the ErrorMessage idiom is a
+    // single role="alert" paragraph).
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toBe('Scene failed to load — scene.json malformed');
+    // Non-fatal: the grid stays rendered alongside the banner, and the
+    // route handoff did not fire.
+    expect(container.querySelectorAll('.scene-tile').length).toBe(3);
     expect(routeStore.current).toBe('library');
   });
 
