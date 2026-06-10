@@ -26,8 +26,9 @@
 #
 # Usage
 # -----
-#   release-eng/dev-run-macos.sh [--diag] [--device <sentinel>] [--no-build]
-#                                [--log <path>] [--tone] [-h]
+#   release-eng/dev-run-macos.sh [--diag] [--device <sentinel>] [--output]
+#                                [--scene <path>] [--no-build] [--log <path>]
+#                                [--tone] [-h]
 #
 #   --diag            launch with CHROMATICITY_AUDIO_DIAG=1 (dBFS telemetry to
 #                     stderr -> the --log file); see the run/test guide.
@@ -35,6 +36,13 @@
 #                     sentinels: `default` (host default input / mic),
 #                     `system-audio` (zero-install output tap). Applied on
 #                     restart only.
+#   --output          spawn the GPU output window (CHROMA_RENDER_OUTPUT=1), baked
+#                     into the bundle's LSEnvironment so LaunchServices applies it
+#                     reliably under `open` (repeated `open --env` is not
+#                     guaranteed; the rebuilt bundle picks LSEnvironment up clean).
+#   --scene <path>    render this .chroma scene in the output window
+#                     (CHROMA_RENDER_SCENE=<abs>); implies --output. Relative
+#                     paths resolve against CWD, then the repo root.
 #   --no-build        skip `npm run build` + `cargo build` (reuse the last
 #                     binary; just re-sign + relaunch).
 #   --log <path>      diagnostics stderr log (default: /tmp/chroma-diag.log).
@@ -62,12 +70,22 @@ APP_DIR="${CHROMA_DEV_APP_DIR:-$REPO_ROOT/target/dev-macos/$APP_NAME.app}"
 SETTINGS_TOML="$HOME/Library/Application Support/$BUNDLE_ID/settings.toml"
 
 # ---------------------------------------------------------------- flags ------
-DIAG=0; BUILD=1; DEVICE=""; DIAG_LOG="/tmp/chroma-diag.log"; TONE=0
+DIAG=0; BUILD=1; DEVICE=""; DIAG_LOG="/tmp/chroma-diag.log"; TONE=0; OUTPUT=0; SCENE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --diag) DIAG=1 ;;
     --no-build) BUILD=0 ;;
     --device) DEVICE="${2:?--device needs a value}"; shift ;;
+    --output) OUTPUT=1 ;;
+    --scene)
+      OUTPUT=1
+      scene_arg="${2:?--scene needs a path}"; shift
+      # Resolve to an ABSOLUTE path (.chroma is a directory): the .app's CWD is
+      # not the repo root, so CHROMA_RENDER_SCENE must not be relative.
+      if [ -d "$scene_arg" ]; then SCENE="$(cd "$scene_arg" && pwd)"
+      elif [ -d "$REPO_ROOT/$scene_arg" ]; then SCENE="$(cd "$REPO_ROOT/$scene_arg" && pwd)"
+      else echo "scene not found: $scene_arg" >&2; exit 2; fi
+      ;;
     --log) DIAG_LOG="${2:?--log needs a value}"; shift ;;
     --tone) TONE=1; DIAG=1 ;;
     -h|--help) grep '^#' "$0" | sed 's/^#\{1,\} \{0,1\}//'; exit 0 ;;
@@ -158,6 +176,24 @@ bundle_and_sign() {
   mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
   cp "$BIN_SRC" "$APP_DIR/Contents/MacOS/$EXECUTABLE"
 
+  # Optional LSEnvironment block: LaunchServices reads this from the bundle on
+  # `open` and injects it into the app's environment. Repeated `open --env` is
+  # not guaranteed across macOS versions, so the render-output env lives here;
+  # the bundle is rebuilt every run, so LaunchServices never serves a stale copy.
+  local lsenv=""
+  if [ "$OUTPUT" -eq 1 ]; then
+    log "output window enabled (CHROMA_RENDER_OUTPUT=1${SCENE:+, scene=$SCENE})"
+    lsenv="  <key>LSEnvironment</key>
+  <dict>
+    <key>CHROMA_RENDER_OUTPUT</key><string>1</string>"
+    if [ -n "$SCENE" ]; then
+      lsenv="$lsenv
+    <key>CHROMA_RENDER_SCENE</key><string>$SCENE</string>"
+    fi
+    lsenv="$lsenv
+  </dict>"
+  fi
+
   cat > "$APP_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -175,6 +211,7 @@ bundle_and_sign() {
   <string>Chromaticity reacts to live audio input (microphone or selected device).</string>
   <key>NSAudioCaptureUsageDescription</key>
   <string>Chromaticity captures system audio output to drive its visuals.</string>
+$lsenv
 </dict>
 </plist>
 EOF

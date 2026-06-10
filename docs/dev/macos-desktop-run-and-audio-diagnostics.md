@@ -47,17 +47,36 @@ release path is `sign-macos.sh` + `notarize.sh` with the Developer ID cert
 ## 2. The dev harness — `release-eng/dev-run-macos.sh`
 
 ```bash
-release-eng/dev-run-macos.sh [--diag] [--device <sentinel>] [--no-build] \
-                             [--log <path>] [--tone] [-h]
+release-eng/dev-run-macos.sh [--diag] [--device <sentinel>] [--output] \
+                             [--scene <path>] [--no-build] [--log <path>] \
+                             [--tone] [-h]
 ```
 
 | Flag             | Effect                                                                       |
 | ---------------- | ---------------------------------------------------------------------------- |
 | `--diag`         | Launch with `CHROMATICITY_AUDIO_DIAG=1`; telemetry streams to the log file.  |
 | `--device <s>`   | Set `settings.audio.input_device` before launch (`default`, `system-audio`, or a device id). Applied on restart only. |
+| `--output`       | Spawn the GPU output window (`CHROMA_RENDER_OUTPUT=1`), baked into the bundle's `LSEnvironment` so LaunchServices applies it reliably under `open`. |
+| `--scene <path>` | Render this `.chroma` scene in the output window (`CHROMA_RENDER_SCENE=<abs>`); implies `--output`. Relative paths resolve against CWD, then the repo root. |
 | `--no-build`     | Skip `npm run build` + `cargo build`; just re-sign + relaunch.               |
 | `--log <path>`   | Diagnostics log path (default `/tmp/chroma-diag.log`).                       |
 | `--tone`         | After launch, play a known 440 Hz / 0.5 sine and tail the readout. Implies `--diag`. |
+
+> **Live audio-reactivity test, clean system audio:**
+>
+> ```bash
+> release-eng/dev-run-macos.sh --output \
+>   --scene engine/scene/tests/fixtures/scenes/diagnostic/audio-reactivity-test.chroma \
+>   --device system-audio --diag
+> ```
+>
+> Drives the diagnostic test-card (8 FFT bars + RMS column + bass beat-disc) in
+> the GPU output window from the system-audio tap — no mic, no room noise. The
+> tap needs the signed app (this harness) + a one-time consent; a raw
+> `cargo run` binary cannot tap. Why `LSEnvironment` and not repeated
+> `open --env`: `open` documents only a single `--env VAR`, and repeating it is
+> not guaranteed across macOS versions — the bundle is rebuilt every run, so
+> LaunchServices never serves a stale `LSEnvironment`.
 
 What it does, in order: ensures the stable signing identity exists (creates a
 dedicated keychain `chromaticity-dev.keychain-db` with a self-signed
@@ -132,8 +151,9 @@ capture expect:
 Failure signatures and what they mean:
 
 - **Peak _exceeds_ 0.5 / crest ≫ 3 dB / flat FFT** → byte/channel-stride
-  corruption (this is the current macOS system-audio tap state — cpal's AUHAL
-  read stage; see below).
+  corruption. This was the **pre-fix** AUHAL tap symptom; the direct-`IOProc`
+  read (§6) now returns `raw_peak` exactly 0.5. Seeing it again ⇒ suspect a
+  regression in the loopback read path.
 - **rms ≈ -inf with `cb` climbing** → the tap delivers silence (nothing playing,
   or the all-zero bug).
 
@@ -147,7 +167,7 @@ real file/app playback for a valid probe.)
 ```
                           ┌─────────────────────────────── macOS system-audio TAP
                           │   CATapDescription (global) → private auto-start
-                          │   aggregate → [cpal AUHAL AudioUnit read]  ✗ CORRUPTS
+                          │   aggregate → [direct IOProc read]         ✓ FIXED
   capture source ─────────┤
                           │   microphone / line-in (cpal AUHAL)        ✓ WORKS
                           │   virtual loopback (BlackHole/Loopback)     ✓ WORKS
@@ -155,37 +175,41 @@ real file/app playback for a valid probe.)
                           ▼
    engine/audio AudioRuntime producer thread                           ✓ WORKS
      → analyser (rms/peak/FFT/BPM over mono mix)                       ✓ WORKS
-     → Arc<Mutex<AudioUniformSnapshot>>                                ✓ WORKS
-        ▼
-   scheduler tick (60 Hz): MutexAudioPull → state.latest_audio_snapshot ✓ WORKS
-     → TauriIpcEmitter.emit("audio_uniform_snapshot_changed", payload)  ✓ WORKS
-        ▼
-   webview: audioSnapshotStore.listen(...)                             ✓ WORKS
-     → TopBar VU/BPM, AudioReactivity 4 band tiles, BpmRing, BeatDots   ✓ WORKS (live)
-     → AudioReactivity 48-bar FFT / AudioUniforms 64-bar Spectrum       ~ SYNTHETIC (post-MVP)
+     → reactive_bands AGC (volume-independent bass/mid/treb)           ✓ WORKS
+     → Arc<Mutex<AudioUniformSnapshot>>  ── shared, two consumers ──┐  ✓ WORKS
+        ▼                                                           ▼
+   scheduler tick (60 Hz): MutexAudioPull            live GPU render thread (direct read)
+     → IPC "audio_uniform_snapshot_changed"  ✓        → AudioSmoother PPM ballistics  ✓
+        ▼                                              → MultipassRenderer → output window ✓
+   webview: audioSnapshotStore.listen(...)  ✓             (CHROMA_RENDER_OUTPUT / --output)
+     → TopBar VU/BPM, 4 band tiles, BpmRing  ✓ (live)
+     → 48-bar FFT / 64-bar Spectrum          ~ SYNTHETIC (post-MVP)
 ```
 
-**The only broken link is the macOS system-audio tap's _read_ stage.** Everything
-downstream of capture — analyser, the `Arc<Mutex>` seam, the scheduler tick, the
-IPC bridge, and the webview render — is proven end-to-end (a
-`CHROMATICITY_AUDIO_DIAG` round-trip confirmed the webview receives exactly what
-the engine emits). With a microphone or a virtual loopback selected, the live
-meters and band tiles work today.
+**Every link is live.** The macOS system-audio tap read was fixed by moving off
+cpal's AUHAL `AudioUnit` onto a direct Core Audio `IOProc` (hardware-verified
+clean — a 440 Hz / 0.5 sine returns `raw_peak` exactly 0.5). Downstream — analyser,
+the `reactive_bands` AGC, the `Arc<Mutex>` seam, **and both consumers** (the
+scheduler-tick IPC → webview meters, and the direct-read GPU output window) — is
+proven end-to-end. Mic, virtual loopback, and the zero-install system-audio tap
+all drive live reactivity today.
 
-### The macOS tap fix (in progress)
+### The macOS tap fix (landed — ADR-022 Amendment 2026-06-03)
 
-The tap *creation* is correct (global initializer + auto-start + private
-aggregate). The corruption is cpal's **AUHAL `AudioUnit`** read stage inserting an
+The tap *creation* was always correct (global initializer + auto-start + private
+aggregate). The bug was cpal's **AUHAL `AudioUnit`** read stage inserting an
 `AudioConverter` negotiated against the aggregate's format rather than the tap's
-true `kAudioTapPropertyFormat`. The fix replaces that read stage — **for the
-loopback path only** — with a direct `AudioDeviceCreateIOProcIDWithBlock` `IOProc`
-via the already-transitive `objc2-core-audio`. Full decision record:
+true `kAudioTapPropertyFormat`, corrupting the stream. The fix replaces that read
+stage — **for the loopback path only** — with a direct
+`AudioDeviceCreateIOProcIDWithBlock` `IOProc` via the transitive
+`objc2-core-audio` (the mic path keeps AUHAL). Full decision record:
 `docs/adr/ADR-022-system-audio-capture.md` → *Amendment (2026-06-03)*; patch
 ledger: `third_party/cpal/UPSTREAM-VERSION.md`.
 
-Until that lands and passes the sine probe on hardware, selecting **System Audio
-(built-in)** on macOS degrades to the default input; use the microphone or a
-virtual loopback to capture system output.
+Selecting **System Audio (built-in)** on macOS < 14.6 or on denied
+`NSAudioCaptureUsageDescription` consent still degrades to the default input
+(never silently); on a supported, consented host it captures system output
+directly.
 
 ## 7. Troubleshooting
 
@@ -196,8 +220,10 @@ virtual loopback to capture system output.
   `security find-identity -p codesigning ~/Library/Keychains/chromaticity-dev.keychain-db`.
 - **No `cb=` lines** → the app is blocked on the consent prompt (grant it) or the
   selected source delivers nothing.
-- **Meters flat with the tap selected on macOS** → expected; the tap read is under
-  repair (§6). Switch to mic / virtual loopback.
+- **Meters flat with the tap selected on macOS** → the tap captures system
+  *output*, so it delivers no callbacks while nothing is playing; start real
+  playback. If `cb` climbs but meters stay flat, that's a regression in the
+  `IOProc` read (§6), not expected behaviour.
 - **`dist/.gitkeep` shows as deleted after a build** → `npm run build` clobbers it;
   the harness restores it, but if you build manually run
   `git checkout -- dist/.gitkeep`.
