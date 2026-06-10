@@ -58,7 +58,12 @@ export interface CapabilitiesSnapshot {
 function detectPlatform(): CapabilitiesPlatform {
   if (typeof navigator === 'undefined') return 'macos';
   const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes('win')) return 'windows';
+  // Word-boundary match (mirrors `stores/platform.ts`): real Windows UAs
+  // carry `Windows NT ...` / `Win64`, and the `\b` anchor blocks the
+  // `darwin` substring — the previous `ua.includes('win')` misclassified
+  // jsdom (UA `darwin`) and Mac/Linux UAs containing the `darwin` token
+  // as Windows.
+  if (/\bwin/.test(ua)) return 'windows';
   if (ua.includes('linux')) return 'linux';
   return 'macos';
 }

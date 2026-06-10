@@ -7,6 +7,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Suppress the browser's implicit GET /favicon.ico (404 on every
+         browser-mode / Playwright load); no icon asset ships in the web
+         root, and the Tauri window icon is configured separately. -->
+    <link rel="icon" href="data:," />
     <title>Chromaticity</title>
   </head>
   <body>
