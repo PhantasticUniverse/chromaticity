@@ -16,7 +16,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 TIME;
     vec4 RENDERSIZE;
-    float chroma_AudioFFT[8];
+    vec4 chroma_AudioFFT[8];
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     vec4 syn_BPM;
@@ -57,10 +57,10 @@ void main() {
 
     float r = length(p);
 
-    // Bass transient drives ripple amplitude. chroma_AudioFFT[0] is the
+    // Bass transient drives ripple amplitude. chroma_AudioFFT[0].x is the
     // lowest log-spaced band; at silence it is 0. A small idle floor
     // keeps the image alive (never all-black) when no audio is present.
-    float bass = clamp(chroma_AudioFFT[0] * 6.0 + chroma_AudioRMS.x * 2.0, 0.0, 4.0);
+    float bass = clamp(chroma_AudioFFT[0].x * 6.0 + chroma_AudioRMS.x * 2.0, 0.0, 4.0);
     float idle = 0.12;
     float drive = idle + bass;
 

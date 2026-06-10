@@ -17,7 +17,7 @@ layout(set = 0, binding = 0) uniform Uniforms {
     vec4 TIME;            // .x = seconds since scene start
     vec4 RENDERSIZE;      // .xy = current pass pixel size
     vec4 chroma_AudioRMS; // .x = raw RMS energy [0, inf)
-    float chroma_AudioFFT[8];
+    vec4 chroma_AudioFFT[8];
 };
 
 // --- value noise (standard public technique: hash + bilerp) -----------------
@@ -96,7 +96,7 @@ void main() {
     float weighted = 0.0;
     float total = 0.0;
     for (int i = 0; i < 8; i++) {
-        float b = max(chroma_AudioFFT[i], 0.0);
+        float b = max(chroma_AudioFFT[i].x, 0.0);
         weighted += b * float(i);
         total += b;
     }

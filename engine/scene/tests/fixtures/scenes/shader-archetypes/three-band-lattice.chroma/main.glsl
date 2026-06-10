@@ -17,7 +17,7 @@ layout(set = 0, binding = 0) uniform Uniforms {
     vec4 RENDERSIZE;
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
-    float chroma_AudioFFT[8];
+    vec4 chroma_AudioFFT[8];
     vec4 syn_BPM;
 };
 
@@ -48,9 +48,9 @@ void main() {
 
     // --- Three-band audio split (FFT low / mid / high groupings) ---------
     // Element [0] is the lowest band, [7] the highest (docs/36 v1.3.0).
-    float bass = (chroma_AudioFFT[0] + chroma_AudioFFT[1] + chroma_AudioFFT[2]) / 3.0;
-    float mid  = (chroma_AudioFFT[3] + chroma_AudioFFT[4] + chroma_AudioFFT[5]) / 3.0;
-    float treb = (chroma_AudioFFT[6] + chroma_AudioFFT[7]) * 0.5;
+    float bass = (chroma_AudioFFT[0].x + chroma_AudioFFT[1].x + chroma_AudioFFT[2].x) / 3.0;
+    float mid  = (chroma_AudioFFT[3].x + chroma_AudioFFT[4].x + chroma_AudioFFT[5].x) / 3.0;
+    float treb = (chroma_AudioFFT[6].x + chroma_AudioFFT[7].x) * 0.5;
 
     // Tame the non-normalised FFT magnitudes into a tractable [0,~1] feel
     // without ever forcing them negative or NaN. At silence all three are 0.

@@ -15,7 +15,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 TIME;
     vec4 RENDERSIZE;
-    float chroma_AudioFFT[8];
+    vec4 chroma_AudioFFT[8];
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     vec4 syn_BPM;
@@ -58,7 +58,7 @@ void main() {
 
     // Read this band's FFT magnitude. chroma_AudioFFT is non-normalised
     // [0, inf); compress it into a sane [0,1] viewing range via a soft knee.
-    float mag = chroma_AudioFFT[band];
+    float mag = chroma_AudioFFT[band].x;
     float level = mag / (1.0 + mag); // never exceeds 1.0
 
     // BPM-phased pulse so the floor breathes even in silence. syn_BPM

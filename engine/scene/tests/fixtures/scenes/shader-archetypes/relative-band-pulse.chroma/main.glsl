@@ -25,7 +25,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 TIME;
     vec4 RENDERSIZE;
-    float chroma_AudioFFT[8];
+    vec4 chroma_AudioFFT[8];
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     vec4 syn_BPM;

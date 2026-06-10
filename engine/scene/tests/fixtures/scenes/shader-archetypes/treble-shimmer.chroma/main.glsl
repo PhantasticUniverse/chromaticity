@@ -15,7 +15,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 TIME;
     vec4 RENDERSIZE;
-    float chroma_AudioFFT[8];
+    vec4 chroma_AudioFFT[8];
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     vec4 syn_BPM;
@@ -39,7 +39,7 @@ void main() {
 
     // Treble energy from the two highest log-spaced FFT bands. At silence
     // these are 0.0, so `treble` is 0.0 and the shimmer floors to a faint base.
-    float treble = 0.5 * (chroma_AudioFFT[6] + chroma_AudioFFT[7]);
+    float treble = 0.5 * (chroma_AudioFFT[6].x + chroma_AudioFFT[7].x);
     treble = clamp(treble, 0.0, 4.0);
 
     // Fine grain cells: density scales with treble so louds highs add more,

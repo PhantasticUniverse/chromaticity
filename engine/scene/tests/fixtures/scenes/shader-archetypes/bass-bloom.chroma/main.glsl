@@ -15,7 +15,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 TIME;
     vec4 RENDERSIZE;
-    float chroma_AudioFFT[8];
+    vec4 chroma_AudioFFT[8];
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     vec4 syn_BPM;
@@ -39,7 +39,7 @@ void main() {
 
     // Low-end energy: average of the two lowest FFT bands. At silence the
     // FFT array is all-zero, so this term is exactly 0.0 (no NaN).
-    float bass = 0.5 * (chroma_AudioFFT[0] + chroma_AudioFFT[1]);
+    float bass = 0.5 * (chroma_AudioFFT[0].x + chroma_AudioFFT[1].x);
 
     // Slow breathing motion comes from TIME alone, so the disc still moves
     // and is visible at zero audio. Audio swells it further.

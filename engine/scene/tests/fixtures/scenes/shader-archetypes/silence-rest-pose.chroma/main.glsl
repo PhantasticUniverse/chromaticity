@@ -16,7 +16,7 @@ layout(set = 0, binding = 0) uniform Uniforms {
     vec4 chroma_AudioRMS; // RMS energy in .x
     vec4 chroma_AudioPeak;// window peak in .x
     vec4 syn_BPM;         // estimated BPM in .x
-    float chroma_AudioFFT[8];
+    vec4 chroma_AudioFFT[8];
 };
 
 // Silence Rest Pose
@@ -49,7 +49,7 @@ void main() {
 
     float fftSum = 0.0;
     for (int i = 0; i < 8; i++) {
-        fftSum += clamp(chroma_AudioFFT[i], 0.0, 1.0);
+        fftSum += clamp(chroma_AudioFFT[i].x, 0.0, 1.0);
     }
     float fftAvg = fftSum / 8.0;
 

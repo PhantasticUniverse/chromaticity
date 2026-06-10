@@ -15,7 +15,7 @@ layout(binding = 0) uniform float TIME;
 layout(binding = 1) uniform vec2 RENDERSIZE;
 layout(binding = 2) uniform float FRAMECOUNT;
 layout(binding = 3) uniform float chroma_AudioPeak;
-layout(binding = 4) uniform AudioFft { float chroma_AudioFFT[8]; };
+layout(binding = 4) uniform AudioFft { vec4 chroma_AudioFFT[8]; };
 
 // Author controls (bound by scene.json NAME -> control schema).
 layout(binding = 5) uniform float snap_steps;     // base radial-segment count
@@ -45,7 +45,7 @@ void main() {
     // lowest FFT band carries the kick energy; together they spike hard
     // on a sharp onset. At silence (peak = 0, FFT all 0) this is 0, so
     // every audio-driven term collapses to its neutral resting value.
-    float lowBand = chroma_AudioFFT[0];
+    float lowBand = chroma_AudioFFT[0].x;
     float transient = clamp((chroma_AudioPeak + lowBand * 0.5) * (sensitivity * 4.0), 0.0, 1.0);
 
     // Polar decomposition.

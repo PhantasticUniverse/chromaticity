@@ -18,7 +18,7 @@ layout(set = 0, binding = 0) uniform Uniforms {
     vec4 RENDERSIZE;       // .xy = current pass pixel size
     vec4 chroma_AudioRMS;  // .x = raw RMS energy [0, inf)
     vec4 chroma_AudioPeak; // .x = window peak magnitude [0, inf)
-    float chroma_AudioFFT[8]; // 8 log-spaced FFT bands [0]=low .. [7]=high
+    vec4 chroma_AudioFFT[8]; // 8 log-spaced FFT bands [0]=low .. [7]=high
     vec4 syn_BPM;          // .x = estimated BPM, clamped [50, 220] upstream
 };
 
@@ -98,7 +98,7 @@ void main() {
     float weighted = 0.0;
     float total = 0.0;
     for (int i = 0; i < 8; i++) {
-        float band = max(chroma_AudioFFT[i], 0.0);
+        float band = max(chroma_AudioFFT[i].x, 0.0);
         weighted += band * float(i);
         total += band;
     }
