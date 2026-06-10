@@ -300,10 +300,19 @@ const rings: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
   ctx.globalCompositeOperation = 'screen';
   for (let i = 0; i < 14; i++) {
     const ringWarp = Math.sin(i * 0.9 + seed + t * 0.7) * warp * Math.min(w, h) * 0.035;
-    const r =
+    // Clamped non-negative: at i=0 the sine base term bottoms at 0 while
+    // ringWarp swings negative, driving r below zero — and `ctx.arc()`
+    // throws IndexSizeError on a negative radius (observed live; the
+    // uncaught throw froze the SceneCanvas rAF loop). The other
+    // renderers' arc / createRadialGradient radii were audited and stay
+    // positive under the clamped control ranges (tunnel rr ≥ 2, fluid
+    // ≥ 0.02·min(w,h), ink ≥ 6, orbit ≥ 2).
+    const r = Math.max(
+      0,
       (Math.sin(t * 0.5 + i * 0.4 + seed) * 0.5 + 0.5) * Math.min(w, h) * 0.45 +
-      i * (6 + warp * 3) +
-      ringWarp;
+        i * (6 + warp * 3) +
+        ringWarp,
+    );
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.strokeStyle = `hsla(${(t * 70 + i * 30 + seed * 90) % 360},95%,70%,${0.35 - i * 0.02})`;

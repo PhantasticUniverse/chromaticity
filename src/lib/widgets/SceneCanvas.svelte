@@ -163,10 +163,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     resize(untrack(() => resolveDpr(dpr)));
 
     // jsdom does not implement ResizeObserver in every Vitest config;
-    // guard so tests don't blow up on construction.
+    // guard so tests don't blow up on construction. The handler is
+    // mutable: the reduced-motion branch swaps in a repaint-aware
+    // handler below, because any `canvas.width` write clears the
+    // bitmap (HTML spec) and that branch has no rAF loop to repaint
+    // on the next frame — a resize-only callback would leave the
+    // static preview permanently blank.
+    let onResize: () => void = () => resize(untrack(() => resolveDpr(dpr)));
     let ro: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => resize(untrack(() => resolveDpr(dpr))));
+      ro = new ResizeObserver(() => onResize());
       ro.observe(c);
     }
 
@@ -257,32 +263,58 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     };
 
     if (reduceMotion) {
-      // Static frame — equivalent to a SceneStill emit.
-      const frame = untrack(() => ({
-        kind,
-        seed,
-        controls,
-        dpr: resolveDpr(dpr),
-      }));
-      resize(frame.dpr);
-      draw(frame.seed * 13.7, 0.5, frame.kind, frame.seed, frame.controls);
+      // Static frame — equivalent to a SceneStill emit. Props are read
+      // TRACKED (no untrack) on purpose: with no rAF loop to pick up
+      // fresh values, a scene load / control move / dpr change must
+      // re-run this effect and repaint, otherwise the canvas keeps
+      // showing the previous scene until remount. Reduced motion pins
+      // ANIMATION (t, audio baseline), not scene identity.
+      const frameKind = kind;
+      const frameSeed = seed;
+      const frameControls = controls;
+      const frameDpr = resolveDpr(dpr);
+      const drawStatic = (): void => {
+        resize(frameDpr);
+        draw(frameSeed * 13.7, 0.5, frameKind, frameSeed, frameControls);
+      };
+      // Repaint (not just resize) on ResizeObserver ticks — the
+      // bitmap-clearing width/height write would otherwise blank the
+      // static preview permanently.
+      onResize = drawStatic;
+      drawStatic();
       return () => {
         ro?.disconnect();
       };
     }
 
     const start = performance.now();
-    // Wave 2.8 Q.1 — persistent `lvl` smoothing state. Without an EMA
-    // the per-frame `lvl` reads bin-level jitter from the engine
-    // producer (background mic noise reports multi-millisecond
+    // Wave 2.8 Q.1 — persistent `lvl` smoothing state. Without
+    // smoothing the per-frame `lvl` reads bin-level jitter from the
+    // engine producer (background mic noise reports multi-millisecond
     // bursts), which fed straight into renderer axes like ring stroke
     // width, particle radius, and lightness boosts — preview tiles
-    // appeared to fidget at silent input. The EMA tracks real audio
-    // onsets in ~80 ms but discards sub-2-frame noise.
+    // appeared to fidget at silent input. The follower is a wall-clock
+    // dt-aware one-pole (`coeff = 1 − exp(−dt/τ)`, per
+    // docs/dev/ui-smoothness-and-latency.md §4) so the feel is
+    // identical at 60 / 120 / 144 Hz; τ = 58 ms reproduces the
+    // previous fixed 0.25-per-frame alpha at 60 Hz
+    // (τ = −16.67 ms / ln 0.75) — tracks real audio onsets in ~58 ms
+    // but discards sub-2-frame noise.
     let smLvl = 0;
-    const LVL_EMA = 0.25;
+    const LVL_TAU_MS = 58;
+    let lastNow = performance.now();
     const loop = (): void => {
-      const t = (performance.now() - start) / 1000;
+      // Schedule the next frame BEFORE drawing so a renderer throw can
+      // never permanently kill the rAF chain — one bad frame is
+      // skipped and the loop self-heals on the next (a negative-radius
+      // IndexSizeError previously froze the preview until remount).
+      raf = requestAnimationFrame(loop);
+      const now = performance.now();
+      // Clamp throttled/background-tab gaps so smLvl eases back in on
+      // resume instead of snapping to the instantaneous level.
+      const dtMs = Math.min(100, Math.max(0, now - lastNow));
+      lastNow = now;
+      const t = (now - start) / 1000;
       const frame = untrack(() => ({
         audio,
         kind,
@@ -312,9 +344,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       } else {
         rawLvl = 0.3;
       }
-      smLvl = smLvl + (rawLvl - smLvl) * LVL_EMA;
+      const coeff = 1 - Math.exp(-dtMs / LVL_TAU_MS);
+      smLvl = smLvl + (rawLvl - smLvl) * coeff;
       draw(t, smLvl, frame.kind, frame.seed, frame.controls);
-      raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
 

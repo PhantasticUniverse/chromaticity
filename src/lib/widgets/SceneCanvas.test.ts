@@ -157,6 +157,44 @@ function makeRecordingContext(): { ctx: CanvasRenderingContext2D; ops: CanvasOp[
   };
 }
 
+// Strict variant of the recording context: `arc` mirrors the real DOM
+// behaviour and throws IndexSizeError on a negative radius (jsdom's
+// canvas stub does not), so negative-radius regressions surface as a
+// throw exactly like they did in the live browser.
+function makeStrictArcContext(): { ctx: CanvasRenderingContext2D; radii: number[] } {
+  const radii: number[] = [];
+  const noop = (): void => {};
+  const gradient = (): CanvasGradient => ({ addColorStop: noop }) as unknown as CanvasGradient;
+  const base: Record<PropertyKey, unknown> = {
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    globalCompositeOperation: 'source-over',
+    save: noop,
+    restore: noop,
+    translate: noop,
+    rotate: noop,
+    scale: noop,
+    beginPath: noop,
+    moveTo: noop,
+    lineTo: noop,
+    closePath: noop,
+    fill: noop,
+    stroke: noop,
+    clearRect: noop,
+    fillRect: noop,
+    createLinearGradient: gradient,
+    createRadialGradient: gradient,
+    arc: (_x: number, _y: number, r: number): void => {
+      radii.push(r);
+      if (r < 0) {
+        throw new DOMException(`The radius provided (${r}) is negative.`, 'IndexSizeError');
+      }
+    },
+  };
+  return { ctx: base as unknown as CanvasRenderingContext2D, radii };
+}
+
 beforeEach(() => {
   stubMatchMedia(false);
   rendererSpy.mockClear();
@@ -649,6 +687,137 @@ describe('SceneCanvas widget', () => {
       });
     }
   }
+
+  // Negative-radius regression — the rings renderer's i=0 ring radius
+  // previously went negative (base sine term bottoms at 0 while
+  // ringWarp swings negative) and `ctx.arc()` threw IndexSizeError,
+  // permanently freezing the SceneCanvas rAF loop. At t = 11π,
+  // seed = 0 the base term is exactly 0 (sin(5.5π) = −1) and
+  // sin(7.7π) ≈ −0.81 drives ringWarp ≈ −8.5 px at warp=1 on a
+  // 300×300 canvas (≈ −3.0 px even at the default warp 0.35) — the
+  // same excursion class as the live "radius provided (−0.0496…) is
+  // negative" console error.
+  it('actual rings renderer clamps the warp excursion that previously produced r < 0', async () => {
+    const actual = await vi.importActual<typeof import('./scene-renderers')>('./scene-renderers');
+    const { ctx, radii } = makeStrictArcContext();
+    expect(() =>
+      actual.RENDERERS.rings(ctx, 11 * Math.PI, 0, 300, 300, 0.5, { warp_amount: 1 }),
+    ).not.toThrow();
+    expect(radii.length).toBeGreaterThan(0);
+    expect(radii.every((r) => r >= 0)).toBe(true);
+
+    // Default-warp variant (no controls) — also negative pre-clamp.
+    const fallback = makeStrictArcContext();
+    expect(() =>
+      actual.RENDERERS.rings(fallback.ctx, 11 * Math.PI, 0, 300, 300, 0.5),
+    ).not.toThrow();
+    expect(fallback.radii.every((r) => r >= 0)).toBe(true);
+  });
+
+  it('survives a renderer throw — the next frame is scheduled before draw', async () => {
+    const restore = stubCanvasContext({ styles: [] });
+    const frames: FrameRequestCallback[] = [];
+    let nextId = 1;
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((cb: FrameRequestCallback) => {
+        frames.push(cb);
+        return nextId++;
+      }),
+    );
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    rendererSpy.mockImplementationOnce(() => {
+      throw new Error('bad frame');
+    });
+    try {
+      render(SceneCanvas, { props: { kind: 'rings', seed: 0, audio: false } });
+      await tick();
+      expect(frames.length).toBe(1);
+      // Invoking the frame throws (the renderer's one bad frame) ...
+      expect(() => frames[0]?.(16)).toThrow('bad frame');
+      // ... but the NEXT frame was already scheduled before draw ran,
+      // so the loop self-heals instead of freezing until remount.
+      expect(frames.length).toBe(2);
+      expect(() => frames[1]?.(32)).not.toThrow();
+      expect(frames.length).toBe(3);
+    } finally {
+      restore();
+    }
+  });
+
+  // Reduced-motion repaint regressions — the static branch previously
+  // read kind/seed/controls/dpr inside untrack() (scene changes left a
+  // stale frame) and its ResizeObserver callback only resized (the
+  // bitmap-clearing width write blanked the preview permanently).
+  it('repaints the static frame when seed changes under prefers-reduced-motion', async () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      const { rerender } = render(SceneCanvas, { props: { kind: 'rings', seed: 0 } });
+      await tick();
+      const before = rendererSpy.mock.calls.length;
+      expect(before).toBeGreaterThan(0);
+
+      await rerender({ kind: 'rings', seed: 4 });
+      await tick();
+      expect(rendererSpy.mock.calls.length).toBeGreaterThan(before);
+      const last = rendererSpy.mock.calls.at(-1);
+      // Args: (ctx, t, seed, w, h, lvl); static-frame t = seed * 13.7.
+      expect(last?.[2]).toBe(4);
+      expect(last?.[1]).toBeCloseTo(54.8, 5);
+    } finally {
+      restore();
+    }
+  });
+
+  it('repaints the static frame when controls change under prefers-reduced-motion', async () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    try {
+      const { rerender } = render(SceneCanvas, {
+        props: { kind: 'rings', seed: 4, controls: { speed: 0 } },
+      });
+      await tick();
+      expect(rendererSpy.mock.calls.at(-1)?.[1]).toBe(0);
+
+      await rerender({ kind: 'rings', seed: 4, controls: { speed: 1 } });
+      await tick();
+      // speed=1 → effectiveT = (4 * 13.7) * 2 = 109.6: the new control
+      // value repainted instead of leaving the frozen-t frame stale.
+      expect(rendererSpy.mock.calls.at(-1)?.[1]).toBeCloseTo(109.6, 5);
+    } finally {
+      restore();
+    }
+  });
+
+  it('repaints (not just resizes) on a ResizeObserver tick under prefers-reduced-motion', async () => {
+    stubMatchMedia(true);
+    const restore = stubCanvasContext({ styles: [] });
+    let roCallback: ResizeObserverCallback | undefined;
+    class FakeResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        roCallback = cb;
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      render(SceneCanvas, { props: { kind: 'rings', seed: 0 } });
+      await tick();
+      const before = rendererSpy.mock.calls.length;
+      expect(before).toBeGreaterThan(0);
+      expect(roCallback).toBeDefined();
+
+      roCallback?.([], {} as unknown as ResizeObserver);
+      // The reduced-motion resize handler redraws the static frame
+      // after the bitmap-clearing width/height write.
+      expect(rendererSpy.mock.calls.length).toBeGreaterThan(before);
+    } finally {
+      restore();
+    }
+  });
 
   it('reports preview-wired controls through the static manifest helper', async () => {
     const actual = await vi.importActual<typeof import('./scene-renderers')>('./scene-renderers');
