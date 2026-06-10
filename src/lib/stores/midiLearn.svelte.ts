@@ -67,16 +67,32 @@ class MidiLearnStore {
   #unlisten: UnlistenFn | null = null;
 
   /**
+   * Monotonic session token. Every `start()` and `stop()` bumps it, so
+   * in-flight async work from a superseded session (a second Learn
+   * click while the first `listen()` registration is still pending)
+   * can detect it lost the race and self-detach / bail instead of
+   * overwriting `#unlisten` — overwriting would leak the displaced
+   * listener for the app lifetime with no way to detach it.
+   */
+  #session = 0;
+
+  /**
    * Start a learn session on `portId`. Invokes `start_midi_learn` on
    * the shell, transitions state to `'listening'`, and subscribes to
    * the `midi_learn_event` event channel. Replaces any prior session
-   * (stop + restart is the intentional UX for switching ports).
+   * (stop + restart is the intentional UX for switching ports). A
+   * `start()` that is superseded mid-flight by a newer `start()` or a
+   * `stop()` becomes a no-op: it never mutates state and detaches its
+   * own listener handle if one was already being registered.
    */
   async start(portId: string): Promise<void> {
+    const session = ++this.#session;
+
     // Always tear down any prior listener before opening a fresh one —
     // matches the shell-side replace-on-install posture for the
     // `MidiListenHandle` slot on `AppState`.
     await this.#detachListener();
+    if (session !== this.#session) return; // superseded while detaching
 
     this.error = null;
     this.captured = null;
@@ -86,23 +102,40 @@ class MidiLearnStore {
     try {
       await startMidiLearn(portId);
     } catch (e) {
+      if (session !== this.#session) return; // a newer session owns state
       this.error = e instanceof Error ? e.message : String(e);
       this.state = 'idle';
       this.activePortId = null;
       return;
     }
+    if (session !== this.#session) return; // superseded while invoking
 
     try {
       const { listen } = await import('@tauri-apps/api/event');
       const handle = await listen<MidiLearnEventPayload>(MIDI_LEARN_EVENT, (event) => {
+        // A stale listener (superseded session whose handle is mid-
+        // teardown) must never write store state.
+        if (session !== this.#session) return;
         this.captured = event.payload;
         // Transition to `'captured'` on the first event; subsequent
         // events keep replacing `captured` while the operator stays
         // in this state (re-capture without an explicit re-arm).
         this.state = 'captured';
       });
+      if (session !== this.#session) {
+        // Superseded while the registration was in flight — detach our
+        // own handle instead of storing it (storing would overwrite the
+        // live session's slot and leak this listener forever).
+        try {
+          handle();
+        } catch {
+          // Tauri's unlisten may throw during runtime teardown; swallow.
+        }
+        return;
+      }
       this.#unlisten = handle;
     } catch (e) {
+      if (session !== this.#session) return; // a newer session owns state
       // Listener attach failed (no Tauri runtime — vite-dev or Vitest
       // jsdom without IPC mock). The shell side has installed its
       // listen handle; absent the frontend listener, no events surface,
@@ -119,6 +152,9 @@ class MidiLearnStore {
    * was last captured); `reset()` clears it.
    */
   async stop(): Promise<void> {
+    // Invalidate any in-flight start() so it self-detaches / bails
+    // instead of re-attaching a listener after we report idle.
+    this.#session++;
     await this.#detachListener();
     try {
       await stopMidiLearn();

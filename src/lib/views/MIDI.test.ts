@@ -45,6 +45,8 @@ import {
   RELATIVE_ENCODER_MODES,
 } from '../data/midi-fixtures';
 import type { MidiDevicePayload } from '../ipc/bindings/MidiDevicePayload';
+import { MIDI_DEVICE_ALLOWLIST_KEY, midiDeviceStore } from '../stores/midiDevices.svelte';
+import { midiLearnStore } from '../stores/midiLearn.svelte';
 import { midiStore } from '../stores/midiStore.svelte';
 
 // Mirror the W18 fixture device-name set onto the live IPC wire shape so
@@ -92,6 +94,15 @@ describe('MIDI view', () => {
     // test) re-seed the mock before render.
     invokeMock.mockResolvedValue([...LIVE_DEVICES_FIXTURE]);
     midiStore.reset();
+    // The allowlist + learn stores are module singletons (that is the
+    // view-switch-survival fix), so they MUST be reset per test or
+    // toggles / learn sessions leak across cases.
+    localStorage.clear();
+    midiDeviceStore.reset();
+    midiLearnStore.state = 'idle';
+    midiLearnStore.captured = null;
+    midiLearnStore.activePortId = null;
+    midiLearnStore.error = null;
   });
 
   afterEach(() => {
@@ -99,6 +110,7 @@ describe('MIDI view', () => {
     vi.restoreAllMocks();
     cleanup();
     midiStore.reset();
+    midiDeviceStore.reset();
   });
 
   it('renders the section landmark, all 7 tabs, and defaults to the global tab', () => {
@@ -459,10 +471,18 @@ describe('MIDI view', () => {
   it('learning toolbar hint replaces the per-tab hint while learn mode is on', async () => {
     const { container, getByRole } = render(MIDI);
     expect(container.querySelector('.midi__toolbar-hint--learn')).toBeNull();
+    // Wait for device enumeration so the learn click has a port to bind.
+    await waitFor(() => {
+      expect(midiStore.devices.length).toBe(LIVE_DEVICES_FIXTURE.length);
+    });
     await fireEvent.click(getByRole('button', { name: /Click to map/ }));
-    const learnHint = container.querySelector('.midi__toolbar-hint--learn');
-    expect(learnHint).not.toBeNull();
-    expect(learnHint?.textContent).toContain('Waiting for input');
+    // The "armed" copy is gated on the store reaching 'listening' (not
+    // the local flag), so flush the start() microtasks via waitFor.
+    await waitFor(() => {
+      const learnHint = container.querySelector('.midi__toolbar-hint--learn');
+      expect(learnHint).not.toBeNull();
+      expect(learnHint?.textContent).toContain('Waiting for input');
+    });
     // Cancel learn → hint reverts to the per-tab copy (Global by default).
     await fireEvent.click(getByRole('button', { name: /Cancel Learn/ }));
     expect(container.querySelector('.midi__toolbar-hint--learn')).toBeNull();
@@ -904,5 +924,143 @@ describe('MIDI view', () => {
       `[data-cap="${MIDI_CAPABILITY.learn}"][aria-label^="Learn from "]`,
     );
     expect(learnButtons.length).toBe(LIVE_DEVICES_FIXTURE.length);
+  });
+
+  // ----------------------------------------------------------------------
+  // UI-findings fix wave — device allowlist hoisted to the module-
+  // singleton `midiDeviceStore` (survives view switches + persists to
+  // localStorage) and learn-start failures surfaced in the panel.
+
+  it('allowlist survives a simulated remount — explicit disallow is not re-enabled', async () => {
+    const first = render(MIDI);
+    await fireEvent.click(first.getByRole('tab', { name: 'Devices' }));
+    await waitFor(() => {
+      expect(first.container.querySelectorAll('.midi__device-row').length).toBe(
+        LIVE_DEVICES_FIXTURE.length,
+      );
+    });
+    const toggle = first.container
+      .querySelectorAll('.midi__device-row')[0]
+      ?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    await fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+    // Simulate the AppShell route switch: the component unmounts and a
+    // fresh instance mounts. Pre-fix, the component-local ever-seen set
+    // died here and the auto-enable effect re-enabled the device.
+    first.unmount();
+    const second = render(MIDI);
+    await fireEvent.click(second.getByRole('tab', { name: 'Devices' }));
+    await waitFor(() => {
+      expect(second.container.querySelectorAll('.midi__device-row').length).toBe(
+        LIVE_DEVICES_FIXTURE.length,
+      );
+    });
+    const rows = second.container.querySelectorAll('.midi__device-row');
+    const again = rows[0]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement;
+    expect(again.getAttribute('aria-pressed')).toBe('false');
+    // A sibling the operator never touched stays auto-enabled.
+    const sibling = rows[1]?.querySelector('.midi__device-toggle-btn') as HTMLButtonElement;
+    expect(sibling.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('explicit disallow persists to localStorage and survives a fresh module hydrate', async () => {
+    midiDeviceStore.markSeen(['input-0', 'input-1']);
+    midiDeviceStore.toggle('input-0'); // operator disallow
+    expect(localStorage.getItem(MIDI_DEVICE_ALLOWLIST_KEY)).not.toBeNull();
+    // Fresh module instance (app restart): hydrate from localStorage.
+    vi.resetModules();
+    const fresh = await import('../stores/midiDevices.svelte');
+    expect(fresh.midiDeviceStore.isAllowed('input-0')).toBe(false);
+    expect(fresh.midiDeviceStore.isAllowed('input-1')).toBe(true);
+    // The persisted ever-seen history keeps the auto-enable rule from
+    // re-enabling the disallowed device on the next enumeration.
+    fresh.midiDeviceStore.markSeen(['input-0', 'input-1']);
+    expect(fresh.midiDeviceStore.isAllowed('input-0')).toBe(false);
+  });
+
+  it('corrupt allowlist localStorage does not crash store module init', async () => {
+    localStorage.setItem(MIDI_DEVICE_ALLOWLIST_KEY, '{not json');
+    vi.resetModules();
+    const fromCorrupt = await import('../stores/midiDevices.svelte');
+    expect(fromCorrupt.midiDeviceStore.isAllowed('input-0')).toBe(false);
+    fromCorrupt.midiDeviceStore.markSeen(['input-0']);
+    expect(fromCorrupt.midiDeviceStore.isAllowed('input-0')).toBe(true);
+    // Schema-invalid (non-array fields) payloads are discarded too.
+    localStorage.setItem(
+      MIDI_DEVICE_ALLOWLIST_KEY,
+      JSON.stringify({ allowed: 'nope', everSeen: 42 }),
+    );
+    vi.resetModules();
+    const fromInvalid = await import('../stores/midiDevices.svelte');
+    expect(fromInvalid.midiDeviceStore.isAllowed('input-0')).toBe(false);
+    // Non-string entries inside otherwise-valid arrays are skipped.
+    localStorage.setItem(
+      MIDI_DEVICE_ALLOWLIST_KEY,
+      JSON.stringify({ allowed: ['input-0', 7, null], everSeen: ['input-0', {}] }),
+    );
+    vi.resetModules();
+    const fromMixed = await import('../stores/midiDevices.svelte');
+    expect(fromMixed.midiDeviceStore.isAllowed('input-0')).toBe(true);
+    expect(fromMixed.midiDeviceStore.isAllowed('7')).toBe(false);
+  });
+
+  it('surfaces a learn-start failure in the panel with Retry and drops the armed hint', async () => {
+    invokeMock.mockReset();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === 'start_midi_learn'
+        ? Promise.reject(new Error('port vanished'))
+        : Promise.resolve([...LIVE_DEVICES_FIXTURE]),
+    );
+    midiStore.reset();
+    const { container, getByRole } = render(MIDI);
+    await waitFor(() => {
+      expect(midiStore.devices.length).toBe(LIVE_DEVICES_FIXTURE.length);
+    });
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    // The panel stays open (learning=true) and renders the error row
+    // keyed on store state instead of an armed-looking dead panel.
+    await waitFor(() => {
+      const errorRow = container.querySelector('[data-midi-learn-error]');
+      expect(errorRow).not.toBeNull();
+      expect(errorRow?.getAttribute('role')).toBe('alert');
+      expect(errorRow?.textContent).toContain('learn start failed: port vanished');
+    });
+    // The toolbar no longer claims "Waiting for input".
+    expect(container.querySelector('.midi__toolbar-hint--learn')).toBeNull();
+    expect(container.querySelector('.midi__toolbar-hint--error')?.textContent).toContain(
+      'Learn failed',
+    );
+    // Retry re-invokes start on the same port pick.
+    const before = invokeMock.mock.calls.filter((c) => c[0] === 'start_midi_learn').length;
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await waitFor(() => {
+      const after = invokeMock.mock.calls.filter((c) => c[0] === 'start_midi_learn').length;
+      expect(after).toBe(before + 1);
+    });
+  });
+
+  it('learn panel renders the explicit no-devices row when enumeration is empty', async () => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue([]);
+    midiStore.reset();
+    const { container, getByRole } = render(MIDI);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('list_midi_devices');
+    });
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    await waitFor(() => {
+      const noDevices = container.querySelector('[data-midi-learn-no-devices]');
+      expect(noDevices).not.toBeNull();
+      expect(noDevices?.textContent).toContain('No MIDI devices available');
+    });
+    // No learn IPC fired without a port.
+    expect(invokeMock).not.toHaveBeenCalledWith('start_midi_learn', expect.anything());
+    // Toolbar mirrors the no-devices copy instead of the armed hint.
+    expect(container.querySelector('.midi__toolbar-hint--learn')).toBeNull();
+    expect(container.querySelector('.midi__toolbar-hint')?.textContent).toContain(
+      'No MIDI devices available',
+    );
   });
 });
