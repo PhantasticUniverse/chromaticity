@@ -13,20 +13,37 @@
 //! [`AudioSmoother`] interposes a per-channel **asymmetric one-pole
 //! follower** (the same ballistics idea the UI meters use):
 //!
-//! - **fast attack** toward a rising target kills perceived lag — a kick
-//!   snaps up almost immediately;
+//! - **instant attack** toward a rising target (transient axes use
+//!   `tau = 0`, i.e. snap) kills perceived lag — a kick lands the same
+//!   frame the engine reports it;
 //! - **slow release** toward a falling target kills jitter — the value
 //!   eases back down instead of chattering.
+//!
+//! This is the classic PPM-meter ballistic: a value that only ever JUMPS
+//! up and DECAYS down never chatters, so instant attack adds no jitter —
+//! it is the slow *release*, not a damped attack, that buys the smoothness.
 //!
 //! The follower is **dt-aware**: its coefficient is `1 - exp(-dt/tau)`,
 //! so the smoothing is frame-rate-independent (a 30 fps frame and two
 //! 60 fps frames converge to the same place). `tau` is the time constant
 //! in seconds; smaller `tau` = snappier.
 //!
-//! The tau constants below are a sane, snappy starting point — fast
-//! enough that the motion never feels sluggish, slow enough on release to
-//! be smooth — and are intended to be **re-tuned** by the AO against real
-//! material.
+//! ## Why instant attack (benchmark, 2026-06-05)
+//!
+//! The engine AGC (`engine/audio::reactive_bands`) ALREADY applies a
+//! fast-attack short EMA before this stage, and the reference engines
+//! (MilkDrop / butterchurn) feed that straight to the shader with **no
+//! second smoothing stage at all**. A render-side *attack* tau here
+//! therefore stacks a second delay onto an already-fast onset — pure
+//! latency the references never pay. So the transient axes (peak / FFT /
+//! reactive bands) use `attack = 0` (snap), matching the references'
+//! directness, while the **slow release** (kept) is the extra smoothness
+//! layer they lack. RMS — the body/energy axis — keeps a small attack so
+//! it stays a touch smoother than the transient axes. Releases are NOT
+//! tuned here: that slow-release decay is the behaviour the AO praised.
+//! This removed the ~10 ms render-side attack term from the ~62 ms
+//! band-axis audio→pixel budget; see
+//! `docs/dev/audio-reactivity-latency-budget.md`.
 //!
 //! ## No `unsafe`
 //!
@@ -41,30 +58,31 @@ const FFT_BAND_COUNT: usize = 8;
 
 // --- Tau constants (SECONDS) -------------------------------------------
 //
-// Fast attack kills perceived lag; slow release kills jitter. These are a
-// snappy-but-smooth starting point and are TUNABLE — the AO will re-tune
-// them against real audio. Smaller tau = faster response.
+// Transient axes snap up (attack = 0, true PPM) and ease down on the slow
+// release; RMS keeps a small attack as the body axis. Smaller tau =
+// faster. The RELEASES own the praised smoothness — do NOT shorten them.
+// See the module doc for why the attacks are (near-)instant.
 
-/// RMS (window energy) attack — moderately quick; RMS is the smoothest
-/// axis to begin with, so it can afford a touch more attack lag.
-const RMS_ATTACK: f32 = 0.030;
+/// RMS (window energy) attack — small, not zero: RMS is the body/energy
+/// axis, so it stays a touch smoother on onset than the transient axes
+/// (was 30 ms; the benchmark shaved ~20 ms of RMS-axis onset lag here).
+const RMS_ATTACK: f32 = 0.009;
 /// RMS release — long, for a smooth body-level decay.
 const RMS_RELEASE: f32 = 0.250;
 
-/// Peak attack — very fast; peaks ARE the transients, so we want them to
-/// snap.
-const PEAK_ATTACK: f32 = 0.006;
+/// Peak attack — instant (`0` ⇒ snap): peaks ARE the transients.
+const PEAK_ATTACK: f32 = 0.0;
 /// Peak release — medium, so a hit rings down smoothly.
 const PEAK_RELEASE: f32 = 0.160;
 
-/// FFT-band attack — very fast (per-band transients should pop).
-const FFT_ATTACK: f32 = 0.006;
+/// FFT-band attack — instant (`0` ⇒ snap): per-band transients pop.
+const FFT_ATTACK: f32 = 0.0;
 /// FFT-band release — medium.
 const FFT_RELEASE: f32 = 0.160;
 
-/// Reactive-band attack — fast (applies to bass/mid/treb and their
-/// `*_att` variants).
-const BAND_ATTACK: f32 = 0.010;
+/// Reactive-band attack — instant (`0` ⇒ snap): the bass/mid/treb that
+/// drive the main motion land the frame the engine reports them.
+const BAND_ATTACK: f32 = 0.0;
 /// Reactive-band release — medium-short, keeping the relative bands lively.
 const BAND_RELEASE: f32 = 0.130;
 
@@ -271,6 +289,25 @@ mod tests {
         assert!(
             (single - double).abs() < EPS,
             "one full dt step ({single}) and two half steps ({double}) should agree",
+        );
+    }
+
+    #[test]
+    fn zero_attack_snaps_up_but_release_still_eases() {
+        // Transient-axis design (PPM): attack tau 0 ⇒ a rising target lands
+        // in ONE step (instant attack), while a falling target still eases
+        // on the slow release. Pins the "snap up, decay down" ballistic the
+        // benchmark prescribed for the peak / FFT / reactive-band axes.
+        let mut f = OnePole::new();
+        let up = f.follow(1.0, 0.016, 0.0, 0.130); // rising, attack = 0
+        assert!(
+            (up - 1.0).abs() < EPS,
+            "zero attack should snap straight to the target, got {up}",
+        );
+        let down = f.follow(0.0, 0.016, 0.0, 0.130); // falling, release 130 ms
+        assert!(
+            down > 0.5 && down < 1.0,
+            "release should ease down slowly (not snap), got {down}",
         );
     }
 }

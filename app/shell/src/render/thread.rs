@@ -34,10 +34,10 @@
 //!    by the LIVE audio snapshot so the scene reacts to sound (Slice
 //!    R-1c; silent only when no audio source is present). The audio
 //!    uniforms are ballistically smoothed per frame
-//!    (fast-attack/slow-release one-pole, dt-aware — see
-//!    [`crate::render::audio_smooth`]) so reactive motion is snappy on
-//!    transients and smooth on decay — then renders it via
-//!    [`MultipassRenderer::render_frame_live`],
+//!    (instant-attack/slow-release PPM one-pole, dt-aware — see
+//!    [`crate::render::audio_smooth`]) so reactive motion lands the
+//!    same frame on transients and decays smoothly — then renders it
+//!    via [`MultipassRenderer::render_frame_live`],
 //! 5. blits that texture onto the swapchain view, and
 //! 6. presents, then sleeps to pace at ~60 fps.
 //!
@@ -272,9 +272,9 @@ fn run_loop<R: Runtime>(mut res: RenderThreadResources<R>, shutdown: &AtomicBool
                     Err(poisoned) => *poisoned.into_inner(),
                 };
                 // Ballistics run OUTSIDE the lock: apply per-channel
-                // fast-attack/slow-release smoothing so the scene reacts
-                // snappily on transients and decays smoothly (kills the
-                // raw snapshot's frame-to-frame lag + jitter).
+                // instant-attack/slow-release (PPM) smoothing so transients
+                // land the same frame and decay smoothly (kills the raw
+                // snapshot's frame-to-frame jitter without adding lag).
                 let snapshot = audio_smoother.smooth(&raw_snapshot, time_delta);
                 live_uniforms_from_audio(
                     time_secs,
