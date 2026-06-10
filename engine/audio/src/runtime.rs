@@ -597,6 +597,14 @@ impl AudioRuntime {
                     }
                 }
             })
+            // Spawn failure (OS thread exhaustion) must not be SILENT: the
+            // snapshot would simply freeze at defaults with no clue why.
+            // Surface it once on stderr; the handle still works (join =
+            // None) and consumers see the documented neutral snapshot.
+            .map_err(|err| {
+                eprintln!("chromaticity-audio: failed to spawn producer thread: {err}");
+                err
+            })
             .ok();
 
         AudioRuntimeHandle {

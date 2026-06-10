@@ -113,11 +113,21 @@ impl LoopbackDevice {
             tap_desc.setPrivate(true); // the Aggregate Device would be private
         };
 
+        // CHROMATICITY PATCH (soundness, vs upstream cpal 0.17.1): check the
+        // `AudioHardwareCreateProcessTap` OSStatus before `assume_init`.
+        // Upstream discards the status, so a failed tap creation (capture
+        // consent denied, macOS below the tap API floor) reads an
+        // UNINITIALIZED tap id — formally UB — and then builds the aggregate
+        // against a garbage tap. Same out-param idiom as the
+        // `AudioHardwareCreateAggregateDevice` call below. See
+        // third_party/cpal/UPSTREAM-VERSION.md (Patch 7).
         let mut tap_obj_id: MaybeUninit<AudioObjectID> = MaybeUninit::uninit();
-        let tap_obj_id = unsafe {
-            AudioHardwareCreateProcessTap(Some(tap_desc.as_ref()), tap_obj_id.as_mut_ptr());
-            tap_obj_id.assume_init()
+        let status = unsafe {
+            AudioHardwareCreateProcessTap(Some(tap_desc.as_ref()), tap_obj_id.as_mut_ptr())
         };
+        check_os_status(status)?;
+        // SAFETY: noErr above ⇒ Core Audio wrote the tap object id.
+        let tap_obj_id = unsafe { tap_obj_id.assume_init() };
         let tap_uid = unsafe { tap_desc.UUID().UUIDString() };
 
         // 2 - Create aggregate device

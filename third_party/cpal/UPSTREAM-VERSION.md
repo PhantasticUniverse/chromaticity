@@ -26,8 +26,8 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Changes span the macOS system-output **tap** path only: `Cargo.toml` and
 `src/host/coreaudio/macos/{loopback,mod,device}.rs`. The ordinary microphone /
-line-in input path and every non-macOS backend are untouched. Six focused changes
-— the tap is now READ through a direct Core Audio IOProc (Patch 6), which
+line-in input path and every non-macOS backend are untouched. Seven focused
+changes — the tap is now READ through a direct Core Audio IOProc (Patch 6), which
 supersedes the earlier attempt to read it through cpal's AUHAL `AudioUnit`
 (Patch 4):
 
@@ -35,7 +35,9 @@ supersedes the earlier attempt to read it through cpal's AUHAL `AudioUnit`
 2. Aggregate-device out-param soundness fix — `loopback.rs`
 3. Tap auto-start flag — `loopback.rs`
 4. Loopback config branch (skip `set_sample_rate`) — `device.rs` _(superseded by
-   Patch 6: the loopback path no longer builds an AUHAL `AudioUnit` at all)_
+   Patch 6 and now **unreachable on the loopback path**:
+   `build_input_stream_raw` early-returns into the IOProc reader before this
+   branch, so it is retained only as upstream-diff context, not live code)_
 5. Planar-interleave read — `device.rs` _(factored into `read_loopback_buffers`
    and reused by the Patch 6 IOProc reader; the AUHAL input callback retains an
    equivalent branch for the — interleaved-only — mic path)_
@@ -43,6 +45,9 @@ supersedes the earlier attempt to read it through cpal's AUHAL `AudioUnit`
    `device.rs` (`build_loopback_ioproc_stream`) + `mod.rs` (`StreamInner`
    AUHAL-or-IOProc + `IoProcController`) + `Cargo.toml` (objc2-core-audio block
    feature flags + `block2` dep)
+7. Tap-creation OSStatus check — `loopback.rs` (`from_device`): check
+   `AudioHardwareCreateProcessTap`'s status before `assume_init` (upstream
+   discards it, reading an uninitialized tap id on failure — formal UB)
 
 > **Important — these patches are not the full fix.** Patches 1–5 got the tap
 > *creating*, *auto-starting*, and *delivering* data, but on-hardware probing
@@ -56,11 +61,13 @@ supersedes the earlier attempt to read it through cpal's AUHAL `AudioUnit`
 > the tap's true `kAudioTapPropertyFormat` (Apple TN2091). **Patch 6 below
 > replaces** that read stage, **for the loopback path only**, with a direct
 > `AudioDeviceCreateIOProcIDWithBlock` `IOProc` (no AUHAL) using the
-> already-transitive `objc2-core-audio` bindings — **now implemented**
-> (compile-clean + adversarially reviewed); on-hardware sine-probe verification is
-> the remaining gate. See `docs/adr/ADR-022-system-audio-capture.md` →
-> *Amendment (2026-06-03)*. Patch 5's planar-interleave logic is reused by the
-> `IOProc` reader; patches 1–3 (tap + aggregate creation) are retained as-is.
+> already-transitive `objc2-core-audio` bindings — implemented, adversarially
+> reviewed, and **hardware-verified clean on 2026-06-03** (the 440 Hz / 0.5 sine
+> probe passed: `raw_peak` exactly 0.5; AO-confirmed live system-audio
+> reactivity in the GUI on 2026-06-05). See
+> `docs/adr/ADR-022-system-audio-capture.md` → *Amendment (2026-06-03)*.
+> Patch 5's planar-interleave logic is reused by the `IOProc` reader;
+> patches 1–3 (tap + aggregate creation) are retained as-is.
 
 ### Patch 1 — global tap initializer (the all-zero-buffer fix)
 
@@ -200,28 +207,47 @@ converter) — the AudioCap/MiniMeters-proven mechanism:
   features on `objc2-core-audio` and adds `block2` directly. All FFI `unsafe`
   stays in this vendored crate (not a workspace member).
 
-Compile-clean, existing audio tests green, and adversarially reviewed (unsafe
-soundness + realtime safety + AudioCap-correctness). On-hardware sine-probe
-verification is the remaining gate (see below).
+Compile-clean, existing audio tests green, adversarially reviewed (unsafe
+soundness + realtime safety + AudioCap-correctness), and **hardware-verified**
+(see below).
 
-**Verification posture.** All of this is **hardware-gated**: whether a tap
-delivers *non-zero, undistorted* buffers can only be confirmed on real macOS
-hardware with TCC consent granted (there is no public preflight API and CI
-runners have no audio device). The authoritative probe is a known **440 Hz /
-0.5-amplitude sine** played through the system output (pass = peak ≤ 0.5, crest
-~3 dB, a single 440 Hz FFT bin, rms ≈ -9 dBFS). The 2026-06-03 re-test on the
-patched (AUHAL) path **failed** that probe — see the *Important* box above and the
-ADR-022 Amendment — which is why the read stage is moving to a direct `IOProc`. The
-stable-signing dev harness in
-`docs/dev/macos-desktop-run-and-audio-diagnostics.md` keeps TCC consent persistent
-across rebuilds so the rewrite can be hardware-iterated without a fresh prompt each
-cycle. Windows (WASAPI `AUDCLNT_STREAMFLAGS_LOOPBACK`) is unaffected by these
-patches and uses the correct, working upstream path.
+**Verification.** Whether a tap delivers *non-zero, undistorted* buffers can
+only be confirmed on real macOS hardware with TCC consent granted (there is no
+public preflight API and CI runners have no audio device). The authoritative
+probe is a known **440 Hz / 0.5-amplitude sine** played through the system
+output (pass = peak ≤ 0.5, crest ~3 dB, a single 440 Hz FFT bin,
+rms ≈ -9 dBFS). The 2026-06-03 re-test on the earlier patched (AUHAL) path
+**failed** that probe — which is why the read stage moved to the direct
+`IOProc`. The IOProc path then **passed** the same probe on hardware later
+that day (`raw_peak` exactly 0.5, clean single-bin FFT; recorded in CLAUDE.md
+at commit `c3e2f65`), and the AO confirmed live system-audio reactivity in the
+GUI on 2026-06-05. The stable-signing dev harness in
+`docs/dev/macos-desktop-run-and-audio-diagnostics.md` keeps TCC consent
+persistent across rebuilds so regressions can be hardware-re-probed without a
+fresh prompt each cycle. Windows (WASAPI `AUDCLNT_STREAMFLAGS_LOOPBACK`) is
+unaffected by these patches and uses the correct, working upstream path.
 
 See `docs/adr/ADR-022-system-audio-capture.md` for the capture decision and
 `engine/audio/src/cpal_source.rs` for the Chromaticity-side loopback routing.
 
 [RustAudio/cpal#329]: https://github.com/RustAudio/cpal/issues/329
+
+### Patch 7 — tap-creation OSStatus check (`loopback.rs`)
+
+**Problem.** Upstream's `LoopbackDevice::from_device` discards the
+`AudioHardwareCreateProcessTap` return status and calls
+`MaybeUninit::assume_init()` unconditionally. If tap creation fails (capture
+consent denied, macOS below the tap API floor), that reads an **uninitialized**
+`AudioObjectID` — formally UB — and then constructs the aggregate device
+against a garbage tap id, surfacing as confusing downstream failures instead of
+a clean build error.
+
+**Fix.** Bind the `OSStatus`, route it through the file's existing
+`check_os_status(..)?` idiom (the same shape as the
+`AudioHardwareCreateAggregateDevice` call directly below), and only
+`assume_init()` after `noErr`. Failure now surfaces as a recoverable
+`BuildStreamError`, which `engine/audio`'s `try_system_audio_loopback` already
+maps to the documented degrade-to-default-input path (never silent).
 
 ## What we vendored
 
