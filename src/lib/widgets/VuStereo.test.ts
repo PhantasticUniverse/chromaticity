@@ -73,6 +73,40 @@ describe('VuStereo widget', () => {
     expect(rows[1]?.style.getPropertyValue('--lvl')).toMatch(/^55(\.0+\d*)?%$/);
   });
 
+  it('re-freezes the meters when prefers-reduced-motion flips on at runtime', async () => {
+    // The widget subscribes to the media-query `change` event (mirroring
+    // BeatDots / BpmRing / Timecode) rather than sampling once at mount,
+    // so an OS-level toggle mid-session tears down the rAF ballistics and
+    // applies the frozen demo pose without a remount.
+    const changeHandlers: Array<(e: MediaQueryListEvent) => void> = [];
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: (type: string, cb: (e: MediaQueryListEvent) => void): void => {
+        if (type === 'change') changeHandlers.push(cb);
+      },
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    const { container } = render(VuStereo, { props: { live: true } });
+    await Promise.resolve();
+    expect(changeHandlers.length).toBeGreaterThan(0);
+    // Flip the OS preference: the registered listener fires with
+    // matches=true and the meters must settle on the frozen pose.
+    const event = new Event('change') as MediaQueryListEvent;
+    Object.defineProperty(event, 'matches', { value: true });
+    for (const handler of changeHandlers) {
+      handler(event);
+    }
+    await Promise.resolve();
+    const rows = container.querySelectorAll<HTMLElement>('.vu-row');
+    expect(rows[0]?.style.getPropertyValue('--lvl')).toMatch(/^60(\.0+)?%$/);
+    expect(rows[1]?.style.getPropertyValue('--lvl')).toMatch(/^55(\.0+\d*)?%$/);
+  });
+
   it('marks the meter rows aria-hidden so the wrapper label is the only a11y node', () => {
     const { container } = render(VuStereo, { props: { live: false } });
     const rows = container.querySelectorAll('.vu-row');

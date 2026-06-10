@@ -34,10 +34,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // and Ableton Link peer count remain visual stubs.
   //
   // The optional `snapshot` prop lets tests inject a fixed payload
-  // without going through the singleton store; default behaviour reads
-  // from the store. The `bands` prop (caller-supplied per-tile values)
-  // overrides both store and synthetic defaults so tests / future
-  // device-driven values keep working.
+  // without going through the singleton store; an OMITTED prop
+  // (`undefined`) reads from the store, while an explicit
+  // `snapshot={null}` pins the no-live-data path (default fixtures +
+  // prop bpm) regardless of store state. The `bands` prop
+  // (caller-supplied per-tile values) overrides both store and
+  // synthetic defaults so tests / future device-driven values keep
+  // working.
 
   import { untrack } from 'svelte';
 
@@ -60,7 +63,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void audioSnapshotStore.subscribe();
   });
 
-  const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
+  // Undefined-only store fallback: `snapshot === undefined` (prop
+  // omitted) reads the live store; an explicit `snapshot={null}` means
+  // "no data" and must NOT fall through to the store — the smoothing
+  // $effect below and `useHystPct` both gate on `!== undefined`, so a
+  // `??` here would leave the smoothing path disabled but selected.
+  const liveSnapshot = $derived(snapshot === undefined ? audioSnapshotStore.snapshot : snapshot);
   const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
   const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
   const bpmDisplay = $derived(liveSnapshot && !bpmReady ? '-- BPM' : `${liveBpm.toFixed(2)} BPM`);
@@ -131,22 +139,31 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const displayed = [-1, -1, -1, -1]; // -1 sentinel = first observation
     // FIX 4 — the engine AGC bands are ALREADY time-smoothed (attack
     // ~21 ms / release ~48 ms), so a heavy UI EMA on top is redundant
-    // lag. Raise alpha from 0.25 (~58 ms tau) to 0.55 (~18 ms tau) so the
-    // UI tracks the engine ballistic closely (≥90% of a step within ~3
-    // frames, vs ~8 before); the engine remains the dominant smoothing
-    // layer.
-    const EMA = 0.55;
+    // lag; the engine remains the dominant smoothing layer. The UI
+    // follower is a wall-clock-dt-aware exponential
+    // (`coeff = 1 - exp(-dt/tau)`, docs/dev/ui-smoothness-and-latency.md
+    // principle 4) with tau = 21 ms — at a 60 Hz frame (16.7 ms) that is
+    // the former per-frame alpha 0.55 exactly (16.7 / -ln(0.45) ≈ 21 ms;
+    // ≥90% of a step within ~3 frames), and the feel is now identical on
+    // 120 / 144 Hz displays instead of running 2x+ fast.
+    const TAU_MS = 21;
+    let lastTs = -1; // -1 sentinel = first frame (assume one 60 Hz step)
     // Hysteresis margin in percent points. Once a label shows N%, the
     // smoothed value must move below (N - 0.6) or to or above (N + 1.6)
     // to flip. With smoothed-frame deltas of ~1% under typical jitter,
     // this eliminates frame-to-frame label oscillation.
     const HYST = 0.6;
-    const tick = (): void => {
+    const tick = (now: number): void => {
+      // Clamp dt to 100 ms so a tab-restore / long-throttle gap ramps
+      // instead of snapping the bars.
+      const dtMs = lastTs < 0 ? 16.7 : Math.min(100, Math.max(0, now - lastTs));
+      lastTs = now;
+      const coeff = 1 - Math.exp(-dtMs / TAU_MS);
       const snap = untrack(() => audioSnapshotStore.snapshot);
       if (snap) {
         const tiles = agcTileFills(snap);
         for (let i = 0; i < 4; i++) {
-          s[i] = (s[i] ?? 0) + ((tiles[i] ?? 0) - (s[i] ?? 0)) * EMA;
+          s[i] = (s[i] ?? 0) + ((tiles[i] ?? 0) - (s[i] ?? 0)) * coeff;
           const pct = (s[i] ?? 0) * 100;
           const cur = displayed[i] ?? -1;
           if (cur < 0) {

@@ -299,6 +299,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     ? [..._initialSnap.fft_bands]
     : new Array<number>(8).fill(0);
   $effect(() => {
+    // Freeze gate — when the operator pauses the stream, return BEFORE
+    // touching the snapshot store so the effect's only tracked
+    // dependency is `streaming`: the 60 Hz snapshot writes stop
+    // re-running it entirely and `smoothedSnapshot` holds the last
+    // frame (band tiles + hit LEDs + dB readout all freeze). Resume
+    // flips `streaming`, re-runs the effect, and the persistent EMA
+    // state ramps the display from the frozen values to the live
+    // signal — no reseed needed.
+    if (!streaming) return;
     const snap = audioSnapshotStore.snapshot;
     if (!snap) {
       _smInit = false;
@@ -446,6 +455,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       peak: snap.peak,
       fft_bands: snap.fft_bands,
       fft_availability: snap.fft_availability,
+      // ADR-024 relative reactive bands — part of the wire payload, so
+      // the capture must carry them too (volume-independent AGC bands
+      // centred on neutral 1.0 + their attack-smoothed companions).
+      bass: snap.bass,
+      mid: snap.mid,
+      treb: snap.treb,
+      bass_att: snap.bass_att,
+      mid_att: snap.mid_att,
+      treb_att: snap.treb_att,
       degraded: snap.degraded,
       captured_at: capturedAt,
     };

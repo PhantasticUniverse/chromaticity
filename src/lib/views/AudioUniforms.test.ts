@@ -125,6 +125,8 @@ describe('AudioUniforms view', () => {
   });
 
   it('captures the live snapshot as a JSON blob download when clicked', async () => {
+    // Distinct per-field values so the export-shape assertions below can
+    // pin every wire field — including the six ADR-024 reactive bands.
     audioSnapshotStore.snapshot = {
       bpm: 132.5,
       bpm_availability: 'Ready',
@@ -132,12 +134,12 @@ describe('AudioUniforms view', () => {
       peak: 0.81,
       fft_bands: [0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88],
       fft_availability: 'Ready',
-      bass: 1,
-      mid: 1,
-      treb: 1,
-      bass_att: 1,
-      mid_att: 1,
-      treb_att: 1,
+      bass: 1.6,
+      mid: 2.1,
+      treb: 3.4,
+      bass_att: 1.5,
+      mid_att: 2.0,
+      treb_att: 3.2,
       degraded: false,
     };
     // Capture the Blob handed to URL.createObjectURL so we can read its
@@ -191,6 +193,12 @@ describe('AudioUniforms view', () => {
         peak: number;
         fft_bands: number[];
         fft_availability: string;
+        bass: number;
+        mid: number;
+        treb: number;
+        bass_att: number;
+        mid_att: number;
+        treb_att: number;
         degraded: boolean;
         captured_at: string;
       };
@@ -200,6 +208,14 @@ describe('AudioUniforms view', () => {
       expect(parsed.peak).toBeCloseTo(0.81);
       expect(parsed.fft_bands).toEqual([0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88]);
       expect(parsed.fft_availability).toBe('Ready');
+      // The six ADR-024 reactive-band fields must survive the export —
+      // a regression here silently drops the AGC bands from captures.
+      expect(parsed.bass).toBeCloseTo(1.6);
+      expect(parsed.mid).toBeCloseTo(2.1);
+      expect(parsed.treb).toBeCloseTo(3.4);
+      expect(parsed.bass_att).toBeCloseTo(1.5);
+      expect(parsed.mid_att).toBeCloseTo(2.0);
+      expect(parsed.treb_att).toBeCloseTo(3.2);
       expect(parsed.degraded).toBe(false);
       // captured_at is an ISO-8601 timestamp emitted at click time.
       expect(parsed.captured_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
@@ -644,6 +660,58 @@ describe('AudioUniforms view', () => {
     const loudFill = bassLevelFill()?.style.height ?? '';
     expect(loudFill).not.toBe(neutralFill);
     expect(parseFloat(loudFill)).toBeGreaterThan(parseFloat(neutralFill));
+  });
+
+  it('Freeze holds the band tiles, hit LEDs, and dB readout while the store keeps ticking', async () => {
+    // Freeze gates the smoothing $effect on `streaming` BEFORE the store
+    // read, so while frozen the 60 Hz snapshot writes stop re-running it
+    // and `smoothedSnapshot` holds the last live frame — every live
+    // element (band tiles, hit LEDs, peak/RMS dB readout) freezes.
+    audioSnapshotStore.snapshot = SAMPLE_SNAPSHOT;
+    const { container, getByRole } = render(AudioUniforms);
+    await Promise.resolve();
+
+    const valueAt = (bandIdx: number, barIdx: number): string => {
+      const band = container.querySelectorAll('.au__band')[bandIdx];
+      return band?.querySelectorAll('.au__bar-value')[barIdx]?.textContent?.trim() ?? '';
+    };
+    const stats = (): string => container.querySelector('.au__hero-stats')?.textContent ?? '';
+
+    // Live posture from SAMPLE_SNAPSHOT (seeded synchronously).
+    expect(valueAt(0, 0)).toBe('0.20'); // bass level (1.6 → 0.20)
+    expect(valueAt(2, 1)).toBe('●'); // mid-high hit LED (treb 3.4 → lit)
+    const frozenStats = stats();
+    expect(frozenStats).toContain('dB');
+
+    await fireEvent.click(getByRole('button', { name: 'Freeze' }));
+
+    // The store keeps receiving frames while frozen — a radically
+    // different frame must NOT leak into any live element.
+    audioSnapshotStore.snapshot = {
+      ...SAMPLE_SNAPSHOT,
+      bass: 4.2,
+      mid: 4.2,
+      treb: 1.0,
+      rms: 0.05,
+      peak: 0.1,
+    };
+    await Promise.resolve();
+
+    expect(valueAt(0, 0)).toBe('0.20'); // band tile held
+    expect(valueAt(0, 1)).toBe('○'); // bass hit LED held (hollow)
+    expect(valueAt(2, 0)).toBe('0.80'); // mid-high level held
+    expect(valueAt(2, 1)).toBe('●'); // mid-high hit LED held (lit)
+    expect(stats()).toBe(frozenStats); // peak / rms dB readout held
+
+    // Resume re-tracks the live store (EMA ramps from the frozen values;
+    // the AGC bands pass through unsmoothed so the tiles snap directly).
+    await fireEvent.click(getByRole('button', { name: 'Resume' }));
+    await Promise.resolve();
+    expect(valueAt(0, 0)).toBe('1.00'); // bass 4.2 → clamp(3.2/3) = 1.00
+    expect(valueAt(0, 1)).toBe('●');
+    expect(valueAt(2, 0)).toBe('0.00'); // treb 1.0 → rest at floor
+    expect(valueAt(2, 1)).toBe('○');
+    expect(stats()).not.toBe(frozenStats);
   });
 
   it('source label reads settingsStore.snapshot.audio.input_device when set', () => {

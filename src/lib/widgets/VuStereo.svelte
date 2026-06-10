@@ -48,9 +48,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let lvlR = $state(FROZEN_R);
   let peakL = $state(FROZEN_L);
   let peakR = $state(FROZEN_R);
+  let reduceMotion = $state(false);
 
   $effect(() => {
     void audioSnapshotStore.subscribe();
+  });
+
+  // Track prefers-reduced-motion reactively (mirrors BeatDots / BpmRing /
+  // Timecode) — an OS-level toggle re-runs the ballistics $effect below,
+  // freezing to the demo pose or resuming live ballistics without a
+  // remount. The prior one-shot `matchMedia(...).matches` read ignored
+  // runtime changes.
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reduceMotion = mq.matches;
+    const onChange = (e: MediaQueryListEvent): void => {
+      reduceMotion = e.matches;
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
   });
 
   // Effective snapshot: explicit prop wins, otherwise the live store.
@@ -61,10 +78,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   $effect(() => {
-    const reduceMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
     if (!live || reduceMotion) {
       lvlL = FROZEN_L;
       lvlR = FROZEN_R;

@@ -7,10 +7,10 @@
 // against the prop -> render contract; reduced-motion freezes the FFT bars.
 //
 // Wave 6 PR 2 adds the live-mode dual-mode coverage: when a non-null
-// `snapshot` prop is passed the widget reduces `snapshot.fft_bands`
-// (8 entries) into the four named tiles by averaging adjacent pairs
-// and reads BPM from `snapshot.bpm`. `null`/missing falls back to the
-// existing default tile fixtures and `bpm` prop.
+// `snapshot` prop is passed the widget reduces it into the four named
+// tiles and reads BPM from `snapshot.bpm`. An OMITTED prop reads the
+// singleton store; an explicit `snapshot={null}` pins the default tile
+// fixtures + `bpm` prop with no store fallthrough.
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render } from '@testing-library/svelte';
@@ -62,6 +62,31 @@ const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
   treb_att: 3.1,
   degraded: false,
 };
+
+// jsdom does not auto-run rAF; capture scheduled callbacks and pump them
+// manually. The band smoother is wall-clock-dt-aware
+// (`coeff = 1 - exp(-dt/tau)`), so the pumped timestamps advance a
+// synthetic clock (default 16.7 ms = one 60 Hz frame) rather than
+// reusing `performance.now()` (whose near-zero inter-pump deltas would
+// freeze a dt-aware follower).
+function stubRafQueue(): { pump: (n: number, dtMs?: number) => Promise<void> } {
+  const rafCbs: FrameRequestCallback[] = [];
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+    rafCbs.push(cb);
+    return rafCbs.length;
+  });
+  vi.stubGlobal('cancelAnimationFrame', () => {});
+  let frameTs = 0;
+  const pump = async (n: number, dtMs = 16.7): Promise<void> => {
+    for (let i = 0; i < n; i++) {
+      const cb = rafCbs.shift();
+      frameTs += dtMs;
+      if (cb) cb(frameTs);
+      await Promise.resolve();
+    }
+  };
+  return { pump };
+}
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -241,6 +266,39 @@ describe('AudioReactivity widget', () => {
     expect(getByText('58%')).toBeInTheDocument();
   });
 
+  it('explicit snapshot={null} pins the no-live-data defaults even when the store is live', () => {
+    // `null` means "explicitly no data": the widget must NOT fall through
+    // to the live store. (The smoothing $effect and `useHystPct` gate on
+    // `snapshot !== undefined`, so a `??` fallthrough would select the
+    // live path with the smoothing loop disabled — bars stuck at 0%.)
+    audioSnapshotStore.snapshot = SAMPLE_SNAPSHOT;
+    const { container, getByText } = render(AudioReactivity, {
+      props: { bpm: 100, snapshot: null },
+    });
+    // Prop bpm renders — not the store's 145.
+    expect(container.querySelector('.audio-reactivity__tempo-bpm')?.textContent?.trim()).toBe(
+      '100.00 BPM',
+    );
+    // Default fixture tiles render — not the store-driven path.
+    expect(getByText('82%')).toBeInTheDocument();
+    expect(getByText('64%')).toBeInTheDocument();
+    expect(getByText('41%')).toBeInTheDocument();
+    expect(getByText('58%')).toBeInTheDocument();
+  });
+
+  it('an omitted snapshot prop still reads the live store (undefined-only fallback)', () => {
+    audioSnapshotStore.snapshot = SAMPLE_SNAPSHOT;
+    const { container, queryByText } = render(AudioReactivity, { props: { bpm: 100 } });
+    // Store BPM wins over the prop when the prop is omitted.
+    expect(container.querySelector('.audio-reactivity__tempo-bpm')?.textContent?.trim()).toBe(
+      '145.00 BPM',
+    );
+    // The live rAF-smoothed path is selected (no rAF pumped here, so the
+    // smoothed fills sit at 0%) — the default fixture percentages must
+    // NOT render.
+    expect(queryByText('82%')).toBeNull();
+  });
+
   it('caller-supplied bands prop overrides snapshot reduction', () => {
     const customBands = [
       { name: 'SUB', value: 0.1, tint: 'red' },
@@ -258,26 +316,14 @@ describe('AudioReactivity widget', () => {
   });
 
   it('smoothed band fill reaches ~90% of a step within ~3 rAF frames (FIX 4)', async () => {
-    // FIX 4 raised the UI EMA from 0.25 (~8 frames to 90%) to 0.55
-    // (~3 frames to 90%), trusting the engine's already-smoothed AGC
-    // ballistic. jsdom does not auto-run rAF; capture + pump manually.
-    // Freeze the FFT-visualiser rAF loop (reduced-motion) so the ONLY
-    // rAF producer is the band-smoother — otherwise the FFT-bar ticks
-    // interleave into the captured queue and skew the frame count.
+    // FIX 4 trusts the engine's already-smoothed AGC ballistic: the UI
+    // follower is tau = 21 ms (the former per-frame alpha 0.55 at 60 Hz,
+    // ~3 frames to 90%, vs ~8 at the old alpha 0.25). Freeze the
+    // FFT-visualiser rAF loop (reduced-motion) so the ONLY rAF producer
+    // is the band-smoother — otherwise the FFT-bar ticks interleave into
+    // the captured queue and skew the frame count.
     stubMatchMedia(true);
-    const rafCbs: FrameRequestCallback[] = [];
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
-      rafCbs.push(cb);
-      return rafCbs.length;
-    });
-    vi.stubGlobal('cancelAnimationFrame', () => {});
-    const pump = async (n: number): Promise<void> => {
-      for (let i = 0; i < n; i++) {
-        const cb = rafCbs.shift();
-        if (cb) cb(performance.now());
-        await Promise.resolve();
-      }
-    };
+    const { pump } = stubRafQueue();
     const bassFillPct = (container: HTMLElement): number => {
       const fill = container.querySelectorAll<HTMLElement>('.audio-reactivity__band-fill')[0];
       return parseFloat(fill?.style.width ?? '0');
@@ -291,34 +337,52 @@ describe('AudioReactivity widget', () => {
     expect(bassFillPct(container)).toBeLessThan(5);
 
     // Step to a full transient: bass = 4.0 → target fill = clamp((4-1)/3)
-    // = 1.0 (100%). The DSP EMA reaches ≥90% in ~3 advances (0.55, 0.80,
-    // 0.91); with a 1-frame DOM-render-commit lag in the harness that is
-    // observable by ~4 pumped frames. The OLD alpha=0.25 would still be
-    // at ~68% here (needing ~8 frames), so this cleanly pins the FIX 4
-    // speed-up rather than the prior sluggish response.
+    // = 1.0 (100%). At 16.7 ms frames the tau-21 ms follower reaches ≥90%
+    // in ~3 advances (0.55, 0.80, 0.91); with a 1-frame DOM-render-commit
+    // lag in the harness that is observable by ~4 pumped frames. The OLD
+    // alpha=0.25 would still be at ~68% here (needing ~8 frames), so this
+    // cleanly pins the FIX 4 speed-up rather than the prior sluggish
+    // response.
     audioSnapshotStore.snapshot = { ...NEUTRAL_SNAPSHOT, bass: 4.0 };
     await Promise.resolve();
     await pump(4);
     expect(bassFillPct(container)).toBeGreaterThanOrEqual(90);
   });
 
+  it('band smoothing is dt-aware: small frame deltas advance the EMA proportionally', async () => {
+    // Frame-rate independence (docs/dev/ui-smoothness-and-latency.md
+    // principle 4): five 1 ms frames advance the follower by only
+    // ~1 - exp(-5/21) ≈ 21% of a step, whereas the old fixed per-frame
+    // alpha 0.55 would already sit at ~98% (running 16x faster than at
+    // 60 Hz). Pins `coeff = 1 - exp(-dt/tau)` against a per-frame
+    // constant regression.
+    stubMatchMedia(true); // freeze the FFT-visualiser rAF producer
+    const { pump } = stubRafQueue();
+    const bassFillPct = (container: HTMLElement): number => {
+      const fill = container.querySelectorAll<HTMLElement>('.audio-reactivity__band-fill')[0];
+      return parseFloat(fill?.style.width ?? '0');
+    };
+
+    audioSnapshotStore.snapshot = { ...NEUTRAL_SNAPSHOT };
+    const { container } = render(AudioReactivity);
+    await Promise.resolve();
+    await pump(3); // settle at the 0% neutral target
+    expect(bassFillPct(container)).toBeLessThan(1);
+
+    audioSnapshotStore.snapshot = { ...NEUTRAL_SNAPSHOT, bass: 4.0 };
+    await Promise.resolve();
+    await pump(5, 1); // 5 frames, 1 ms apart (~1000 fps burst)
+    const pct = bassFillPct(container);
+    expect(pct).toBeGreaterThan(4); // it does move…
+    expect(pct).toBeLessThan(50); // …but proportionally to elapsed time
+  });
+
   it('the live-store band fill changes when the AGC bass band swings (FIX B)', async () => {
     // No `bands` / `snapshot` prop → the rAF-smoothing path observes
     // `audioSnapshotStore.snapshot` directly. jsdom does NOT auto-run
-    // rAF, so capture the scheduled callback and pump it manually.
-    const rafCbs: FrameRequestCallback[] = [];
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
-      rafCbs.push(cb);
-      return rafCbs.length;
-    });
-    vi.stubGlobal('cancelAnimationFrame', () => {});
-    const pump = async (n: number): Promise<void> => {
-      for (let i = 0; i < n; i++) {
-        const cb = rafCbs.shift();
-        if (cb) cb(performance.now());
-        await Promise.resolve();
-      }
-    };
+    // rAF, so capture the scheduled callbacks and pump them manually
+    // on the synthetic 60 Hz clock.
+    const { pump } = stubRafQueue();
 
     const bassFillWidth = (container: HTMLElement): string => {
       const fill = container.querySelectorAll<HTMLElement>('.audio-reactivity__band-fill')[0];
