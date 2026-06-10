@@ -223,6 +223,93 @@ describe('settingsStore', () => {
     expect(settingsStore.error).toBe('disk full');
   });
 
+  it('a failed debounced save records the error with canPersist intact (banner gate)', async () => {
+    // The Settings view renders `error` as a persist-failure banner
+    // gated on `canPersist` — a save can only fail after a real shell
+    // load, so the gate must stay true when the write-through rejects.
+    const { settingsStore } = await loadPersistableSettingsStore(() =>
+      Promise.reject(new Error('disk full')),
+    );
+    settingsStore.update({ general: { theme: 'Console' } });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(settingsStore.error).toBe('disk full');
+    expect(settingsStore.canPersist).toBe(true);
+  });
+
+  it('update() before load() resolves survives the load and is persisted', async () => {
+    // Pre-canPersist lost-update fix: a change made in the first
+    // moments after launch (e.g. a theme pick while get_settings is
+    // in flight) must be re-applied on top of the loaded snapshot and
+    // written through, not silently clobbered and reverted.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(SAMPLE_PAYLOAD);
+      return Promise.resolve();
+    });
+    const { settingsStore } = await import('./settings.svelte');
+    settingsStore.reset();
+    const loading = settingsStore.load();
+    // Synchronous local change inside the pre-load window.
+    settingsStore.update({ general: { theme: 'Console' } });
+    await loading;
+    // The disk snapshot hydrates the untouched sections …
+    expect(settingsStore.snapshot.audio).toEqual(SAMPLE_PAYLOAD.audio);
+    // … but the pre-load change wins over the disk value ('Atelier').
+    expect(settingsStore.snapshot.general.theme).toBe('Console');
+    // And the merged document reaches disk via the debounced save.
+    await vi.advanceTimersByTimeAsync(300);
+    expect(invokeMock).toHaveBeenCalledWith(
+      'set_settings',
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          general: expect.objectContaining({ theme: 'Console' }),
+          audio: expect.objectContaining({ input_device: SAMPLE_PAYLOAD.audio.input_device }),
+        }),
+      }),
+    );
+  });
+
+  it('seedHint() merges without persisting and yields to the loaded snapshot', async () => {
+    // Paint-hint semantics for the startup theme fast-path: the hint
+    // is visible immediately but the authoritative disk value always
+    // wins, and the hint is never written back through set_settings.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(SAMPLE_PAYLOAD);
+      return Promise.resolve();
+    });
+    const { settingsStore } = await import('./settings.svelte');
+    settingsStore.reset();
+    settingsStore.seedHint({ general: { theme: 'Console' } });
+    expect(settingsStore.snapshot.general.theme).toBe('Console');
+    await settingsStore.load();
+    // Disk value ('Atelier') replaces the hint.
+    expect(settingsStore.snapshot.general.theme).toBe('Atelier');
+    await vi.advanceTimersByTimeAsync(300);
+    const setCalls = invokeMock.mock.calls.filter((c) => c[0] === 'set_settings');
+    expect(setCalls.length).toBe(0);
+  });
+
+  it('beforeunload flushes the pending debounced save', async () => {
+    // The module-level listener gives a change made within the
+    // debounce window its only chance to reach disk on exit (the
+    // pending setTimeout dies with the webview otherwise). A unique
+    // OSC port marks the payload so stale listeners from sibling
+    // module instances (vi.resetModules re-registers per test) cannot
+    // satisfy the assertion.
+    const { settingsStore } = await loadPersistableSettingsStore();
+    settingsStore.update({ osc: { port: 9123 } });
+    expect(invokeMock).not.toHaveBeenCalledWith('set_settings', expect.anything());
+    window.dispatchEvent(new Event('beforeunload'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(invokeMock).toHaveBeenCalledWith(
+      'set_settings',
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          osc: expect.objectContaining({ port: 9123 }),
+        }),
+      }),
+    );
+  });
+
   it('resetToDefaults() invokes reset_settings and hydrates from the returned payload', async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === 'reset_settings') {

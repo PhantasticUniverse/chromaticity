@@ -118,6 +118,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import StatusBar from './StatusBar.svelte';
   import { capabilitiesStore } from './stores/capabilities.svelte';
   import { routeStore } from './stores/route.svelte';
+  import { applyStartupTheme, syncThemeFromSettings } from './theme';
   import TopBar from './TopBar.svelte';
   import AudioUniforms from './views/AudioUniforms.svelte';
   import Author from './views/Author.svelte';
@@ -152,6 +153,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // `EV-INTEGRATION-MATRIX` scope; once that lands the visibility
   // will read from a capability flag rather than a hardcoded default.
   let bannerVisible = $state(false);
+
+  // Startup theme application (src/lib/theme.ts). Previously the only
+  // writer of `document.documentElement.dataset.theme` was a `$effect`
+  // inside the Settings-mounted ThemeSwitcher, so a persisted Atelier /
+  // Console theme rendered as Pulse on every launch until the operator
+  // opened Settings. AppShell is always rendered: the init call applies
+  // the localStorage hint before first paint, and the `$effect` below
+  // keeps the document attribute (+ the localStorage mirror) in sync
+  // with `settingsStore.snapshot.general.theme` once the TopBar-mounted
+  // `settingsStore.load()` hydrates the snapshot from disk.
+  applyStartupTheme();
+  $effect(() => {
+    // `syncThemeFromSettings` reads `settingsStore.snapshot.general
+    // .theme` internally; that nested reactive read re-arms this
+    // effect on every theme change.
+    syncThemeFromSettings();
+  });
 
   let crashResumeVisible = $state(false);
   let crashResumeStatus = $state<CrashResumeStatusPayload | null>(null);

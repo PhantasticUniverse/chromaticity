@@ -779,6 +779,71 @@ describe('Settings view', () => {
     ).toBeInTheDocument();
   });
 
+  it('a real-shell picker failure surfaces an error and persists nothing', async () => {
+    // When `@tauri-apps/plugin-dialog` throws inside a real Tauri
+    // shell (capability regression / plugin fault), `pickFolder` must
+    // NOT fall through to the legacy `pick_folder` stub — the stub's
+    // deterministic placeholder would masquerade as an operator pick
+    // and get persisted into settings.storage. The failure surfaces
+    // through the Storage section's <ErrorMessage> instead.
+    const w = window as unknown as { __TAURI_INTERNALS__?: unknown };
+    w.__TAURI_INTERNALS__ = {};
+    try {
+      dialogOpenMock.mockRejectedValue(new Error('dialog capability missing'));
+      invokeMock.mockImplementation((command: string) => {
+        if (command === 'list_audio_devices') return Promise.resolve([]);
+        if (command === 'pick_folder') {
+          return Promise.resolve('/Users/operator/Movies/Chromaticity/Media');
+        }
+        return Promise.resolve(undefined);
+      });
+      const { container } = render(Settings);
+      await settingsStore.load();
+      await Promise.resolve();
+      const storage = getSection(container, 'Storage');
+      const rowsBefore = storage.querySelectorAll('.settings__folder-row').length;
+      const addBtn = within(storage).getByRole('button', { name: 'Add media folder' });
+      await fireEvent.click(addBtn);
+      await Promise.resolve();
+      await Promise.resolve();
+      // The legacy stub is never consulted in a real shell …
+      expect(invokeMock).not.toHaveBeenCalledWith('pick_folder', expect.anything());
+      // … no folder row appears, and nothing is written through.
+      expect(storage.querySelectorAll('.settings__folder-row').length).toBe(rowsBefore);
+      expect(invokeMock).not.toHaveBeenCalledWith('set_settings', expect.anything());
+      // The failure surfaces via the existing ErrorMessage idiom.
+      expect(within(storage).getByText('dialog capability missing')).toBeInTheDocument();
+    } finally {
+      delete w.__TAURI_INTERNALS__;
+    }
+  });
+
+  it('surfaces a persist failure as a dismissible banner', async () => {
+    // settingsStore.error previously had zero template consumers — a
+    // failed set_settings left the optimistic snapshot on screen with
+    // no indication the change would not survive restart. The banner
+    // is gated on canPersist so the expected no-Tauri load failure in
+    // this jsdom harness never renders it.
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'list_audio_devices') return Promise.resolve([]);
+      if (command === 'get_settings') return Promise.resolve(DEFAULT_SETTINGS);
+      if (command === 'set_settings') return Promise.reject(new Error('disk full'));
+      return Promise.resolve(undefined);
+    });
+    const { getByRole, queryByRole } = render(Settings);
+    await settingsStore.load();
+    await Promise.resolve();
+    expect(queryByRole('alert')).toBeNull();
+    settingsStore.update({ general: { theme: 'Console' } });
+    await settingsStore.flush();
+    await Promise.resolve();
+    const banner = getByRole('alert');
+    expect(banner.textContent).toContain('Settings could not be saved: disk full');
+    await fireEvent.click(getByRole('button', { name: 'Dismiss settings save error' }));
+    expect(queryByRole('alert')).toBeNull();
+    expect(settingsStore.error).toBeNull();
+  });
+
   it('Storage remove-folder action filters the row from the media list', async () => {
     const { container } = render(Settings);
     // Wait for the first-launch seed to populate the bundle defaults

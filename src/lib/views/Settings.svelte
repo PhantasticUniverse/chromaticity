@@ -84,12 +84,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MultiDisplayModeOption,
     type QuantizeTransitionOption,
   } from '../data/settings-fixtures';
+  import ErrorMessage from '../ErrorMessage.svelte';
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
   import { audioDevicesStore } from '../stores/audioDevices.svelte';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import { settingsStore } from '../stores/settings.svelte';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
+  import { toIpcError } from '../types/ipc-error';
   import { ControlGroup, Fader, Meter, OutputRoutingTile, TabSegment } from '../widgets';
   import SceneStill from '../widgets/SceneStill.svelte';
 
@@ -438,8 +440,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
   });
 
+  // Folder-picker failure surface. `pickFolder` throws when the native
+  // dialog fails inside a real Tauri shell (it no longer falls through
+  // to the legacy stub, which fabricated a placeholder path that the
+  // browse handlers then persisted as if the operator had picked it).
+  // `null` still means "user dismissed / no pick" and persists nothing.
+  let pickerError = $state<string | null>(null);
+
+  async function browseFolder(title: string): Promise<string | null> {
+    try {
+      const path = await pickFolder(title);
+      pickerError = null;
+      return path;
+    } catch (e) {
+      pickerError = toIpcError(e).message;
+      return null;
+    }
+  }
+
   async function browseMediaFolder() {
-    const path = await pickFolder('Pick a Media folder');
+    const path = await browseFolder('Pick a Media folder');
     if (path) {
       settingsStore.update({
         storage: {
@@ -450,7 +470,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   async function browseSceneFolder() {
-    const path = await pickFolder('Pick a Custom scene folder');
+    const path = await browseFolder('Pick a Custom scene folder');
     if (path) {
       settingsStore.update({
         storage: {
@@ -461,7 +481,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   async function browseBackupFolder() {
-    const path = await pickFolder('Pick a Backups folder');
+    const path = await browseFolder('Pick a Backups folder');
     if (path) {
       settingsStore.update({ storage: { backup_path: path } });
     }
@@ -634,6 +654,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         Monitoring meter.
       </p>
     </header>
+
+    {#if settingsStore.canPersist && settingsStore.error}
+      <!-- Persist-failure banner. `error` is rendered only when
+           `canPersist` is true: a save can only fail after a real
+           shell load, so the expected no-Tauri load failure (Vitest
+           jsdom / vite-only dev) never surfaces as noise. The store
+           keeps the optimistic snapshot; the banner warns that it may
+           not have reached disk. -->
+      <div class="settings__save-error" role="alert">
+        <span>
+          Settings could not be saved: {settingsStore.error} — changes may not persist across restart.
+        </span>
+        <button
+          type="button"
+          class="settings__btn settings__btn--ghost"
+          onclick={() => (settingsStore.error = null)}
+          aria-label="Dismiss settings save error"
+        >
+          Dismiss
+        </button>
+      </div>
+    {/if}
 
     <article class="settings__section">
       <h2>Audio Device</h2>
@@ -1201,6 +1243,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
     <article class="settings__section">
       <h2>Storage</h2>
+
+      <ErrorMessage error={pickerError} />
 
       <div class="settings__storage-group">
         <div class="settings__storage-head">
@@ -1840,6 +1884,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-body-md);
     line-height: 1.5;
     margin: 0;
+  }
+
+  .settings__save-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xl);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-sm);
+    color: var(--color-danger);
+    font-size: var(--font-size-body-sm);
   }
 
   .settings__section {
@@ -2556,11 +2613,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     cursor: not-allowed;
   }
 
+  /* Destructive-confirm modal rides the token modal tier (tokens.css
+   * --z-modal: 950, matching NewSceneModal's 950/951) so it stacks
+   * ABOVE the ConsoleDrawer overlay tier (--z-overlay: 900/901) while
+   * staying below HotkeyOverlay (1000) / CommandPalette (1010). The
+   * previous raw 100/101 buried the dialog under an open Console
+   * drawer. */
   .settings__modal-backdrop {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.55);
-    z-index: 100;
+    z-index: var(--z-modal);
   }
 
   .settings__modal {
@@ -2568,7 +2631,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 101;
+    z-index: calc(var(--z-modal) + 1);
     background: var(--color-bg-1);
     color: var(--color-text-0);
     border: 1px solid var(--color-line-2);

@@ -18,11 +18,14 @@
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AppShell from './AppShell.svelte';
 import { capabilitiesStore, type CapabilitiesSnapshot } from './stores/capabilities.svelte';
 import { routeStore } from './stores/route.svelte';
+import { settingsStore } from './stores/settings.svelte';
+import { THEME_STORAGE_KEY } from './theme';
 
 function stubMatchMedia(): void {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -48,6 +51,17 @@ describe('AppShell orchestration', () => {
     routeStore.set('perform');
     capabilitiesStore.setSnapshot(SEED_CAPABILITIES);
     cleanup();
+    // Startup-theme applier hygiene: the AppShell-hosted `$effect`
+    // writes the document attribute + the localStorage mirror; the
+    // settingsStore is a module-level singleton. Reset all three so
+    // theme state cannot leak across tests.
+    settingsStore.reset();
+    delete document.documentElement.dataset.theme;
+    try {
+      globalThis.localStorage?.removeItem(THEME_STORAGE_KEY);
+    } catch {
+      // jsdom localStorage may be absent in exotic harnesses.
+    }
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -160,6 +174,30 @@ describe('AppShell orchestration', () => {
     });
     const { container } = render(AppShell);
     expect(container.querySelector('.watermark')).toBeNull();
+  });
+
+  it('applies the persisted localStorage theme hint at startup, before opening Settings', () => {
+    // Startup-theme fix: previously the only writer of
+    // `document.documentElement.dataset.theme` was the Settings-
+    // mounted ThemeSwitcher, so a persisted non-default theme only
+    // applied after navigating to Settings. AppShell now applies the
+    // localStorage hint at init (boot route is 'perform') and seeds
+    // it into the snapshot as a non-persisting hint.
+    globalThis.localStorage?.setItem(THEME_STORAGE_KEY, 'console');
+    routeStore.set('perform');
+    render(AppShell);
+    expect(document.documentElement.dataset.theme).toBe('console');
+    expect(settingsStore.snapshot.general.theme).toBe('Console');
+  });
+
+  it('keeps the document theme in sync with snapshot changes app-wide', () => {
+    render(AppShell);
+    expect(document.documentElement.dataset.theme).toBe('');
+    flushSync(() => settingsStore.update({ general: { theme: 'Atelier' } }));
+    expect(document.documentElement.dataset.theme).toBe('atelier');
+    // The localStorage mirror follows the snapshot so the stored hint
+    // can never stay permanently divergent from the persisted value.
+    expect(globalThis.localStorage?.getItem(THEME_STORAGE_KEY)).toBe('atelier');
   });
 
   it('removes the window keydown listener when the AppShell unmounts', () => {

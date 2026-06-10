@@ -13,59 +13,68 @@
 //
 // Resolution order:
 //   1. Try `@tauri-apps/plugin-dialog` `open({ directory: true, title })`
-//      — the production path. Loaded via dynamic import so the
-//      vitest jsdom harness without the plugin still works.
-//   2. Fall back to the legacy `invoke('pick_folder')` stub for any
-//      environment where the plugin isn't present (vite-only dev,
-//      pre-2.7 builds, etc.). Returns the stub placeholder.
-//   3. Return `null` if both paths throw — the Storage section's
-//      "Add Folder" button is a no-op when no dialog is available
-//      rather than crashing.
+//      — the production path. A successful call resolves the pick (or
+//      `null` on user dismiss) and never falls through to the stub.
+//   2. If `open()` THROWS inside a real Tauri shell
+//      (`window.__TAURI_INTERNALS__` present), the failure is a genuine
+//      runtime fault (capability regression, plugin fault) — rethrow it
+//      so the caller can surface the error. Falling through to the
+//      legacy stub here would fabricate the deterministic placeholder
+//      path and persist it as if the operator had picked it.
+//   3. Outside a Tauri runtime (vite-only dev, jsdom unit tests), fall
+//      back to the legacy `invoke('pick_folder')` stub; if that also
+//      throws (no invoke mock at all), resolve `null` so the Storage
+//      "Add Folder" button is a no-op rather than crashing.
 
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
+/** Same browser-mode signal `toIpcError` keys off in
+ * `types/ipc-error.ts` and `views/Library.svelte` uses for its
+ * marketplace CTA gate. Evaluated per call so test harnesses can
+ * inject / remove the marker between cases. */
+function tauriRuntimeAvailable(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    Object.prototype.hasOwnProperty.call(window, '__TAURI_INTERNALS__')
+  );
+}
+
 /// Open a native folder picker titled `title`. Resolves to the
 /// absolute folder path on accept, or `null` when the user dismisses
-/// the dialog. Wave 2.7 SET.B replaces the W21 PR1 stub with the
-/// real `tauri-plugin-dialog` native dialog; the legacy `pick_folder`
-/// IPC command remains as a non-plugin fallback for vite-only /
-/// pre-plugin environments.
+/// the dialog. THROWS when the native dialog fails inside a real
+/// Tauri shell — callers surface the failure via the `toIpcError` /
+/// `<ErrorMessage>` idiom instead of receiving fabricated success
+/// data. The legacy `pick_folder` IPC stub remains as a non-plugin
+/// fallback for vite-only / jsdom environments only.
 export async function pickFolder(title: string): Promise<string | null> {
-  // Path 1: native `tauri-plugin-dialog` open(). The static import
-  // above resolves at module-load; in environments without the
-  // plugin runtime (vite-only dev / jsdom), the call itself
-  // rejects and we fall through to the legacy IPC stub.
   try {
     const result = await openDialog({ directory: true, multiple: false, title });
     if (typeof result === 'string') {
       return result;
     }
-    if (result === null) {
-      return null;
-    }
-    // Array result (multiple-selection path) — not requested at
-    // this seam, but defensively pick the first entry if the plugin
-    // returns one anyway. Otherwise fall through to the IPC fallback.
+    // Array result (multiple-selection path) — not requested at this
+    // seam, but defensively pick the first entry if the plugin returns
+    // one anyway.
     if (Array.isArray(result) && typeof result[0] === 'string') {
       return result[0];
     }
-  } catch {
-    // Plugin unavailable (no Tauri runtime, missing capability, etc.) —
-    // fall through to the legacy IPC stub.
+    // `null` (user dismissed) or an empty / non-string array — no pick.
+    return null;
+  } catch (e) {
+    if (tauriRuntimeAvailable()) {
+      // Real shell: a plugin failure is a genuine runtime fault.
+      // Surface it — never fabricate a placeholder path via the stub.
+      throw e;
+    }
+    // No Tauri runtime injected — fall through to the legacy IPC stub.
   }
 
-  // Path 2: legacy `pick_folder` Tauri command. Returns the W21 PR1
-  // deterministic placeholder under the existing Rust stub; future
-  // backend swaps could surface a platform-specific dialog without
-  // breaking the frontend contract.
   try {
     const result = await invoke<string | null>('pick_folder', { title });
     return result;
   } catch {
-    // Path 3: no Tauri runtime at all (pure vite dev / jsdom unit
-    // tests without an invoke mock). Return null so the calling
-    // Storage button is a no-op rather than crashing.
+    // No invoke mock either (pure vite dev / jsdom without a mock).
     return null;
   }
 }
