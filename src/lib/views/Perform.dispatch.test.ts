@@ -42,6 +42,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 import Perform from './Perform.svelte';
 import { META_CONTROL_ID_BASE } from '../data/perform-fixtures';
 import type { LoadedScenePayload } from '../ipc/bindings';
+import { controlValuesStore } from '../stores/controlValues.svelte';
 import { loadedSceneStore } from '../stores/loadedScene.svelte';
 import { performVariantStore } from '../stores/performVariant.svelte';
 
@@ -169,6 +170,10 @@ beforeEach(() => {
   invokeMock.mockReset();
   defaultInvokeMock();
   performVariantStore.set('classic');
+  // The control-value cache is a module singleton (it deliberately
+  // survives component remounts) — reset it so values committed in
+  // one test don't leak into the next.
+  controlValuesStore.reset();
   // Seed the loaded-scene store so Scene Controls binds to a real
   // schema (two interactive controls at positions 0 + 1).
   loadedSceneStore.snapshot = SAMPLE_SCENE;
@@ -179,6 +184,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   cleanup();
   loadedSceneStore.reset();
+  controlValuesStore.reset();
   performVariantStore.set('classic');
 });
 
@@ -216,6 +222,73 @@ describe('Perform view — control dispatch (Wave 2.1 Lane A.2)', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(slider.getAttribute('aria-valuenow')).toBe('0.42');
+  });
+
+  it('keeps a touched control value across a view unmount + remount', async () => {
+    // AppShell routes via an {#if} ladder, so Perform is destroyed and
+    // recreated on every view switch. The module-singleton
+    // controlValuesStore must keep the engine-committed value so the
+    // widget does NOT snap back to its schema default (0.5) after
+    // Perform → Library → Perform.
+    const first = render(Perform);
+    const sceneCtrls = first.getByLabelText('Scene Controls');
+    const slider = within(sceneCtrls).getByRole('slider', { name: 'segments' });
+    stubRect(slider, 100, 0);
+    stubPointerCapture(slider);
+    await fireEvent.pointerDown(slider, { clientX: 5, clientY: 20, pointerId: 1 });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(slider.getAttribute('aria-valuenow')).toBe('0.8');
+
+    first.unmount();
+
+    const second = render(Perform);
+    const remountedCtrls = second.getByLabelText('Scene Controls');
+    const remountedSlider = within(remountedCtrls).getByRole('slider', { name: 'segments' });
+    expect(remountedSlider.getAttribute('aria-valuenow')).toBe('0.8');
+  });
+
+  it('drops an out-of-order stale read-back during a drag (sequence token)', async () => {
+    // Two round-trips in flight: the read-back for the FIRST dispatch
+    // resolves after the second dispatch's read-back. Without the
+    // per-key sequence token the late resolution would rubber-band the
+    // widget back to the stale value.
+    const readbackResolvers: Array<(v: number) => void> = [];
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'set_control') return undefined;
+      if (cmd === 'get_control') {
+        return new Promise<number>((resolve) => {
+          readbackResolvers.push(resolve);
+        });
+      }
+      if (cmd === 'loaded_scene') return null;
+      return null;
+    });
+
+    const { getByLabelText } = render(Perform);
+    const sceneCtrls = getByLabelText('Scene Controls');
+    const slider = within(sceneCtrls).getByRole('slider', { name: 'segments' });
+    stubRect(slider, 100, 0);
+    stubPointerCapture(slider);
+    // Dispatch 1: clientY=30 → 0.7. Dispatch 2: clientY=50 → 0.5.
+    await fireEvent.pointerDown(slider, { clientX: 5, clientY: 30, pointerId: 1 });
+    await fireEvent.pointerMove(slider, { clientX: 5, clientY: 50, pointerId: 1 });
+    expect(readbackResolvers).toHaveLength(2);
+
+    // The newer dispatch's read-back lands first (engine echoes 0.5).
+    readbackResolvers[1]?.(0.5);
+    await Promise.resolve();
+    await Promise.resolve();
+    await tick();
+    expect(slider.getAttribute('aria-valuenow')).toBe('0.5');
+
+    // The stale read-back resolves late with a distinct value — it
+    // must be dropped, not applied.
+    readbackResolvers[0]?.(0.9);
+    await Promise.resolve();
+    await Promise.resolve();
+    await tick();
+    expect(slider.getAttribute('aria-valuenow')).toBe('0.5');
   });
 
   it('does not reuse a touched scene-control value after the loaded scene id changes', async () => {

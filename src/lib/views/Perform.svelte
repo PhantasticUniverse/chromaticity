@@ -93,6 +93,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import type { ControlSchemaPayload } from '../ipc/bindings';
   import { dispatchAndRead, dispatchXy } from '../stores/control';
   import { controlLockStore } from '../stores/controlLock.svelte';
+  import { controlValuesStore } from '../stores/controlValues.svelte';
   import { fetchBundledSceneCards } from '../stores/library';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { performVariantStore } from '../stores/performVariant.svelte';
@@ -236,6 +237,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void playlistStore.refresh();
   });
 
+  // Scene-namespace lock invalidation. Lock ids are bare schema
+  // positions shared across scenes, so locks taken on one scene's rows
+  // must not leak onto the next loaded scene (the value cache solves
+  // the same problem with its scoped string keys). The store records
+  // which scene its scene-namespace locks belong to and clears them
+  // when the id changes — including a scene loaded from another view
+  // while Perform was unmounted. Meta-namespace locks (1000+) survive,
+  // mirroring the cache's cross-scene `meta:` namespace.
+  $effect(() => {
+    controlLockStore.syncSceneScope(loadedSceneId, META_CONTROL_ID_BASE);
+  });
+
   // Wave 2.1 Lane A.4 — preset + playlist IPC reactive surfaces. The
   // stores own the canonical state; this view reads `activeId` for
   // the preset-rail highlight and `position` for the cue caption
@@ -322,7 +335,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // Lane A.1 surfaced the schema source. Lane A.2 closes the loop by
   // attaching the schema-position `controlId` to each spec so widget
   // `onchange` callbacks can dispatch `set_control` IPC through
-  // `dispatchAndRead`. The local `controlValues` map records the
+  // `dispatchAndRead`. The `controlValuesStore` cache records the
   // last-committed value per scoped ID so re-renders post-drag reflect
   // the engine-side state; absent entries fall back to the schema default.
   //
@@ -337,38 +350,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   ] as const;
 
   /**
-   * Lane A.2 local control-value map. Scene controls are keyed by
-   * `{loadedSceneId}:{ControlId}` while Meta Controls use
-   * `meta:{ControlId}`. The previous number-only key leaked value 0
-   * from one scene into control 0 of the next loaded scene; the scoped
-   * string key keeps same-position controls isolated without clearing
-   * the cross-scene meta namespace.
+   * Lane A.2 control-value cache — now the module-singleton
+   * `controlValuesStore` (`stores/controlValues.svelte.ts`). The cache
+   * was originally a component-local `$state` map, but AppShell's
+   * `{#if}`-ladder router destroys and recreates this view on every
+   * switch, so Perform → Library → Perform reset every widget to its
+   * schema default while the engine kept the operator's committed
+   * values (and the next pointer-down jumped the engine to the stale
+   * visual). The store hoists the map so it survives remounts; the
+   * scoped key scheme (`{loadedSceneId}:{ControlId}` for scene
+   * controls, `meta:{ControlId}` for Meta Controls) is unchanged —
+   * it is what keeps same-position controls isolated across scenes
+   * without clearing the cross-scene meta namespace.
    *
    * Values:
    *   - faders / knobs store a `[0, 1]`-clamped float.
    *   - toggles store `0` or `1` (booleans encode as numeric on the
    *     `set_control` wire — `ControlValue` is `f32`).
+   *   - XY controls (parity-closure Lane D) store `[x, y]` pairs
+   *     dispatched through `set_control_2d`; the scalar-only
+   *     `cachedControlValue` helper ignores them — XY callers use
+   *     `cachedXyValue` below.
    *
-   * Read-back from `dispatchAndRead` overwrites the local entry on
-   * each commit so the UI reflects the engine-committed value (the
-   * round-trip catches engine-side clamping / quantisation).
-   *
-   * Parity-closure Lane D widens the cache to also accept
-   * `[number, number]` pairs for XY controls dispatched through
-   * `set_control_2d`. The scalar-only `cachedControlValue` helper
-   * remains unchanged — XY callers use `cachedXyValue` below.
+   * Read-back from `dispatchAndRead` overwrites the entry on each
+   * commit so the UI reflects the engine-committed value (the
+   * round-trip catches engine-side clamping / quantisation); stale
+   * read-backs are dropped via the store's dispatch sequence tokens
+   * (see `dispatchControl`).
    */
-  type ControlValueCache = Record<string, number | readonly [number, number]>;
-  const SCENELESS_CONTROL_SCOPE = 'fixture';
-  let controlValues = $state<ControlValueCache>({});
-
-  function controlValueKey(id: number): string {
-    if (id >= META_CONTROL_ID_BASE) return `meta:${id}`;
-    return `${loadedSceneId ?? SCENELESS_CONTROL_SCOPE}:${id}`;
-  }
-
   function cachedControlValue(id: number): number | undefined {
-    const value = controlValues[controlValueKey(id)];
+    const value = controlValuesStore.get(controlValuesStore.key(id));
     return typeof value === 'number' ? value : undefined;
   }
 
@@ -376,7 +387,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    *  `undefined` when no live value exists yet (widget falls back to
    *  its fixture / schema-declared default in that case). */
   function cachedXyValue(id: number): readonly [number, number] | undefined {
-    const value = controlValues[controlValueKey(id)];
+    const value = controlValuesStore.get(controlValuesStore.key(id));
     if (Array.isArray(value) && value.length === 2) {
       return value as readonly [number, number];
     }
@@ -400,15 +411,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * sweeps. The guard fires whether the value originates from a
    * widget drag, a Default-button reset, or a Random-button sweep —
    * all three paths route through this helper.
+   *
+   * The read-back applies only while its dispatch token is still the
+   * newest for the key: during a drag multiple round-trips are in
+   * flight, and a read-back issued for position N resolving after the
+   * optimistic write for position N+1 would otherwise rubber-band the
+   * widget. Stale read-backs drop; the final dispatch's read-back (the
+   * engine clamp / quantisation correction) still lands.
    */
   function dispatchControl(id: number, value: number): void {
     if (controlLockStore.isLocked(id)) return;
-    const key = controlValueKey(id);
-    controlValues = { ...controlValues, [key]: value };
+    const key = controlValuesStore.key(id);
+    const seq = controlValuesStore.beginDispatch(key);
+    controlValuesStore.set(key, value);
     void dispatchAndRead(id, value)
       .then((readback) => {
+        if (!controlValuesStore.isCurrentDispatch(key, seq)) return;
         if (typeof readback === 'number') {
-          controlValues = { ...controlValues, [key]: readback };
+          controlValuesStore.set(key, readback);
         }
       })
       .catch(() => {
@@ -422,25 +442,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * Parity-closure Lane D — dispatch an XY (vec2) control update to
    * the engine via `set_control_2d` and update the local cache with
    * the read-back pair. Mirrors `dispatchControl` for the scalar path,
-   * including the `controlLockStore` guard and the silent-catch for
-   * the no-Tauri-runtime (vite dev / vitest) environment.
+   * including the `controlLockStore` guard, the stale-read-back
+   * sequence token, and the silent-catch for the no-Tauri-runtime
+   * (vite dev / vitest) environment.
    */
   function dispatchXyControl(id: number, value: readonly [number, number]): void {
     if (controlLockStore.isLocked(id)) return;
-    const key = controlValueKey(id);
-    controlValues = { ...controlValues, [key]: value };
+    const key = controlValuesStore.key(id);
+    const seq = controlValuesStore.beginDispatch(key);
+    controlValuesStore.set(key, value);
     void dispatchXy(id, [value[0], value[1]])
       .then((readback) => {
+        if (!controlValuesStore.isCurrentDispatch(key, seq)) return;
         if (
           Array.isArray(readback) &&
           readback.length === 2 &&
           typeof readback[0] === 'number' &&
           typeof readback[1] === 'number'
         ) {
-          controlValues = {
-            ...controlValues,
-            [key]: [readback[0], readback[1]] as const,
-          };
+          controlValuesStore.set(key, [readback[0], readback[1]] as const);
         }
       })
       .catch(() => {
@@ -452,13 +472,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   /**
    * Wave 2.9 SC.A — derive a name-keyed control snapshot from the
-   * loaded scene's schema + the live `controlValues` cache. The
+   * loaded scene's schema + the live `controlValuesStore` cache. The
    * resulting map flows into `<SceneCanvas controls={...}>` so the
    * preview canvas pre-multiplies the common adapter controls and
    * forwards renderer-owned controls only when the preview adapter
    * declares them wired for the derived SceneKind.
    *
-   * `controlValues` is the engine-committed `f32` per scoped
+   * The cache holds the engine-committed `f32` per scoped
    * `ControlId` (scene id + schema position for Scene Controls). For
    * each schema entry whose `name` matches a recognised numeric axis,
    * the declared default seeds the snapshot first, then the live cache
@@ -932,8 +952,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * `controlId` in the `META_CONTROL_ID_BASE` (1000+) namespace so
    * the two ID axes never collide. When the user has not yet dragged
    * a meta control the fixture default renders; once dragged, the
-   * `controlValues` cache returns the engine-committed value so the
-   * widget reflects the round-trip.
+   * `controlValuesStore` cache returns the engine-committed value so
+   * the widget reflects the round-trip.
    *
    * Swatches stay display-only — their `controlId` is undefined and
    * the live overlay short-circuits.
