@@ -10,6 +10,10 @@
 // `snapshot` prop is passed the widget reads BPM from `snapshot.bpm`;
 // `null`/missing falls back to the existing `bpm` prop / synthetic
 // rAF behaviour exactly as before.
+//
+// The incremental-phase fix adds rAF-pumped coverage: sequential
+// 1→2→3→4 dot stepping with phase continuity across a live BPM
+// change, and integer BPM formatting in the accessible label.
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render } from '@testing-library/svelte';
@@ -111,5 +115,60 @@ describe('BeatDots widget', () => {
     const { container } = render(BeatDots, { props: { bpm: 100, snapshot: null } });
     const root = container.querySelector('.beat-dots');
     expect(root?.getAttribute('aria-label')).toContain('100 BPM');
+  });
+
+  it('rounds a fractional live BPM to an integer in the aria-label', () => {
+    // The wire value is a fractional f32 (60·sr/lag); the label
+    // previously interpolated the raw float.
+    const { container } = render(BeatDots, {
+      props: { snapshot: { ...SAMPLE_SNAPSHOT, bpm: 130.86151 } },
+    });
+    expect(container.querySelector('.beat-dots')?.getAttribute('aria-label')).toContain('131 BPM');
+  });
+
+  it('steps dots sequentially with phase continuity across a live BPM change', async () => {
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const pump = async (tMs: number): Promise<void> => {
+      const cb = rafCbs.shift();
+      if (cb) cb(tMs);
+      await Promise.resolve();
+    };
+
+    const { container, rerender } = render(BeatDots, {
+      props: { snapshot: { ...SAMPLE_SNAPSHOT, bpm: 120 } },
+    });
+    const activeIndex = (): number =>
+      Array.from(container.querySelectorAll('.beat-dots__dot')).findIndex(
+        (dot) =>
+          dot.classList.contains('beat-dots__dot--down') ||
+          dot.classList.contains('beat-dots__dot--on'),
+      );
+
+    // First frame anchors the clock (dt = 0) on the downbeat; one beat
+    // at 120 BPM is 0.5 s.
+    await pump(0);
+    expect(activeIndex()).toBe(0);
+    await pump(500);
+    expect(activeIndex()).toBe(1);
+
+    // Live BPM jumps 120 → 140. Under the old elapsed×BPM math the
+    // active dot would teleport; incremental integration keeps it
+    // pinned while no time elapses, then steps at the new tempo
+    // (slightly past each ~428.6 ms beat boundary for float safety).
+    await rerender({ snapshot: { ...SAMPLE_SNAPSHOT, bpm: 140 } });
+    await pump(500); // dt = 0 — the BPM change alone must not move the dot
+    expect(activeIndex()).toBe(1);
+    await pump(950); // +0.45 s at 140 BPM → +1.05 beats → phase 2.05
+    expect(activeIndex()).toBe(2);
+    await pump(1400); // phase 3.10
+    expect(activeIndex()).toBe(3);
+    await pump(1850); // phase 4.15 → wraps to 0.15 → downbeat again
+    expect(activeIndex()).toBe(0);
+    expect(container.querySelectorAll('.beat-dots__dot--down')).toHaveLength(1);
   });
 });

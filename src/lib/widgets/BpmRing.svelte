@@ -32,6 +32,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // without going through the singleton store; default behaviour reads
   // from the store. `bpm` remains the visual default when neither path
   // delivers a value.
+  //
+  // **Incremental beat phase.** The sweep position is integrated per
+  // rAF frame (`phase += dt · bpm / 60`, wrapped to [0, 4) beats)
+  // instead of recomputed as elapsed-time × instantaneous-BPM, so a
+  // live BPM estimator update changes only the future sweep rate and
+  // never teleports the current phase (the old absolute product
+  // jumped by `elapsed · ΔBPM / 60` beats on every estimator wobble).
+
+  import { untrack } from 'svelte';
 
   import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
@@ -56,9 +65,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
   const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
   const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
-  const bpmLabel = $derived(liveSnapshot && !bpmReady ? '--' : String(liveBpm));
+  // The wire BPM is a fractional f32 (60·sr/lag, median-smoothed);
+  // round to the integer the bundle's ring readout shows so the 96 px
+  // readout never overflows with '130.86151'-class strings.
+  const bpmRounded = $derived(Math.round(liveBpm));
+  const bpmLabel = $derived(liveSnapshot && !bpmReady ? '--' : String(bpmRounded));
 
-  let now = $state(0);
+  // Beat-phase accumulator in beats, wrapped to [0, 4).
+  let phase = $state(0);
   let reduceMotion = $state(false);
 
   $effect(() => {
@@ -74,22 +88,27 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   $effect(() => {
     if (reduceMotion) {
-      now = 0;
+      phase = 0;
       return;
     }
     let raf = 0;
-    const start = performance.now();
+    let last: number | null = null;
     const tick = (t: number): void => {
-      now = (t - start) / 1000;
+      const dt = last === null ? 0 : Math.max(0, (t - last) / 1000);
+      last = t;
+      // rAF callbacks run outside the tracked context; `untrack` makes
+      // the per-frame BPM read explicitly dependency-free so an engine
+      // BPM tick never restarts this effect (which would re-anchor the
+      // clock).
+      phase = (phase + (dt * untrack(() => liveBpm)) / 60) % 4;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   });
 
-  const beatPos = $derived((now * liveBpm) / 60);
-  const measureFrac = $derived((((beatPos / 4) % 1) + 1) % 1);
-  const beatIndex = $derived(Math.floor(beatPos % 4) + 1);
+  const measureFrac = $derived(phase / 4);
+  const beatIndex = $derived(Math.floor(phase) + 1);
 
   const VIEW = 40;
   const RADIUS = 16;
@@ -104,7 +123,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   role="img"
   aria-label={liveSnapshot !== null && !bpmReady
     ? `BPM ring warming, beat ${beatIndex} of 4`
-    : `BPM ring at ${liveBpm} BPM, beat ${beatIndex} of 4`}
+    : `BPM ring at ${bpmRounded} BPM, beat ${beatIndex} of 4`}
 >
   <svg viewBox="0 0 {VIEW} {VIEW}" aria-hidden="true">
     <circle class="bpm-ring__bg" cx={VIEW / 2} cy={VIEW / 2} r={RADIUS} />
@@ -140,7 +159,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     stroke: var(--color-primary);
     stroke-width: 3;
     stroke-linecap: round;
-    transition: stroke-dashoffset 100ms linear;
+    /* FIX 2 — no CSS transition on the live stroke-dashoffset. The rAF
+       clock is the only motion source; tweening a per-frame value adds
+       its duration as fixed lag on a moving target and renders the
+       measure wrap as a backwards un-sweep
+       (docs/dev/ui-smoothness-and-latency.md principle 5). */
     filter: drop-shadow(0 0 calc(4px * var(--glow, 1)) var(--color-primary));
   }
   .bpm-ring__val {

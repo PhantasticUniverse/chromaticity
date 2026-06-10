@@ -32,6 +32,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // The optional `snapshot` prop lets tests inject a fixed payload
   // without going through the singleton store; default behaviour reads
   // from the store.
+  //
+  // **Incremental beat phase.** The beat position is integrated per
+  // rAF frame (`phase += dt · bpm / 60`, wrapped to [0, 4) beats)
+  // instead of recomputed as elapsed-time × instantaneous-BPM, so a
+  // live BPM estimator update changes only the future stepping rate
+  // and never teleports the active dot (the old absolute product
+  // jumped by `elapsed · ΔBPM / 60` beats on every estimator wobble).
+
+  import { untrack } from 'svelte';
 
   import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
@@ -51,8 +60,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
   const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
   const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
+  // The wire BPM is a fractional f32 (60·sr/lag, median-smoothed);
+  // round to the integer the bundle shows for the accessible label.
+  const bpmRounded = $derived(Math.round(liveBpm));
 
-  let now = $state(0);
+  // Beat-phase accumulator in beats, wrapped to [0, 4).
+  let phase = $state(0);
   let reduceMotion = $state(false);
 
   $effect(() => {
@@ -68,20 +81,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   $effect(() => {
     if (reduceMotion) {
-      now = 0;
+      phase = 0;
       return;
     }
     let raf = 0;
-    const start = performance.now();
+    let last: number | null = null;
     const tick = (t: number): void => {
-      now = (t - start) / 1000;
+      const dt = last === null ? 0 : Math.max(0, (t - last) / 1000);
+      last = t;
+      // rAF callbacks run outside the tracked context; `untrack` makes
+      // the per-frame BPM read explicitly dependency-free so an engine
+      // BPM tick never restarts this effect (which would re-anchor the
+      // clock).
+      phase = (phase + (dt * untrack(() => liveBpm)) / 60) % 4;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   });
 
-  const cur = $derived(Math.floor(((now * liveBpm) / 60) % 4));
+  const cur = $derived(Math.floor(phase));
 
   const DOTS: ReadonlyArray<number> = [0, 1, 2, 3];
 </script>
@@ -91,7 +110,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   role="img"
   aria-label={liveSnapshot !== null && !bpmReady
     ? `Beat ${cur + 1} of 4, BPM warming`
-    : `Beat ${cur + 1} of 4 at ${liveBpm} BPM`}
+    : `Beat ${cur + 1} of 4 at ${bpmRounded} BPM`}
 >
   {#each DOTS as i (i)}
     <span

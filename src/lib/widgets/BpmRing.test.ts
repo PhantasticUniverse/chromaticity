@@ -11,6 +11,11 @@
 // `snapshot` prop is passed the widget reads BPM from `snapshot.bpm`;
 // `null`/missing falls back to the existing `bpm` prop / synthetic
 // rAF behaviour exactly as before.
+//
+// The incremental-phase fix adds rAF-pumped coverage: phase continuity
+// across a live BPM change, clean measure wrap, integer BPM display
+// formatting, and the FIX 2 no-transition regression on the live
+// stroke-dashoffset.
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render } from '@testing-library/svelte';
@@ -126,5 +131,102 @@ describe('BpmRing widget', () => {
     const { container } = render(BpmRing, { props: { bpm: 100, snapshot: null } });
     expect(container.querySelector('.bpm-ring__val')?.textContent).toBe('100');
     expect(container.querySelector('.bpm-ring')?.getAttribute('aria-label')).toContain('100 BPM');
+  });
+
+  it('rounds a fractional live BPM to an integer in the readout and aria-label', () => {
+    // The wire value is a fractional f32 (60·sr/lag); bare String()
+    // rendered '130.86151'-class strings that overflowed the readout.
+    const { container } = render(BpmRing, {
+      props: { snapshot: { ...SAMPLE_SNAPSHOT, bpm: 130.86151 } },
+    });
+    expect(container.querySelector('.bpm-ring__val')?.textContent).toBe('131');
+    expect(container.querySelector('.bpm-ring')?.getAttribute('aria-label')).toContain('131 BPM');
+  });
+
+  it('applies no inline transition to the foreground arc (FIX 2)', () => {
+    // FIX 2 removed `transition: stroke-dashoffset 100ms linear` from
+    // `.bpm-ring__fg` so the rAF clock is the only motion source and the
+    // measure wrap snaps instead of un-sweeping backwards. jsdom can't
+    // surface the scoped <style> rule via getComputedStyle, so assert
+    // nothing re-adds an inline transition on the moving circle.
+    const { container } = render(BpmRing);
+    const fg = container.querySelector<SVGCircleElement>('.bpm-ring__fg');
+    expect(fg).not.toBeNull();
+    expect(fg?.style.transition).toBe('');
+  });
+
+  it('keeps beat phase continuous across a live BPM change', async () => {
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const pump = async (tMs: number): Promise<void> => {
+      const cb = rafCbs.shift();
+      if (cb) cb(tMs);
+      await Promise.resolve();
+    };
+
+    const { container, rerender } = render(BpmRing, {
+      props: { snapshot: { ...SAMPLE_SNAPSHOT, bpm: 120 } },
+    });
+    const offsetOf = (): number =>
+      parseFloat(
+        container.querySelector('.bpm-ring__fg')?.getAttribute('stroke-dashoffset') ?? 'NaN',
+      );
+    const CIRC = 2 * Math.PI * 16;
+
+    // First frame anchors the clock (dt = 0); the second advances
+    // 0.75 s at 120 BPM → 1.5 beats → measureFrac 0.375.
+    await pump(0);
+    await pump(750);
+    const before = offsetOf();
+    expect(before).toBeCloseTo(CIRC * (1 - 0.375), 3);
+    expect(container.querySelector('.bpm-ring')?.getAttribute('aria-label')).toContain(
+      'beat 2 of 4',
+    );
+
+    // Live BPM jumps 120 → 140. Under the old elapsed×BPM math the
+    // phase would teleport by elapsed·ΔBPM/60 = 0.25 beats; incremental
+    // integration keeps the position pinned while no time elapses.
+    await rerender({ snapshot: { ...SAMPLE_SNAPSHOT, bpm: 140 } });
+    await pump(750); // dt = 0 — the BPM change alone must not move the arc
+    expect(offsetOf()).toBeCloseTo(before, 3);
+
+    // Future frames sweep at the NEW rate: +0.3 s at 140 BPM →
+    // +0.7 beats → phase 2.2 → measureFrac 0.55.
+    await pump(1050);
+    expect(offsetOf()).toBeCloseTo(CIRC * (1 - 0.55), 3);
+  });
+
+  it('wraps the measure cleanly back into [0, 1) past beat 4', async () => {
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const pump = async (tMs: number): Promise<void> => {
+      const cb = rafCbs.shift();
+      if (cb) cb(tMs);
+      await Promise.resolve();
+    };
+
+    const { container } = render(BpmRing, {
+      props: { snapshot: { ...SAMPLE_SNAPSHOT, bpm: 120 } },
+    });
+    const CIRC = 2 * Math.PI * 16;
+
+    // 2.25 s at 120 BPM → 4.5 beats → wraps to 0.5 → measureFrac 0.125.
+    await pump(0);
+    await pump(2250);
+    const offset = parseFloat(
+      container.querySelector('.bpm-ring__fg')?.getAttribute('stroke-dashoffset') ?? 'NaN',
+    );
+    expect(offset).toBeCloseTo(CIRC * (1 - 0.125), 3);
+    expect(container.querySelector('.bpm-ring')?.getAttribute('aria-label')).toContain(
+      'beat 1 of 4',
+    );
   });
 });
