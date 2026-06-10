@@ -45,6 +45,7 @@
   --color-signal-orange: #ff8a3d;
   --color-signal-violet: #9b6bff;
   --color-signal-lime: #b8ff3d;
+  --color-signal-green: #3dff8a;
   --color-signal-amber: #ffb64d;
   --color-signal-red: #ff4d5e;
 
@@ -72,6 +73,7 @@
   --font-size-display-sm: 14px;
   --font-size-body-md: 13px;
   --font-size-body-sm: 12px;
+  --font-size-body-xs: 11px;
   --font-size-label: 12px;
   --font-size-caps-sm: 9px;
   --font-size-caps-md: 10px;
@@ -96,6 +98,7 @@
 
   /* ------------- Spacing (2px base) ------------------------------------- */
   --space-unit: 2px;
+  --space-xxs: 2px;
   --space-xs: 4px;
   --space-sm: 6px;
   --space-md: 8px;
@@ -189,6 +192,7 @@
   --color-signal-orange: #b85a24;
   --color-signal-violet: #5a4a8a;
   --color-signal-lime: #4a6b2b;
+  --color-signal-green: #4a6b2b;
   --color-signal-amber: #8a6b1f;
   --color-signal-red: #a8332e;
 
@@ -245,6 +249,7 @@
   --color-signal-orange: #c88a4a;
   --color-signal-violet: #7a6aa8;
   --color-signal-lime: #a8b85a;
+  --color-signal-green: #6aa88a;
   --color-signal-amber: #c89a4a;
   --color-signal-red: #c84a5a;
 
