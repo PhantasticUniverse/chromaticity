@@ -5,11 +5,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 # Live Render Pipeline — Design Proposal (ADR-011 Phase-2)
 
-> **STATUS: PROPOSAL — pending AO ratification. Implementation is blocked on
-> sign-off.** This is a design input, not a decision. The ADR-011 / ADR-018
-> amendments in §3 are AO-held and non-delegable; this document only frames
-> them. Produced by a multi-agent design pass (understand → three independent
-> architecture proposals → scored synthesis) grounded in the current code.
+> **STATUS: IMPLEMENTED THROUGH SLICE R-1c (2026-06-05, AO-approved in-session
+> and AO-verified on hardware).** R-0 (engine prereqs: `render_frame_live`
+> feedback persistence), R-1a (no-webview GPU output window + present thread),
+> R-1b (live `.chroma` scene via `from_scene_live`), and R-1c (live
+> audio-reactive uniforms + render-side PPM ballistics) are landed on
+> `fix/cpal-global-tap`. R-2 (in-app preview), R-3 follow-ons (ADR-024
+> Phase 1b), and R-4 (shader-cache wiring) remain open; the ADR-011 / ADR-018
+> amendments in §3 stay AO-held and non-delegable. The sections below are the
+> original design pass (understand → three independent architecture proposals
+> → scored synthesis), retained as the implementation's design record.
 
 ## Goal
 

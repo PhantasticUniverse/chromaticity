@@ -9,7 +9,8 @@ This is a living, repo-wide snapshot of every surveyed feature's implementation 
 a defensible 0–10 quality rating, and an honest real-vs-synthetic accounting. It is an
 engineering field map, **not** a gate record.
 
-- **Last surveyed:** 2026-06-05
+- **Last surveyed:** 2026-06-05 (audio + render lanes re-audited 2026-06-10: R-1b/R-1c
+  landings, system-audio tap hardware-verification evidence, archetype vec4 migration)
 - **Scope:** 11 lanes (audio, render, runtime, scene-authoring, integrations-io,
   data-ingest, entitlement, observability, ui-views, ui-widgets-ipc,
   release-docs-policy).
@@ -95,8 +96,10 @@ tests), the deterministic scheduler/state/migration/crash-resume core is wired i
 60 Hz commit thread, and the control/snap/preset/settings/MIDI/OSC IPC seams round-trip
 into the engine command bus. The **render** GPU pipeline (wgpu 26 + naga, multipass,
 feedback ping-pong, GPU crossfade) is production-grade and hardware-verified on Apple
-Silicon Metal — but live rendering is only at R-1a (an env-gated window presenting a
-hardcoded test pattern); the in-app Perform preview is still canvas-2d procedural.
+Silicon Metal, and live rendering reached R-1c (2026-06-05): the env-gated output
+window renders a live `.chroma` scene through `from_scene_live` with live
+audio-reactive uniforms (PPM-ballistics-smoothed), AO-verified on hardware. The
+in-app Perform preview is still canvas-2d procedural.
 
 The biggest gaps cluster in three places: (1) the **entitlement** lane is a
 well-tested *library with zero runtime callers* — `entitled()` is never invoked,
@@ -125,12 +128,14 @@ Prioritized from low ratings, the critique's false-pass observations, and the
   The negotiator has a Degraded state machine the runtime never reads, so the UI AUDIO
   pill's degraded state can only fire from a hand-injected payload, never from a genuine
   engine ingest-degradation.
-- **macOS system-audio IOProc tap is implemented + reviewed but NOT hardware-verified.**
-  ADR-022 Amendment + `UPSTREAM-VERSION.md` name on-hardware sine-probe verification as
-  "the remaining gate." CLAUDE.md's "hardware-verified clean raw_peak=0.5" claim is
-  uncorroborated in the tree.
-- **Live render is only R-1a.** The GPU pipeline is production-grade but only renders a
-  hardcoded test pattern behind `CHROMA_RENDER_OUTPUT`; the Perform preview is canvas-2d
+- ~~macOS system-audio IOProc tap NOT hardware-verified~~ **RESOLVED (re-audited
+  2026-06-10):** the sine probe passed on hardware 2026-06-03 (recorded in CLAUDE.md at
+  commit `c3e2f65`, `raw_peak` exactly 0.5) and the AO confirmed live system-audio
+  reactivity in the GUI 2026-06-05. ADR-022's "remaining gate" wording predates the
+  verification (AO-gated doc; flagged for AO update). `UPSTREAM-VERSION.md` corrected.
+- **Live render reached R-1c, not full ADR-011 Phase-2.** The output window renders
+  live `.chroma` scenes with live audio (R-1b/R-1c, 2026-06-05), but stays env-gated
+  (`CHROMA_RENDER_OUTPUT` / dev-harness `--output`); the Perform preview is canvas-2d
   procedural; the scheduler `RenderDispatch` seam has no production implementor; the
   shader cache is architecturally orphaned from `multipass.rs` (recompiles per tick).
 - **Hotkey vocabulary is data-only at runtime.** 57 rows exist as data + a read-only
@@ -155,14 +160,15 @@ Prioritized from low ratings, the critique's false-pass observations, and the
 
 > The most mature lane: capture, AGC reactive bands, FFT/BPM, producer runtime, IPC
 > bridge, and DAW-grade frontend metering are all live, wired, and pass 150 Rust + 64
-> frontend tests. Two caveats: the macOS system-audio IOProc tap is implemented but not
-> hardware-verified, and `snapshot.degraded` is hardcoded `false` so the UI degraded
-> pill can never fire from a real engine degradation.
+> frontend tests. The macOS system-audio IOProc tap is hardware-verified (sine probe
+> 2026-06-03; AO live use 2026-06-05). Remaining caveat: `snapshot.degraded` is
+> hardcoded `false` so the UI degraded pill can never fire from a real engine
+> degradation.
 
 | Feature | Status | Rating | EV-IDs | Implementation | Notes |
 | --- | --- | --- | --- | --- | --- |
 | cpal capture pipeline (mic/line-in, owner-thread + bounded-channel + catch_unwind FFI seam, f32/i16/u16) | shipped | 8 | EV-AUDIO-TRACE, EV-AUDIO-ROUTING-MATRIX | `engine/audio/src/cpal_source.rs:506/787/1118`; `ingest.rs`; `frame.rs` | Production-grade: owner-thread isolates the !Send `cpal::Stream`, bounded crossbeam channel decouples the audio thread, AtomicBool coerces caught panics to Closed. `unsafe_code=forbid` honored. Only f32/i16/u16 formats handled (others surface as error, additive widening). Fully live — real callbacks feed real AudioFrames. |
-| macOS system-audio loopback (zero-install direct AudioDeviceCreateIOProcIDWithBlock IOProc tap, ADR-022 amendment) | live-partial | 5 | EV-AUDIO-ROUTING-MATRIX | `engine/audio/src/cpal_source.rs:999/1082`; `third_party/cpal/.../device.rs:965/1062`; `loopback.rs` | Vendored cpal 0.17.1 patch (6 changes) compiles clean; code path real and wired (system-audio sentinel routes here). NOT hardware-verified — sine-probe verification is "the remaining gate" per ADR-022 Amendment + `UPSTREAM-VERSION.md`. Degrades to default input on failure, never silent. (adj.) commit a199978 IS real in history; CLAUDE.md's "hardware-verified clean raw_peak=0.5" is uncorroborated in-tree — the unverified caveat stands. |
+| macOS system-audio loopback (zero-install direct AudioDeviceCreateIOProcIDWithBlock IOProc tap, ADR-022 amendment) | shipped | 8 | EV-AUDIO-ROUTING-MATRIX | `engine/audio/src/cpal_source.rs:999/1082`; `third_party/cpal/.../device.rs:965/1062`; `loopback.rs` | Vendored cpal 0.17.1 patch (7 changes, see `UPSTREAM-VERSION.md`) compiles clean; system-audio sentinel routes here. **Hardware-verified:** sine probe passed 2026-06-03 (`raw_peak` exactly 0.5, recorded at commit `c3e2f65`); AO confirmed live system-audio reactivity in the GUI 2026-06-05. Degrades to default input on failure, never silent. Tap consent requires the signed `.app` (dev harness); raw binaries can't tap. ADR-022's "remaining gate" wording predates the verification (AO-gated; flagged). |
 | Device preference resolution (default/system-audio sentinels, persisted selection, try_input_by_preference) | shipped | 8 | EV-AUDIO-ROUTING-MATRIX, EV-AUDIO-UNIFORM-IPC | `engine/audio/src/cpal_source.rs:599/657/683/779`; `runtime.rs:313`; `app/shell/src/lib.rs:216-226` | Clean sentinel routing (default → host input; system-audio → loopback w/ graceful fallback; id/name → that device). Wired end-to-end; Settings → Audio dropdown persists the literal and it is honored at startup. Apply-at-startup only (live re-bind deferred). |
 | MilkDrop-class per-band AGC reactive bands (ReactiveBands, volume-independent bass/mid/treb + *_att, ADR-024) | shipped | 9 | EV-AUDIO-TRACE | `engine/audio/src/reactive_bands.rs:107/164/229`; wired `runtime.rs:469-483` | Excellent: dual-EMA fast-attack/slow-release + slow long-avg AGC, FPS-compensated smoothing, butterchurn perceptual band edges, silence guard centring on 1.0. 6 T1 drift pins cover volume independence (the killer property). Fully live and wired into the producer loop. |
 | FFT/RMS/peak/BPM uniform extraction (8-band log FFT, autocorrelation BPM, per-axis availability) | shipped | 8 | EV-AUDIO-TRACE, EV-AUDIO-UNIFORM-IPC | `engine/audio/src/uniforms.rs:378/282/533/633/395`; `bpm.rs`; `runtime.rs:491-504` | Solid: 8-band log Hann FFT, RMS/peak over recent window, autocorrelation BPM clamped [50,220] + 8-frame median smoothing, BPM decoupled to 250ms background cadence. Per-axis Warming/Ready computed live. Fully live. |
@@ -179,19 +185,19 @@ Prioritized from low ratings, the critique's false-pass observations, and the
 
 > The engine GPU pipeline (wgpu 26 + naga, multipass, feedback ping-pong, GPU crossfade,
 > adapter selection) is production-grade and hardware-verified on Apple Silicon Metal
-> (173 tests), but LIVE rendering is only at R-1a: an opt-in native window presents a
-> hardcoded test pattern, not real scenes. The Perform preview is canvas-2d procedural;
-> the RenderDispatch seam, Scene→spec live drive, shader-cache wiring, and color HUD are
-> scaffolded/deferred/planned.
+> (173 tests), and LIVE rendering reached R-1c (2026-06-05): the opt-in native window
+> renders real `.chroma` scenes via `from_scene_live` with live audio-reactive uniforms
+> (PPM ballistics). The Perform preview is canvas-2d procedural; the RenderDispatch
+> seam, shader-cache wiring, and color HUD are scaffolded/deferred/planned.
 
 | Feature | Status | Rating | EV-IDs | Implementation | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Offscreen multipass render pipeline (wgpu 26 + naga GLSL 4.50 → SPIR-V, MultipassRenderer, prior-pass sampling, std140) | shipped | 9 | EV-RENDER-CONFORMANCE | `engine/render/src/multipass.rs:530/720/755`; `single_pass.rs`; `tests/multipass.rs` | Mature, well-factored: long-lived Instance/Adapter/Device/Queue + cached fullscreen-triangle VS, per-pass cascade w/ cycle rejection, std140 uniforms. 173 tests pass on Metal. Offscreen-only (no surface); DX12 deferred (windows-rs conflict); Vulkan/Metal/GLES enabled. |
 | Feedback ping-pong (inter-tick persistence) via render_frame_live | shipped | 8 | EV-RENDER-CONFORMANCE | `engine/render/src/multipass.rs:809/848/907`; `tests/feedback.rs` | R-0 correctness fix: FeedbackCache ping-pongs textures across calls so feedback survives between ticks. Hardware-verified GPU persistence. Only the live caller is a feedback-free test pattern, so persistence is corpus-verified, not yet driven by a real feedback scene. |
-| Live GPU output window (R-1a: surface + render thread + blit + present) | live-partial | 6 | EV-RENDER-CONFORMANCE, EV-PLATFORM-CONFORMANCE | `app/shell/src/render/mod.rs:55`; `output_window.rs:137`; `thread.rs:171`; `blit.rs`; `pattern.rs`; `multipass.rs:575`; `lib.rs:381` | R-1a wired end-to-end + **human-verified 2026-06-05** (animated gradient, correct RGBA channel order, ~60fps): plain **no-webview** `tauri::window::Window` (Tauri `unstable`) + `Surface<'static>` on main thread, Send bundle moved to a 60fps present thread w/ full surface-error/resize/shutdown handling. NO unsafe. A `WebviewWindow`'s WKWebView first occluded the Metal layer (rendered white) — fixed by the plain window. BUT env-gated (`CHROMA_RENDER_OUTPUT`, off by default), renders only a hardcoded test pattern (no scene/scheduler/controls — R-1b/R-1c unbuilt); GPU/GUI path human-verify only (not auto-tested). |
+| Live GPU output window (R-1a surface/thread/blit + R-1b live scene + R-1c live audio) | live-partial | 7 | EV-RENDER-CONFORMANCE, EV-PLATFORM-CONFORMANCE | `app/shell/src/render/mod.rs:55`; `output_window.rs:137`; `thread.rs:171`; `scene_source.rs`; `audio_smooth.rs`; `blit.rs`; `lib.rs:381` | R-1a/b/c wired end-to-end + **AO-verified 2026-06-05** (live plasma + audio-reactivity diagnostic card reacting to capture): plain **no-webview** `tauri::window::Window` (Tauri `unstable`) + `Surface<'static>` on main thread, Send bundle moved to a 60fps present thread w/ full surface-error/resize/shutdown handling; `LoadedScene` resolves `.chroma` per frame via `from_scene_live`; live audio snapshot smoothed by instant-attack/slow-release PPM ballistics (`audio_smooth.rs`, benchmark-tuned — see `docs/dev/audio-reactivity-latency-budget.md`). NO unsafe. Remaining: env-gated opt-in (`CHROMA_RENDER_OUTPUT` / dev-harness `--output --scene`), no scheduler/controls drive (RenderDispatch unwired), test-pattern fallback on load failure, GPU/GUI path human-verify only. |
 | In-app Perform preview (live GPU) | stub | 2 | EV-RENDER-CONFORMANCE | `src/lib/widgets/scene-renderers.ts:766`; `SceneCanvas.svelte`; `docs/dev/live-render-pipeline-design-proposal.md` | NOT GPU: canvas-2d procedural adapter parses the loaded GLSL + honors the control schema visually but does not rasterize the shader. Matches CLAUDE.md synthetic-only. R-2 CPU-readback-JPEG preview is proposed only. |
 | Scheduler render-dispatch seam (RenderDispatch trait) | scaffolded | 4 | EV-RENDER-CONFORMANCE | `engine/runtime/src/scheduler/render.rs:80/101`; `scheduler/mod.rs:253/365` | Trait + outcome enum + scheduler hook are real and tested with stubs, with proper tick ordering. NO production implementor: the live render thread bypasses it (fixed pattern, not State). State → MultipassSpec bridge is post-Phase-3 and unbuilt. |
-| Scene → MultipassSpec adapter (control_values injection, R-0c) | live-partial | 6 | EV-RENDER-CONFORMANCE | `engine/render/src/scene_adapter.rs:210/224/186/280-290`; `tests/scene_adapter.rs` (feature-gated) | Real, tested data transform: maps Scene → MultipassSpec, injects matching scalar uniforms into PassDef.uniforms. Not yet consumed by any live render loop (R-1a renders a hardcoded pattern). Wiring into render_frame_live is the R-1b target. |
+| Scene → MultipassSpec adapter (control_values + live reactive uniforms, R-0c/R-1b) | shipped | 8 | EV-RENDER-CONFORMANCE | `engine/render/src/scene_adapter.rs` (`from_scene_live`, `resolve_reactive_symbol`, `LiveUniforms`); `tests/scene_adapter.rs` (feature-gated) | Real, tested data transform: maps Scene → MultipassSpec, resolves every UNIFORMS binding in declaration order (TIME/RENDERSIZE/`chroma_Audio*` symbols → live values; control NAMEs → control_values; else zero-fill; `syn_FinalPass` rejected as LiveFeedbackTextureUnsupported). **Consumed live** every frame by the output window render thread via `LoadedScene::frame_spec` (R-1b, 2026-06-05). |
 | Transition orchestration + GPU crossfade composition | shipped | 8 | EV-RENDER-CONFORMANCE | `engine/render/src/transitions.rs`; `composition.rs`; `tests/transitions.rs`, `tests/transition_composition.rs` | Complete warm-switch lifecycle per ADR-007 (Idle→…→CommitNext) as a GPU-free state machine + 500ms timeout-degrades-to-hard-cut, plus a real GPU blend pass (mix() of current+next, endpoint byte-identity). 22 tests pass on Metal. Not yet driven by a live scene-switch trigger. |
 | GPU adapter selection policy (EV-GPU-SELECTION) | live-partial | 6 | EV-GPU-SELECTION | `engine/render/src/adapter_selection.rs:333`; `multipass.rs:619` | Real ADR-011 Sec.7 deterministic ranking + operator-override input, routed through both adapter-acquisition sites. Registry = Pass. Synthetic: inline 12-fixture T2 corpus (no real multi-GPU); persistence/battery/TDR/hot-plug are flag-only stubs. R-1a surface path requests adapter via `compatible_surface` and does NOT route through the ADR-011 policy (documented R-1 deferral). |
 | Shader cache (cold-vs-warm compile, EV-SHADER-CACHE) | synthetic-only | 4 | EV-SHADER-CACHE | `engine/render/src/shader_cache.rs`; `benches/shader_cache.rs`; `tests/shader_cache_corpus.rs`; NOT referenced from `multipass.rs:670/1324/1698` | Real measurement wrapper + criterion bench, but architecturally ORPHANED from the render path: multipass creates shader modules directly per pass per call, so the live loop recompiles fragments every tick (R-4 prereq, unbuilt). Registry = Pass but explicitly observation-only (no budget enforcement). |

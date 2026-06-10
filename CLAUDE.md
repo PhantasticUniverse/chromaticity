@@ -184,12 +184,21 @@ plus the `mini_meter` rubric harness landed (Phase 0), and **Phase 1a wired
 `ReactiveBands` into the live producer runtime** and widened `AudioUniformSnapshot`
 / its ts-rs payload with the six relative bands (`bass`/`mid`/`treb` + `*_att`,
 default neutral 1.0; additive, no ADR-023 metering overlap; round-trip green,
-docs/06 §7.15). The drain-all/fixed-cadence ingest drop-fix landed earlier. Still
-to come: Phase 1b EXCEED levers (K-weighted LUFS — coordinated with ADR-023 — Mel
-bands, hysteresis gate, dual raw/normalized uniforms) + Phase 2 consumption (the
-render-side `chroma_AudioBass`/… uniforms + docs/36 symbols + a frontend widget
-reading the relative bands). IPC transport + webview render proven; Windows WASAPI
-loopback unaffected. Run/test + audio-diagnostics guide:
+docs/06 §7.15). The drain-all/fixed-cadence ingest drop-fix landed earlier.
+**Live render reached R-1c (2026-06-05, AO-verified):** the env-gated GPU output
+window (plain no-webview `tauri::window::Window`; `CHROMA_RENDER_OUTPUT` /
+dev-harness `--output --scene`) renders `.chroma` scenes per frame via
+`from_scene_live`, with the render-side `chroma_AudioBass`/… + `chroma_AudioFFT`
+uniforms LIVE (`scene_adapter.rs::resolve_reactive_symbol`) and PPM
+instant-attack/slow-release ballistics (`app/shell/src/render/audio_smooth.rs`;
+benchmark + budget: `docs/dev/audio-reactivity-latency-budget.md`). GLSL
+convention: FloatArray uniforms MUST be `vec4 arr[N]` read via `.x` (naga reads
+`float[N]` at 4-byte stride vs the engine's 16-byte slots; corpus-test-enforced).
+Still to come: Phase 1b EXCEED levers (K-weighted LUFS — coordinated with ADR-023
+— Mel bands, hysteresis gate, dual raw/normalized uniforms), the causal-window
+group-delay fix (latency-budget fix #3), docs/36 symbol-catalog entries + a
+frontend widget reading the relative bands. IPC transport + webview render
+proven; Windows WASAPI loopback unaffected. Run/test + audio-diagnostics guide:
 `docs/dev/macos-desktop-run-and-audio-diagnostics.md`.
 
 Pre-alpha hardening (rounds 1–3, PRs `#482`–`#489`) closed a `/ultrareview`
@@ -212,9 +221,10 @@ compat dual-emit window (canonical + singular-alias outbound emit, opt-in).
 
 **What remains synthetic-only:**
 
-- **Live preview render pipeline** — ADR-011 Phase-2+ deferred. `set_control`
-  reaches the engine but the Perform preview pane is a canvas-2d procedural
-  adapter (`src/lib/widgets/scene-renderers.ts`), not the live GPU pipeline; the
+- **In-app Perform PREVIEW pane** (distinct from the GPU OUTPUT window, which
+  IS live since R-1c) — `set_control` reaches the engine but the Perform
+  preview pane is a canvas-2d procedural adapter
+  (`src/lib/widgets/scene-renderers.ts`), not the live GPU pipeline; the
   loaded GLSL is parsed and the control schema honored, just not rasterised.
   The adapter honours `rotation_speed` / `warp_amount` on rings/orbit/tunnel/
   fluid/plasma + universal `invert` / `mirror`; unmapped controls render dimmed
