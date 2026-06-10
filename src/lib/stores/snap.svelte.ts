@@ -24,7 +24,11 @@
 // reject. The store swallows that failure and leaves state at the
 // no-snap baseline (`activeSlot = null`, `saved = [false × 8]`),
 // mirroring the `audioSnapshot.svelte.ts` Wave 1c-α precedent so the
-// SnapBar widget keeps rendering with the empty visual state.
+// SnapBar widget keeps rendering with the empty visual state. When a
+// Tauri runtime IS present (`window.__TAURI_INTERNALS__` injected),
+// `refresh()` records the rejection in `error` instead — a real
+// engine failure must not be indistinguishable from running outside
+// Tauri.
 
 /** Number of SnapBar slots exposed to the widget. The engine surface
  *  is 16 slots (`SnapSlotId::MAX = 15`); the SnapBar surface trims that
@@ -53,7 +57,12 @@ class SnapStore {
    * reject; the failure is swallowed and state stays at the no-snap
    * baseline (active=null, saved=all-false). Mirrors the
    * `audioSnapshot.svelte.ts::subscribe` and
-   * `loadedScene.svelte.ts::hydrate` fallback paths.
+   * `loadedScene.svelte.ts::hydrate` fallback paths. When a Tauri
+   * runtime IS present (`window.__TAURI_INTERNALS__` injected — the
+   * same signal `types/ipc-error.ts` and `views/Library.svelte` key
+   * off), a rejection is a real engine failure (poisoned mutex,
+   * CommandBusError) and is recorded in `error` for the SnapBar
+   * inline error surface.
    */
   async refresh(): Promise<void> {
     try {
@@ -71,9 +80,20 @@ class SnapStore {
           : null;
       this.saved = saved;
       this.error = null;
-    } catch {
-      // Swallow — no Tauri runtime available; state stays at the
-      // no-snap baseline so the SnapBar widget renders empty.
+    } catch (err) {
+      // Dual-mode discrimination: with no Tauri runtime present
+      // (vite-only dev, un-mocked Vitest jsdom) the rejection is the
+      // documented fallback — swallow it and leave state at the
+      // no-snap baseline so the SnapBar widget renders empty. With a
+      // Tauri runtime present the rejection is a real engine failure
+      // on mount-time hydration; record it so the SnapBar error
+      // surface shows it instead of silently rendering empty.
+      if (
+        typeof window !== 'undefined' &&
+        Object.prototype.hasOwnProperty.call(window, '__TAURI_INTERNALS__')
+      ) {
+        this.error = err instanceof Error ? err.message : String(err);
+      }
     }
   }
 

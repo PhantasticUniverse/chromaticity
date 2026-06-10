@@ -44,6 +44,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // set keeps the wireframe-faithful default visible on first launch.
   import { onMount, tick } from 'svelte';
 
+  import ErrorMessage from '../ErrorMessage.svelte';
   import Icon from '../Icon.svelte';
   import SceneStill from './SceneStill.svelte';
   import { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
@@ -73,6 +74,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let renamingSlot: number | null = $state(null);
   let renameDraft: string = $state('');
   let renameInputEl: HTMLInputElement | null = $state(null);
+
+  // Captures whether a rename was open at pointerdown time. On
+  // Chromium engines the rename input's blur (which commits the rename
+  // and nulls `renamingSlot`) fires during mousedown — BEFORE the
+  // click event reaches `handleClick` — so the `renamingSlot !== null`
+  // guard alone is dead for cross-slot clicks. Pointerdown fires before
+  // focus moves, so this flag survives the blur-commit and lets the
+  // click guard suppress the recall/save/clear dispatch. Plain `let`
+  // (not `$state`): never read by the template.
+  let renameOpenAtPointerDown = false;
 
   function labelFor(slot: SnapSlot): string {
     return snapLabelsStore.label(slot.i, slot.name);
@@ -112,10 +123,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       event.preventDefault();
       event.stopPropagation();
       cancelRename();
-    } else if (event.key === ' ') {
-      // Space is the SnapBar's recall hotkey on a focused slot; while
-      // the rename input is open it should insert a literal space.
-      event.stopPropagation();
     }
   }
 
@@ -129,15 +136,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     return idx >= 0 && idx < snapStore.saved.length && snapStore.saved[idx] === true;
   }
 
+  function handlePointerDown(): void {
+    renameOpenAtPointerDown = renamingSlot !== null;
+  }
+
   function handleClick(event: MouseEvent, slot: number): void {
     // Suppress recall / save / clear while an inline rename is open
     // for any slot — the rename input owns input focus and click
-    // dispatch should not double-fire engine snap IPC.
-    if (renamingSlot !== null) {
+    // dispatch should not double-fire engine snap IPC. The
+    // `renameOpenAtPointerDown` flag covers Chromium's blur-before-
+    // click ordering where `renamingSlot` is already null by click
+    // time (see its declaration comment).
+    if (renamingSlot !== null || renameOpenAtPointerDown) {
+      renameOpenAtPointerDown = false;
       event.preventDefault();
       event.stopPropagation();
       return;
     }
+    renameOpenAtPointerDown = false;
     if (onPick) {
       onPick(slot);
       return;
@@ -176,19 +192,31 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <div class="snap-bar" aria-label="Snap slots">
   <div class="snap-bar__label">Snap</div>
   {#each slots as slot (slot.i)}
-    <button
-      type="button"
+    <!-- While the slot is in inline-rename mode the root swaps from a
+         <button> to a <div role="group"> so the rename <input> is not
+         an interactive descendant of a button (invalid per the WHATWG
+         button content model; axe `nested-interactive`). Button-only
+         attributes and handlers are absent in rename mode. -->
+    <svelte:element
+      this={renamingSlot === slot.i ? 'div' : 'button'}
+      type={renamingSlot === slot.i ? undefined : 'button'}
+      role={renamingSlot === slot.i ? 'group' : undefined}
       class="snap-slot"
       class:snap-slot--on={activeSlot === slot.i}
       class:snap-slot--saved={isSaved(slot.i)}
       class:snap-slot--empty={!isSaved(slot.i) && activeSlot !== slot.i}
       class:snap-slot--renaming={renamingSlot === slot.i}
       style="--tint: {slot.tint};"
-      onclick={(event) => handleClick(event, slot.i)}
-      onkeydown={(event) => handleKeydown(event, slot.i)}
-      oncontextmenu={(event) => handleContextMenu(event, slot)}
-      title={`${labelFor(slot)} · ${slot.scene}  (press ${slot.i}; Cmd-click to save, Alt-click to clear, right-click to rename)`}
-      aria-pressed={activeSlot === slot.i}
+      onpointerdown={renamingSlot === slot.i ? undefined : handlePointerDown}
+      onclick={renamingSlot === slot.i
+        ? undefined
+        : (event: MouseEvent) => handleClick(event, slot.i)}
+      onkeydown={renamingSlot === slot.i
+        ? undefined
+        : (event: KeyboardEvent) => handleKeydown(event, slot.i)}
+      oncontextmenu={(event: MouseEvent) => handleContextMenu(event, slot)}
+      title={`${labelFor(slot)} · ${slot.scene}  (Cmd-click to save, Alt-click to clear, right-click to rename)`}
+      aria-pressed={renamingSlot === slot.i ? undefined : activeSlot === slot.i}
     >
       <span class="snap-slot__thumb" aria-hidden="true">
         <SceneStill kind={slot.kind} seed={slot.seed} width={100} height={44} />
@@ -203,14 +231,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             bind:this={renameInputEl}
             onkeydown={handleRenameKeydown}
             onblur={commitRename}
-            onclick={(event) => event.stopPropagation()}
             aria-label={`Rename Snap slot ${slot.i}`}
           />
         {:else}
           <span class="snap-slot__name">{labelFor(slot)}</span>
         {/if}
       </span>
-    </button>
+    </svelte:element>
   {/each}
   <button
     type="button"
@@ -221,6 +248,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   >
     <Icon name="plus" size={14} />
   </button>
+  <!-- Inline error surface for failed recall / save / clear / refresh
+       IPC — same `ErrorMessage` idiom as `views/Osc.svelte`. Renders
+       nothing while `snapStore.error` is null. -->
+  <ErrorMessage error={snapStore.error} />
 </div>
 
 <style>
@@ -319,7 +350,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     letter-spacing: 0.04em;
   }
   .snap-slot__name {
-    color: var(--color-text-0);
+    /* Theme-invariant light text: the label sits on the hardcoded dark
+     * scrim above (`.snap-slot__thumb::after`), not on a themed
+     * surface — `var(--color-text-0)` is near-black in Atelier and
+     * unreadable here. Matches the `MediaCard` scrim-overlay
+     * convention (`color: #fff` over `rgba(0, 0, 0, …)`). */
+    color: #fff;
     font-size: var(--font-size-caps-sm);
     letter-spacing: 0.02em;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
@@ -337,7 +373,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: rgba(0, 0, 0, 0.65);
     border: 1px solid var(--tint, var(--color-primary));
     border-radius: var(--radius-xs, 2px);
-    color: var(--color-text-0);
+    /* Theme-invariant light text over the hardcoded dark input
+     * background — same rationale as `.snap-slot__name` above. */
+    color: #fff;
     font-family: inherit;
     font-size: var(--font-size-caps-sm);
     letter-spacing: 0.02em;

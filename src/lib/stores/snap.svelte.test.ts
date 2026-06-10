@@ -137,6 +137,29 @@ describe('snapStore', () => {
 
     expect(snapStore.activeSlot).toBeNull();
     expect(snapStore.saved.every((s) => s === false)).toBe(true);
+    // The dual-mode swallow records nothing — running outside Tauri
+    // is not an error condition.
+    expect(snapStore.error).toBeNull();
+  });
+
+  it('refresh() records invoke rejection as error when a Tauri runtime is present', async () => {
+    // Same `window.__TAURI_INTERNALS__` injection idiom as
+    // `views/Library.test.ts` — the store discriminates a real engine
+    // failure from the no-Tauri fallback via runtime presence.
+    const w = window as unknown as { __TAURI_INTERNALS__?: unknown };
+    w.__TAURI_INTERNALS__ = {};
+    try {
+      invokeMock.mockRejectedValue(new Error('snap state mutex poisoned'));
+
+      await expect(snapStore.refresh()).resolves.toBeUndefined();
+
+      expect(snapStore.error).toBe('snap state mutex poisoned');
+      // State stays at the no-snap baseline — no partial hydration.
+      expect(snapStore.activeSlot).toBeNull();
+      expect(snapStore.saved.every((s) => s === false)).toBe(true);
+    } finally {
+      delete w.__TAURI_INTERNALS__;
+    }
   });
 
   it('reset() returns the store to the no-snap baseline', async () => {
