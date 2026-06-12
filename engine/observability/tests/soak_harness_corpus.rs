@@ -183,51 +183,109 @@ mod fixtures {
     }
 
     #[test]
-    fn tick_count_within_one_of_duration_over_interval() {
-        // 500ms duration / 16ms interval ~= 31-32 ticks. Allow a
-        // generous +/-5 ticks of slack to absorb scheduler jitter on
-        // shared CI hardware.
+    fn tick_count_tracks_duration_over_interval_under_scheduler_jitter() {
+        // 800ms duration / 16ms interval = 50 nominal ticks.
+        //
+        // Upper bound 53: structural — the drift-corrected timer
+        // cannot start tick N before `t0 + N * tick_interval`, so the
+        // loop cannot deliver more than ceil(800/16) + 1 ticks on any
+        // host. This side catches a busy-spin / broken-deadline
+        // regression and never flakes.
+        //
+        // Lower bound 30 (60% of nominal): shared-CI macos runners
+        // deschedule the soak thread for long stretches. The drift-
+        // corrected timer catches up in bursts afterwards, EXCEPT
+        // when the stall straddles the duration cutoff — those ticks
+        // are permanently truncated. Observed on macos-nightly
+        // 2026-05-30 through 2026-06-10 at the previous 500ms
+        // duration: 24-26 ticks of 31 nominal (a ~115-180ms tail
+        // loss) tripping the old [27, 36] band roughly every other
+        // night. 800ms amortizes the same absolute tail loss to a
+        // ~39-45-tick floor while 30 still catches the regression
+        // classes this fixture exists for: a harness sleeping 2x the
+        // interval delivers ~25 ticks, and a 40%+ scheduler-loss
+        // regression lands below the bound. Precedent: the T1 pin in
+        // `soak.rs` and the percentile fixture below took the same
+        // widen-and-document path after the 2026-05-10 macos-nightly
+        // incident.
         let mut workload = ConstantWorkload {
             per_tick: Duration::from_micros(50),
         };
-        let config = fast_config(Duration::from_millis(500));
+        let config = fast_config(Duration::from_millis(800));
         let report = run_soak(&mut workload, &config).unwrap();
         assert!(
-            report.tick_count >= 27 && report.tick_count <= 36,
-            "tick_count={} out of [27, 36]",
+            report.tick_count >= 30 && report.tick_count <= 53,
+            "tick_count={} out of [30, 53]",
             report.tick_count
         );
     }
 
     #[test]
     fn stability_failure_records_at_offset_correctly() {
-        // OneShotOverrunWorkload fires at tick 5 with a 16ms
-        // tick_interval; the at_offset should be ~5 * 16ms = ~80ms,
-        // allow +/-50ms of slack.
-        let at_tick: u64 = 5;
+        // OneShotOverrunWorkload fires at tick 5. The assertions pin
+        // hard scheduling invariants rather than wall-clock proximity:
+        //
+        // - Lower bound: the drift-corrected timer sleeps tick N to
+        //   at least `t0 + N * tick_interval`, so the recorded
+        //   at_offset can never be earlier than 5 * 16ms = 80ms
+        //   (catches an at_offset stamped at zero or from the wrong
+        //   tick).
+        // - Upper bound: the failure record exists only if tick 5
+        //   started before the duration cutoff, so at_offset is below
+        //   `config.duration` by construction whenever the lookup
+        //   succeeds (catches an at_offset stamped at report
+        //   generation).
+        // - recorded_value carries the workload's self-reported
+        //   elapsed — pure data, no clock — pinning the payload.
+        //
+        // The +/-50ms proximity band this replaces assumed nominal
+        // scheduler delivery and flaked on loaded shared runners
+        // (macos-nightly 2026-05-30 through 2026-06-12: seven red
+        // nights, observed at_offset 130-154ms = 50-74ms of
+        // cumulative sleep overshoot across five 16ms ticks).
+        // Proximity to the nominal 80ms is a performance property of
+        // the host, not a correctness property of the harness. Same
+        // invariant style as the chaos corpus's dropout fixture
+        // (`chaos_soak_corpus.rs` asserts `at_offset >= 80ms` plus
+        // cross-record equality, no upper proximity).
+        let at_tick: u32 = 5;
+        let overrun = Duration::from_millis(50);
         let mut workload = OneShotOverrunWorkload {
             per_tick: Duration::from_micros(50),
-            overrun_elapsed: Duration::from_millis(50),
-            at_tick,
+            overrun_elapsed: overrun,
+            at_tick: u64::from(at_tick),
             current_tick: 0,
         };
         let config = fast_config(Duration::from_millis(300));
         let report = run_soak(&mut workload, &config).unwrap();
-        let drift = report
+        // per_tick (50us) never crosses the 1.25ms drift gate and the
+        // overrun fires exactly once, so exactly one DriftExceeded is
+        // deterministic regardless of host load.
+        let drifts: Vec<_> = report
             .stability_failures
             .iter()
-            .find(|f| f.kind == StabilityFailureKind::DriftExceeded)
-            .expect("expected a DriftExceeded failure");
-        let expected_offset = Duration::from_millis(at_tick * 16);
-        let actual_offset = drift.at_offset;
-        let diff = if actual_offset > expected_offset {
-            actual_offset - expected_offset
-        } else {
-            expected_offset - actual_offset
-        };
+            .filter(|f| f.kind == StabilityFailureKind::DriftExceeded)
+            .collect();
+        assert_eq!(drifts.len(), 1, "expected exactly one DriftExceeded");
+        let drift = drifts[0];
+        let earliest = config.tick_interval * at_tick;
         assert!(
-            diff <= Duration::from_millis(50),
-            "at_offset={actual_offset:?} expected~{expected_offset:?} diff={diff:?}"
+            drift.at_offset >= earliest,
+            "at_offset={:?} earlier than the drift-corrected schedule allows \
+             (tick {at_tick} cannot start before {earliest:?})",
+            drift.at_offset
+        );
+        assert!(
+            drift.at_offset < config.duration,
+            "at_offset={:?} at or beyond the {:?} duration cutoff — stamped at \
+             report generation instead of at the failing tick?",
+            drift.at_offset,
+            config.duration
+        );
+        assert!(
+            (drift.recorded_value - 50.0).abs() < 0.01,
+            "recorded_value={} expected the workload-reported 50ms",
+            drift.recorded_value
         );
     }
 
