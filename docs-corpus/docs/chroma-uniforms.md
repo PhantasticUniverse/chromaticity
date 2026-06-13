@@ -53,20 +53,27 @@ the first tick before any analysis history accumulates.
 
 | Uniform | Type | Description |
 | --- | --- | --- |
-| `chroma_AudioFFT[8]` | `float[8]` | Eight log-spaced FFT band magnitudes covering 20 Hz to 20 kHz; element 0 is the lowest band, element 7 is the highest |
+| `chroma_AudioFFT[8]` | `vec4[8]` | Eight log-spaced FFT band magnitudes covering 20 Hz to 20 kHz; element 0 is the lowest band, element 7 is the highest. Each element's `.x` carries the band value |
 
 The `chroma_AudioFFT` array binding was consolidated from a transitional
 split-vec4 spelling (`chroma_AudioFFTLow` for bands 0..3,
 `chroma_AudioFFTHigh` for bands 4..7) once the multipass scheduler grew
-a `FloatArray` uniform variant. GLSL authors declare the array
-directly:
+a `FloatArray` uniform variant. The engine packs every array element
+into its own vec4-aligned 16-byte slot (std140), so GLSL authors
+declare the array as `vec4` and read each band through `.x` — a
+`float chroma_AudioFFT[8]` declaration compiles, but the shader
+frontend reads it at a 4-byte stride and six of the eight bands
+silently mis-read:
 
 ```glsl
-uniform float chroma_AudioFFT[8];
+layout(set = 0, binding = 0) uniform Uniforms {
+    vec4 chroma_AudioFFT[8];   // [b].x = band b
+    // ... other scene uniforms ...
+};
 
 // later in main():
-float bass = chroma_AudioFFT[0] + chroma_AudioFFT[1];
-float treble = chroma_AudioFFT[6] + chroma_AudioFFT[7];
+float bass = chroma_AudioFFT[0].x + chroma_AudioFFT[1].x;
+float treble = chroma_AudioFFT[6].x + chroma_AudioFFT[7].x;
 ```
 
 ### Sampler audio uniforms

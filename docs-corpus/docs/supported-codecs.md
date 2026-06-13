@@ -78,15 +78,18 @@ operators on first run.
 
 | Platform | Default input device                                              |
 | -------- | ----------------------------------------------------------------- |
-| macOS    | Built-in microphone (CoreAudio default). System-audio output is **not** captured directly. |
+| macOS    | Built-in microphone (CoreAudio default). The default device does **not** capture system-audio output — select **System Audio (built-in)** for that (see below). |
 | Windows  | OS-selected default recording device (WASAPI).                    |
 | Linux    | ALSA default; varies by host configuration.                       |
 
-To react to system audio output on macOS, install a virtual loopback
-driver such as **BlackHole** or **Loopback**, route system output
-through it, and select the loopback as the input device in
-Settings → Audio. The cpal device list will include the loopback
-once it is installed.
+To react to system audio output on macOS, select **System Audio
+(built-in)** in Settings → Audio. This is a zero-install Core Audio
+process tap (macOS 14.6 or later; macOS asks for audio-capture consent
+on first use). Below the 14.6 floor, or if consent is denied, capture
+degrades to the default input rather than going silent. A virtual
+loopback driver such as **BlackHole** or **Loopback** remains a
+supported alternative: route system output through it and the cpal
+device list will include the loopback once it is installed.
 
 ---
 
@@ -206,7 +209,7 @@ universally supported across Syphon consumers on macOS.
 | `.chroma` scene export    | Wired      | Saving a scene from the in-app authoring environment is a free-tier capability. |
 | `.chromaShow` show bundle | Synthetic  | Format harness ships: tar container with a flat `manifest.json` plus per-file SHA-256 + manifest SHA-256. Recovery / rollback semantics are Phase-4+ scope; bundle-level ed25519 signing is `EV-ENTITLEMENT-ENFORCEMENT` scope and layers on top of the checksum surface. |
 | Output recording (video)  | Deferred   | No frame-capture-to-disk path at MVP. Carries a Wave 1c-β follow-up dependency (the same per-platform render-output bindings the Syphon output adapter consumes). |
-| Output recording (audio)  | Deferred   | No system-audio capture path at MVP.                                     |
+| Output recording (audio)  | Deferred   | No audio-recording-to-disk path at MVP. System-audio *capture* for reactivity is wired (see Audio input above); nothing writes captured audio to a file. |
 | Screenshot (PNG)          | Deferred   | Not yet wired through the rendering backend.                             |
 
 ### `.chromaShow` container shape

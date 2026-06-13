@@ -5,18 +5,23 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 # Hotkey Reference
 
-Chromaticity ships a fixed operator hotkey vocabulary covering scene and
-playlist transport, Snap-slot recall and capture, render and display
-control, the meta colour pipeline, audio threshold management,
-diagnostics, and show-state actions. Press `?` at any time to toggle the
-in-app overlay that lists the same vocabulary against the active focus
-context.
+This page lists the fixed V1 operator hotkey vocabulary — the same map
+the in-app `?` overlay displays. Press `?` at any time to toggle the
+overlay against the active focus context.
+
+The vocabulary is a ratified contract; key dispatch is being wired
+incrementally. In the current build only `?` (this overlay) and
+`Cmd+K` / `Ctrl+K` (command palette) fire globally. The remaining rows
+document the V1 map as bindings land. Snap slots are operated today
+from the SnapBar — click to recall, `Cmd`/`Ctrl`+click to save,
+`Alt`+click to clear — and a focused library tile launches with
+`Enter`.
 
 The V1 hotkey map is read-only. Rebinding ships in V2 per the operator
 hotkey-map spec. The `cap` column on each row indicates whether the
-action is a free MVP capability or whether it requires an entitlement to
-fire; entitlement-gated rows fail closed when the matching capability is
-absent.
+action is a free MVP capability or whether it requires an entitlement
+to fire; entitlement-gated rows fail closed when the matching
+capability is absent.
 
 ## Control-focused mode
 

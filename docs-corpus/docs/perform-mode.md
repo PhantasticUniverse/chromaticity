@@ -29,19 +29,20 @@ mouse and keyboard.
 The Scene Controls panel surfaces every author-declared control for
 the currently active scene as a typed widget — sliders for numeric
 parameters, toggles for booleans, swatches for colours, and combo
-selectors for enumerations. Each control row carries a per-control
-hotkey-hint badge; while a control has keyboard focus, the
-control-focused hotkeys take effect:
+selectors for enumerations. Each focused widget answers the standard
+keyboard vocabulary: arrow keys nudge the value, `PageUp` /
+`PageDown` step coarsely, `Home` / `End` jump to the range ends, and
+`Space` / `Enter` flip toggles. Above the panel, three quick-action
+buttons operate on every control at once — **Default** resets to
+declared defaults, **Random** randomises within declared ranges
+(locked rows are skipped), and **Lock-all** toggles the per-row
+locks; per-row Lock / Reset / Random affordances cover single
+controls.
 
-| Key | Action |
-| --- | --- |
-| `D` | Set the focused control to its default value |
-| `R` | Set the focused control to a random value in its range |
-| `P` | Set the focused control to its value in the active preset |
-| `L` | Toggle the lock state (the locked control ignores randomisation) |
-
-The full operator hotkey vocabulary lives at
-[Hotkey Reference](hotkeys-reference.md).
+The control-focused single-key vocabulary (`D` default, `R` random,
+`P` preset, `L` lock) is reserved in the operator hotkey map and is
+not active in this build. The full operator hotkey vocabulary lives
+at [Hotkey Reference](hotkeys-reference.md).
 
 ## Meta Controls
 
@@ -49,17 +50,23 @@ The Meta Controls panel exposes the scene-agnostic colour pipeline:
 master, brightness, gamma, contrast, hue, saturation, invert, vertical
 mirror, horizontal mirror, dichrome. Each meta control binds onto a
 canonical `_Meta*` uniform that is published to every scene; authors
-do not opt in or out of the pipeline. The hotkeys `M` / `B` / `G` /
-`C` / `H` / `Y` enter modal slider-adjust mode against the matching
-meta control; `Esc` exits.
+do not opt in or out of the pipeline. Meta controls are adjusted
+directly through their widgets; the `M` / `B` / `G` / `C` / `H` / `Y`
+modal slider-adjust vocabulary is reserved in the operator hotkey map
+and is not active in this build.
 
 ## The Preview hero
 
-The Preview hero shows the live render output. It mirrors the actual
-output surface so the operator sees exactly what the audience sees.
+The Preview hero renders a canvas-2d procedural visualisation of the
+active scene, keyed off the scene's metadata. It is wireframe-faithful
+structural feedback — rotation, warp, and audio reactivity respond
+visibly — not the rendered GLSL output, so it is not pixel-identical
+to the audience-facing output surface (see the preview warning in
+[Quickstart](quickstart.md)).
 Beneath the preview, the [Audio Reactivity](audio-reactivity.md)
-panel surfaces the live audio uniforms — four named band tiles, the
-BPM strip, and the FFT visualiser.
+panel surfaces the live audio uniforms — four named band tiles and
+the BPM strip — plus the 48-bar FFT visualiser, which stays
+synthetic-driven in the V1 release.
 
 ## The Scene rail
 

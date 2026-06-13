@@ -112,20 +112,36 @@ Chromaticity's Spout adapter lands; the configuration steps below
 will map across with the source type renamed from "Syphon Client" to
 "Spout".
 
-### 2. Configure audio loopback
+### 2. Configure Chromaticity's audio input (and OBS's stream audio)
 
-Chromaticity's audio input adapter binds the system's **default input
-device** (microphone) on macOS via cpal, not the system audio output.
-Capturing system audio for livestreaming requires a virtual loopback:
+Chromaticity's capture source is operator-selectable under
+**Settings → Audio → Input Device** (the selection applies on
+restart):
+
+- **System Audio (built-in)** — zero-install system-output capture
+  (Core Audio process taps on macOS 14.6+; WASAPI loopback on
+  Windows). Chromaticity reacts to whatever the machine is playing
+  with no driver install. Below the macOS 14.6 floor, or if the
+  system audio-capture consent prompt is denied, capture degrades
+  to the default input rather than going silent.
+- **Automatic (system default)** — the host default input device
+  (the microphone on most macOS machines).
+- Any enumerated capture device, including an installed virtual
+  loopback driver.
+
+OBS does not read Chromaticity's input selection; putting the music
+on the **stream** still requires a virtual loopback (or OBS's own
+desktop-audio capture, where available):
 
 - **BlackHole** (free; Apple Silicon and Intel macOS).
 - **Loopback** (Rogue Amoeba; commercial).
 - **VB-Cable** (free; Windows and macOS).
 
-Configure the loopback device as the system output (or as an aggregate
-device that mirrors output to loopback and to physical speakers), and
-point both Chromaticity's audio input and OBS's audio source at the
-loopback. For first-launch verification of the audio bootstrap path,
+If a loopback is configured as the system output (or in an
+aggregate device that mirrors output to the loopback and to
+physical speakers), point OBS's audio source at it; Chromaticity
+can read the same loopback, or simply use the built-in System Audio
+entry. For first-launch verification of the audio bootstrap path,
 see the audio reactivity reference page in this corpus.
 
 ### 3. Enable the Syphon output in Chromaticity
@@ -203,25 +219,25 @@ integration surface.
 
 ## Audio capture posture
 
-Chromaticity binds the cpal default input device on macOS at startup
-(microphone, not system audio output). The operator path for
-capturing system audio into either Chromaticity (for audio-reactive
-visuals) **or** OBS (for the stream) is a virtual loopback as listed
-in step 2 above. There is no in-app system-audio capture path; this
-is a platform constraint (macOS does not expose system audio to user-
-space without a kernel extension or audio HAL plugin), not a
-Chromaticity choice.
+Chromaticity's capture source is operator-selectable
+(**Settings → Audio**; applies on restart). The default sentinel
+binds the host default input device (microphone) via cpal; the
+**System Audio (built-in)** entry binds a zero-install
+system-output capture — Core Audio process taps on macOS 14.6+
+(per ADR-022; no kernel extension or audio HAL plugin required)
+and WASAPI loopback on Windows. Below the macOS 14.6 floor, or
+when system audio-capture consent is denied, the selection
+degrades to the default input, never silent.
 
-The audio loopback applies to **both** sides of the pipeline:
-
-- Chromaticity reads the loopback as its audio input → audio-reactive
-  visuals respond to the music being played.
-- OBS reads the loopback as an audio source → the stream carries the
-  music.
-
-If the operator needs both at once, configure the loopback once at
-the system level (aggregate device or BlackHole multi-output device)
-and point both applications at it.
+A virtual loopback is therefore no longer required for
+Chromaticity's own audio-reactive visuals. It remains the recipe
+for the **stream** side of the pipeline — OBS reads the loopback
+as an audio source so the stream carries the music — and for macOS
+versions below the 14.6 tap floor. If the operator needs both at
+once, a loopback configured once at the system level (aggregate
+device or BlackHole multi-output device) can feed both
+applications, or Chromaticity can use the built-in System Audio
+entry while OBS reads the loopback.
 
 ## Cross-references
 

@@ -10,7 +10,7 @@ runtime. Pages here are authored clean-room from chromaticity's own
 ADRs and development standards — none of this content derives from any
 reference application's embedded documentation.
 
-The Wave 1d-α PR 1 scaffold establishes the rails:
+The corpus is delivered as:
 
 - A `mkdocs` source tree under `docs-corpus/docs/`.
 - A static-HTML build emitted to `dist/help/` and bundled into the
@@ -18,8 +18,15 @@ The Wave 1d-α PR 1 scaffold establishes the rails:
 - A `Help` view (`src/lib/views/Help.svelte`) that surfaces the
   bundled HTML pages through Tauri's `convertFileSrc` resource path.
 
-Future waves author the real corpus content: scene-format reference,
-operator hotkey catalog, MIDI / OSC routing, troubleshooting guides,
-and onboarding walkthroughs. The two pages shipped in PR 1 (this page
-and [About](about.md)) are placeholders that validate the routing +
-build pipeline end-to-end.
+Use the navigation sidebar to browse the corpus: start with the
+[Quickstart](quickstart.md) onboarding walkthrough, then the Guides
+([Perform Mode](perform-mode.md), [Scene Workflow](scene-workflow.md),
+[Library Workflow](library-workflow.md),
+[Audio Reactivity](audio-reactivity.md),
+[Livestreaming](livestream.md),
+[Importing Shadertoy Scenes](import-shadertoy.md), and
+[Best Practices](best-practices.md)) and the Reference pages
+([Hotkeys](hotkeys-reference.md), [OSC Routes](osc-routes.md),
+[Uniforms](chroma-uniforms.md), [Settings](settings-reference.md),
+[System Requirements](system-requirements.md), and
+[Supported Codecs](supported-codecs.md)).

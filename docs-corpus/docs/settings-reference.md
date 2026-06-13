@@ -16,8 +16,17 @@ the Theme switcher.
 The Audio Device section enumerates host audio devices through the
 audio adapter's input and output pickers. The fields surfaced are:
 
-- Input device — the microphone or capture interface feeding the
-  analysis pipeline.
+- Input device — the capture source feeding the analysis pipeline.
+  Three kinds of source are selectable: **Automatic (system
+  default)**, which binds the host's default input (typically the
+  microphone); **System Audio (built-in)**, the zero-install
+  system-output capture that reacts to whatever the machine is
+  playing (macOS 14.6+ Core Audio taps / Windows WASAPI loopback —
+  no BlackHole or Loopback driver required, though installed
+  loopback drivers also appear in the list); and the enumerated
+  hardware inputs (microphones and capture interfaces). On macOS
+  below 14.6, or when audio-capture consent is denied, System Audio
+  falls back to the default input rather than going silent.
 - Output device — the playback target the runtime mixes to.
 - Sample rate — typically 48 kHz on macOS, 44.1 kHz on Windows
   consumer hardware.
@@ -29,9 +38,10 @@ audio adapter's input and output pickers. The fields surfaced are:
 - Live level / peak meter — confirms the chosen device is producing
   signal before scene launch.
 
-Changes apply at the next analysis-thread restart (typically the next
-scene load); the analysis thread does not hot-swap audio devices
-mid-show to keep the snapshot pipeline deterministic.
+Changes are persisted immediately but take effect at the next
+application launch; the analysis thread binds its capture device once
+at startup and does not hot-swap audio devices mid-show, keeping the
+snapshot pipeline deterministic.
 
 ## 2. Graphics and Output
 
