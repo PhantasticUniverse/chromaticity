@@ -25,9 +25,11 @@ expression.
   MilkDrop's, our perceptual band split is byte-identical to butterchurn's, and
   our **10 ms decoupled analysis cadence exceeds** both references' frame-locked
   schemes.
-- **We lag on exactly one axis: audio→pixel latency.** ~62 ms (reactive-band
-  axis) vs butterchurn ~35 ms and Synesthesia's smoothed family ~70 ms (its
-  snappy "Hits/OnBeat" family is ~30–50 ms).
+- **We lag on one axis — audio→pixel latency — and now only vs butterchurn.**
+  ~52 ms (reactive-band axis, after fix #1) vs butterchurn ~35 ms; we now beat
+  Synesthesia's smoothed family (~70 ms) and sit at the edge of its snappy
+  "Hits/OnBeat" family (~30–50 ms). The 2026-06-05 benchmark measured ~62 ms
+  before fix #1 landed.
 - The gap is **controllable** delay the frame-locked references don't pay, and it
   shaves **without** touching the slow-release smoothness.
 - **Inherent floor ≈ 36 ms** (driver buffer + half-frame staleness + GPU
@@ -50,20 +52,21 @@ reads the shared `Arc<Mutex<AudioUniformSnapshot>>` **directly** each frame
 | Analysis cadence staleness (10 ms fixed extract) | ~5 | **controllable** | `runtime.rs:149` |
 | Producer hop backoff | ~0.25 | negligible | `runtime.rs:126,133` |
 | Snapshot/frame staleness (read once per 16.7 ms frame) | ~8.3 | inherent (decoupled arch) | `thread.rs:264-278` |
-| **Render-side ballistics attack** (BAND 10 ms, on top of the AGC) | ~10 | **controllable** | `render/audio_smooth.rs` |
+| Render-side ballistics attack (BAND attack tau → 0; fix #1) | 0 (was ~10) | **landed** | `render/audio_smooth.rs` |
 | GPU render + present | ~16.7 | inherent | `render/output_window.rs` |
-| **Total (band axis)** | **~62** | | |
+| **Total (band axis)** | **~52** (was ~62 pre-fix-#1) | | |
 
-FFT/peak axis ≈ 57 ms; RMS axis ≈ 81 ms (its render attack was the longest at
-30 ms). BPM is a background, 250 ms-cadence, parity-only backup and is **0 ms on
-this path** (`runtime.rs:159`).
+FFT/peak axis ≈ 51 ms (was ~57; their ~6 ms attacks also went to 0 under
+fix #1); RMS axis ≈ 60 ms (was ~81; its render attack was the longest at
+30 ms, now 9 ms under fix #2). BPM is a background, 250 ms-cadence,
+parity-only backup and is **0 ms on this path** (`runtime.rs:159`).
 
 ## Where we stand per metric (condensed scorecard)
 
 | Metric | Verdict | Note |
 | --- | --- | --- |
-| Audio→pixel latency (band axis) | **lag** | ~62 ms vs butterchurn ~35 ms — the one real gap |
-| Render-side ballistics (2nd stage) | **lag** | unique to us; the references have no second smoothing stage |
+| Audio→pixel latency (band axis) | **lag** (vs butterchurn only) | ~52 ms vs butterchurn ~35 ms — beats Synesthesia's smoothed ~70 ms; the remaining gap is fixes #3/#4 |
+| Render-side ballistics (2nd stage) | match | attack = 0 since fix #1 — adds no onset latency; the slow release is extra smoothness the references lack |
 | Analysis cadence / buffering | **exceed** | 10 ms decoupled + drain-all beats frame-locked ~16.7 ms / ~23 ms-hop |
 | FFT size | match | 1024-pt: finer than MilkDrop, snappier window than Synesthesia's 2048 |
 | Window function | match | Hann beats MilkDrop (rectangular); Synesthesia offers a *configurable* superset |

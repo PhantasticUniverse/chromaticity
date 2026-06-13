@@ -23,6 +23,10 @@ equivalent at parity or better.
 
 ## TL;DR scoreboard
 
+_Scores grade **spec parity** (format / feature coverage against the
+documented surface, observation-only) — not live-runtime parity (what is
+wired into the shipped render path)._
+
 | Surface | Score | One-line verdict |
 | :------ | :---: | :--------------- |
 | SSF package format (extension, layout, components) | 4 / EXCEEDS | Native `.chroma` + `.chromaPack` zip + frozen `scene.json` shape + parse-reserved `DATA_SOURCES` differentiator |

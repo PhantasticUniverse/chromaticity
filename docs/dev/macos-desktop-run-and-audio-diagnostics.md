@@ -55,7 +55,7 @@ release-eng/dev-run-macos.sh [--diag] [--device <sentinel>] [--output] \
 | Flag             | Effect                                                                       |
 | ---------------- | ---------------------------------------------------------------------------- |
 | `--diag`         | Launch with `CHROMATICITY_AUDIO_DIAG=1`; telemetry streams to the log file.  |
-| `--device <s>`   | Set `settings.audio.input_device` before launch (`default`, `system-audio`, or a device id). Applied on restart only. |
+| `--device <s>`   | Set `settings.audio.input_device` before launch (`default`, `system-audio`, or a device id). Applied on restart only. Edits an existing `settings.toml` line only — on a fresh machine (the app writes `settings.toml` only on a Settings-UI save, never on launch) the flag logs a note and the app falls back to the host default input (mic). Pick the device once in Settings → Audio first; after that `--device` switches it freely. |
 | `--output`       | Spawn the GPU output window (`CHROMA_RENDER_OUTPUT=1`), baked into the bundle's `LSEnvironment` so LaunchServices applies it reliably under `open`. |
 | `--scene <path>` | Render this `.chroma` scene in the output window (`CHROMA_RENDER_SCENE=<abs>`); implies `--output`. Relative paths resolve against CWD, then the repo root. |
 | `--no-build`     | Skip `npm run build` + `cargo build`; just re-sign + relaunch.               |

@@ -91,7 +91,18 @@ and the shared primitive `src/lib/audio/metering.ts`.
 - `VuStereo.svelte` — migrated onto the dt-aware `metering.ts` followers + dBFS
   scale (principles 3, 4); its live fill no longer uses a per-frame EMA.
 - `Meter.svelte`, `AudioReactivity.svelte` — no CSS transition on the live fill
-  (principle 5).
+  (principle 5). `AudioReactivity.svelte`'s band smoother is a
+  wall-clock-dt-aware exponential (`coeff = 1 − exp(−dt/τ)`, τ = 21 ms, dt
+  clamped to 100 ms for tab-restore), replacing the former fixed 0.55-per-frame
+  alpha (principle 4; inline, not yet on `metering.ts`).
+- `BpmRing.svelte`, `BeatDots.svelte` — beat phase integrates incrementally per
+  rAF frame (`phase += dt·bpm/60`, wrapped) instead of elapsed-time ×
+  instantaneous-BPM, so a live BPM update changes only the future sweep rate
+  (principle 4); the ring's 100 ms CSS transition on the live stroke-dashoffset
+  is removed (principle 5). The dots keep an 80 ms transition on the discrete
+  on/off state flip, which principle 5 permits.
+- `Xy.svelte` — no CSS transition on the dot position (left/top under
+  continuous pointer-drag updates) (principle 5).
 
 ## Tracked follow-ups (not yet on the primitive)
 
