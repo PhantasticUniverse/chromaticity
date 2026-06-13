@@ -27,16 +27,20 @@
 // `CHROMATICITY_AUDIO_DIAG` round-trip confirmed the webview receives
 // exactly what the engine emits).
 //
-// **macOS system-audio (built-in) TAP capture is NOT yet functional.**
-// The zero-install system-output tap on macOS 14.6+ corrupts its captured
-// data in cpal's AUHAL read stage (see `docs/adr/ADR-022` → Amendment
-// 2026-06-03 and `third_party/cpal/UPSTREAM-VERSION.md`); until the
-// direct-`IOProc` fix lands and is hardware-verified, the `system-audio`
-// preference degrades to the default input. On hosts without any input
-// device (CI / headless / device-less), the producer falls back to
-// `SilentSource` and the snapshot stays at the all-zero default —
-// visualizer widgets keep their dual-mode synthetic fallback for that
-// case (per ADR-019 §Decision §6 stale-but-last-good).
+// **macOS system-audio (built-in) TAP capture is live.** The
+// zero-install system-output tap on macOS 14.6+ reads through a direct
+// Core Audio `IOProc` (vendored cpal Patch 6, replacing the AUHAL read
+// stage that corrupted the stream — see `docs/adr/ADR-022` → Amendment
+// 2026-06-03 and `third_party/cpal/UPSTREAM-VERSION.md`), and is
+// hardware-verified clean (a 440 Hz / 0.5 sine probe returns raw_peak
+// exactly 0.5; AO-confirmed live GUI reactivity 2026-06-05). Below the
+// macOS 14.6 floor or on denied `NSAudioCaptureUsageDescription`
+// consent, the `system-audio` preference degrades to the default input
+// — never silent. On hosts without any input device (CI / headless /
+// device-less), the producer falls back to `SilentSource` and the
+// snapshot stays at the all-zero default — visualizer widgets keep
+// their dual-mode synthetic fallback for that case (per ADR-019
+// §Decision §6 stale-but-last-good).
 //
 // `subscribe()` is idempotent so widgets can call it on every mount
 // without leaking listener registrations. When the import or `listen`

@@ -332,7 +332,7 @@ describe('TopBar shell component', () => {
       const { getByTestId } = render(TopBar);
       const cam = getByTestId('top-bar-camera');
       expect(cam.tagName).toBe('BUTTON');
-      expect(cam.getAttribute('title')).toBe('Camera (Wave 2.2)');
+      expect(cam.getAttribute('title')).toBe('Camera (visual stub; wiring AO-deferred)');
       expect(cam.getAttribute('aria-label')).toBe('Camera');
     });
 
@@ -341,7 +341,7 @@ describe('TopBar shell component', () => {
       const { getByTestId } = render(TopBar);
       const rec = getByTestId('top-bar-record');
       expect(rec.tagName).toBe('BUTTON');
-      expect(rec.getAttribute('title')).toBe('Record (Wave 2.2)');
+      expect(rec.getAttribute('title')).toBe('Record (visual stub; wiring AO-deferred)');
       expect(rec.getAttribute('aria-label')).toBe('Record');
     });
 

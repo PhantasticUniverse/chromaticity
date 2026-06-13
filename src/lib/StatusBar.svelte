@@ -21,9 +21,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //   - CPU% / GPU%             — runtime telemetry IPC (Phase-3+)
   //   - MEM (GB)                — same
   //   - warnings / errors count — read from log subscription (Phase-3+)
-  //   - Console                 — opens diagnostics console drawer
-  //                                (W15+ when console wires; click is
-  //                                 currently a no-op visual stub)
+  //   - Console                 — wired (W21 PR4, see note below):
+  //                                toggles the app-level
+  //                                `<ConsoleDrawer>` via
+  //                                `consoleStore.toggle()`; the
+  //                                drawer's live-tail feed is itself
+  //                                still a fixture-corpus stub
   //   - version                 — build-time `__APP_VERSION__`
   //                                injection target; static `v0.0.0`
   //                                placeholder until vite define plumbs

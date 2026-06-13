@@ -18,10 +18,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //      target FPS, V-Sync toggle, HDR target, display assignment.
   //   3. Storage — Media folders + Custom scene folders + Backups path
   //      with retention; thumbnail / render-cache cleanup actions. Each
-  //      browse button invokes the W21 PR1 `pick_folder` IPC stub.
+  //      browse button calls `pickFolder` — the native folder dialog.
   //   4. Folder-picker IPC — see `src/lib/ipc/picker.ts` and
-  //      `app/shell/src/commands/picker.rs`. Phase-3+/4a swaps the
-  //      placeholder for `tauri-plugin-dialog`'s native picker.
+  //      `app/shell/src/commands/picker.rs`. Wave 2.7 SET.B swapped the
+  //      W21 PR1 `pick_folder` stub for `@tauri-apps/plugin-dialog`'s
+  //      native picker; the legacy stub survives only as the
+  //      non-Tauri-runtime (vite dev / vitest) fallback, and in-shell
+  //      dialog failures surface via `pickerError` instead of
+  //      fabricating a placeholder path (8168b8e).
   //
   // The four new sections sit ABOVE the existing Hotkeys + ThemeSwitcher
   // sections — operator infrastructure is more frequently accessed than

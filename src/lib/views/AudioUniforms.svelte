@@ -289,7 +289,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   );
   // EMA factor 0.25 means ~5-tick half-life (~80 ms at 60 Hz) — fast
   // enough to track real onsets, slow enough to discard noise-floor
-  // bursts. Peak holds with 0.004 decay to mirror the VuStereo path.
+  // bursts. Peak holds with 0.004 per-snapshot decay (the pre-migration
+  // VuStereo ballistics; VuStereo has since moved onto the dt-aware
+  // `metering.ts` followers — migrating this smoother too is tracked in
+  // docs/dev/ui-smoothness-and-latency.md, "Tracked follow-ups").
   const LEVEL_EMA = 0.25;
   const PEAK_DECAY = 0.004;
   let _smInit = _initialSnap !== null;

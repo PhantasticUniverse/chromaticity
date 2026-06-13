@@ -22,16 +22,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // widget consumes the engine's `audio_uniform_snapshot_changed`
   // Tauri event via `audioSnapshotStore` (producer side: Wave 6 PR 1,
   // merge `c1d93e8`). When a non-null snapshot is available the four
-  // band-tile values are reduced from the engine's 8 FFT bands (BASS
-  // = avg(fft_bands[0..2]), LOW MID = avg(fft_bands[2..4]), HIGH MID
-  // = avg(fft_bands[4..6]), HIGH = avg(fft_bands[6..8])) once
-  // `fft_availability === 'Ready'`, and the BPM readout reads
-  // `liveSnapshot.bpm` once `bpm_availability === 'Ready'`; warming
-  // axes render dim `--` placeholders. Otherwise the existing
-  // synthetic-time defaults render. The 48-bar FFT visualiser stays
-  // synthetic-driven — the 8 → 48 interpolation is a stretch goal,
-  // not in PR 2 scope (deferred as a post-MVP enhancement). Tap-tempo
-  // and Ableton Link peer count remain visual stubs.
+  // band-tile values read the ADR-024 AGC reactive bands (BASS ←
+  // `bass`, LOW MID ← `mid`, HIGH MID / HIGH ← `treb`, mapped onto a
+  // 0..1 fill via `agcBarFill` — see `agcTileFills` below; this
+  // superseded the original 8 → 4 `fft_bands` reduction, which sat
+  // near 0 in a quiet room), and the BPM readout reads
+  // `liveSnapshot.bpm` once `bpm_availability === 'Ready'`; a warming
+  // BPM axis renders a dim `--` placeholder (the AGC bands carry a
+  // neutral 1.0 default and have no per-axis warming state, so the
+  // tiles never do). Otherwise the existing synthetic-time defaults
+  // render. The 48-bar FFT visualiser stays synthetic-driven — the
+  // 8 → 48 interpolation is a stretch goal, not in PR 2 scope
+  // (deferred as a post-MVP enhancement). Tap-tempo and Ableton Link
+  // peer count remain visual stubs.
   //
   // The optional `snapshot` prop lets tests inject a fixed payload
   // without going through the singleton store; an OMITTED prop
@@ -119,9 +122,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // (the engine emits three relative bands; the two upper tiles share
   // the treble band so the layout's HIGH MID / HIGH cells still react).
   //
-  // Wave 2.8 Q.1 — a short EMA still damps the ~60 Hz per-frame jitter
-  // on top of the AGC bands so the `transition: width 120ms ease`
-  // band-fill doesn't flicker; skipped entirely when `bands` is
+  // Wave 2.8 Q.1 — a light dt-aware follower (FIX 4 below) damps the
+  // ~60 Hz per-frame jitter on top of the AGC bands so the band fill
+  // doesn't flicker (there is deliberately NO CSS `transition: width`
+  // on the fill — see FIX 2 in the style block; CSS-tweening a moving
+  // meter adds fixed lag); skipped entirely when `bands` is
   // caller-supplied (tests / custom device-driven values) and when
   // there's no snapshot.
   //
@@ -206,15 +211,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }> = DEFAULT_BANDS.map((band) => ({ ...band, value: 0 }));
 
   /**
-   * Reduce the engine's 8-band FFT array into the bundle's 4 named
-   * tiles by averaging adjacent pairs (8 → 4). Preserves the bundle's
-   * tile name + tint mapping so the visual layout never drifts; only
-   * the per-tile `value` switches to live data.
+   * Attach the bundle's 4 named tiles (BASS / LOW MID / HIGH MID /
+   * HIGH) to a pre-computed 4-value fill array. The values originate
+   * from the ADR-024 AGC reactive bands via `agcTileFills` (NOT the
+   * raw `fft_bands` — see the ADR-024 note above), so this function
+   * does no reduction of its own. Preserves the bundle's tile name +
+   * tint mapping verbatim so the visual layout never drifts; only the
+   * per-tile `value` carries live data.
    *
-   * Wave 2.8 Q.1: callers now pass a pre-smoothed values array
+   * Wave 2.8 Q.1: callers pass a pre-smoothed values array
    * (`smoothedBands` rAF state) instead of the raw snapshot, so the
-   * tile values are stable across engine ticks. The bundle's tile
-   * `name + tint` mapping is preserved verbatim.
+   * tile values are stable across engine ticks; the snapshot-prop
+   * test path bypasses smoothing and passes `agcTileFills(snapshot)`
+   * directly.
    */
   function tilesFromValues(
     values: readonly number[],

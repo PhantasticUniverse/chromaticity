@@ -384,14 +384,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </span>
     {#if routeStore.current === 'perform'}
       <!-- Wave 2.1 Lane B.2 — camera + record buttons (visual stubs).
-           Real wiring lands in Wave 2.2. Bundle adoption:
-           `Chromaticity.html` lines 254-255. -->
+           Real wiring is AO-deferred (camera real bindings + Syphon
+           publish are Wave 1c-β follow-up scope; no scheduled wave).
+           Bundle adoption: `Chromaticity.html` lines 254-255. -->
       <button
         type="button"
         class="top-bar__icon-btn"
         data-testid="top-bar-camera"
         aria-label="Camera"
-        title="Camera (Wave 2.2)"
+        title="Camera (visual stub; wiring AO-deferred)"
       >
         <Icon name="camera" size={14} />
       </button>
@@ -400,7 +401,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         class="top-bar__icon-btn"
         data-testid="top-bar-record"
         aria-label="Record"
-        title="Record (Wave 2.2)"
+        title="Record (visual stub; wiring AO-deferred)"
       >
         <Icon name="record" size={11} />
       </button>
@@ -678,8 +679,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   /* Wave 2.1 Lane B.2 — camera + record icon buttons in the right HUD
-   * cluster. Visual stubs only; real wiring is Wave 2.2 scope. Match
-   * the bundle's `btn ghost sm` / `btn danger sm` chrome compactly. */
+   * cluster. Visual stubs only; real wiring is AO-deferred Wave 1c-β
+   * follow-up scope. Match the bundle's `btn ghost sm` / `btn danger
+   * sm` chrome compactly. */
   .top-bar__icon-btn {
     appearance: none;
     display: inline-flex;
