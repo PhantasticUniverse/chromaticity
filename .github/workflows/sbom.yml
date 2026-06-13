@@ -61,7 +61,7 @@ jobs:
     outputs:
       sbom: ${{ steps.combine.outputs.sbom }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dorny/paths-filter@v3
         id: filter
@@ -103,7 +103,7 @@ jobs:
     if: needs.detect-changes.outputs.sbom == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install tauri linux deps (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1
@@ -127,7 +127,7 @@ jobs:
       - name: Emit Rust workspace SBOM
         run: cargo cyclonedx --format json --spec-version 1.5
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rust-sbom
           path: '**/*.cdx.json'
@@ -139,14 +139,14 @@ jobs:
     if: needs.detect-changes.outputs.sbom == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: anchore/sbom-action@v0
         with:
           format: cyclonedx-json
           output-file: chromaticity.cdx.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: app-sbom
           path: chromaticity.cdx.json

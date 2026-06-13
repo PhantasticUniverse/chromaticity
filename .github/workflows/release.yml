@@ -16,7 +16,8 @@
 #   detect-changes - resolves the tag context for downstream jobs. No
 #                    paths-filter; release tags always proceed.
 #   build          - cross-platform matrix (ubuntu-latest + macos-latest +
-#                    windows-latest). Builds the Tauri 2 binary, restores
+#                    windows-latest + macos-13 Intel). Builds the Tauri 2
+#                    binary, restores
 #                    the dist/.gitkeep sentinel after vite build (per
 #                    `feedback_vite_build_clobbers_dist_gitkeep`), invokes
 #                    the release-eng/sign-*.sh + notarize.sh stubs from
@@ -123,7 +124,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest, macos-13]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Full history so release-please / sign-*.sh / appcast staging
           # can read git tag context if needed.
@@ -144,7 +145,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -178,7 +179,7 @@ jobs:
       # build so the corpus repopulates before the tauri-build
       # resource resolver runs.
       - name: Set up Python (for mkdocs)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -236,7 +237,7 @@ jobs:
       # no signing step on ubuntu-latest.
 
       - name: Upload platform artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: chromaticity-${{ matrix.os }}
           path: |
@@ -249,7 +250,7 @@ jobs:
     needs: [detect-changes, build]
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Stage appcast entry (stub-mode unless feed configured)
         env:
@@ -264,16 +265,18 @@ jobs:
     needs: [detect-changes, build, stage-appcast]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download platform artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts/
 
       # actions/download-artifact unpacks each artifact into its own
-      # subdirectory: artifacts/chromaticity-{ubuntu,macos,windows}-latest/.
-      # All three platforms emit a binary named `chromaticity-app`
+      # subdirectory: artifacts/chromaticity-<matrix.os>/ (the three
+      # `-latest` runners plus `chromaticity-macos-13/`, which carries
+      # no `-latest` suffix). Every matrix leg emits a binary named
+      # `chromaticity-app`
       # (Windows additionally with the .exe suffix). `gh release create`
       # uploads asset files by basename -- without renaming, the Linux
       # and macOS binaries collide on the asset name `chromaticity-app`,
@@ -284,8 +287,11 @@ jobs:
       # 2026-05-10 smoke-test run #25627779261.
       #
       # The exact in-artifact path of the binary varies with how
-      # actions/upload-artifact@v4 collapses the "least common ancestor"
-      # of the requested paths -- with the build job's two-path upload
+      # actions/upload-artifact collapses the "least common ancestor"
+      # of the requested paths (observed under v4; re-verify the
+      # staged/ diagnostic listing on the first release run after the
+      # v7/v8 artifact-action bumps) -- with the build job's two-path
+      # upload
       # (target/release/chromaticity-app + chromaticity-app.exe), the
       # ancestor is target/release/, so the binary lands at the artifact
       # root after download (artifacts/<name>/chromaticity-app[.exe]).

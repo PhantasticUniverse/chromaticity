@@ -16,7 +16,7 @@
 #   - codeowners-location    : Sec.8.1 CODEOWNERS location guard
 #   - signed-commits         : Sec.9.1 cryptographic commit signatures
 #   - reuse-lint             : EV-LICENSE-HEADERS
-#   - adr-lint               : EV-ADR-LINT (only when docs/adr/ changed)
+#   - adr-lint               : EV-ADR-LINT (all PRs; diff-gated on push/merge_group)
 #   - secret-scan            : Sec.18.3 belt-and-suspenders
 #
 # Heavier checks (rust clippy, tsc, cargo-deny, SBOM) are added by the
@@ -49,12 +49,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: npm
@@ -112,7 +112,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -139,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -227,11 +227,12 @@ jobs:
   # architecture-trailer-check : enforce docs/43 Sec.4.6 ADR + Evidence
   # trailers on PRs carrying the `architecture` label.
   #
-  # Two-step rollout: this job ships as ADVISORY (non-required) so the
-  # AO can validate behavior against 1-2 architecture-labeled PRs
-  # before promoting it to a required branch-protection context via
-  # Settings -> Branches. The script's label gate keeps the cost at
-  # one `gh api` round trip on non-architecture PRs (the 99% path).
+  # Rollout history: shipped ADVISORY (non-required) in PR #319 /
+  # 24d3b47, validated, then promoted to a REQUIRED branch-protection
+  # context on main in the PR #320 Phase-A flip (2026-05-01, gh api
+  # POST against the branch-protection rules). A red status here
+  # BLOCKS merge. The script's label gate keeps the cost at one
+  # `gh api` round trip on non-architecture PRs (the 99% path).
   # The canonical label is `architecture` per .github/labels.yml line
   # 106; there is no `solo-merge` label (succession-waiver uses a
   # different trailer-presence gate handled by the sibling job below).
@@ -247,7 +248,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -275,10 +276,12 @@ jobs:
   # unconditionally on every PR + merge_group event; on the 99% of PRs
   # without a Succession-Waiver trailer, the script is a no-op.
   #
-  # Two-step rollout: ships as ADVISORY (non-required); the AO promotes
-  # to required after validation against 1-2 architecture-labeled PRs
-  # (which double-validate the trailer-extraction codepath shared by
-  # both new jobs) via Settings -> Branches.
+  # Rollout complete: shipped ADVISORY (non-required) in PR #319;
+  # promoted to a REQUIRED branch-protection context on main in the
+  # same PR #320 Phase-A flip as the sibling job above, after
+  # validation against architecture-labeled PRs (which double-
+  # validated the trailer-extraction codepath shared by both jobs).
+  # A red status here BLOCKS merge.
   #
   # Untrusted-payload handling: same env-binding convention as the
   # trailer-check job; see policy.yml header.
@@ -289,7 +292,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -315,7 +318,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Verify root CODEOWNERS is authoritative
         shell: bash
@@ -359,7 +362,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -404,7 +407,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run reuse lint
         uses: fsfe/reuse-action@v5
@@ -414,7 +417,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -466,7 +469,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -500,7 +503,7 @@ jobs:
 
       - name: Upload SARIF
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gitleaks-results.sarif
           path: gitleaks.sarif

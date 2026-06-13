@@ -26,10 +26,14 @@
 #                    `audio-binding`, `script-bridge`) so the slice-4 /
 #                    slice-5a / slice-5.3 adapters are linted.
 #   test           - cargo nextest run --workspace --all-features
-#                    --all-targets (Linux only at Phase 1; multi-OS
-#                    lands when the first GPU-boundary integration test
-#                    arrives). A separate `cargo test --doc` step covers
-#                    doctests which nextest does not execute.
+#                    --all-targets, Linux-only by design: the
+#                    EV-RENDER-CONFORMANCE GPU corpus runs here on
+#                    Vulkan / Mesa llvmpipe; per-PR multi-OS test
+#                    expansion was evaluated and rejected on cost —
+#                    macOS Metal coverage is the trailing
+#                    macos-nightly.yml sweep (see its header for the
+#                    rationale). A separate `cargo test --doc` step
+#                    covers doctests which nextest does not execute.
 #                    `--all-features` activates the optional feature-
 #                    gated cross-crate seam tests
 #                    (`engine/render/tests/{audio,scene}_adapter.rs`,
@@ -109,7 +113,7 @@ jobs:
     outputs:
       rust: ${{ steps.combine.outputs.rust }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dorny/paths-filter@v3
         id: filter
@@ -155,7 +159,7 @@ jobs:
     if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup show
       - run: cargo fmt --all -- --check
@@ -170,7 +174,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install tauri linux deps (cached)
         if: runner.os == 'Linux'
@@ -213,7 +217,7 @@ jobs:
     if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install tauri + wgpu linux deps (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1
@@ -284,7 +288,7 @@ jobs:
       matrix:
         check: [advisories, licenses, bans, sources]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check ${{ matrix.check }}
@@ -295,7 +299,7 @@ jobs:
     if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup show
