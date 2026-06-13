@@ -15,9 +15,10 @@
 //!
 //! # Schema → runtime mapping (slice-4 scope)
 //!
-//! Slice 4's adapter handles the structural skeleton; per-pass
-//! GLSL fragment authoring, audio-uniform binding, and
-//! transition-edge metadata land in subsequent slices.
+//! Slice 4's adapter handles the structural skeleton. Audio-uniform
+//! binding landed in this module as Slice R-1b
+//! ([`MultipassSpec::from_scene_live`]); per-pass GLSL fragment
+//! authoring and transition-edge metadata remain future slices.
 //!
 //! - `Scene::passes[i].node` (`TARGET` wire key) — surfaced as the
 //!   adapted [`crate::PassDef::label`]. The slice-2 scheduler does
@@ -29,9 +30,10 @@
 //!   whose NAME appears in the caller's control-value map yields a
 //!   scalar [`crate::PassDef::uniforms`] entry (declaration order).
 //!   With an empty `control_values` the adapter emits the prior
-//!   empty-uniforms list, preserving slice-2 corpus continuity. The
-//!   audio-uniform binding slice still owns the symbol-routed audio
-//!   uniforms; R-0 only marshals operator/runtime control scalars.
+//!   empty-uniforms list, preserving slice-2 corpus continuity.
+//!   [`MultipassSpec::from_scene_live`] (Slice R-1b) owns the
+//!   symbol-routed audio uniforms; the R-0 path here only marshals
+//!   operator/runtime control scalars.
 //! - `Scene::passes[i].extensions["FLOAT"]` — when present and
 //!   parseable as `true` / `"RGBA32F"` / `"RGBA16F"`, sets
 //!   [`crate::PassDef::target_format`] to the corresponding
@@ -55,13 +57,19 @@
 //!
 //! # Caller surface
 //!
-//! Two entry points:
+//! Three entry points:
 //!
 //! - [`MultipassSpec::from_scene`] — convenience wrapper with
 //!   default options.
 //! - [`MultipassSpec::from_scene_with_options`] — explicit
 //!   [`SceneAdapterOptions`] for callers that need to set the
 //!   target size, frame count, or strict-size mode.
+//! - [`MultipassSpec::from_scene_live`] — the LIVE-render path
+//!   (ADR-011 Phase-2 Slice R-1b): resolves every `UNIFORMS`
+//!   binding per frame — reactive SYMBOLs (`TIME`, `RENDERSIZE`,
+//!   `chroma_Audio*`, `syn_BPM`, …) from [`LiveUniforms`], operator
+//!   controls by NAME, zero-fill otherwise. Production caller: the
+//!   R-1c output-window render thread (`app/shell/src/render/`).
 //!
 //! Adapter errors convert into [`crate::RenderError::SceneAdapterError`]
 //! at the [`crate::compile_and_render_multipass`] boundary so

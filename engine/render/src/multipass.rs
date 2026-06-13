@@ -45,12 +45,17 @@
 //!   scalar / vector value occupies a 16-byte slot regardless of
 //!   underlying width (a `f32` lives in the first 4 bytes of its
 //!   slot, the remaining 12 bytes are pad). [`UniformValue::FloatArray`]
-//!   expands into N consecutive 16-byte slots (one per element),
-//!   matching std140's `uniform float arr[N]` layout where every
-//!   array element is vec4-aligned. This keeps std140 vec4-alignment
-//!   satisfied without a per-type packing rulebook; the cost is at
-//!   most 12 bytes of pad per scalar / per array element, which is
-//!   negligible at the uniform counts we expect. The slice-5
+//!   expands into N consecutive 16-byte slots (one per element) — the
+//!   slot layout std140 prescribes for a float array, every element
+//!   vec4-aligned. NOTE the GLSL spelling: naga's GLSL frontend reads
+//!   a bare `float arr[N]` block member at a tight 4-byte stride (it
+//!   sees only every 4th element), so the binding MUST be declared
+//!   `vec4 arr[N]` and read via `.x` (convention enforced by
+//!   `engine/authoring/tests/shader_archetypes_corpus.rs`). This
+//!   keeps std140 vec4-alignment satisfied without a per-type packing
+//!   rulebook; the cost is at most 12 bytes of pad per scalar / per
+//!   array element, which is negligible at the uniform counts we
+//!   expect. The slice-5
 //!   follow-up to slice-5a added [`UniformValue::FloatArray`] to
 //!   close the slice-5a transitional `chroma_AudioFFTLow` +
 //!   `chroma_AudioFFTHigh` split-vec4 spelling into a single
@@ -333,8 +338,10 @@ pub struct UniformInput {
 /// buffer regardless of the underlying width (see module-level doc
 /// for the std140-friendly packing choice). The [`UniformValue::FloatArray`]
 /// variant is an exception: it expands into N consecutive 16-byte
-/// slots (one per element), matching the std140 layout of
-/// `uniform float arr[N]` where every array element is vec4-aligned.
+/// slots (one per element). Declare it in GLSL as `vec4 arr[N]` and
+/// read each element via `.x` — naga reads a bare `float arr[N]` at
+/// a 4-byte stride and would see only every 4th element (see
+/// module-level doc).
 #[derive(Debug, Clone)]
 pub enum UniformValue {
     Scalar(f32),
@@ -345,11 +352,17 @@ pub enum UniformValue {
     UInt(u32),
     /// std140-packed float array. Each element occupies one 16-byte
     /// slot in the per-pass uniform buffer (the first 4 bytes hold
-    /// the f32, the remaining 12 bytes are zero pad). Authors declare
-    /// the binding in GLSL as `uniform float arr[N]`; the per-pass
-    /// uniform buffer's slot count grows by `N` per FloatArray
-    /// binding. Introduced by the slice-5 follow-up to slice-5a to
-    /// consolidate the transitional `chroma_AudioFFTLow` +
+    /// the f32, the remaining 12 bytes are zero pad). Authors MUST
+    /// declare the binding in GLSL as `vec4 arr[N]` and read each
+    /// element via `.x` — naga's GLSL frontend reads a bare
+    /// `float arr[N]` at a tight 4-byte stride against this buffer's
+    /// 16-byte slots, so it would see only every 4th element
+    /// (convention enforced by `float_array_uniform_decls` in
+    /// `engine/authoring/tests/shader_archetypes_corpus.rs`; naga
+    /// alone accepts both layouts and cannot catch the mismatch).
+    /// The per-pass uniform buffer's slot count grows by `N` per
+    /// FloatArray binding. Introduced by the slice-5 follow-up to
+    /// slice-5a to consolidate the transitional `chroma_AudioFFTLow` +
     /// `chroma_AudioFFTHigh` split-vec4 binding into a single
     /// `chroma_AudioFFT[8]` array uniform per `docs/36` Sec.2.11.
     FloatArray(Vec<f32>),
@@ -2051,8 +2064,12 @@ fn encode_uniform_slots(
                 // std140 array-of-float: each element is vec4-aligned
                 // to 16 bytes with the f32 in the first 4 bytes of
                 // its slot. Emit `arr.len()` consecutive slots; the
-                // shader-side `uniform float chroma_AudioFFT[N]`
-                // declaration reads element K from offset `K * 16`.
+                // shader side MUST declare `vec4 arr[N]` and read
+                // element K via `arr[K].x` — naga's GLSL frontend
+                // reads a bare `float arr[N]` at a tight 4-byte
+                // stride (seeing only every 4th element), so the
+                // bare-float form is rejected by the
+                // `shader_archetypes_corpus` convention guard.
                 for v in arr {
                     let mut slot = UniformSlot::default();
                     slot.bytes[0..4].copy_from_slice(&v.to_le_bytes());
@@ -2369,8 +2386,11 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
     fn uniform_marshalling_float_array_layout() {
         // Drift pin: `UniformValue::FloatArray(N)` emits N consecutive
         // 16-byte slots, each holding the f32 in its first 4 bytes
-        // with 12 bytes of zero pad. Matches std140's `uniform float
-        // arr[N]` layout where every array element is vec4-aligned.
+        // with 12 bytes of zero pad. This is the slot layout std140
+        // prescribes for a vec4-aligned float array; on the GLSL side
+        // the binding is declared `vec4 arr[N]` and read via `.x`,
+        // because naga reads a bare `float arr[N]` at a 4-byte stride
+        // (see the shader-archetypes corpus convention guard).
         // Slice-5 follow-up addition unlocking single-name array
         // bindings (`chroma_AudioFFT[8]` per docs/36 Sec.2.11).
         let inputs = vec![UniformInput {

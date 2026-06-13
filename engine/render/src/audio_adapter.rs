@@ -108,12 +108,18 @@ pub const UNIFORM_NAME_RMS: &str = "chroma_AudioRMS";
 pub const UNIFORM_NAME_PEAK: &str = "chroma_AudioPeak";
 
 /// Symbol name for the 8-band log-spaced FFT array uniform per
-/// `docs/36` §2.11. Authors declare `uniform float chroma_AudioFFT[8];`
-/// in their GLSL block; element K (0..=7) is the K-th log-spaced
-/// band per `chromaticity_audio::FFT_BAND_MIN_HZ`. The slice-5
-/// follow-up to slice-5a consolidated the transitional split-vec4
-/// spelling (`chroma_AudioFFTLow` + `chroma_AudioFFTHigh`) into this
-/// single array binding via [`UniformValue::FloatArray`] (catalog
+/// `docs/36` §2.11. Authors declare `vec4 chroma_AudioFFT[8];` in
+/// their GLSL block and read band K (0..=7) via
+/// `chroma_AudioFFT[K].x`; band K is the K-th log-spaced band per
+/// `chromaticity_audio::FFT_BAND_MIN_HZ`. (A bare
+/// `float chroma_AudioFFT[8]` declaration is mis-read by naga's
+/// GLSL frontend at a tight 4-byte stride against the engine's
+/// 16-byte-per-element [`UniformValue::FloatArray`] emission — the
+/// shader sees only every 4th band; the shader-archetypes corpus
+/// test rejects that pattern.) The slice-5 follow-up to slice-5a
+/// consolidated the transitional split-vec4 spelling
+/// (`chroma_AudioFFTLow` + `chroma_AudioFFTHigh`) into this single
+/// array binding via [`UniformValue::FloatArray`] (catalog
 /// v1.2.0 → v1.3.0 transition).
 pub const UNIFORM_NAME_FFT: &str = "chroma_AudioFFT";
 
@@ -129,7 +135,8 @@ pub const UNIFORM_NAME_FFT: &str = "chroma_AudioFFT";
 /// 3. [`UNIFORM_NAME_PEAK`] = [`UniformValue::Scalar`] (snapshot.peak)
 /// 4. [`UNIFORM_NAME_FFT`] = [`UniformValue::FloatArray`] (8 elements,
 ///    bands `[0..=7]`; expands into 8 consecutive 16-byte slots in
-///    the uniform buffer per the std140 layout for `float arr[N]`).
+///    the uniform buffer — shader-side, declare `vec4 arr[8]` and
+///    read `.x` to match the 16-byte element stride).
 #[must_use]
 pub fn uniform_input_from_audio_snapshot(snapshot: &AudioUniformSnapshot) -> Vec<UniformInput> {
     vec![
