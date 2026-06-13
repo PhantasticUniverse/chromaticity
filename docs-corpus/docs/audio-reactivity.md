@@ -68,7 +68,9 @@ adjacent bands pairwise:
 
 This four-band view drives the `AudioReactivity` widget's named tile
 strip and the BPM strip below it. Authors who want raw eight-band
-resolution read `chroma_AudioFFT` directly in their GLSL.
+resolution read `chroma_AudioFFT` directly in their GLSL — declared as
+`vec4 chroma_AudioFFT[8]` and read via `.x` per the engine's std140
+array convention.
 
 ## How the operator HUD uses live audio
 
@@ -103,7 +105,7 @@ UX work.
 A minimal scene that pulses on the bass band:
 
 ```glsl
-uniform float chroma_AudioFFT[8];
+uniform vec4  chroma_AudioFFT[8];
 uniform float chroma_AudioRMS;
 uniform vec2  iResolution;
 
@@ -111,8 +113,12 @@ void main() {
     vec2 uv  = (gl_FragCoord.xy - 0.5 * iResolution) / iResolution.y;
     float r  = length(uv);
 
-    // Bass = bands 0 and 1 averaged.
-    float bass  = 0.5 * (chroma_AudioFFT[0] + chroma_AudioFFT[1]);
+    // Bass = bands 0 and 1 averaged. FFT bands are declared as
+    // `vec4 chroma_AudioFFT[8]` and read via `.x`: the engine packs
+    // each band into its own 16-byte std140 slot, so a plain
+    // `float chroma_AudioFFT[8]` declaration would silently read
+    // only every fourth band on the live render path.
+    float bass  = 0.5 * (chroma_AudioFFT[0].x + chroma_AudioFFT[1].x);
 
     // Pulse: an inverse-distance ring that thickens with bass energy
     // and brightens with overall RMS.

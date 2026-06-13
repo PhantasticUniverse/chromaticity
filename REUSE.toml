@@ -242,3 +242,25 @@ path = "LICENSES/MIT.txt"
 precedence = "override"
 SPDX-FileCopyrightText = "2011-2021 Mercury Demogroup"
 SPDX-License-Identifier = "MIT"
+
+# cpal 0.17.1 patched vendor snapshot (system-audio loopback fix, ADR-022).
+# Wired via the root Cargo.toml `[patch.crates-io]` path override; the only
+# deviation from the verbatim crates.io crate is a single macOS process-tap
+# initializer change in `src/host/coreaudio/macos/loopback.rs` (the global
+# `initStereoGlobalTapButExcludeProcesses:` path vs the upstream all-zero
+# device-scoped initializer — RustAudio/cpal#329). Apache-2.0 is already on
+# `deny.toml` `[licenses].allow`, so no `deny.toml` change is needed. Patch +
+# provenance at `third_party/cpal/UPSTREAM-VERSION.md`.
+[[annotations]]
+path = "third_party/cpal/**"
+precedence = "override"
+SPDX-FileCopyrightText = "The cpal contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# License text file: surface the SPDX identifier on the canonical text so
+# `reuse lint` does not flag it as missing coverage.
+[[annotations]]
+path = "LICENSES/Apache-2.0.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "The cpal contributors"
+SPDX-License-Identifier = "Apache-2.0"

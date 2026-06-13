@@ -234,7 +234,9 @@ mod scheduler_render_pins {
             peak: 0.91,
             fft_bands: [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            // ADR-024 reactive bands default to neutral 1.0; these render
+            // dispatch pins exercise tick ordering, not band values.
+            ..Default::default()
         }
     }
 

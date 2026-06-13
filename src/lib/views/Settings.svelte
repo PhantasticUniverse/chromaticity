@@ -18,10 +18,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //      target FPS, V-Sync toggle, HDR target, display assignment.
   //   3. Storage — Media folders + Custom scene folders + Backups path
   //      with retention; thumbnail / render-cache cleanup actions. Each
-  //      browse button invokes the W21 PR1 `pick_folder` IPC stub.
+  //      browse button calls `pickFolder` — the native folder dialog.
   //   4. Folder-picker IPC — see `src/lib/ipc/picker.ts` and
-  //      `app/shell/src/commands/picker.rs`. Phase-3+/4a swaps the
-  //      placeholder for `tauri-plugin-dialog`'s native picker.
+  //      `app/shell/src/commands/picker.rs`. Wave 2.7 SET.B swapped the
+  //      W21 PR1 `pick_folder` stub for `@tauri-apps/plugin-dialog`'s
+  //      native picker; the legacy stub survives only as the
+  //      non-Tauri-runtime (vite dev / vitest) fallback, and in-shell
+  //      dialog failures surface via `pickerError` instead of
+  //      fabricating a placeholder path (8168b8e).
   //
   // The four new sections sit ABOVE the existing Hotkeys + ThemeSwitcher
   // sections — operator infrastructure is more frequently accessed than
@@ -39,13 +43,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // The form fields below read and write the persisted settings store.
   // Runtime application of a few preferences is still subsystem-owned,
   // but the operator document itself survives restart.
+  import { untrack } from 'svelte';
+
   import {
     ampToDb,
-    ExpEnvelope,
+    AttackReleaseEnvelope,
     PeakBallistics,
     PeakHold,
     SilenceGate,
-    VU_INTEGRATION_TAU_MS,
   } from '../audio/metering';
   import { HOTKEYS } from '../data/hotkeys';
   import {
@@ -83,12 +88,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MultiDisplayModeOption,
     type QuantizeTransitionOption,
   } from '../data/settings-fixtures';
+  import ErrorMessage from '../ErrorMessage.svelte';
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
   import { audioDevicesStore } from '../stores/audioDevices.svelte';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import { settingsStore } from '../stores/settings.svelte';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
+  import { toIpcError } from '../types/ipc-error';
   import { ControlGroup, Fader, Meter, OutputRoutingTile, TabSegment } from '../widgets';
   import SceneStill from '../widgets/SceneStill.svelte';
 
@@ -167,7 +174,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // device-less hosts) the meter shows the bundle-faithful frozen-frame
   // fixture levels and the ballistics reset so the next live snapshot
   // seeds cleanly.
-  const levelEnv = new ExpEnvelope(VU_INTEGRATION_TAU_MS);
+  // Asymmetric level follower: fast attack (~10 ms) so the bar leaps
+  // onto a transient, slow release (~250 ms) so it glides back — the
+  // DAW-grade feel. Replaces the symmetric 300 ms `ExpEnvelope` whose
+  // equal rise/fall tau was the dominant level-bar lag.
+  const levelEnv = new AttackReleaseEnvelope();
   const peakBallistics = new PeakBallistics();
   const peakHold = new PeakHold();
   const silenceGate = new SilenceGate();
@@ -181,67 +192,163 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let _lastSnapMs = 0;
   let _meterSeeded = false;
 
-  $effect(() => {
-    const snap = audioSnapshotStore.snapshot;
-    if (!snap) {
-      meterLevelDb = FIXTURE_LEVEL_DB;
-      meterPeakDb = FIXTURE_PEAK_DB;
-      meterSilent = false;
-      _meterSeeded = false;
-      levelEnv.reset();
-      peakBallistics.reset();
-      peakHold.reset();
-      silenceGate.reset();
-      return;
-    }
-    const now = typeof performance !== 'undefined' ? performance.now() : 0;
-    // First live snapshot seeds instantly (large dt saturates the
-    // envelopes onto the target); subsequent steps use the real dt,
-    // capped so a backgrounded tab doesn't fast-forward the decay.
-    const dtMs = _meterSeeded ? Math.min(250, Math.max(0, now - _lastSnapMs)) : 1e4;
-    _lastSnapMs = now;
-    _meterSeeded = true;
+  // True once a live engine snapshot is present (i.e. the meter is
+  // tracking real RMS / peak rather than the frozen-frame fixture).
+  // Gates the Monitoring-meter caption below so the "falling back to a
+  // frozen-frame fixture" wording only renders in the no-snapshot /
+  // error startup window, not during live capture. Reads the store
+  // directly — it does NOT alter the meter `$effect` ballistics.
+  const meterIsLive = $derived(audioSnapshotStore.snapshot !== null);
 
-    const levelDb = levelEnv.process(ampToDb(snap.rms), dtMs);
-    const fastPeakDb = peakBallistics.process(ampToDb(snap.peak), dtMs);
-    meterLevelDb = levelDb;
-    meterPeakDb = peakHold.process(fastPeakDb, dtMs);
-    meterSilent = silenceGate.update(levelDb, dtMs);
+  // Free-running rAF ballistics. The decay / peak-hold glide must keep
+  // advancing every frame on the REAL per-frame dt, not just when an
+  // engine snapshot arrives — otherwise the meter freezes mid-glide
+  // whenever the IPC stream coalesces (the snapshot-driven `$effect`
+  // only ticked the envelopes on each write, so a gap stalled the fall).
+  // Mirrors the `VuStereo.svelte` untrack-rAF pattern: the snapshot is
+  // read via `untrack()` inside the loop so the `$effect` doesn't tear
+  // down + recreate the loop on every ~60 Hz snapshot write. Reset on a
+  // null snapshot restores the frozen-frame fixture so the next live
+  // sample seeds cleanly.
+  $effect(() => {
+    if (typeof requestAnimationFrame === 'undefined') return;
+    let raf = 0;
+    const tick = (): void => {
+      const snap = untrack(() => audioSnapshotStore.snapshot);
+      if (!snap) {
+        meterLevelDb = FIXTURE_LEVEL_DB;
+        meterPeakDb = FIXTURE_PEAK_DB;
+        meterSilent = false;
+        if (_meterSeeded) {
+          _meterSeeded = false;
+          levelEnv.reset();
+          peakBallistics.reset();
+          peakHold.reset();
+          silenceGate.reset();
+        }
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      const now = typeof performance !== 'undefined' ? performance.now() : 0;
+      // First live snapshot seeds instantly (large dt saturates the
+      // envelopes onto the target); subsequent frames use the real
+      // per-frame dt, capped so a backgrounded tab doesn't fast-forward
+      // the decay.
+      const dtMs = _meterSeeded ? Math.min(250, Math.max(0, now - _lastSnapMs)) : 1e4;
+      _lastSnapMs = now;
+      _meterSeeded = true;
+
+      const levelDb = levelEnv.process(ampToDb(snap.rms), dtMs);
+      const fastPeakDb = peakBallistics.process(ampToDb(snap.peak), dtMs);
+      meterLevelDb = levelDb;
+      meterPeakDb = peakHold.process(fastPeakDb, dtMs);
+      meterSilent = silenceGate.update(levelDb, dtMs);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   });
 
-  // Always-present built-in capture source rendered ahead of the
-  // enumerated devices. `system-audio` is the zero-install
+  // Always-present built-in capture sources rendered ahead of the
+  // enumerated devices. `default` is the persisted-settings sentinel
+  // (`DEFAULT_SETTINGS.audio.input_device === 'default'`) that binds
+  // the host default input via `AudioRuntime::with_preferred_device`;
+  // once real cpal devices enumerate their ids become
+  // `input-<sanitized>` and there is otherwise no `<option value="default">`
+  // for the native <select> to match, so the control renders blank.
+  // Prepending it here keeps it selectable on BOTH the live-enumerated
+  // and fixture-fallback branches. `system-audio` is the zero-install
   // system-output loopback capture (macOS 14.6+ Core Audio taps /
   // Windows WASAPI loopback) that engine/audio's
   // `try_input_by_preference` routes to `try_system_audio_loopback`.
   // Exposing it as a first-class entry (parallel to the reference's
   // "Desktop Audio") means reacting to whatever the machine is PLAYING
-  // needs no hand-installed BlackHole/Loopback driver. The host default
-  // input (`default`) is already provided by the enumerated / fixture
-  // list, so only `system-audio` is prepended here.
-  const FIXED_AUDIO_INPUT_OPTIONS = [{ id: 'system-audio', label: 'System Audio (built-in)' }];
+  // needs no hand-installed BlackHole/Loopback driver.
+  // FIX 8 — `default` reads as a MODE ("Automatic"), not a device, so it
+  // stops colliding visually with the enumerated host-default device
+  // (e.g. "MacBook Pro Microphone", which IS the host default). The
+  // `system-audio` zero-install loopback entry is grouped under "System
+  // playback" alongside any installed BlackHole / Loopback driver.
+  interface DeviceOption {
+    readonly id: string;
+    readonly label: string;
+  }
+  const AUTOMATIC_INPUT_OPTION: DeviceOption = {
+    id: 'default',
+    label: 'Automatic (system default)',
+  };
+  const SYSTEM_AUDIO_INPUT_OPTION: DeviceOption = {
+    id: 'system-audio',
+    label: 'System Audio (built-in)',
+  };
+
+  // Wave 2.7 Lane SET.C — the persisted `output_device` sentinel
+  // mirror of the input `default` fix above: always-present so the
+  // native <select> has a row to match when live cpal output ids
+  // (`output-<sanitized>`) replace the fixture set. FIX 8 — same
+  // mode-not-device relabel as the input side.
+  const FIXED_AUDIO_OUTPUT_OPTIONS = [{ id: 'default', label: 'Automatic (system default)' }];
 
   // Wave 2.6 Lane AUD.A — derive the Input Device dropdown option set
   // from `audioDevicesStore.devices`. Empty live list falls back to
   // the W21 PR1 fixture so the dropdown always has something to
   // render (e.g. running outside Tauri). The fixed system sources are
   // always prepended so `system-audio` / `default` are selectable
-  // regardless of the enumerated-device state.
+  // regardless of the enumerated-device state. The fixture fallback
+  // de-dupes its own `default` row so the no-hardware path renders a
+  // single `default` option (the prepended one).
   const liveAudioInputOptions = $derived(
     audioDevicesStore.devices.map((d) => ({ id: d.id, label: d.name })),
   );
-  const audioInputOptions = $derived([
-    ...FIXED_AUDIO_INPUT_OPTIONS,
-    ...(liveAudioInputOptions.length > 0 ? liveAudioInputOptions : AUDIO_INPUT_DEVICES),
-  ]);
+
+  // FIX 8 — group the Input <select> with <optgroup> so the operator
+  // reads the mode ("Automatic") apart from real capture sources.
+  //   • Automatic — the `default` system-default MODE (one row).
+  //   • System playback — the zero-install `system-audio` loopback plus
+  //     any installed BlackHole / Loopback driver (matched by name).
+  //   • Hardware inputs — the remaining cpal-enumerated devices (or the
+  //     W21 PR1 fixture fallback when nothing enumerates).
+  // `default` is excluded from the fixture-fallback tail so it never
+  // double-renders against the prepended Automatic row.
+  const SYSTEM_PLAYBACK_NAME_RE = /blackhole|loopback|soundflower/i;
+  const enumeratedInputDevices = $derived(
+    liveAudioInputOptions.length > 0
+      ? liveAudioInputOptions
+      : AUDIO_INPUT_DEVICES.filter((d) => d.id !== 'default').map((d) => ({
+          id: d.id,
+          label: d.label,
+        })),
+  );
+  const audioInputGroups = $derived<readonly { label: string; options: DeviceOption[] }[]>(
+    [
+      { label: 'Automatic', options: [AUTOMATIC_INPUT_OPTION] },
+      {
+        label: 'System playback',
+        options: [
+          SYSTEM_AUDIO_INPUT_OPTION,
+          ...enumeratedInputDevices.filter((d) => SYSTEM_PLAYBACK_NAME_RE.test(d.label)),
+        ],
+      },
+      {
+        label: 'Hardware inputs',
+        options: enumeratedInputDevices.filter((d) => !SYSTEM_PLAYBACK_NAME_RE.test(d.label)),
+      },
+    ].filter((g) => g.options.length > 0),
+  );
 
   // Wave 2.7 Lane SET.C — same dual-mode pattern for Output Device.
+  // The fixed `default` source is always prepended; the fixture
+  // fallback de-dupes its own `default` row so a single `default`
+  // option renders on the no-hardware path.
   const liveAudioOutputOptions = $derived(
     audioDevicesStore.outputDevices.map((d) => ({ id: d.id, label: d.name })),
   );
-  const audioOutputOptions = $derived(
-    liveAudioOutputOptions.length > 0 ? liveAudioOutputOptions : AUDIO_OUTPUT_DEVICES,
-  );
+  const audioOutputOptions = $derived([
+    ...FIXED_AUDIO_OUTPUT_OPTIONS,
+    ...(liveAudioOutputOptions.length > 0
+      ? liveAudioOutputOptions
+      : AUDIO_OUTPUT_DEVICES.filter((d) => d.id !== 'default')),
+  ]);
 
   // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
   // mirroring `views/settings.jsx` lines 187-194 (the right-column
@@ -337,8 +444,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
   });
 
+  // Folder-picker failure surface. `pickFolder` throws when the native
+  // dialog fails inside a real Tauri shell (it no longer falls through
+  // to the legacy stub, which fabricated a placeholder path that the
+  // browse handlers then persisted as if the operator had picked it).
+  // `null` still means "user dismissed / no pick" and persists nothing.
+  let pickerError = $state<string | null>(null);
+
+  async function browseFolder(title: string): Promise<string | null> {
+    try {
+      const path = await pickFolder(title);
+      pickerError = null;
+      return path;
+    } catch (e) {
+      pickerError = toIpcError(e).message;
+      return null;
+    }
+  }
+
   async function browseMediaFolder() {
-    const path = await pickFolder('Pick a Media folder');
+    const path = await browseFolder('Pick a Media folder');
     if (path) {
       settingsStore.update({
         storage: {
@@ -349,7 +474,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   async function browseSceneFolder() {
-    const path = await pickFolder('Pick a Custom scene folder');
+    const path = await browseFolder('Pick a Custom scene folder');
     if (path) {
       settingsStore.update({
         storage: {
@@ -360,7 +485,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   async function browseBackupFolder() {
-    const path = await pickFolder('Pick a Backups folder');
+    const path = await browseFolder('Pick a Backups folder');
     if (path) {
       settingsStore.update({ storage: { backup_path: path } });
     }
@@ -534,22 +659,59 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </p>
     </header>
 
+    {#if settingsStore.canPersist && settingsStore.error}
+      <!-- Persist-failure banner. `error` is rendered only when
+           `canPersist` is true: a save can only fail after a real
+           shell load, so the expected no-Tauri load failure (Vitest
+           jsdom / vite-only dev) never surfaces as noise. The store
+           keeps the optimistic snapshot; the banner warns that it may
+           not have reached disk. -->
+      <div class="settings__save-error" role="alert">
+        <span>
+          Settings could not be saved: {settingsStore.error} — changes may not persist across restart.
+        </span>
+        <button
+          type="button"
+          class="settings__btn settings__btn--ghost"
+          onclick={() => (settingsStore.error = null)}
+          aria-label="Dismiss settings save error"
+        >
+          Dismiss
+        </button>
+      </div>
+    {/if}
+
     <article class="settings__section">
       <h2>Audio Device</h2>
       <div class="settings__form">
         <div class="settings__field">
           <label for="audio-input" class="settings__label">Input Device</label>
-          <select
-            id="audio-input"
-            class="settings__select"
-            value={audioSnapshot.input_device}
-            onchange={(e) =>
-              settingsStore.update({ audio: { input_device: e.currentTarget.value } })}
-          >
-            {#each audioInputOptions as opt (opt.id)}
-              <option value={opt.id}>{opt.label}</option>
-            {/each}
-          </select>
+          <div class="settings__field-row settings__field-row--device">
+            <select
+              id="audio-input"
+              class="settings__select"
+              value={audioSnapshot.input_device}
+              onchange={(e) =>
+                settingsStore.update({ audio: { input_device: e.currentTarget.value } })}
+            >
+              {#each audioInputGroups as group (group.label)}
+                <optgroup label={group.label}>
+                  {#each group.options as opt (opt.id)}
+                    <option value={opt.id}>{opt.label}</option>
+                  {/each}
+                </optgroup>
+              {/each}
+            </select>
+            <button
+              type="button"
+              class="settings__btn settings__btn--ghost"
+              onclick={() => audioDevicesStore.refresh()}
+              disabled={audioDevicesStore.isLoading}
+              aria-label="Refresh input devices"
+            >
+              <Icon name="refresh" size={12} /> Refresh
+            </button>
+          </div>
           <p class="settings__hint">
             Pick <strong>System Audio (built-in)</strong> to react to whatever your computer is
             playing — no extra software to install (macOS 14.6+ / Windows; macOS asks once for
@@ -566,17 +728,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
         <div class="settings__field">
           <label for="audio-output" class="settings__label">Output Device</label>
-          <select
-            id="audio-output"
-            class="settings__select"
-            value={audioSnapshot.output_device}
-            onchange={(e) =>
-              settingsStore.update({ audio: { output_device: e.currentTarget.value } })}
-          >
-            {#each audioOutputOptions as opt (opt.id)}
-              <option value={opt.id}>{opt.label}</option>
-            {/each}
-          </select>
+          <div class="settings__field-row settings__field-row--device">
+            <select
+              id="audio-output"
+              class="settings__select"
+              value={audioSnapshot.output_device}
+              onchange={(e) =>
+                settingsStore.update({ audio: { output_device: e.currentTarget.value } })}
+            >
+              {#each audioOutputOptions as opt (opt.id)}
+                <option value={opt.id}>{opt.label}</option>
+              {/each}
+            </select>
+            <button
+              type="button"
+              class="settings__btn settings__btn--ghost"
+              onclick={() => audioDevicesStore.refreshOutput()}
+              disabled={audioDevicesStore.isLoadingOutput}
+              aria-label="Refresh output devices"
+            >
+              <Icon name="refresh" size={12} /> Refresh
+            </button>
+          </div>
         </div>
         <div class="settings__field">
           <label for="sample-rate" class="settings__label">Sample Rate</label>
@@ -690,9 +863,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
       </div>
       <p class="settings__hint">
-        Device choices are persisted and applied on restart. The Monitoring meter reads live RMS /
-        peak from the audio-uniform IPC seam when a snapshot is present, falling back to a
-        frozen-frame fixture during the no-snapshot startup window.
+        Device choices are persisted and applied on restart.
+        {#if meterIsLive}
+          The Monitoring meter is reading live RMS / peak from the audio-uniform IPC seam.
+        {:else}
+          The Monitoring meter reads live RMS / peak from the audio-uniform IPC seam when a snapshot
+          is present, falling back to a frozen-frame fixture during the no-snapshot startup window.
+        {/if}
       </p>
     </article>
 
@@ -1070,6 +1247,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
     <article class="settings__section">
       <h2>Storage</h2>
+
+      <ErrorMessage error={pickerError} />
 
       <div class="settings__storage-group">
         <div class="settings__storage-head">
@@ -1711,6 +1890,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     margin: 0;
   }
 
+  .settings__save-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xl);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-sm);
+    color: var(--color-danger);
+    font-size: var(--font-size-body-sm);
+  }
+
   .settings__section {
     border-top: 1px solid var(--color-line-1);
     padding-top: var(--space-xl);
@@ -1843,6 +2035,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+
+  /* FIX 8 — Input / Output device picker + inline Refresh button. */
+  .settings__field-row--device {
+    flex-wrap: nowrap;
+    max-width: 420px;
+    width: 100%;
+  }
+  .settings__field-row--device .settings__select {
+    flex: 1;
+    min-width: 0;
   }
 
   .settings__field-row--gain {
@@ -2414,11 +2617,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     cursor: not-allowed;
   }
 
+  /* Destructive-confirm modal rides the token modal tier (tokens.css
+   * --z-modal: 950, matching NewSceneModal's 950/951) so it stacks
+   * ABOVE the ConsoleDrawer overlay tier (--z-overlay: 900/901) while
+   * staying below HotkeyOverlay (1000) / CommandPalette (1010). The
+   * previous raw 100/101 buried the dialog under an open Console
+   * drawer. */
   .settings__modal-backdrop {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.55);
-    z-index: 100;
+    z-index: var(--z-modal);
   }
 
   .settings__modal {
@@ -2426,7 +2635,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 101;
+    z-index: calc(var(--z-modal) + 1);
     background: var(--color-bg-1);
     color: var(--color-text-0);
     border: 1px solid var(--color-line-2);

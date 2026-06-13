@@ -1,0 +1,43 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Fast-Transient Snap",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype (not shipped to the library). Hard geometric kaleidoscopic snap that jumps onto discrete facet/rotation steps on sharp audio onsets. Binds chroma_AudioPeak and the lowest FFT band (chroma_AudioFFT[0]) for transient strength and FRAMECOUNT for a per-frame strobe. Covers the FAST-TRANSIENT edge case: snappy, quantised response to sharp peaks while remaining a sane, non-black, non-NaN image at zero audio (RMS=peak=0, FFT all 0, BPM=120).",
+  "TAGS": ["audio", "reactive", "transient", "geometric", "archetype", "renderer-test"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "snap_steps",
+      "TYPE": "slider",
+      "DEFAULT": 6.0,
+      "MIN": 3.0,
+      "MAX": 16.0
+    },
+    {
+      "NAME": "sensitivity",
+      "TYPE": "knob",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "strobe_amount",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_framecount", "SYMBOL": "FRAMECOUNT" },
+        { "NAME": "u_peak", "SYMBOL": "chroma_AudioPeak" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" }
+      ]
+    }
+  ]
+}

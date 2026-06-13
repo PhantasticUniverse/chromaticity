@@ -54,6 +54,11 @@ use tauri::{AppHandle, Emitter, Runtime};
 /// literal; keeping the constant in one place pins the contract.
 pub const AUDIO_UNIFORM_SNAPSHOT_EVENT: &str = "audio_uniform_snapshot_changed";
 
+/// Opt-in emit counter for `CHROMATICITY_AUDIO_DIAG` telemetry (see
+/// [`IpcEmit::emit_snapshot`]). Module-level so it survives across the single
+/// production emitter instance.
+static DIAG_EMIT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Tauri-event concrete adapter for
 /// [`chromaticity_runtime::scheduler::ipc::IpcEmit`].
 ///
@@ -77,12 +82,28 @@ impl<R: Runtime> TauriIpcEmitter<R> {
 
 impl<R: Runtime> IpcEmit for TauriIpcEmitter<R> {
     fn emit_snapshot(&self, snapshot: AudioUniformSnapshot) {
+        use std::sync::atomic::Ordering;
         let payload = AudioUniformSnapshotPayload::from(snapshot);
         // Silent drop on emit failure per ADR-019 §3 + §4. Tauri's
         // emit can fail if the event queue is full or the app is
         // shutting down; neither failure mode warrants a panic and
         // the scheduler tick must continue advancing regardless.
-        let _ = self.app.emit(AUDIO_UNIFORM_SNAPSHOT_EVENT, &payload);
+        let result = self.app.emit(AUDIO_UNIFORM_SNAPSHOT_EVENT, &payload);
+        // Opt-in emit telemetry (CHROMATICITY_AUDIO_DIAG): confirm the engine
+        // side actually fires + how often, so a "static UI meter" can be
+        // bisected — engine-emits-but-webview-silent (delivery seam) vs
+        // engine-never-emits (scheduler/pull seam). Throttled to ~once/2s at
+        // 60 Hz so it does not flood the captured log.
+        if chromaticity_audio::diagnostics_enabled() {
+            let n = DIAG_EMIT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            if n % 120 == 0 {
+                eprintln!(
+                    "[audio-diag] ipc emit #{n} -> '{AUDIO_UNIFORM_SNAPSHOT_EVENT}' (result={})",
+                    if result.is_ok() { "ok" } else { "err" },
+                );
+            }
+        }
+        let _ = result;
     }
 }
 
@@ -106,9 +127,9 @@ mod ipc_emit_pins {
     //! - `payload_conversion_preserves_field_by_field_equality`
     //!   pins the bidirectional [`AudioUniformSnapshotPayload`] /
     //!   [`AudioUniformSnapshot`] mapping the trait method relies
-    //!   on, ensuring the 11-field surface (1 × bpm + 1 × rms + 1 ×
-    //!   peak + 8 × fft_bands) crosses the conversion edge
-    //!   intact.
+    //!   on, ensuring the 17-numeric-field surface (1 bpm, 1 rms, 1
+    //!   peak, 8 fft_bands, 6 relative reactive bands) crosses the
+    //!   conversion edge intact.
     //! - `event_name_constant_matches_consumer_listener` pins the
     //!   Svelte-side listener contract (the consumer listens for
     //!   `'audio_uniform_snapshot_changed'`); a typo here is a
@@ -127,6 +148,12 @@ mod ipc_emit_pins {
             peak: 0.9,
             fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
             fft_availability: AudioAxisAvailability::Ready,
+            bass: 1.10,
+            mid: 1.21,
+            treb: 1.32,
+            bass_att: 0.93,
+            mid_att: 0.84,
+            treb_att: 0.75,
             degraded: false,
         };
         let payload = AudioUniformSnapshotPayload::from(snapshot);
@@ -142,6 +169,12 @@ mod ipc_emit_pins {
             payload.fft_availability,
             chromaticity_ui_bridge::AudioAxisAvailability::Ready
         );
+        assert_eq!(payload.bass, snapshot.bass);
+        assert_eq!(payload.mid, snapshot.mid);
+        assert_eq!(payload.treb, snapshot.treb);
+        assert_eq!(payload.bass_att, snapshot.bass_att);
+        assert_eq!(payload.mid_att, snapshot.mid_att);
+        assert_eq!(payload.treb_att, snapshot.treb_att);
         assert!(!payload.degraded);
         // Reverse direction round-trip preserves the snapshot too;
         // mirrors the producer-side `From` symmetry the cross-seam
@@ -187,6 +220,14 @@ mod ipc_emit_pins {
             payload.fft_availability,
             chromaticity_ui_bridge::AudioAxisAvailability::Warming
         );
+        // Relative reactive bands centre on the neutral 1.0 (ADR-024),
+        // not zero like the raw-energy axes.
+        assert_eq!(payload.bass, 1.0);
+        assert_eq!(payload.mid, 1.0);
+        assert_eq!(payload.treb, 1.0);
+        assert_eq!(payload.bass_att, 1.0);
+        assert_eq!(payload.mid_att, 1.0);
+        assert_eq!(payload.treb_att, 1.0);
         assert!(!payload.degraded);
     }
 }

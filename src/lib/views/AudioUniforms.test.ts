@@ -107,6 +107,12 @@ describe('AudioUniforms view', () => {
       peak: 0.6,
       fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
       fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
     const { getByRole } = render(AudioUniforms);
@@ -119,6 +125,8 @@ describe('AudioUniforms view', () => {
   });
 
   it('captures the live snapshot as a JSON blob download when clicked', async () => {
+    // Distinct per-field values so the export-shape assertions below can
+    // pin every wire field — including the six ADR-024 reactive bands.
     audioSnapshotStore.snapshot = {
       bpm: 132.5,
       bpm_availability: 'Ready',
@@ -126,6 +134,12 @@ describe('AudioUniforms view', () => {
       peak: 0.81,
       fft_bands: [0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88],
       fft_availability: 'Ready',
+      bass: 1.6,
+      mid: 2.1,
+      treb: 3.4,
+      bass_att: 1.5,
+      mid_att: 2.0,
+      treb_att: 3.2,
       degraded: false,
     };
     // Capture the Blob handed to URL.createObjectURL so we can read its
@@ -179,6 +193,12 @@ describe('AudioUniforms view', () => {
         peak: number;
         fft_bands: number[];
         fft_availability: string;
+        bass: number;
+        mid: number;
+        treb: number;
+        bass_att: number;
+        mid_att: number;
+        treb_att: number;
         degraded: boolean;
         captured_at: string;
       };
@@ -188,6 +208,14 @@ describe('AudioUniforms view', () => {
       expect(parsed.peak).toBeCloseTo(0.81);
       expect(parsed.fft_bands).toEqual([0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 0.88]);
       expect(parsed.fft_availability).toBe('Ready');
+      // The six ADR-024 reactive-band fields must survive the export —
+      // a regression here silently drops the AGC bands from captures.
+      expect(parsed.bass).toBeCloseTo(1.6);
+      expect(parsed.mid).toBeCloseTo(2.1);
+      expect(parsed.treb).toBeCloseTo(3.4);
+      expect(parsed.bass_att).toBeCloseTo(1.5);
+      expect(parsed.mid_att).toBeCloseTo(2.0);
+      expect(parsed.treb_att).toBeCloseTo(3.2);
       expect(parsed.degraded).toBe(false);
       // captured_at is an ISO-8601 timestamp emitted at click time.
       expect(parsed.captured_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
@@ -397,24 +425,28 @@ describe('AudioUniforms view', () => {
   });
 
   // ---------------------------------------------------------------------
-  // Wave 2.6 AUD.D — live band-tile wiring. Five fixture tiles now read
-  // live values reduced from `audioSnapshotStore.snapshot.fft_bands` via
-  // the 8 → 5 idiom documented in `AudioUniforms.svelte`:
-  //   bass   ← avg(fft_bands[0], fft_bands[1])
-  //   mid    ← avg(fft_bands[2], fft_bands[3])
-  //   midhi  ← avg(fft_bands[4], fft_bands[5])
-  //   high   ← avg(fft_bands[6], fft_bands[7])
-  //   full   ← avg(fft_bands[0..7])
+  // ADR-024 + FIX 3 — live band-tile wiring reads the volume-independent
+  // AGC reactive bands (`bass` / `mid` / `treb`) rather than the clamped
+  // `fft_bands`, mapped onto a 0..1 bar fill by `clamp((value - 1) / 3)`:
+  // a REST-AT-FLOOR reactivity ratio (neutral 1.0 → 0% dark, ~4.0
+  // transient → 100%), not an absolute level. The five tiles map:
+  //   bass   ← bass
+  //   mid    ← mid
+  //   midhi  ← treb
+  //   high   ← treb
+  //   full   ← mean(bass, mid, treb)
   // The store is mutated directly because the view subscribes to the
   // singleton (no `snapshot` prop on AudioUniforms — divergence from
   // the AudioReactivity widget surface). `afterEach` resets the
   // singleton's `snapshot` field to `null` so the synthetic-fallback
   // tests above keep their default fixture-driven posture.
 
-  // Carefully chosen so the reduced values bracket the HIT_THRESHOLD
-  // (0.5) without ties: bass / mid stay below, midhi / high fire, and
-  // the broadband full lands exactly at 0.5 (not strictly greater, so
-  // no hit). Per-bar `.toFixed(2)` matches the view's value rendering.
+  // Distinct per-band values (all above neutral so the tiles light), and
+  // chosen so the mapped values bracket the HIT_THRESHOLD (0.5):
+  //   bass 1.6 -> (0.6)/3 = 0.20 (below → ○),
+  //   mid  1.0 -> 0.00 (at floor),
+  //   treb 3.4 -> (2.4)/3 = 0.80 (over → ●),
+  //   full mean(1.6,1.0,3.4)=2.0 -> (1.0)/3 = 0.33 (below → ○).
   const SAMPLE_SNAPSHOT: AudioUniformSnapshotPayload = {
     bpm: 120,
     bpm_availability: 'Ready',
@@ -422,41 +454,75 @@ describe('AudioUniforms view', () => {
     peak: 0.9,
     fft_bands: [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9],
     fft_availability: 'Ready',
+    bass: 1.6,
+    mid: 1.0,
+    treb: 3.4,
+    bass_att: 1.6,
+    mid_att: 1.0,
+    treb_att: 3.4,
     degraded: false,
   };
 
-  it('reduces 8 fft_bands into the 5 band tiles when audioSnapshotStore.snapshot is set', () => {
+  it('maps the AGC bands onto the 5 band tiles when audioSnapshotStore.snapshot is set', () => {
     audioSnapshotStore.snapshot = SAMPLE_SNAPSHOT;
     const { container } = render(AudioUniforms);
     const bands = container.querySelectorAll('.au__band');
     expect(bands.length).toBe(5);
 
-    // Index 0 (bass) / 2 (midhi) / 3 (high) / 4 (full) — exercise the
-    // four frequency-specific pair reductions plus the broadband mean.
     // Each band's bars are level / hit / presence in template order.
     const valueAt = (bandIdx: number, barIdx: number): string =>
       bands[bandIdx]?.querySelectorAll('.au__bar-value')[barIdx]?.textContent?.trim() ?? '';
 
-    // Bass: avg(0.1, 0.2) = 0.15 — below HIT_THRESHOLD, hit = 0 → ○.
-    expect(valueAt(0, 0)).toBe('0.15'); // level
+    // Bass: clamp((1.6 - 1) / 3) = 0.20 — below HIT_THRESHOLD, hit = 0 → ○.
+    expect(valueAt(0, 0)).toBe('0.20'); // level
     expect(valueAt(0, 1)).toBe('○'); // hit indicator (hollow)
-    expect(valueAt(0, 2)).toBe('0.15'); // presence mirrors level
+    expect(valueAt(0, 2)).toBe('0.20'); // presence mirrors level
 
-    // Mid-High: avg(0.6, 0.7) = 0.65 — above threshold, hit = 0.30 → ●.
-    expect(valueAt(2, 0)).toBe('0.65');
+    // Mid: clamp((1.0 - 1) / 3) = 0.00 — rests at the floor (FIX 3).
+    expect(valueAt(1, 0)).toBe('0.00');
+
+    // Mid-High: treb clamp((3.4 - 1) / 3) = 0.80 — above threshold, hit → ●.
+    expect(valueAt(2, 0)).toBe('0.80');
     expect(valueAt(2, 1)).toBe('●');
-    expect(valueAt(2, 2)).toBe('0.65');
+    expect(valueAt(2, 2)).toBe('0.80');
 
-    // High: avg(0.8, 0.9) = 0.85 — well above threshold, hit = 0.70 → ●.
-    expect(valueAt(3, 0)).toBe('0.85');
+    // High: also reads treb → 0.80 → ●.
+    expect(valueAt(3, 0)).toBe('0.80');
     expect(valueAt(3, 1)).toBe('●');
-    expect(valueAt(3, 2)).toBe('0.85');
+    expect(valueAt(3, 2)).toBe('0.80');
 
-    // Full: avg of all eight bins = 0.50 — exactly at threshold, not
-    // strictly greater, hit = 0 → ○.
-    expect(valueAt(4, 0)).toBe('0.50');
+    // Full: mean(1.6, 1.0, 3.4) = 2.0 → clamp((2.0 - 1) / 3) = 0.33 —
+    // below threshold, hit = 0 → ○.
+    expect(valueAt(4, 0)).toBe('0.33');
     expect(valueAt(4, 1)).toBe('○');
-    expect(valueAt(4, 2)).toBe('0.50');
+    expect(valueAt(4, 2)).toBe('0.33');
+  });
+
+  it('agcBarFill rests at the floor at neutral and saturates on a transient (FIX 3)', () => {
+    // Drive the view at exactly neutral (all bands 1.0) and assert every
+    // tile reads 0.00 — the rest-at-floor contract that fixes the
+    // "stuck half-lit at 50%" feel.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.01,
+      peak: 0.02,
+      fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    const { container } = render(AudioUniforms);
+    const bands = container.querySelectorAll('.au__band');
+    for (const band of bands) {
+      const level = band.querySelectorAll('.au__bar-value')[0]?.textContent?.trim();
+      expect(level).toBe('0.00');
+    }
   });
 
   it('falls back to fixture band values when audioSnapshotStore.snapshot is null', () => {
@@ -502,6 +568,12 @@ describe('AudioUniforms view', () => {
       peak: 0.8,
       fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
       fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
     audioSnapshotStore.snapshot = payload;
@@ -531,6 +603,12 @@ describe('AudioUniforms view', () => {
       peak: 0,
       fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
       fft_availability: 'Warming',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
     const { container } = render(AudioUniforms);
@@ -546,6 +624,94 @@ describe('AudioUniforms view', () => {
     const stats = container.querySelector('.au__hero-stats');
     expect(stats?.textContent).toContain(`${AUDIO_UNIFORMS_FIXTURE.peakDb.toFixed(1)} dB`);
     expect(stats?.textContent).toContain(`${AUDIO_UNIFORMS_FIXTURE.rmsDb.toFixed(1)} dB`);
+  });
+
+  it('band tile fill changes when the AGC bass band swings from neutral to a transient (FIX B)', async () => {
+    // Neutral snapshot: bass = 1.0 → bass tile fill ≈ 50%.
+    const neutral: AudioUniformSnapshotPayload = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.01,
+      peak: 0.02,
+      fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    audioSnapshotStore.snapshot = neutral;
+    const { container } = render(AudioUniforms);
+    await Promise.resolve();
+
+    const bassLevelFill = (): HTMLElement | null =>
+      (container
+        .querySelectorAll('.au__band')[0]
+        ?.querySelector('.au__bar-fill') as HTMLElement | null) ?? null;
+    const neutralFill = bassLevelFill()?.style.height ?? '';
+    expect(neutralFill).not.toBe('');
+
+    // Transient: bass = 4.2 → bass tile fill saturates toward 100%.
+    audioSnapshotStore.snapshot = { ...neutral, bass: 4.2 };
+    await Promise.resolve();
+    const loudFill = bassLevelFill()?.style.height ?? '';
+    expect(loudFill).not.toBe(neutralFill);
+    expect(parseFloat(loudFill)).toBeGreaterThan(parseFloat(neutralFill));
+  });
+
+  it('Freeze holds the band tiles, hit LEDs, and dB readout while the store keeps ticking', async () => {
+    // Freeze gates the smoothing $effect on `streaming` BEFORE the store
+    // read, so while frozen the 60 Hz snapshot writes stop re-running it
+    // and `smoothedSnapshot` holds the last live frame — every live
+    // element (band tiles, hit LEDs, peak/RMS dB readout) freezes.
+    audioSnapshotStore.snapshot = SAMPLE_SNAPSHOT;
+    const { container, getByRole } = render(AudioUniforms);
+    await Promise.resolve();
+
+    const valueAt = (bandIdx: number, barIdx: number): string => {
+      const band = container.querySelectorAll('.au__band')[bandIdx];
+      return band?.querySelectorAll('.au__bar-value')[barIdx]?.textContent?.trim() ?? '';
+    };
+    const stats = (): string => container.querySelector('.au__hero-stats')?.textContent ?? '';
+
+    // Live posture from SAMPLE_SNAPSHOT (seeded synchronously).
+    expect(valueAt(0, 0)).toBe('0.20'); // bass level (1.6 → 0.20)
+    expect(valueAt(2, 1)).toBe('●'); // mid-high hit LED (treb 3.4 → lit)
+    const frozenStats = stats();
+    expect(frozenStats).toContain('dB');
+
+    await fireEvent.click(getByRole('button', { name: 'Freeze' }));
+
+    // The store keeps receiving frames while frozen — a radically
+    // different frame must NOT leak into any live element.
+    audioSnapshotStore.snapshot = {
+      ...SAMPLE_SNAPSHOT,
+      bass: 4.2,
+      mid: 4.2,
+      treb: 1.0,
+      rms: 0.05,
+      peak: 0.1,
+    };
+    await Promise.resolve();
+
+    expect(valueAt(0, 0)).toBe('0.20'); // band tile held
+    expect(valueAt(0, 1)).toBe('○'); // bass hit LED held (hollow)
+    expect(valueAt(2, 0)).toBe('0.80'); // mid-high level held
+    expect(valueAt(2, 1)).toBe('●'); // mid-high hit LED held (lit)
+    expect(stats()).toBe(frozenStats); // peak / rms dB readout held
+
+    // Resume re-tracks the live store (EMA ramps from the frozen values;
+    // the AGC bands pass through unsmoothed so the tiles snap directly).
+    await fireEvent.click(getByRole('button', { name: 'Resume' }));
+    await Promise.resolve();
+    expect(valueAt(0, 0)).toBe('1.00'); // bass 4.2 → clamp(3.2/3) = 1.00
+    expect(valueAt(0, 1)).toBe('●');
+    expect(valueAt(2, 0)).toBe('0.00'); // treb 1.0 → rest at floor
+    expect(valueAt(2, 1)).toBe('○');
+    expect(stats()).not.toBe(frozenStats);
   });
 
   it('source label reads settingsStore.snapshot.audio.input_device when set', () => {

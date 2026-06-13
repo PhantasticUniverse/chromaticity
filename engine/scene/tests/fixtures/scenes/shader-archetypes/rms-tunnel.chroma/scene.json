@@ -1,0 +1,49 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "RMS Tunnel",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype: a forward-flying tunnel whose travel speed tracks overall energy via chroma_AudioRMS, with concentric rings pulsing at the syn_BPM cadence and continuous motion driven by TIME. Authored clean-room from the shader-archetype spec; not shipped in the bundled library.",
+  "TAGS": ["audio", "reactive", "tunnel", "archetype"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "base_speed",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "rms_gain",
+      "TYPE": "slider",
+      "DEFAULT": 1.5,
+      "MIN": 0.0,
+      "MAX": 6.0
+    },
+    {
+      "NAME": "ring_density",
+      "TYPE": "slider",
+      "DEFAULT": 8.0,
+      "MIN": 2.0,
+      "MAX": 24.0
+    },
+    {
+      "NAME": "twist",
+      "TYPE": "knob",
+      "DEFAULT": 0.3,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_bpm", "SYMBOL": "syn_BPM" }
+      ]
+    }
+  ]
+}

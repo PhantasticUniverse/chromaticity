@@ -1,0 +1,54 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Beat Strobe",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype. A full-frame color flash phase-locked to tempo: syn_BPM drives a bpm-locked strobe phase and chroma_AudioPeak gates / intensifies the flash. Degrades to a slow gentle tempo-driven pulse at zero audio (never all-black). Not a shipped library scene.",
+  "TAGS": ["archetype", "audio", "reactive", "strobe", "beat", "renderer-test"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "flash_gain",
+      "TYPE": "slider",
+      "DEFAULT": 0.85,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "strobe_sharpness",
+      "TYPE": "knob",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "beat_multiplier",
+      "TYPE": "slider",
+      "DEFAULT": 1.0,
+      "MIN": 0.25,
+      "MAX": 4.0
+    },
+    {
+      "NAME": "base_glow",
+      "TYPE": "knob",
+      "DEFAULT": 0.12,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "flash_color",
+      "TYPE": "color",
+      "DEFAULT": [1.0, 0.92, 0.78, 1.0]
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_bpm", "SYMBOL": "syn_BPM" },
+        { "NAME": "u_peak", "SYMBOL": "chroma_AudioPeak" }
+      ]
+    }
+  ]
+}

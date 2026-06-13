@@ -1,0 +1,42 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Peak Clip Warn",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype (S complexity). A calm interior field driven by TIME and chroma_AudioRMS, framed by a border that saturates toward hot red as chroma_AudioPeak approaches 1.0. Exercises the CLIP edge case: the frame must read hot/red near full-scale peak and stay a sane, non-black image at silence (RMS=peak=0).",
+  "TAGS": ["audio", "reactive", "peak", "clip", "archetype", "renderer-test"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "warn_threshold",
+      "TYPE": "slider",
+      "DEFAULT": 0.7,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "border_width",
+      "TYPE": "slider",
+      "DEFAULT": 0.18,
+      "MIN": 0.02,
+      "MAX": 0.5
+    },
+    {
+      "NAME": "interior_gain",
+      "TYPE": "knob",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_peak", "SYMBOL": "chroma_AudioPeak" }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ampToDb,
   ampToFraction,
+  AttackReleaseEnvelope,
   dbToFraction,
   ExpEnvelope,
   formatDb,
@@ -18,6 +19,7 @@ import {
   zoneForDb,
   ZONE_AMBER_MAX_DB,
   ZONE_GREEN_MAX_DB,
+  ZONE_ORANGE_MAX_DB,
 } from './metering';
 
 describe('dBFS conversion', () => {
@@ -58,13 +60,15 @@ describe('dbToFraction', () => {
 });
 
 describe('zoneForDb breakpoints', () => {
-  it('places zones at real dB breakpoints, not linear positions', () => {
-    expect(zoneForDb(-12)).toBe('green');
+  it('places zones at the DAW reference grid (green/amber/orange/red), not linear positions', () => {
+    // green ≤ -12, amber -12..-6, orange -6..-3, red ≥ -3.
+    expect(zoneForDb(-20)).toBe('green'); // -18 dBFS nominal sits in green
     expect(zoneForDb(ZONE_GREEN_MAX_DB - 0.01)).toBe('green');
     expect(zoneForDb(ZONE_GREEN_MAX_DB)).toBe('amber');
-    expect(zoneForDb(-5)).toBe('amber');
     expect(zoneForDb(ZONE_AMBER_MAX_DB - 0.01)).toBe('amber');
-    expect(zoneForDb(ZONE_AMBER_MAX_DB)).toBe('red');
+    expect(zoneForDb(ZONE_AMBER_MAX_DB)).toBe('orange');
+    expect(zoneForDb(ZONE_ORANGE_MAX_DB - 0.01)).toBe('orange');
+    expect(zoneForDb(ZONE_ORANGE_MAX_DB)).toBe('red');
     expect(zoneForDb(0)).toBe('red');
   });
 });
@@ -87,6 +91,55 @@ describe('ExpEnvelope', () => {
 
   it('resets to the floor', () => {
     const env = new ExpEnvelope(50);
+    env.process(0, 100);
+    env.reset();
+    expect(env.value()).toBe(METER_FLOOR_DB);
+  });
+});
+
+describe('AttackReleaseEnvelope', () => {
+  // Helper: percent of the way from the seeded floor to the target.
+  const pctToTarget = (current: number, from: number, target: number): number =>
+    (current - from) / (target - from);
+
+  it('rises to >90% of a step-up within ~30 ms (fast attack)', () => {
+    const env = new AttackReleaseEnvelope(10, 250);
+    const from = env.value();
+    const target = 0; // 0 dBFS step-up from the -60 dBFS floor
+    // 30 ms in ~2 frames at 60 Hz.
+    let v = env.process(target, 16.7);
+    v = env.process(target, 13.3); // 30 ms total elapsed
+    expect(pctToTarget(v, from, target)).toBeGreaterThan(0.9);
+  });
+
+  it('falls slowly on a step-down (~250 ms tau, not <100 ms)', () => {
+    const env = new AttackReleaseEnvelope(10, 250);
+    // Seed at the top with a quick attack.
+    for (let i = 0; i < 10; i++) env.process(0, 16.7);
+    const start = env.value();
+    expect(start).toBeCloseTo(0, 1);
+    // Step the target down to the floor; after ~100 ms it must NOT yet
+    // have crossed the halfway point (a <100 ms tau would have).
+    const target = METER_FLOOR_DB;
+    let v = start;
+    for (let i = 0; i < 6; i++) v = env.process(target, 16.7); // ~100 ms
+    const fallen = pctToTarget(v, start, target);
+    // 1 - exp(-100/250) ≈ 0.33 < 0.5 (a 100 ms tau would give ≈ 0.63).
+    expect(fallen).toBeLessThan(0.5);
+    expect(fallen).toBeGreaterThan(0.2);
+  });
+
+  it('is dt-invariant: same wall-clock → same level across 16.7 vs 8.3 ms steps', () => {
+    const coarse = new AttackReleaseEnvelope(10, 250);
+    const fine = new AttackReleaseEnvelope(10, 250);
+    // ~100 ms of attack toward the same target on both, different dt.
+    for (let i = 0; i < 6; i++) coarse.process(0, 16.7);
+    for (let i = 0; i < 12; i++) fine.process(0, 8.35);
+    expect(coarse.value()).toBeCloseTo(fine.value(), 3);
+  });
+
+  it('resets to the floor', () => {
+    const env = new AttackReleaseEnvelope();
     env.process(0, 100);
     env.reset();
     expect(env.value()).toBe(METER_FLOOR_DB);

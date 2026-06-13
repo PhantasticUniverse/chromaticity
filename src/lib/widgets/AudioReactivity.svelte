@@ -22,22 +22,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // widget consumes the engine's `audio_uniform_snapshot_changed`
   // Tauri event via `audioSnapshotStore` (producer side: Wave 6 PR 1,
   // merge `c1d93e8`). When a non-null snapshot is available the four
-  // band-tile values are reduced from the engine's 8 FFT bands (BASS
-  // = avg(fft_bands[0..2]), LOW MID = avg(fft_bands[2..4]), HIGH MID
-  // = avg(fft_bands[4..6]), HIGH = avg(fft_bands[6..8])) once
-  // `fft_availability === 'Ready'`, and the BPM readout reads
-  // `liveSnapshot.bpm` once `bpm_availability === 'Ready'`; warming
-  // axes render dim `--` placeholders. Otherwise the existing
-  // synthetic-time defaults render. The 48-bar FFT visualiser stays
-  // synthetic-driven — the 8 → 48 interpolation is a stretch goal,
-  // not in PR 2 scope (deferred as a post-MVP enhancement). Tap-tempo
-  // and Ableton Link peer count remain visual stubs.
+  // band-tile values read the ADR-024 AGC reactive bands (BASS ←
+  // `bass`, LOW MID ← `mid`, HIGH MID / HIGH ← `treb`, mapped onto a
+  // 0..1 fill via `agcBarFill` — see `agcTileFills` below; this
+  // superseded the original 8 → 4 `fft_bands` reduction, which sat
+  // near 0 in a quiet room), and the BPM readout reads
+  // `liveSnapshot.bpm` once `bpm_availability === 'Ready'`; a warming
+  // BPM axis renders a dim `--` placeholder (the AGC bands carry a
+  // neutral 1.0 default and have no per-axis warming state, so the
+  // tiles never do). Otherwise the existing synthetic-time defaults
+  // render. The 48-bar FFT visualiser stays synthetic-driven — the
+  // 8 → 48 interpolation is a stretch goal, not in PR 2 scope
+  // (deferred as a post-MVP enhancement). Tap-tempo and Ableton Link
+  // peer count remain visual stubs.
   //
   // The optional `snapshot` prop lets tests inject a fixed payload
-  // without going through the singleton store; default behaviour reads
-  // from the store. The `bands` prop (caller-supplied per-tile values)
-  // overrides both store and synthetic defaults so tests / future
-  // device-driven values keep working.
+  // without going through the singleton store; an OMITTED prop
+  // (`undefined`) reads from the store, while an explicit
+  // `snapshot={null}` pins the no-live-data path (default fixtures +
+  // prop bpm) regardless of store state. The `bands` prop
+  // (caller-supplied per-tile values) overrides both store and
+  // synthetic defaults so tests / future device-driven values keep
+  // working.
 
   import { untrack } from 'svelte';
 
@@ -60,33 +66,75 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void audioSnapshotStore.subscribe();
   });
 
-  const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
+  // Undefined-only store fallback: `snapshot === undefined` (prop
+  // omitted) reads the live store; an explicit `snapshot={null}` means
+  // "no data" and must NOT fall through to the store — the smoothing
+  // $effect below and `useHystPct` both gate on `!== undefined`, so a
+  // `??` here would leave the smoothing path disabled but selected.
+  const liveSnapshot = $derived(snapshot === undefined ? audioSnapshotStore.snapshot : snapshot);
   const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
   const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
   const bpmDisplay = $derived(liveSnapshot && !bpmReady ? '-- BPM' : `${liveBpm.toFixed(2)} BPM`);
-  const fftWarming = $derived(
-    !bands && liveSnapshot !== null && liveSnapshot.fft_availability !== 'Ready',
-  );
+  // The named tiles read the ADR-024 AGC bands, which carry a neutral
+  // 1.0 default and never report a per-axis `Warming` state, so the
+  // dim warming-placeholder treatment no longer applies to them.
+  const fftWarming = false;
 
-  // Wave 2.8 Q.1 — smooth the per-band FFT values before they drive
-  // the 4 named tiles. The engine producer emits a fresh snapshot
-  // ~60 Hz with bin-level jitter (background mic noise reports
-  // multi-millisecond bursts even when the room is quiet), and the
-  // band-fill `transition: width 120ms ease` on top of every-frame %
-  // writes amplifies that into a perceptible flicker. A short EMA on
-  // each band damps the noise without erasing real audio onsets.
-  // Skipped entirely when `bands` is caller-supplied (tests / custom
-  // device-driven values) and when there's no snapshot.
+  /**
+   * Map a single ~1.0-centred AGC reactive band onto a 0..1 bar fill.
+   * The engine's MilkDrop-class auto-gain bands are volume-INDEPENDENT
+   * and centred on a neutral 1.0 (a quiet steady tone sits at 1.0; a
+   * transient swings up toward ~4). A reactivity meter should rest at the
+   * FLOOR, not mid-bar — so `(value - 1) / 3` maps the neutral 1.0 → 0%
+   * (dark at rest) and a ~4.0 transient → 100%, clamped to [0, 1]. This
+   * is the "excitation above neutral" ratio, not an absolute level
+   * (FIX 3 — fixes the "stuck half-lit at 50%" rest feel).
+   */
+  function agcBarFill(value: number): number {
+    return Math.max(0, Math.min(1, (value - 1) / 3));
+  }
+
+  /**
+   * Reduce a snapshot's three AGC reactive bands into the four named
+   * tile fills (BASS / LOW MID / HIGH MID / HIGH). The engine emits
+   * three relative bands; the two upper tiles share the treble band so
+   * the bundle's four-tile layout stays intact and every cell reacts.
+   */
+  function agcTileFills(snap: AudioUniformSnapshotPayload): [number, number, number, number] {
+    return [
+      agcBarFill(snap.bass),
+      agcBarFill(snap.mid),
+      agcBarFill(snap.treb),
+      agcBarFill(snap.treb),
+    ];
+  }
+
+  // ADR-024 — drive the four named tiles from the MilkDrop-class AGC
+  // reactive bands (`snapshot.bass` / `mid` / `treb`), NOT the raw
+  // `fft_bands`. The AGC bands are volume-INDEPENDENT (centred on the
+  // neutral 1.0, swinging up to ~4.2 on a transient even at a quiet
+  // mic), whereas `fft_bands` are normalized-then-clamped to [0,1] and
+  // sit near 0 in a quiet room — so the old FFT-reduced tiles barely
+  // moved. `agcBarFill` maps the ~1.0-centred unbounded band onto a
+  // 0..1 bar fill: neutral 1.0 → 0% (dark at rest), a ~4.0 transient →
+  // 100% (FIX 3 — rest-at-floor reactivity ratio). The four
+  // tiles map BASS ← bass, LOW MID ← mid, HIGH MID ← treb, HIGH ← treb
+  // (the engine emits three relative bands; the two upper tiles share
+  // the treble band so the layout's HIGH MID / HIGH cells still react).
   //
-  // Wave 2.9 SC.C — the smoothed bar *fill width* was stable but the
-  // integer-percent text label still flickered ±1% across consecutive
-  // frames because `Math.round(value * 100)` quantizes the smooth
-  // 21.0-23.4% drift into discrete `46→47→46→45→46` integers. Add a
-  // small hysteresis on the *displayed* integer percent (separate from
-  // the smoothed value driving the bar width) so the label only flips
-  // when the smoothed value crosses ±0.6 past the previous integer
-  // boundary. The fill width stays unchanged so visual responsiveness
-  // is preserved.
+  // Wave 2.8 Q.1 — a light dt-aware follower (FIX 4 below) damps the
+  // ~60 Hz per-frame jitter on top of the AGC bands so the band fill
+  // doesn't flicker (there is deliberately NO CSS `transition: width`
+  // on the fill — see FIX 2 in the style block; CSS-tweening a moving
+  // meter adds fixed lag); skipped entirely when `bands` is
+  // caller-supplied (tests / custom device-driven values) and when
+  // there's no snapshot.
+  //
+  // Wave 2.9 SC.C — the integer-percent text label gets a small
+  // hysteresis (separate from the smoothed value driving the bar
+  // width) so the label only flips when the smoothed value crosses
+  // ±0.6 past the previous integer boundary. The fill width stays
+  // unchanged so visual responsiveness is preserved.
   let smoothedBands = $state<readonly number[]>([0, 0, 0, 0]);
   let displayedBandPct = $state<readonly number[]>([0, 0, 0, 0]);
   $effect(() => {
@@ -94,19 +142,33 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     let raf = 0;
     const s = [0, 0, 0, 0];
     const displayed = [-1, -1, -1, -1]; // -1 sentinel = first observation
-    const EMA = 0.25;
+    // FIX 4 — the engine AGC bands are ALREADY time-smoothed (attack
+    // ~21 ms / release ~48 ms), so a heavy UI EMA on top is redundant
+    // lag; the engine remains the dominant smoothing layer. The UI
+    // follower is a wall-clock-dt-aware exponential
+    // (`coeff = 1 - exp(-dt/tau)`, docs/dev/ui-smoothness-and-latency.md
+    // principle 4) with tau = 21 ms — at a 60 Hz frame (16.7 ms) that is
+    // the former per-frame alpha 0.55 exactly (16.7 / -ln(0.45) ≈ 21 ms;
+    // ≥90% of a step within ~3 frames), and the feel is now identical on
+    // 120 / 144 Hz displays instead of running 2x+ fast.
+    const TAU_MS = 21;
+    let lastTs = -1; // -1 sentinel = first frame (assume one 60 Hz step)
     // Hysteresis margin in percent points. Once a label shows N%, the
     // smoothed value must move below (N - 0.6) or to or above (N + 1.6)
     // to flip. With smoothed-frame deltas of ~1% under typical jitter,
     // this eliminates frame-to-frame label oscillation.
     const HYST = 0.6;
-    const tick = (): void => {
+    const tick = (now: number): void => {
+      // Clamp dt to 100 ms so a tab-restore / long-throttle gap ramps
+      // instead of snapping the bars.
+      const dtMs = lastTs < 0 ? 16.7 : Math.min(100, Math.max(0, now - lastTs));
+      lastTs = now;
+      const coeff = 1 - Math.exp(-dtMs / TAU_MS);
       const snap = untrack(() => audioSnapshotStore.snapshot);
-      if (snap && snap.fft_availability === 'Ready') {
-        const f = snap.fft_bands;
-        const tiles = [(f[0] + f[1]) / 2, (f[2] + f[3]) / 2, (f[4] + f[5]) / 2, (f[6] + f[7]) / 2];
+      if (snap) {
+        const tiles = agcTileFills(snap);
         for (let i = 0; i < 4; i++) {
-          s[i] = (s[i] ?? 0) + ((tiles[i] ?? 0) - (s[i] ?? 0)) * EMA;
+          s[i] = (s[i] ?? 0) + ((tiles[i] ?? 0) - (s[i] ?? 0)) * coeff;
           const pct = (s[i] ?? 0) * 100;
           const cur = displayed[i] ?? -1;
           if (cur < 0) {
@@ -149,15 +211,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }> = DEFAULT_BANDS.map((band) => ({ ...band, value: 0 }));
 
   /**
-   * Reduce the engine's 8-band FFT array into the bundle's 4 named
-   * tiles by averaging adjacent pairs (8 → 4). Preserves the bundle's
-   * tile name + tint mapping so the visual layout never drifts; only
-   * the per-tile `value` switches to live data.
+   * Attach the bundle's 4 named tiles (BASS / LOW MID / HIGH MID /
+   * HIGH) to a pre-computed 4-value fill array. The values originate
+   * from the ADR-024 AGC reactive bands via `agcTileFills` (NOT the
+   * raw `fft_bands` — see the ADR-024 note above), so this function
+   * does no reduction of its own. Preserves the bundle's tile name +
+   * tint mapping verbatim so the visual layout never drifts; only the
+   * per-tile `value` carries live data.
    *
-   * Wave 2.8 Q.1: callers now pass a pre-smoothed values array
+   * Wave 2.8 Q.1: callers pass a pre-smoothed values array
    * (`smoothedBands` rAF state) instead of the raw snapshot, so the
-   * tile values are stable across engine ticks. The bundle's tile
-   * `name + tint` mapping is preserved verbatim.
+   * tile values are stable across engine ticks; the snapshot-prop
+   * test path bypasses smoothing and passes `agcTileFills(snapshot)`
+   * directly.
    */
   function tilesFromValues(
     values: readonly number[],
@@ -180,12 +246,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       (fftWarming
         ? WARMING_BANDS
         : snapshot
-          ? tilesFromValues([
-              (snapshot.fft_bands[0] + snapshot.fft_bands[1]) / 2,
-              (snapshot.fft_bands[2] + snapshot.fft_bands[3]) / 2,
-              (snapshot.fft_bands[4] + snapshot.fft_bands[5]) / 2,
-              (snapshot.fft_bands[6] + snapshot.fft_bands[7]) / 2,
-            ])
+          ? tilesFromValues(agcTileFills(snapshot))
           : liveSnapshot
             ? tilesFromValues(smoothedBands)
             : DEFAULT_BANDS),
@@ -373,7 +434,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .audio-reactivity__band-fill {
     height: 100%;
     border-radius: inherit;
-    transition: width 120ms ease;
+    /* FIX 2 — no `transition: width` here. The DSP / rAF smoothing in the
+       script is the ONLY smoothing layer; CSS-tweening the width over a
+       fixed 120 ms toward a moving target adds 120 ms of fixed lag on top
+       of the engine ballistics. The bar tracks the smoothed value directly. */
   }
   .audio-reactivity__band--warming .audio-reactivity__band-fill {
     opacity: 0.35;

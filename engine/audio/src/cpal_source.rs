@@ -94,7 +94,7 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::thread;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -691,6 +691,89 @@ pub(crate) fn is_default_preference(preference: &str) -> bool {
 /// `settings.audio.input_device`.
 pub const SYSTEM_AUDIO_PREFERENCE: &str = "system-audio";
 
+/// Env var gating opt-in audio-capture diagnostics. Off by default; set
+/// to anything other than `0` / `false` / `off` (case-insensitive) to
+/// enable the bind-time `[audio-diag]` line emitted here and the live
+/// telemetry readout in `app/shell::audio_diag`.
+pub const AUDIO_DIAG_ENV: &str = "CHROMATICITY_AUDIO_DIAG";
+
+/// True when the operator has opted into audio-capture diagnostics via
+/// [`AUDIO_DIAG_ENV`]. Cheap; called once per capture bind and once at
+/// the telemetry-thread spawn.
+pub fn diagnostics_enabled() -> bool {
+    std::env::var(AUDIO_DIAG_ENV)
+        .map(|raw| {
+            !matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "" | "0" | "false" | "off"
+            )
+        })
+        .unwrap_or(false)
+}
+
+// --- Capture-callback probe (diagnostics only) --------------------------
+//
+// Ground-truth counters for the live telemetry: are the cpal data
+// callbacks firing at all, and is the data they carry non-zero? This is
+// the layer the analyser-side snapshot cannot distinguish — `callbacks ==
+// 0` with audio playing means the OS delivered NO buffers (a consent /
+// tap-start problem), which is a different failure than buffers arriving
+// full of zeros (`peak_amplitude == 0`). Gated by an atomic set at bind
+// time so the hot callback pays only a relaxed load when diagnostics are
+// off.
+
+static DIAG_CAPTURE_ACTIVE: AtomicBool = AtomicBool::new(false);
+static DIAG_CALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
+static DIAG_SAMPLE_COUNT: AtomicU64 = AtomicU64::new(0);
+/// `f32::to_bits` of the all-time peak `|sample|` observed since launch.
+static DIAG_PEAK_AMP_BITS: AtomicU32 = AtomicU32::new(0);
+
+/// Live capture-callback counters. `callbacks` and `samples` are
+/// monotonic since launch; `peak_amplitude` is the all-time max `|sample|`
+/// the data callback has seen. All zero until the first callback fires.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DiagCaptureStats {
+    /// Number of cpal data-callback invocations observed.
+    pub callbacks: u64,
+    /// Total samples those callbacks carried.
+    pub samples: u64,
+    /// All-time peak `|sample|` amplitude in `[0, 1]`.
+    pub peak_amplitude: f32,
+}
+
+/// Snapshot the capture-callback probe counters. See [`DiagCaptureStats`].
+pub fn diag_capture_stats() -> DiagCaptureStats {
+    DiagCaptureStats {
+        callbacks: DIAG_CALLBACK_COUNT.load(Ordering::Relaxed),
+        samples: DIAG_SAMPLE_COUNT.load(Ordering::Relaxed),
+        peak_amplitude: f32::from_bits(DIAG_PEAK_AMP_BITS.load(Ordering::Relaxed)),
+    }
+}
+
+/// Record one delivered buffer into the probe counters. A cheap relaxed
+/// load short-circuits when diagnostics are off, so this is a no-op on the
+/// audio thread in normal operation.
+fn diag_record_frame(data: &[f32]) {
+    if !DIAG_CAPTURE_ACTIVE.load(Ordering::Relaxed) {
+        return;
+    }
+    DIAG_CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed);
+    DIAG_SAMPLE_COUNT.fetch_add(data.len() as u64, Ordering::Relaxed);
+    let local_peak = data.iter().fold(0.0_f32, |m, &s| m.max(s.abs()));
+    let mut current = DIAG_PEAK_AMP_BITS.load(Ordering::Relaxed);
+    while local_peak > f32::from_bits(current) {
+        match DIAG_PEAK_AMP_BITS.compare_exchange_weak(
+            current,
+            local_peak.to_bits(),
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
 /// True when `preference` selects the built-in system-audio loopback
 /// path. Matches [`SYSTEM_AUDIO_PREFERENCE`] case-insensitively.
 pub(crate) fn is_system_audio_preference(preference: &str) -> bool {
@@ -1069,6 +1152,23 @@ fn build_stream_against_device(
         guard.sample_rate_hz = sample_rate_hz;
         guard.channels = channels;
     }
+    if diagnostics_enabled() {
+        // Arm the capture-callback probe (see `diag_record_frame`).
+        DIAG_CAPTURE_ACTIVE.store(true, Ordering::Relaxed);
+        // One-shot bind summary so the live telemetry readout can be read
+        // against a known source: which device + capture direction bound,
+        // and the format cpal negotiated. The companion live readout lives
+        // in `app/shell::audio_diag`.
+        let kind = match direction {
+            CaptureDirection::Input => "input",
+            CaptureDirection::OutputLoopback => "system-audio loopback (output tap)",
+        };
+        let name = read_device_name(device).unwrap_or_else(|_| "<unnamed>".to_string());
+        eprintln!(
+            "[audio-diag] capture bound: {kind} · device {name:?} · \
+             {sample_format:?} · {sample_rate_hz} Hz · {channels} ch"
+        );
+    }
     let state_for_err = state.clone();
     let err_cb = move |_e: cpal::StreamError| {
         // Mirror the data-callback discipline: any cpal-reported
@@ -1167,6 +1267,10 @@ pub(crate) fn convert_u16_sample(s: u16) -> f32 {
 /// side) and flips the closed flag on `TrySendError::Disconnected`
 /// (consumer dropped).
 fn publish_f32_frame(state: &CallbackState, data: &[f32]) {
+    // Record into the diagnostics probe BEFORE the empty/format guards so
+    // "callbacks firing but empty" is still counted distinctly from "no
+    // callbacks at all". No-op when diagnostics are off.
+    diag_record_frame(data);
     if data.is_empty() {
         return;
     }

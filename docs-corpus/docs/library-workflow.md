@@ -73,19 +73,18 @@ match across runs.
 
 ## Browser capabilities
 
-The library view supports both grid and list presentation. From either:
+The library view presents the corpus as a card grid with small,
+medium, and large card sizes. From the grid:
 
 - Full-text search across `TITLE`, `CREDIT`, `DESCRIPTION`, `TAGS`, and
   `CATEGORIES`.
-- Filter by compat profile, by tag, by presence of `script.js`, by
-  presence of bundled media.
-- Sort by title, credit, last-modified, tag relevance, or
-  author-defined order.
-- Drag a scene into the playlist editor from any view.
-- Keyboard navigation — arrow keys move the selection,
-  `Enter` launches the selected scene, `Shift+Enter` launches with a
-  preset prompt. See [Hotkey Reference](hotkeys-reference.md) for the
-  full vocabulary.
+- Filter by source (All / Built-in / My Scenes), by category chip, by
+  the virtual RECENT chip (recently loaded scenes), or by the
+  favorites toggle.
+- Sort by id (the default), title, recently loaded, or favorites-first.
+- Keyboard launch — `Tab` moves focus between scene cards and `Enter`
+  launches the focused scene. See
+  [Hotkey Reference](hotkeys-reference.md) for the full vocabulary.
 
 ## Launching a scene
 
@@ -97,12 +96,11 @@ The launch target depends on the active transport mode:
 - In **instant-scene** mode, launching cuts directly to the scene with
   the operator's chosen transition.
 
-Optional preset launch (`Shift+Enter`) prompts for a Snap-slot name;
-the default Snap is slot zero ("gold preset"). Snap slots are the
-operator-facing name for per-scene quick-recall presets — see the
-[Hotkey Reference](hotkeys-reference.md) for the keyboard mappings and
-[OSC Routes](osc-routes.md) for the wire-level surface (where the
-literal `favslots` is retained for `compat-syn-v1` compatibility).
+Snap slots are the operator-facing name for per-scene quick-recall
+presets — see the [Hotkey Reference](hotkeys-reference.md) for the
+keyboard mappings and [OSC Routes](osc-routes.md) for the wire-level
+surface (where the literal `favslots` is retained for `compat-syn-v1`
+compatibility).
 
 ## Indexing posture
 

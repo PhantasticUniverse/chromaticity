@@ -72,7 +72,10 @@ fn producer_to_listener_round_trip_preserves_payload_identity() {
         peak: 0.88,
         fft_bands: [0.05, 0.10, 0.20, 0.35, 0.50, 0.65, 0.80, 0.95],
         fft_availability: AudioAxisAvailability::Ready,
-        degraded: false,
+        // Relative reactive bands (ADR-024) ride the round-trip at their
+        // neutral default; this test pins delivery, not band mapping (that
+        // is the ui-bridge round-trip corpus).
+        ..Default::default()
     };
     let emitter = TauriIpcEmitter::new(app.handle().clone());
     emitter.emit_snapshot(snapshot);
@@ -113,7 +116,7 @@ fn multiple_emits_deliver_in_order() {
             peak: 0.20,
             fft_bands: [0.0; 8],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            ..Default::default()
         },
         AudioUniformSnapshot {
             bpm: 110.0,
@@ -122,7 +125,7 @@ fn multiple_emits_deliver_in_order() {
             peak: 0.30,
             fft_bands: [0.1; 8],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            ..Default::default()
         },
         AudioUniformSnapshot {
             bpm: 120.0,
@@ -131,7 +134,7 @@ fn multiple_emits_deliver_in_order() {
             peak: 0.40,
             fft_bands: [0.2; 8],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            ..Default::default()
         },
     ];
     for snapshot in snapshots {

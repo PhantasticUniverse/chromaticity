@@ -1,0 +1,64 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Wide-Energy Plasma",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype (L complexity). A multi-octave plasma whose warp is driven by a crest-factor split of chroma_AudioPeak against chroma_AudioRMS, with a full eight-band chroma_AudioFFT spectral tint and a syn_BPM-locked bloom. Exercises the WIDE-DYNAMIC edge case: the image must stay legible across the entire RMS/peak range -- a calm lit plasma at silence (RMS=peak=0, FFT all 0, syn_BPM=120), readable mid-energy detail, and a saturating-but-not-blown response at full-scale -- via soft-compressed (log-style) energy mappings rather than raw-absolute gain. Single-pass, self-contained, sane and finite under silence. Not shipped in the library bundle.",
+  "TAGS": [
+    "audio",
+    "reactive",
+    "plasma",
+    "crest-factor",
+    "wide-dynamic",
+    "archetype",
+    "renderer-test"
+  ],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE", "ABSTRACT"],
+  "CONTROLS": [
+    {
+      "NAME": "warp_amount",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "plasma_scale",
+      "TYPE": "slider",
+      "DEFAULT": 3.0,
+      "MIN": 0.5,
+      "MAX": 8.0
+    },
+    {
+      "NAME": "crest_gain",
+      "TYPE": "knob",
+      "DEFAULT": 1.0,
+      "MIN": 0.0,
+      "MAX": 4.0
+    },
+    {
+      "NAME": "tint_strength",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "base_tint",
+      "TYPE": "color",
+      "DEFAULT": [0.16, 0.38, 0.72, 1.0]
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_peak", "SYMBOL": "chroma_AudioPeak" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" },
+        { "NAME": "u_bpm", "SYMBOL": "syn_BPM" }
+      ]
+    }
+  ]
+}

@@ -219,16 +219,21 @@ pub mod frame;
 pub mod ingest;
 pub mod ingest_negotiation;
 pub mod observability;
+pub mod reactive_bands;
 pub mod runtime;
 pub mod silent;
 pub mod uniforms;
 
 pub use bpm::BpmEstimator;
 pub use cpal_source::{
-    AudioDeviceInfo, AudioDeviceKind, enumerate_input_devices, enumerate_output_devices,
+    AUDIO_DIAG_ENV, AudioDeviceInfo, AudioDeviceKind, DiagCaptureStats, diag_capture_stats,
+    diagnostics_enabled, enumerate_input_devices, enumerate_output_devices,
 };
 pub use error::AudioError;
 pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource};
+pub use reactive_bands::{
+    REACTIVE_BAND_COUNT, REACTIVE_FFT_SIZE, ReactiveBandValues, ReactiveBands,
+};
 pub use uniforms::{AudioAxisAvailability, AudioUniformSnapshot, extract_uniform_snapshot};
 
 #[cfg(test)]

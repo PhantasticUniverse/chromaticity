@@ -14,10 +14,15 @@
 // **Dual-mode posture (no-Tauri-context fallback).** When the Tauri
 // IPC module is unavailable — e.g. running under `npm run dev`'s
 // vite-only mode, or Vitest jsdom with no IPC mock — the dynamic
-// import or the `invoke()` call may reject. The store swallows that
-// failure and leaves `activeId` at its previous value, mirroring the
+// import rejects. The store swallows that failure and leaves
+// `activeId` at its previous value, mirroring the
 // `loadedScene.svelte.ts` precedent so consumers degrade gracefully
-// to a fixture-driven fallback.
+// to a fixture-driven fallback. A rejection from `invoke()` itself
+// is a real engine failure — the backing commands return
+// `Result<_, String>` (state mutex poison, `CommandBusError`) — and
+// is recorded into `error` per the `snap.svelte.ts` /
+// `settings.svelte.ts` error-surface idiom instead of being
+// swallowed silently.
 //
 // The plain-`.ts` sibling `preset.ts` exposes
 // `dispatchPresetRecallAndRead` and `readActivePreset` — request /
@@ -33,6 +38,13 @@ class PresetStore {
   /** Active preset id reported by the engine, or `null` when none recalled. */
   activeId: PresetId | null = $state(null);
 
+  /** Most recent error message from a failed `refresh`/`recall`/
+   *  `save` invoke round-trip, or `null` on success (cleared by the
+   *  next successful call). No-Tauri-runtime import failures do NOT
+   *  populate this field — see the dual-mode posture above. Mirrors
+   *  `snap.svelte.ts::error`. */
+  error: string | null = $state(null);
+
   /**
    * Read the engine's current active preset and update `activeId`.
    * Used for mount-time hydration and as the post-commit read-back
@@ -41,17 +53,27 @@ class PresetStore {
    * No-Tauri-context behaviour: when the `@tauri-apps/api/core`
    * import fails (vite dev / vitest), the call resolves without
    * touching `activeId` — same fallback path as
-   * `loadedScene.svelte.ts::hydrate`.
+   * `loadedScene.svelte.ts::hydrate`. An `invoke()` rejection is a
+   * real engine failure and is recorded into `error`.
    */
   async refresh(): Promise<void> {
+    let core: typeof import('@tauri-apps/api/core');
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const id = await invoke<PresetId | null>('active_preset');
-      this.activeId = id;
+      core = await import('@tauri-apps/api/core');
     } catch {
       // Swallow — no Tauri runtime available; `activeId` stays at
       // its previous value and consumers fall back to the default
       // (typically `null` at startup).
+      return;
+    }
+    try {
+      const id = await core.invoke<PresetId | null>('active_preset');
+      this.activeId = id;
+      this.error = null;
+    } catch (err) {
+      // Real engine rejection (`active_preset` returns
+      // `Result<_, String>`); record it for the view layer.
+      this.error = err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -65,14 +87,24 @@ class PresetStore {
    * rejected or clamped the input).
    */
   async recall(id: PresetId): Promise<void> {
+    let core: typeof import('@tauri-apps/api/core');
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke<void>('recall_preset', { id });
-      await this.refresh();
+      core = await import('@tauri-apps/api/core');
     } catch {
       // Swallow — no Tauri runtime available; `activeId` stays at
       // its previous value. Vite dev / vitest jsdom both hit this
       // path by design.
+      return;
+    }
+    try {
+      await core.invoke<void>('recall_preset', { id });
+      await this.refresh();
+    } catch (err) {
+      // Real engine rejection (state mutex poison, CommandBusError);
+      // `activeId` stays at its previous value and the failure is
+      // recorded for the view layer. `refresh()` never rejects, so
+      // this catch only sees the `recall_preset` failure.
+      this.error = err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -86,20 +118,29 @@ class PresetStore {
    * No-Tauri-context behaviour: same fallback path as `recall()`.
    */
   async save(id: PresetId): Promise<void> {
+    let core: typeof import('@tauri-apps/api/core');
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke<void>('save_preset', { id });
-      await this.refresh();
+      core = await import('@tauri-apps/api/core');
     } catch {
       // Swallow — no Tauri runtime available; `activeId` stays at
       // its previous value. Vite dev / vitest jsdom both hit this
       // path by design.
+      return;
+    }
+    try {
+      await core.invoke<void>('save_preset', { id });
+      await this.refresh();
+    } catch (err) {
+      // Real engine rejection; recorded for the view layer (see
+      // `recall()` — same posture).
+      this.error = err instanceof Error ? err.message : String(err);
     }
   }
 
   /** Reset the store to the no-preset baseline (test harness). */
   reset(): void {
     this.activeId = null;
+    this.error = null;
   }
 }
 

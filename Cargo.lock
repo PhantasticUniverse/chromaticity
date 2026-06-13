@@ -469,10 +469,12 @@ dependencies = [
  "chromaticity-camera-adapter",
  "chromaticity-midi-adapter",
  "chromaticity-osc-adapter",
+ "chromaticity-render",
  "chromaticity-runtime",
  "chromaticity-scene",
  "chromaticity-syphon-adapter",
  "chromaticity-ui-bridge",
+ "pollster",
  "rosc",
  "serde",
  "serde_json",
@@ -482,6 +484,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-updater",
  "ts-rs",
+ "wgpu",
  "workspace-hack",
 ]
 
@@ -918,10 +921,9 @@ dependencies = [
 [[package]]
 name = "cpal"
 version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b1f9c7312f19fc2fa12fd7acaf38de54e8320ba10d1a02dcbe21038def51ccb"
 dependencies = [
  "alsa 0.10.0",
+ "block2 0.6.2",
  "coreaudio-rs",
  "dasp_sample",
  "jni",
@@ -942,7 +944,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "windows 0.62.2",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -3264,6 +3266,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1eebcea8b0dbff5f7c8504f3107c68fc061a3eb44932051c8cf8a68d969c3b2"
 dependencies = [
+ "block2 0.6.2",
  "dispatch2",
  "objc2 0.6.4",
  "objc2-core-audio-types",
@@ -7156,7 +7159,6 @@ name = "workspace-hack"
 version = "0.0.0"
 dependencies = [
  "bitflags 2.11.1",
- "block2 0.6.2",
  "bytemuck",
  "byteorder",
  "core-foundation 0.10.1",
@@ -7211,7 +7213,8 @@ dependencies = [
  "tracing",
  "tracing-core",
  "uuid",
- "windows 0.62.2",
+ "windows 0.61.3",
+ "windows-core 0.61.2",
  "windows-sys 0.59.0",
  "windows-sys 0.60.2",
  "windows-sys 0.61.2",

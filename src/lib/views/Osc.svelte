@@ -152,6 +152,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void settingsStore.load();
   });
 
+  // Header mode word — bound to the real adapter health state instead
+  // of a hardcoded LISTENING. No snapshot (IPC pending/rejected, i.e.
+  // browser-mode or adapter down) reads OFFLINE; Healthy reads
+  // LISTENING; the remaining OscHealthState arms (Recovering /
+  // Degraded) upper-case the discriminant, mirroring the title-dot's
+  // data-state vocabulary.
+  const titleMode = $derived(
+    healthSnapshot === null
+      ? 'OFFLINE'
+      : healthSnapshot.state === 'Healthy'
+        ? 'LISTENING'
+        : healthSnapshot.state.toUpperCase(),
+  );
+
   // Operator-facing port readout — settings-backed.
   const listenPort = $derived(settingsStore.snapshot.osc.port);
   const outPort = $derived(settingsStore.snapshot.osc.out_port);
@@ -242,7 +256,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <h1>
         <span>OSC</span>
         <span class="osc-view__title-sep" aria-hidden="true">·</span>
-        <span class="osc-view__title-mode">LISTENING</span>
+        <span class="osc-view__title-mode">{titleMode}</span>
         {#if healthSnapshot}
           <span
             class="osc-view__title-dot"

@@ -43,17 +43,20 @@ describe('Meter widget (dBFS)', () => {
     // Full scale → every segment on, colored by its own dB position.
     let green = 0;
     let amber = 0;
+    let orange = 0;
     let red = 0;
     for (let i = 0; i < bars; i++) {
       const z = zoneForDb(fractionToDb((i + 1) / bars));
       if (z === 'green') green++;
       else if (z === 'amber') amber++;
+      else if (z === 'orange') orange++;
       else red++;
     }
     expect(green).toBeGreaterThan(0);
     expect(red).toBeGreaterThan(0);
     expect(container.querySelectorAll('.meter-bar.green').length).toBe(green);
     expect(container.querySelectorAll('.meter-bar.amber').length).toBe(amber);
+    expect(container.querySelectorAll('.meter-bar.orange').length).toBe(orange);
     expect(container.querySelectorAll('.meter-bar.red').length).toBe(red);
   });
 
@@ -71,6 +74,24 @@ describe('Meter widget (dBFS)', () => {
     const levelIdx = Math.round(dbToFraction(-30) * 20);
     const allBars = container.querySelectorAll('.meter-bar');
     expect(allBars[levelIdx]?.classList.contains('peak')).toBe(true);
+  });
+
+  it('segment state snaps to the level with no inline transition on the bar (FIX 2)', () => {
+    // FIX 2 removed `transition: background 0.06s ease` from `.meter-bar`
+    // so LED segments snap on/off rather than smear. jsdom can't surface
+    // the scoped <style> rule via getComputedStyle, so assert the segment
+    // count tracks the dB level directly and that nothing re-adds an
+    // inline transition on the moving bar.
+    const { container } = render(Meter, { props: { levelDb: -30, bars: 20 } });
+    const bars = Array.from(container.querySelectorAll<HTMLElement>('.meter-bar'));
+    // -30 dBFS → 10/20 segments lit; the state is a class toggle, not a
+    // tweened value.
+    expect(container.querySelectorAll('.meter-bar.on').length).toBe(
+      Math.round(dbToFraction(-30) * 20),
+    );
+    for (const bar of bars) {
+      expect(bar.style.transition).toBe('');
+    }
   });
 
   it('renders the no-signal state when silent', () => {

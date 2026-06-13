@@ -64,6 +64,7 @@
 //! BEFORE [`AppState::audio`] iff the field declarations match. Don't
 //! reorder the field declarations without updating the contract above.
 
+use crate::render::thread::RenderThreadHandle;
 use chromaticity_audio::runtime::AudioRuntimeHandle;
 use chromaticity_midi_adapter::MidiListenHandle;
 use chromaticity_osc_adapter::adapter::UdpOscAdapter;
@@ -305,6 +306,23 @@ pub struct AppState {
     ///    provided here for when the hotkey handler is wired to a backend
     ///    command).
     pub audio_threshold: Mutex<f32>,
+    /// ADR-011 Phase-2 Slice R-1a native GPU output-window render
+    /// thread. `Some(handle)` once the Tauri bootstrap path has spawned
+    /// the render thread (only when the `CHROMA_RENDER_OUTPUT`
+    /// env-gate is set); `None` on default launches and in every test
+    /// context. Behind a [`Mutex`] for the same interior-mutability
+    /// reason as [`Self::scheduler_thread`]: the install path takes
+    /// `&self` because Tauri-managed state is reached via a shared
+    /// borrow.
+    ///
+    /// Declared LAST so Rust's reverse-field-declaration drop order
+    /// tears the render thread down FIRST at app shutdown — the present
+    /// loop stops (releasing the surface + window + GPU device) before
+    /// the scheduler / audio / canonical state. The render thread is
+    /// independent of all of them ([`RenderThreadHandle::drop`] signals
+    /// shutdown + bounded-joins on its own), so dropping it first is
+    /// always safe.
+    pub render_thread: Mutex<Option<RenderThreadHandle>>,
 }
 
 struct QueuedOscDispatchSink {
@@ -376,6 +394,27 @@ impl AppState {
             osc_sender: Mutex::new(osc_sender),
             osc_dispatch_queue,
             audio_threshold: Mutex::new(0.0_f32),
+            render_thread: Mutex::new(None),
+        }
+    }
+
+    /// Install the ADR-011 Phase-2 Slice R-1a render-thread handle.
+    ///
+    /// Called from the Tauri builder's `setup` callback when the
+    /// `CHROMA_RENDER_OUTPUT` env-gate is set and the output window +
+    /// render thread were spawned successfully. Replaces any
+    /// previously-installed handle (whose `Drop` fires here, signalling
+    /// shutdown of the prior render thread). Mutex poison-recovery
+    /// follows the workspace pattern.
+    pub fn install_render_thread(&self, handle: RenderThreadHandle) {
+        match self.render_thread.lock() {
+            Ok(mut guard) => {
+                *guard = Some(handle);
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = Some(handle);
+            }
         }
     }
 

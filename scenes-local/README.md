@@ -47,6 +47,30 @@ Everything in this directory except this README and the local
 rule at the project level (belt-and-suspenders) so an accidental
 `git add -A` from the repo root cannot stage operator content.
 
+## Reference shaders for render-testing (clean-room)
+
+This folder is also the home for **verbatim** copies of third-party /
+reference shaders (Synesthesia material from `Contents/`, real MilkDrop,
+ShaderToy, …) used to render-test the engine/render pipeline and for
+technique _inspiration_.
+
+Per the AO: _"We can copy (not modify) whole shaders in for dev/testing
+but these should not ever be committed."_
+
+- **Copy verbatim, never modify** the reference shader's expression — keep
+  it unambiguously identifiable as reference material, not our work. A thin
+  `.chroma` wrapper to run an unmodified body in the renderer is fine;
+  editing the shader body is not.
+- **Never commit** them — the gitignore above enforces this; do not
+  force-add.
+- **Inspiration, not expression.** Our committed shaders are authored
+  clean-room: learn _ideas / techniques_ from references here, but never
+  copy their _expression_ into first-party
+  (`LicenseRef-Chromaticity-Proprietary`) shaders.
+- **Firewall (`docs/29`):** whoever studies a reference here should not be
+  the one authoring our committed original for the same effect
+  (reference-reader ≠ author).
+
 ## Dev-mode convenience
 
 Pre-populating `settings.storage.scene_folders` with this path

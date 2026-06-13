@@ -84,12 +84,17 @@ place, the UI banner is not yet wired.
 ## 4. Audio interface guidance
 
 Audio capture binds the host's **default input device** by default on
-each platform. On macOS that resolves to the built-in microphone (not
-system audio output); routing system audio through Chromaticity
-requires a virtual loopback driver (BlackHole, Loopback, or
-equivalent) configured as the default input. On Windows the equivalent
-is WASAPI loopback or Voicemeeter; on Linux, a PulseAudio /
-PipeWire monitor source.
+each platform — on macOS that resolves to the built-in microphone. To
+react to what the machine is playing instead, pick **System Audio
+(built-in)** under Settings → Audio: a zero-install system-output
+loopback (a Core Audio process tap on macOS 14.6 and later, WASAPI
+loopback on Windows). On macOS below the 14.6 floor, or when the
+audio-recording permission is declined, that selection degrades to the
+default input rather than going silent. A virtual loopback driver
+(BlackHole, Loopback, Voicemeeter, or equivalent) is no longer
+required for system audio, though an installed one remains selectable
+as an ordinary input device; on Linux, use a PulseAudio / PipeWire
+monitor source.
 
 | Property      | Floor                       | Recommended                       |
 | ------------- | --------------------------- | --------------------------------- |
@@ -104,8 +109,8 @@ extraction so multichannel interfaces are not necessary for visual
 reactivity. The `latency_hint` field on the Audio settings (`low` /
 `balanced` / `high`) trades audio-to-visual response latency against
 buffer-underrun resilience under CPU pressure. Audio devices do not
-hot-swap mid-show — changes apply at the next analysis-thread restart
-(typically the next scene load).
+hot-swap mid-show — device choices are persisted and applied at the
+next app launch (live re-bind is deferred).
 
 ## 5. MIDI device guidance
 

@@ -95,6 +95,7 @@ use std::sync::Arc;
 use rustfft::{Fft, FftPlanner, num_complex::Complex32};
 
 use crate::frame::AudioFrame;
+use crate::reactive_bands::ReactiveBandValues;
 
 /// Number of FFT bands the slice-1 snapshot exposes.
 ///
@@ -263,6 +264,18 @@ impl AudioAnalysisWindow {
 /// - `fft_availability`: readiness flag for whether `fft_bands`
 ///   comes from a filled FFT window (`Ready`) or should be displayed
 ///   as warming (`Warming`).
+/// - `bass` / `mid` / `treb`: MilkDrop-class **relative** band
+///   reactivity per `docs/adr/ADR-024-audio-reactivity-analysis-model.md`
+///   — instantaneous band energy ÷ a slow long-term average, centred
+///   on `~1.0` and **volume-independent** (`< 0.7` quiet, `> 1.3`
+///   loud; unbounded above on a transient). These are the
+///   quality-layer companions to the raw `fft_bands` and are populated
+///   by the runtime's stateful [`crate::reactive_bands::ReactiveBands`].
+///   The pure [`extract_uniform_snapshot`] returns the neutral `1.0`
+///   baseline because it carries no cross-frame AGC state.
+/// - `bass_att` / `mid_att` / `treb_att`: attack/decay-smoothed
+///   (short-EMA ÷ long-average) variants of the three relative bands —
+///   a damped-in-time view of the same ratios.
 /// - `degraded`: cross-seam health flag set by downstream adapters
 ///   when the last-known snapshot had to be recovered from a degraded
 ///   path (for example a poisoned snapshot mutex).
@@ -292,21 +305,43 @@ pub struct AudioUniformSnapshot {
     /// Whether `fft_bands` is safe for UI display as real spectrum
     /// data.
     pub fft_availability: AudioAxisAvailability,
+    /// MilkDrop-class relative bass reactivity (instantaneous ÷
+    /// long-term average), centred on `~1.0` and volume-independent per
+    /// ADR-024. Runtime-populated from
+    /// [`crate::reactive_bands::ReactiveBands`]; the pure
+    /// [`extract_uniform_snapshot`] returns the neutral `1.0` baseline.
+    pub bass: f32,
+    /// MilkDrop-class relative mid reactivity. See [`AudioUniformSnapshot::bass`].
+    pub mid: f32,
+    /// MilkDrop-class relative treble reactivity. See [`AudioUniformSnapshot::bass`].
+    pub treb: f32,
+    /// Attack/decay-smoothed variant of [`AudioUniformSnapshot::bass`]
+    /// (short EMA ÷ long average) — a damped-in-time view of the ratio.
+    pub bass_att: f32,
+    /// Attack/decay-smoothed variant of [`AudioUniformSnapshot::mid`].
+    pub mid_att: f32,
+    /// Attack/decay-smoothed variant of [`AudioUniformSnapshot::treb`].
+    pub treb_att: f32,
     /// True once a cross-thread snapshot adapter recovers from a
     /// degraded path and returns last-known state.
     pub degraded: bool,
 }
 
 impl Default for AudioUniformSnapshot {
-    /// All-zero snapshot, matching the silent-fallback baseline.
+    /// Silent-fallback baseline: the raw-energy axes read zero, the
+    /// relative reactive bands read the centred `1.0` neutral.
     ///
-    /// `bpm = 0.0`, `rms = 0.0`, `peak = 0.0`, every band 0.0.
-    /// Consumers that read a default-constructed snapshot should
-    /// treat it as "no audio observed yet"; the production
-    /// extractor never returns this exact shape because BPM clamps
-    /// to [`BPM_DEFAULT`] (or an autocorrelation result) on every
-    /// real frame.
+    /// `bpm = 0.0`, `rms = 0.0`, `peak = 0.0`, every raw band 0.0; the
+    /// relative `bass`/`mid`/`treb` (and `*_att`) centre on `1.0` per
+    /// MilkDrop semantics (a scene multiplying by a relative band gets
+    /// neutral behaviour, not collapse, before audio arrives — see
+    /// [`ReactiveBandValues::default`]). Consumers that read a
+    /// default-constructed snapshot should treat it as "no audio
+    /// observed yet"; the production extractor never returns this exact
+    /// shape because BPM clamps to [`BPM_DEFAULT`] (or an
+    /// autocorrelation result) on every real frame.
     fn default() -> Self {
+        let reactive = ReactiveBandValues::default();
         Self {
             bpm: 0.0,
             bpm_availability: AudioAxisAvailability::Warming,
@@ -314,6 +349,12 @@ impl Default for AudioUniformSnapshot {
             peak: 0.0,
             fft_bands: [0.0; FFT_BAND_COUNT],
             fft_availability: AudioAxisAvailability::Warming,
+            bass: reactive.bass,
+            mid: reactive.mid,
+            treb: reactive.treb,
+            bass_att: reactive.bass_att,
+            mid_att: reactive.mid_att,
+            treb_att: reactive.treb_att,
             degraded: false,
         }
     }
@@ -363,6 +404,12 @@ pub fn extract_uniform_snapshot(frame: &AudioFrame) -> AudioUniformSnapshot {
             AudioAxisAvailability::Warming
         };
 
+    // The relative reactive bands need stateful cross-frame AGC
+    // (`ReactiveBands`), which the pure single-frame extractor does not
+    // own — it returns the neutral centred baseline. The runtime
+    // overrides these from its long-lived `ReactiveBands::observe`.
+    let reactive = ReactiveBandValues::default();
+
     AudioUniformSnapshot {
         bpm,
         bpm_availability,
@@ -370,6 +417,12 @@ pub fn extract_uniform_snapshot(frame: &AudioFrame) -> AudioUniformSnapshot {
         peak,
         fft_bands,
         fft_availability,
+        bass: reactive.bass,
+        mid: reactive.mid,
+        treb: reactive.treb,
+        bass_att: reactive.bass_att,
+        mid_att: reactive.mid_att,
+        treb_att: reactive.treb_att,
         degraded: false,
     }
 }
@@ -582,19 +635,33 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
         return BPM_DEFAULT;
     }
 
-    // Lag range corresponding to [BPM_CLAMP_MIN, BPM_CLAMP_MAX].
-    // lag_samples = sample_rate / (BPM / 60) = 60 * sr / BPM.
-    let max_lag = (60.0 * sample_rate_hz as f32 / BPM_CLAMP_MIN) as usize;
-    let min_lag = (60.0 * sample_rate_hz as f32 / BPM_CLAMP_MAX) as usize;
+    // CHROMATICITY PATCH (real-time perf): tempo is a LOW-frequency feature, so
+    // the O(N·lags) autocorrelation does not need full capture resolution. At
+    // 48 kHz the [50,220]-BPM lag span is ~13k..58k samples — ~1e9 multiply-adds
+    // per call, run twice per producer tick, which overran the analysis budget
+    // and froze the live snapshot (the meter/bands looked stuck). Decimating the
+    // window to ~[`BPM_AUTOCORR_TARGET_HZ`] before the lag search preserves the
+    // dominant period (→ BPM) while cutting cost by ~decim², keeping the producer
+    // real-time. BPM stays the "low-quality parity-only backup" per ADR-024 §3;
+    // the clamp range and silent/short-frame fallbacks are unchanged.
+    const BPM_AUTOCORR_TARGET_HZ: f32 = 2000.0;
+    let decim = ((sample_rate_hz as f32 / BPM_AUTOCORR_TARGET_HZ).round() as usize).max(1);
+    let ds_sample_rate = sample_rate_hz as f32 / decim as f32;
+    let ds: Vec<f32> = mono.iter().step_by(decim).copied().collect();
 
-    if mono.len() <= max_lag || min_lag == 0 || min_lag >= max_lag {
-        // Frame too short for the longest lag we'd like to
+    // Lag range corresponding to [BPM_CLAMP_MIN, BPM_CLAMP_MAX] at the decimated
+    // rate. lag_samples = ds_sr / (BPM / 60) = 60 * ds_sr / BPM.
+    let max_lag = (60.0 * ds_sample_rate / BPM_CLAMP_MIN) as usize;
+    let min_lag = (60.0 * ds_sample_rate / BPM_CLAMP_MAX) as usize;
+
+    if ds.len() <= max_lag || min_lag == 0 || min_lag >= max_lag {
+        // Window too short for the longest lag we'd like to
         // search; return the slice-1 fallback. Silent fallback
         // frames (128 samples) hit this branch.
         return BPM_DEFAULT;
     }
 
-    let energy: f32 = mono.iter().map(|s| s * s).sum();
+    let energy: f32 = ds.iter().map(|s| s * s).sum();
     if energy <= f32::EPSILON {
         return BPM_DEFAULT;
     }
@@ -602,15 +669,15 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
     let mut best_lag = 0_usize;
     let mut best_score = 0.0_f32;
     for lag in min_lag..=max_lag {
-        let n = mono.len() - lag;
+        let n = ds.len() - lag;
         if n == 0 {
             break;
         }
         let mut acc = 0.0_f32;
         for i in 0..n {
-            // Bounds-checked: `i < n = mono.len() - lag` and
-            // `i + lag < mono.len()`.
-            acc += mono[i] * mono[i + lag];
+            // Bounds-checked: `i < n = ds.len() - lag` and
+            // `i + lag < ds.len()`.
+            acc += ds[i] * ds[i + lag];
         }
         // Normalise by overlap length so longer lags don't get
         // an artificially smaller score from the shorter overlap
@@ -626,7 +693,7 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
         return BPM_DEFAULT;
     }
 
-    let bpm = 60.0 * sample_rate_hz as f32 / best_lag as f32;
+    let bpm = 60.0 * ds_sample_rate / best_lag as f32;
     bpm.clamp(BPM_CLAMP_MIN, BPM_CLAMP_MAX)
 }
 
@@ -829,7 +896,13 @@ mod uniforms_drift_pins {
     }
 
     #[test]
-    fn snapshot_default_is_all_zero() {
+    fn snapshot_default_raw_axes_zero_reactive_bands_centered() {
+        // The silent-fallback baseline: raw-energy axes read zero, but
+        // the MilkDrop-class relative bands centre on 1.0 (neutral) per
+        // ADR-024 — a scene multiplying by a relative band gets neutral
+        // behaviour, not collapse, before audio arrives. This pin fires
+        // if the dual baseline ever drifts (e.g. someone "fixes" the
+        // reactive bands back to 0.0 to match the raw axes).
         let s = AudioUniformSnapshot::default();
         assert_eq!(s.bpm, 0.0);
         assert_eq!(s.bpm_availability, AudioAxisAvailability::Warming);
@@ -837,6 +910,13 @@ mod uniforms_drift_pins {
         assert_eq!(s.peak, 0.0);
         assert_eq!(s.fft_bands, [0.0; FFT_BAND_COUNT]);
         assert_eq!(s.fft_availability, AudioAxisAvailability::Warming);
+        // Relative reactive bands centre on the neutral 1.0.
+        assert_eq!(s.bass, 1.0);
+        assert_eq!(s.mid, 1.0);
+        assert_eq!(s.treb, 1.0);
+        assert_eq!(s.bass_att, 1.0);
+        assert_eq!(s.mid_att, 1.0);
+        assert_eq!(s.treb_att, 1.0);
         assert!(!s.degraded);
     }
 

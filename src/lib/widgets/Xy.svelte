@@ -32,10 +32,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     through `aria-valuenow` cover the X axis (the primary focus axis)
   //     per WAI-ARIA composite widget guidance; the Y axis value is
   //     surfaced in the live region via `aria-describedby`.
-  //   - `prefers-reduced-motion: reduce` — the snap-to-corner animation
-  //     (brief translate-ease on the dot) is suppressed under this media
-  //     query. The drag calculation and `onchange` dispatch remain active
-  //     regardless.
+  //   - The dot tracks the value 1:1 with no CSS transition: left/top
+  //     are live values updated per pointer-move, and a transition on a
+  //     continuously-moving target adds its duration as fixed lag (FIX 2
+  //     per docs/dev/ui-smoothness-and-latency.md principle 5 — same
+  //     removal as Meter.svelte / AudioReactivity.svelte).
   //   - DPR-aware drag sensitivity: `getBoundingClientRect()` returns
   //     CSS-pixel dimensions regardless of DPR; pointer clientX/Y are
   //     also in CSS pixels, so no DPR scaling is applied. Matches the
@@ -340,11 +341,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     transform: translate(-50%, -50%);
     box-shadow: 0 0 8px var(--tint, var(--color-primary));
     pointer-events: none;
-    @media (prefers-reduced-motion: no-preference) {
-      transition:
-        left 40ms linear,
-        top 40ms linear;
-    }
+    /* FIX 2: no transition on left/top — the dot is a live value driven
+       per pointer-move; a 40ms tween here added fixed finger-to-dot lag
+       (docs/dev/ui-smoothness-and-latency.md principle 5). */
   }
   .xy__readout {
     display: flex;

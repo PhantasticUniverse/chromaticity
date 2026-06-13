@@ -69,7 +69,10 @@ describe('Osc view', () => {
     const { getByRole, getByText } = render(Osc);
     const heading = getByRole('heading', { level: 1 });
     expect(heading).toHaveTextContent(/OSC/);
-    expect(heading).toHaveTextContent(/LISTENING/);
+    // The default mock keeps `osc_health_snapshot` pending, so the
+    // header mode word reads OFFLINE (no snapshot) rather than the
+    // previously-hardcoded LISTENING.
+    expect(heading).toHaveTextContent(/OFFLINE/);
     // The port readout binds to settingsStore.osc.port; the
     // fresh-install default is the adapter-owned OSC in port.
     expect(heading).toHaveTextContent(/Port 9000/);
@@ -182,13 +185,35 @@ describe('Osc view', () => {
       // renders.
       return new Promise(() => {});
     });
-    const { findByText, container } = render(Osc);
+    const { findByText, container, getByRole } = render(Osc);
     // The pill's label is the literal state string.
     expect(await findByText('Healthy')).toBeInTheDocument();
     const pill = container.querySelector('.osc-view__health-pill');
     expect(pill?.getAttribute('data-state')).toBe('healthy');
     // local_addr=null renders the live-adapter unbound placeholder.
     expect(container.textContent).toContain('unbound');
+    // The header mode word follows the resolved health state:
+    // Healthy → LISTENING.
+    expect(getByRole('heading', { level: 1 })).toHaveTextContent(/LISTENING/);
+  });
+
+  it('header mode word upper-cases non-Healthy states (Degraded → DEGRADED)', async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'osc_health_snapshot') {
+        return Promise.resolve({
+          state: 'Degraded',
+          attempted_binds: 3,
+          local_addr: null,
+          compat_alias_emits: 0n,
+        });
+      }
+      return new Promise(() => {});
+    });
+    const { findByText, getByRole } = render(Osc);
+    expect(await findByText('Degraded')).toBeInTheDocument();
+    const heading = getByRole('heading', { level: 1 });
+    expect(heading).toHaveTextContent(/DEGRADED/);
+    expect(heading).not.toHaveTextContent(/LISTENING/);
   });
 
   it('renders ErrorMessage and the browser-mode hint when the snapshot IPC rejects', async () => {

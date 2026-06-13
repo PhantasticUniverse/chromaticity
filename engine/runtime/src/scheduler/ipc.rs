@@ -289,7 +289,9 @@ mod scheduler_ipc_pins {
             peak: 0.9,
             fft_bands: [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            // ADR-024 reactive bands default to neutral 1.0; these IPC
+            // pins exercise emit transport, not band values.
+            ..Default::default()
         }
     }
 

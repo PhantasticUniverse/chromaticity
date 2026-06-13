@@ -1,0 +1,61 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Relative-Band Pulse",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype. Three pulsing lobes -- bass (warm), mid (green), treb (cyan) -- each driven by the PLANNED MilkDrop-class relative reactive bands chroma_AudioBass/Mid/Treb plus their *_att attack axes (docs/06 Sec.7.15, ADR-024). The bands are multiplicative and centred on the neutral 1.0; a band lift swells its lobe and its _att axis flashes a sharper core. Edge case (FORWARD-COMPAT): this scene declares PLANNED symbols that the render path does not yet bind, so each band/att feeds the neutral baseline (band == 1.0, att == 1.0). At that neutral pose the shader renders a calm, TIME-animated three-lobe field -- flat with respect to audio until the Phase-2 relative-band render binding lands, but never black, static, or NaN. Not shipped in the bundled library; reference/test fixture only.",
+  "TAGS": [
+    "archetype",
+    "audio",
+    "reactive",
+    "relative-bands",
+    "milkdrop",
+    "forward-compat",
+    "planned"
+  ],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "lobe_size",
+      "TYPE": "slider",
+      "DEFAULT": 0.26,
+      "MIN": 0.1,
+      "MAX": 0.5
+    },
+    {
+      "NAME": "band_gain",
+      "TYPE": "slider",
+      "DEFAULT": 1.0,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "orbit_speed",
+      "TYPE": "knob",
+      "DEFAULT": 0.2,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "background_breath",
+      "TYPE": "knob",
+      "DEFAULT": 0.04,
+      "MIN": 0.0,
+      "MAX": 0.2
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_bass", "SYMBOL": "chroma_AudioBass" },
+        { "NAME": "u_mid", "SYMBOL": "chroma_AudioMid" },
+        { "NAME": "u_treb", "SYMBOL": "chroma_AudioTreb" },
+        { "NAME": "u_bass_att", "SYMBOL": "chroma_AudioBass_att" },
+        { "NAME": "u_mid_att", "SYMBOL": "chroma_AudioMid_att" },
+        { "NAME": "u_treb_att", "SYMBOL": "chroma_AudioTreb_att" }
+      ]
+    }
+  ]
+}

@@ -71,6 +71,19 @@ describe('SnapBar widget — rendering surface (W43 baseline)', () => {
     expect(onSlots.length).toBe(0);
   });
 
+  it('does not advertise the unwired digit-key recall in the slot tooltip', () => {
+    // Digit hotkey dispatch does not exist anywhere in the app (only
+    // `?`, Cmd/Ctrl+K, and open-gated Escape are wired globally); the
+    // tooltip must only advertise the wired mouse affordances.
+    const { container } = render(SnapBar);
+    const slots = container.querySelectorAll('.snap-slot:not(.snap-slot--add)');
+    const title = (slots[0] as HTMLElement).getAttribute('title') ?? '';
+    expect(title).not.toContain('press');
+    expect(title).toContain('Cmd-click to save');
+    expect(title).toContain('Alt-click to clear');
+    expect(title).toContain('right-click to rename');
+  });
+
   it('honors a caller-provided slots fixture', () => {
     const { container } = render(SnapBar, {
       props: {
@@ -379,6 +392,38 @@ describe('SnapBar widget — slot label rename (Wave 2.4 PERF.F)', () => {
     expect(container.querySelector('.snap-slot__rename')).not.toBeNull();
   });
 
+  it('renders the renaming slot as a non-button group so the input is not nested interactive', async () => {
+    const { container } = render(SnapBar);
+    const slot1 = container.querySelectorAll('.snap-slot:not(.snap-slot--add)')[0] as HTMLElement;
+    expect(slot1.tagName).toBe('BUTTON');
+    await fireEvent.contextMenu(slot1);
+    const input = container.querySelector('.snap-slot__rename') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    // The input must NOT be an interactive descendant of a <button>
+    // (WHATWG button content model; axe `nested-interactive`).
+    expect(input.closest('button')).toBeNull();
+    const renaming = container.querySelector('.snap-slot--renaming') as HTMLElement;
+    expect(renaming.tagName).toBe('DIV');
+    expect(renaming.getAttribute('role')).toBe('group');
+    expect(renaming.hasAttribute('aria-pressed')).toBe(false);
+  });
+
+  it('commits the rename when the input blurs', async () => {
+    const { container } = render(SnapBar);
+    const slot1 = container.querySelectorAll('.snap-slot:not(.snap-slot--add)')[0] as HTMLElement;
+    await fireEvent.contextMenu(slot1);
+    const input = container.querySelector('.snap-slot__rename') as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: 'Chorus' } });
+    await fireEvent.blur(input);
+    expect(container.querySelector('.snap-slot__rename')).toBeNull();
+    expect(snapLabelsStore.label(1)).toBe('Chorus');
+    const refreshedSlot1 = container.querySelectorAll(
+      '.snap-slot:not(.snap-slot--add)',
+    )[0] as HTMLElement;
+    expect(refreshedSlot1.tagName).toBe('BUTTON');
+    expect(refreshedSlot1.querySelector('.snap-slot__name')?.textContent).toBe('Chorus');
+  });
+
   it('right-click → type → Enter persists the label and closes the input', async () => {
     const { container } = render(SnapBar);
     const slot1 = container.querySelectorAll('.snap-slot:not(.snap-slot--add)')[0] as HTMLElement;
@@ -422,5 +467,82 @@ describe('SnapBar widget — slot label rename (Wave 2.4 PERF.F)', () => {
     for (let i = 0; i < 20; i += 1) await Promise.resolve();
     const recallCalls = invokeMock.mock.calls.filter((c) => c[0] === 'recall_snap');
     expect(recallCalls.length).toBe(0);
+  });
+
+  it('suppresses recall when blur commits the rename before the click lands (Chromium ordering)', async () => {
+    // Real Chromium event order for a cross-slot click mid-rename:
+    // pointerdown on the target slot → the rename input blurs
+    // (committing the rename and nulling `renamingSlot`) → click.
+    // The pointerdown-captured flag must swallow that first click so
+    // dismissing the rename does not also dispatch recall_snap.
+    const { container } = render(SnapBar);
+    const slots = container.querySelectorAll('.snap-slot:not(.snap-slot--add)');
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    invokeMock.mockClear();
+
+    await fireEvent.contextMenu(slots[0] as Element);
+    const input = container.querySelector('.snap-slot__rename') as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: 'Hook' } });
+
+    await fireEvent.pointerDown(slots[2] as Element);
+    await fireEvent.blur(input);
+    await fireEvent.click(slots[2] as Element);
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+
+    // The rename committed…
+    expect(container.querySelector('.snap-slot__rename')).toBeNull();
+    expect(snapLabelsStore.label(1)).toBe('Hook');
+    // …and the click was swallowed instead of dispatching recall.
+    const recallCalls = invokeMock.mock.calls.filter((c) => c[0] === 'recall_snap');
+    expect(recallCalls.length).toBe(0);
+  });
+
+  it('dispatches recall normally on the next click after a rename dismissal', async () => {
+    const { container } = render(SnapBar);
+    const slots = container.querySelectorAll('.snap-slot:not(.snap-slot--add)');
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    invokeMock.mockClear();
+
+    await fireEvent.contextMenu(slots[0] as Element);
+    const input = container.querySelector('.snap-slot__rename') as HTMLInputElement;
+    // First click dismisses the rename (suppressed); the second click
+    // is a fresh interaction and must dispatch.
+    await fireEvent.pointerDown(slots[2] as Element);
+    await fireEvent.blur(input);
+    await fireEvent.click(slots[2] as Element);
+    await fireEvent.pointerDown(slots[2] as Element);
+    await fireEvent.click(slots[2] as Element);
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+
+    const recallCalls = invokeMock.mock.calls.filter((c) => c[0] === 'recall_snap');
+    expect(recallCalls.length).toBe(1);
+    expect(recallCalls[0]?.[1]).toEqual({ slot: 2 });
+  });
+});
+
+describe('SnapBar widget — inline error surface', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    snapStore.reset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('renders snapStore.error through the ErrorMessage alert', () => {
+    // Reject the onMount refresh() IPC — without a Tauri runtime the
+    // store swallows it, leaving the pre-seeded error untouched.
+    invokeMock.mockRejectedValue(new Error('not running in tauri'));
+    snapStore.error = 'recall_snap failed: snap state mutex poisoned';
+    const { getByRole } = render(SnapBar);
+    const alert = getByRole('alert');
+    expect(alert).toHaveTextContent('recall_snap failed: snap state mutex poisoned');
+  });
+
+  it('renders no alert when snapStore.error is null', () => {
+    invokeMock.mockRejectedValue(new Error('not running in tauri'));
+    const { queryByRole } = render(SnapBar);
+    expect(queryByRole('alert')).toBeNull();
   });
 });

@@ -208,26 +208,46 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const HIT_THRESHOLD = 0.5;
 
   /**
-   * Reduce the engine's 8-band FFT array into the bundle's 5 named
-   * tiles (Bass / Mid / Mid-High / High / Full). The four
-   * frequency-specific tiles average adjacent pairs (8 → 4); the
-   * broadband `Full` tile averages all eight bins. Per-tile bar
-   * derivations are kept simple: level = reduced value, hit = step
-   * flash above `HIT_THRESHOLD`, presence = reduced value (mirrors
+   * Map a single ~1.0-centred ADR-024 AGC reactive band onto a 0..1
+   * bar fill. The engine's MilkDrop-class auto-gain bands are
+   * volume-INDEPENDENT and centred on a neutral 1.0 (~4 on a transient),
+   * unlike the `fft_bands` which are normalized-then-clamped to [0,1] and
+   * sit near 0 in a quiet room. A volume-independent reactivity ratio
+   * should rest at the FLOOR, not mid-bar — so `(value - 1) / 3` maps the
+   * neutral 1.0 → 0% (dark at rest) and a ~4.0 transient → 100% (FIX 3 —
+   * fixes the "stuck half-lit at 50%" rest feel; this is excitation above
+   * neutral, not an absolute level).
+   */
+  function agcBarFill(value: number): number {
+    return Math.max(0, Math.min(1, (value - 1) / 3));
+  }
+
+  /**
+   * Reduce the engine's three ADR-024 AGC reactive bands
+   * (`bass` / `mid` / `treb`) into the bundle's 5 named tiles
+   * (Bass / Mid / Mid-High / High / Full). The named tiles now read
+   * the volume-independent AGC bands rather than the clamped
+   * `fft_bands`, so the visible bars actually move on a quiet mic:
+   *   bass    ← bass
+   *   mid     ← mid
+   *   mid-hi  ← treb
+   *   high    ← treb
+   *   full    ← mean(bass, mid, treb)
+   * Each value is mapped through `agcBarFill`. Per-tile bar
+   * derivations are kept simple: level = mapped value, hit = step
+   * flash above `HIT_THRESHOLD`, presence = mapped value (mirrors
    * level — proper peak-hold is post-MVP UX). Preserves the fixture's
    * tile id / label / sub-label / tint / bar-key shape so the visual
    * layout never drifts; only the per-bar `value` switches to live data.
    */
   function reduceFftToBands(payload: AudioUniformSnapshotPayload): readonly FrequencyBand[] {
-    const f = payload.fft_bands;
-    const avg2 = (a: number, b: number): number => (a + b) / 2;
-    const avgAll = (f[0] + f[1] + f[2] + f[3] + f[4] + f[5] + f[6] + f[7]) / 8;
+    const fullFill = agcBarFill((payload.bass + payload.mid + payload.treb) / 3);
     const reducedByBandId: Readonly<Record<string, number>> = {
-      bass: avg2(f[0], f[1]),
-      mid: avg2(f[2], f[3]),
-      midhi: avg2(f[4], f[5]),
-      high: avg2(f[6], f[7]),
-      full: avgAll,
+      bass: agcBarFill(payload.bass),
+      mid: agcBarFill(payload.mid),
+      midhi: agcBarFill(payload.treb),
+      high: agcBarFill(payload.treb),
+      full: fullFill,
     };
     return AUDIO_UNIFORMS_FIXTURE.bands.map((band) => {
       const v = reducedByBandId[band.id] ?? 0;
@@ -269,7 +289,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   );
   // EMA factor 0.25 means ~5-tick half-life (~80 ms at 60 Hz) — fast
   // enough to track real onsets, slow enough to discard noise-floor
-  // bursts. Peak holds with 0.004 decay to mirror the VuStereo path.
+  // bursts. Peak holds with 0.004 per-snapshot decay (the pre-migration
+  // VuStereo ballistics; VuStereo has since moved onto the dt-aware
+  // `metering.ts` followers — migrating this smoother too is tracked in
+  // docs/dev/ui-smoothness-and-latency.md, "Tracked follow-ups").
   const LEVEL_EMA = 0.25;
   const PEAK_DECAY = 0.004;
   let _smInit = _initialSnap !== null;
@@ -279,6 +302,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     ? [..._initialSnap.fft_bands]
     : new Array<number>(8).fill(0);
   $effect(() => {
+    // Freeze gate — when the operator pauses the stream, return BEFORE
+    // touching the snapshot store so the effect's only tracked
+    // dependency is `streaming`: the 60 Hz snapshot writes stop
+    // re-running it entirely and `smoothedSnapshot` holds the last
+    // frame (band tiles + hit LEDs + dB readout all freeze). Resume
+    // flips `streaming`, re-runs the effect, and the persistent EMA
+    // state ramps the display from the frozen values to the live
+    // signal — no reseed needed.
+    if (!streaming) return;
     const snap = audioSnapshotStore.snapshot;
     if (!snap) {
       _smInit = false;
@@ -316,14 +348,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         _smFft[7] ?? 0,
       ],
       fft_availability: snap.fft_availability,
+      // ADR-024 relative reactive bands are already AGC-smoothed by the
+      // engine; pass them through this view-local level smoothing unchanged.
+      bass: snap.bass,
+      mid: snap.mid,
+      treb: snap.treb,
+      bass_att: snap.bass_att,
+      mid_att: snap.mid_att,
+      treb_att: snap.treb_att,
       degraded: snap.degraded,
     };
   });
 
+  // The named tiles read the ADR-024 AGC bands, which carry a neutral
+  // 1.0 default and are present on every snapshot, so gate on snapshot
+  // presence rather than `fft_availability` (the AGC bands are valid
+  // even while the FFT axis is still warming).
   const liveBands = $derived<readonly FrequencyBand[]>(
-    smoothedSnapshot?.fft_availability === 'Ready'
-      ? reduceFftToBands(smoothedSnapshot)
-      : AUDIO_UNIFORMS_FIXTURE.bands,
+    smoothedSnapshot !== null ? reduceFftToBands(smoothedSnapshot) : AUDIO_UNIFORMS_FIXTURE.bands,
   );
 
   // Wave 2.6 AUD.C — live peak / RMS dB readout in the hero stats strip.
@@ -416,6 +458,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       peak: snap.peak,
       fft_bands: snap.fft_bands,
       fft_availability: snap.fft_availability,
+      // ADR-024 relative reactive bands — part of the wire payload, so
+      // the capture must carry them too (volume-independent AGC bands
+      // centred on neutral 1.0 + their attack-smoothed companions).
+      bass: snap.bass,
+      mid: snap.mid,
+      treb: snap.treb,
+      bass_att: snap.bass_att,
+      mid_att: snap.mid_att,
+      treb_att: snap.treb_att,
       degraded: snap.degraded,
       captured_at: capturedAt,
     };

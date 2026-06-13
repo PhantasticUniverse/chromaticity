@@ -69,8 +69,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     button, BPM-source reorder, snap-mode separators all render
   //     via the W19 PR3 `Icon.svelte` primitive (`x` / `link` / `bang`
   //     / `settings` / `caret` / `chevron`) per `views/midi.jsx`.
-  import { SvelteSet } from 'svelte/reactivity';
-
   import {
     BPM_SYNC_SOURCES,
     MIDI_CAPABILITY,
@@ -93,6 +91,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MidiTabId,
   } from '../data/midi-fixtures';
   import Icon from '../Icon.svelte';
+  import { midiDeviceStore } from '../stores/midiDevices.svelte';
   import { midiLearnStore } from '../stores/midiLearn.svelte';
   import { midiStore } from '../stores/midiStore.svelte';
   import { CuePad, type CuePadCell } from '../widgets';
@@ -114,20 +113,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // MPE-warned Seaboard sentinel that drives the MPE banner gate.
   // Vendor / direction / maps columns get conservative defaults
   // (`vendor='—'`, `direction='in'`, `maps=0`) until a richer
-  // MIDI-introspection surface lands. Allowlist toggle state lives in a
-  // `Set<string>` keyed by device id and is initialised to "all live
-  // devices allowed" so a fresh device is enabled by default; the
-  // pre-existing per-device boolean column on the fixture set drives
-  // the legacy rows the test corpus still references.
-  // `allowlist`: device ids the operator has enabled. `everSeen`: every
-  // device id the store has ever surfaced, so an explicit "disallow" by
-  // the operator is preserved across refreshes (without this, a refresh
-  // would re-enable a deliberately-disabled device by re-running the
-  // "auto-enable a never-before-seen device" branch). `SvelteSet` from
-  // `svelte/reactivity` so mutating add/delete drives reactive updates
-  // without re-creating the set wholesale.
-  const allowlist = new SvelteSet<string>();
-  const everSeen = new SvelteSet<string>();
+  // MIDI-introspection surface lands. Allowlist toggle state lives in
+  // the module-singleton `midiDeviceStore`
+  // (`src/lib/stores/midiDevices.svelte.ts`) — NOT in component-local
+  // sets — so an explicit "disallow" by the operator survives view
+  // switches (AppShell's `{#if}` route ladder destroys this component
+  // on every navigation) and, via localStorage write-through, app
+  // restarts. The store keeps the auto-enable-on-first-sight rule:
+  // a never-seen device id is enabled by default; a deliberately
+  // disabled device stays in the store's ever-seen set and is NOT
+  // re-enabled by refreshes or remounts.
 
   // `liveDevices` is the wire-shaped list from the store, adapted into
   // the row shape the Devices tab template iterates against. The adapter
@@ -141,7 +136,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       name: d.name,
       vendor: '—',
       direction: 'in' as const,
-      allowed: allowlist.has(d.id),
+      allowed: midiDeviceStore.isAllowed(d.id),
       maps: 0,
       mpeWarned: false,
     })),
@@ -167,17 +162,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     };
   });
 
-  // Auto-enable any device id we've NEVER seen before — fresh plugs
-  // default to "allowed". Devices the operator explicitly disabled
-  // remain in `everSeen` but absent from `allowlist`, so a subsequent
-  // refresh does not re-enable them.
+  // Auto-enable any device id the app has NEVER seen before — fresh
+  // plugs default to "allowed". The rule runs against the module-
+  // singleton store's app-lifetime (+ persisted) ever-seen history, so
+  // devices the operator explicitly disabled are not re-enabled by a
+  // refresh, a view switch, or an app restart.
   $effect(() => {
-    for (const d of midiStore.devices) {
-      if (!everSeen.has(d.id)) {
-        everSeen.add(d.id);
-        allowlist.add(d.id);
-      }
-    }
+    midiDeviceStore.markSeen(midiStore.devices.map((d) => d.id));
   });
 
   // The bundle's 4s learn-idle timer is replaced by a frozen "no signal"
@@ -190,6 +181,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // is the first allowlisted live device (or the first live device if
   // none allowlisted); if no live devices exist, the legacy fixture-
   // driven panel renders (state stays in 'idle' on the store).
+  // Pick a port to listen on. Prefer an allowlisted device (the
+  // operator's explicit "this is the one to listen to"); fall back
+  // to the first live device; `null` when no live devices exist.
+  function pickLearnPort(): string | null {
+    const target =
+      midiStore.devices.find((d) => midiDeviceStore.isAllowed(d.id)) ??
+      midiStore.devices[0] ??
+      null;
+    return target?.id ?? null;
+  }
+
   function toggleLearn(): void {
     if (learning) {
       learning = false;
@@ -198,15 +200,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
     learning = true;
     learnTarget = activeTab === 'global' ? MIDI_LEARN_FIXTURE.target : `${activeTab}.target`;
-    // Pick a port to listen on. Prefer an allowlisted device (the
-    // operator's explicit "this is the one to listen to"); fall back
-    // to the first live device. If neither exists, the learn panel
-    // surfaces a "No MIDI devices available" message instead of
-    // invoking IPC.
-    const target =
-      midiStore.devices.find((d) => allowlist.has(d.id)) ?? midiStore.devices[0] ?? null;
-    if (target) {
-      void midiLearnStore.start(target.id);
+    // If no live devices exist, skip IPC entirely — the learn panel
+    // renders an explicit "No MIDI devices available" row (the store
+    // stays in 'idle' with no error).
+    const portId = pickLearnPort();
+    if (portId !== null) {
+      void midiLearnStore.start(portId);
+    }
+  }
+
+  // Re-arm after a failed start (the error row's Retry button). The
+  // store clears `error` at the top of `start()`, so no extra store
+  // surface is needed.
+  function retryLearn(): void {
+    const portId = pickLearnPort();
+    if (portId !== null) {
+      void midiLearnStore.start(portId);
     }
   }
 
@@ -252,11 +261,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   function toggleDevice(deviceId: string): void {
-    if (allowlist.has(deviceId)) {
-      allowlist.delete(deviceId);
-    } else {
-      allowlist.add(deviceId);
-    }
+    midiDeviceStore.toggle(deviceId);
   }
 
   function refreshDevices(): void {
@@ -531,9 +536,30 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </button>
 
       {#if learning}
-        <span class="midi__toolbar-hint midi__toolbar-hint--learn">
-          <Icon name="link" size={11} /> Waiting for input — wiggle a CC or press a note.
-        </span>
+        <!-- The "armed" copy is gated on the STORE state, not the local
+             `learning` flag — a failed `start_midi_learn` drops the store
+             back to 'idle' and must not leave the toolbar claiming the
+             session is waiting for input. -->
+        {#if midiLearnStore.state === 'listening'}
+          <span class="midi__toolbar-hint midi__toolbar-hint--learn">
+            <Icon name="link" size={11} /> Waiting for input — wiggle a CC or press a note.
+          </span>
+        {:else if midiLearnStore.state === 'captured'}
+          <span class="midi__toolbar-hint midi__toolbar-hint--learn">
+            <Icon name="link" size={11} /> Captured — confirm or re-capture.
+          </span>
+        {:else if midiLearnStore.error !== null}
+          <span class="midi__toolbar-hint midi__toolbar-hint--error">
+            <Icon name="x" size={11} /> Learn failed — see the Learn Mode panel.
+          </span>
+        {:else if midiStore.devices.length === 0}
+          <span class="midi__toolbar-hint">
+            No MIDI devices available — connect a controller.
+          </span>
+        {:else}
+          <!-- Transient: start() dispatched, store not yet 'listening'. -->
+          <span class="midi__toolbar-hint">Starting learn session…</span>
+        {/if}
       {:else}
         <span class="midi__toolbar-hint">{MIDI_TAB_HINTS[activeTab]}</span>
       {/if}
@@ -937,12 +963,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </header>
         <div class="midi__panel-body">
           <!-- Wave 2.1 Lane D.2 live-capture status. State surfaces:
-               'idle'      → no active session, fall through to fixture.
-               'listening' → "waiting for input" + cancel button.
-               'captured'  → captured payload + confirm / recapture / cancel.
-               When no live MIDI devices are available the store stays in
-               'idle' and the fixture panel below renders unchanged. -->
-          {#if midiLearnStore.state === 'listening' && midiLearnStore.captured === null}
+               'idle' + no devices → explicit no-devices row (no IPC fired).
+               'idle' + error      → start failed; error row + Retry.
+               'listening'         → "waiting for input" + cancel button.
+               'captured'          → captured payload + confirm / recapture /
+                                     cancel.
+               The fixture cells below always render as the static
+               reference frame. -->
+          {#if midiLearnStore.state === 'idle' && midiStore.devices.length === 0}
+            <div class="midi__learn-row" data-midi-learn-no-devices>
+              <span class="midi__caps">no devices</span>
+              <span class="midi__learn-text mono">
+                No MIDI devices available — connect a controller and refresh the Devices tab.
+              </span>
+            </div>
+          {:else if midiLearnStore.state === 'idle' && midiLearnStore.error !== null}
+            <div class="midi__learn-row midi__learn-row--error" role="alert" data-midi-learn-error>
+              <span class="midi__caps">error</span>
+              <span class="midi__learn-text midi__learn-text--error mono">
+                learn start failed: {midiLearnStore.error}
+              </span>
+            </div>
+            <div class="midi__learn-actions">
+              <button
+                type="button"
+                class="midi__btn midi__btn--primary midi__btn--grow"
+                onclick={retryLearn}
+              >
+                Retry
+              </button>
+              <button type="button" class="midi__btn midi__btn--danger" onclick={cancelLearn}>
+                Cancel
+              </button>
+            </div>
+          {:else if midiLearnStore.state === 'listening' && midiLearnStore.captured === null}
             <div class="midi__learn-row" data-midi-learn-listening>
               <span class="midi__caps">listening</span>
               <span class="midi__learn-text mono">
@@ -1287,6 +1341,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .midi__toolbar-hint--learn {
     color: var(--color-primary);
+  }
+  .midi__toolbar-hint--error {
+    color: var(--color-danger);
   }
 
   .midi__filter {
@@ -2067,6 +2124,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .midi__learn-text {
     font-size: var(--font-size-mono-sm);
     color: var(--color-text-2);
+  }
+  .midi__learn-text--error {
+    color: var(--color-danger);
   }
 
   /* ---------------- Waveform --------------------------------------- */

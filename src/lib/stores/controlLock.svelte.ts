@@ -17,9 +17,14 @@
 // has no concept of "locked" controls. `dispatchControl` reads
 // `controlLockStore.isLocked(id)` and elides the `set_control`
 // invoke when the row is locked; the engine never sees the
-// suppressed value. Locked-row state is wiped on `reset()` or page
-// reload (no localStorage persistence — pre-alpha posture; future
-// waves may persist).
+// suppressed value. Scene-namespace locks (ids below
+// `META_CONTROL_ID_BASE`) are wiped via `syncSceneScope` whenever the
+// loaded scene changes — lock ids are bare schema positions shared
+// across scenes, so they must not leak onto the next scene's rows.
+// Meta-namespace locks survive scene loads (mirroring the value
+// cache's cross-scene `meta:` namespace) and are wiped on `reset()`
+// or page reload (no localStorage persistence — pre-alpha posture;
+// future waves may persist).
 //
 // **`SvelteSet` over plain `Set`.** The Svelte 5 reactivity
 // primitive in `svelte/reactivity` emits change notifications on
@@ -33,6 +38,14 @@ import { SvelteSet } from 'svelte/reactivity';
 class ControlLockStore {
   /** Set of locked control IDs. Membership ↔ locked. */
   locked: SvelteSet<number> = new SvelteSet();
+
+  /** Scene id the current scene-namespace locks belong to — plain
+   * field, intentionally non-reactive bookkeeping for
+   * {@link syncSceneScope}. Lives in the store (not the Perform
+   * component) so the comparison survives the AppShell `{#if}`-ladder
+   * remounts: a scene loaded from another view while Perform was
+   * unmounted still invalidates the stale locks on the next sync. */
+  private sceneScope: string | null = null;
 
   /** Read-only membership check. */
   isLocked(id: number): boolean {
@@ -62,9 +75,27 @@ class ControlLockStore {
     }
   }
 
-  /** Reset the store to the no-locks baseline (test harness + view unmount). */
+  /**
+   * Report the active scene id; when it differs from the recorded
+   * scope, every lock id below `boundary` (pass
+   * `META_CONTROL_ID_BASE`) is unlocked. Idempotent while the scene
+   * stays the same, so callers can invoke it from a tracking
+   * `$effect` on every run. The `null` (no scene / fixture) scope is
+   * a distinct namespace: fixture-row locks clear when a real scene
+   * loads, and vice versa.
+   */
+  syncSceneScope(sceneId: string | null, boundary: number): void {
+    if (sceneId === this.sceneScope) return;
+    this.sceneScope = sceneId;
+    for (const id of [...this.locked]) {
+      if (id < boundary) this.locked.delete(id);
+    }
+  }
+
+  /** Reset the store to the no-locks baseline (test harness). */
   reset(): void {
     this.locked.clear();
+    this.sceneScope = null;
   }
 }
 

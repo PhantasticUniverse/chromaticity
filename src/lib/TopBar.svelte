@@ -384,14 +384,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </span>
     {#if routeStore.current === 'perform'}
       <!-- Wave 2.1 Lane B.2 — camera + record buttons (visual stubs).
-           Real wiring lands in Wave 2.2. Bundle adoption:
-           `Chromaticity.html` lines 254-255. -->
+           Real wiring is AO-deferred (camera real bindings + Syphon
+           publish are Wave 1c-β follow-up scope; no scheduled wave).
+           Bundle adoption: `Chromaticity.html` lines 254-255. -->
       <button
         type="button"
         class="top-bar__icon-btn"
         data-testid="top-bar-camera"
         aria-label="Camera"
-        title="Camera (Wave 2.2)"
+        title="Camera (visual stub; wiring AO-deferred)"
       >
         <Icon name="camera" size={14} />
       </button>
@@ -400,7 +401,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         class="top-bar__icon-btn"
         data-testid="top-bar-record"
         aria-label="Record"
-        title="Record (Wave 2.2)"
+        title="Record (visual stub; wiring AO-deferred)"
       >
         <Icon name="record" size={11} />
       </button>
@@ -440,54 +441,34 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     gap: var(--space-sm);
   }
 
-  /* Brand mark — chromatic conic ring + dark inner disc + glowing accent
-   * dot. Ported from `chromaticity-planning/ui-predev-bundle-v0.2-beta/
-   * styles.css::.brand-mark`. The base is a 26px circle with a 5-color
-   * conic gradient; ::after carves a dark inner disc; ::before places a
-   * glowing primary-tinted dot at the center. Per-theme overrides below
-   * tune the palette + glow per the bundle's pulse / atelier / console
-   * theme rules. */
+  /* Brand mark — a solid chromatic tile with an accent halo. Ported from
+   * `chromaticity-planning/ui-predev-bundle-v0.2-beta/styles.css`
+   * `.tb-brand .brand-mark` (the TOP-BAR mark, line 228): a rounded square
+   * filled by a conic gradient, with an outer accent glow + a thin inset
+   * dark edge. (Previously we mistakenly ported the RAIL's concentric-
+   * circle `.brand-mark` — wrong shape + no halo.) */
   .top-bar__brand-mark {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
     background: conic-gradient(
-      from 220deg at 50% 60%,
-      var(--color-primary) 0deg,
-      var(--color-signal-cyan) 90deg,
-      var(--color-signal-magenta) 180deg,
-      var(--color-signal-amber) 270deg,
-      var(--color-primary) 360deg
+      from 210deg,
+      var(--color-signal-orange),
+      var(--color-signal-magenta),
+      var(--color-signal-cyan),
+      var(--color-primary),
+      var(--color-signal-orange)
     );
-    position: relative;
+    box-shadow:
+      0 0 calc(10px * var(--glow, 1)) color-mix(in oklab, var(--color-primary) 30%, transparent),
+      inset 0 0 0 1px rgba(0, 0, 0, 0.4);
     flex-shrink: 0;
   }
 
-  .top-bar__brand-mark::after {
-    content: '';
-    position: absolute;
-    inset: 5px;
-    background: var(--color-bg-1);
-    border-radius: 50%;
-  }
-
-  .top-bar__brand-mark::before {
-    content: '';
-    position: absolute;
-    inset: 9px;
-    background: var(--color-primary);
-    border-radius: 50%;
-    z-index: 1;
-    box-shadow: 0 0 8px var(--color-primary);
-  }
-
-  /* Atelier (light/modernist): replace the chromatic ring with a solid
-   * ink ring + solid bg-1 inner; drop the glow per the bundle. */
+  /* Atelier (light/modernist): solid ink tile, no glow, per the bundle's
+   * `[data-theme="atelier"] .tb-brand .brand-mark`. */
   :global([data-theme='atelier']) .top-bar__brand-mark {
     background: var(--color-text-0);
-  }
-  :global([data-theme='atelier']) .top-bar__brand-mark::before {
-    background: var(--color-bg-1);
     box-shadow: none;
   }
 
@@ -698,8 +679,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   /* Wave 2.1 Lane B.2 — camera + record icon buttons in the right HUD
-   * cluster. Visual stubs only; real wiring is Wave 2.2 scope. Match
-   * the bundle's `btn ghost sm` / `btn danger sm` chrome compactly. */
+   * cluster. Visual stubs only; real wiring is AO-deferred Wave 1c-β
+   * follow-up scope. Match the bundle's `btn ghost sm` / `btn danger
+   * sm` chrome compactly. */
   .top-bar__icon-btn {
     appearance: none;
     display: inline-flex;

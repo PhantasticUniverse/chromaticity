@@ -4,13 +4,13 @@
 # EV-EVIDENCE-TAG-COVERAGE gate per docs/26-evidence-artifact-
 # registry.md and docs/43-development-standards.md §15.
 #
-# Required-check slot from Phase 1 onward (branch protection);
-# strict enforcement body (mapping every test in an evidence-
-# producing subtree to an EV-ID in the registry) is implemented by
-# the evidence-tag-lint work package in
-# docs/12-work-breakdown-estimates.md once the first test arrives.
-# At Phase-1 entry the job executes scripts/evidence-tag-lint.sh
-# which passes trivially while the body is pending.
+# Required-check slot from Phase 1 onward (branch protection).
+# The strict enforcement body has graduated (see the header of
+# scripts/evidence-tag-lint.sh for the authoritative scope): the
+# job fails on tier-less `//! Evidence:` tags, on Rust test files
+# under engine/**, integrations/**, or app/shell/tests/** that
+# lack an evidence declaration, and on EV-IDs absent from
+# docs/26-evidence-artifact-registry.md.
 #
 # No run: step consumes untrusted github.event.* input.
 
@@ -34,6 +34,6 @@ jobs:
     name: EV-EVIDENCE-TAG-COVERAGE
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run evidence-tag-lint
         run: bash scripts/evidence-tag-lint.sh

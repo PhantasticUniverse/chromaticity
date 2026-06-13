@@ -94,6 +94,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         class:on={seg.on}
         class:green={seg.on && seg.zone === 'green'}
         class:amber={seg.on && seg.zone === 'amber'}
+        class:orange={seg.on && seg.zone === 'orange'}
         class:red={seg.on && seg.zone === 'red'}
         class:peak={seg.isPeak}
         class:ref={seg.isRef}
@@ -140,7 +141,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: var(--color-bg-3);
     border-radius: var(--radius-xs);
     border: 1px solid var(--color-line-2);
-    transition: background 0.06s ease;
+    /* FIX 2 — no CSS transition on the segment fill. The DSP envelope in
+       the caller is the only smoothing layer; tweening the bar color over
+       a fixed duration just adds that duration as fixed lag on a moving
+       target and makes LED segments smear instead of snapping on/off. */
   }
   /* dB-zone fill colors (per-segment by the dB it represents). */
   .meter-bar.green {
@@ -150,6 +154,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .meter-bar.amber {
     background: var(--color-warning);
     border-color: var(--color-warning);
+  }
+  .meter-bar.orange {
+    background: var(--color-signal-orange);
+    border-color: var(--color-signal-orange);
   }
   .meter-bar.red {
     background: var(--color-danger);

@@ -3,10 +3,15 @@
 //
 // Wave 2.1 Lane A.4 playlist store tests. Validates the
 // `advance_playlist` + `playlist_position` invocation paths,
-// reactive state propagation, and the no-Tauri-runtime swallow
-// path. Engine-side cursor saturation at `i64::MAX` / `i64::MIN` is
-// pinned in `engine/runtime/src/state.rs`; these tests stay on the
-// store surface.
+// reactive state propagation, and the error-surface path: an
+// `invoke()` rejection (real engine `Result<_, String>` failure) is
+// recorded into `playlistStore.error` and cleared by the next
+// successful call. The no-Tauri-runtime fallback (import-level
+// rejection) stays silent and is not reachable here — `vi.mock`
+// makes the module import always succeed. Engine-side cursor
+// saturation at `i64::MAX` / `i64::MIN` is pinned in
+// `engine/runtime/src/state.rs`; these tests stay on the store
+// surface.
 //
 // `vi.hoisted` invoke-mock pattern per the
 // `feedback_vitest_invoke_mock_hoisted.md` user-memory convention —
@@ -96,33 +101,68 @@ describe('playlistStore', () => {
     expect(playlistStore.position).toBe(-1);
   });
 
-  it('refresh() swallows invoke rejection (no Tauri runtime) and leaves position unchanged', async () => {
-    invokeMock.mockRejectedValueOnce(new Error('not running in tauri'));
+  it('refresh() records invoke rejection in error and leaves position unchanged', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('state mutex poisoned: boom'));
     const { playlistStore } = await import('./playlist.svelte');
     playlistStore.reset();
 
     await expect(playlistStore.refresh()).resolves.toBeUndefined();
     expect(playlistStore.position).toBe(0);
+    expect(playlistStore.error).toBe('state mutex poisoned: boom');
   });
 
-  it('advance() swallows invoke rejection and leaves position unchanged', async () => {
-    invokeMock.mockRejectedValueOnce(new Error('not running in tauri'));
+  it('advance() records invoke rejection in error and leaves position unchanged', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('state mutex poisoned: boom'));
     const { playlistStore } = await import('./playlist.svelte');
     playlistStore.reset();
 
     await expect(playlistStore.advance(2)).resolves.toBeUndefined();
     expect(playlistStore.position).toBe(0);
+    expect(playlistStore.error).toBe('state mutex poisoned: boom');
   });
 
-  it('reset() returns position to the baseline zero', async () => {
+  it('records a non-Error rejection (engine Result<_, String> payload) via String()', async () => {
+    invokeMock.mockRejectedValueOnce('command bus backpressure');
+    const { playlistStore } = await import('./playlist.svelte');
+    playlistStore.reset();
+
+    await playlistStore.refresh();
+
+    expect(playlistStore.error).toBe('command bus backpressure');
+  });
+
+  it('a successful call clears a previously recorded error', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('state mutex poisoned: boom'));
+    const { playlistStore } = await import('./playlist.svelte');
+    playlistStore.reset();
+
+    await playlistStore.advance(1);
+    expect(playlistStore.error).toBe('state mutex poisoned: boom');
+
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'advance_playlist') return undefined;
+      if (cmd === 'playlist_position') return 1;
+      throw new Error(`unhandled-${cmd}`);
+    });
+    await playlistStore.advance(1);
+
+    expect(playlistStore.error).toBeNull();
+    expect(playlistStore.position).toBe(1);
+  });
+
+  it('reset() returns position and error to the baseline', async () => {
     invokeMock.mockResolvedValueOnce(8);
     const { playlistStore } = await import('./playlist.svelte');
     playlistStore.reset();
     await playlistStore.refresh();
     expect(playlistStore.position).toBe(8);
+    invokeMock.mockRejectedValueOnce(new Error('boom'));
+    await playlistStore.refresh();
+    expect(playlistStore.error).toBe('boom');
 
     playlistStore.reset();
 
     expect(playlistStore.position).toBe(0);
+    expect(playlistStore.error).toBeNull();
   });
 });

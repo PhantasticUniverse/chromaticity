@@ -110,8 +110,12 @@ use crate::cpal_source::{try_default_input, try_input_by_preference};
 use crate::frame::AudioFrame;
 use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
+use crate::reactive_bands::ReactiveBands;
 use crate::silent::SilentSource;
-use crate::uniforms::{AudioAnalysisWindow, AudioUniformSnapshot, extract_uniform_snapshot};
+use crate::uniforms::{
+    AudioAnalysisWindow, AudioAxisAvailability, AudioUniformSnapshot, FFT_WINDOW_SIZE,
+    analysis_window_samples, extract_uniform_snapshot,
+};
 
 /// Back-off when [`IngestStatus::Pending`] or
 /// [`IngestStatus::WouldBlock`] is observed.
@@ -130,6 +134,62 @@ const CLOSED_BACKOFF: Duration = Duration::from_millis(2);
 
 /// Drop-time best-effort join timeout for [`AudioRuntimeHandle`].
 const DROP_JOIN_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Fixed cadence for the heavy extract (FFT + BPM autocorrelation), decoupled
+/// from the per-tick frame drain.
+///
+/// The producer loop drains ALL buffered frames into the rolling window every
+/// tick (cheap), but runs the heavy `extract_uniform_snapshot` + BPM estimator
+/// only this often. ~100 Hz — fresh for the 60 Hz scheduler-tick consumer, and
+/// far below the macOS tap's ~1500-frame/s callback rate, so the bounded ingest
+/// channel never overflows (the prior pull-one-then-heavy-analyze loop fell
+/// behind and the producer silently dropped frames → gappy windows → low,
+/// jittery rms). Tempo is a backup feature; a single cadence covers both axes
+/// here, with a finer bands-fast / BPM-slow split as a follow-up.
+const ANALYSIS_INTERVAL: Duration = Duration::from_millis(10);
+
+/// Background cadence for the heavy BPM autocorrelation, decoupled from the
+/// fast reactivity tick.
+///
+/// Tempo is a parity-only backup and changes slowly, so the autocorrelation
+/// (over the full ~1.2 s window) runs at this much lower rate while the cached
+/// BPM rides every fast [`ANALYSIS_INTERVAL`] snapshot in between. This keeps
+/// BPM OFF the reactivity-critical path — rms / peak / FFT / AGC bands are
+/// never slowed by a tempo pass.
+const BPM_ANALYSIS_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Max frames the producer loop drains into the rolling window per tick.
+///
+/// Bounds the drain so an always-`Ready` source (the `SilentSource` fallback,
+/// or a test double with no backpressure) can never spin the inner loop forever
+/// — it always returns to the outer loop to check shutdown + pace. Generously
+/// above the cpal ingest channel's 16-frame capacity, so a genuine backlog is
+/// cleared in a single tick while a real backpressured source naturally stops at
+/// `WouldBlock` long before the cap.
+const MAX_DRAIN_PER_TICK: usize = 64;
+
+/// How long the producer waits for the FIRST `Ready` capture frame before
+/// emitting a one-shot "no input buffers" warning.
+///
+/// An open input stream delivers buffers *continuously* regardless of signal
+/// level (a silent room is still near-zero-amplitude `Ready` frames), and the
+/// [`SilentSource`] fallback also yields `Ready` frames — so zero `Ready`
+/// frames past this window almost always means the OS is delivering no capture
+/// callbacks at all: the silent capture-denial failure mode (notably macOS TCC
+/// denying audio consent to a raw binary that has no `Info.plist`, while cpal
+/// still reports the stream "playing"). Generous, so a slow-initialising device
+/// is not mistaken for a denied one. See
+/// `docs/dev/macos-desktop-run-and-audio-diagnostics.md`.
+const NO_INPUT_WARN_AFTER: Duration = Duration::from_secs(3);
+
+/// Decide whether to emit the one-shot no-input-buffers warning: a bound
+/// capture stream that has produced *zero* `Ready` frames for at least
+/// [`NO_INPUT_WARN_AFTER`], and has not already warned. Pure + total so the
+/// producer loop's fail-loud guard is unit-testable without a real device or
+/// capture consent.
+fn should_warn_no_input(total_ready: u64, elapsed: Duration, already_warned: bool) -> bool {
+    !already_warned && total_ready == 0 && elapsed >= NO_INPUT_WARN_AFTER
+}
 
 /// Configuration for [`AudioRuntime`].
 ///
@@ -313,6 +373,35 @@ impl AudioRuntime {
             .spawn(move || {
                 let mut frame = AudioFrame::default();
                 let mut analysis_window = AudioAnalysisWindow::default();
+                // CHROMATICITY PATCH (ADR-024 drop-fix): the rolling window
+                // carried across the drain loop, plus the last-analysis time for
+                // the fixed-cadence gate. Decoupling the cheap drain from the
+                // heavy extract is what keeps the bounded ingest channel from
+                // overflowing.
+                let mut current_window: Option<AudioFrame> = None;
+                let mut last_analysis: Option<Instant> = None;
+                // MilkDrop-class per-band AGC (ADR-024). Lazily built once the
+                // first frame's sample rate is known, and rebuilt if the rate
+                // changes (its Hz→bin band map is rate-dependent) — mirroring
+                // `AudioAnalysisWindow`'s reset-on-rate-change. Lives in the
+                // thread (not the struct) because it is only ever touched here.
+                let mut reactive_bands: Option<ReactiveBands> = None;
+                let mut reactive_rate_hz: Option<u32> = None;
+                // Fail-loud guard for the silent capture-denial failure mode
+                // (see [`should_warn_no_input`] / [`NO_INPUT_WARN_AFTER`]).
+                // One-shot, always-on, never an error — it surfaces the most
+                // expensive-to-debug audio failure: the OS delivering no capture
+                // callbacks while cpal reports the stream "playing".
+                let producer_started = Instant::now();
+                let mut total_ready: u64 = 0;
+                let mut no_input_warned = false;
+                // BPM runs in the background at a low cadence (see the analysis
+                // block + [`BPM_ANALYSIS_INTERVAL`]); the cached tempo + readiness
+                // ride every fast reactivity snapshot in between so a tempo pass
+                // never blocks the per-tick rms / peak / FFT / AGC analysis.
+                let mut last_bpm_analysis: Option<Instant> = None;
+                let mut cached_bpm = AudioUniformSnapshot::default().bpm;
+                let mut cached_bpm_availability = AudioUniformSnapshot::default().bpm_availability;
                 loop {
                     match shutdown_rx.try_recv() {
                         Ok(()) | Err(TryRecvError::Disconnected) => break,
@@ -325,19 +414,108 @@ impl AudioRuntime {
                     // of unwinding the thread. Last-good snapshot
                     // stays in place per ADR-019 §6.
                     let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                        let status = negotiator.try_pull(&mut frame);
-                        match status {
-                            IngestStatus::Ready => {
-                                let analysis_frame = analysis_window.observe(&frame);
-                                let analysis_snapshot = extract_uniform_snapshot(&analysis_frame);
-                                let smoothed_bpm = estimator.observe(&analysis_frame);
+                        // 1. Drain ALL currently-buffered frames into the rolling
+                        //    window (cheap). At the macOS tap's ~1500-frame/s rate
+                        //    the old pull-one-then-heavy-analyze loop fell behind,
+                        //    the bounded channel filled, and the producer silently
+                        //    dropped frames; draining every tick keeps it
+                        //    near-empty. `observe` returns the accumulated window.
+                        let mut closed = false;
+                        let mut drained = 0usize;
+                        while drained < MAX_DRAIN_PER_TICK {
+                            match negotiator.try_pull(&mut frame) {
+                                IngestStatus::Ready => {
+                                    current_window = Some(analysis_window.observe(&frame));
+                                    drained += 1;
+                                    total_ready = total_ready.saturating_add(1);
+                                }
+                                IngestStatus::Pending | IngestStatus::WouldBlock => break,
+                                IngestStatus::Closed => {
+                                    closed = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // 2. Run the heavy extract + BPM at the fixed cadence
+                        //    ([`ANALYSIS_INTERVAL`]), not per frame — analyses the
+                        //    first available window immediately, then at cadence.
+                        if let Some(window) = current_window.as_ref() {
+                            if last_analysis.is_none_or(|t| t.elapsed() >= ANALYSIS_INTERVAL) {
+                                let sample_rate_hz = window.sample_rate_hz();
+
+                                // Reactivity-critical, every fast tick: rms / peak /
+                                // FFT over the RECENT window. The rolling buffer is
+                                // sized for the BPM autocorrelation (~1.2 s); computing
+                                // rms / peak over all of it produced a sluggish meter
+                                // (a ~1.2 s RMS average + a ~1.2 s peak-hold). The long
+                                // buffer is used only for the background BPM, below.
+                                let recent = {
+                                    let all = window.samples();
+                                    let n = all.len().min(FFT_WINDOW_SIZE);
+                                    AudioFrame::new(
+                                        sample_rate_hz,
+                                        1,
+                                        all[all.len() - n..].to_vec(),
+                                    )
+                                };
+                                let analysis_snapshot = extract_uniform_snapshot(&recent);
+
+                                // Quality layer (ADR-024): the per-band AGC turns the
+                                // raw spectrum into volume-independent relative bands.
+                                // (Re)build on a sample-rate change, then advance by the
+                                // REAL elapsed time since the last analysis so the
+                                // FPS-compensated smoothing tracks the actual cadence.
+                                if reactive_rate_hz != Some(sample_rate_hz) {
+                                    reactive_bands = Some(ReactiveBands::new(sample_rate_hz));
+                                    reactive_rate_hz = Some(sample_rate_hz);
+                                }
+                                let dt = last_analysis
+                                    .map(|t| t.elapsed().as_secs_f32())
+                                    .unwrap_or_else(|| ANALYSIS_INTERVAL.as_secs_f32());
+                                // `unwrap_or_default()` is unreachable (the block above
+                                // always leaves `reactive_bands` `Some`) but keeps the
+                                // path `.unwrap()`/`.expect()`-free per the workspace
+                                // clippy lints; the default is the neutral baseline.
+                                let reactive = reactive_bands
+                                    .as_mut()
+                                    .map(|rb| rb.observe(window.samples(), dt))
+                                    .unwrap_or_default();
+
+                                // BPM in the BACKGROUND, off the reactivity-critical
+                                // path: the autocorrelation runs over the full window
+                                // only at [`BPM_ANALYSIS_INTERVAL`] (tempo is a
+                                // parity-only backup and changes slowly); the cached
+                                // value + readiness ride every fast snapshot between
+                                // passes, so a tempo pass never slows reactivity.
+                                if last_bpm_analysis
+                                    .is_none_or(|t| t.elapsed() >= BPM_ANALYSIS_INTERVAL)
+                                {
+                                    cached_bpm = estimator.observe(window);
+                                    cached_bpm_availability = if sample_rate_hz != 0
+                                        && window.samples().len()
+                                            >= analysis_window_samples(sample_rate_hz)
+                                    {
+                                        AudioAxisAvailability::Ready
+                                    } else {
+                                        AudioAxisAvailability::Warming
+                                    };
+                                    last_bpm_analysis = Some(Instant::now());
+                                }
+
                                 let merged = AudioUniformSnapshot {
-                                    bpm: smoothed_bpm,
-                                    bpm_availability: analysis_snapshot.bpm_availability,
+                                    bpm: cached_bpm,
+                                    bpm_availability: cached_bpm_availability,
                                     rms: analysis_snapshot.rms,
                                     peak: analysis_snapshot.peak,
                                     fft_bands: analysis_snapshot.fft_bands,
                                     fft_availability: analysis_snapshot.fft_availability,
+                                    bass: reactive.bass,
+                                    mid: reactive.mid,
+                                    treb: reactive.treb,
+                                    bass_att: reactive.bass_att,
+                                    mid_att: reactive.mid_att,
+                                    treb_att: reactive.treb_att,
                                     degraded: false,
                                 };
                                 match shared_for_thread.lock() {
@@ -355,18 +533,54 @@ impl AudioRuntime {
                                         *guard = merged;
                                     }
                                 }
-                                LoopStep::Continue
+                                last_analysis = Some(Instant::now());
                             }
-                            IngestStatus::Pending | IngestStatus::WouldBlock => {
-                                LoopStep::Backoff(WOULD_BLOCK_BACKOFF)
-                            }
-                            IngestStatus::Closed => LoopStep::Backoff(CLOSED_BACKOFF),
+                        }
+
+                        // Always back off one short interval per tick — never a
+                        // busy-spin, even for an always-`Ready` source (the
+                        // SilentSource fallback / a test double). At ~2 kHz this
+                        // still drains the bounded channel far faster than the tap
+                        // fills it (~1500/s), and a genuine backlog is cleared in
+                        // one tick via the MAX_DRAIN_PER_TICK cap above. The body
+                        // returns the back-off interval for the outer loop.
+                        if closed {
+                            CLOSED_BACKOFF
+                        } else {
+                            WOULD_BLOCK_BACKOFF
                         }
                     }));
 
                     match outcome {
-                        Ok(LoopStep::Continue) => {}
-                        Ok(LoopStep::Backoff(d)) => thread::sleep(d),
+                        Ok(backoff) => {
+                            // Fail-loud guard (one-shot): a bound capture stream
+                            // that has delivered ZERO frames within
+                            // NO_INPUT_WARN_AFTER almost always means the OS is
+                            // denying audio-capture consent — on macOS a raw
+                            // binary with no Info.plist is denied SILENTLY while
+                            // cpal still reports the stream "playing". A working
+                            // mic in a silent room still delivers near-zero
+                            // buffers (Ready), and the SilentSource fallback
+                            // yields Ready frames, so neither trips this.
+                            if should_warn_no_input(
+                                total_ready,
+                                producer_started.elapsed(),
+                                no_input_warned,
+                            ) {
+                                no_input_warned = true;
+                                eprintln!(
+                                    "[audio] capture stream is running but NO input buffers \
+                                     have arrived in {:.0}s — the OS is most likely denying \
+                                     microphone / audio-capture permission. On macOS a raw \
+                                     binary cannot obtain consent (no Info.plist); launch a \
+                                     signed .app via release-eng/dev-run-macos.sh. Set {}=1 \
+                                     for live capture telemetry.",
+                                    NO_INPUT_WARN_AFTER.as_secs_f32(),
+                                    crate::cpal_source::AUDIO_DIAG_ENV,
+                                );
+                            }
+                            thread::sleep(backoff);
+                        }
                         Err(_panic) => {
                             // Caught panic: don't touch the snapshot
                             // (last-good stays in place per ADR-019
@@ -383,6 +597,14 @@ impl AudioRuntime {
                     }
                 }
             })
+            // Spawn failure (OS thread exhaustion) must not be SILENT: the
+            // snapshot would simply freeze at defaults with no clue why.
+            // Surface it once on stderr; the handle still works (join =
+            // None) and consumers see the documented neutral snapshot.
+            .map_err(|err| {
+                eprintln!("chromaticity-audio: failed to spawn producer thread: {err}");
+                err
+            })
             .ok();
 
         AudioRuntimeHandle {
@@ -391,16 +613,6 @@ impl AudioRuntime {
             join,
         }
     }
-}
-
-/// Internal control-flow tag for the producer-thread loop body.
-///
-/// Returned by the per-iteration `catch_unwind` closure so the outer
-/// loop can decide whether to back off the negotiator or just
-/// continue.
-enum LoopStep {
-    Continue,
-    Backoff(Duration),
 }
 
 /// Handle to a spawned audio runtime.
@@ -509,6 +721,12 @@ mod runtime_pins {
     //! - `runtime_default_input_device_unavailable_falls_back_to_silent`
     //!   pins the [`AudioRuntime::new`] cpal-failure fallback path
     //!   via the `from_primary` test seam.
+    //! - `should_warn_no_input_only_fires_on_dead_capture` pins the
+    //!   fail-loud no-input guard's decision: zero `Ready` frames past
+    //!   [`super::NO_INPUT_WARN_AFTER`] ⇒ warn once; any `Ready` frame
+    //!   (a quiet mic — silence is still `Ready` — or the `SilentSource`
+    //!   fallback) or the already-warned / pre-window states ⇒ silent, so
+    //!   a denied capture surfaces loudly while a live one never false-fires.
 
     use super::*;
     use crate::frame::DEFAULT_SAMPLE_RATE_HZ;
@@ -524,6 +742,42 @@ mod runtime_pins {
 
     /// Polling step duration when waiting for thread exit.
     const POLL_STEP: Duration = Duration::from_millis(5);
+
+    #[test]
+    fn should_warn_no_input_only_fires_on_dead_capture() {
+        // The fail-loud guard must fire EXACTLY once, and ONLY when a bound
+        // capture stream has produced zero `Ready` frames past the window —
+        // the silent capture-denial signature (macOS TCC deny / no OS
+        // callbacks while cpal reports the stream "playing").
+        let win = NO_INPUT_WARN_AFTER;
+        // Before the window elapses: never warn, even with zero frames.
+        assert!(!should_warn_no_input(
+            0,
+            win - Duration::from_millis(1),
+            false
+        ));
+        // Zero frames, window elapsed, not yet warned: warn.
+        assert!(should_warn_no_input(0, win, false));
+        assert!(should_warn_no_input(
+            0,
+            win + Duration::from_secs(10),
+            false
+        ));
+        // Already warned: stay silent (one-shot, no per-tick spam).
+        assert!(!should_warn_no_input(
+            0,
+            win + Duration::from_secs(10),
+            true
+        ));
+        // Any `Ready` frame — a working mic (silence is still `Ready`) or the
+        // `SilentSource` fallback — means capture is alive: never warn.
+        assert!(!should_warn_no_input(
+            1,
+            win + Duration::from_secs(10),
+            false
+        ));
+        assert!(!should_warn_no_input(1_000_000, win, false));
+    }
 
     #[test]
     fn runtime_with_silent_only_config_produces_zero_snapshots() {
@@ -546,6 +800,19 @@ mod runtime_pins {
         for band in snapshot.fft_bands {
             assert_eq!(band, 0.0);
         }
+        // ADR-024 reactive bands: silence drives the AGC's silence guard
+        // (long average below SILENCE_FLOOR), so every relative band reads
+        // the centred 1.0 neutral — whether this is the pre-first-write
+        // default or a written silent-frame snapshot. Asserting exactly 1.0
+        // is the deterministic proof that `ReactiveBands::observe` is wired
+        // into the producer loop (a missing call would also read 1.0 via the
+        // struct default, but a BUGGY call dividing by ~0 would not).
+        assert_eq!(snapshot.bass, 1.0);
+        assert_eq!(snapshot.mid, 1.0);
+        assert_eq!(snapshot.treb, 1.0);
+        assert_eq!(snapshot.bass_att, 1.0);
+        assert_eq!(snapshot.mid_att, 1.0);
+        assert_eq!(snapshot.treb_att, 1.0);
         // BPM is the median over the 8-frame ring of per-frame
         // autocorrelation results on the 128-sample silent frame.
         // The slice-1 short-frame fallback returns BPM_DEFAULT
@@ -614,6 +881,72 @@ mod runtime_pins {
             snapshot.rms,
         );
         assert_eq!(snapshot.peak, 1.0);
+
+        handle.shutdown();
+    }
+
+    #[test]
+    fn runtime_reactive_bands_are_finite_on_loud_input() {
+        // ADR-024: feeding real (loud, broadband) audio through the runtime
+        // must drive the per-band AGC to finite, positive relative bands —
+        // proving `ReactiveBands` is constructed at the capture rate and
+        // `observe` runs over the rolling window without producing NaN/Inf or
+        // dividing by ~0. (The AGC's *correctness* — volume independence,
+        // band selectivity — is pinned by the `reactive_bands` unit tests and
+        // the mini-meter rubric; this test pins the runtime WIRING.)
+        let _serialize = observability::test_serialize_lock();
+
+        #[derive(Debug)]
+        struct LoudBroadband {
+            phase: u64,
+        }
+        impl IngestBoundary for LoudBroadband {
+            fn try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus {
+                const CHUNK: usize = 128;
+                let sr = DEFAULT_SAMPLE_RATE_HZ as f32;
+                let samples: Vec<f32> = (0..CHUNK)
+                    .map(|i| {
+                        let t = (self.phase + i as u64) as f32 / sr;
+                        // Bass + mid + treble so every band receives energy.
+                        let tau = std::f32::consts::TAU;
+                        0.3 * (tau * 120.0 * t).sin()
+                            + 0.3 * (tau * 1_000.0 * t).sin()
+                            + 0.3 * (tau * 8_000.0 * t).sin()
+                    })
+                    .collect();
+                self.phase += CHUNK as u64;
+                *out = AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, samples);
+                let status = IngestStatus::Ready;
+                observability::record_pull_outcome(&status, CHUNK);
+                status
+            }
+        }
+
+        let runtime =
+            AudioRuntime::from_primary(LoudBroadband { phase: 0 }, AudioRuntimeConfig::default());
+        let snapshot_handle = runtime.snapshot_handle();
+        let handle = runtime.spawn();
+
+        // Let the window fill and several analysis ticks run.
+        thread::sleep(SETTLE_DURATION);
+
+        let snapshot = match snapshot_handle.lock() {
+            Ok(g) => *g,
+            Err(p) => *p.into_inner(),
+        };
+        for (name, value) in [
+            ("bass", snapshot.bass),
+            ("mid", snapshot.mid),
+            ("treb", snapshot.treb),
+            ("bass_att", snapshot.bass_att),
+            ("mid_att", snapshot.mid_att),
+            ("treb_att", snapshot.treb_att),
+        ] {
+            assert!(
+                value.is_finite() && value > 0.0,
+                "reactive band {name} must be finite and positive, got {value}",
+            );
+        }
 
         handle.shutdown();
     }
@@ -745,6 +1078,81 @@ mod runtime_pins {
             stabilised,
             "pull counter never stabilised after drop; thread didn't exit (last={last})",
         );
+    }
+
+    #[test]
+    fn drains_full_backlog_within_one_settle_then_analyzes() {
+        let _serialize = observability::test_serialize_lock();
+
+        // ADR-024 drop-fix: the producer drains ALL buffered frames per tick
+        // (capped) and runs the heavy analysis at a fixed cadence, instead of
+        // pull-one-then-heavy-analyze. A buffered backlog far larger than one
+        // pull (and larger than a one-per-tick loop could clear in one settle)
+        // must drain quickly, and the loud frames must reach the snapshot.
+        #[derive(Debug)]
+        struct BurstThenIdle {
+            remaining: u32,
+            delivered: Arc<std::sync::atomic::AtomicU32>,
+        }
+        impl IngestBoundary for BurstThenIdle {
+            fn try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus {
+                if self.remaining > 0 {
+                    self.remaining -= 1;
+                    *out = AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, vec![1.0; 128]);
+                    self.delivered.fetch_add(1, Ordering::Relaxed);
+                    let status = IngestStatus::Ready;
+                    observability::record_pull_outcome(&status, 128);
+                    status
+                } else {
+                    let status = IngestStatus::WouldBlock;
+                    observability::record_pull_outcome(&status, 0);
+                    status
+                }
+            }
+        }
+
+        // > MAX_DRAIN_PER_TICK (64) so it spans multiple drain ticks, proving
+        // multi-frame-per-tick draining (a one-per-tick loop would not clear it
+        // in one SETTLE_DURATION).
+        const BURST: u32 = 200;
+        let delivered = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let source = BurstThenIdle {
+            remaining: BURST,
+            delivered: Arc::clone(&delivered),
+        };
+        let runtime = AudioRuntime::from_primary(source, AudioRuntimeConfig::default());
+        let snapshot_handle = runtime.snapshot_handle();
+        let handle = runtime.spawn();
+
+        // Poll (bounded) rather than a single fixed settle: under heavy machine
+        // load the producer thread can drain the whole backlog yet be descheduled
+        // before the analysis writes the snapshot, making a one-shot 50 ms sleep
+        // flaky. Wait for the backlog to drain AND a loud snapshot to land.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let snapshot = loop {
+            let snap = match snapshot_handle.lock() {
+                Ok(g) => *g,
+                Err(p) => *p.into_inner(),
+            };
+            let drained_all = delivered.load(Ordering::Relaxed) == BURST;
+            if (drained_all && snap.rms > 0.0) || Instant::now() >= deadline {
+                break snap;
+            }
+            thread::sleep(POLL_STEP);
+        };
+
+        assert_eq!(
+            delivered.load(Ordering::Relaxed),
+            BURST,
+            "the full backlog should drain (drain-all per tick)",
+        );
+        assert!(
+            snapshot.rms > 0.0,
+            "drained loud frames should analyse to rms > 0, got {}",
+            snapshot.rms,
+        );
+
+        handle.shutdown();
     }
 
     #[test]

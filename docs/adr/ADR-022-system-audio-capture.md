@@ -9,9 +9,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 Proposed
 
+> **macOS system-audio tap path is UNDER REPAIR**; the Windows WASAPI loopback
+> path is accepted. See the **2026-06-03 Amendment** below (the macOS tap *read*
+> moves off cpal's AudioUnit/AUHAL onto a direct Core Audio `IOProc`).
+>
 > The AO authorized the implementation work on 2026-05-29 (system-audio routing
 > parity directive); formal acceptance lands at PR merge per the AO-only ADR
 > approval convention in `CLAUDE.md` / `docs/29-cleanroom-legal-policy-baseline.md`.
+> The 2026-06-03 amendment (AUHAL → direct `IOProc` for the macOS tap read) was
+> drafted within the implementing effort and likewise awaits AO acceptance at merge.
 
 ## Date
 
@@ -110,6 +116,29 @@ source adjustments: `StreamConfig.sample_rate` is now a `u32` (was a
 stable `id()` would change the persisted `settings.audio.input_device` id format
 and the frontend device-id contract (a deliberate follow-up, not part of this bump).
 
+**Vendored patch (post-smoke-run amendment).** The pre-alpha smoke run surfaced
+that stock cpal 0.17.1's macOS process-tap initializer
+(`initWithProcesses:andDeviceUID:withStream:` with an empty exclusive process
+list) succeeds, starts, and then delivers **all-zero buffers** on current macOS —
+the long-standing [RustAudio/cpal#329]. `cpal = "0.17"` is therefore wired as a
+vendored `[patch.crates-io]` path override at `third_party/cpal/` carrying focused
+changes across `src/host/coreaudio/macos/{loopback,device}.rs`. The two originating
+changes were (1) the **global** `initStereoGlobalTapButExcludeProcesses:`
+initializer (the AudioCap/MiniMeters-proven path) replacing the device-scoped one;
+(2) a one-line soundness fix making the aggregate-device out-param `mut` (upstream
+wrote through a shared-`&` pointer — UB the optimizer may fold to a 0 device id),
+matching the file's own `Device::uid` out-param idiom. The stack has since grown to
+**five** (tap auto-start, a loopback config branch, and planar-interleave handling)
+— the canonical, evolving ledger is `third_party/cpal/UPSTREAM-VERSION.md`. The
+vendored crate is not a workspace member, so the FFI `unsafe` containment is
+unchanged; Apache-2.0 needs no `deny.toml` change and a path patch needs no
+`allow-git` widening (a git fork would). **These five patches got the tap creating
+and delivering data, but did not fully fix capture — see the 2026-06-03 Amendment
+below for the residual root cause (cpal's AUHAL pull stage) and the move to a direct
+`IOProc`.** Windows (WASAPI loopback) is unaffected by the patch.
+
+[RustAudio/cpal#329]: https://github.com/RustAudio/cpal/issues/329
+
 ### 2. Capture path
 
 `engine/audio/src/cpal_source.rs` adds `try_system_audio_loopback()`, mirroring
@@ -151,6 +180,113 @@ so the operator-installed virtual-loopback path stays a permanent fallback for
 sub-floor OS / denied permission / per-app needs — which is exactly why OS-native
 taps + WASAPI loopback are the only route to true zero-install.
 
+## Amendment (2026-06-03): macOS tap read moves off AUHAL to a direct `IOProc`
+
+**Status of this amendment:** the direct-`IOProc` read described below is
+**implemented** in the vendored cpal — compile-clean, existing audio tests green,
+and adversarially reviewed (unsafe-soundness / realtime-safety / AudioCap-
+correctness); on-hardware sine-probe verification is the remaining gate. Drafted
+within the implementing effort; awaits AO acceptance at merge (same convention as
+the parent ADR).
+
+### What we found
+
+The five `third_party/cpal/` patches (§1) made the tap *create*, *auto-start*, and
+*deliver* data, but capture is still corrupted. An on-hardware probe with a known
+**440 Hz / 0.5-amplitude sine at full system volume** (the authoritative test —
+expected rms ≈ -9 dBFS, peak ≈ -6 dBFS, a single 440 Hz FFT bin, ~3 dB crest)
+returned:
+
+| Metric       | Expected         | Captured            |
+| ------------ | ---------------- | ------------------- |
+| RMS          | -9 dBFS          | **-25 dBFS**        |
+| Peak         | -6 dBFS (0.50)   | **-3.8 dBFS (0.64)**|
+| FFT          | one 440 Hz bin   | **flat**            |
+| Crest factor | ~3 dB            | **~21 dB**          |
+
+A captured peak (0.64) **exceeding the source amplitude (0.50)** is impossible under
+any honest gain/attenuation/resample path; combined with the flat FFT and the 21 dB
+crest on a pure sine, this is **byte/channel-stride misinterpretation**, not a level
+problem. The IPC transport, the analyser, and the webview render were each
+independently proven correct end-to-end (a `CHROMATICITY_AUDIO_DIAG` round-trip
+showed the webview receives exactly what the engine emits); the corruption is
+upstream of all of them, in the capture read.
+
+### Root cause
+
+The tap *creation* is already AudioCap/MiniMeters-canonical (the global initializer +
+private auto-start aggregate). The corruption is in cpal's **read** stage: cpal drives
+the tap-wrapping aggregate device through an **AUHAL `AudioUnit`**
+(`kAudioUnitSubType_HALOutput`) and pulls with `AudioUnitRender`. Per Apple TN2091,
+the AUHAL has a built-in `AudioConverter` that "flattens" a device's streams; over a
+drift-compensated tap aggregate it negotiates against the **aggregate's** flattened
+format rather than the **tap's** true `kAudioTapPropertyFormat`, producing the
+channel/interleave/stride mismatch above. This is structural to running a tap through
+cpal's AUHAL abstraction — it cannot be patched away inside `loopback.rs`. Every
+known-working macOS system-audio reader (AudioCap, MiniMeters, Apple's own tap sample)
+avoids the AUHAL entirely and reads the aggregate with a raw
+`AudioDeviceCreateIOProcIDWithBlock` `IOProc`, honoring `kAudioTapPropertyFormat`.
+
+### Decision
+
+For the **macOS loopback (tap) read path only**, replace cpal's AUHAL `AudioUnit` pull
+stage with a direct `AudioDeviceCreateIOProcIDWithBlock` `IOProc` on the aggregate
+device:
+
+- Keep the existing tap + private-auto-start-aggregate creation (§1 patches 1–3)
+  unchanged — it is correct.
+- Read the authoritative capture format from the **tap object** via
+  `kAudioTapPropertyFormat` (not the aggregate's `default_input_config`).
+- Install the reader with `AudioDeviceCreateIOProcIDWithBlock`; inside the block, read
+  the `AudioBufferList` per the tap ASBD (planar float → one mono buffer per channel;
+  the planar-interleave logic from §1 patch 5 ports over verbatim) and bridge into
+  cpal's existing `Data` / `InputCallbackInfo` contract so `engine/audio` is unchanged.
+- **Gate by path:** the ordinary microphone / line-in input path stays on AUHAL (it
+  works); only the loopback branch uses the `IOProc`.
+- Bindings come from **`objc2-core-audio` 0.3.2** — *already a transitive dependency*
+  of the vendored cpal (license `Zlib OR Apache-2.0 OR MIT`, all `deny.toml`-allowed),
+  so this adds **no new dependency or license surface**. All `unsafe` FFI stays inside
+  the vendored cpal boundary (not a workspace member), preserving
+  `unsafe_code = "forbid"` for first-party code.
+
+End-state: once the direct-`IOProc` source is hardware-verified, the AUHAL tap patches
+can be retired and cpal stays only for normal input devices + the (working, unaffected)
+Windows WASAPI loopback — shrinking the vendored-patch burden flagged in `CLAUDE.md`.
+
+### Options rejected
+
+- **Option 1 — fix the AUHAL client format from `kAudioTapPropertyFormat`.** Rejected
+  as the fix (worth at most a ≤30-min diagnostic spike). Setting
+  `kAudioUnitProperty_StreamFormat` tells the AUHAL's converter what to *produce*; it
+  does not remove the converter, the suspected corruptor. The peak-exceeds-source
+  signature is stride misinterpretation, which a format negotiation does not address,
+  and no known-good app configures the AUHAL this way.
+- **`cidre`.** Self-described "[not recommended]" personal research project on edition
+  2024 / `macos_15_0` defaults — fails MSRV 1.85.0 and the maintainability bar.
+- **ScreenCaptureKit (`SCStream` audio).** Triggers the heavier *screen-recording* TCC
+  prompt (wrong UX for an audio app), binds audio to a media-pipeline capture session
+  (added latency/buffering, non-isolated mix), and carries documented instability
+  (`-3805 connectionInvalid`, long-session `EXC_BAD_ACCESS`).
+
+### Verification (hardware-gated; posture unchanged)
+
+Re-run the 440 Hz / 0.5 sine probe on real macOS hardware with TCC consent. Pass
+criterion = the corruption signature inverting: peak ≤ 0.5, crest collapses to ~3 dB,
+the FFT shows the single 440 Hz bin, and rms ≈ -9 dBFS. CI runners have no audio
+device and there is no public preflight API, so this stays an AO hardware re-test —
+now made iterable by the stable-signing dev harness in
+`docs/dev/macos-desktop-run-and-audio-diagnostics.md` (TCC consent persists across
+rebuilds, so the rewrite can be hardware-iterated without a fresh prompt each cycle).
+Also budget a silence-watchdog + tap/aggregate rebuild path for the separate,
+documented "tap goes silent after minutes" failure mode (Apple Forum 825780).
+
+### Research provenance
+
+Decision informed by a clean-room research sweep (2026-06-03) against public
+references only — AudioCap, Apple's "Capturing system audio with Core Audio taps",
+TN2091, cpal#329, and the `objc2-core-audio` docs; no `Contents/` or
+`chromaticity-planning/` consultation (per `docs/29`).
+
 ## Consequences
 
 ### Positive
@@ -164,12 +300,22 @@ taps + WASAPI loopback are the only route to true zero-install.
 
 ### Negative / risks
 
-- **Hardware-unverified.** Compile + clippy `-D warnings` + unit tests pass, and
-  the loopback API is validated against cpal 0.17.1's own `record_wav` example +
-  source, but no real-device audio capture or TCC consent flow was exercised (no
-  Windows box; the macOS tap path is not runtime-validated and its device-opening
-  smoke tests are `#[ignore]` to avoid a CI consent prompt). Live-hardware
-  validation is a follow-up the AO accepted the risk on for this pass.
+- **macOS tap capture NOT yet functional — root cause found (see the 2026-06-03
+  Amendment).** The AO hardware re-test on the patched path was performed: the
+  consent prompt fires and the tap now *delivers* data, but a known 440 Hz /
+  0.5-amplitude sine comes back corrupted (rms -25 dBFS vs an expected -9, flat
+  FFT, ~21 dB crest vs 3 dB for a sine, captured peak 0.64 *exceeding* the 0.5
+  source). That signature is byte/channel-stride misinterpretation, not the
+  stock-cpal all-zero bug. Root cause: cpal's AUHAL `AudioUnit` pull stage — **not**
+  the tap init (which is correct). The fix is the direct-`IOProc` rewrite in the
+  Amendment (now implemented + reviewed); until it is hardware-verified, the macOS
+  system-audio path is treated as non-functional and `try_input_by_preference`
+  degrades to the default input (microphone). Windows WASAPI loopback is
+  unaffected. CI runners have no audio device and the device-opening smoke tests
+  stay `#[ignore]`.
+- **Windows compile-only.** The WASAPI loopback path is unaffected by the patch
+  and uses the correct upstream API, but is verified by `clippy` (windows-latest)
+  only — no Windows hardware was exercised.
 - New transitive deps (`objc2-core-audio` family, `alsa`) enter the graph;
   license-clean today, but expand the audit surface.
 - A loopback device delivering a sample format outside `{f32, i16, u16}` (e.g.
@@ -193,7 +339,12 @@ taps + WASAPI loopback are the only route to true zero-install.
 - `cargo check / clippy -D warnings / fmt --check` clean; `cargo test -p
   chromaticity-audio` green (logic pins for the sentinel + `CaptureDirection`;
   device-opening loopback smoke tests `#[ignore]`).
-- `cargo deny check licenses bans sources` clean; `cargo hakari generate` in sync.
+- `cargo deny check licenses bans sources` clean (the vendored `third_party/cpal`
+  is a `[patch.crates-io]` *path* source — not git/registry — so `sources` passes
+  with no `allow-git` change; Apache-2.0 is pre-allowed); `cargo hakari generate`
+  in sync (the patch re-unified cpal's Windows `windows` dep onto the shared
+  `0.61.3`, reducing duplication — `workspace-hack` regenerated to match).
+- `reuse lint` covers `third_party/cpal/**` (Apache-2.0) via `REUSE.toml`.
 - Frontend `tsc` / `svelte-check` / Settings tests green.
 
 ## Evidence

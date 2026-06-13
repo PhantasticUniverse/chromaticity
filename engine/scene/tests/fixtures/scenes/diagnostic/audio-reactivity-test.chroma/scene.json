@@ -1,0 +1,24 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Audio Reactivity Test Card",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal diagnostic test card -- NOT a shipped scene. An unambiguous, measurable audio-reactivity readout for judging capture-to-pixel latency and per-frame smoothness by eye: eight hue-ramped FFT spectrum bars (height = chroma_AudioFFT band), a left-edge RMS column with a bright chroma_AudioPeak tick, a central beat disc whose radius + brightness spike on low-end energy (the latency read), and 25/50/75% gridlines so bar heights are eyeball-measurable. The render path smooths these reactive values per-frame, so the card visualises the SMOOTHED signal. Numerically safe + finite at silence (near-black, flat bars, disc at base radius). Original clean-room authoring from standard public spectrum-analyzer / level-bar / VU technique; not registered in any library bundle.",
+  "TAGS": ["audio", "reactive", "diagnostic", "test-card", "spectrum", "vu-meter", "latency"],
+  "CATEGORIES": ["DIAGNOSTIC", "AUDIO REACTIVE"],
+  "CONTROLS": [],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_peak", "SYMBOL": "chroma_AudioPeak" },
+        { "NAME": "u_bass", "SYMBOL": "chroma_AudioBass" },
+        { "NAME": "u_mid", "SYMBOL": "chroma_AudioMid" },
+        { "NAME": "u_treb", "SYMBOL": "chroma_AudioTreb" }
+      ]
+    }
+  ]
+}

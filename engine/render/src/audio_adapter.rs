@@ -108,12 +108,18 @@ pub const UNIFORM_NAME_RMS: &str = "chroma_AudioRMS";
 pub const UNIFORM_NAME_PEAK: &str = "chroma_AudioPeak";
 
 /// Symbol name for the 8-band log-spaced FFT array uniform per
-/// `docs/36` §2.11. Authors declare `uniform float chroma_AudioFFT[8];`
-/// in their GLSL block; element K (0..=7) is the K-th log-spaced
-/// band per `chromaticity_audio::FFT_BAND_MIN_HZ`. The slice-5
-/// follow-up to slice-5a consolidated the transitional split-vec4
-/// spelling (`chroma_AudioFFTLow` + `chroma_AudioFFTHigh`) into this
-/// single array binding via [`UniformValue::FloatArray`] (catalog
+/// `docs/36` §2.11. Authors declare `vec4 chroma_AudioFFT[8];` in
+/// their GLSL block and read band K (0..=7) via
+/// `chroma_AudioFFT[K].x`; band K is the K-th log-spaced band per
+/// `chromaticity_audio::FFT_BAND_MIN_HZ`. (A bare
+/// `float chroma_AudioFFT[8]` declaration is mis-read by naga's
+/// GLSL frontend at a tight 4-byte stride against the engine's
+/// 16-byte-per-element [`UniformValue::FloatArray`] emission — the
+/// shader sees only every 4th band; the shader-archetypes corpus
+/// test rejects that pattern.) The slice-5 follow-up to slice-5a
+/// consolidated the transitional split-vec4 spelling
+/// (`chroma_AudioFFTLow` + `chroma_AudioFFTHigh`) into this single
+/// array binding via [`UniformValue::FloatArray`] (catalog
 /// v1.2.0 → v1.3.0 transition).
 pub const UNIFORM_NAME_FFT: &str = "chroma_AudioFFT";
 
@@ -129,7 +135,8 @@ pub const UNIFORM_NAME_FFT: &str = "chroma_AudioFFT";
 /// 3. [`UNIFORM_NAME_PEAK`] = [`UniformValue::Scalar`] (snapshot.peak)
 /// 4. [`UNIFORM_NAME_FFT`] = [`UniformValue::FloatArray`] (8 elements,
 ///    bands `[0..=7]`; expands into 8 consecutive 16-byte slots in
-///    the uniform buffer per the std140 layout for `float arr[N]`).
+///    the uniform buffer — shader-side, declare `vec4 arr[8]` and
+///    read `.x` to match the 16-byte element stride).
 #[must_use]
 pub fn uniform_input_from_audio_snapshot(snapshot: &AudioUniformSnapshot) -> Vec<UniformInput> {
     vec![
@@ -240,7 +247,10 @@ mod audio_adapter_drift_pins {
             peak: 0.95,
             fft_bands: [0.0; 8],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            // ADR-024 reactive bands: this adapter binds bpm/rms/peak/FFT
+            // only (the relative-band → chroma_* uniforms are a follow-up
+            // increment), so the bands ride at their neutral default here.
+            ..Default::default()
         };
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
         match &uniforms[0].value {
@@ -283,7 +293,7 @@ mod audio_adapter_drift_pins {
             // Distinct values per band so the ordering is observable.
             fft_bands: [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            ..Default::default()
         };
         let uniforms = uniform_input_from_audio_snapshot(&snapshot);
         match &uniforms[3].value {
@@ -314,7 +324,7 @@ mod audio_adapter_drift_pins {
             peak: 0.5,
             fft_bands: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40],
             fft_availability: AudioAxisAvailability::Ready,
-            degraded: false,
+            ..Default::default()
         };
         let a = uniform_input_from_audio_snapshot(&snapshot);
         let b = uniform_input_from_audio_snapshot(&snapshot);

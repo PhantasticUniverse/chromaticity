@@ -102,6 +102,13 @@ pre-commit:
 
     rustfmt:
       glob: '*.rs'
+      # Vendored third-party crates (e.g. third_party/cpal) preserve upstream
+      # formatting per the third_party/ vendoring precedent (docs/29) and are
+      # not workspace members, so `cargo fmt --all` (and CI's fmt job) already
+      # skip them; this file-globbing hook matches the trailing-whitespace /
+      # final-newline excludes above — never rewrite vendored source.
+      exclude:
+        - 'third_party/**'
       run: |
         if command -v rustfmt >/dev/null 2>&1; then
           rustfmt --style-edition=2024 --check {staged_files}

@@ -89,7 +89,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup show
@@ -128,16 +128,20 @@ jobs:
         run: cargo bench --workspace --benches
 
       # Reads `target/criterion/<group>/<bench>/new/estimates.json` and
-      # compares against the docs/10 hard-budget * 10x loose floor.
-      # First-run posture is record-don't-fail; see
-      # `scripts/budget-check.sh` module-prose for the tightening-pass
-      # plan after ~7 nightly runs.
-      - name: Check budget assertions (record-don't-fail first 7 runs)
+      # compares against the docs/10 hard-budget * 2x loose floor
+      # (Wave 5 budget-assert posture, 2026-05-06, PR 342 — tightened
+      # from the original 10x record-don't-fail first-run floor), plus
+      # the composite-sum assertion against the docs/10 1.25 ms hard
+      # budget directly (2026-05-09, AO Option A). Exceeding either
+      # exits non-zero and fails this job; see
+      # `scripts/budget-check.sh` module-prose for the baseline-window
+      # re-tightening procedure.
+      - name: Check budget assertions (2x loose floor + composite-sum)
         run: bash scripts/budget-check.sh target/criterion
 
       - name: Upload benchmark report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: perf-budgets-report-${{ github.run_id }}
           path: target/criterion/

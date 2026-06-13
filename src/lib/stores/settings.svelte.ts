@@ -24,7 +24,17 @@
 // bundle-faithful defaults so existing Settings.svelte fixture-
 // driven tests continue passing without changes. The `set_settings`
 // write-through follows the same posture — failures are recorded
-// to `error` but don't throw to the caller.
+// to `error` but don't throw to the caller. Settings.svelte renders
+// `error` as a persist-failure banner gated on `canPersist` (true
+// only after a real shell load), so the expected no-Tauri load
+// failure never surfaces as operator-facing noise.
+//
+// **Pre-load updates.** `update()` calls made before the first
+// successful `get_settings` (the `canPersist` window) accumulate
+// into a preload patch that is re-applied on top of the loaded
+// snapshot and then persisted — a change made in the first moments
+// after launch survives the load instead of being silently
+// clobbered and reverted.
 
 import type { SettingsPayload } from '../ipc/bindings';
 
@@ -137,6 +147,36 @@ function cloneDefaults(): SettingsPayload {
   };
 }
 
+/** Section-level shallow merge of a patch onto a snapshot. Shared by
+ * `update()`, `seedHint()`, and the post-load preload-patch replay so
+ * all three apply identical merge semantics. */
+function mergePatch(current: SettingsPayload, patch: SettingsPatch): SettingsPayload {
+  return {
+    general: { ...current.general, ...(patch.general ?? {}) },
+    audio: { ...current.audio, ...(patch.audio ?? {}) },
+    graphics: { ...current.graphics, ...(patch.graphics ?? {}) },
+    storage: { ...current.storage, ...(patch.storage ?? {}) },
+    live_sources: { ...current.live_sources, ...(patch.live_sources ?? {}) },
+    osc: { ...current.osc, ...(patch.osc ?? {}) },
+    tempo: { ...current.tempo, ...(patch.tempo ?? {}) },
+  };
+}
+
+/** Accumulate `patch` onto `base` with the same section-level shallow
+ * merge `update()` uses, so a sequence of pre-load patches collapses
+ * into one patch that replays in order. */
+function mergePatches(base: SettingsPatch, patch: SettingsPatch): SettingsPatch {
+  const next: SettingsPatch = { ...base };
+  if (patch.general) next.general = { ...base.general, ...patch.general };
+  if (patch.audio) next.audio = { ...base.audio, ...patch.audio };
+  if (patch.graphics) next.graphics = { ...base.graphics, ...patch.graphics };
+  if (patch.storage) next.storage = { ...base.storage, ...patch.storage };
+  if (patch.live_sources) next.live_sources = { ...base.live_sources, ...patch.live_sources };
+  if (patch.osc) next.osc = { ...base.osc, ...patch.osc };
+  if (patch.tempo) next.tempo = { ...base.tempo, ...patch.tempo };
+  return next;
+}
+
 class SettingsStore {
   /** Current in-memory settings document. Initial value is the
    * bundle-faithful default; replaced verbatim by the first
@@ -157,12 +197,20 @@ class SettingsStore {
   /** Tracks the in-flight load() promise (idempotency latch). */
   #loadPromise: Promise<void> | null = null;
 
-  /** Last load() / set() error surface, or null on success. Drives
-   * an optional operator-facing banner. */
+  /** Last load() / set() error surface, or null on success. Rendered
+   * by Settings.svelte as a persist-failure banner gated on
+   * `canPersist` (a save can only fail after a real shell load, so
+   * the expected no-Tauri load failure stays silent). */
   error = $state<string | null>(null);
 
   /** Pending debounce timer for the write-through. */
   #saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Patches applied via `update()` before the first successful
+   * `get_settings`. Re-applied on top of the loaded snapshot (then
+   * persisted) so an operator change made before `canPersist` flips
+   * survives the load instead of being silently reverted. */
+  #preloadPatch: SettingsPatch | null = null;
 
   /**
    * Read the persisted settings document from the shell and replace
@@ -195,6 +243,15 @@ class SettingsStore {
         this.snapshot = fresh;
         this.canPersist = true;
         this.error = null;
+        // Re-apply any update() made before the load resolved on top
+        // of the authoritative disk snapshot, then persist it — the
+        // pre-load change survives instead of silently reverting.
+        const pending = this.#preloadPatch;
+        this.#preloadPatch = null;
+        if (pending) {
+          this.snapshot = mergePatch(this.snapshot, pending);
+          this.#scheduleSave();
+        }
       } else {
         this.canPersist = false;
         this.error = 'get_settings returned a malformed payload';
@@ -221,19 +278,26 @@ class SettingsStore {
    * retain their current values.
    */
   update(patch: SettingsPatch): void {
-    const next: SettingsPayload = {
-      general: { ...this.snapshot.general, ...(patch.general ?? {}) },
-      audio: { ...this.snapshot.audio, ...(patch.audio ?? {}) },
-      graphics: { ...this.snapshot.graphics, ...(patch.graphics ?? {}) },
-      storage: { ...this.snapshot.storage, ...(patch.storage ?? {}) },
-      live_sources: { ...this.snapshot.live_sources, ...(patch.live_sources ?? {}) },
-      osc: { ...this.snapshot.osc, ...(patch.osc ?? {}) },
-      tempo: { ...this.snapshot.tempo, ...(patch.tempo ?? {}) },
-    };
-    this.snapshot = next;
+    this.snapshot = mergePatch(this.snapshot, patch);
     if (this.isLoaded && this.canPersist) {
       this.#scheduleSave();
+    } else if (!this.canPersist) {
+      // Pre-load (or load-failed) window: record the patch so a
+      // successful load can re-apply it on top of the disk snapshot
+      // instead of clobbering the operator's change.
+      this.#preloadPatch = mergePatches(this.#preloadPatch ?? {}, patch);
     }
+  }
+
+  /**
+   * Hint-only snapshot seed for pre-load paint fast-paths (the
+   * localStorage theme hint in `src/lib/theme.ts`). Merges like
+   * `update()` but schedules no save and records no preload patch,
+   * so the authoritative `load()` snapshot always wins — a stale
+   * hint can never be persisted over the fresher disk value.
+   */
+  seedHint(patch: SettingsPatch): void {
+    this.snapshot = mergePatch(this.snapshot, patch);
   }
 
   #scheduleSave(): void {
@@ -268,11 +332,11 @@ class SettingsStore {
   }
 
   /**
-   * Force an immediate write-through, bypassing the debounce. Used
-   * by the Settings view when the user takes an action whose
-   * persistence shouldn't wait (e.g. clicking "Set" on a tap-tempo
-   * row). Awaits the in-flight save so callers can chain on
-   * completion.
+   * Force an immediate write-through, bypassing the debounce. Wired
+   * to this module's `beforeunload` listener so a change made within
+   * the debounce window isn't silently dropped when the window
+   * closes (the pending `setTimeout` dies with the webview). Awaits
+   * the in-flight save so non-exit callers can chain on completion.
    */
   async flush(): Promise<void> {
     if (this.#saveTimer !== null) {
@@ -303,6 +367,9 @@ class SettingsStore {
       clearTimeout(this.#saveTimer);
       this.#saveTimer = null;
     }
+    // The operator explicitly chose the defaults; drop any pre-load
+    // patch so it cannot replay over the reset document.
+    this.#preloadPatch = null;
     try {
       const { resetSettings } = await import('../ipc/settings');
       const fresh = await resetSettings();
@@ -333,6 +400,7 @@ class SettingsStore {
     this.canPersist = false;
     this.error = null;
     this.#loadPromise = null;
+    this.#preloadPatch = null;
   }
 }
 
@@ -350,3 +418,17 @@ export interface SettingsPatch {
 }
 
 export const settingsStore = new SettingsStore();
+
+// Flush any pending debounced write before the document unloads so a
+// change made within the DEBOUNCE_MS window isn't lost on exit. The
+// Tauri webview fires `beforeunload` on window close as well, so this
+// covers the desktop quit path. Best-effort by nature: the listener
+// cannot await the async IPC, but kicking the save off synchronously
+// gives the write-through its only chance to reach the shell (the
+// `ipc/settings` module is already import-cached after any prior
+// save, so the dynamic import resolves without a network/disk hop).
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    void settingsStore.flush();
+  });
+}

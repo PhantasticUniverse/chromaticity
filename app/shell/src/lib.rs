@@ -22,7 +22,9 @@
 // last tick, which is a no-op when no command handler ran in the
 // intervening ~16ms.
 
+pub mod audio_diag;
 pub mod commands;
+pub mod render;
 pub mod state;
 
 use crate::state::AppState;
@@ -211,18 +213,42 @@ pub fn run() -> Result<(), tauri::Error> {
             // Unresolvable preferences (operator unplugged BlackHole
             // between sessions, etc.) fall back to the host default
             // with a one-shot stderr warning per `try_input_by_preference`.
-            let preferred_input = {
-                let bootstrap_state = app.state::<AppState>();
-                match bootstrap_state.settings.lock() {
-                    Ok(guard) => Some(guard.audio.input_device.clone()),
-                    Err(poisoned) => Some(poisoned.into_inner().audio.input_device.clone()),
-                }
-            };
+            // `CHROMA_AUDIO_DEVICE` startup override (dev/test): when set
+            // and non-empty, it forces the capture source regardless of the
+            // persisted setting — e.g. `CHROMA_AUDIO_DEVICE=system-audio`
+            // to evaluate the live output window against clean system
+            // playback, free of mic / room noise. Live re-bind from the
+            // Settings UI is deferred (apply-on-restart), so this is the
+            // reliable way to pick a source for a test launch.
+            let preferred_input = std::env::var("CHROMA_AUDIO_DEVICE")
+                .ok()
+                .map(|raw| raw.trim().to_string())
+                .filter(|raw| !raw.is_empty())
+                .or_else(|| {
+                    let bootstrap_state = app.state::<AppState>();
+                    match bootstrap_state.settings.lock() {
+                        Ok(guard) => Some(guard.audio.input_device.clone()),
+                        Err(poisoned) => {
+                            Some(poisoned.into_inner().audio.input_device.clone())
+                        }
+                    }
+                });
             let runtime = AudioRuntime::with_preferred_device(
                 preferred_input.as_deref(),
                 AudioRuntimeConfig::default(),
             );
             let snapshot_handle = runtime.snapshot_handle();
+            // Clone the shared snapshot handle for the GPU output window
+            // BEFORE it is moved into the scheduler's `MutexAudioPull`
+            // below, so the render thread reads the same live audio the
+            // scheduler-tick consumer does (Slice R-1c).
+            let output_audio = snapshot_handle.clone();
+            // Opt-in live capture telemetry (CHROMATICITY_AUDIO_DIAG).
+            // Clone the shared snapshot handle BEFORE it is moved into the
+            // scheduler's `MutexAudioPull` so the readout reports exactly
+            // what the scheduler-tick consumer pulls. Spawned below once
+            // the scheduler `shutdown` flag exists.
+            let diag_snapshot = chromaticity_audio::diagnostics_enabled().then(|| snapshot_handle.clone());
             let audio_handle = runtime.spawn();
 
             // (b) Scheduler-tick consumer. `MutexAudioPull` reads the
@@ -238,6 +264,10 @@ pub fn run() -> Result<(), tauri::Error> {
             // (c) State-commit thread. Coalescing 60 Hz loop; see
             // the function-level prose for the timing rationale.
             let shutdown = Arc::new(AtomicBool::new(false));
+            // Detached telemetry reader; self-terminates on `shutdown`.
+            if let Some(diag_snapshot) = diag_snapshot {
+                audio_diag::spawn(diag_snapshot, Arc::clone(&shutdown));
+            }
             let shutdown_for_thread = Arc::clone(&shutdown);
             let app_handle = app.handle().clone();
             let mut scheduler_owned = scheduler;
@@ -357,11 +387,34 @@ pub fn run() -> Result<(), tauri::Error> {
             let app_state = app.state::<AppState>();
             app_state.install_audio_and_scheduler(audio_handle, scheduler_thread);
 
+            // (e) ADR-011 Phase-2 Slice R-1a — opt-in native GPU output
+            // window. No-op unless `CHROMA_RENDER_OUTPUT` is truthy, so
+            // default launches are completely unchanged. The window +
+            // surface + adapter/device are created HERE on the main
+            // thread (mandatory on macOS / Metal — off-main-thread
+            // surface creation is a PANIC); the resulting `Send` bundle
+            // is then MOVED onto a dedicated render thread that owns the
+            // present loop. A bootstrap failure under the opt-in gate is
+            // logged but never fatal — the rest of the app keeps running.
+            match render::maybe_spawn_output_window(app.handle(), Some(output_audio)) {
+                Ok(Some(render_thread)) => {
+                    app.state::<AppState>().install_render_thread(render_thread);
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    eprintln!(
+                        "chromaticity-app: CHROMA_RENDER_OUTPUT set but render-output \
+                         bootstrap failed: {err}"
+                    );
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::audio::list_audio_devices,
             commands::audio::list_audio_output_devices,
+            commands::audio::audio_diag_rx,
             commands::camera::list_camera_devices,
             commands::control::set_control,
             commands::control::get_control,

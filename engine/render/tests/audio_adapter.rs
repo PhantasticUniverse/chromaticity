@@ -88,12 +88,26 @@ const SAMPLES_ONE_SECOND: usize = 48_000;
 /// declare each scalar as `vec4` and read the `.x` component.
 ///
 /// [`UniformValue::FloatArray`] (slice-5 follow-up addition; catalog
-/// v1.3.0) is the exception: it expands into N consecutive 16-byte
-/// slots matching the std140 layout of `uniform float arr[N]` (each
-/// element vec4-aligned). The shader declares the binding directly
-/// as `float chroma_AudioFFT[8]` and indexes elements with
-/// `chroma_AudioFFT[K]`; std140 reads element K from offset `K*16`,
-/// which matches the engine's slot emission for FloatArray.
+/// v1.3.0) expands into N consecutive 16-byte slots — true std140,
+/// element K at engine offset `K*16` with 12 bytes of zero pad per
+/// element. naga's GLSL frontend, however, does NOT apply std140 to
+/// arrays: it reads a bare `float arr[N]` at the WGSL-default tight
+/// 4-byte stride, so a shader declared `float chroma_AudioFFT[8]`
+/// sees a real band only at indices 0 and 4 (engine bands 0 and 1)
+/// and zero pad everywhere else (verified empirically; see the
+/// diagnostic fixture
+/// `engine/scene/tests/fixtures/scenes/diagnostic/audio-reactivity-test.chroma/main.glsl`
+/// and the archetypes corpus lint in
+/// `engine/authoring/tests/shader_archetypes_corpus.rs`). The
+/// engine-wide consumer convention is therefore `vec4 arr[N]` read
+/// via `.x`. The fragment below predates that convention and still
+/// uses the bare-float form: its golden hashes were measured under
+/// the 4-byte-stride read, which the 440 Hz sine fixture masks
+/// because the FFT energy concentrates in the low bands (so the
+/// alpha mean is insensitive to the missing bands 2-7 at u8
+/// quantization). Migrating this shader to `vec4 chroma_AudioFFT[8]` +
+/// `.x` reads requires re-measuring the ACCEPTED hash set in the
+/// same change.
 ///
 /// # Output encoding
 ///
@@ -103,8 +117,11 @@ const SAMPLES_ONE_SECOND: usize = 48_000;
 /// - `A` = `mean(chroma_AudioFFT[0..=7])`
 ///
 /// Every output channel touches every uniform, so a marshalling
-/// drift (wrong slot, swapped order, wrong array element index)
-/// surfaces as a visible byte change.
+/// drift (wrong slot, swapped order) surfaces as a visible byte
+/// change in R / G / B. The A channel is the weaker sentinel: under
+/// the bare-float stride read described above, its FFT mean is
+/// insensitive to the unread high bands, so per-element index drift
+/// is pinned by the archetypes corpus lint rather than this golden.
 const AUDIO_AWARE_FRAGMENT: &str = r#"
 #version 450
 layout(location = 0) in vec2 uv;

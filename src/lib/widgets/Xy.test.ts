@@ -91,6 +91,21 @@ describe('Xy widget', () => {
     expect(getByText('y -0.50')).toBeInTheDocument();
   });
 
+  it('dot tracks the value with no inline transition (FIX 2)', () => {
+    // FIX 2 removed `transition: left 40ms linear, top 40ms linear` from
+    // `.xy__dot` so live drags track 1:1 instead of lagging 40ms behind
+    // the pointer. jsdom can't surface the scoped <style> rule via
+    // getComputedStyle, so assert nothing re-adds an inline transition
+    // on the moving dot (mirrors the Meter.test.ts FIX 2 regression).
+    const { container } = render(Xy, {
+      props: { value: [0.25, -0.25], onchange: () => {} },
+    });
+    const dot = container.querySelector('.xy__dot') as HTMLElement | null;
+    expect(dot).not.toBeNull();
+    if (dot === null) return;
+    expect(dot.style.transition).toBe('');
+  });
+
   it('respects a [0, 1] explicit range', () => {
     const { container } = render(Xy, { props: { value: [0.5, 0.5], min: [0, 0], max: [1, 1] } });
     const dot = container.querySelector('.xy__dot') as HTMLElement | null;

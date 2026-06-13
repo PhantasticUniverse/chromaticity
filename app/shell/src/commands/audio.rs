@@ -35,6 +35,19 @@
 use chromaticity_audio::{enumerate_input_devices, enumerate_output_devices};
 use chromaticity_ui_bridge::{AudioDeviceKindPayload, AudioDevicePayload};
 
+/// Diagnostic-only IPC sink (gated by `CHROMATICITY_AUDIO_DIAG`). The
+/// audio-snapshot store calls this with each received payload's `rms`/`peak`
+/// so the engine-side capture log shows what the WEBVIEW actually received vs
+/// what the producer emitted — bisecting a "static meter despite a live
+/// engine snapshot" without driving the webview's DevTools. No-op when
+/// diagnostics are off, so it is free in normal operation.
+#[tauri::command]
+pub fn audio_diag_rx(rms: f32, peak: f32, received: u64) {
+    if chromaticity_audio::diagnostics_enabled() {
+        eprintln!("[audio-diag] webview rx #{received} rms={rms:.4} peak={peak:.4}");
+    }
+}
+
 /// Enumerate the cpal input devices currently visible to the host.
 ///
 /// Returns one [`AudioDevicePayload`] per device surfaced by a fresh

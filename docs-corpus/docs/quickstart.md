@@ -39,15 +39,15 @@ Onboard, Settings, Help. Each rail icon shows a tooltip on hover. The
 status bar across the bottom carries the active tier badge, adapter
 state pills, and the theme name.
 
-!!! note "If the bundled Library looks empty"
+!!! note "Bundled scenes ship with the app"
 
-    On a fresh install where the Tauri bundle's `bundle.resources` widening
-    has not yet landed (this widens the bundled scene corpus into the app
-    package), the Library may show no built-in scenes. The clean-room
-    corpus exists under `engine/scene/tests/fixtures/scenes/` in the
-    repository; once the resources path widens, the Library auto-
-    discovers them. Until that lands, point Settings → Storage at your
-    own scene folder to populate the grid.
+    The Library's built-in corpus — sixteen clean-room `.chroma`
+    packages across the `welcome/`, `examples/`, and `library/`
+    subdirectories — ships inside the app package via the Tauri
+    `bundle.resources` map and is auto-discovered on launch. You do
+    not need to install or register anything to see it. To add your
+    own scenes alongside the bundled set, point Settings → Storage
+    at your scene folder.
 
 ## 2. Audio setup
 
@@ -66,23 +66,33 @@ device you want the analysis pipeline to read from. The picker
 persists across restarts through the TOML-backed Settings store
 under Tauri's `app_data_dir`.
 
-The dropdown's selection takes effect when the analysis thread next
-restarts — typically the next scene load. The thread does not
-hot-swap devices mid-show to keep the snapshot pipeline deterministic.
+The dropdown's selection takes effect at the next app launch. The
+analysis thread binds its capture device once at startup and does
+not hot-swap devices mid-show, keeping the snapshot pipeline
+deterministic.
 
 ### macOS — capturing system audio
 
-The producer uses cpal's default input device on macOS, which means
-the microphone, not system audio output. macOS doesn't expose
-system-output capture through standard audio APIs. The operator has
+System-output capture is built in. Open **Settings → Audio Device**
+and pick **System Audio (built-in)** in the Input Device dropdown.
+The engine taps the system output directly through Core Audio
+process taps — macOS 14.6 and later, with a one-time
+audio-recording permission prompt on first use. No virtual-loopback
+driver to install: whatever your computer is playing feeds the
+analysis pipeline.
+
+On macOS older than 14.6, or if the audio-recording permission is
+denied, the engine degrades to the default input device (the
+microphone) rather than going silent. From there the operator has
 three paths:
 
 **Easy path — acoustic mic pickup.** Play music on your computer
 speakers and let the built-in microphone hear it. Clap or speak
 near the mic to confirm the named band tiles respond.
 
-**Cleaner path — virtual loopback.** Install a virtual audio device
-that routes system output to a virtual input:
+**Alternative path — virtual loopback.** To capture on older macOS,
+or to route one specific app's output, install a virtual audio
+device that routes system output to a virtual input:
 
 ```bash
 # BlackHole (free, MIT-licensed) — install with Homebrew:
@@ -166,13 +176,14 @@ Meta Controls panels render against the loaded control schema.
     through a canvas-2d procedural adapter — sixteen built-in scene
     "kinds" mapped from each scene's metadata (kaleido, rings, plasma,
     orbit, tunnel, fluid, lattice, bars, and friends). The live GPU
-    render pipeline is ADR-011 Phase-2-plus deferred. Dragging a
-    control fires the dispatch through to the engine and the engine
-    commits the value — that path is live — but what you see in the
-    preview is the procedural visualisation, not the actual GLSL
-    output. The procedural preview is wireframe-faithful for
-    structural feedback (rotation, warp, audio reactivity); it is not
-    the final rendered image.
+    render pipeline (ADR-011) is live in the engine's dedicated
+    output path, but the in-app preview pane has not yet been moved
+    onto it. Dragging a control fires the dispatch through to the
+    engine and the engine commits the value — that path is live —
+    but what you see in the preview is the procedural visualisation,
+    not the actual GLSL output. The procedural preview is
+    wireframe-faithful for structural feedback (rotation, warp,
+    audio reactivity); it is not the final rendered image.
 
 ## 4. Drag a control
 
@@ -205,8 +216,9 @@ affordance** — the row dims to seventy percent opacity and a hover
 tooltip explains: "engine-only — preview adapter not implemented."
 That is the honest signal that the engine sees the value but the
 canvas-2d preview adapter has no visualisation for that name. The
-GPU render pipeline (ADR-011 Phase-2-plus) is where those controls
-will land their visible effect.
+live GPU render pipeline (ADR-011) is where those controls land
+their visible effect; the preview-pane port onto that pipeline is
+still to come.
 
 ### Quick action buttons
 
@@ -221,11 +233,12 @@ on the whole panel at once:
   panel. Locked rows dim and short-circuit the dispatch so the
   engine never sees suppressed values.
 
-Per-row locks also expose the **`L`** hotkey while the row has
-focus; **`D`** sets the focused control to default; **`R`**
-randomises it; **`P`** sets it to its value in the active preset.
-See [Hotkey Reference](hotkeys-reference.md) for the full
-vocabulary.
+The hotkey vocabulary also reserves per-row keys — **`L`** toggles
+the focused row's lock, **`D`** sets the focused control to default,
+**`R`** randomises it, and **`P`** recalls its value from the active
+preset — but the row-focused key listener is not wired in this
+build; use the panel action buttons above. See
+[Hotkey Reference](hotkeys-reference.md) for the full vocabulary.
 
 ## 5. Try Perform mode
 
@@ -244,9 +257,12 @@ room. The choice persists per launch.
 ### Snap recall
 
 The **Snap bar** runs across the bottom of Perform with eight
-quick-recall slots. Slots are addressed by the number keys `1` through
-`8` in operator focus, plus a "gold preset" recallable through
-`Cmd+0` or `Ctrl+0` as the guaranteed safe state.
+quick-recall slots, addressed by mouse or by Tab-focusing a slot and
+pressing `Enter` / `Space` (the same `Cmd` / `Alt` modifiers as the
+clicks below apply). The digit-key bindings listed in the
+[Hotkey Reference](hotkeys-reference.md) (`1`–`9`, `0`, and the
+`Cmd+0` / `Ctrl+0` gold preset) are vocabulary only and are not yet
+wired to Snap recall.
 
 - **Click slot N** — recalls the saved state.
 - **Cmd+click slot N** (macOS) / **Ctrl+click slot N** (Windows) —
@@ -285,9 +301,10 @@ honesty note).
 
 ## 6. Confirm audio reactivity
 
-Make sure your audio source is playing (music near the mic, or
-system-output routed through BlackHole / VB-Cable). Watch the
-top-bar HUD and the Audio Reactivity panel below the preview hero.
+Make sure your audio source is playing (music near the mic, or —
+with **System Audio (built-in)** selected — whatever your computer
+is playing). Watch the top-bar HUD and the Audio Reactivity panel
+below the preview hero.
 
 - The **VU meter** in the top bar pulses with the live RMS.
 - The **BpmRing** rotates phase-locked to the estimated tempo.
@@ -314,13 +331,18 @@ and the full uniform catalog.
 ### Set the noise-floor threshold
 
 If you're in a noisy room and the band tiles are jittering on HVAC
-or crowd murmur, set the noise-floor gate. With audio playing,
-press **`Shift+T`** to sample the current rolling RMS and pin it as
-the threshold. Audio hops below the threshold publish zeroed level
-and hit uniforms — the band tiles go silent under the floor.
+or crowd murmur, set the noise-floor gate through OSC at
+`/audio/threshold` (see [OSC Routes](osc-routes.md)) — values clamp
+to `[0, 1]`, and the accepted value is announced back out on the
+same route for show-control automation.
 
-The threshold also exposes through OSC at `/audio/threshold` (see
-[OSC Routes](osc-routes.md)) for show-control automation.
+!!! note "The `Shift+T` sample-threshold hotkey is not wired yet"
+
+    The hotkey vocabulary reserves **`Shift+T`** for "set audio
+    threshold to current RMS level", but the handler is not wired in
+    this release — pressing it does nothing today. The backend
+    `set_audio_threshold` command is in place awaiting the frontend
+    hotkey wire; use the OSC route to set the threshold.
 
 ## 7. Where to go next
 

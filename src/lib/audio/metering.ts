@@ -3,10 +3,10 @@
 
 /**
  * Shared audio-metering DSP primitive — the single source of truth for
- * level→display conversion + ballistics. Consumed today by the Meter
- * widget and the Settings monitoring meter; VuStereo and AudioUniforms
- * are tracked to migrate onto it (each still runs its own legacy EMA
- * until then).
+ * level→display conversion + ballistics. Consumed by the Meter widget,
+ * the Settings monitoring meter, and VuStereo (migrated onto the dt-aware
+ * followers + dBFS scale). AudioUniforms still runs its own data-cadence
+ * EMA + dB readout and is tracked to migrate onto it.
  *
  * Replaces the ad-hoc, frame-rate-dependent `EMA 0.25 + 0.004/frame`
  * smoothing (previously duplicated per-widget) with one calibrated,
@@ -46,10 +46,17 @@ export const METER_CEIL_DB = 0;
  */
 export const REFERENCE_TICK_DB = -18;
 
-/** Top of the GREEN working zone. At/below this is the healthy nominal band. */
-export const ZONE_GREEN_MAX_DB = -9;
-/** Top of the AMBER caution zone. Above this is RED (clip/over territory). */
-export const ZONE_AMBER_MAX_DB = -1;
+/**
+ * Top of the GREEN nominal zone. At/below this is the safe working band
+ * (EBU R68 places 0 VU at -18 dBFS, comfortably inside green). The zone
+ * breakpoints follow the standard dBFS reference grid -18/-12/-6/-3/0
+ * used by DAW channel meters (Pro Tools / Logic), not a linear position.
+ */
+export const ZONE_GREEN_MAX_DB = -12;
+/** Top of the AMBER ("hot but fine") zone; above this is ORANGE. */
+export const ZONE_AMBER_MAX_DB = -6;
+/** Top of the ORANGE ("approaching the ceiling") zone; above this is RED. */
+export const ZONE_ORANGE_MAX_DB = -3;
 
 /**
  * Floor amplitude for the dB conversion. `20·log10(0)` is `-Infinity`;
@@ -95,7 +102,7 @@ export const NO_SIGNAL_DB = METER_FLOOR_DB;
 export const NO_SIGNAL_MS = 500;
 
 /** Meter color zone, placed at real dB breakpoints (not linear position). */
-export type MeterZone = 'green' | 'amber' | 'red';
+export type MeterZone = 'green' | 'amber' | 'orange' | 'red';
 
 /**
  * Convert a linear amplitude (`0..1`, or above for over-0-dBFS once the
@@ -133,9 +140,13 @@ export function fractionToDb(fraction: number): number {
   return METER_FLOOR_DB + f * (METER_CEIL_DB - METER_FLOOR_DB);
 }
 
-/** Classify a dBFS value into its color zone at the dB breakpoints. */
+/**
+ * Classify a dBFS value into its color zone at the documented DAW
+ * reference grid: green ≤ -12, amber -12..-6, orange -6..-3, red ≥ -3.
+ */
 export function zoneForDb(db: number): MeterZone {
-  if (db >= ZONE_AMBER_MAX_DB) return 'red';
+  if (db >= ZONE_ORANGE_MAX_DB) return 'red';
+  if (db >= ZONE_AMBER_MAX_DB) return 'orange';
   if (db >= ZONE_GREEN_MAX_DB) return 'amber';
   return 'green';
 }
@@ -160,6 +171,50 @@ export class ExpEnvelope {
   process(targetDb: number, dtMs: number): number {
     const dt = Math.max(dtMs, 0);
     const coeff = 1 - Math.exp(-dt / this.#tauMs);
+    this.#current += (targetDb - this.#current) * coeff;
+    return this.#current;
+  }
+
+  /** Current smoothed value (dB) without advancing. */
+  value(): number {
+    return this.#current;
+  }
+
+  /** Reset to the scale floor (silence). */
+  reset(): void {
+    this.#current = METER_FLOOR_DB;
+  }
+}
+
+/**
+ * Asymmetric one-pole follower: a fast attack tau toward a RISING target
+ * and a slow release tau toward a FALLING target, both
+ * wall-clock-dt-aware (`coeff = 1 - exp(-dt/τ)` per path). Unlike
+ * {@link ExpEnvelope}'s single symmetric τ, this lets the level bar leap
+ * onto a transient (attack ~10 ms) yet glide back down smoothly
+ * (release ~250 ms) — the DAW-grade level-follower feel where the
+ * dominant lag is no longer a symmetric 300 ms integration on the way up.
+ *
+ * Values are tracked in the dB domain; the initial value is the scale
+ * floor so a freshly-constructed follower reads as silence. dt-invariant
+ * on each path (one coarse step equals many fine steps over the same
+ * span on the same side of the target).
+ */
+export class AttackReleaseEnvelope {
+  #current = METER_FLOOR_DB;
+  readonly #attackTauMs: number;
+  readonly #releaseTauMs: number;
+
+  constructor(attackTauMs = 10, releaseTauMs = 250) {
+    this.#attackTauMs = Math.max(attackTauMs, 1e-3);
+    this.#releaseTauMs = Math.max(releaseTauMs, 1e-3);
+  }
+
+  /** Smooth toward `targetDb` over `dtMs`; fast on a rise, slow on a fall. */
+  process(targetDb: number, dtMs: number): number {
+    const dt = Math.max(dtMs, 0);
+    const tau = targetDb > this.#current ? this.#attackTauMs : this.#releaseTauMs;
+    const coeff = 1 - Math.exp(-dt / tau);
     this.#current += (targetDb - this.#current) * coeff;
     return this.#current;
   }

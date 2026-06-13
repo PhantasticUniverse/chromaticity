@@ -556,7 +556,11 @@ impl From<AudioAxisAvailability> for chromaticity_audio::AudioAxisAvailability {
 /// [`chromaticity_audio::AudioUniformSnapshot`] so the bidirectional
 /// `From` impls (and the JSON wire shape consumed by the Tauri event
 /// channel) preserve the widened surface (BPM + BPM readiness, RMS,
-/// peak, eight FFT bands + FFT readiness, and the degraded flag).
+/// peak, eight FFT bands + FFT readiness, the six MilkDrop-class
+/// relative reactive bands — `bass`/`mid`/`treb` + their `*_att`
+/// attack/decay variants, per
+/// `docs/adr/ADR-024-audio-reactivity-analysis-model.md` — and the
+/// degraded flag).
 ///
 /// `Copy` rides for cheap once-per-tick emit copies; `f32` precludes
 /// `Eq` / `Hash` so tests use `PartialEq` only (matching the
@@ -581,6 +585,17 @@ pub struct AudioUniformSnapshotPayload {
     pub peak: f32,
     pub fft_bands: [f32; 8],
     pub fft_availability: AudioAxisAvailability,
+    // MilkDrop-class relative reactive bands (centred ~1.0,
+    // volume-independent) per ADR-024, mirroring the engine
+    // `AudioUniformSnapshot` fields of the same names. Field docs live on
+    // the engine struct (the source of truth); kept bare here so ts-rs
+    // emits the single-line wire shape the committed binding expects.
+    pub bass: f32,
+    pub mid: f32,
+    pub treb: f32,
+    pub bass_att: f32,
+    pub mid_att: f32,
+    pub treb_att: f32,
     pub degraded: bool,
 }
 
@@ -593,6 +608,12 @@ impl From<chromaticity_audio::AudioUniformSnapshot> for AudioUniformSnapshotPayl
             peak: snapshot.peak,
             fft_bands: snapshot.fft_bands,
             fft_availability: snapshot.fft_availability.into(),
+            bass: snapshot.bass,
+            mid: snapshot.mid,
+            treb: snapshot.treb,
+            bass_att: snapshot.bass_att,
+            mid_att: snapshot.mid_att,
+            treb_att: snapshot.treb_att,
             degraded: snapshot.degraded,
         }
     }
@@ -607,6 +628,12 @@ impl From<AudioUniformSnapshotPayload> for chromaticity_audio::AudioUniformSnaps
             peak: payload.peak,
             fft_bands: payload.fft_bands,
             fft_availability: payload.fft_availability.into(),
+            bass: payload.bass,
+            mid: payload.mid,
+            treb: payload.treb,
+            bass_att: payload.bass_att,
+            mid_att: payload.mid_att,
+            treb_att: payload.treb_att,
             degraded: payload.degraded,
         }
     }

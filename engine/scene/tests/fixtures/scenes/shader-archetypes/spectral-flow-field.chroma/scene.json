@@ -1,0 +1,54 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Spectral Flow Field",
+  "CREDIT": "Chromaticity",
+  "DESCRIPTION": "Internal renderer-test archetype. A curl-noise flow field is advected over time and tinted by the spectral centroid computed from the eight log-spaced chroma_AudioFFT bands; overall brightness and flow speed track chroma_AudioRMS. Single-pass; sane under silence (still flows on TIME alone). Not shipped in the library bundle.",
+  "TAGS": ["audio", "reactive", "flow-field", "curl-noise", "archetype", "renderer-test"],
+  "CATEGORIES": ["BUILT-IN", "AUDIO REACTIVE", "ABSTRACT"],
+  "CONTROLS": [
+    {
+      "NAME": "flow_speed",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 2.0
+    },
+    {
+      "NAME": "flow_scale",
+      "TYPE": "slider",
+      "DEFAULT": 3.0,
+      "MIN": 0.5,
+      "MAX": 8.0
+    },
+    {
+      "NAME": "audio_gain",
+      "TYPE": "knob",
+      "DEFAULT": 1.0,
+      "MIN": 0.0,
+      "MAX": 4.0
+    },
+    {
+      "NAME": "hue_spread",
+      "TYPE": "slider",
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "base_tint",
+      "TYPE": "color",
+      "DEFAULT": [0.18, 0.42, 0.78, 1.0]
+    }
+  ],
+  "PASSES": [
+    {
+      "TARGET": "backbuff",
+      "UNIFORMS": [
+        { "NAME": "u_time", "SYMBOL": "TIME" },
+        { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" },
+        { "NAME": "u_rms", "SYMBOL": "chroma_AudioRMS" },
+        { "NAME": "u_fft", "SYMBOL": "chroma_AudioFFT" }
+      ]
+    }
+  ]
+}

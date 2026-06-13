@@ -173,6 +173,7 @@ void main() {
         default_target_size: (16, 16),
         frame_count: 4,
         strict_size: false,
+        control_values: Vec::new(),
     };
     let adapted = MultipassSpec::from_scene_with_options(&scene, &options)
         .expect("adapter must accept the synthetic feedback scene");

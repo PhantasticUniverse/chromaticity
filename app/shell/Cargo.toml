@@ -29,7 +29,13 @@ workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `unstable` exposes `tauri::window::{Window, WindowBuilder}` — a native
+# window with NO webview, required for the ADR-011 Phase-2 GPU output
+# window (Slice R-1a): a WebviewWindow's WKWebView paints opaque over the
+# wgpu Metal surface. See `src/render/output_window.rs`. The dependency on
+# Tauri's unstable surface is a consideration for design-proposal
+# Amendment B (second-window VJ output) ratification.
+tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
@@ -45,6 +51,29 @@ chromaticity-osc-adapter = { version = "0.0.0", path = "../../integrations/osc-a
 chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }
 chromaticity-scene = { version = "0.0.0", path = "../../engine/scene" }
 chromaticity-ui-bridge = { version = "0.0.0", path = "../ui-bridge" }
+# ADR-011 Phase-2 Slice R-1a: the native GPU output window drives the
+# R-0 `MultipassRenderer::render_frame_live` path. The `scene-adapter`
+# + `audio-binding` features are enabled so the shell links the same
+# crate configuration CI exercises under `--all-features`; R-1a itself
+# only uses the surface-hint + live-frame entry points.
+chromaticity-render = { version = "0.0.0", path = "../../engine/render", features = [
+    "scene-adapter",
+    "audio-binding",
+] }
+# wgpu 26 (matches engine/render's pin; License: Apache-2.0 OR MIT,
+# allow-listed by /deny.toml) for the shell-side surface creation +
+# swapchain blit. Default features disabled + the same backend set as
+# engine/render so both link the identical wgpu build.
+wgpu = { version = "26", default-features = false, features = [
+    "metal",
+    "vulkan",
+    "gles",
+    "wgsl",
+] }
+# pollster blocks on wgpu's async adapter request from the synchronous
+# Tauri `setup` callback (same posture as engine/render). License:
+# Apache-2.0 OR MIT (allow-listed by /deny.toml).
+pollster = "0.4"
 workspace-hack = { version = "0.0.0", path = "../../workspace-hack" }
 
 # Wave 1c-β Phase 4 Lane B: the Syphon command handlers

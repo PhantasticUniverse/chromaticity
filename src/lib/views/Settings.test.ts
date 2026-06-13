@@ -111,6 +111,11 @@ describe('Settings view', () => {
     // case mounts against an empty live list (falls back to the
     // fixture) unless the test explicitly seeds devices.
     audioDevicesStore.reset();
+    // FIX 5 — the rAF-pumping tests stub requestAnimationFrame /
+    // cancelAnimationFrame globally; restore them so sibling tests see
+    // the real (jsdom-noop) implementations.
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     cleanup();
   });
 
@@ -187,16 +192,50 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
     const options = Array.from(input.querySelectorAll('option'));
-    // The built-in System Audio loopback entry is always prepended; the
-    // live list replaces the fixture for the enumerated tail.
-    const FIXED_INPUT_IDS = ['system-audio'];
-    const FIXED_INPUT_LABELS = ['System Audio (built-in)'];
-    expect(options.length).toBe(FIXED_INPUT_IDS.length + live.length);
-    expect(options.map((o) => o.value)).toEqual([...FIXED_INPUT_IDS, ...live.map((d) => d.id)]);
-    expect(options.map((o) => o.textContent?.trim())).toEqual([
-      ...FIXED_INPUT_LABELS,
-      ...live.map((d) => d.name),
+    // FIX 8 — the dropdown is now grouped via <optgroup>:
+    //   Automatic       → [default] (mode, not a device)
+    //   System playback → [system-audio, BlackHole 16ch] (name-matched)
+    //   Hardware inputs → [Built-in Microphone]
+    // querySelectorAll('option') flattens to document order, so the
+    // BlackHole entry sorts ahead of the plain hardware mic.
+    expect(options.length).toBe(2 + live.length);
+    expect(options.map((o) => o.value)).toEqual([
+      'default',
+      'system-audio',
+      'input-blackhole-16ch',
+      'input-built-in-microphone',
     ]);
+    expect(options.map((o) => o.textContent?.trim())).toEqual([
+      'Automatic (system default)',
+      'System Audio (built-in)',
+      'BlackHole 16ch',
+      'Built-in Microphone',
+    ]);
+    // The three optgroups render with their bucket labels.
+    const groups = Array.from(input.querySelectorAll('optgroup')).map((g) => g.label);
+    expect(groups).toEqual(['Automatic', 'System playback', 'Hardware inputs']);
+    // Exactly one 'Automatic' row appears.
+    expect(options.filter((o) => o.value === 'default').length).toBe(1);
+  });
+
+  it('Input Device select.value stays "default" against cpal-style ids (FIX A)', () => {
+    // Regression for the blank-dropdown bug: with live cpal-style ids
+    // (`input-<sanitized>`) enumerated AND the persisted sentinel
+    // `input_device === 'default'`, the native <select> must still have
+    // a matching `<option value="default">` so it renders that row
+    // rather than going blank.
+    audioDevicesStore.devices = [
+      { id: 'input-built-in-microphone', name: 'Built-in Microphone', kind: 'Input' },
+    ];
+    expect(settingsStore.snapshot.audio.input_device).toBe('default');
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
+    expect(input.value).toBe('default');
+    const defaultOpt = Array.from(input.querySelectorAll('option')).find(
+      (o) => o.value === 'default',
+    );
+    expect(defaultOpt).toBeDefined();
   });
 
   it('Input Device dropdown falls back to the fixture when audioDevicesStore is empty', () => {
@@ -209,14 +248,29 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
     const options = Array.from(input.querySelectorAll('option'));
-    // The built-in System Audio loopback entry is prepended ahead of
-    // the fixture fallback.
-    const FIXED_INPUT_IDS = ['system-audio'];
-    expect(options.length).toBe(FIXED_INPUT_IDS.length + AUDIO_INPUT_DEVICES.length);
+    // FIX 8: grouped via <optgroup>. The persisted `default` sentinel is
+    // the lone "Automatic" row; `system-audio` + any BlackHole / Loopback
+    // fixture device land under "System playback"; the rest are "Hardware
+    // inputs". The fixture's own `default` row is de-duped so only one
+    // `default` option renders. The BlackHole fixture sorts ahead of the
+    // plain hardware devices because of the System-playback grouping.
+    const fallbackIds = AUDIO_INPUT_DEVICES.filter((d) => d.id !== 'default').map((d) => d.id);
+    expect(options.length).toBe(2 + fallbackIds.length);
     expect(options.map((o) => o.value)).toEqual([
-      ...FIXED_INPUT_IDS,
-      ...AUDIO_INPUT_DEVICES.map((d) => d.id),
+      'default',
+      'system-audio',
+      'blackhole',
+      'yeti',
+      'iface',
+      'none',
     ]);
+    // Exactly one `default` option (no double-render on the no-hardware path)
+    // and exactly one 'Automatic' optgroup.
+    expect(options.filter((o) => o.value === 'default').length).toBe(1);
+    const automaticGroups = Array.from(input.querySelectorAll('optgroup')).filter(
+      (g) => g.label === 'Automatic',
+    );
+    expect(automaticGroups.length).toBe(1);
   });
 
   it('Output Device dropdown shows enumerated output devices when audioDevicesStore.outputDevices populated', () => {
@@ -245,9 +299,19 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const output = within(audio).getByLabelText('Output Device') as HTMLSelectElement;
     const options = Array.from(output.querySelectorAll('option'));
-    expect(options.length).toBe(live.length);
-    expect(options.map((o) => o.value)).toEqual(live.map((d) => d.id));
-    expect(options.map((o) => o.textContent?.trim())).toEqual(live.map((d) => d.name));
+    // FIX A: the persisted `default` output sentinel is always prepended
+    // so the native <select> matches `output_device === 'default'`
+    // against cpal-style `output-<sanitized>` enumerated ids.
+    const FIXED_OUTPUT_IDS = ['default'];
+    const FIXED_OUTPUT_LABELS = ['Automatic (system default)'];
+    expect(options.length).toBe(FIXED_OUTPUT_IDS.length + live.length);
+    expect(options.map((o) => o.value)).toEqual([...FIXED_OUTPUT_IDS, ...live.map((d) => d.id)]);
+    expect(options.map((o) => o.textContent?.trim())).toEqual([
+      ...FIXED_OUTPUT_LABELS,
+      ...live.map((d) => d.name),
+    ]);
+    // The select keeps its persisted `default` value rather than rendering blank.
+    expect(output.value).toBe('default');
   });
 
   it('Output Device dropdown falls back to the fixture when audioDevicesStore.outputDevices is empty', () => {
@@ -260,8 +324,13 @@ describe('Settings view', () => {
     const audio = getSection(container, 'Audio Device');
     const output = within(audio).getByLabelText('Output Device') as HTMLSelectElement;
     const options = Array.from(output.querySelectorAll('option'));
-    expect(options.length).toBe(AUDIO_OUTPUT_DEVICES.length);
-    expect(options.map((o) => o.value)).toEqual(AUDIO_OUTPUT_DEVICES.map((d) => d.id));
+    // FIX A: the `default` sentinel is prepended and the fixture's own
+    // `default` row is de-duped so a single `default` option renders.
+    const FIXED_OUTPUT_IDS = ['default'];
+    const fallbackIds = AUDIO_OUTPUT_DEVICES.filter((d) => d.id !== 'default').map((d) => d.id);
+    expect(options.length).toBe(FIXED_OUTPUT_IDS.length + fallbackIds.length);
+    expect(options.map((o) => o.value)).toEqual([...FIXED_OUTPUT_IDS, ...fallbackIds]);
+    expect(options.filter((o) => o.value === 'default').length).toBe(1);
   });
 
   it('Audio Device input-gain slider updates the dB readout aria-valuetext', async () => {
@@ -291,6 +360,23 @@ describe('Settings view', () => {
     expect(readout?.textContent?.trim()).toBe('-18.0 dB');
   });
 
+  it('Audio Device renders Refresh buttons that re-enumerate input + output devices (FIX 8)', async () => {
+    const refreshSpy = vi.spyOn(audioDevicesStore, 'refresh').mockResolvedValue();
+    const refreshOutputSpy = vi.spyOn(audioDevicesStore, 'refreshOutput').mockResolvedValue();
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    // Mount $effects call refresh() / refreshOutput() once each; clear so
+    // the assertion isolates the button-driven calls.
+    refreshSpy.mockClear();
+    refreshOutputSpy.mockClear();
+    const refreshIn = within(audio).getByRole('button', { name: 'Refresh input devices' });
+    const refreshOut = within(audio).getByRole('button', { name: 'Refresh output devices' });
+    await fireEvent.click(refreshIn);
+    await fireEvent.click(refreshOut);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(refreshOutputSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('Audio Device renders the Monitoring meter widget with its aria label', () => {
     const { container } = render(Settings);
     const audio = getSection(container, 'Audio Device');
@@ -306,13 +392,33 @@ describe('Settings view', () => {
     // `round(dbToFraction(ampToDb(rms)) * bars)`, not `floor(rms*bars)`.
     // Expectations are derived from the metering helpers so they track
     // any scale retune.
+    //
+    // FIX 5: the ballistics now advance inside a free-running rAF loop
+    // (so decay / peak-hold keep gliding when the IPC stream coalesces),
+    // and jsdom does NOT auto-run rAF — capture the scheduled callbacks
+    // and pump them manually.
     const onCountFor = (amp: number): number =>
       Math.round(dbToFraction(ampToDb(amp)) * AUDIO_METER_BARS);
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const pump = async (n: number): Promise<void> => {
+      for (let i = 0; i < n; i++) {
+        const cb = rafCbs.shift();
+        if (cb) cb(performance.now());
+        await Promise.resolve();
+      }
+    };
 
     const { container } = render(Settings);
     const audio = getSection(container, 'Audio Device');
     const meter = within(audio).getByLabelText('Audio input monitor');
-    // Baseline: fixture-driven (AUDIO_METER_LEVEL), dB-scaled.
+    // Baseline: no snapshot yet → fixture-driven (AUDIO_METER_LEVEL),
+    // dB-scaled. Pump a frame so the rAF loop applies the fixture seed.
+    await pump(1);
     const baselineOn = meter.querySelectorAll('.meter-bar.on').length;
     expect(baselineOn).toBe(onCountFor(AUDIO_METER_LEVEL));
     // Inject a live snapshot with a distinct (quieter) rms and re-assert.
@@ -323,13 +429,131 @@ describe('Settings view', () => {
       peak: 0.45,
       fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
       fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
       degraded: false,
     };
-    // Allow Svelte to flush the $effect that advances the ballistics.
-    await Promise.resolve();
+    // The first live frame seeds the envelopes instantly onto the target.
+    await pump(2);
     const liveOn = meter.querySelectorAll('.meter-bar.on').length;
     expect(liveOn).toBe(onCountFor(0.25));
     expect(liveOn).not.toBe(baselineOn);
+  });
+
+  it('Monitoring meter peak-hold decay continues across frames with no new snapshot (FIX 5)', async () => {
+    // FIX 5 regression: the ballistics live in a free-running rAF loop,
+    // so the held-peak marker must keep gliding DOWN frame-over-frame
+    // even when the IPC stream coalesces (no fresh snapshot). Previously
+    // the snapshot-driven `$effect` only advanced on a write, freezing
+    // the decay mid-glide. Drive rAF manually (jsdom does not auto-run
+    // it) and confirm the lit segment count falls across silent frames.
+    const onCountFor = (amp: number): number =>
+      Math.round(dbToFraction(ampToDb(amp)) * AUDIO_METER_BARS);
+    const rafCbs: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      rafCbs.push(cb);
+      return rafCbs.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    // Each pumped frame advances `performance.now()` by ~16.7 ms so the
+    // real per-frame dt feeds the dt-aware release / peak-hold decay.
+    let clock = 1000;
+    const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    const pump = async (n: number): Promise<void> => {
+      for (let i = 0; i < n; i++) {
+        clock += 16.7;
+        const cb = rafCbs.shift();
+        if (cb) cb(clock);
+        await Promise.resolve();
+      }
+    };
+
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const meter = within(audio).getByLabelText('Audio input monitor');
+
+    // Loud snapshot seeds the level + peak high.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.9,
+      peak: 0.95,
+      fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    await pump(2);
+    const loudOn = meter.querySelectorAll('.meter-bar.on').length;
+    expect(loudOn).toBe(onCountFor(0.9));
+
+    // Drop to silence: the SAME snapshot keeps reporting the new low
+    // level, but the held-peak marker only decays as frames advance.
+    // Hold the snapshot constant (a single quiet sample) and pump many
+    // frames; the level must fall as the asymmetric release glides down.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.001,
+      peak: 0.001,
+      fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    await pump(4); // ~67 ms
+    const earlyDecay = meter.querySelectorAll('.meter-bar.on').length;
+    await pump(20); // ~334 ms more, NO new snapshot written between frames
+    const lateDecay = meter.querySelectorAll('.meter-bar.on').length;
+    // The level keeps falling frame-over-frame without a new snapshot.
+    expect(lateDecay).toBeLessThan(earlyDecay);
+    expect(earlyDecay).toBeLessThanOrEqual(loudOn);
+    nowSpy.mockRestore();
+  });
+
+  it('Monitoring caption is gated on live snapshot presence (FIX C)', async () => {
+    // No live snapshot → the caption keeps the "frozen-frame fixture"
+    // startup-window wording.
+    audioSnapshotStore.snapshot = null;
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    expect(audio.textContent).toMatch(/frozen-frame fixture/);
+
+    // A live snapshot → the `meterIsLive` $derived flips and the
+    // caption drops the "frozen-frame fixture" clause, reflecting live
+    // data instead.
+    audioSnapshotStore.snapshot = {
+      bpm: 120,
+      bpm_availability: 'Ready',
+      rms: 0.25,
+      peak: 0.45,
+      fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+      fft_availability: 'Ready',
+      bass: 1,
+      mid: 1,
+      treb: 1,
+      bass_att: 1,
+      mid_att: 1,
+      treb_att: 1,
+      degraded: false,
+    };
+    await Promise.resolve();
+    expect(audio.textContent).not.toMatch(/frozen-frame fixture/);
+    expect(audio.textContent).toMatch(/reading live RMS \/ peak/);
   });
 
   it('Graphics / Output renders all expected rows including the W41 expansion', () => {
@@ -553,6 +777,71 @@ describe('Settings view', () => {
     expect(
       within(storage).getByText('/Users/operator/Movies/Chromaticity/Loops'),
     ).toBeInTheDocument();
+  });
+
+  it('a real-shell picker failure surfaces an error and persists nothing', async () => {
+    // When `@tauri-apps/plugin-dialog` throws inside a real Tauri
+    // shell (capability regression / plugin fault), `pickFolder` must
+    // NOT fall through to the legacy `pick_folder` stub — the stub's
+    // deterministic placeholder would masquerade as an operator pick
+    // and get persisted into settings.storage. The failure surfaces
+    // through the Storage section's <ErrorMessage> instead.
+    const w = window as unknown as { __TAURI_INTERNALS__?: unknown };
+    w.__TAURI_INTERNALS__ = {};
+    try {
+      dialogOpenMock.mockRejectedValue(new Error('dialog capability missing'));
+      invokeMock.mockImplementation((command: string) => {
+        if (command === 'list_audio_devices') return Promise.resolve([]);
+        if (command === 'pick_folder') {
+          return Promise.resolve('/Users/operator/Movies/Chromaticity/Media');
+        }
+        return Promise.resolve(undefined);
+      });
+      const { container } = render(Settings);
+      await settingsStore.load();
+      await Promise.resolve();
+      const storage = getSection(container, 'Storage');
+      const rowsBefore = storage.querySelectorAll('.settings__folder-row').length;
+      const addBtn = within(storage).getByRole('button', { name: 'Add media folder' });
+      await fireEvent.click(addBtn);
+      await Promise.resolve();
+      await Promise.resolve();
+      // The legacy stub is never consulted in a real shell …
+      expect(invokeMock).not.toHaveBeenCalledWith('pick_folder', expect.anything());
+      // … no folder row appears, and nothing is written through.
+      expect(storage.querySelectorAll('.settings__folder-row').length).toBe(rowsBefore);
+      expect(invokeMock).not.toHaveBeenCalledWith('set_settings', expect.anything());
+      // The failure surfaces via the existing ErrorMessage idiom.
+      expect(within(storage).getByText('dialog capability missing')).toBeInTheDocument();
+    } finally {
+      delete w.__TAURI_INTERNALS__;
+    }
+  });
+
+  it('surfaces a persist failure as a dismissible banner', async () => {
+    // settingsStore.error previously had zero template consumers — a
+    // failed set_settings left the optimistic snapshot on screen with
+    // no indication the change would not survive restart. The banner
+    // is gated on canPersist so the expected no-Tauri load failure in
+    // this jsdom harness never renders it.
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'list_audio_devices') return Promise.resolve([]);
+      if (command === 'get_settings') return Promise.resolve(DEFAULT_SETTINGS);
+      if (command === 'set_settings') return Promise.reject(new Error('disk full'));
+      return Promise.resolve(undefined);
+    });
+    const { getByRole, queryByRole } = render(Settings);
+    await settingsStore.load();
+    await Promise.resolve();
+    expect(queryByRole('alert')).toBeNull();
+    settingsStore.update({ general: { theme: 'Console' } });
+    await settingsStore.flush();
+    await Promise.resolve();
+    const banner = getByRole('alert');
+    expect(banner.textContent).toContain('Settings could not be saved: disk full');
+    await fireEvent.click(getByRole('button', { name: 'Dismiss settings save error' }));
+    expect(queryByRole('alert')).toBeNull();
+    expect(settingsStore.error).toBeNull();
   });
 
   it('Storage remove-folder action filters the row from the media list', async () => {

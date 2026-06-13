@@ -304,6 +304,12 @@ describe('TopBar shell component', () => {
         peak: 0.7,
         fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
         fft_availability: 'Ready',
+        bass: 1,
+        mid: 1,
+        treb: 1,
+        bass_att: 1,
+        mid_att: 1,
+        treb_att: 1,
         degraded: false,
       };
       const { getByTestId } = render(TopBar);
@@ -326,7 +332,7 @@ describe('TopBar shell component', () => {
       const { getByTestId } = render(TopBar);
       const cam = getByTestId('top-bar-camera');
       expect(cam.tagName).toBe('BUTTON');
-      expect(cam.getAttribute('title')).toBe('Camera (Wave 2.2)');
+      expect(cam.getAttribute('title')).toBe('Camera (visual stub; wiring AO-deferred)');
       expect(cam.getAttribute('aria-label')).toBe('Camera');
     });
 
@@ -335,7 +341,7 @@ describe('TopBar shell component', () => {
       const { getByTestId } = render(TopBar);
       const rec = getByTestId('top-bar-record');
       expect(rec.tagName).toBe('BUTTON');
-      expect(rec.getAttribute('title')).toBe('Record (Wave 2.2)');
+      expect(rec.getAttribute('title')).toBe('Record (visual stub; wiring AO-deferred)');
       expect(rec.getAttribute('aria-label')).toBe('Record');
     });
 
@@ -408,6 +414,12 @@ describe('TopBar shell component', () => {
         peak: 0.5,
         fft_bands: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
         fft_availability: 'Ready',
+        bass: 1,
+        mid: 1,
+        treb: 1,
+        bass_att: 1,
+        mid_att: 1,
+        treb_att: 1,
         degraded: true,
       };
       const { container } = render(TopBar);

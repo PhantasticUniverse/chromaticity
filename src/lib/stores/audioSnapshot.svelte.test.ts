@@ -30,6 +30,12 @@ const SAMPLE_PAYLOAD: AudioUniformSnapshotPayload = {
   peak: 0.8,
   fft_bands: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
   fft_availability: 'Ready',
+  bass: 1,
+  mid: 1,
+  treb: 1,
+  bass_att: 1,
+  mid_att: 1,
+  treb_att: 1,
   degraded: false,
 };
 

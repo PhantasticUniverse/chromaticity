@@ -31,6 +31,7 @@
 import '@testing-library/jest-dom/vitest';
 import { within } from '@testing-library/dom';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { invokeMock } = vi.hoisted(() => ({
@@ -45,6 +46,7 @@ import Perform from './Perform.svelte';
 import { META_CONTROL_GROUPS, META_CONTROL_ID_BASE } from '../data/perform-fixtures';
 import type { LoadedScenePayload } from '../ipc/bindings';
 import { controlLockStore } from '../stores/controlLock.svelte';
+import { controlValuesStore } from '../stores/controlValues.svelte';
 import { loadedSceneStore } from '../stores/loadedScene.svelte';
 import { performVariantStore } from '../stores/performVariant.svelte';
 
@@ -159,6 +161,7 @@ beforeEach(() => {
   defaultInvokeMock();
   performVariantStore.set('classic');
   controlLockStore.reset();
+  controlValuesStore.reset();
   loadedSceneStore.snapshot = SAMPLE_SCENE;
 });
 
@@ -169,6 +172,7 @@ afterEach(() => {
   loadedSceneStore.reset();
   performVariantStore.set('classic');
   controlLockStore.reset();
+  controlValuesStore.reset();
 });
 
 describe('Perform view — action buttons (Wave 2.4 Lane PERF.A)', () => {
@@ -236,6 +240,25 @@ describe('Perform view — action buttons (Wave 2.4 Lane PERF.A)', () => {
     await fireEvent.pointerDown(slider, { clientX: 5, clientY: 20, pointerId: 1 });
     const dispatchCalls = invokeMock.mock.calls.filter((c) => c[0] === 'set_control');
     expect(dispatchCalls.length).toBe(0);
+  });
+
+  it('scene-namespace locks clear when a different scene loads; meta locks survive', async () => {
+    render(Perform);
+    // Lock a scene row (bare schema position) + a meta row (1000+).
+    controlLockStore.toggle(0);
+    controlLockStore.toggle(META_CONTROL_ID_BASE + 1);
+    expect(controlLockStore.isLocked(0)).toBe(true);
+    expect(controlLockStore.isLocked(META_CONTROL_ID_BASE + 1)).toBe(true);
+
+    // A different scene loads (e.g. initiated from the Library view
+    // through the shared loadedSceneStore). Lock ids are bare schema
+    // positions shared across scenes, so scene-namespace locks must
+    // not leak onto the new scene's rows.
+    loadedSceneStore.snapshot = { ...SAMPLE_SCENE, id: 'demo-other', name: 'Demo Other' };
+    await tick();
+
+    expect(controlLockStore.isLocked(0)).toBe(false);
+    expect(controlLockStore.isLocked(META_CONTROL_ID_BASE + 1)).toBe(true);
   });
 
   it('clicking Lock-all a second time unlocks every control', async () => {
