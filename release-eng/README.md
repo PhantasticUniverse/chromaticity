@@ -24,8 +24,11 @@ and exits 0. This lets CI matrices, local dry-runs, and downstream
 pipeline composers exercise the scaffold without real signing material.
 
 When the variables are set the script invokes the real tool
-(`codesign`, `signtool`, `xcrun notarytool`, Sparkle `sign_update`) with
-the posture mandated by ADR-014.
+(`codesign`, `signtool`, `xcrun notarytool` + `xcrun stapler`) with the
+posture mandated by ADR-014. The exception is `stage-appcast.sh`: with
+all three variables set it validates the artifact and prints a deferral
+notice — the real-mode Sparkle `sign_update` invocation + appcast XML
+emission are deferred to AO-gated production wiring (ADR-014 Sec.4).
 
 **Scaffold lands stubs only; production cert + Apple Developer ID +
 Windows EV cert procurement is AO-gated work happening outside this
@@ -43,7 +46,8 @@ scaffold.**
 Optional env:
 
 - `WINDOWS_TIMESTAMP_URL` (default `http://timestamp.digicert.com`).
-- `SPARKLE_TOOLS_PATH` (where `sign_update` lives if not on `PATH`).
+- `SPARKLE_TOOLS_PATH` (where `sign_update` lives if not on `PATH`;
+  consumed once the deferred real-mode appcast wiring lands).
 
 ## Entitlements
 

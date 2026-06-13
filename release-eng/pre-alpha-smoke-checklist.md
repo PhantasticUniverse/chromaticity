@@ -193,9 +193,12 @@ Aim for ~15–20 minutes end-to-end. File anything that surprises you per
       fixture's `perform-fixtures` literal); the Scene Controls + Meta
       Controls panels re-render against the loaded scene's control schema.
       This is the Wave 2.1 A.1 acceptance gate.
-- [ ] Open `welcome/quick-start.chroma` — the preview pane stays a
-      gradient placeholder (live render pipeline deferred per ADR-011);
-      Scene Controls header binds.
+- [ ] Open `welcome/quick-start.chroma` — the preview pane shows the
+      animated canvas-2d procedural preview (`SceneCanvas`; quick-start's
+      brightness/contrast/saturation/tint controls render dimmed as
+      preview-unwired). This is NOT the live GPU pipeline — that ships
+      in the env-gated `CHROMA_RENDER_OUTPUT` output window per ADR-011
+      slice R-1c; Scene Controls header binds.
 - [ ] Open `library/demo-kaleido.chroma` — control schema populates the
       Scene Controls panel; uniforms panel populated.
 - [ ] Open `library/demo-spectrum.chroma` — control schema populates;
@@ -221,11 +224,15 @@ Aim for ~15–20 minutes end-to-end. File anything that surprises you per
 > strip drive from real audio in that case. The 48-bar FFT and the AudioUniforms
 > Spectrum widget remain synthetic — see "Known synthetic surfaces".
 >
-> **macOS "System Audio (built-in)" is NOT functional in this build.** The
-> zero-install tap delivers data but corrupts it (cpal's AUHAL read stage; a
-> 440 Hz sine returns a flat FFT + a peak exceeding the source — ADR-022
-> Amendment 2026-06-03). Verify with the **microphone** path instead; on macOS,
-> capture system output via a hand-installed virtual loopback.
+> **macOS "System Audio (built-in)" is functional in this build.** The
+> zero-install tap is read via a direct Core Audio `IOProc` (the corrupting
+> AUHAL read stage was replaced — ADR-022 Amendment 2026-06-03);
+> hardware-verified with the 440 Hz / 0.5 sine probe (`raw_peak` exactly 0.5,
+> clean single-bin FFT) and AO-confirmed live in the GUI on 2026-06-05.
+> Verify it directly: `dev-run-macos.sh --tone` automates the probe. Requires
+> macOS 14.6+ and the one-time system-audio capture consent (signed `.app`
+> launch — see the note below); below the floor or on denied consent it
+> degrades to the default input, never silent.
 
 > **macOS — launch the signed `.app`, NOT the raw binary, for every audio step.**
 > The §Launch `./target/release/chromaticity-app` has no `Contents/Info.plist`
@@ -253,13 +260,17 @@ device chosen in Settings → Audio → Input Device:
   (Under the raw §Launch binary no prompt ever appears and capture is silently
   denied, so the tiles stay frozen — that is the launch-method trap above, not a
   dead mic.)
-- **System Audio (built-in)** — the intended zero-install path (capture whatever
+- **System Audio (built-in)** — the zero-install path (capture whatever
   your machine is PLAYING, no extra software, macOS 14.6+ / Windows WASAPI).
-  **NOT functional on macOS in this build** — the tap delivers data but corrupts
-  it (cpal's AUHAL read stage). The fix (a direct Core Audio `IOProc`, bypassing
-  the AUHAL) is in progress; see ADR-022 → Amendment (2026-06-03) and
-  `third_party/cpal/UPSTREAM-VERSION.md`. On macOS, use the microphone or a
-  virtual loopback. Windows WASAPI loopback uses correct upstream code but is
+  **Functional on macOS in this build** — the vendored cpal reads the tap
+  through a direct Core Audio `IOProc` (no AUHAL), hardware-verified clean
+  (440 Hz / 0.5 sine probe: `raw_peak` exactly 0.5; AO-confirmed live GUI
+  reactivity 2026-06-05); see ADR-022 → Amendment (2026-06-03) and
+  `third_party/cpal/UPSTREAM-VERSION.md`. Launch via the signed `.app`
+  (`dev-run-macos.sh`, per the macOS launch note above) so the
+  `NSAudioCaptureUsageDescription` consent prompt can fire; below the macOS
+  14.6 floor or on denied consent it degrades to the default input, never
+  silent. Windows WASAPI loopback uses correct upstream code but is
   untested on hardware.
 - **A virtual loopback** — install
   [BlackHole](https://existential.audio/blackhole/) (free, MIT) or
@@ -337,8 +348,8 @@ loaded (e.g. `welcome/controls-tour.chroma` or any `examples/*.chroma`).
 - [ ] Drag-to-reorder a cue (display-level; preset-bank durability is
       Phase-4+ deferred).
 - [ ] Trigger a manual cue transition — verify the curve drives a
-      visible transition (the Perform preview pane stays placeholder;
-      see "Known synthetic surfaces").
+      visible transition (the Perform preview pane is the synthetic
+      canvas-2d preview; see "Known synthetic surfaces").
 
 ### H. OSC + MIDI views (≈ 3 min)
 
@@ -408,24 +419,24 @@ Wave 2.1 follow-on records in [`docs/53-v1-release-parity-gaps.md`][docs-53]
 synthetic or partially wired. Treat the visual presence as the contract;
 don't expect real-world data.
 
-| Surface                                                                 | Status                                                                                                                                                                                                       |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Perform preview pane** (live render)                                  | ADR-011 Phase-2+ deferred. `set_control` IPC fires end-to-end and the engine commits the value, but the preview pane stays a gradient placeholder. This is expected — do NOT file as "scene doesn't render". |
-| **Camera input** (Media view, Perform)                                  | Wave 1c-β closed synthetic; per-platform `nokhwa` real bindings deferred.                                                                                                                                    |
-| **Syphon publish/subscribe** (macOS)                                    | UI scaffolding present; real `publish_syphon_output` + observer deferred.                                                                                                                                    |
-| **AudioReactivity 48-bar FFT**                                          | Synthetic-driven post-MVP; only the 4 named band tiles + BPM strip are live.                                                                                                                                 |
-| **AudioUniforms Spectrum widget** (64-bar)                              | Synthetic post-MVP (the bundle's inline Spectrum, not a separate widget).                                                                                                                                    |
-| **Dual-GPU selection**                                                  | Synthetic 10-fixture validation only; physical dual-GPU validation deferred.                                                                                                                                 |
-| **Crash injection drill**                                               | Synthetic harness only; do NOT deliberately SIGKILL expecting recovery.                                                                                                                                      |
-| **GPU thumbnail rendering** (Library)                                   | Deterministic byte-hash stub; real GPU thumbnails deferred post-MVP.                                                                                                                                         |
-| **MIDI binding-to-control assignment** (Wave 2.1 D.2)                   | Learn mode captures the message + persists to localStorage; binding it to a specific control id carries forward as a future-wave follow-up.                                                                  |
-| **MIDI multi-message learn** (Wave 2.1 D.2)                             | Single-message MVP only; debounced multi-message capture (composite bindings) carries forward as a future-wave follow-up.                                                                                    |
-| **Top bar Camera + Record buttons** (Wave 2.1 B.2)                      | Visual stubs only; real wiring rides the Wave 1c-β camera follow-ups (per-platform `nokhwa` + Syphon `publish_syphon_output`).                                                                               |
-| **Perform preset save disk persistence** (Wave 2.4 PERF.C)              | Engine widened with `Command::PresetSave` for in-process snapshot capture; Cmd-click on a preset slot saves, click recalls. Settings-TOML disk persistence deferred.                                         |
-| **SnapBar slot labels disk persistence** (Wave 2.4 PERF.F)              | Right-click-rename persists custom labels through localStorage; engine snap state stays binary saved/unsaved.                                                                                                |
-| **Library favorites / recent / source filter** (Wave 2.5 LIB.B / LIB.C) | Frontend-only stores backed by localStorage; engine-side support intentionally deferred per the clean-room scene-write narrowing.                                                                            |
-| **Perform Shuffle button** (Wave 2.1 A.4)                               | Engine has no shuffle command; the "Shuffle" button advances by +1 like Next (label parity with the bundle, no random ordering).                                                                             |
-| **Top bar FPS readout**                                                 | Placeholder pending ADR-011 rendering backend.                                                                                                                                                               |
+| Surface                                                                 | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Perform preview pane** (in-app — NOT the GPU output window)           | The in-app preview is a synthetic canvas-2d procedural adapter (`src/lib/widgets/scene-renderers.ts`), not the live GPU pipeline: it parses the loaded scene's control schema and pulses with the live audio level, but does not rasterise the GLSL. `set_control` IPC fires end-to-end and the engine commits the value. This is expected — do NOT file the preview pane as "scene doesn't render". The env-gated GPU OUTPUT window (`CHROMA_RENDER_OUTPUT`, ADR-011 slices R-1a–R-1c) IS live scene render with live audio; render bugs there are real bugs — file them. |
+| **Camera input** (Media view, Perform)                                  | Wave 1c-β closed synthetic; per-platform `nokhwa` real bindings deferred.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Syphon publish/subscribe** (macOS)                                    | UI scaffolding present; real `publish_syphon_output` + observer deferred.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **AudioReactivity 48-bar FFT**                                          | Synthetic-driven post-MVP; only the 4 named band tiles + BPM strip are live.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **AudioUniforms Spectrum widget** (64-bar)                              | Synthetic post-MVP (the bundle's inline Spectrum, not a separate widget).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Dual-GPU selection**                                                  | Synthetic 10-fixture validation only; physical dual-GPU validation deferred.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Crash injection drill**                                               | Synthetic harness only; do NOT deliberately SIGKILL expecting recovery.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **GPU thumbnail rendering** (Library)                                   | Deterministic byte-hash stub; real GPU thumbnails deferred post-MVP.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **MIDI binding-to-control assignment** (Wave 2.1 D.2)                   | Learn mode captures the message + persists to localStorage; binding it to a specific control id carries forward as a future-wave follow-up.                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **MIDI multi-message learn** (Wave 2.1 D.2)                             | Single-message MVP only; debounced multi-message capture (composite bindings) carries forward as a future-wave follow-up.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Top bar Camera + Record buttons** (Wave 2.1 B.2)                      | Visual stubs only; real wiring rides the Wave 1c-β camera follow-ups (per-platform `nokhwa` + Syphon `publish_syphon_output`).                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Perform preset save disk persistence** (Wave 2.4 PERF.C)              | Engine widened with `Command::PresetSave` for in-process snapshot capture; Cmd-click on a preset slot saves, click recalls. Settings-TOML disk persistence deferred.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **SnapBar slot labels disk persistence** (Wave 2.4 PERF.F)              | Right-click-rename persists custom labels through localStorage; engine snap state stays binary saved/unsaved.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Library favorites / recent / source filter** (Wave 2.5 LIB.B / LIB.C) | Frontend-only stores backed by localStorage; engine-side support intentionally deferred per the clean-room scene-write narrowing.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Perform Shuffle button** (Wave 2.1 A.4)                               | Engine has no shuffle command; the "Shuffle" button advances by +1 like Next (label parity with the bundle, no random ordering).                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Top bar FPS readout**                                                 | Placeholder pending ADR-011 rendering backend.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ## Wave 2.1 acceptance criteria
 
