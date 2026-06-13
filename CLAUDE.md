@@ -172,7 +172,7 @@ cpal; ADR-022); a device id/name binds that device (incl. an operator-installed
 BlackHole/Loopback). System-audio below the macOS 14.6 floor or on denied
 `NSAudioCaptureUsageDescription` consent degrades to the default input, never
 silent. Apply-on-restart only (live re-bind deferred). **cpal is a vendored
-`[patch.crates-io]` override at `third_party/cpal/`** (5 macOS-tap patches; see
+`[patch.crates-io]` override at `third_party/cpal/`** (7 macOS-tap patches; see
 `UPSTREAM-VERSION.md`). **macOS system-audio CAPTURE is fixed** — a direct
 `AudioDeviceCreateIOProcIDWithBlock` `IOProc` (no AUHAL; `objc2-core-audio`)
 replaced the AUHAL read stage that corrupted the stream (a 440 Hz sine returned a
@@ -292,7 +292,7 @@ chromaticity/
 │   └── ui-bridge/        # ts-rs IPC type generator (Rust → TypeScript bindings)
 ├── engine/               # runtime/, scene/, audio/, authoring/, observability/, render/, script/, entitlement/
 ├── integrations/         # osc-adapter/, midi-adapter/, camera-adapter/, syphon-adapter/
-├── third_party/          # vendored snapshots — lygia/ (Lygia v1.1.4 trial vendor) + Syphon-Framework/ (BSD-3-Clause clean-room) + hg_sdf/ (Mercury Demogroup MIT-elected) + cpal/ (Apache-2.0 0.17.1 + macOS global-tap patch, [patch.crates-io])
+├── third_party/          # vendored snapshots — lygia/ (Lygia v1.1.4 trial vendor) + Syphon-Framework/ (BSD-3-Clause clean-room) + hg_sdf/ (Mercury Demogroup MIT-elected) + cpal/ (Apache-2.0 0.17.1 + 7 macOS system-audio-tap patches per its UPSTREAM-VERSION.md — load-bearing: direct-IOProc read + OSStatus check, [patch.crates-io])
 ├── workspace-hack/       # cargo-hakari managed crate (at root by convention)
 ├── .config/hakari.toml   # cargo-hakari config; platforms mirror deny.toml graph.targets
 ├── src/                  # Svelte web root; may migrate under app/ui/ later
@@ -303,7 +303,7 @@ chromaticity/
 ├── release-eng/          # signing/notarization/staging-appcast stub scripts (cert-gated)
 ├── evidence-runs/        # evidence-run capture artifacts (per-row anchor bundles)
 ├── scripts/              # policy / CI shell helpers
-├── .github/workflows/    # rust, frontend, sbom, evidence-tag-lint, policy, labels
+├── .github/workflows/    # rust, frontend, sbom, evidence-tag-lint, policy, labels, release, macos-nightly
 ├── Cargo.toml            # workspace root (edition 2024, MSRV 1.85.0)
 ├── deny.toml             # cargo-deny advisories / licenses / bans / sources
 ├── lefthook.yml          # pre-commit / pre-push hooks
@@ -615,7 +615,8 @@ elements render as if a fully-activated license were installed until that lands.
 - **Risk register**: `docs/13-risk-register.md`.
 - **Clean-room / legal baseline**: `docs/29-cleanroom-legal-policy-baseline.md`.
 - **Scope-vocabulary source of truth**: `commitlint.config.cjs`.
-- **CI tree**: `.github/workflows/` (rust, frontend, sbom, evidence-tag-lint, policy).
+- **CI tree**: `.github/workflows/` (rust, frontend, sbom, evidence-tag-lint, policy,
+  labels, release, macos-nightly — the first five are the required-check workflows).
 
 ## When this file is wrong
 
