@@ -59,6 +59,7 @@ SPDX-License-Identifier = "CC-BY-4.0"
 path = [
   "dist/help/assets/javascripts/**",
   "dist/help/assets/stylesheets/**",
+  "dist/help/assets/images/favicon.png",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = [
@@ -205,6 +206,17 @@ path = "third_party/lygia/**"
 precedence = "override"
 SPDX-FileCopyrightText = "Patricio Gonzalez Vivo and Lygia contributors"
 SPDX-License-Identifier = "LicenseRef-Prosperity-3.0.0"
+
+# Mixbox shader ports bundled inside the upstream Lygia snapshot carry an
+# explicit Secret Weapons non-commercial copyright notice.
+[[annotations]]
+path = [
+  "third_party/lygia/color/mixBox.glsl",
+  "third_party/lygia/color/mixBox.hlsl",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2022 Secret Weapons"
+SPDX-License-Identifier = "LicenseRef-Mixbox-NonCommercial"
 
 # License text file: surface the SPDX identifier on the canonical text so
 # `reuse lint` does not flag it as missing coverage.

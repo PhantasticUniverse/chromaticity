@@ -130,7 +130,7 @@ impl SchedulerThreadHandle {
     }
 
     fn shutdown_inner(&mut self) {
-        self.shutdown.store(true, Ordering::Relaxed);
+        self.shutdown.store(true, Ordering::Release);
         if let Some(handle) = self.join.take() {
             // Bounded best-effort join. `JoinHandle::join` has no
             // timeout API on stable Rust; approximate by polling

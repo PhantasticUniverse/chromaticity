@@ -684,7 +684,7 @@ mod runtime_pins {
     use crate::frame::DEFAULT_SAMPLE_RATE_HZ;
     use crate::observability;
     use std::collections::VecDeque;
-    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     /// Sleep budget per polling step inside the test asserts. Tuned
     /// to the analyser hop cadence so the producer thread observes a
@@ -703,26 +703,21 @@ mod runtime_pins {
         let snapshot_handle = runtime.snapshot_handle();
         let handle = runtime.spawn();
 
-        // Let the producer thread observe a handful of frames.
-        thread::sleep(SETTLE_DURATION);
-
-        let snapshot = *snapshot_handle.lock().unwrap();
-        // Silent frames yield zero RMS / peak / bands; the BPM
-        // estimator over silent frames returns the slice-1 default
-        // (120.0) per `extract_uniform_snapshot`'s short-frame
-        // fallback.
+        // Let the producer thread observe frames until BPM settles to 120.0.
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let mut snapshot = *snapshot_handle.lock().unwrap();
+        while (snapshot.bpm - 120.0).abs() >= f32::EPSILON && Instant::now() < deadline {
+            thread::sleep(POLL_STEP);
+            snapshot = *snapshot_handle.lock().unwrap();
+        }
         assert_eq!(snapshot.rms, 0.0);
         assert_eq!(snapshot.peak, 0.0);
         for band in snapshot.fft_bands {
             assert_eq!(band, 0.0);
         }
-        // BPM is the median over the 8-frame ring of per-frame
-        // autocorrelation results on the 128-sample silent frame.
-        // The slice-1 short-frame fallback returns BPM_DEFAULT
-        // (120.0); the median of an all-120.0 ring is 120.0.
         assert!(
-            (snapshot.bpm - 120.0).abs() < f32::EPSILON || snapshot.bpm == 0.0,
-            "expected BPM at 120.0 silent-frame fallback or 0.0 pre-first-write, got {}",
+            (snapshot.bpm - 120.0).abs() < f32::EPSILON,
+            "expected BPM at 120.0 silent-frame fallback, got {}",
             snapshot.bpm,
         );
 
@@ -817,13 +812,13 @@ mod runtime_pins {
         let runtime = AudioRuntime::from_primary(primary, AudioRuntimeConfig::default());
         let shared = runtime.snapshot_handle();
 
-        // Poison the mutex from a side thread by panicking while
-        // holding the lock. The runtime's producer thread will
-        // observe the poison on its next write attempt and recover
-        // via `unwrap_or_else(|p| p.into_inner())`.
+        // Seed a non-zero sentinel before poisoning so recovery must actively
+        // overwrite it with the new silent-frame snapshot (not pass on no-op).
         let poison_target = Arc::clone(&shared);
         let poisoner = thread::spawn(move || {
-            let _guard = poison_target.lock().unwrap();
+            let mut guard = poison_target.lock().unwrap();
+            guard.rms = 0.77;
+            guard.peak = 0.88;
             panic!("intentional poison for runtime lock-poison recovery test");
         });
         // Wait for the panicking thread to drop the guard.
@@ -831,22 +826,20 @@ mod runtime_pins {
         assert!(shared.is_poisoned(), "expected mutex to be poisoned");
 
         // Now spawn the runtime; its first Ready outcome should
-        // recover the poison and write a fresh snapshot.
+        // recover the poison and overwrite the sentinel with a fresh snapshot.
         let handle = runtime.spawn();
-        thread::sleep(SETTLE_DURATION);
-
-        // After the runtime has had time to write, the snapshot is
-        // observable via `into_inner` on the poisoned guard. Either
-        // the runtime poisoned it again (won't, no panics) or the
-        // recovery wrote successfully — either way we can read the
-        // value.
-        let snapshot = match shared.lock() {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let mut snapshot = match shared.lock() {
             Ok(g) => *g,
             Err(p) => *p.into_inner(),
         };
-        // The recovery wrote a silent-frame snapshot; check the
-        // runtime didn't panic by confirming we can read the value.
-        // Concrete value: zero RMS / peak / bands.
+        while snapshot.rms != 0.0 && Instant::now() < deadline {
+            thread::sleep(POLL_STEP);
+            snapshot = match shared.lock() {
+                Ok(g) => *g,
+                Err(p) => *p.into_inner(),
+            };
+        }
         assert_eq!(snapshot.rms, 0.0);
         assert_eq!(snapshot.peak, 0.0);
 
@@ -928,22 +921,25 @@ mod runtime_pins {
         // AudioRuntime::new() takes when try_default_input() fails.
         // This pins the silent-fallback path's runnability without
         // depending on the test environment's cpal device state.
-        let observed_panic = Arc::new(AtomicBool::new(false));
         let runtime =
             AudioRuntime::from_primary(SilentSource::new(u32::MAX), AudioRuntimeConfig::default());
         let snapshot_handle = runtime.snapshot_handle();
         let handle = runtime.spawn();
 
-        thread::sleep(SETTLE_DURATION);
-
-        // Confirm the runtime is alive (no construction panic) and
-        // serving zero snapshots.
-        let snapshot = match snapshot_handle.lock() {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let mut snapshot = match snapshot_handle.lock() {
             Ok(g) => *g,
             Err(p) => *p.into_inner(),
         };
+        while (snapshot.bpm - 120.0).abs() >= f32::EPSILON && Instant::now() < deadline {
+            thread::sleep(POLL_STEP);
+            snapshot = match snapshot_handle.lock() {
+                Ok(g) => *g,
+                Err(p) => *p.into_inner(),
+            };
+        }
         assert_eq!(snapshot.rms, 0.0);
-        assert!(!observed_panic.load(Ordering::Relaxed));
+        assert!((snapshot.bpm - 120.0).abs() < f32::EPSILON);
 
         handle.shutdown();
     }

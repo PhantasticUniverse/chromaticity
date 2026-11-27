@@ -45,8 +45,8 @@ LICENSES/CC-BY-4.0.txt for the full CC-BY-4.0 text.
 Third-party material, when present, is governed by the license of its
 originating project. The license text for each such license appears under
 LICENSES/<SPDX-ID>.txt; attribution, origin URL, pinned commit SHA, and
-clean-room review outcome are recorded under
-third_party/<origin>/ATTRIBUTION.md per docs/43-development-standards.md
+clean-room review outcome are recorded under third_party/<origin>/
+(UPSTREAM-VERSION.md) and NOTICE.md per docs/43-development-standards.md
 Sec.10.3.
 
 THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR

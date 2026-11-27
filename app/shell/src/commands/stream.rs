@@ -753,50 +753,48 @@ pub fn start_twitch_stream_impl(
         let _ = std::thread::Builder::new()
             .name("chromaticity-ffmpeg-stderr".into())
             .spawn(move || {
+                let push_and_cap = |text: &str| {
+                    let scrubbed = secret_for_thread.redact_in_text(text);
+                    let mut guard = match tail_for_thread.lock() {
+                        Ok(g) => g,
+                        Err(p) => p.into_inner(),
+                    };
+                    guard.push_str(&scrubbed);
+                    if guard.len() > MAX_STDERR_CAPTURE_BYTES {
+                        let mut drain_to = guard.len() - MAX_STDERR_CAPTURE_BYTES;
+                        while !guard.is_char_boundary(drain_to) && drain_to < guard.len() {
+                            drain_to += 1;
+                        }
+                        guard.drain(..drain_to);
+                    }
+                };
                 // Buffer complete lines locally so a concurrent reader can
                 // never observe an unredacted half-key straddling a read chunk.
                 let mut pending = String::new();
                 let mut buf = [0u8; 1024];
+                let overlap_keep = secret_for_thread.expose_secret().len().saturating_sub(1);
                 loop {
                     match stderr.read(&mut buf) {
                         Ok(0) | Err(_) => {
                             if !pending.is_empty() {
-                                let scrubbed = secret_for_thread.redact_in_text(&pending);
-                                let mut guard = match tail_for_thread.lock() {
-                                    Ok(g) => g,
-                                    Err(p) => p.into_inner(),
-                                };
-                                guard.push_str(&scrubbed);
+                                push_and_cap(&pending);
                             }
                             break;
                         }
                         Ok(n) => {
                             pending.push_str(&String::from_utf8_lossy(&buf[..n]));
-                            if let Some(last_nl) = pending.rfind('\n') {
-                                let complete = pending.drain(..=last_nl).collect::<String>();
-                                let scrubbed = secret_for_thread.redact_in_text(&complete);
-                                let mut guard = match tail_for_thread.lock() {
-                                    Ok(g) => g,
-                                    Err(p) => p.into_inner(),
-                                };
-                                guard.push_str(&scrubbed);
-                                if guard.len() > MAX_STDERR_CAPTURE_BYTES {
-                                    let mut drain_to = guard.len() - MAX_STDERR_CAPTURE_BYTES;
-                                    while !guard.is_char_boundary(drain_to)
-                                        && drain_to < guard.len()
-                                    {
-                                        drain_to += 1;
-                                    }
-                                    guard.drain(..drain_to);
-                                }
+                            if let Some(last_sep) = pending.rfind(['\n', '\r']) {
+                                let complete = pending.drain(..=last_sep).collect::<String>();
+                                push_and_cap(&complete);
                             } else if pending.len() > MAX_STDERR_CAPTURE_BYTES {
-                                let scrubbed = secret_for_thread.redact_in_text(&pending);
-                                pending.clear();
-                                let mut guard = match tail_for_thread.lock() {
-                                    Ok(g) => g,
-                                    Err(p) => p.into_inner(),
-                                };
-                                guard.push_str(&scrubbed);
+                                // Retain trailing `secret.len() - 1` bytes so a key
+                                // straddling the overflow boundary is still redacted.
+                                let mut cut = pending.len().saturating_sub(overlap_keep);
+                                while cut > 0 && !pending.is_char_boundary(cut) {
+                                    cut -= 1;
+                                }
+                                let flush = pending.drain(..cut).collect::<String>();
+                                push_and_cap(&flush);
                             }
                         }
                     }

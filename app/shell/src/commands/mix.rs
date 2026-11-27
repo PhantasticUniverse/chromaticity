@@ -613,12 +613,15 @@ pub fn is_allowed_youtube_media_url(url: &str) -> bool {
     if let Some(port_str) = port_opt {
         if port_str.is_empty()
             || !port_str.bytes().all(|b| b.is_ascii_digit())
-            || port_str.parse::<u16>().is_err()
+            || !port_str.parse::<u16>().is_ok_and(|p| p > 0)
         {
             return false;
         }
     }
     if host_raw.is_empty()
+        || host_raw.starts_with('.')
+        || host_raw.ends_with('.')
+        || host_raw.contains("..")
         || !host_raw
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
@@ -731,6 +734,19 @@ pub fn parse_range_header(header_value: &str) -> Option<(u64, Option<u64>)> {
     Some((start, end))
 }
 
+/// Maximum allowlisted `3xx` CDN redirect hops followed for `googlevideo.com`.
+const YOUTUBE_PROXY_MAX_REDIRECTS: usize = 3;
+
+/// Parse an HTTP status code from a status line like `HTTP/1.1 206 Partial Content` or `HTTP/2 302`.
+fn parse_http_status_code(status_line: &str) -> Option<u16> {
+    let mut parts = status_line.split_whitespace();
+    let proto = parts.next()?;
+    if !proto.starts_with("HTTP/") {
+        return None;
+    }
+    parts.next()?.parse::<u16>().ok()
+}
+
 fn probe_upstream_content_length(url: &str) -> Result<u64, String> {
     if !is_allowed_youtube_media_url(url) {
         return Err("upstream YouTube media URL host is not allowlisted".to_string());
@@ -738,38 +754,62 @@ fn probe_upstream_content_length(url: &str) -> Result<u64, String> {
     if let Some(clen) = parse_clen_from_url(url) {
         return Ok(clen);
     }
-    let output = Command::new(resolve_curl_binary())
-        .args([
-            "-s",
-            "--max-redirs",
-            "0",
-            "--proto",
-            "=https",
-            "--max-time",
-            "15",
-            "-D",
-            "-",
-            "-o",
-            null_device_path(),
-            "-r",
-            "0-0",
-            "--",
-            url,
-        ])
-        .output()
-        .map_err(|err| format!("failed to probe stream length via curl: {err}"))?;
-    let headers = String::from_utf8_lossy(&output.stdout);
-    for line in headers.lines().rev() {
-        let lower = line.to_ascii_lowercase();
-        if lower.starts_with("content-range:") {
-            if let Some((_, total_str)) = line.rsplit_once('/') {
-                if let Ok(total) = total_str.trim().parse::<u64>() {
-                    if total > 0 {
-                        return Ok(total);
+    let mut current_url = url.to_string();
+    for _ in 0..=YOUTUBE_PROXY_MAX_REDIRECTS {
+        let output = Command::new(resolve_curl_binary())
+            .args([
+                "-s",
+                "-g",
+                "--max-redirs",
+                "0",
+                "--proto",
+                "=https",
+                "--max-time",
+                "15",
+                "-D",
+                "-",
+                "-o",
+                null_device_path(),
+                "-r",
+                "0-0",
+                "--",
+                &current_url,
+            ])
+            .output()
+            .map_err(|err| format!("failed to probe stream length via curl: {err}"))?;
+        let headers = String::from_utf8_lossy(&output.stdout);
+        let status = headers.lines().next().and_then(parse_http_status_code);
+        if matches!(status, Some(301 | 302 | 303 | 307 | 308)) {
+            let location = headers
+                .lines()
+                .find_map(|line| {
+                    let (k, v) = line.split_once(':')?;
+                    if k.trim().eq_ignore_ascii_case("location") {
+                        Some(v.trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| "upstream redirect missing Location header".to_string())?;
+            if !is_allowed_youtube_media_url(&location) {
+                return Err("upstream redirect target host is not allowlisted".to_string());
+            }
+            current_url = location;
+            continue;
+        }
+        for line in headers.lines().rev() {
+            let lower = line.to_ascii_lowercase();
+            if lower.starts_with("content-range:") {
+                if let Some((_, total_str)) = line.rsplit_once('/') {
+                    if let Ok(total) = total_str.trim().parse::<u64>() {
+                        if total > 0 {
+                            return Ok(total);
+                        }
                     }
                 }
             }
         }
+        break;
     }
     Err("unable to determine YouTube stream content length".to_string())
 }
@@ -931,51 +971,52 @@ fn handle_youtube_proxy_connection(
 
     let range_arg = format!("{req_start}-{fetch_end}");
     let expected_len = fetch_end.saturating_sub(req_start).saturating_add(1);
-    let mut child = match Command::new(resolve_curl_binary())
-        .args([
-            "-s",
-            "--max-redirs",
-            "0",
-            "--proto",
-            "=https",
-            "--fail",
-            "--max-time",
-            "25",
-            "-r",
-            &range_arg,
-            "--",
-            &entry.upstream_url,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(_) => {
+    let mut current_url = entry.upstream_url.clone();
+
+    for _ in 0..=YOUTUBE_PROXY_MAX_REDIRECTS {
+        let mut child = match Command::new(resolve_curl_binary())
+            .args([
+                "-s",
+                "-g",
+                "-i",
+                "--max-redirs",
+                "0",
+                "--proto",
+                "=https",
+                "--max-time",
+                "25",
+                "-r",
+                &range_arg,
+                "--",
+                &current_url,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(_) => {
+                let resp = format!(
+                    "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = stream.write_all(resp.as_bytes());
+                return;
+            }
+        };
+
+        let Some(stdout) = child.stdout.take() else {
+            let _ = child.kill();
+            let _ = child.wait();
             let resp = format!(
                 "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
             );
             let _ = stream.write_all(resp.as_bytes());
             return;
-        }
-    };
+        };
 
-    let Some(mut stdout) = child.stdout.take() else {
-        let _ = child.kill();
-        let _ = child.wait();
-        let resp = format!(
-            "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
-        );
-        let _ = stream.write_all(resp.as_bytes());
-        return;
-    };
-
-    // Read the first chunk BEFORE writing HTTP 206 so expired/403 upstream URLs
-    // return 502 Bad Gateway instead of a truncated 206 response.
-    let mut first_buf = vec![0u8; 16 * 1024];
-    let first_n = match stdout.read(&mut first_buf) {
-        Ok(n) if n > 0 => n,
-        _ => {
+        let mut upstream = BufReader::new(stdout);
+        let mut status_line = String::new();
+        if upstream.read_line(&mut status_line).unwrap_or(0) == 0 {
             let _ = child.kill();
             let _ = child.wait();
             let resp = format!(
@@ -984,22 +1025,91 @@ fn handle_youtube_proxy_connection(
             let _ = stream.write_all(resp.as_bytes());
             return;
         }
-    };
+        let status_code = parse_http_status_code(&status_line);
+        let mut location: Option<String> = None;
+        let mut hdr_count = 0usize;
+        loop {
+            if hdr_count >= YOUTUBE_PROXY_MAX_HEADER_LINES {
+                break;
+            }
+            hdr_count += 1;
+            let mut hline = String::new();
+            match upstream.read_line(&mut hline) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    let trimmed = hline.trim();
+                    if trimmed.is_empty() {
+                        break;
+                    }
+                    if let Some((k, v)) = trimmed.split_once(':') {
+                        if k.trim().eq_ignore_ascii_case("location") {
+                            location = Some(v.trim().to_string());
+                        }
+                    }
+                }
+            }
+        }
 
-    let header = format!(
-        "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {req_start}-{fetch_end}/{}\r\nContent-Length: {expected_len}\r\n{cors_hdr}Cache-Control: no-store\r\nConnection: close\r\n\r\n",
-        entry.total_len,
-    );
-    let first_write = first_n.min(expected_len as usize);
-    let remaining = expected_len.saturating_sub(first_write as u64);
-    if stream.write_all(header.as_bytes()).is_ok()
-        && stream.write_all(&first_buf[..first_write]).is_ok()
-        && remaining > 0
-    {
-        let _ = std::io::copy(&mut stdout.take(remaining), &mut stream);
+        // Follow allowlisted CDN edge redirects (up to 3 hops) without opening SSRF.
+        if matches!(status_code, Some(301 | 302 | 303 | 307 | 308)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            if let Some(loc) = location.filter(|u| is_allowed_youtube_media_url(u)) {
+                current_url = loc;
+                continue;
+            }
+            let resp = format!(
+                "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            return;
+        }
+
+        if !matches!(status_code, Some(200 | 206)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let resp = format!(
+                "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            return;
+        }
+
+        let mut first_buf = vec![0u8; 16 * 1024];
+        let first_n = match upstream.read(&mut first_buf) {
+            Ok(n) if n > 0 => n,
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let resp = format!(
+                    "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = stream.write_all(resp.as_bytes());
+                return;
+            }
+        };
+
+        let header = format!(
+            "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {req_start}-{fetch_end}/{}\r\nContent-Length: {expected_len}\r\n{cors_hdr}Cache-Control: no-store\r\nConnection: close\r\n\r\n",
+            entry.total_len,
+        );
+        let first_write = first_n.min(expected_len as usize);
+        let remaining = expected_len.saturating_sub(first_write as u64);
+        if stream.write_all(header.as_bytes()).is_ok()
+            && stream.write_all(&first_buf[..first_write]).is_ok()
+            && remaining > 0
+        {
+            let _ = std::io::copy(&mut upstream.take(remaining), &mut stream);
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        return;
     }
-    let _ = child.kill();
-    let _ = child.wait();
+
+    let resp = format!(
+        "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    let _ = stream.write_all(resp.as_bytes());
 }
 
 fn ensure_youtube_proxy() -> Result<&'static YouTubeProxyServer, String> {
@@ -1082,6 +1192,8 @@ pub fn resolve_youtube_stream_impl(video_id: &str) -> Result<YouTubeStreamDto, S
             "--no-update",
             "--no-playlist",
             "--no-warnings",
+            "--socket-timeout",
+            "15",
             "-f",
             "bestvideo[ext=mp4][vcodec^=avc1][height<=720]/bestvideo[ext=mp4][vcodec^=avc1][height<=1080]/best[ext=mp4][vcodec^=avc1][height<=720]/best[ext=mp4][height<=720]/best",
             "--get-title",
