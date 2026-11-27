@@ -432,26 +432,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   });
 
-  async function browseMediaFolder() {
+  async function browseMediaFolder(replacePath?: string) {
     const path = await pickFolder('Pick a Media folder');
-    if (path) {
-      settingsStore.update({
-        storage: {
-          media_folders: [...settingsStore.snapshot.storage.media_folders, path],
-        },
-      });
-    }
+    if (!path) return;
+    const current = settingsStore.snapshot.storage.media_folders;
+    const next =
+      replacePath !== undefined
+        ? current.map((p) => (p === replacePath ? path : p))
+        : [...current, path];
+    const deduped = Array.from(new Set(next));
+    settingsStore.update({ storage: { media_folders: deduped } });
   }
 
-  async function browseSceneFolder() {
+  async function browseSceneFolder(replacePath?: string) {
     const path = await pickFolder('Pick a Custom scene folder');
-    if (path) {
-      settingsStore.update({
-        storage: {
-          scene_folders: [...settingsStore.snapshot.storage.scene_folders, path],
-        },
-      });
-    }
+    if (!path) return;
+    const current = settingsStore.snapshot.storage.scene_folders;
+    const next =
+      replacePath !== undefined
+        ? current.map((p) => (p === replacePath ? path : p))
+        : [...current, path];
+    const deduped = Array.from(new Set(next));
+    settingsStore.update({ storage: { scene_folders: deduped } });
   }
 
   async function browseBackupFolder() {
@@ -559,10 +561,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   });
 
   function setManualBpm() {
-    // Clamp the operator-entered BPM into the canonical 20..=300
-    // range, then write through settingsStore so it persists across
-    // restart.
-    const raw = Number.isFinite(tempoSnapshot.manual_bpm) ? tempoSnapshot.manual_bpm : 120;
+    // Prefer active tap-tempo reading if present; clamp into canonical 20..=300.
+    const candidate = tappedBpm ?? tempoSnapshot.manual_bpm;
+    const raw = Number.isFinite(candidate) ? candidate : 120;
     const clamped = Math.min(300, Math.max(20, Math.round(raw * 10) / 10));
     settingsStore.update({ tempo: { manual_bpm: clamped } });
   }
@@ -773,7 +774,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               silent={meterSilent}
               bars={AUDIO_METER_BARS}
               showReadout
-              onResetPeak={() => peakHold.reset()}
+              onResetPeak={() => {
+                peakHold.reset();
+                meterPeakDb = meterLevelDb;
+              }}
               ariaLabel="Audio input monitor"
             />
           </div>
@@ -834,8 +838,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               value={graphicsSnapshot.custom_width}
               oninput={(e) => {
                 const parsed = Number.parseInt(e.currentTarget.value, 10);
-                if (Number.isFinite(parsed) && parsed > 0) {
-                  settingsStore.update({ graphics: { custom_width: parsed } });
+                if (Number.isFinite(parsed) && parsed >= 320 && parsed <= 7680) {
+                  settingsStore.update({ graphics: { custom_width: parsed - (parsed % 2) } });
                 }
               }}
               disabled={!graphicsSnapshot.custom_resolution_enabled}
@@ -852,8 +856,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               value={graphicsSnapshot.custom_height}
               oninput={(e) => {
                 const parsed = Number.parseInt(e.currentTarget.value, 10);
-                if (Number.isFinite(parsed) && parsed > 0) {
-                  settingsStore.update({ graphics: { custom_height: parsed } });
+                if (Number.isFinite(parsed) && parsed >= 240 && parsed <= 4320) {
+                  settingsStore.update({ graphics: { custom_height: parsed - (parsed % 2) } });
                 }
               }}
               disabled={!graphicsSnapshot.custom_resolution_enabled}
@@ -1158,7 +1162,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <button
             type="button"
             class="settings__btn settings__btn--ghost"
-            onclick={browseMediaFolder}
+            onclick={() => void browseMediaFolder()}
             aria-label="Add media folder"
           >
             <Icon name="plus" size={12} /> Add Folder
@@ -1175,7 +1179,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 <button
                   type="button"
                   class="settings__btn settings__btn--ghost"
-                  onclick={browseMediaFolder}
+                  onclick={() => void browseMediaFolder(folder.path)}
                   aria-label="Browse media folder"
                 >
                   Browse
@@ -1200,7 +1204,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <button
             type="button"
             class="settings__btn settings__btn--ghost"
-            onclick={browseSceneFolder}
+            onclick={() => void browseSceneFolder()}
             aria-label="Add scene folder"
           >
             <Icon name="plus" size={12} /> Add Folder
@@ -1217,7 +1221,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 <button
                   type="button"
                   class="settings__btn settings__btn--ghost"
-                  onclick={browseSceneFolder}
+                  onclick={() => void browseSceneFolder(folder.path)}
                   aria-label="Browse scene folder"
                 >
                   Browse
@@ -1368,7 +1372,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               value={tempoSnapshot.manual_bpm}
               oninput={(e) => {
                 const parsed = Number.parseFloat(e.currentTarget.value);
-                if (Number.isFinite(parsed)) {
+                if (Number.isFinite(parsed) && parsed >= 20 && parsed <= 300) {
                   settingsStore.update({ tempo: { manual_bpm: parsed } });
                 }
               }}
@@ -1391,7 +1395,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               value={tempoSnapshot.link_offset_ms}
               oninput={(e) => {
                 const parsed = Number.parseFloat(e.currentTarget.value);
-                if (Number.isFinite(parsed)) {
+                if (Number.isFinite(parsed) && parsed >= -200 && parsed <= 200) {
                   settingsStore.update({ tempo: { link_offset_ms: parsed } });
                 }
               }}

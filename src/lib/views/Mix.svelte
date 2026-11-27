@@ -576,9 +576,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         const layerEl = sourceHostEl.querySelector<HTMLElement>(
           `[data-stage-layer-id="${layer.id}"]`,
         );
-        const mediaEl = layerEl?.querySelector<
-          HTMLCanvasElement | HTMLVideoElement | HTMLImageElement
-        >('canvas.mix__keyed-canvas, canvas, video, img');
+        // Query in explicit priority order (DOM querySelector with commas
+        // returns first match in document tree order, which would wrongly pick
+        // raw unkeyed <video> ahead of <canvas class="mix__keyed-canvas">).
+        const mediaEl =
+          layerEl?.querySelector<HTMLCanvasElement>('canvas.mix__keyed-canvas') ??
+          layerEl?.querySelector<HTMLCanvasElement>('canvas') ??
+          layerEl?.querySelector<HTMLVideoElement>('video') ??
+          layerEl?.querySelector<HTMLImageElement>('img') ??
+          null;
         if (!mediaEl) continue;
         if (mediaEl instanceof HTMLVideoElement && mediaEl.readyState < 2) continue;
 
@@ -642,7 +648,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   .then((pushedCount) => {
                     if (disposed || !streamStatus.is_live) return;
                     if (pushedCount === null) {
-                      void getStreamStatus().then((latest) => {
+                      return getStreamStatus().then((latest) => {
                         if (disposed) return;
                         if (latest === null || !latest.is_live) {
                           stopStreamCaptureLoop();
@@ -654,13 +660,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                           streamError =
                             latest?.last_error ??
                             'Twitch stream disconnected (encoder pipe closed).';
+                          twitchDrawerOpen = true;
                         }
                       });
-                      return;
                     }
                     if (pushedCount <= 2 || pushedCount % 15 === 0) {
                       streamStatus = { ...streamStatus, frames_pushed: pushedCount };
                     }
+                    return;
                   })
                   .finally(() => {
                     framePushInFlight = false;
@@ -971,28 +978,39 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     smoothedMeterPeaks = nextPeaks;
   }
 
+  function ensureMeterDecayLoop(): void {
+    if (disposed || meterRafId !== null || typeof requestAnimationFrame !== 'function') return;
+    const decayTick = (now: number): void => {
+      meterRafId = null;
+      if (disposed) return;
+      stepAllMeters(now);
+      const anyActive = Object.values(meterBallistics).some(
+        (st) => st.level > 0.0005 || st.peak > 0.0005,
+      );
+      if (anyActive) {
+        meterRafId = requestAnimationFrame(decayTick);
+      } else {
+        lastMeterTickMs = 0;
+      }
+    };
+    meterRafId = requestAnimationFrame(decayTick);
+  }
+
   $effect(() => {
     const _snap = liveAudioSnap;
     const _channels = videoMixerStore.audioChannels;
     void _snap;
     void _channels;
     const now = typeof performance !== 'undefined' ? performance.now() : 0;
-    stepAllMeters(now);
-  });
-
-  onMount(() => {
-    if (typeof requestAnimationFrame !== 'function') return;
-    const decayTick = (now: number): void => {
-      if (disposed) return;
+    if (meterRafId === null) {
+      stepAllMeters(now);
       const anyActive = Object.values(meterBallistics).some(
-        (st) => st.level > 0.001 || st.peak > 0.001,
+        (st) => st.level > 0.0005 || st.peak > 0.0005,
       );
       if (anyActive) {
-        stepAllMeters(now);
+        ensureMeterDecayLoop();
       }
-      meterRafId = requestAnimationFrame(decayTick);
-    };
-    meterRafId = requestAnimationFrame(decayTick);
+    }
   });
 
   function liveChannelMeterLevel(channel: {
@@ -2087,30 +2105,48 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                     <div class="mix__layer-visual">
                       <div class="mix__layer-media" style={layerMediaStyle(layer)}>
                         {#if layer.kind === 'webcam' && webcamStream !== null}
+                          {@const progKeying = resolveEffectiveKeying(layer)}
                           <video
                             class="mix__live-video"
+                            class:mix__live-video--key-source={progKeying.active}
                             autoplay
                             playsinline
                             muted
                             use:attachStream={webcamStream}
                           ></video>
+                          {#if progKeying.active}
+                            <canvas class="mix__keyed-canvas" use:keyedVideoCanvas={progKeying}
+                            ></canvas>
+                          {/if}
                         {:else if layer.kind === 'screen' && screenStream !== null}
+                          {@const progKeying = resolveEffectiveKeying(layer)}
                           <video
                             class="mix__live-video"
+                            class:mix__live-video--key-source={progKeying.active}
                             autoplay
                             playsinline
                             muted
                             use:attachStream={screenStream}
                           ></video>
+                          {#if progKeying.active}
+                            <canvas class="mix__keyed-canvas" use:keyedVideoCanvas={progKeying}
+                            ></canvas>
+                          {/if}
                         {:else if layer.kind === 'media' && localMediaUrl !== null && localMediaKind === 'video'}
+                          {@const progKeying = resolveEffectiveKeying(layer)}
                           <video
                             class="mix__live-video"
+                            class:mix__live-video--key-source={progKeying.active}
                             src={localMediaUrl}
                             autoplay
                             loop
                             playsinline
                             muted
                           ></video>
+                          {#if progKeying.active}
+                            <canvas class="mix__keyed-canvas" use:keyedVideoCanvas={progKeying}
+                            ></canvas>
+                          {/if}
                         {:else if layer.kind === 'media' && localMediaUrl !== null && localMediaKind === 'image'}
                           <img
                             class="mix__live-video"
@@ -2118,14 +2154,27 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                             alt={localMediaName ?? 'Program media'}
                           />
                         {:else if layer.kind === 'youtube' && youtubeMachine.kind === 'ready' && youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
+                          {@const progKeying = resolveEffectiveKeying(layer)}
                           <video
-                            class="mix__live-video mix__live-youtube--passthrough"
+                            class="mix__live-video mix__live-video--key-source mix__live-youtube--passthrough"
                             src={youtubeNativeStream.stream_url}
+                            crossorigin={youtubeNativeStream.stream_url.startsWith(
+                              'http://127.0.0.1:',
+                            )
+                              ? 'anonymous'
+                              : undefined}
                             autoplay
                             loop
                             playsinline
                             muted
                           ></video>
+                          <canvas class="mix__keyed-canvas" use:keyedVideoCanvas={progKeying}
+                          ></canvas>
+                        {:else if layer.kind === 'text'}
+                          <div class="mix__visual-text">
+                            <span class="mix__visual-text-eyebrow">CHROMATICITY · LIVE</span>
+                            <span class="mix__visual-text-title">{layer.name}</span>
+                          </div>
                         {:else if layer.kind === 'youtube' && youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
                           <iframe
                             class="mix__live-youtube mix__live-youtube--passthrough"

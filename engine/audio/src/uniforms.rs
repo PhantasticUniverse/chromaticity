@@ -1101,20 +1101,30 @@ mod uniforms_drift_pins {
 
     #[test]
     fn non_finite_samples_never_poison_rms_peak_fft_or_bpm() {
-        let mut samples = vec![0.25_f32; FFT_WINDOW_SIZE];
-        samples[10] = f32::NAN;
-        samples[20] = f32::INFINITY;
-        samples[30] = f32::NEG_INFINITY;
-        let frame = AudioFrame::new(48_000, 1, samples);
+        // Stereo buffer longer than `analysis_window_samples(1_000)` (1,201 mono
+        // frames) so BOTH multi-channel `mono_mix` AND `compute_bpm_autocorr`
+        // FFT actually execute on NaN / ±Inf samples.
+        let sr = 1_000;
+        let mono_frames = analysis_window_samples(sr) + 64;
+        let mut stereo = vec![0.25_f32; mono_frames * 2];
+        stereo[20] = f32::NAN;
+        stereo[41] = f32::INFINITY;
+        stereo[60] = f32::NEG_INFINITY;
+        let frame = AudioFrame::new(sr, 2, stereo);
         let snap = extract_uniform_snapshot(&frame);
+        assert_eq!(snap.bpm_availability, AudioAxisAvailability::Ready);
         assert!(snap.rms.is_finite() && snap.rms > 0.0 && snap.rms <= 1.0);
         assert!(snap.peak.is_finite() && (snap.peak - 0.25).abs() < 1e-5);
-        assert!(snap.bpm.is_finite());
+        assert!(snap.bpm.is_finite() && snap.bpm >= BPM_CLAMP_MIN && snap.bpm <= BPM_CLAMP_MAX);
         assert!(
             snap.fft_bands
                 .iter()
                 .all(|b| b.is_finite() && *b >= 0.0 && *b <= 1.0)
         );
+
+        let live =
+            super::extract_live_metering_snapshot(&frame, f32::NAN, AudioAxisAvailability::Ready);
+        assert_eq!(live.bpm, BPM_DEFAULT);
     }
 
     #[test]

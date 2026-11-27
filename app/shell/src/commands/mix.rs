@@ -1543,7 +1543,7 @@ mod mix_ipc_tests {
         assert_eq!(parse_range_header("bytes=4096-"), Some((4096, None)));
         assert_eq!(parse_range_header("items=0-5"), None);
 
-        // SSRF & origin allowlists
+        // SSRF & origin allowlists (including backslash authority & spoofed-port attacks)
         assert!(is_allowed_youtube_media_url(
             "https://rr1---sn-abc.googlevideo.com/videoplayback"
         ));
@@ -1557,9 +1557,14 @@ mod mix_ipc_tests {
         assert!(!is_allowed_youtube_media_url(
             "https://evil.com@googlevideo.com/x"
         ));
+        assert!(!is_allowed_youtube_media_url(
+            "https://attacker.example\\.googlevideo.com/x"
+        ));
         assert!(is_allowed_proxy_origin("tauri://localhost"));
         assert!(is_allowed_proxy_origin("http://localhost:1420"));
         assert!(!is_allowed_proxy_origin("https://evil.example.com"));
+        assert!(!is_allowed_proxy_origin("http://localhost:80.evil.com"));
+        assert!(!is_allowed_proxy_origin("http://127.0.0.1:evil.com"));
 
         // Loopback TCP protocol invariants (403 bad token, 405 POST, 404 missing, 200 HEAD, 416 OOB)
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
@@ -1621,5 +1626,16 @@ mod mix_ipc_tests {
             "GET /video/testtoken1234/dQw4w9WgXcQ.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\nRange: bytes=2048-\r\n\r\n",
         );
         assert!(r416.starts_with("HTTP/1.1 416 Range Not Satisfiable"));
+
+        let r416_inv = send_req(
+            "GET /video/testtoken1234/dQw4w9WgXcQ.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\nRange: bytes=500-100\r\n\r\n",
+        );
+        assert!(r416_inv.starts_with("HTTP/1.1 416 Range Not Satisfiable"));
+
+        let r204 = send_req(
+            "OPTIONS /video/testtoken1234/dQw4w9WgXcQ.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://localhost:1420\r\n\r\n",
+        );
+        assert!(r204.starts_with("HTTP/1.1 204 No Content"));
+        assert!(r204.contains("Access-Control-Allow-Origin: http://localhost:1420"));
     }
 }

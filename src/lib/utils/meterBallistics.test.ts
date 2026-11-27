@@ -17,6 +17,8 @@ describe('meterBallistics', () => {
     expect(linearToMeterRatio(0)).toBe(0);
     expect(linearToMeterRatio(-0.5)).toBe(0);
     expect(linearToMeterRatio(Number.NaN)).toBe(0);
+    expect(linearToMeterRatio(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(linearToMeterRatio(Number.NEGATIVE_INFINITY)).toBe(0);
     expect(linearToMeterRatio(0.001)).toBe(0);
     // -20 dBFS (0.1 linear) => (-20 + 60) / 60 = 0.6667
     expect(linearToMeterRatio(0.1)).toBeCloseTo(2 / 3, 3);
@@ -30,7 +32,8 @@ describe('meterBallistics', () => {
   it('attacks quickly, holds peak for 800ms, and decays smoothly on silence', () => {
     const t0 = 1000;
     const attacked = stepMeterBallistics(undefined, 0.9, 0.016, t0);
-    expect(attacked.level).toBeCloseTo(0.9 * 0.85, 5);
+    const expectedAlpha = 1 - Math.exp(-0.016 / 0.012);
+    expect(attacked.level).toBeCloseTo(0.9 * expectedAlpha, 5);
     expect(attacked.peak).toBeCloseTo(attacked.level, 5);
     expect(attacked.peakHoldUntilMs).toBe(t0 + METER_PEAK_HOLD_MS);
 
@@ -44,6 +47,12 @@ describe('meterBallistics', () => {
     const released = stepMeterBallistics(held, 0, dt, t0 + 900);
     expect(released.peak).toBeLessThan(held.peak);
     expect(released.level).toBeLessThan(held.level);
+
+    // Non-finite targets and dt clamp safely without producing NaN
+    const safe = stepMeterBallistics(released, Number.NaN, Number.NaN, t0 + 950);
+    expect(Number.isFinite(safe.level)).toBe(true);
+    expect(Number.isFinite(safe.peak)).toBe(true);
+    expect(safe.peak).toBeGreaterThanOrEqual(safe.level);
   });
 });
 
@@ -110,6 +119,7 @@ describe('buildLayerCssFilter', () => {
     expect(quiet).toContain('hue-rotate(45deg)');
     expect(quiet).toContain('blur(2px)');
     expect(quiet).toContain('invert(1)');
+    expect(loud).toContain('drop-shadow(0 0 22px rgba(196, 255, 61, 0.55))');
     expect(loud).not.toBe(quiet);
   });
 });

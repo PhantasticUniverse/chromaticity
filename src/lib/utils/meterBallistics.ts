@@ -50,8 +50,9 @@ export function stepMeterBallistics(
 
   let nextLevel: number;
   if (safeTarget >= current.level) {
-    // Fast attack (~1–2 frames) so kick/snare transients punch immediately.
-    nextLevel = current.level + (safeTarget - current.level) * 0.85;
+    // Frame-rate-independent fast attack (~12 ms time constant) so transients punch immediately.
+    const attackAlpha = 1 - Math.exp(-safeDt / 0.012);
+    nextLevel = current.level + (safeTarget - current.level) * attackAlpha;
   } else {
     nextLevel = Math.max(safeTarget, current.level - releaseStep);
   }
