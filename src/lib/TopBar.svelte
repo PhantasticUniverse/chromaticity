@@ -249,6 +249,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // populates).
   const ROUTE_TITLES: Readonly<Record<RouteName, string>> = {
     perform: 'Perform',
+    mix: 'Mix',
     library: 'Library',
     author: 'Author',
     'audio-uniforms': 'Audio Uniforms',

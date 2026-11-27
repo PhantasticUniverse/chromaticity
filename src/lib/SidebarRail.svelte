@@ -59,6 +59,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // the same file's RailIcon usages (lines 176-177).
   const NAV_TOP: readonly (NavEntry | DisabledEntry)[] = [
     { route: 'perform', label: 'Perform', icon: 'perform' },
+    { route: 'mix', label: 'Mix', icon: 'layers' },
     { route: 'library', label: 'Library', icon: 'library' },
     { route: 'author', label: 'Author', icon: 'edit' },
     { route: 'audio-uniforms', label: 'Audio', icon: 'audio' },

@@ -16,6 +16,7 @@ import { routeStore, type RouteName } from './route.svelte';
 
 const ALL_ROUTES: readonly RouteName[] = [
   'perform',
+  'mix',
   'library',
   'author',
   'audio-uniforms',

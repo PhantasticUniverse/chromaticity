@@ -127,6 +127,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import Library from './views/Library.svelte';
   import License from './views/License.svelte';
   import MIDI from './views/MIDI.svelte';
+  import Mix from './views/Mix.svelte';
   import Osc from './views/Osc.svelte';
   import Patch from './views/Patch.svelte';
   import Perform from './views/Perform.svelte';
@@ -260,11 +261,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <div
       class="app-shell__view"
       class:app-shell__view--perform={routeStore.current === 'perform' ||
+        routeStore.current === 'mix' ||
         routeStore.current === 'author' ||
         routeStore.current === 'patch'}
     >
       {#if routeStore.current === 'perform'}
         <Perform />
+      {:else if routeStore.current === 'mix'}
+        <Mix />
       {:else if routeStore.current === 'library'}
         <Library />
       {:else if routeStore.current === 'author'}

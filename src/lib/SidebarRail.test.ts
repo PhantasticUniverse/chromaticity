@@ -30,11 +30,11 @@ describe('SidebarRail shell component', () => {
     expect(nav?.getAttribute('aria-label')).toBe('Primary navigation');
   });
 
-  it('renders 13 top-section entries plus 2 bottom-section entries', () => {
+  it('renders 14 top-section entries plus 2 bottom-section entries', () => {
     const { container } = render(SidebarRail);
     const top = container.querySelectorAll('.sidebar-rail__section--top > li');
     const bottom = container.querySelectorAll('.sidebar-rail__section--bottom > li');
-    expect(top.length).toBe(13);
+    expect(top.length).toBe(14);
     expect(bottom.length).toBe(2);
   });
 
@@ -59,6 +59,7 @@ describe('SidebarRail shell component', () => {
   it('routes every wired top-section entry through routeStore.set on click', async () => {
     const { getByTitle } = render(SidebarRail);
     const cases: Array<{ label: string; route: string }> = [
+      { label: 'Mix', route: 'mix' },
       { label: 'Library', route: 'library' },
       { label: 'Author', route: 'author' },
       { label: 'Audio', route: 'audio-uniforms' },
@@ -105,7 +106,7 @@ describe('SidebarRail shell component', () => {
   it('renders an Icon SVG inside every nav button glyph wrapper', () => {
     const { container } = render(SidebarRail);
     const glyphs = container.querySelectorAll('.sidebar-rail__glyph');
-    expect(glyphs.length).toBe(15); // 13 top + 2 bottom
+    expect(glyphs.length).toBe(16); // 14 top + 2 bottom
     for (const glyph of glyphs) {
       const svg = glyph.querySelector('svg');
       expect(svg).not.toBeNull();
@@ -121,6 +122,7 @@ describe('SidebarRail shell component', () => {
     ).map((n) => n.textContent);
     expect(labels).toEqual([
       'Perform',
+      'Mix',
       'Library',
       'Author',
       'Audio',

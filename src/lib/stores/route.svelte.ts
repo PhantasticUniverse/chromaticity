@@ -54,6 +54,7 @@
 
 export type RouteName =
   | 'perform'
+  | 'mix'
   | 'library'
   | 'author'
   | 'audio-uniforms'
