@@ -7,7 +7,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   import {
     getGpuCostTelemetry,
-    resolveYouTubeStream,
+    resolveYouTubeStreamDetailed,
     setAdaptiveScaleEnabled,
     type GpuCostTelemetryDto,
     type YouTubeStreamDto,
@@ -110,6 +110,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let youtubeInteractive = $state(false);
   let youtubeNativeStream = $state<YouTubeStreamDto | null>(null);
   let youtubeResolving = $state(false);
+  let youtubeResolveError = $state<string | null>(null);
   let youtubeResolveSeq = 0;
   let twitchDrawerOpen = $state(false);
   let twitchIngestUrl = $state(DEFAULT_TWITCH_INGEST_URL);
@@ -205,24 +206,35 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     };
   }
 
-  function handleLoadYouTube(event: SubmitEvent): void {
-    event.preventDefault();
-    const next = youtubeLayerStore.load(youtubeUrlInput);
+  function triggerYouTubeNativeResolve(videoId: string): void {
     youtubeResolveSeq += 1;
     const reqId = youtubeResolveSeq;
     youtubeNativeStream = null;
+    youtubeResolveError = null;
+    youtubeResolving = true;
+    void resolveYouTubeStreamDetailed(videoId).then((result) => {
+      if (disposed || reqId !== youtubeResolveSeq) return;
+      youtubeResolving = false;
+      if (result.stream !== null) {
+        youtubeNativeStream = result.stream;
+        youtubeResolveError = null;
+      } else if (result.error !== null) {
+        youtubeResolveError = result.error;
+      }
+    });
+  }
+
+  function handleLoadYouTube(event: SubmitEvent): void {
+    event.preventDefault();
+    const next = youtubeLayerStore.load(youtubeUrlInput);
     if (next.kind !== 'ready') {
+      youtubeResolveSeq += 1;
+      youtubeNativeStream = null;
+      youtubeResolveError = null;
       youtubeResolving = false;
       return;
     }
-    youtubeResolving = true;
-    void resolveYouTubeStream(next.videoId).then((resolved) => {
-      if (disposed || reqId !== youtubeResolveSeq) return;
-      youtubeResolving = false;
-      if (resolved !== null) {
-        youtubeNativeStream = resolved;
-      }
-    });
+    triggerYouTubeNativeResolve(next.videoId);
   }
 
   function handleClearYouTube(): void {
@@ -230,6 +242,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     youtubeUrlInput = '';
     youtubeInteractive = false;
     youtubeNativeStream = null;
+    youtubeResolveError = null;
     youtubeResolving = false;
     youtubeLayerStore.clear();
   }
@@ -437,6 +450,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         }
       }
     })();
+    const existingYt = youtubeLayerStore.state;
+    if (existingYt.kind === 'ready') {
+      youtubeUrlInput = existingYt.sourceUrl;
+      triggerYouTubeNativeResolve(existingYt.videoId);
+    }
   });
 
   onDestroy(() => {
@@ -1562,6 +1580,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                       {:else}
                         Live ID: <code>{youtubeMachine.videoId}</code> ·
                         {youtubeMachine.muted ? 'DJ Safe Muted' : 'Audio Active'}
+                        {#if youtubeResolveError !== null}
+                          · Native fallback: {youtubeResolveError}
+                        {/if}
                       {/if}
                     </p>
                   {/if}

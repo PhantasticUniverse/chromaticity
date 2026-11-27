@@ -516,8 +516,12 @@ pub fn resolve_youtube_stream_impl(video_id: &str) -> Result<YouTubeStreamDto, S
     }
     let yt_dlp = resolve_yt_dlp_binary()
         .ok_or_else(|| "yt-dlp not found on system PATH or ~/.local/bin".to_string())?;
+    eprintln!(
+        "[chromaticity][youtube] resolving {trimmed} via {}",
+        yt_dlp.display()
+    );
     let watch_url = format!("https://www.youtube.com/watch?v={trimmed}");
-    let output = Command::new(yt_dlp)
+    let output = Command::new(&yt_dlp)
         .args([
             "--no-update",
             "--no-playlist",
@@ -535,15 +539,22 @@ pub fn resolve_youtube_stream_impl(video_id: &str) -> Result<YouTubeStreamDto, S
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let detail = stderr.trim();
-        return Err(if detail.is_empty() {
+        let msg = if detail.is_empty() {
             "yt-dlp failed to resolve YouTube stream".to_string()
         } else {
             format!("yt-dlp error: {detail}")
-        });
+        };
+        eprintln!("[chromaticity][youtube] failed for {trimmed}: {msg}");
+        return Err(msg);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_yt_dlp_output(trimmed, &stdout)
+    let resolved = parse_yt_dlp_output(trimmed, &stdout)?;
+    eprintln!(
+        "[chromaticity][youtube] resolved {trimmed}: {}",
+        resolved.title
+    );
+    Ok(resolved)
 }
 
 /// Resolve a direct playable HTTPS stream URL for a YouTube video ID so

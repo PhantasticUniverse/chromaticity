@@ -67,15 +67,36 @@ export async function getCompositorCapabilities(): Promise<CompositorCapabilitie
   }
 }
 
+/** Result of resolving a native YouTube stream, preserving diagnostic errors. */
+export interface YouTubeStreamResolution {
+  readonly stream: YouTubeStreamDto | null;
+  readonly error: string | null;
+}
+
+/**
+ * Resolve a direct playable MP4/video stream URL for a validated 11-character
+ * YouTube video ID via the desktop shell (`yt-dlp`), returning any IPC/resolver
+ * error so the UI can surface diagnostics instead of silently falling back.
+ */
+export async function resolveYouTubeStreamDetailed(
+  videoId: string,
+): Promise<YouTubeStreamResolution> {
+  try {
+    const stream = await invoke<YouTubeStreamDto>('resolve_youtube_stream', { videoId });
+    return { stream, error: null };
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : typeof err === 'string' ? err : 'IPC unavailable';
+    return { stream: null, error: message };
+  }
+}
+
 /**
  * Resolve a direct playable MP4/video stream URL for a validated 11-character
  * YouTube video ID via the desktop shell (`yt-dlp`), bypassing WKWebView
  * iframe Error 153 restrictions. Returns `null` outside Tauri or if unavailable.
  */
 export async function resolveYouTubeStream(videoId: string): Promise<YouTubeStreamDto | null> {
-  try {
-    return await invoke<YouTubeStreamDto>('resolve_youtube_stream', { videoId });
-  } catch {
-    return null;
-  }
+  const result = await resolveYouTubeStreamDetailed(videoId);
+  return result.stream;
 }

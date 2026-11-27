@@ -23,6 +23,7 @@ vi.mock('../ipc/mix', () => ({
   setAdaptiveScaleEnabled: vi.fn(),
   getCompositorCapabilities: vi.fn(),
   resolveYouTubeStream: vi.fn().mockResolvedValue(null),
+  resolveYouTubeStreamDetailed: vi.fn().mockResolvedValue({ stream: null, error: null }),
 }));
 
 vi.mock('../ipc/recorder', () => ({
