@@ -10,6 +10,7 @@
 //! with observability bridges.
 
 pub mod audio;
+pub mod author;
 pub mod camera;
 pub mod control;
 pub mod feedback;

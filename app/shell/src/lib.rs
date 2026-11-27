@@ -411,6 +411,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::render::render_scene_thumbnail,
             commands::feedback::load_scene_feedback,
             commands::feedback::save_scene_feedback,
+            commands::author::read_scene_files,
+            commands::author::write_scene_file,
             commands::import::import_shadertoy_source,
             commands::import::check_isf_import,
             commands::output::list_output_monitors,
