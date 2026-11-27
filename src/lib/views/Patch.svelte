@@ -56,6 +56,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     patchPinPosFrom,
   } from '../data/patch-fixtures';
   import Icon from '../Icon.svelte';
+  import { patchModulationStore } from '../modulation/store.svelte';
   import {
     dragPointerDown,
     dragPointerMove,
@@ -237,6 +238,19 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     if (Object.prototype.hasOwnProperty.call(sourceOverride, rowKey)) return null;
     return fallback;
   }
+
+  // ---- Live modulation matrix toolbar ------------------------------------
+
+  const isModRunning = $derived(patchModulationStore.machine.kind === 'running');
+  const activeRouteCount = $derived(patchModulationStore.routes.filter((r) => r.enabled).length);
+
+  function handleToggleLiveMod(): void {
+    if (patchModulationStore.machine.kind === 'running') {
+      patchModulationStore.stop();
+    } else {
+      patchModulationStore.start();
+    }
+  }
 </script>
 
 <section class="patch" aria-label="Patch view">
@@ -354,6 +368,43 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           {/each}
         </div>
       {/each}
+    </div>
+
+    <!-- Live Modulation toolbar strip -->
+    <div class="patch__mod-bar" role="region" aria-label="Live modulation">
+      <button
+        type="button"
+        class="patch__btn patch__mod-toggle"
+        class:patch__btn--primary={isModRunning}
+        aria-pressed={isModRunning}
+        onclick={handleToggleLiveMod}
+      >
+        <span class="patch__mod-dot" class:patch__mod-dot--live={isModRunning} aria-hidden="true"
+        ></span>
+        {isModRunning ? 'Stop Live Mod' : 'Start Live Mod'}
+      </button>
+      <span class="patch__mod-count mono" aria-live="polite">
+        {activeRouteCount}/{patchModulationStore.routes.length} active
+      </span>
+      <div class="patch__mod-routes">
+        {#each patchModulationStore.routes as route (route.id)}
+          {@const ctrlVal = patchModulationStore.lastOutputs.get(route.targetControlIndex) ?? 0}
+          <button
+            type="button"
+            class="patch__mod-chip"
+            class:patch__mod-chip--disabled={!route.enabled}
+            aria-pressed={route.enabled}
+            aria-label="Toggle route {route.source} to ctrl_{route.targetControlIndex}"
+            title="{route.source} ({route.op}) → ctrl_{route.targetControlIndex}"
+            onclick={() => patchModulationStore.toggleRoute(route.id)}
+          >
+            <span class="patch__mod-chip-src mono">{route.source}</span>
+            <span class="patch__mod-chip-arrow" aria-hidden="true">→</span>
+            <span class="patch__mod-chip-dst mono">ctrl_{route.targetControlIndex}</span>
+            <span class="patch__mod-chip-val mono">{ctrlVal.toFixed(2)}</span>
+          </button>
+        {/each}
+      </div>
     </div>
   </article>
 
@@ -780,5 +831,76 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     letter-spacing: 0.08em;
     text-transform: uppercase;
     opacity: 0.6;
+  }
+
+  /* ---------------- Live Modulation bar --------------------------- */
+  .patch__mod-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    padding: var(--space-xs) var(--space-md);
+    background: color-mix(in oklab, var(--color-bg-3) 88%, transparent);
+    backdrop-filter: blur(6px);
+    border-top: 1px solid var(--color-line-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 0;
+  }
+  .patch__mod-toggle {
+    flex-shrink: 0;
+  }
+  .patch__mod-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-text-3);
+    flex-shrink: 0;
+  }
+  .patch__mod-dot--live {
+    background: currentColor;
+  }
+  .patch__mod-count {
+    font-size: var(--font-size-caps-sm);
+    color: var(--color-text-2);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .patch__mod-routes {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    overflow-x: auto;
+    min-width: 0;
+    flex: 1;
+  }
+  .patch__mod-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px var(--space-sm);
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-1);
+    font-size: var(--font-size-caps-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .patch__mod-chip:hover {
+    border-color: var(--color-primary);
+  }
+  .patch__mod-chip--disabled {
+    opacity: 0.45;
+  }
+  .patch__mod-chip-arrow {
+    color: var(--color-text-3);
+  }
+  .patch__mod-chip-val {
+    color: var(--color-primary);
+    font-variant-numeric: tabular-nums;
   }
 </style>

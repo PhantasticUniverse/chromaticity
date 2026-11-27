@@ -23,9 +23,12 @@ import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import Patch from './Patch.svelte';
+import { patchModulationStore } from '../modulation/store.svelte';
 
 describe('Patch view', () => {
   afterEach(() => {
+    patchModulationStore.stop();
+    patchModulationStore.resetDefaults();
     cleanup();
   });
 
@@ -120,5 +123,27 @@ describe('Patch view', () => {
     await fireEvent.click(unrouteBtn);
     expect(queryByText('MIDI · CC 14')).toBeNull();
     expect(getAllByText('no source').length).toBe(3);
+  });
+
+  it('live modulation bar toggles running state and route enable flags', async () => {
+    const { getByRole, getByText } = render(Patch);
+    const modBtn = getByRole('button', { name: /Start Live Mod/ });
+    expect(modBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(getByText('3/3 active')).toBeInTheDocument();
+
+    await fireEvent.click(modBtn);
+    expect(getByRole('button', { name: /Stop Live Mod/ })).toHaveAttribute('aria-pressed', 'true');
+
+    const bassRouteBtn = getByRole('button', { name: /Toggle route audio\.bass to ctrl_0/ });
+    expect(bassRouteBtn).toHaveAttribute('aria-pressed', 'true');
+    await fireEvent.click(bassRouteBtn);
+    expect(bassRouteBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(getByText('2/3 active')).toBeInTheDocument();
+
+    await fireEvent.click(getByRole('button', { name: /Stop Live Mod/ }));
+    expect(getByRole('button', { name: /Start Live Mod/ })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
   });
 });
