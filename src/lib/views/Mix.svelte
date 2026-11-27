@@ -1455,6 +1455,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                               !youtubeInteractive}
                             data-testid="mix-youtube-video"
                             src={youtubeNativeStream.stream_url}
+                            crossorigin={youtubeNativeStream.stream_url.startsWith(
+                              'http://127.0.0.1:',
+                            )
+                              ? 'anonymous'
+                              : undefined}
                             autoplay
                             loop
                             playsinline
