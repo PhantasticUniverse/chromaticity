@@ -18,7 +18,7 @@ pub fn render_gpu_frame(
     height: u32,
 ) -> Result<tauri::ipc::Response, String> {
     let elapsed_secs = app_state.started_at.elapsed().as_secs_f32();
-    let (frame, audio, controls) = {
+    let (frame, audio, mut controls) = {
         let state_guard = match app_state.state.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
@@ -36,6 +36,22 @@ pub fn render_gpu_frame(
         }
         (frame, audio, controls)
     };
+
+    // Tick the QuickJS `script.js` host if active and fold emitted `ctrl_0..ctrl_7`
+    // reactive overrides into this frame's uniform controls.
+    {
+        let mut script_guard = match app_state.script_host.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let emitted = script_guard.tick(elapsed_secs, 1.0 / 60.0, frame, &audio);
+        for (i, slot) in controls.iter_mut().enumerate() {
+            let key = format!("ctrl_{i}");
+            if let Some(&val) = emitted.get(&key) {
+                *slot = val;
+            }
+        }
+    }
 
     let mut gpu = match app_state.gpu_renderer.lock() {
         Ok(g) => g,

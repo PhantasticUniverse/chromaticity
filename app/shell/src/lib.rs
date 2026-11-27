@@ -24,6 +24,7 @@
 
 pub mod commands;
 pub mod render;
+pub mod script_host;
 pub mod state;
 
 use crate::state::AppState;
@@ -407,6 +408,13 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::render::render_gpu_frame,
             commands::render::gpu_render_status,
             commands::render::compile_and_preview_shader,
+            commands::import::import_shadertoy_source,
+            commands::import::check_isf_import,
+            commands::output::list_output_monitors,
+            commands::output::open_output_window,
+            commands::output::close_output_window,
+            commands::output::toggle_output_fullscreen,
+            commands::output::output_window_status,
         ])
         .run(tauri::generate_context!())
 }

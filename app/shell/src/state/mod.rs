@@ -392,6 +392,8 @@ pub struct AppState {
     pub audio_threshold: Mutex<f32>,
     /// Live GPU preview renderer (`wgpu` + `naga` GLSL 4.50).
     pub gpu_renderer: Mutex<crate::render::GpuPreviewEngine>,
+    /// Live QuickJS `script.js` host (ADR-012 sandboxed worker).
+    pub script_host: Mutex<crate::script_host::ScriptHost>,
     /// Active entitlement token installed via `install_license` (ADR-009).
     pub entitlement_token: Mutex<Option<chromaticity_entitlement::Token>>,
     /// Monotonic process-start timestamp for shader `chroma_Time.x`.
@@ -469,6 +471,7 @@ impl AppState {
             osc_dispatch_queue,
             audio_threshold: Mutex::new(0.0_f32),
             gpu_renderer: Mutex::new(crate::render::GpuPreviewEngine::new()),
+            script_host: Mutex::new(crate::script_host::ScriptHost::new()),
             entitlement_token: Mutex::new(None),
             started_at: Instant::now(),
         }
@@ -671,6 +674,13 @@ impl AppState {
             };
             guard.state_name()
         };
+        let script_host = {
+            let guard = match self.script_host.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            guard.state_name()
+        };
         let entitlement = {
             let guard = match self.entitlement_token.lock() {
                 Ok(g) => g,
@@ -686,6 +696,7 @@ impl AppState {
             "runtime": runtime,
             "loaded_scene": loaded_scene,
             "gpu_render": gpu_render,
+            "script_host": script_host,
             "entitlement": entitlement,
             "midi_learn": midi_learn,
             "osc_sender": osc_sender,

@@ -535,6 +535,17 @@ impl MultipassRenderer {
         })
     }
 
+    /// Long-lived `wgpu::Instance` owned by this renderer (used to create
+    /// native `wgpu::Surface` targets for zero-copy stage output windows).
+    pub fn instance(&self) -> &wgpu::Instance {
+        &self._instance
+    }
+
+    /// Long-lived `wgpu::Adapter` selected by [`crate::adapter_selection`].
+    pub fn adapter(&self) -> &wgpu::Adapter {
+        &self.adapter
+    }
+
     /// Long-lived `Arc<wgpu::Device>` shared by every
     /// [`MultipassRenderer::render`] call this renderer makes.
     /// Slice 5b.3 will use this accessor to submit a GPU-side

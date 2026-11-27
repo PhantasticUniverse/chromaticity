@@ -108,6 +108,15 @@ fn load_scene_impl(app: &AppState, path: String) -> Result<LoadedScenePayload, S
         gpu_guard.set_scene(payload.id.clone(), &path_buf);
     }
 
+    // Arm the live QuickJS `script.js` host if this `.chroma` package ships `script.js`.
+    {
+        let mut script_guard = match app.script_host.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        script_guard.set_scene(payload.id.clone(), &path_buf);
+    }
+
     // Store the parsed scene + path on AppState behind the mutex.
     // Mutex poison-recovery follows the workspace pattern: read
     // through `match lock() { Ok(g) => g, Err(p) => p.into_inner() }`
