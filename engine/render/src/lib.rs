@@ -351,6 +351,7 @@ pub mod audio_adapter;
 #[cfg(feature = "camera-binding")]
 pub mod camera_adapter;
 pub mod composition;
+pub mod compositor;
 pub mod glsl_includes;
 pub mod multipass;
 pub mod offline_replay;
@@ -377,6 +378,7 @@ pub use camera_adapter::{
     camera_texture_binding_from_frame, camera_uniform_name,
 };
 pub use composition::{PreparedScene, compose_transition_frame, compose_transition_frame_gpu};
+pub use compositor::{BlendMode, CompositeLayer, LayerStack, LayerTransform, render_layer_stack};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
     CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,

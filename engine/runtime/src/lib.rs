@@ -107,6 +107,12 @@ pub use data_ingest::{
     CASSETTE_FORMAT_VERSION, CassetteSample, DATA_UNIFORM_PREFIX, DataCassette, DataIngestEngine,
     DataIngestError, DataIngestState, DataSourceSpec, DataTransport, DataValue,
 };
+pub use twitch_bridge::{
+    CHAT_ARGS_PLACEHOLDER, TwitchBridgeError, TwitchConnectionState, TwitchEvent, TwitchEventKind,
+    TwitchTriggerRule, TwitchVisualAction, TwitchVisualBridge, UNIFORM_TWITCH_BITS,
+    UNIFORM_TWITCH_HYPE_LEVEL, UNIFORM_TWITCH_RAID_VIEWERS, UNIFORM_TWITCH_SUB_PULSE,
+    parse_eventsub_notification,
+};
 
 #[cfg(feature = "script-bridge")]
 pub use script_bridge::{
@@ -123,3 +129,4 @@ pub mod settings;
 pub mod state;
 pub mod state_migration;
 pub mod state_replay;
+pub mod twitch_bridge;
