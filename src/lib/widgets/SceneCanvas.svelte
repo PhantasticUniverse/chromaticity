@@ -67,7 +67,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { untrack } from 'svelte';
 
   import { RENDERERS, type SceneKind, type SceneRendererControls } from './scene-renderers';
+  import { fetchGpuFrame, fetchGpuRenderStatus } from '../ipc/render';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+  import { loadedSceneStore } from '../stores/loadedScene.svelte';
 
   type Props = {
     kind?: SceneKind;
@@ -98,12 +100,46 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
      *  Perform. Missing keys default to nominal so scenes without
      *  these axes render identically to pre-control behaviour. */
     controls?: SceneRendererControls;
+    /** When true, prefers live `wgpu` GPU frames from `render_gpu_frame` whenever
+     *  the loaded `.chroma` scene ships a `main.glsl` shader, falling back
+     *  seamlessly to the procedural Canvas2D renderer otherwise. */
+    gpuLive?: boolean;
   };
 
-  let { kind = 'rings', seed = 0, audio = true, dpr, ariaLabel, controls }: Props = $props();
+  let {
+    kind = 'rings',
+    seed = 0,
+    audio = true,
+    dpr,
+    ariaLabel,
+    controls,
+    gpuLive = false,
+  }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let reduceMotion = $state(false);
+  let gpuActive = $state(false);
+
+  $effect(() => {
+    if (!gpuLive) {
+      gpuActive = false;
+      return;
+    }
+    const sceneId = loadedSceneStore.snapshot?.id ?? null;
+    if (!sceneId) {
+      gpuActive = false;
+      return;
+    }
+    let cancelled = false;
+    void fetchGpuRenderStatus().then((status) => {
+      if (!cancelled) {
+        gpuActive = status !== null && status.state === 'active';
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
 
   // Wave 2.2 Lane R.1 — subscribe to the live audio IPC seam on
   // mount so the rAF loop's per-frame `lvl` read picks up real RMS
@@ -281,6 +317,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     // onsets in ~80 ms but discards sub-2-frame noise.
     let smLvl = 0;
     const LVL_EMA = 0.25;
+    let gpuInFlight = false;
+    let lastGpuFrame: ImageData | null = null;
+    let gpuOffscreen: HTMLCanvasElement | null = null;
+    const GPU_MAX_W = 480;
+    const GPU_MAX_H = 270;
+
     const loop = (): void => {
       const t = (performance.now() - start) / 1000;
       const frame = untrack(() => ({
@@ -290,8 +332,52 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         controls,
         dpr: resolveDpr(dpr),
         snapshot: audioSnapshotStore.snapshot,
+        useGpu: gpuLive && gpuActive,
       }));
       resize(frame.dpr);
+
+      if (frame.useGpu && typeof ImageData !== 'undefined') {
+        const targetW = Math.max(16, Math.min(GPU_MAX_W, Math.round(c.width)));
+        const targetH = Math.max(16, Math.min(GPU_MAX_H, Math.round(c.height)));
+        if (!gpuInFlight) {
+          gpuInFlight = true;
+          void fetchGpuFrame(targetW, targetH).then((pixels) => {
+            gpuInFlight = false;
+            if (pixels) {
+              const clamped = new Uint8ClampedArray(pixels.byteLength);
+              clamped.set(pixels);
+              lastGpuFrame = new ImageData(clamped, targetW, targetH);
+            } else {
+              gpuActive = false;
+              lastGpuFrame = null;
+            }
+          });
+        }
+        if (lastGpuFrame) {
+          if (!gpuOffscreen && typeof document !== 'undefined') {
+            gpuOffscreen = document.createElement('canvas');
+          }
+          if (gpuOffscreen) {
+            if (
+              gpuOffscreen.width !== lastGpuFrame.width ||
+              gpuOffscreen.height !== lastGpuFrame.height
+            ) {
+              gpuOffscreen.width = lastGpuFrame.width;
+              gpuOffscreen.height = lastGpuFrame.height;
+            }
+            const offCtx = gpuOffscreen.getContext('2d');
+            if (offCtx) {
+              offCtx.putImageData(lastGpuFrame, 0, 0);
+              ctx.drawImage(gpuOffscreen, 0, 0, c.width, c.height);
+              raf = requestAnimationFrame(loop);
+              return;
+            }
+          }
+        }
+      } else {
+        lastGpuFrame = null;
+      }
+
       // Wave 2.2 Lane R.1 + Wave 2.3 Q.1 — prefer the live engine
       // snapshot when present (gate widened from "rms > 0 || peak > 0"
       // to "snapshot !== null" so silent-microphone audio still drives

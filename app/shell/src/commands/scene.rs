@@ -99,6 +99,15 @@ fn load_scene_impl(app: &AppState, path: String) -> Result<LoadedScenePayload, S
 
     let payload = build_loaded_scene_payload(&scene, &path_buf);
 
+    // Arm the live GPU preview engine if this `.chroma` package ships `main.glsl`.
+    {
+        let mut gpu_guard = match app.gpu_renderer.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        gpu_guard.set_scene(payload.id.clone(), &path_buf);
+    }
+
     // Store the parsed scene + path on AppState behind the mutex.
     // Mutex poison-recovery follows the workspace pattern: read
     // through `match lock() { Ok(g) => g, Err(p) => p.into_inner() }`

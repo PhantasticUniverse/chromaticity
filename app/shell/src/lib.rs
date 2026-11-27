@@ -23,6 +23,7 @@
 // intervening ~16ms.
 
 pub mod commands;
+pub mod render;
 pub mod state;
 
 use crate::state::AppState;
@@ -197,16 +198,28 @@ pub fn run() -> Result<(), tauri::Error> {
             // Unresolvable preferences (operator unplugged BlackHole
             // between sessions, etc.) fall back to the host default
             // with a one-shot stderr warning per `try_input_by_preference`.
-            let preferred_input = {
+            let (preferred_input, input_gain_norm) = {
                 let bootstrap_state = app.state::<AppState>();
                 match bootstrap_state.settings.lock() {
-                    Ok(guard) => Some(guard.audio.input_device.clone()),
-                    Err(poisoned) => Some(poisoned.into_inner().audio.input_device.clone()),
+                    Ok(guard) => (
+                        Some(guard.audio.input_device.clone()),
+                        guard.audio.input_gain,
+                    ),
+                    Err(poisoned) => {
+                        let inner = poisoned.into_inner();
+                        (Some(inner.audio.input_device.clone()), inner.audio.input_gain)
+                    }
                 }
+            };
+            // Map normalized [0, 1] input_gain (0.5 == unity, ±18 dB symmetric) to linear gain.
+            let input_gain_db = (input_gain_norm.clamp(0.0, 1.0) - 0.5) * 36.0;
+            let audio_config = AudioRuntimeConfig {
+                input_gain_linear: chromaticity_audio::metering::db_to_linear(input_gain_db),
+                ..AudioRuntimeConfig::default()
             };
             let runtime = AudioRuntime::with_preferred_device(
                 preferred_input.as_deref(),
-                AudioRuntimeConfig::default(),
+                audio_config,
             );
             let snapshot_handle = runtime.snapshot_handle();
             let audio_handle = runtime.spawn();
@@ -390,6 +403,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::syphon::unpublish_syphon_output,
             commands::scene::load_scene,
             commands::scene::loaded_scene,
+            commands::render::render_gpu_frame,
+            commands::render::gpu_render_status,
         ])
         .run(tauri::generate_context!())
 }

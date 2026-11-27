@@ -21,6 +21,7 @@ pub mod osc;
 pub mod picker;
 pub mod playlist;
 pub mod preset;
+pub mod render;
 pub mod scene;
 pub mod settings;
 pub mod snap;

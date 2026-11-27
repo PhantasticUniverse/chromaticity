@@ -1169,6 +1169,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         kind={previewKind}
         seed={previewSeed}
         audio
+        gpuLive
         controls={controlSnapshot}
         ariaLabel={`Live scene preview · ${sceneTitleName}`}
       />

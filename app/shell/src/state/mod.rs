@@ -390,6 +390,10 @@ pub struct AppState {
     ///    provided here for when the hotkey handler is wired to a backend
     ///    command).
     pub audio_threshold: Mutex<f32>,
+    /// Live GPU preview renderer (`wgpu` + `naga` GLSL 4.50).
+    pub gpu_renderer: Mutex<crate::render::GpuPreviewEngine>,
+    /// Monotonic process-start timestamp for shader `chroma_Time.x`.
+    pub started_at: Instant,
 }
 
 struct QueuedOscDispatchSink {
@@ -462,6 +466,8 @@ impl AppState {
             osc_sender: Mutex::new(osc_sender),
             osc_dispatch_queue,
             audio_threshold: Mutex::new(0.0_f32),
+            gpu_renderer: Mutex::new(crate::render::GpuPreviewEngine::new()),
+            started_at: Instant::now(),
         }
     }
 
@@ -655,9 +661,17 @@ impl AppState {
             };
             guard.is_some()
         };
+        let gpu_render = {
+            let guard = match self.gpu_renderer.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            guard.state_name()
+        };
         serde_json::json!({
             "runtime": runtime,
             "loaded_scene": loaded_scene,
+            "gpu_render": gpu_render,
             "midi_learn": midi_learn,
             "osc_sender": osc_sender,
             "crash_resume": crash_resume,
