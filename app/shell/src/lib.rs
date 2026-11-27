@@ -359,6 +359,9 @@ pub fn run() -> Result<(), tauri::Error> {
         .invoke_handler(tauri::generate_handler![
             commands::audio::list_audio_devices,
             commands::audio::list_audio_output_devices,
+            commands::audio::get_dj_device_profile,
+            commands::audio::set_audio_channel_pair,
+            commands::audio::get_audio_channel_pair,
             commands::camera::list_camera_devices,
             commands::control::set_control,
             commands::control::get_control,
@@ -409,6 +412,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::render::gpu_render_status,
             commands::render::compile_and_preview_shader,
             commands::render::render_scene_thumbnail,
+            commands::render::set_bpm_override,
+            commands::render::get_bpm_override,
             commands::feedback::load_scene_feedback,
             commands::feedback::save_scene_feedback,
             commands::author::read_scene_files,

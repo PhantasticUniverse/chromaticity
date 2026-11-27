@@ -3,7 +3,10 @@
 
 //! Live GPU preview frame and telemetry Tauri commands.
 
-use crate::render::{GpuPreviewEngine, GpuRenderStatus};
+use crate::render::{
+    BpmOverrideMode, BpmOverrideState, DEFAULT_MANUAL_BPM, GpuPreviewEngine, GpuRenderStatus,
+    resolve_bpm_uniforms,
+};
 use crate::state::AppState;
 use chromaticity_audio::AudioUniformSnapshot;
 use chromaticity_runtime::ControlId;
@@ -45,6 +48,7 @@ pub fn render_gpu_frame(
     height: u32,
 ) -> Result<tauri::ipc::Response, String> {
     let elapsed_secs = app_state.started_at.elapsed().as_secs_f32();
+    let bpm_override = app_state.current_bpm_override();
     let (frame, audio, mut controls) = {
         let state_guard = match app_state.state.lock() {
             Ok(g) => g,
@@ -64,6 +68,10 @@ pub fn render_gpu_frame(
         (frame, audio, controls)
     };
 
+    let resolved_bpm = resolve_bpm_uniforms(elapsed_secs, audio.bpm, &bpm_override);
+    let mut script_audio = audio;
+    script_audio.bpm = resolved_bpm.bpm;
+
     // Tick the QuickJS `script.js` host if active and fold emitted `ctrl_0..ctrl_7`
     // reactive overrides into this frame's uniform controls.
     {
@@ -71,7 +79,7 @@ pub fn render_gpu_frame(
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        let emitted = script_guard.tick(elapsed_secs, 1.0 / 60.0, frame, &audio);
+        let emitted = script_guard.tick(elapsed_secs, 1.0 / 60.0, frame, &script_audio);
         for (i, slot) in controls.iter_mut().enumerate() {
             let key = format!("ctrl_{i}");
             if let Some(&val) = emitted.get(&key) {
@@ -84,8 +92,98 @@ pub fn render_gpu_frame(
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    let bytes = gpu.render_frame(width, height, elapsed_secs, frame, &audio, controls)?;
+    let bytes = gpu.render_frame_with_bpm(
+        width,
+        height,
+        elapsed_secs,
+        frame,
+        &audio,
+        controls,
+        &bpm_override,
+    )?;
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Inner implementation for [`set_bpm_override`], unit-testable without a Tauri runtime.
+pub fn set_bpm_override_impl(
+    app: &AppState,
+    mode: &str,
+    bpm: Option<f32>,
+    phase_offset_beats: Option<f32>,
+    resync_epoch_ms: Option<u64>,
+    resync_now: Option<bool>,
+) -> Result<BpmOverrideState, String> {
+    let prev = app.current_bpm_override();
+    let parsed_mode = match mode.trim().to_ascii_lowercase().as_str() {
+        "auto" => BpmOverrideMode::Auto,
+        "manual" => {
+            let fallback = match prev.mode {
+                BpmOverrideMode::Manual { bpm: prev_bpm } => prev_bpm,
+                _ => DEFAULT_MANUAL_BPM,
+            };
+            BpmOverrideMode::Manual {
+                bpm: bpm.unwrap_or(fallback),
+            }
+        }
+        "off" => BpmOverrideMode::Off,
+        other => {
+            return Err(format!(
+                "unsupported BPM override mode {other:?}; expected \"auto\", \"manual\", or \"off\""
+            ));
+        }
+    };
+
+    let next_phase = phase_offset_beats.unwrap_or(prev.phase_offset_beats);
+    let next_resync_epoch_ms = if resync_now.unwrap_or(false) {
+        app.started_at
+            .elapsed()
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64
+    } else if let Some(epoch_ms) = resync_epoch_ms {
+        epoch_ms
+    } else {
+        prev.resync_epoch_ms
+    };
+
+    let next = BpmOverrideState {
+        mode: parsed_mode,
+        phase_offset_beats: next_phase,
+        resync_epoch_ms: next_resync_epoch_ms,
+    };
+    Ok(app.store_bpm_override(next))
+}
+
+/// Inner implementation for [`get_bpm_override`], unit-testable without a Tauri runtime.
+pub fn get_bpm_override_impl(app: &AppState) -> Result<BpmOverrideState, String> {
+    Ok(app.current_bpm_override())
+}
+
+/// Update the live BPM synchronization mode (`"auto"` | `"manual"` | `"off"`),
+/// optional manual tempo, beatmatch phase scrub (`phase_offset_beats`), and
+/// beat-0 resync anchor (`resync_epoch_ms` or `resync_now: true`).
+#[tauri::command]
+pub fn set_bpm_override(
+    app_state: State<'_, AppState>,
+    mode: String,
+    bpm: Option<f32>,
+    phase_offset_beats: Option<f32>,
+    resync_epoch_ms: Option<u64>,
+    resync_now: Option<bool>,
+) -> Result<BpmOverrideState, String> {
+    set_bpm_override_impl(
+        app_state.inner(),
+        &mode,
+        bpm,
+        phase_offset_beats,
+        resync_epoch_ms,
+        resync_now,
+    )
+}
+
+/// Return the currently active live BPM override and beatmatch phase-scrub state.
+#[tauri::command]
+pub fn get_bpm_override(app_state: State<'_, AppState>) -> Result<BpmOverrideState, String> {
+    get_bpm_override_impl(app_state.inner())
 }
 
 /// Return the current GPU preview engine status (state, active scene id,
@@ -224,5 +322,48 @@ mod tests {
         let err = render_scene_thumbnail_impl(&missing, 160, 90)
             .expect_err("missing main.glsl should return Err");
         assert!(err.contains("scene shader not found"));
+    }
+
+    #[test]
+    fn bpm_override_ipc_transitions_auto_manual_off_and_phase_scrub() {
+        let app = AppState::new();
+        let initial = get_bpm_override_impl(&app).expect("initial bpm override");
+        assert_eq!(initial, BpmOverrideState::default());
+        assert_eq!(initial.mode, BpmOverrideMode::Auto);
+
+        // Lock manual 130 BPM with +0.125 beat phase scrub and explicit resync epoch.
+        let manual =
+            set_bpm_override_impl(&app, "manual", Some(130.0), Some(0.125), Some(1500), None)
+                .expect("manual bpm override");
+        assert_eq!(manual.mode, BpmOverrideMode::Manual { bpm: 130.0 });
+        assert_eq!(manual.phase_offset_beats, 0.125);
+        assert_eq!(manual.resync_epoch_ms, 1500);
+        assert_eq!(
+            get_bpm_override_impl(&app).expect("read back manual"),
+            manual
+        );
+
+        // Clamp out-of-range manual BPM (e.g. 999.0 -> 300.0) and test resync_now.
+        let clamped = set_bpm_override_impl(&app, "manual", Some(999.0), None, None, Some(true))
+            .expect("clamped manual");
+        assert_eq!(clamped.mode, BpmOverrideMode::Manual { bpm: 300.0 });
+        assert_eq!(clamped.phase_offset_beats, 0.125);
+
+        // Disable BPM sync.
+        let off = set_bpm_override_impl(&app, "off", None, Some(0.0), None, None).expect("off");
+        assert_eq!(off.mode, BpmOverrideMode::Off);
+        assert_eq!(off.phase_offset_beats, 0.0);
+
+        // Return to Auto with negative phase scrub.
+        let auto =
+            set_bpm_override_impl(&app, "AUTO", None, Some(-0.25), Some(0), None).expect("auto");
+        assert_eq!(auto.mode, BpmOverrideMode::Auto);
+        assert_eq!(auto.phase_offset_beats, -0.25);
+        assert_eq!(auto.resync_epoch_ms, 0);
+
+        // Reject unknown mode.
+        let err = set_bpm_override_impl(&app, "turbo", None, None, None, None)
+            .expect_err("unknown mode should fail");
+        assert!(err.contains("unsupported BPM override mode"));
     }
 }

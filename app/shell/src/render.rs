@@ -14,7 +14,7 @@ use chromaticity_render::{
     CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, TargetFormat, UniformInput,
     UniformValue,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -26,6 +26,171 @@ const MAX_PREVIEW_WIDTH: u32 = 1920;
 
 /// Maximum preview height (pixels) accepted by [`GpuPreviewEngine::render_frame`].
 const MAX_PREVIEW_HEIGHT: u32 = 1080;
+
+/// Minimum allowed manual BPM override (beats per minute).
+pub const MIN_MANUAL_BPM: f32 = 20.0;
+
+/// Maximum allowed manual BPM override (beats per minute).
+pub const MAX_MANUAL_BPM: f32 = 300.0;
+
+/// Default manual BPM fallback when an invalid/non-finite value is supplied.
+pub const DEFAULT_MANUAL_BPM: f32 = 120.0;
+
+/// Exponential decay factor for `on_beat` pulse within a single beat (`phase ∈ [0, 1)`).
+const ON_BEAT_DECAY_RATE: f32 = 6.0;
+
+/// Explicit live BPM synchronization mode for GPU shader uniforms.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum BpmOverrideMode {
+    /// Use live audio-detected BPM with optional phase scrub offset.
+    Auto,
+    /// Lock shader BPM to an explicit manual tempo.
+    Manual { bpm: f32 },
+    /// Disable BPM sync (`bpm = 0.0`, `beat_time = 0.0`, `on_beat = 0.0`, `bpm_sin = 0.0`).
+    Off,
+}
+
+/// Live BPM override and beatmatch phase-scrub state applied to GPU frame uniforms.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BpmOverrideState {
+    #[serde(flatten)]
+    pub mode: BpmOverrideMode,
+    /// Beatmatch phase scrub offset in beats (positive advances, negative delays).
+    #[serde(default)]
+    pub phase_offset_beats: f32,
+    /// Monotonic shell-elapsed epoch (milliseconds) anchoring beat 0 after a resync/tap.
+    #[serde(default)]
+    pub resync_epoch_ms: u64,
+}
+
+impl Default for BpmOverrideState {
+    fn default() -> Self {
+        Self {
+            mode: BpmOverrideMode::Auto,
+            phase_offset_beats: 0.0,
+            resync_epoch_ms: 0,
+        }
+    }
+}
+
+impl BpmOverrideState {
+    /// Return a sanitized copy with finite phase offset and clamped manual BPM.
+    #[must_use]
+    pub fn sanitized(self) -> Self {
+        let mode = match self.mode {
+            BpmOverrideMode::Auto => BpmOverrideMode::Auto,
+            BpmOverrideMode::Manual { bpm } => BpmOverrideMode::Manual {
+                bpm: sanitize_manual_bpm(bpm),
+            },
+            BpmOverrideMode::Off => BpmOverrideMode::Off,
+        };
+        let phase_offset_beats = if self.phase_offset_beats.is_finite() {
+            self.phase_offset_beats
+        } else {
+            0.0
+        };
+        Self {
+            mode,
+            phase_offset_beats,
+            resync_epoch_ms: self.resync_epoch_ms,
+        }
+    }
+
+    /// Short mode label for state-machine diagnostics.
+    #[must_use]
+    pub const fn mode_name(&self) -> &'static str {
+        match self.mode {
+            BpmOverrideMode::Auto => "auto",
+            BpmOverrideMode::Manual { .. } => "manual",
+            BpmOverrideMode::Off => "off",
+        }
+    }
+}
+
+/// Resolved per-frame BPM and beat-phase uniform values packed into `syn_BPM` (`vec4`).
+///
+/// Layout in `syn_BPM`:
+/// - `.x` = `bpm` (effective BPM; `0.0` in `Off` mode)
+/// - `.y` = `beat_time` (continuous beat counter with phase scrub and resync applied)
+/// - `.z` = `on_beat` (exponentially decaying beat pulse in `[0.0, 1.0]`; `0.0` in `Off` mode)
+/// - `.w` = `bpm_sin` (beat-locked sine oscillator in `[0.0, 1.0]`; `0.0` in `Off` mode)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ResolvedBpmUniforms {
+    pub bpm: f32,
+    pub beat_time: f32,
+    pub on_beat: f32,
+    pub bpm_sin: f32,
+}
+
+/// Clamp and sanitize a manual BPM value into `[MIN_MANUAL_BPM, MAX_MANUAL_BPM]`.
+#[must_use]
+pub fn sanitize_manual_bpm(bpm: f32) -> f32 {
+    if bpm.is_finite() && bpm > 0.0 {
+        bpm.clamp(MIN_MANUAL_BPM, MAX_MANUAL_BPM)
+    } else {
+        DEFAULT_MANUAL_BPM
+    }
+}
+
+/// Compute the effective per-frame BPM, beat-time, beat-pulse, and beat-sine
+/// uniforms from elapsed shell time, live audio-detected BPM, and the active
+/// [`BpmOverrideState`].
+#[must_use]
+pub fn resolve_bpm_uniforms(
+    elapsed_secs: f32,
+    audio_bpm: f32,
+    override_state: &BpmOverrideState,
+) -> ResolvedBpmUniforms {
+    let sanitized = override_state.sanitized();
+    let effective_bpm = match sanitized.mode {
+        BpmOverrideMode::Off => {
+            return ResolvedBpmUniforms {
+                bpm: 0.0,
+                beat_time: 0.0,
+                on_beat: 0.0,
+                bpm_sin: 0.0,
+            };
+        }
+        BpmOverrideMode::Auto => {
+            if audio_bpm.is_finite() && audio_bpm > 0.0 {
+                audio_bpm
+            } else {
+                0.0
+            }
+        }
+        BpmOverrideMode::Manual { bpm } => bpm,
+    };
+
+    if effective_bpm <= 0.0 {
+        return ResolvedBpmUniforms {
+            bpm: 0.0,
+            beat_time: 0.0,
+            on_beat: 0.0,
+            bpm_sin: 0.0,
+        };
+    }
+
+    let elapsed_s = if elapsed_secs.is_finite() {
+        f64::from(elapsed_secs.max(0.0))
+    } else {
+        0.0
+    };
+    let resync_secs = (sanitized.resync_epoch_ms as f64) / 1000.0;
+    let dt_secs = (elapsed_s - resync_secs).max(0.0);
+    let beats_per_sec = f64::from(effective_bpm) / 60.0;
+    let beat_time = (dt_secs * beats_per_sec) as f32 + sanitized.phase_offset_beats;
+    let phase = beat_time.rem_euclid(1.0);
+    let on_beat = (-phase * ON_BEAT_DECAY_RATE).exp().clamp(0.0, 1.0);
+    let bpm_sin = (0.5 + 0.5 * (phase * std::f32::consts::TAU).sin()).clamp(0.0, 1.0);
+
+    ResolvedBpmUniforms {
+        bpm: effective_bpm,
+        beat_time,
+        on_beat,
+        bpm_sin,
+    }
+}
 
 /// Explicit lifecycle state of the shell GPU preview engine.
 #[derive(Debug, Clone)]
@@ -173,17 +338,8 @@ impl GpuPreviewEngine {
         }
     }
 
-    /// Render a single RGBA8 frame of the active shader at `(width, height)`.
-    ///
-    /// Packs the standard Chromaticity std140 uniform block:
-    /// - `chroma_Time` (`vec4`: elapsed_s, dt, frame, aspect)
-    /// - `chroma_Resolution` (`vec4`: w, h, 1/w, 1/h)
-    /// - `syn_BPM` (`vec4`: bpm, 0, 0, 0)
-    /// - `chroma_AudioRMS` (`vec4`: rms, 0, 0, 0)
-    /// - `chroma_AudioPeak` (`vec4`: peak, 0, 0, 0)
-    /// - `chroma_AudioFFT` (`float[8]`: 8 log-spaced FFT bands)
-    /// - `chroma_Ctrl0` (`vec4`: controls 0..3)
-    /// - `chroma_Ctrl1` (`vec4`: controls 4..7)
+    /// Render a single RGBA8 frame of the active shader at `(width, height)`
+    /// using default (`Auto`, zero phase-scrub) BPM synchronization.
     pub fn render_frame(
         &mut self,
         width: u32,
@@ -192,6 +348,41 @@ impl GpuPreviewEngine {
         frame: u64,
         audio: &AudioUniformSnapshot,
         controls: [f32; 8],
+    ) -> Result<Vec<u8>, String> {
+        self.render_frame_with_bpm(
+            width,
+            height,
+            elapsed_secs,
+            frame,
+            audio,
+            controls,
+            &BpmOverrideState::default(),
+        )
+    }
+
+    /// Render a single RGBA8 frame of the active shader at `(width, height)`
+    /// applying an explicit [`BpmOverrideState`] (`Auto`, `Manual`, or `Off`
+    /// plus beatmatch phase scrub and resync epoch).
+    ///
+    /// Packs the standard Chromaticity std140 uniform block:
+    /// - `chroma_Time` (`vec4`: elapsed_s, dt, frame, aspect)
+    /// - `chroma_Resolution` (`vec4`: w, h, 1/w, 1/h)
+    /// - `syn_BPM` (`vec4`: bpm, beat_time, on_beat, bpm_sin)
+    /// - `chroma_AudioRMS` (`vec4`: rms, 0, 0, 0)
+    /// - `chroma_AudioPeak` (`vec4`: peak, 0, 0, 0)
+    /// - `chroma_AudioFFT` (`float[8]`: 8 log-spaced FFT bands)
+    /// - `chroma_Ctrl0` (`vec4`: controls 0..3)
+    /// - `chroma_Ctrl1` (`vec4`: controls 4..7)
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_frame_with_bpm(
+        &mut self,
+        width: u32,
+        height: u32,
+        elapsed_secs: f32,
+        frame: u64,
+        audio: &AudioUniformSnapshot,
+        controls: [f32; 8],
+        bpm_override: &BpmOverrideState,
     ) -> Result<Vec<u8>, String> {
         let (scene_id, fragment_source) = match &self.state {
             GpuRenderState::Idle => return Err("gpu renderer is idle (no active main.glsl)".into()),
@@ -224,7 +415,14 @@ impl GpuPreviewEngine {
             return Err("wgpu renderer unavailable".into());
         };
 
-        let uniforms = build_standard_uniforms((w, h), elapsed_secs, frame, audio, controls);
+        let uniforms = build_standard_uniforms_with_bpm(
+            (w, h),
+            elapsed_secs,
+            frame,
+            audio,
+            controls,
+            bpm_override,
+        );
 
         let started = Instant::now();
         if self.cached_pass.is_none() {
@@ -277,7 +475,8 @@ impl GpuPreviewEngine {
     }
 }
 
-/// Construct the standard Chromaticity std140 uniform vector for a frame.
+/// Construct the standard Chromaticity std140 uniform vector for a frame
+/// using default (`Auto`, zero phase-scrub) BPM synchronization.
 #[must_use]
 pub fn build_standard_uniforms(
     target_size: (u32, u32),
@@ -286,9 +485,32 @@ pub fn build_standard_uniforms(
     audio: &AudioUniformSnapshot,
     controls: [f32; 8],
 ) -> Vec<UniformInput> {
+    build_standard_uniforms_with_bpm(
+        target_size,
+        elapsed_secs,
+        frame,
+        audio,
+        controls,
+        &BpmOverrideState::default(),
+    )
+}
+
+/// Construct the standard Chromaticity std140 uniform vector for a frame
+/// applying an explicit [`BpmOverrideState`] to `syn_BPM`
+/// (`[bpm, beat_time, on_beat, bpm_sin]`).
+#[must_use]
+pub fn build_standard_uniforms_with_bpm(
+    target_size: (u32, u32),
+    elapsed_secs: f32,
+    frame: u64,
+    audio: &AudioUniformSnapshot,
+    controls: [f32; 8],
+    bpm_override: &BpmOverrideState,
+) -> Vec<UniformInput> {
     let w = target_size.0 as f32;
     let h = target_size.1 as f32;
     let aspect = if h > 0.0 { w / h } else { 1.0 };
+    let resolved_bpm = resolve_bpm_uniforms(elapsed_secs, audio.bpm, bpm_override);
 
     vec![
         UniformInput {
@@ -301,7 +523,12 @@ pub fn build_standard_uniforms(
         },
         UniformInput {
             name: "syn_BPM".to_string(),
-            value: UniformValue::Vec4([audio.bpm, 0.0, 0.0, 0.0]),
+            value: UniformValue::Vec4([
+                resolved_bpm.bpm,
+                resolved_bpm.beat_time,
+                resolved_bpm.on_beat,
+                resolved_bpm.bpm_sin,
+            ]),
         },
         UniformInput {
             name: "chroma_AudioRMS".to_string(),
@@ -532,5 +759,108 @@ void main() {
             rendered_count >= 20,
             "expected at least 20 live shaders in scenes-local, rendered {rendered_count}"
         );
+    }
+
+    #[test]
+    fn bpm_override_auto_uses_audio_bpm_and_applies_phase_scrub() {
+        let base = BpmOverrideState::default();
+        // At 120 BPM (2 beats/sec), elapsed = 1.0s => beat_time = 2.0, phase = 0.0 => on_beat = 1.0.
+        let r0 = resolve_bpm_uniforms(1.0, 120.0, &base);
+        assert_eq!(r0.bpm, 120.0);
+        assert!((r0.beat_time - 2.0).abs() < 1e-5);
+        assert!((r0.on_beat - 1.0).abs() < 1e-5);
+        assert!((r0.bpm_sin - 0.5).abs() < 1e-5);
+
+        // Apply +0.25 beat phase scrub => beat_time = 2.25, phase = 0.25 => sin(pi/2) = 1.0 => bpm_sin = 1.0.
+        let scrubbed = BpmOverrideState {
+            mode: BpmOverrideMode::Auto,
+            phase_offset_beats: 0.25,
+            resync_epoch_ms: 0,
+        };
+        let r1 = resolve_bpm_uniforms(1.0, 120.0, &scrubbed);
+        assert_eq!(r1.bpm, 120.0);
+        assert!((r1.beat_time - 2.25).abs() < 1e-5);
+        assert!(r1.on_beat < 0.3 && r1.on_beat > 0.1);
+        assert!((r1.bpm_sin - 1.0).abs() < 1e-5);
+
+        // Negative phase scrub wraps cleanly into [0, 1) without NaN/negative phase.
+        let neg = BpmOverrideState {
+            mode: BpmOverrideMode::Auto,
+            phase_offset_beats: -0.25,
+            resync_epoch_ms: 0,
+        };
+        let r2 = resolve_bpm_uniforms(0.0, 120.0, &neg);
+        assert!((r2.beat_time - (-0.25)).abs() < 1e-5);
+        assert!(r2.on_beat >= 0.0 && r2.on_beat <= 1.0);
+        assert!(r2.bpm_sin.abs() < 1e-5);
+    }
+
+    #[test]
+    fn bpm_override_manual_locks_tempo_and_honors_resync_epoch() {
+        let manual = BpmOverrideState {
+            mode: BpmOverrideMode::Manual { bpm: 128.0 },
+            phase_offset_beats: 0.5,
+            resync_epoch_ms: 2000,
+        };
+        // Audio reports 95 BPM, but Manual locks to 128 BPM; resynced at t=2.0s.
+        // At elapsed = 2.0s => dt = 0.0s => beat_time = 0.5, phase = 0.5 => bpm_sin = 0.5.
+        let r_at_resync = resolve_bpm_uniforms(2.0, 95.0, &manual);
+        assert_eq!(r_at_resync.bpm, 128.0);
+        assert!((r_at_resync.beat_time - 0.5).abs() < 1e-5);
+        assert!((r_at_resync.bpm_sin - 0.5).abs() < 1e-5);
+
+        // 0.46875s later (= 1 beat at 128 BPM): beat_time advances by exactly 1.0 beat.
+        let r_next_beat = resolve_bpm_uniforms(2.468_75, 95.0, &manual);
+        assert_eq!(r_next_beat.bpm, 128.0);
+        assert!((r_next_beat.beat_time - 1.5).abs() < 1e-4);
+
+        // Verify packing into `syn_BPM` uniform vec4.
+        let audio = AudioUniformSnapshot {
+            bpm: 95.0,
+            ..AudioUniformSnapshot::default()
+        };
+        let uniforms =
+            build_standard_uniforms_with_bpm((64, 36), 2.0, 120, &audio, [0.5; 8], &manual);
+        let syn_bpm = uniforms
+            .iter()
+            .find(|u| u.name == "syn_BPM")
+            .expect("syn_BPM uniform present");
+        match syn_bpm.value {
+            UniformValue::Vec4([bpm, beat_time, on_beat, bpm_sin]) => {
+                assert_eq!(bpm, 128.0);
+                assert!((beat_time - 0.5).abs() < 1e-5);
+                assert!(on_beat > 0.0 && on_beat < 0.1);
+                assert!((bpm_sin - 0.5).abs() < 1e-5);
+            }
+            ref other => panic!("expected Vec4 for syn_BPM, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bpm_override_off_zeroes_bpm_and_disables_beat_pulses() {
+        let off = BpmOverrideState {
+            mode: BpmOverrideMode::Off,
+            phase_offset_beats: 0.75,
+            resync_epoch_ms: 500,
+        };
+        let resolved = resolve_bpm_uniforms(4.0, 140.0, &off);
+        assert_eq!(resolved.bpm, 0.0);
+        assert_eq!(resolved.beat_time, 0.0);
+        assert_eq!(resolved.on_beat, 0.0);
+        assert_eq!(resolved.bpm_sin, 0.0);
+
+        let audio = AudioUniformSnapshot {
+            bpm: 140.0,
+            ..AudioUniformSnapshot::default()
+        };
+        let uniforms = build_standard_uniforms_with_bpm((64, 36), 4.0, 240, &audio, [0.5; 8], &off);
+        let syn_bpm = uniforms
+            .iter()
+            .find(|u| u.name == "syn_BPM")
+            .expect("syn_BPM uniform present");
+        match syn_bpm.value {
+            UniformValue::Vec4(v) => assert_eq!(v, [0.0, 0.0, 0.0, 0.0]),
+            ref other => panic!("expected Vec4 for syn_BPM, got {other:?}"),
+        }
     }
 }

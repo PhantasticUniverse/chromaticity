@@ -392,6 +392,12 @@ pub struct AppState {
     pub audio_threshold: Mutex<f32>,
     /// Live GPU preview renderer (`wgpu` + `naga` GLSL 4.50).
     pub gpu_renderer: Mutex<crate::render::GpuPreviewEngine>,
+    /// Live BPM override and beatmatch phase-scrub state applied to GPU uniforms.
+    pub bpm_override: Mutex<crate::render::BpmOverrideState>,
+    /// Active stereo channel pair selected for multi-channel DJ / Rekordbox capture
+    /// (default `(0, 1)` = Ch 1–2 Master / REC OUT, isolating Headphone Cue Ch 3–4).
+    pub audio_channel_pair:
+        Arc<Mutex<chromaticity_runtime::rekordbox_bridge::ChannelPairSelection>>,
     /// Live QuickJS `script.js` host (ADR-012 sandboxed worker).
     pub script_host: Mutex<crate::script_host::ScriptHost>,
     /// Active entitlement token installed via `install_license` (ADR-009).
@@ -471,6 +477,10 @@ impl AppState {
             osc_dispatch_queue,
             audio_threshold: Mutex::new(0.0_f32),
             gpu_renderer: Mutex::new(crate::render::GpuPreviewEngine::new()),
+            bpm_override: Mutex::new(crate::render::BpmOverrideState::default()),
+            audio_channel_pair: Arc::new(Mutex::new(
+                chromaticity_runtime::rekordbox_bridge::ChannelPairSelection::master_default(),
+            )),
             script_host: Mutex::new(crate::script_host::ScriptHost::new()),
             entitlement_token: Mutex::new(None),
             started_at: Instant::now(),
@@ -736,6 +746,68 @@ impl AppState {
             Ok(guard) => *guard,
             Err(poisoned) => *poisoned.into_inner(),
         }
+    }
+
+    /// Store a sanitized [`crate::render::BpmOverrideState`] and return it.
+    pub fn store_bpm_override(
+        &self,
+        override_state: crate::render::BpmOverrideState,
+    ) -> crate::render::BpmOverrideState {
+        let sanitized = override_state.sanitized();
+        match self.bpm_override.lock() {
+            Ok(mut guard) => {
+                *guard = sanitized;
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = sanitized;
+            }
+        }
+        sanitized
+    }
+
+    /// Read the currently active [`crate::render::BpmOverrideState`].
+    #[must_use]
+    pub fn current_bpm_override(&self) -> crate::render::BpmOverrideState {
+        match self.bpm_override.lock() {
+            Ok(guard) => *guard,
+            Err(poisoned) => *poisoned.into_inner(),
+        }
+    }
+
+    /// Store the active stereo channel pair selection for multi-channel DJ capture.
+    pub fn store_audio_channel_pair(
+        &self,
+        selection: chromaticity_runtime::rekordbox_bridge::ChannelPairSelection,
+    ) {
+        match self.audio_channel_pair.lock() {
+            Ok(mut guard) => {
+                *guard = selection;
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = selection;
+            }
+        }
+    }
+
+    /// Read the currently selected stereo channel pair for multi-channel DJ capture.
+    #[must_use]
+    pub fn current_audio_channel_pair(
+        &self,
+    ) -> chromaticity_runtime::rekordbox_bridge::ChannelPairSelection {
+        match self.audio_channel_pair.lock() {
+            Ok(guard) => *guard,
+            Err(poisoned) => *poisoned.into_inner(),
+        }
+    }
+
+    /// Clone the shared stereo channel-pair handle for downstream audio capture callbacks.
+    #[must_use]
+    pub fn audio_channel_pair_handle(
+        &self,
+    ) -> Arc<Mutex<chromaticity_runtime::rekordbox_bridge::ChannelPairSelection>> {
+        Arc::clone(&self.audio_channel_pair)
     }
 }
 
