@@ -457,7 +457,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     framePushInFlight = false;
   }
 
-  function compositeStageToRgba(width: number, height: number): Uint8ClampedArray | null {
+  function compositeStageToCanvas(width: number, height: number): HTMLCanvasElement | null {
     if (typeof document === 'undefined') return null;
     if (offscreenStreamCanvas === null) {
       offscreenStreamCanvas = document.createElement('canvas');
@@ -465,7 +465,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     if (offscreenStreamCanvas.width !== width) offscreenStreamCanvas.width = width;
     if (offscreenStreamCanvas.height !== height) offscreenStreamCanvas.height = height;
 
-    const ctx = offscreenStreamCanvas.getContext('2d', { willReadFrequently: true });
+    const ctx = offscreenStreamCanvas.getContext('2d');
     if (!ctx) return null;
 
     ctx.globalCompositeOperation = 'source-over';
@@ -510,11 +510,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       }
     }
 
-    try {
-      return ctx.getImageData(0, 0, width, height).data;
-    } catch {
-      return null;
-    }
+    return offscreenStreamCanvas;
   }
 
   function startStreamCaptureLoop(): void {
@@ -532,18 +528,35 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         lastStreamFrameAt = now;
         const width = streamStatus.width || DEFAULT_STREAM_WIDTH;
         const height = streamStatus.height || DEFAULT_STREAM_HEIGHT;
-        const rgba = compositeStageToRgba(width, height);
-        if (rgba !== null) {
+        const canvas = compositeStageToCanvas(width, height);
+        if (canvas !== null && typeof canvas.toBlob === 'function') {
           framePushInFlight = true;
-          void pushStreamFrame(rgba)
-            .then((pushedCount) => {
-              if (!disposed && streamStatus.is_live && pushedCount !== null) {
-                streamStatus = { ...streamStatus, frames_pushed: pushedCount };
+          canvas.toBlob(
+            (blob) => {
+              if (disposed || !streamStatus.is_live || blob === null) {
+                framePushInFlight = false;
+                return;
               }
-            })
-            .finally(() => {
-              framePushInFlight = false;
-            });
+              void blob
+                .arrayBuffer()
+                .then((buf) => pushStreamFrame(new Uint8Array(buf)))
+                .then((pushedCount) => {
+                  if (
+                    !disposed &&
+                    streamStatus.is_live &&
+                    pushedCount !== null &&
+                    (pushedCount <= 2 || pushedCount % 15 === 0)
+                  ) {
+                    streamStatus = { ...streamStatus, frames_pushed: pushedCount };
+                  }
+                })
+                .finally(() => {
+                  framePushInFlight = false;
+                });
+            },
+            'image/jpeg',
+            0.8,
+          );
         }
       }
       streamRafId = requestAnimationFrame(tick);

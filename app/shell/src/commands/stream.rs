@@ -189,7 +189,7 @@ pub fn build_twitch_ffmpeg_args(
 
     let trimmed_ingest = ingest_url.trim().trim_end_matches('/');
     let destination = format!("{trimmed_ingest}/{}", stream_key.expose_secret());
-    let video_size = format!("{width}x{height}");
+    let _video_size = format!("{width}x{height}");
     let fps_str = fps.to_string();
     let gop_str = fps.saturating_mul(2).to_string();
     let bitrate_str = format!("{bitrate_kbps}k");
@@ -199,14 +199,10 @@ pub fn build_twitch_ffmpeg_args(
         "-hide_banner".to_owned(),
         "-loglevel".to_owned(),
         "error".to_owned(),
-        "-use_wallclock_as_timestamps".to_owned(),
-        "1".to_owned(),
         "-f".to_owned(),
-        "rawvideo".to_owned(),
-        "-pix_fmt".to_owned(),
-        "rgba".to_owned(),
-        "-s".to_owned(),
-        video_size,
+        "image2pipe".to_owned(),
+        "-vcodec".to_owned(),
+        "mjpeg".to_owned(),
         "-r".to_owned(),
         fps_str,
         "-i".to_owned(),
@@ -689,8 +685,11 @@ pub fn get_stream_status_impl(app: &AppState) -> Result<StreamStatusDto, String>
     Ok(proc_guard.status_dto())
 }
 
+/// Maximum accepted encoded JPEG frame size (8 MiB).
+const MAX_JPEG_FRAME_BYTES: usize = 8 * 1024 * 1024;
+
 /// Inner implementation for [`push_stream_frame`].
-pub fn push_stream_frame_impl(app: &AppState, rgba_bytes: &[u8]) -> Result<u64, String> {
+pub fn push_stream_frame_impl(app: &AppState, frame_bytes: &[u8]) -> Result<u64, String> {
     let mut proc_guard = match app.twitch_stream.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
@@ -698,22 +697,18 @@ pub fn push_stream_frame_impl(app: &AppState, rgba_bytes: &[u8]) -> Result<u64, 
 
     proc_guard.poll_child_health();
 
-    let expected_len = (proc_guard.width as usize)
-        .checked_mul(proc_guard.height as usize)
-        .and_then(|px| px.checked_mul(4))
-        .ok_or_else(|| "configured stream dimensions overflow frame byte size".to_owned())?;
-
-    if rgba_bytes.len() != expected_len {
+    if frame_bytes.len() < 2 || frame_bytes[0] != 0xFF || frame_bytes[1] != 0xD8 {
+        return Err("stream frame must be a valid JPEG payload (missing SOI header)".to_owned());
+    }
+    if frame_bytes.len() > MAX_JPEG_FRAME_BYTES {
         return Err(format!(
-            "RGBA frame byte length mismatch: expected {expected_len} bytes for {}x{}, got {}",
-            proc_guard.width,
-            proc_guard.height,
-            rgba_bytes.len()
+            "JPEG frame exceeds maximum size of {MAX_JPEG_FRAME_BYTES} bytes (got {})",
+            frame_bytes.len()
         ));
     }
 
     let write_result = match proc_guard.stdin.as_mut() {
-        Some(stdin) => stdin.write_all(rgba_bytes),
+        Some(stdin) => stdin.write_all(frame_bytes),
         None => {
             return Err("cannot push stream frame while stream is not live".to_owned());
         }
@@ -859,9 +854,8 @@ mod tests {
         )
         .unwrap();
 
-        assert!(args.windows(2).any(|w| w == ["-f", "rawvideo"]));
-        assert!(args.windows(2).any(|w| w == ["-pix_fmt", "rgba"]));
-        assert!(args.windows(2).any(|w| w == ["-s", "1920x1080"]));
+        assert!(args.windows(2).any(|w| w == ["-f", "image2pipe"]));
+        assert!(args.windows(2).any(|w| w == ["-vcodec", "mjpeg"]));
         assert!(args.windows(2).any(|w| w == ["-r", "60"]));
         assert!(args.windows(2).any(|w| w == ["-i", "pipe:0"]));
         assert!(args.windows(2).any(|w| w == ["-b:v", "6000k"]));
@@ -914,7 +908,7 @@ mod tests {
         assert_eq!(stopped.frames_pushed, 0);
 
         // Pushing a frame while idle fails cleanly without panicking.
-        let frame_bytes = vec![0u8; (status.width * status.height * 4) as usize];
+        let frame_bytes = vec![0xFF_u8, 0xD8, 0xFF, 0xD9];
         let push_err = push_stream_frame_impl(&app, &frame_bytes).unwrap_err();
         assert!(push_err.contains("not live"));
     }
