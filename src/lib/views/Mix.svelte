@@ -872,6 +872,33 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   }
 
+  // OBS-grade per-channel 60fps meter ballistics (fast attack, 24 dB/s release,
+  // 800 ms peak hold) so meters snap on kicks and fall smoothly like a real mixer.
+  interface MeterBallisticsState {
+    level: number;
+    peak: number;
+    peakHoldUntilMs: number;
+  }
+  const meterBallistics: Record<string, MeterBallisticsState> = {
+    master: { level: 0, peak: 0, peakHoldUntilMs: 0 },
+    mic: { level: 0, peak: 0, peakHoldUntilMs: 0 },
+    media: { level: 0, peak: 0, peakHoldUntilMs: 0 },
+    alerts: { level: 0, peak: 0, peakHoldUntilMs: 0 },
+  };
+  let smoothedMeterLevels = $state<Record<string, number>>({
+    master: 0,
+    mic: 0,
+    media: 0,
+    alerts: 0,
+  });
+  let smoothedMeterPeaks = $state<Record<string, number>>({
+    master: 0,
+    mic: 0,
+    media: 0,
+    alerts: 0,
+  });
+  let lastMeterTickMs = 0;
+
   /** Convert linear amplitude [0, 1] to OBS-style normalized dBFS meter [0, 1] (-60 dB..0 dB). */
   function linearToMeterRatio(linear: number): number {
     if (!Number.isFinite(linear) || linear <= 0.001) return 0;
@@ -879,7 +906,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     return Math.max(0, Math.min(1, (db + 60) / 60));
   }
 
-  function liveChannelMeterLevel(channel: {
+  function rawChannelMeterTarget(channel: {
     readonly id: string;
     readonly gain: number;
     readonly level: number;
@@ -891,11 +918,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const snap = liveAudioSnap;
     if (snap) {
       if (channel.id === 'master') {
-        const amp = Math.max(snap.rms, snap.peak * 0.75) * channel.gain;
+        const amp = Math.max(snap.rms, snap.peak * 0.85) * channel.gain;
         return linearToMeterRatio(amp);
       }
       if (channel.id === 'mic') {
-        // Show live input energy only when the active audio engine is receiving non-silent signal.
         const amp = snap.degraded ? 0 : snap.rms * 0.85 * channel.gain;
         return linearToMeterRatio(amp);
       }
@@ -907,11 +933,65 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         return Math.min(1, 0.55 * channel.gain);
       }
       if (channel.id === 'alerts') {
-        // Alerts bus stays quiet at 0 until an alert event fires.
         return 0;
       }
     }
     return Math.min(1, channel.level * channel.gain);
+  }
+
+  $effect(() => {
+    const _snap = liveAudioSnap;
+    const channels = videoMixerStore.audioChannels;
+    void _snap;
+    const now = typeof performance !== 'undefined' ? performance.now() : 0;
+    const dtSec =
+      lastMeterTickMs > 0 ? Math.min(0.1, Math.max(0.001, (now - lastMeterTickMs) / 1000)) : 0.016;
+    lastMeterTickMs = now;
+
+    // OBS Studio default falloff: ~24 dB/s over 60 dB range = ~0.42 ratio/sec.
+    const releaseStep = 0.42 * dtSec;
+    const peakReleaseStep = 0.28 * dtSec;
+    const nextLevels: Record<string, number> = {};
+    const nextPeaks: Record<string, number> = {};
+
+    for (const ch of channels) {
+      const target = rawChannelMeterTarget(ch);
+      const st = meterBallistics[ch.id] ?? { level: 0, peak: 0, peakHoldUntilMs: 0 };
+      meterBallistics[ch.id] = st;
+
+      if (target >= st.level) {
+        st.level = st.level + (target - st.level) * 0.85;
+      } else {
+        st.level = Math.max(target, st.level - releaseStep);
+      }
+
+      if (st.level >= st.peak) {
+        st.peak = st.level;
+        st.peakHoldUntilMs = now + 800;
+      } else if (now >= st.peakHoldUntilMs) {
+        st.peak = Math.max(st.level, st.peak - peakReleaseStep);
+      }
+
+      nextLevels[ch.id] = st.level;
+      nextPeaks[ch.id] = st.peak;
+    }
+
+    smoothedMeterLevels = nextLevels;
+    smoothedMeterPeaks = nextPeaks;
+  });
+
+  function liveChannelMeterLevel(channel: {
+    readonly id: string;
+    readonly gain: number;
+    readonly level: number;
+    readonly muted: boolean;
+    readonly solo: boolean;
+  }): number {
+    return smoothedMeterLevels[channel.id] ?? rawChannelMeterTarget(channel);
+  }
+
+  function liveChannelPeakLevel(channelId: string): number {
+    return smoothedMeterPeaks[channelId] ?? 0;
   }
 
   $effect(() => {
@@ -3310,6 +3390,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <div class="mix__audio-channels">
       {#each videoMixerStore.audioChannels as channel (channel.id)}
         {@const meterPct = Math.round(liveChannelMeterLevel(channel) * 100)}
+        {@const peakPct = Math.round(liveChannelPeakLevel(channel.id) * 100)}
         <div class="mix__audio-ch" class:mix__audio-ch--muted={channel.muted}>
           <div class="mix__audio-ch-head">
             <label class="mix__audio-label" for={`mix-audio-${channel.id}`}>
@@ -3327,6 +3408,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             aria-valuenow={meterPct}
           >
             <div class="mix__meter-fill" style={`width: ${meterPct}%`}></div>
+            {#if peakPct > 1}
+              <div class="mix__meter-peak" style={`left: ${Math.min(99, peakPct)}%`}></div>
+            {/if}
           </div>
 
           <div class="mix__audio-ch-controls">
@@ -4712,8 +4796,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   .mix__meter-track {
+    position: relative;
     width: 100%;
-    height: 5px;
+    height: 6px;
     border-radius: var(--radius-full);
     background: var(--color-bg-4);
     overflow: hidden;
@@ -4728,7 +4813,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       var(--color-primary) 72%,
       var(--color-danger) 100%
     );
-    transition: width var(--duration-fast) var(--easing-out);
+    transition: none;
+  }
+
+  .mix__meter-peak {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #ffffff;
+    opacity: 0.9;
+    pointer-events: none;
   }
 
   .mix__audio-ch-controls {
