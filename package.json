@@ -23,7 +23,16 @@
     "format:check": "prettier --check \"**/*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}\"",
     "format:fix": "prettier --write \"**/*.{md,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,json}\"",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:wcag": "vitest run src/lib/__tests__/accessibility/wcag-aa-corpus.test.ts",
+    "test:hotkeys": "vitest run src/lib/__tests__/hotkeys-completeness.test.ts src/lib/__tests__/hotkeys-conflict.test.ts src/lib/__tests__/hotkeys-parity.test.ts",
+    "test:rust": "bash -c 'if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --workspace --all-features --all-targets; else cargo test --workspace --all-features --all-targets; fi'",
+    "check:frontend": "npm run format:check && npm run lint && npm run tsc && npm run check",
+    "check:hygiene": "bash scripts/verify-fast.sh --hygiene-only",
+    "verify:fast": "bash scripts/verify-fast.sh --check",
+    "verify:all": "bash scripts/verify-fast.sh --check --all",
+    "fix:all": "bash scripts/verify-fast.sh --fix",
+    "dev:doctor": "bash scripts/dev-doctor.sh"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",

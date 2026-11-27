@@ -118,7 +118,7 @@ valid_ids="$(
 # propagate via `set -e -o pipefail`.
 evidence_lines="$(
     find "$repo" \
-        -type d \( -name target -o -name node_modules -o -name dist -o -name .git -o -name Contents -o -name chromaticity-planning \) -prune \
+        -type d \( -name target -o -name node_modules -o -name dist -o -name .git -o -name .claude -o -name Contents -o -name chromaticity-planning \) -prune \
         -o -type f -name '*.rs' -print0 \
     | xargs -0 grep -nHE '^[[:space:]]*//! Evidence:' \
     || :
