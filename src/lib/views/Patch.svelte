@@ -204,17 +204,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     PATCH_WIRES.map((w) => {
       const [x1, y1] = patchPinPosFrom(nodes, w.from[0], w.from[1], 'out');
       const [x2, y2] = patchPinPosFrom(nodes, w.to[0], w.to[1], 'in');
-      const sx = x1 + 4;
-      const tx = x2 - 6;
-      const mx = (sx + tx) / 2;
+      const mx = (x1 + x2) / 2;
       const sourceNode = nodes.find((n) => n.id === w.from[0]);
       const signalKind = signalKindForSource(sourceNode, w.from[0]);
       const color = WIRE_SIGNAL_COLOR[signalKind];
       return {
-        d: `M${sx},${y1} C${mx},${y1} ${mx},${y2} ${tx},${y2}`,
-        sx,
+        d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`,
+        x1,
         y1,
-        tx,
+        x2,
         y2,
         midX: mx,
         midY: (y1 + y2) / 2,
@@ -224,6 +222,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       };
     }),
   );
+
+  interface ConnectedPortInfo {
+    readonly color: string;
+    readonly signalKind: WireSignalKind;
+    readonly wireIndices: readonly number[];
+  }
+
+  const connectedPorts = $derived.by((): Readonly<Record<string, ConnectedPortInfo>> => {
+    const ports: Record<
+      string,
+      { color: string; signalKind: WireSignalKind; wireIndices: number[] }
+    > = {};
+    const addPort = (
+      key: string,
+      color: string,
+      signalKind: WireSignalKind,
+      wireIdx: number,
+    ): void => {
+      const existing = ports[key];
+      if (existing !== undefined) {
+        existing.wireIndices.push(wireIdx);
+      } else {
+        ports[key] = { color, signalKind, wireIndices: [wireIdx] };
+      }
+    };
+    PATCH_WIRES.forEach((w, idx) => {
+      const wire = wirePaths[idx];
+      if (wire === undefined) return;
+      addPort(`${w.from[0]}:${w.from[1]}:out`, wire.color, wire.signalKind, idx);
+      addPort(`${w.to[0]}:${w.to[1]}:in`, wire.color, wire.signalKind, idx);
+    });
+    return ports;
+  });
 
   const hoveredWire = $derived(
     hoveredWireIdx === null ? null : (wirePaths[hoveredWireIdx] ?? null),
@@ -432,21 +463,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             role="img"
             aria-label={ariaLabel}
           >
-            <defs>
-              {#each WIRE_SIGNALS as sig (sig.kind)}
-                <marker
-                  id="patch-arrow-{sig.kind}"
-                  viewBox="0 0 8 8"
-                  refX="6.5"
-                  refY="4"
-                  markerWidth="6"
-                  markerHeight="6"
-                  orient="auto"
-                >
-                  <polygon points="0 1, 7 4, 0 7" fill={sig.color} />
-                </marker>
-              {/each}
-            </defs>
             {#each wirePaths as wire, i (i)}
               <g
                 class="patch__wire"
@@ -474,13 +490,33 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                   d={wire.d}
                   stroke={wire.color}
                   stroke-width={hoveredWireIdx === i ? 3.2 : 2.2}
+                  stroke-linecap="round"
                   fill="none"
-                  marker-end="url(#patch-arrow-{wire.signalKind})"
+                />
+                <path
+                  class="patch__wire-flow"
+                  class:patch__wire-flow--active={isModRunning}
+                  d={wire.d}
+                  stroke="#ffffff"
+                  stroke-width={hoveredWireIdx === i ? 2 : 1.4}
+                  stroke-dasharray="6 14"
+                  stroke-linecap="round"
+                  fill="none"
                 />
                 <circle
-                  cx={wire.sx}
+                  class="patch__wire-endpoint"
+                  data-endpoint="start"
+                  cx={wire.x1}
                   cy={wire.y1}
-                  r={hoveredWireIdx === i ? 4 : 3}
+                  r={hoveredWireIdx === i ? 5.2 : 4.5}
+                  fill={wire.color}
+                />
+                <circle
+                  class="patch__wire-endpoint"
+                  data-endpoint="end"
+                  cx={wire.x2}
+                  cy={wire.y2}
+                  r={hoveredWireIdx === i ? 5.2 : 4.5}
                   fill={wire.color}
                 />
               </g>
@@ -529,6 +565,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                   <span class="patch__node-title">{node.title}</span>
                 </div>
                 {#each node.pins as pin, idx (pin)}
+                  {@const inPort = connectedPorts[`${node.id}:${pin}:in`]}
+                  {@const outPort = connectedPorts[`${node.id}:${pin}:out`]}
+                  {@const inActive =
+                    inPort !== undefined &&
+                    hoveredWireIdx !== null &&
+                    inPort.wireIndices.includes(hoveredWireIdx)}
+                  {@const outActive =
+                    outPort !== undefined &&
+                    hoveredWireIdx !== null &&
+                    outPort.wireIndices.includes(hoveredWireIdx)}
                   <div
                     class="patch__pin"
                     style="height: {PATCH_ROW_H}px;"
@@ -536,8 +582,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                     data-header-h={PATCH_HEADER_H}
                   >
                     <span class="patch__pin-name mono">{pin}</span>
-                    <span class="patch__pin-port patch__pin-port--in" aria-hidden="true"></span>
-                    <span class="patch__pin-port patch__pin-port--out" aria-hidden="true"></span>
+                    <span
+                      class="patch__pin-port patch__pin-port--in"
+                      class:patch__pin-port--connected={inPort !== undefined}
+                      class:patch__pin-port--active={inActive}
+                      class:patch__pin-port--dimmed={inPort !== undefined &&
+                        hoveredWireIdx !== null &&
+                        !inActive}
+                      data-port-key="{node.id}:{pin}:in"
+                      data-connected={inPort !== undefined ? 'true' : 'false'}
+                      data-signal={inPort?.signalKind}
+                      style={inPort !== undefined ? `--port-color: ${inPort.color};` : undefined}
+                      aria-hidden="true"
+                    ></span>
+                    <span
+                      class="patch__pin-port patch__pin-port--out"
+                      class:patch__pin-port--connected={outPort !== undefined}
+                      class:patch__pin-port--active={outActive}
+                      class:patch__pin-port--dimmed={outPort !== undefined &&
+                        hoveredWireIdx !== null &&
+                        !outActive}
+                      data-port-key="{node.id}:{pin}:out"
+                      data-connected={outPort !== undefined ? 'true' : 'false'}
+                      data-signal={outPort?.signalKind}
+                      style={outPort !== undefined ? `--port-color: ${outPort.color};` : undefined}
+                      aria-hidden="true"
+                    ></span>
                   </div>
                 {/each}
               </div>
@@ -897,6 +967,31 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     opacity: 1;
     filter: drop-shadow(0 0 6px currentColor);
   }
+  .patch__wire-flow {
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+  .patch__wire-flow--active {
+    opacity: 0.48;
+    animation: patch-wire-flow 1.4s linear infinite;
+  }
+  .patch__wire--hovered .patch__wire-flow--active {
+    opacity: 0.72;
+  }
+  @keyframes patch-wire-flow {
+    from {
+      stroke-dashoffset: 20;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .patch__wire-flow--active {
+      animation: none;
+    }
+  }
   .patch__wire--dimmed {
     opacity: 0.22;
   }
@@ -1012,9 +1107,30 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--color-bg-4);
-    border: 2px solid var(--node-tint, var(--color-line-3));
+    background: var(--color-bg-0);
+    border: 1.5px solid
+      color-mix(in oklab, var(--node-tint, var(--color-line-3)) 55%, var(--color-line-2));
     box-sizing: border-box;
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease,
+      opacity 120ms ease;
+  }
+  .patch__pin-port--connected {
+    background: var(--port-color);
+    border: 1.5px solid color-mix(in oklab, var(--port-color) 65%, #ffffff);
+    box-shadow:
+      0 0 0 2px color-mix(in oklab, var(--port-color) 26%, transparent),
+      0 0 8px color-mix(in oklab, var(--port-color) 55%, transparent);
+  }
+  .patch__pin-port--active {
+    transform: translateY(-50%) scale(1.2);
+    box-shadow:
+      0 0 0 3px color-mix(in oklab, var(--port-color) 38%, transparent),
+      0 0 12px var(--port-color);
+  }
+  .patch__pin-port--dimmed {
+    opacity: 0.35;
   }
   .patch__pin-port--in {
     left: -6px;

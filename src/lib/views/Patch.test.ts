@@ -23,6 +23,7 @@ import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import Patch from './Patch.svelte';
+import { PATCH_NODES, PATCH_WIRES, patchPinPosFrom } from '../data/patch-fixtures';
 import { patchModulationStore } from '../modulation/store.svelte';
 
 describe('Patch view', () => {
@@ -44,7 +45,7 @@ describe('Patch view', () => {
     expect(getByRole('button', { name: /Stage Out — 3 pins/ })).toBeInTheDocument();
   });
 
-  it('renders all six wires as signal-colored SVG paths with directional arrowheads', () => {
+  it('renders all six wires as signal-colored SVG paths terminating dead-center on solid sockets (no arrowheads)', () => {
     const { container } = render(Patch);
     const paths = container.querySelectorAll('.patch__wires path.patch__wire-path');
     expect(paths.length).toBe(6);
@@ -53,17 +54,79 @@ describe('Patch view', () => {
     const strokes = Array.from(paths).map((p) => p.getAttribute('stroke'));
     expect(strokes).toEqual(['#38bdf8', '#38bdf8', '#a78bfa', '#a3e635', '#fbbf24', '#fbbf24']);
 
-    // Every cable terminates with a signal-matched SVG arrowhead marker.
-    const markers = Array.from(paths).map((p) => p.getAttribute('marker-end'));
-    expect(markers).toEqual([
-      'url(#patch-arrow-audio)',
-      'url(#patch-arrow-audio)',
-      'url(#patch-arrow-mod)',
-      'url(#patch-arrow-midi)',
-      'url(#patch-arrow-video)',
-      'url(#patch-arrow-video)',
-    ]);
-    expect(container.querySelectorAll('.patch__wires defs marker').length).toBe(4);
+    // No SVG arrowhead markers on cables or in <defs>.
+    expect(container.querySelectorAll('.patch__wires defs marker').length).toBe(0);
+    for (const path of paths) {
+      expect(path.getAttribute('marker-end')).toBeNull();
+    }
+
+    // Every cable terminates at the exact pin coordinates with matching solid r="4.5" endpoint circles.
+    const wires = container.querySelectorAll('.patch__wire');
+    PATCH_WIRES.forEach((w, idx) => {
+      const [x1, y1] = patchPinPosFrom(PATCH_NODES, w.from[0], w.from[1], 'out');
+      const [x2, y2] = patchPinPosFrom(PATCH_NODES, w.to[0], w.to[1], 'in');
+      const wireEl = wires[idx] as SVGGElement;
+      const pathD = wireEl.querySelector('path.patch__wire-path')?.getAttribute('d') ?? '';
+      expect(pathD.startsWith(`M${x1},${y1} `)).toBe(true);
+      expect(pathD.endsWith(` ${x2},${y2}`)).toBe(true);
+
+      const startCircle = wireEl.querySelector('circle[data-endpoint="start"]');
+      const endCircle = wireEl.querySelector('circle[data-endpoint="end"]');
+      expect(startCircle?.getAttribute('cx')).toBe(String(x1));
+      expect(startCircle?.getAttribute('cy')).toBe(String(y1));
+      expect(startCircle?.getAttribute('r')).toBe('4.5');
+      expect(startCircle?.getAttribute('fill')).toBe(strokes[idx]);
+      expect(endCircle?.getAttribute('cx')).toBe(String(x2));
+      expect(endCircle?.getAttribute('cy')).toBe(String(y2));
+      expect(endCircle?.getAttribute('r')).toBe('4.5');
+      expect(endCircle?.getAttribute('fill')).toBe(strokes[idx]);
+    });
+  });
+
+  it('renders connected port sockets as solid signal-colored dots and leaves unconnected ports hollow', () => {
+    const { container } = render(Patch);
+    const connectedPorts = container.querySelectorAll('.patch__pin-port--connected');
+    // 6 wires × 2 endpoints = 12 connected port sockets.
+    expect(connectedPorts.length).toBe(12);
+
+    const audioOut = container.querySelector('[data-port-key="audio:bass:out"]') as HTMLElement;
+    const sceneIn = container.querySelector('[data-port-key="scene:pusher:in"]') as HTMLElement;
+    const lfoOut = container.querySelector('[data-port-key="lfo:out:out"]') as HTMLElement;
+    const midiOut = container.querySelector('[data-port-key="midi:cc 14:out"]') as HTMLElement;
+    const stageIn = container.querySelector('[data-port-key="out:display 2:in"]') as HTMLElement;
+    const unconnected = container.querySelector('[data-port-key="audio:high:out"]') as HTMLElement;
+
+    expect(audioOut).toHaveClass('patch__pin-port--connected');
+    expect(audioOut.style.getPropertyValue('--port-color')).toBe('#38bdf8');
+    expect(sceneIn).toHaveClass('patch__pin-port--connected');
+    expect(sceneIn.style.getPropertyValue('--port-color')).toBe('#38bdf8');
+    expect(lfoOut.style.getPropertyValue('--port-color')).toBe('#a78bfa');
+    expect(midiOut.style.getPropertyValue('--port-color')).toBe('#a3e635');
+    expect(stageIn.style.getPropertyValue('--port-color')).toBe('#fbbf24');
+
+    expect(unconnected).not.toHaveClass('patch__pin-port--connected');
+    expect(unconnected.getAttribute('data-connected')).toBe('false');
+    expect(unconnected.style.getPropertyValue('--port-color')).toBe('');
+  });
+
+  it('activates the TouchDesigner-style signal-flow overlay stroke when live modulation is running', async () => {
+    const { container, getByRole } = render(Patch);
+    const flows = container.querySelectorAll('path.patch__wire-flow');
+    expect(flows.length).toBe(6);
+    for (const flow of flows) {
+      expect(flow).not.toHaveClass('patch__wire-flow--active');
+      expect(flow.getAttribute('stroke-dasharray')).toBe('6 14');
+    }
+
+    await fireEvent.click(getByRole('button', { name: /Start Live Mod/ }));
+    for (const flow of flows) {
+      expect(flow).toHaveClass('patch__wire-flow--active');
+    }
+
+    await fireEvent.click(getByRole('button', { name: /Stop Live Mod/ }));
+    for (const flow of flows) {
+      expect(flow).not.toHaveClass('patch__wire-flow--active');
+    }
   });
 
   it('renders the signal legend pill strip in the canvas header', () => {
