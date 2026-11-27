@@ -14,12 +14,15 @@ use crate::state::AppState;
 use chromaticity_render::compositor::{BlendMode, CompositeLayer, LayerStack, LayerTransform};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 /// Maximum number of concurrent compositing layers exposed to `Mix.svelte`.
@@ -529,18 +532,140 @@ pub fn parse_yt_dlp_output(video_id: &str, stdout: &str) -> Result<YouTubeStream
 /// macOS WKWebView/AVFoundation smoothly buffered without mid-playback pauses.
 const YOUTUBE_PROXY_MAX_CHUNK_BYTES: u64 = 4 * 1024 * 1024;
 
+/// Maximum concurrent local proxy connections to prevent thread/process exhaustion.
+const YOUTUBE_PROXY_MAX_CONCURRENT_REQUESTS: usize = 8;
+
+/// Maximum cached stream entries in the local proxy map.
+const YOUTUBE_PROXY_MAX_STREAMS: usize = 32;
+
+/// Maximum total HTTP request header bytes accepted by the local proxy (8 KiB).
+const YOUTUBE_PROXY_MAX_HEADER_BYTES: u64 = 8 * 1024;
+
+/// Maximum HTTP request header lines accepted by the local proxy.
+const YOUTUBE_PROXY_MAX_HEADER_LINES: usize = 64;
+
+/// Socket read/write timeouts for the local YouTube proxy.
+const YOUTUBE_PROXY_READ_TIMEOUT: Duration = Duration::from_secs(10);
+const YOUTUBE_PROXY_WRITE_TIMEOUT: Duration = Duration::from_secs(15);
+
 #[derive(Debug, Clone)]
 struct ProxiedYouTubeStream {
     upstream_url: String,
     total_len: u64,
+    inserted_at: Instant,
 }
 
 struct YouTubeProxyServer {
     port: u16,
+    session_token: String,
     streams: Arc<Mutex<HashMap<String, ProxiedYouTubeStream>>>,
+    shutdown: Arc<AtomicBool>,
 }
 
 static YOUTUBE_PROXY: OnceLock<Result<YouTubeProxyServer, String>> = OnceLock::new();
+
+/// Shut down the local YouTube media proxy accept loop cleanly on app exit.
+pub fn shutdown_youtube_proxy() {
+    if let Some(Ok(server)) = YOUTUBE_PROXY.get() {
+        server.shutdown.store(true, Ordering::Release);
+        // Nudge the blocking accept() so the background listener thread exits promptly.
+        let _ = TcpStream::connect(("127.0.0.1", server.port));
+    }
+}
+
+/// Generate a per-session unpredictable hex token using OS-seeded `RandomState` + time + PID.
+fn generate_proxy_session_token() -> String {
+    let mut h1 = RandomState::new().build_hasher();
+    let mut h2 = RandomState::new().build_hasher();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    h1.write_u128(nanos);
+    h1.write_u32(std::process::id());
+    h2.write_u64(h1.finish());
+    h2.write_u128(nanos.rotate_left(37));
+    format!("{:016x}{:016x}", h1.finish(), h2.finish())
+}
+
+/// Validate that an upstream YouTube media URL uses `https://` and targets an
+/// allowlisted YouTube/GoogleVideo media host (prevents SSRF / localhost redirects).
+#[must_use]
+pub fn is_allowed_youtube_media_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() || authority.contains('@') {
+        return false;
+    }
+    let host = authority
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    host == "googlevideo.com"
+        || host.ends_with(".googlevideo.com")
+        || host == "youtube.com"
+        || host.ends_with(".youtube.com")
+}
+
+/// Check whether an HTTP `Origin` header belongs to Chromaticity's local webview/dev server.
+#[must_use]
+pub fn is_allowed_proxy_origin(origin: &str) -> bool {
+    let trimmed = origin.trim();
+    if trimmed.is_empty() || trimmed.contains(['\r', '\n']) {
+        return false;
+    }
+    trimmed == "tauri://localhost"
+        || trimmed == "https://tauri.localhost"
+        || trimmed == "http://tauri.localhost"
+        || trimmed == "http://localhost"
+        || trimmed.starts_with("http://localhost:")
+        || trimmed == "http://127.0.0.1"
+        || trimmed.starts_with("http://127.0.0.1:")
+}
+
+fn cors_header_for_origin(origin: Option<&str>) -> String {
+    match origin {
+        Some(o) if is_allowed_proxy_origin(o) => {
+            format!(
+                "Access-Control-Allow-Origin: {}\r\nVary: Origin\r\n",
+                o.trim()
+            )
+        }
+        _ => String::new(),
+    }
+}
+
+/// Resolve `curl` across macOS, Linux, and Windows.
+#[must_use]
+fn resolve_curl_binary() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "curl.exe"
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if std::path::Path::new("/usr/bin/curl").is_file() {
+            "/usr/bin/curl"
+        } else {
+            "curl"
+        }
+    }
+}
+
+#[must_use]
+fn null_device_path() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "NUL"
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "/dev/null"
+    }
+}
 
 /// Extract the `clen=<bytes>` query parameter from a `googlevideo.com` URL.
 #[must_use]
@@ -574,11 +699,30 @@ pub fn parse_range_header(header_value: &str) -> Option<(u64, Option<u64>)> {
 }
 
 fn probe_upstream_content_length(url: &str) -> Result<u64, String> {
+    if !is_allowed_youtube_media_url(url) {
+        return Err("upstream YouTube media URL host is not allowlisted".to_string());
+    }
     if let Some(clen) = parse_clen_from_url(url) {
         return Ok(clen);
     }
-    let output = Command::new("/usr/bin/curl")
-        .args(["-sL", "-D", "-", "-o", "/dev/null", "-r", "0-0", "--", url])
+    let output = Command::new(resolve_curl_binary())
+        .args([
+            "-sL",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--max-time",
+            "15",
+            "-D",
+            "-",
+            "-o",
+            null_device_path(),
+            "-r",
+            "0-0",
+            "--",
+            url,
+        ])
         .output()
         .map_err(|err| format!("failed to probe stream length via curl: {err}"))?;
     let headers = String::from_utf8_lossy(&output.stdout);
@@ -597,14 +741,27 @@ fn probe_upstream_content_length(url: &str) -> Result<u64, String> {
     Err("unable to determine YouTube stream content length".to_string())
 }
 
+struct ActiveConnGuard(Arc<AtomicUsize>);
+
+impl Drop for ActiveConnGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 fn handle_youtube_proxy_connection(
     mut stream: TcpStream,
     streams: &Arc<Mutex<HashMap<String, ProxiedYouTubeStream>>>,
+    session_token: &str,
 ) {
-    let mut reader = match stream.try_clone() {
-        Ok(cloned) => BufReader::new(cloned),
+    let _ = stream.set_read_timeout(Some(YOUTUBE_PROXY_READ_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(YOUTUBE_PROXY_WRITE_TIMEOUT));
+
+    let cloned = match stream.try_clone() {
+        Ok(c) => c,
         Err(_) => return,
     };
+    let mut reader = BufReader::new(cloned.take(YOUTUBE_PROXY_MAX_HEADER_BYTES));
     let mut request_line = String::new();
     if reader.read_line(&mut request_line).unwrap_or(0) == 0 {
         return;
@@ -614,7 +771,13 @@ fn handle_youtube_proxy_connection(
     let path = parts.next().unwrap_or("");
 
     let mut range_header: Option<String> = None;
+    let mut origin_header: Option<String> = None;
+    let mut header_lines = 0usize;
     loop {
+        if header_lines >= YOUTUBE_PROXY_MAX_HEADER_LINES {
+            break;
+        }
+        header_lines += 1;
         let mut line = String::new();
         match reader.read_line(&mut line) {
             Ok(0) | Err(_) => break,
@@ -624,26 +787,48 @@ fn handle_youtube_proxy_connection(
                     break;
                 }
                 if let Some((name, val)) = trimmed.split_once(':') {
-                    if name.trim().eq_ignore_ascii_case("range") {
+                    let key = name.trim();
+                    if key.eq_ignore_ascii_case("range") {
                         range_header = Some(val.trim().to_string());
+                    } else if key.eq_ignore_ascii_case("origin") {
+                        origin_header = Some(val.trim().to_string());
                     }
                 }
             }
         }
     }
 
+    let cors_hdr = cors_header_for_origin(origin_header.as_deref());
+
     if method.eq_ignore_ascii_case("OPTIONS") {
-        let _ = stream.write_all(
-            b"HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Headers: Range\r\nConnection: close\r\n\r\n",
+        let resp = format!(
+            "HTTP/1.1 204 No Content\r\n{cors_hdr}Access-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nAccess-Control-Allow-Headers: Range\r\nConnection: close\r\n\r\n"
         );
+        let _ = stream.write_all(resp.as_bytes());
         return;
     }
 
-    let video_id = path
-        .strip_prefix("/video/")
-        .and_then(|rest| rest.split('?').next())
+    if !method.eq_ignore_ascii_case("GET") && !method.eq_ignore_ascii_case("HEAD") {
+        let resp = format!(
+            "HTTP/1.1 405 Method Not Allowed\r\n{cors_hdr}Allow: GET, HEAD, OPTIONS\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        return;
+    }
+
+    // Require per-session bearer token in `/video/<token>/<video_id>.mp4`.
+    let clean_path = path.split('?').next().unwrap_or("");
+    let expected_prefix = format!("/video/{session_token}/");
+    let Some(video_id) = clean_path
+        .strip_prefix(&expected_prefix)
         .and_then(|rest| rest.strip_suffix(".mp4"))
-        .unwrap_or("");
+    else {
+        let resp = format!(
+            "HTTP/1.1 403 Forbidden\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        return;
+    };
 
     let entry = {
         let map = match streams.lock() {
@@ -654,15 +839,24 @@ fn handle_youtube_proxy_connection(
     };
 
     let Some(entry) = entry else {
-        let _ = stream.write_all(
-            b"HTTP/1.1 404 Not Found\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        let resp = format!(
+            "HTTP/1.1 404 Not Found\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
         );
+        let _ = stream.write_all(resp.as_bytes());
         return;
     };
 
+    if !is_allowed_youtube_media_url(&entry.upstream_url) {
+        let resp = format!(
+            "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        return;
+    }
+
     if method.eq_ignore_ascii_case("HEAD") {
         let resp = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Length: {}\r\n{cors_hdr}Connection: close\r\n\r\n",
             entry.total_len
         );
         let _ = stream.write_all(resp.as_bytes());
@@ -676,7 +870,7 @@ fn handle_youtube_proxy_connection(
 
     if req_start >= entry.total_len {
         let resp = format!(
-            "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */{}\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */{}\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n",
             entry.total_len
         );
         let _ = stream.write_all(resp.as_bytes());
@@ -694,9 +888,13 @@ fn handle_youtube_proxy_connection(
 
     let range_arg = format!("{req_start}-{fetch_end}");
     let expected_len = fetch_end.saturating_sub(req_start).saturating_add(1);
-    let mut child = match Command::new("/usr/bin/curl")
+    let mut child = match Command::new(resolve_curl_binary())
         .args([
             "-sL",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
             "--fail",
             "--max-time",
             "25",
@@ -711,9 +909,10 @@ fn handle_youtube_proxy_connection(
     {
         Ok(c) => c,
         Err(_) => {
-            let _ = stream.write_all(
-                b"HTTP/1.1 502 Bad Gateway\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            let resp = format!(
+                "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
             );
+            let _ = stream.write_all(resp.as_bytes());
             return;
         }
     };
@@ -721,17 +920,36 @@ fn handle_youtube_proxy_connection(
     let Some(mut stdout) = child.stdout.take() else {
         let _ = child.kill();
         let _ = child.wait();
-        let _ = stream.write_all(
-            b"HTTP/1.1 502 Bad Gateway\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        let resp = format!(
+            "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
         );
+        let _ = stream.write_all(resp.as_bytes());
         return;
     };
 
+    // Read the first chunk BEFORE writing HTTP 206 so expired/403 upstream URLs
+    // return 502 Bad Gateway instead of a truncated 206 response.
+    let mut first_buf = vec![0u8; 16 * 1024];
+    let first_n = match stdout.read(&mut first_buf) {
+        Ok(n) if n > 0 => n,
+        _ => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let resp = format!(
+                "HTTP/1.1 502 Bad Gateway\r\n{cors_hdr}Content-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            return;
+        }
+    };
+
     let header = format!(
-        "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {req_start}-{fetch_end}/{}\r\nContent-Length: {expected_len}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {req_start}-{fetch_end}/{}\r\nContent-Length: {expected_len}\r\n{cors_hdr}Cache-Control: no-store\r\nConnection: close\r\n\r\n",
         entry.total_len,
     );
-    if stream.write_all(header.as_bytes()).is_ok() {
+    if stream.write_all(header.as_bytes()).is_ok()
+        && stream.write_all(&first_buf[..first_n]).is_ok()
+    {
         let _ = std::io::copy(&mut stdout, &mut stream);
     }
     let _ = child.kill();
@@ -746,24 +964,49 @@ fn ensure_youtube_proxy() -> Result<&'static YouTubeProxyServer, String> {
             .local_addr()
             .map_err(|err| format!("failed to read YouTube media proxy port: {err}"))?
             .port();
+        let session_token = generate_proxy_session_token();
         let streams: Arc<Mutex<HashMap<String, ProxiedYouTubeStream>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let active_conns = Arc::new(AtomicUsize::new(0));
+
         let streams_bg = Arc::clone(&streams);
+        let shutdown_bg = Arc::clone(&shutdown);
+        let token_bg = session_token.clone();
         std::thread::Builder::new()
             .name("chromaticity-yt-proxy".to_string())
             .spawn(move || {
-                for incoming in listener.incoming().flatten() {
+                for mut incoming in listener.incoming().flatten() {
+                    if shutdown_bg.load(Ordering::Acquire) {
+                        break;
+                    }
+                    let prev = active_conns.fetch_add(1, Ordering::AcqRel);
+                    if prev >= YOUTUBE_PROXY_MAX_CONCURRENT_REQUESTS {
+                        active_conns.fetch_sub(1, Ordering::AcqRel);
+                        let _ = incoming.write_all(
+                            b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        );
+                        continue;
+                    }
+                    let guard = ActiveConnGuard(Arc::clone(&active_conns));
                     let streams_conn = Arc::clone(&streams_bg);
+                    let token_conn = token_bg.clone();
                     let _ = std::thread::Builder::new()
                         .name("chromaticity-yt-proxy-req".to_string())
                         .spawn(move || {
-                            handle_youtube_proxy_connection(incoming, &streams_conn);
+                            let _guard = guard;
+                            handle_youtube_proxy_connection(incoming, &streams_conn, &token_conn);
                         });
                 }
             })
             .map_err(|err| format!("failed to spawn YouTube media proxy thread: {err}"))?;
         eprintln!("[chromaticity][youtube] local media proxy listening on 127.0.0.1:{port}");
-        Ok(YouTubeProxyServer { port, streams })
+        Ok(YouTubeProxyServer {
+            port,
+            session_token,
+            streams,
+            shutdown,
+        })
     });
     match init {
         Ok(server) => Ok(server),
@@ -832,15 +1075,28 @@ pub fn resolve_youtube_stream_impl(video_id: &str) -> Result<YouTubeStreamDto, S
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
+        if map.len() >= YOUTUBE_PROXY_MAX_STREAMS && !map.contains_key(trimmed) {
+            if let Some(oldest_key) = map
+                .iter()
+                .min_by_key(|(_, v)| v.inserted_at)
+                .map(|(k, _)| k.clone())
+            {
+                map.remove(&oldest_key);
+            }
+        }
         map.insert(
             trimmed.to_string(),
             ProxiedYouTubeStream {
                 upstream_url: resolved.stream_url.clone(),
                 total_len,
+                inserted_at: Instant::now(),
             },
         );
     }
-    resolved.stream_url = format!("http://127.0.0.1:{}/video/{trimmed}.mp4", proxy.port);
+    resolved.stream_url = format!(
+        "http://127.0.0.1:{}/video/{}/{trimmed}.mp4",
+        proxy.port, proxy.session_token
+    );
     eprintln!(
         "[chromaticity][youtube] resolved {trimmed}: {} ({total_len} bytes via {})",
         resolved.title, resolved.stream_url

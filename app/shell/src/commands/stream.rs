@@ -24,9 +24,10 @@ use chromaticity_runtime::broadcast_stream::{
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 /// Default Twitch RTMPS ingest URL displayed when idle.
@@ -163,7 +164,9 @@ pub fn parse_avfoundation_audio_devices(stderr_text: &str) -> Vec<StreamAudioDev
         if line.contains("AVFoundation video devices:") || line.contains("Error opening input") {
             break;
         }
-        if let Some(bracket_pos) = line.rfind("] [") {
+        // Match the first `] [` immediately following `[AVFoundation indev @ ...]`
+        // so device names that themselves contain `] [` are parsed accurately.
+        if let Some(bracket_pos) = line.find("] [") {
             let after = &line[bracket_pos + 3..];
             if let Some((idx_str, rest)) = after.split_once(']') {
                 let idx_trim = idx_str.trim();
@@ -252,11 +255,12 @@ pub fn validate_audio_device(raw: &str) -> Result<Option<String>, String> {
 
 /// Builds the `ffmpeg` argument list for live Twitch RTMPS/RTMP FLV publishing.
 ///
-/// Configures raw RGBA video on `pipe:0`, either a validated macOS
+/// Configures MJPEG `image2pipe` video on `pipe:0`, either a validated macOS
 /// `avfoundation` audio capture input when `audio_device` is supplied on macOS
 /// or a silent 44.1 kHz stereo `anullsrc` AAC audio track (required by Twitch
 /// ingest), hardware `h264_videotoolbox` on macOS (falling back to `libx264` on
-/// non-macOS), and FLV output targeting `{trimmed_ingest}/{stream_key}`.
+/// non-macOS), target `width`×`height` scaling/padding for even `yuv420p`
+/// dimensions, and FLV output targeting `{trimmed_ingest}/{stream_key}`.
 pub fn build_twitch_ffmpeg_args(
     ingest_url: &str,
     stream_key: &StreamSecretKey,
@@ -273,7 +277,9 @@ pub fn build_twitch_ffmpeg_args(
 
     let trimmed_ingest = ingest_url.trim().trim_end_matches('/');
     let destination = format!("{trimmed_ingest}/{}", stream_key.expose_secret());
-    let _video_size = format!("{width}x{height}");
+    let scale_filter = format!(
+        "scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+    );
     let fps_str = fps.to_string();
     let gop_str = fps.saturating_mul(2).to_string();
     let bitrate_str = format!("{bitrate_kbps}k");
@@ -334,6 +340,8 @@ pub fn build_twitch_ffmpeg_args(
         "0:v:0".to_owned(),
         "-map".to_owned(),
         "1:a:0".to_owned(),
+        "-vf".to_owned(),
+        scale_filter,
     ]);
 
     #[cfg(target_os = "macos")]
@@ -408,7 +416,8 @@ pub fn build_twitch_ffmpeg_args(
 pub struct TwitchStreamProcess {
     streamer: Option<BroadcastStreamer>,
     child: Option<Child>,
-    stdin: Option<ChildStdin>,
+    frame_tx: Option<SyncSender<Vec<u8>>>,
+    writer_error: Arc<Mutex<Option<String>>>,
     stderr_tail: Arc<Mutex<String>>,
     protocol: StreamProtocol,
     ingest_url: String,
@@ -452,7 +461,8 @@ impl TwitchStreamProcess {
         Self {
             streamer: None,
             child: None,
-            stdin: None,
+            frame_tx: None,
+            writer_error: Arc::new(Mutex::new(None)),
             stderr_tail: Arc::new(Mutex::new(String::new())),
             protocol: StreamProtocol::Rtmps,
             ingest_url: DEFAULT_TWITCH_INGEST_URL.to_owned(),
@@ -474,19 +484,25 @@ impl TwitchStreamProcess {
             .map_or("offline", |s| s.state().label())
     }
 
-    /// Closes stdin, kills any running `ffmpeg` child, and reaps its exit status.
+    /// Closes the frame channel (causing the writer thread to close `ffmpeg` stdin),
+    /// waits briefly for graceful RTMP `FCUnpublish` shutdown, then kills and reaps.
     ///
     /// Safe and idempotent to call when no child process is active.
     pub fn terminate_child(&mut self) {
-        // Close stdin first so ffmpeg receives EOF cleanly before kill.
-        drop(self.stdin.take());
+        // Drop the frame channel first so the writer thread closes stdin cleanly.
+        drop(self.frame_tx.take());
         if let Some(mut child) = self.child.take() {
-            match child.try_wait() {
-                Ok(Some(_)) => {}
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
+            let mut exited = false;
+            for _ in 0..5 {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    exited = true;
+                    break;
                 }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            if !exited {
+                let _ = child.kill();
+                let _ = child.wait();
             }
         }
     }
@@ -512,7 +528,7 @@ impl TwitchStreamProcess {
         };
 
         if let Some(exit_result) = exited_status {
-            drop(self.stdin.take());
+            drop(self.frame_tx.take());
             self.child = None;
 
             let stderr_excerpt = self.read_stderr_tail();
@@ -709,7 +725,7 @@ pub fn start_twitch_stream_impl(
             redacted
         })?;
 
-    let stdin = child.stdin.take().ok_or_else(|| {
+    let mut stdin = child.stdin.take().ok_or_else(|| {
         let _ = child.kill();
         let _ = child.wait();
         let msg = "failed to attach stdin pipe to ffmpeg child process".to_owned();
@@ -730,12 +746,15 @@ pub fn start_twitch_stream_impl(
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
                             let chunk = String::from_utf8_lossy(&buf[..n]);
-                            let redacted = secret_for_thread.redact_in_text(&chunk);
                             let mut guard = match tail_for_thread.lock() {
                                 Ok(g) => g,
                                 Err(p) => p.into_inner(),
                             };
-                            guard.push_str(&redacted);
+                            guard.push_str(&chunk);
+                            // Redact over the accumulated buffer so stream keys
+                            // straddling 1024-byte chunk boundaries can never leak.
+                            let scrubbed = secret_for_thread.redact_in_text(&guard);
+                            *guard = scrubbed;
                             if guard.len() > MAX_STDERR_CAPTURE_BYTES {
                                 let mut drain_to = guard.len() - MAX_STDERR_CAPTURE_BYTES;
                                 while !guard.is_char_boundary(drain_to) && drain_to < guard.len() {
@@ -749,9 +768,35 @@ pub fn start_twitch_stream_impl(
             });
     }
 
-    streamer
-        .on_connected(current_unix_ms())
-        .map_err(|err| secret.redact_in_text(&err.to_string()))?;
+    if let Err(err) = streamer.on_connected(current_unix_ms()) {
+        drop(stdin);
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(secret.redact_in_text(&err.to_string()));
+    }
+
+    // Dedicated non-blocking writer thread prevents `stdin.write_all` from
+    // ever blocking the Tauri IPC thread or deadlocking `app.twitch_stream`.
+    let (frame_tx, frame_rx) = sync_channel::<Vec<u8>>(3);
+    let writer_error = Arc::new(Mutex::new(None::<String>));
+    let writer_error_bg = Arc::clone(&writer_error);
+    let secret_for_writer = secret.clone();
+    let _ = std::thread::Builder::new()
+        .name("chromaticity-ffmpeg-writer".into())
+        .spawn(move || {
+            for frame in frame_rx {
+                if let Err(err) = stdin.write_all(&frame) {
+                    let msg = secret_for_writer.redact_in_text(&err.to_string());
+                    let mut guard = match writer_error_bg.lock() {
+                        Ok(g) => g,
+                        Err(p) => p.into_inner(),
+                    };
+                    *guard = Some(msg);
+                    break;
+                }
+            }
+            drop(stdin);
+        });
 
     proc_guard.protocol = config.protocol;
     proc_guard.ingest_url = config.ingest_url;
@@ -763,7 +808,8 @@ pub fn start_twitch_stream_impl(
     proc_guard.encoder = selected_video_encoder().to_owned();
     proc_guard.last_error = None;
     proc_guard.stderr_tail = stderr_tail;
-    proc_guard.stdin = Some(stdin);
+    proc_guard.writer_error = writer_error;
+    proc_guard.frame_tx = Some(frame_tx);
     proc_guard.child = Some(child);
     proc_guard.streamer = Some(streamer);
 
@@ -812,38 +858,52 @@ pub fn push_stream_frame_impl(app: &AppState, frame_bytes: &[u8]) -> Result<u64,
         ));
     }
 
-    let write_result = match proc_guard.stdin.as_mut() {
-        Some(stdin) => stdin.write_all(frame_bytes),
+    let send_result = match proc_guard.frame_tx.as_ref() {
+        Some(tx) => tx.try_send(frame_bytes.to_vec()),
         None => {
             return Err("cannot push stream frame while stream is not live".to_owned());
         }
     };
 
-    if let Err(err) = write_result {
-        proc_guard.terminate_child();
-        let stderr_excerpt = proc_guard.read_stderr_tail();
-        let raw_msg = if stderr_excerpt.is_empty() {
-            format!("failed to write RGBA frame to ffmpeg stdin: {err}")
-        } else {
-            format!("failed to write RGBA frame to ffmpeg stdin: {err} ({stderr_excerpt})")
-        };
-        let redacted = proc_guard.redact_message(&raw_msg);
-        proc_guard.last_error = Some(redacted.clone());
-        if let Some(streamer) = proc_guard.streamer.as_mut() {
-            let _ = streamer.on_transport_error(current_unix_ms(), &redacted);
+    match send_result {
+        Ok(()) => {
+            proc_guard.frames_pushed = proc_guard.frames_pushed.saturating_add(1);
+            if proc_guard.frames_pushed == 1 || proc_guard.frames_pushed % 60 == 0 {
+                eprintln!(
+                    "[chromaticity][stream] pushed frame #{} ({} bytes)",
+                    proc_guard.frames_pushed,
+                    frame_bytes.len()
+                );
+            }
+            Ok(proc_guard.frames_pushed)
         }
-        return Err(redacted);
+        Err(TrySendError::Full(_)) => {
+            // Drop frame under backpressure instead of blocking the Tauri IPC thread.
+            Ok(proc_guard.frames_pushed)
+        }
+        Err(TrySendError::Disconnected(_)) => {
+            proc_guard.terminate_child();
+            let writer_err = match proc_guard.writer_error.lock() {
+                Ok(g) => g.clone(),
+                Err(p) => p.into_inner().clone(),
+            }
+            .unwrap_or_else(|| "ffmpeg stdin pipe closed".to_owned());
+            let stderr_excerpt = proc_guard.read_stderr_tail();
+            let raw_msg = if stderr_excerpt.is_empty() {
+                format!("failed to write JPEG frame to ffmpeg stdin: {writer_err}")
+            } else {
+                format!(
+                    "failed to write JPEG frame to ffmpeg stdin: {writer_err} ({stderr_excerpt})"
+                )
+            };
+            let redacted = proc_guard.redact_message(&raw_msg);
+            proc_guard.last_error = Some(redacted.clone());
+            if let Some(streamer) = proc_guard.streamer.as_mut() {
+                let _ = streamer.on_transport_error(current_unix_ms(), &redacted);
+            }
+            Err(redacted)
+        }
     }
-
-    proc_guard.frames_pushed = proc_guard.frames_pushed.saturating_add(1);
-    if proc_guard.frames_pushed == 1 || proc_guard.frames_pushed % 60 == 0 {
-        eprintln!(
-            "[chromaticity][stream] pushed frame #{} ({} bytes)",
-            proc_guard.frames_pushed,
-            frame_bytes.len()
-        );
-    }
-    Ok(proc_guard.frames_pushed)
 }
 
 /// Start a live Twitch RTMPS/RTMP broadcast stream via external `ffmpeg`.
@@ -883,7 +943,7 @@ pub fn get_stream_status(app_state: State<'_, AppState>) -> Result<StreamStatusD
     get_stream_status_impl(app_state.inner())
 }
 
-/// Pipe one raw RGBA frame (`width * height * 4` bytes) into the active encoder
+/// Pipe one JPEG frame into the active encoder (`image2pipe` / `mjpeg`)
 /// via Tauri v2 raw binary IPC (`InvokeBody::Raw`), avoiding JSON serialization.
 #[tauri::command]
 pub fn push_stream_frame(

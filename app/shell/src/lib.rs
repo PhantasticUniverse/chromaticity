@@ -253,71 +253,58 @@ pub fn run() -> Result<(), tauri::Error> {
                     let mut crash_resume_adapter = crash_resume_path_for_thread
                         .map(|path| CrashResumeAdapter::new(CanonicalBinarySnapshotter, path));
                     while !shutdown_for_thread.load(Ordering::Relaxed) {
-                        let should_capture_crash_resume = crash_resume_adapter.is_some()
-                            && Instant::now() >= next_crash_resume_save;
-                        // Look up the managed AppState lazily on each
-                        // tick. Capturing a `tauri::State<'_,
-                        // AppState>` outside the loop would borrow
-                        // across the await point of
-                        // `is_finished()` polling; the per-tick
-                        // lookup is O(map-hash) and not on the
-                        // frame-budget critical path.
-                        let app_state = app_handle.state::<AppState>();
-                        let mut state_guard = match app_state.state.lock() {
-                            Ok(g) => g,
-                            Err(p) => p.into_inner(),
-                        };
-                        // Swallow the tick result. The only currently-
-                        // surfaced error is `FrameOverflow` at
-                        // `u64::MAX` ticks, which is unreachable in
-                        // normal operation (~9.7 billion years at 60
-                        // FPS per the SchedulerError prose).
-                        let _ = scheduler_owned.tick(&mut state_guard, &app_state.bus);
-                        let crash_resume_blob = if should_capture_crash_resume {
-                            crash_resume_adapter
-                                .as_ref()
-                                .map(|adapter| adapter.snapshot(&state_guard))
-                        } else {
-                            None
-                        };
-                        drop(state_guard);
+                        let tick_outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let should_capture_crash_resume = crash_resume_adapter.is_some()
+                                && Instant::now() >= next_crash_resume_save;
+                            let app_state = app_handle.state::<AppState>();
+                            let mut state_guard = match app_state.state.lock() {
+                                Ok(g) => g,
+                                Err(p) => p.into_inner(),
+                            };
+                            let _ = scheduler_owned.tick(&mut state_guard, &app_state.bus);
+                            let crash_resume_blob = if should_capture_crash_resume {
+                                crash_resume_adapter
+                                    .as_ref()
+                                    .map(|adapter| adapter.snapshot(&state_guard))
+                            } else {
+                                None
+                            };
+                            drop(state_guard);
 
-                        if let Some(blob_result) = crash_resume_blob {
-                            match blob_result {
-                                Ok(blob) => {
-                                    if let Some(adapter) = crash_resume_adapter.as_mut() {
-                                        // Crash-resume snapshots save on a 1s
-                                        // coalesced cadence. Last-second
-                                        // SIGKILL/SIGSEGV/OOM mutations may be
-                                        // lost; acceptable for pre-alpha, with
-                                        // follow-up for event-driven/250ms
-                                        // saves.
-                                        if let Err(err) = adapter.save_blob(&blob) {
-                                            eprintln!(
-                                                "chromaticity-app: failed to save crash-resume snapshot to {}: {err}",
-                                                adapter.save_path().display()
-                                            );
+                            if let Some(blob_result) = crash_resume_blob {
+                                match blob_result {
+                                    Ok(blob) => {
+                                        if let Some(adapter) = crash_resume_adapter.as_mut() {
+                                            if let Err(err) = adapter.save_blob(&blob) {
+                                                eprintln!(
+                                                    "chromaticity-app: failed to save crash-resume snapshot to {}: {err}",
+                                                    adapter.save_path().display()
+                                                );
+                                            }
                                         }
                                     }
+                                    Err(err) => {
+                                        eprintln!(
+                                            "chromaticity-app: failed to serialize crash-resume snapshot: {err}"
+                                        );
+                                    }
                                 }
-                                Err(err) => {
-                                    eprintln!(
-                                        "chromaticity-app: failed to serialize crash-resume snapshot: {err}"
-                                    );
-                                }
+                                next_crash_resume_save = Instant::now() + CRASH_RESUME_SAVE_PERIOD;
                             }
-                            next_crash_resume_save = Instant::now() + CRASH_RESUME_SAVE_PERIOD;
-                        }
 
-                        if let Err(err) =
-                            commands::osc::poll_live_osc_adapter(app_state.inner())
-                        {
-                            eprintln!("chromaticity-app: OSC poll failed: {err}");
-                        }
-                        if let Err(err) =
-                            commands::osc::drain_queued_osc_actions(app_state.inner())
-                        {
-                            eprintln!("chromaticity-app: OSC dispatch failed: {err}");
+                            if let Err(err) =
+                                commands::osc::poll_live_osc_adapter(app_state.inner())
+                            {
+                                eprintln!("chromaticity-app: OSC poll failed: {err}");
+                            }
+                            if let Err(err) =
+                                commands::osc::drain_queued_osc_actions(app_state.inner())
+                            {
+                                eprintln!("chromaticity-app: OSC dispatch failed: {err}");
+                            }
+                        }));
+                        if tick_outcome.is_err() {
+                            eprintln!("chromaticity-app: recovered from panic in scheduler tick");
                         }
 
                         let now = Instant::now();
@@ -444,5 +431,19 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::stream::push_stream_frame,
             commands::stream::list_stream_audio_devices,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())?
+        .run(|app_handle, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                let app_state = app_handle.state::<AppState>();
+                app_state.shutdown_runtime();
+                let mut stream_guard = match app_state.twitch_stream.lock() {
+                    Ok(g) => g,
+                    Err(p) => p.into_inner(),
+                };
+                stream_guard.stop();
+                drop(stream_guard);
+                commands::mix::shutdown_youtube_proxy();
+            }
+        });
+    Ok(())
 }
