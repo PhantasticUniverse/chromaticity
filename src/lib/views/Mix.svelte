@@ -3,6 +3,14 @@ SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 <script lang="ts">
+  import { onDestroy, onMount } from 'svelte';
+
+  import {
+    getGpuCostTelemetry,
+    setAdaptiveScaleEnabled,
+    type GpuCostTelemetryDto,
+  } from '../ipc/mix';
+  import { saveReplayBuffer } from '../ipc/recorder';
   import {
     BLEND_MODE_OPTIONS,
     LAYER_SOURCE_CATALOG,
@@ -19,7 +27,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type MixLayer,
   } from '../stores/videoMixer.svelte';
 
+  const DEFAULT_GPU_TELEMETRY: GpuCostTelemetryDto = {
+    tier: 'Light',
+    ema_ms: 0,
+    current_scale: 1,
+    scaled_width: 1920,
+    scaled_height: 1080,
+    adaptive_enabled: true,
+  };
+
   type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se';
+  type ReplayStatus = 'idle' | 'saving' | 'saved' | 'preview';
 
   interface PointerDragState {
     readonly kind: 'move' | 'resize';
@@ -42,6 +60,29 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let snapGuideX = $state(false);
   let snapGuideY = $state(false);
   let stageCanvasEl = $state<HTMLDivElement | null>(null);
+  let gpuTelemetry = $state<GpuCostTelemetryDto>(DEFAULT_GPU_TELEMETRY);
+  let adaptivePending = $state(false);
+  let replayStatus = $state<ReplayStatus>('idle');
+
+  let disposed = false;
+  let replayFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+  onMount(() => {
+    void (async () => {
+      const snapshot = await getGpuCostTelemetry();
+      if (!disposed && snapshot !== null && !adaptivePending) {
+        gpuTelemetry = snapshot;
+      }
+    })();
+  });
+
+  onDestroy(() => {
+    disposed = true;
+    if (replayFeedbackTimer !== null) {
+      clearTimeout(replayFeedbackTimer);
+      replayFeedbackTimer = null;
+    }
+  });
 
   const selectedLayer = $derived(videoMixerStore.selectedLayer);
   const previewLayers = $derived(videoMixerStore.layers);
@@ -252,6 +293,45 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   function parseNumericInput(event: Event): number {
     const input = event.currentTarget as HTMLInputElement;
     return Number(input.value);
+  }
+
+  async function handleToggleAdaptiveScale(): Promise<void> {
+    if (adaptivePending) return;
+    const nextEnabled = !gpuTelemetry.adaptive_enabled;
+    adaptivePending = true;
+    try {
+      const updated = await setAdaptiveScaleEnabled(nextEnabled);
+      if (disposed) return;
+      if (updated !== null) {
+        gpuTelemetry = updated;
+      } else {
+        gpuTelemetry = {
+          ...gpuTelemetry,
+          adaptive_enabled: nextEnabled,
+          current_scale: nextEnabled ? gpuTelemetry.current_scale : 1,
+        };
+      }
+    } finally {
+      adaptivePending = false;
+    }
+  }
+
+  async function handleSaveReplay(): Promise<void> {
+    if (replayStatus === 'saving') return;
+    if (replayFeedbackTimer !== null) {
+      clearTimeout(replayFeedbackTimer);
+      replayFeedbackTimer = null;
+    }
+    replayStatus = 'saving';
+    const result = await saveReplayBuffer();
+    if (disposed) return;
+    replayStatus = result !== null ? 'saved' : 'preview';
+    replayFeedbackTimer = setTimeout(() => {
+      if (!disposed) {
+        replayStatus = 'idle';
+      }
+      replayFeedbackTimer = null;
+    }, 3000);
   }
 </script>
 
@@ -468,6 +548,61 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           >
             Reset
           </button>
+          <span
+            class="mix__gpu-badge"
+            class:mix__gpu-badge--light={gpuTelemetry.tier === 'Light'}
+            class:mix__gpu-badge--medium={gpuTelemetry.tier === 'Medium'}
+            class:mix__gpu-badge--heavy={gpuTelemetry.tier === 'Heavy'}
+            data-testid="mix-gpu-tier"
+            data-tier={gpuTelemetry.tier.toLowerCase()}
+            aria-label="GPU cost tier {gpuTelemetry.tier}, render scale {formatPercentDisplay(
+              gpuTelemetry.current_scale,
+            )}"
+            title="GPU EMA {gpuTelemetry.ema_ms.toFixed(
+              1,
+            )} ms · {gpuTelemetry.scaled_width}×{gpuTelemetry.scaled_height}"
+          >
+            GPU {gpuTelemetry.tier} · {formatPercentDisplay(gpuTelemetry.current_scale)}
+          </span>
+          <button
+            type="button"
+            class="mix__btn mix__btn--compact"
+            class:mix__btn--active={gpuTelemetry.adaptive_enabled}
+            data-testid="mix-adaptive-scale"
+            aria-pressed={gpuTelemetry.adaptive_enabled}
+            disabled={adaptivePending}
+            title="Automatically scale render resolution on heavy scenes to lock 60 FPS"
+            onclick={() => void handleToggleAdaptiveScale()}
+          >
+            Adaptive Scale
+          </button>
+          <button
+            type="button"
+            class="mix__btn mix__btn--compact"
+            data-testid="mix-save-replay"
+            disabled={replayStatus === 'saving'}
+            title="Save rolling replay buffer to MP4"
+            onclick={() => void handleSaveReplay()}
+          >
+            {replayStatus === 'saving' ? 'Saving…' : 'Save Replay'}
+          </button>
+          {#if replayStatus === 'saved'}
+            <span
+              class="mix__replay-badge mix__replay-badge--saved"
+              role="status"
+              data-testid="mix-replay-status"
+            >
+              Replay Saved
+            </span>
+          {:else if replayStatus === 'preview'}
+            <span
+              class="mix__replay-badge mix__replay-badge--preview"
+              role="status"
+              data-testid="mix-replay-status"
+            >
+              Desktop Only
+            </span>
+          {/if}
           <span class="mix__res-badge" aria-label="Output resolution">1920×1080 · 60 FPS</span>
         </div>
       </header>
@@ -1800,6 +1935,72 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     color: var(--color-text-1);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-mono-sm);
+  }
+
+  .mix__btn--compact {
+    padding: 4px 8px;
+    font-size: var(--font-size-mono-sm);
+  }
+
+  .mix__btn--active {
+    border-color: var(--color-primary);
+    background: color-mix(in oklab, var(--color-primary) 16%, var(--color-bg-3));
+    color: var(--color-text-0);
+  }
+
+  .mix__gpu-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-2);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .mix__gpu-badge--light {
+    border-color: var(--color-success);
+    background: color-mix(in oklab, var(--color-success) 14%, var(--color-bg-2));
+    color: var(--color-success);
+  }
+
+  .mix__gpu-badge--medium {
+    border-color: var(--color-warning);
+    background: color-mix(in oklab, var(--color-warning) 14%, var(--color-bg-2));
+    color: var(--color-warning);
+  }
+
+  .mix__gpu-badge--heavy {
+    border-color: var(--color-danger);
+    background: color-mix(in oklab, var(--color-danger) 14%, var(--color-bg-2));
+    color: var(--color-danger);
+  }
+
+  .mix__replay-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-2);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .mix__replay-badge--saved {
+    border-color: var(--color-success);
+    background: color-mix(in oklab, var(--color-success) 14%, var(--color-bg-2));
+    color: var(--color-success);
+  }
+
+  .mix__replay-badge--preview {
+    border-color: var(--color-line-2);
+    background: var(--color-bg-2);
+    color: var(--color-text-1);
   }
 
   .mix__monitors {

@@ -2,16 +2,35 @@
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
 import '@testing-library/jest-dom/vitest';
-import { within } from '@testing-library/dom';
+import { waitFor, within } from '@testing-library/dom';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Mix from './Mix.svelte';
+import { getGpuCostTelemetry, setAdaptiveScaleEnabled } from '../ipc/mix';
+import { saveReplayBuffer } from '../ipc/recorder';
 import { videoMixerStore } from '../stores/videoMixer.svelte';
+
+vi.mock('../ipc/mix', () => ({
+  getGpuCostTelemetry: vi.fn(),
+  setAdaptiveScaleEnabled: vi.fn(),
+  getCompositorCapabilities: vi.fn(),
+}));
+
+vi.mock('../ipc/recorder', () => ({
+  saveReplayBuffer: vi.fn(),
+}));
+
+const mockGetGpuCostTelemetry = vi.mocked(getGpuCostTelemetry);
+const mockSetAdaptiveScaleEnabled = vi.mocked(setAdaptiveScaleEnabled);
+const mockSaveReplayBuffer = vi.mocked(saveReplayBuffer);
 
 describe('Mix view', () => {
   beforeEach(() => {
     videoMixerStore.reset();
+    mockGetGpuCostTelemetry.mockReset().mockResolvedValue(null);
+    mockSetAdaptiveScaleEnabled.mockReset().mockResolvedValue(null);
+    mockSaveReplayBuffer.mockReset().mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -153,5 +172,90 @@ describe('Mix view', () => {
     await fireEvent.input(masterGain, { target: { value: '0.5' } });
     expect(masterGain.value).toBe('0.5');
     expect(videoMixerStore.audioChannels.find((c) => c.id === 'master')?.gain).toBe(0.5);
+  });
+
+  it('hydrates the GPU Cost Tier badge from getGpuCostTelemetry', async () => {
+    mockGetGpuCostTelemetry.mockResolvedValue({
+      tier: 'Heavy',
+      ema_ms: 14.8,
+      current_scale: 0.75,
+      scaled_width: 1440,
+      scaled_height: 810,
+      adaptive_enabled: true,
+    });
+
+    const { getByTestId } = render(Mix);
+
+    await waitFor(() => {
+      const badge = getByTestId('mix-gpu-tier');
+      expect(badge).toHaveTextContent('GPU Heavy · 75%');
+      expect(badge).toHaveAttribute('data-tier', 'heavy');
+    });
+    expect(mockGetGpuCostTelemetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('toggles Adaptive Scale via setAdaptiveScaleEnabled IPC and updates aria-pressed', async () => {
+    mockGetGpuCostTelemetry.mockResolvedValue({
+      tier: 'Medium',
+      ema_ms: 10.2,
+      current_scale: 0.85,
+      scaled_width: 1632,
+      scaled_height: 918,
+      adaptive_enabled: true,
+    });
+    mockSetAdaptiveScaleEnabled.mockResolvedValue({
+      tier: 'Medium',
+      ema_ms: 10.2,
+      current_scale: 1,
+      scaled_width: 1920,
+      scaled_height: 1080,
+      adaptive_enabled: false,
+    });
+
+    const { getByTestId } = render(Mix);
+
+    await waitFor(() => {
+      expect(getByTestId('mix-gpu-tier')).toHaveTextContent('GPU Medium · 85%');
+    });
+
+    const toggle = getByTestId('mix-adaptive-scale');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    await fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(mockSetAdaptiveScaleEnabled).toHaveBeenCalledWith(false);
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      expect(getByTestId('mix-gpu-tier')).toHaveTextContent('GPU Medium · 100%');
+    });
+  });
+
+  it('triggers Save Replay IPC and displays inline confirmation or browser fallback badge', async () => {
+    mockSaveReplayBuffer.mockResolvedValueOnce({
+      path: '/recordings/replay-001.mp4',
+      bytes_written: 1_048_576,
+      gop_count: 15,
+      packet_count: 450,
+      duration_90khz: 1_350_000,
+    });
+
+    const { getByTestId } = render(Mix);
+    const saveBtn = getByTestId('mix-save-replay');
+
+    await fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mockSaveReplayBuffer).toHaveBeenCalledTimes(1);
+      expect(getByTestId('mix-replay-status')).toHaveTextContent('Replay Saved');
+    });
+
+    // Browser / non-Tauri mode returns null and displays a fallback note.
+    mockSaveReplayBuffer.mockResolvedValueOnce(null);
+    await fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mockSaveReplayBuffer).toHaveBeenCalledTimes(2);
+      expect(getByTestId('mix-replay-status')).toHaveTextContent('Desktop Only');
+    });
   });
 });
