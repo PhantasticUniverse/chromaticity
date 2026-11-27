@@ -11,13 +11,78 @@
 //! [`crate::state::AppState`].
 
 use crate::state::AppState;
-use chromaticity_render::compositor::BlendMode;
+use chromaticity_render::compositor::{BlendMode, CompositeLayer, LayerStack, LayerTransform};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use tauri::State;
 
 /// Maximum number of concurrent compositing layers exposed to `Mix.svelte`.
-pub const COMPOSITOR_MAX_LAYERS: u32 = 8;
+pub const COMPOSITOR_MAX_LAYERS: u32 = 16;
+
+/// Minimum clamped layer scale factor on each axis.
+const MIN_LAYER_SCALE: f32 = 0.05;
+
+/// Maximum clamped layer scale factor on each axis.
+const MAX_LAYER_SCALE: f32 = 4.0;
+
+/// Default Rec. 709 luma-key threshold when using `luma-key`.
+const DEFAULT_LUMA_THRESHOLD: f32 = 0.1;
+
+/// Default Rec. 709 luma-key softness when using `luma-key`.
+const DEFAULT_LUMA_SOFTNESS: f32 = 0.05;
+
+/// Default chroma-key color (pure green screen).
+const DEFAULT_CHROMA_KEY_RGB: [f32; 3] = [0.0, 1.0, 0.0];
+
+/// Default chroma-key similarity cutoff.
+const DEFAULT_CHROMA_SIMILARITY: f32 = 0.25;
+
+/// Default chroma-key edge smoothness.
+const DEFAULT_CHROMA_SMOOTHNESS: f32 = 0.1;
+
+const fn default_layer_scale() -> f32 {
+    1.0
+}
+
+/// Serializable per-layer specification sent from `Mix.svelte` to synchronize
+/// [`AppState::compositor_stack`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MixLayerSpecDto {
+    /// Stable layer identifier.
+    pub id: String,
+    /// Blend or keying mode identifier: `"normal"`, `"screen"`, `"add"`,
+    /// `"multiply"`, `"luma-key"`, or `"chroma-key"`.
+    pub blend_mode: String,
+    /// Master layer opacity (`0.0..=1.0`, clamped).
+    pub opacity: f32,
+    /// Whether this layer is visible in the compositor stack.
+    pub visible: bool,
+    /// Normalized horizontal translation offset.
+    #[serde(default)]
+    pub x: f32,
+    /// Normalized vertical translation offset.
+    #[serde(default)]
+    pub y: f32,
+    /// Horizontal scale factor (`0.05..=4.0`, clamped).
+    #[serde(default = "default_layer_scale")]
+    pub scale_x: f32,
+    /// Vertical scale factor (`0.05..=4.0`, clamped).
+    #[serde(default = "default_layer_scale")]
+    pub scale_y: f32,
+    /// Counter-clockwise rotation angle in degrees.
+    #[serde(default)]
+    pub rotation_deg: f32,
+    /// Optional hex color string (`#RGB` or `#RRGGBB`) for `chroma-key`.
+    #[serde(default)]
+    pub chroma_key_color: Option<String>,
+    /// Optional similarity cutoff (`0.0..=1.0`, clamped) for `chroma-key`.
+    #[serde(default)]
+    pub chroma_similarity: Option<f32>,
+    /// Optional edge smoothness (`0.0..=1.0`, clamped) for `chroma-key`.
+    #[serde(default)]
+    pub chroma_smoothness: Option<f32>,
+}
 
 /// Serializable GPU cost & adaptive-scaling telemetry payload returned to the
 /// frontend.
@@ -182,6 +247,185 @@ pub fn get_compositor_capabilities(app_state: State<'_, AppState>) -> Compositor
     get_compositor_capabilities_impl(app_state.inner())
 }
 
+/// Clamp `value` into `[min, max]`, substituting `default` for non-finite inputs.
+#[must_use]
+fn clamp_finite(value: f32, min: f32, max: f32, default: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(min, max)
+    } else {
+        default
+    }
+}
+
+/// Return `value` when finite, otherwise `default`.
+#[must_use]
+fn finite_or(value: f32, default: f32) -> f32 {
+    if value.is_finite() { value } else { default }
+}
+
+/// Parse an ASCII `#RGB`, `RGB`, `#RRGGBB`, or `RRGGBB` hex string into
+/// normalized `[r, g, b]` channels in `0.0..=1.0`.
+fn parse_hex_rgb(raw: &str) -> Result<[f32; 3], String> {
+    let trimmed = raw.trim();
+    let hex = trimmed.strip_prefix('#').unwrap_or(trimmed);
+    if !hex.is_ascii() {
+        return Err(format!("invalid chroma_key_color '{raw}'"));
+    }
+    match hex.len() {
+        6 => {
+            let parse_pair = |slice: &str| -> Result<f32, String> {
+                u8::from_str_radix(slice, 16)
+                    .map(|v| f32::from(v) / 255.0)
+                    .map_err(|_| format!("invalid chroma_key_color '{raw}'"))
+            };
+            Ok([
+                parse_pair(&hex[0..2])?,
+                parse_pair(&hex[2..4])?,
+                parse_pair(&hex[4..6])?,
+            ])
+        }
+        3 => {
+            let parse_nibble = |slice: &str| -> Result<f32, String> {
+                u8::from_str_radix(slice, 16)
+                    .map(|v| f32::from(v * 17) / 255.0)
+                    .map_err(|_| format!("invalid chroma_key_color '{raw}'"))
+            };
+            Ok([
+                parse_nibble(&hex[0..1])?,
+                parse_nibble(&hex[1..2])?,
+                parse_nibble(&hex[2..3])?,
+            ])
+        }
+        _ => Err(format!(
+            "invalid chroma_key_color '{raw}' (expected #RGB or #RRGGBB)"
+        )),
+    }
+}
+
+/// Translate a frontend [`MixLayerSpecDto`] blend mode string and optional
+/// keying parameters into a [`BlendMode`].
+fn parse_blend_mode(dto: &MixLayerSpecDto) -> Result<BlendMode, String> {
+    let normalized = dto.blend_mode.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "normal" => Ok(BlendMode::Normal),
+        "add" | "additive" => Ok(BlendMode::Additive),
+        "screen" => Ok(BlendMode::Screen),
+        "multiply" => Ok(BlendMode::Multiply),
+        "luma-key" | "lumakey" | "luma_key" => Ok(BlendMode::LumaKey {
+            threshold: DEFAULT_LUMA_THRESHOLD,
+            softness: DEFAULT_LUMA_SOFTNESS,
+        }),
+        "chroma-key" | "chromakey" | "chroma_key" => {
+            let key_rgb = match dto.chroma_key_color.as_deref() {
+                Some(raw) if !raw.trim().is_empty() => parse_hex_rgb(raw)?,
+                _ => DEFAULT_CHROMA_KEY_RGB,
+            };
+            let similarity = dto
+                .chroma_similarity
+                .map_or(DEFAULT_CHROMA_SIMILARITY, |v| {
+                    clamp_finite(v, 0.0, 1.0, DEFAULT_CHROMA_SIMILARITY)
+                });
+            let smoothness = dto
+                .chroma_smoothness
+                .map_or(DEFAULT_CHROMA_SMOOTHNESS, |v| {
+                    clamp_finite(v, 0.0, 1.0, DEFAULT_CHROMA_SMOOTHNESS)
+                });
+            Ok(BlendMode::ChromaKey {
+                key_rgb,
+                similarity,
+                smoothness,
+            })
+        }
+        _ => Err(format!(
+            "unsupported blend_mode '{}' for layer '{}'",
+            dto.blend_mode, dto.id
+        )),
+    }
+}
+
+/// Inner implementation for [`set_mix_layer_stack`], unit-testable without a
+/// Tauri runtime.
+pub fn set_mix_layer_stack_impl(
+    app: &AppState,
+    layers: Vec<MixLayerSpecDto>,
+) -> Result<CompositorCapabilitiesDto, String> {
+    let max_layers = COMPOSITOR_MAX_LAYERS as usize;
+    if layers.len() > max_layers {
+        return Err(format!(
+            "layer stack exceeds maximum of {max_layers} layers (got {})",
+            layers.len()
+        ));
+    }
+
+    let mut validated = Vec::with_capacity(layers.len());
+    for (idx, dto) in layers.into_iter().enumerate() {
+        let id = dto.id.trim().to_string();
+        if id.is_empty() {
+            return Err(format!("layer at index {idx} has an empty id"));
+        }
+        let blend = parse_blend_mode(&dto)?;
+        let transform = LayerTransform {
+            offset_xy: [finite_or(dto.x, 0.0), finite_or(dto.y, 0.0)],
+            scale_xy: [
+                clamp_finite(dto.scale_x, MIN_LAYER_SCALE, MAX_LAYER_SCALE, 1.0),
+                clamp_finite(dto.scale_y, MIN_LAYER_SCALE, MAX_LAYER_SCALE, 1.0),
+            ],
+            rotation_rad: finite_or(dto.rotation_deg, 0.0).to_radians(),
+            opacity: clamp_finite(dto.opacity, 0.0, 1.0, 1.0),
+        };
+        let z_index = i32::try_from(idx).unwrap_or(i32::MAX);
+        validated.push((id, dto.visible, z_index, blend, transform));
+    }
+
+    {
+        let mut stack = match app.compositor_stack.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        // Preserve previously uploaded pixel buffers for layers with matching IDs.
+        let mut existing_buffers: HashMap<String, (u32, u32, Vec<u8>)> = stack
+            .layers()
+            .iter()
+            .map(|layer| {
+                (
+                    layer.id.clone(),
+                    (layer.width, layer.height, layer.rgba_pixels.clone()),
+                )
+            })
+            .collect();
+
+        let mut next_stack = LayerStack::new();
+        for (id, visible, z_index, blend, transform) in validated {
+            let (width, height, rgba_pixels) = existing_buffers
+                .remove(&id)
+                .unwrap_or_else(|| (1, 1, vec![0_u8; 4]));
+            next_stack.push_layer(CompositeLayer {
+                id,
+                visible,
+                z_index,
+                blend,
+                transform,
+                width,
+                height,
+                rgba_pixels,
+            });
+        }
+        *stack = next_stack;
+    }
+
+    Ok(get_compositor_capabilities_impl(app))
+}
+
+/// Synchronize the frontend mix layer stack into [`AppState::compositor_stack`]
+/// and return updated compositor capabilities.
+#[tauri::command]
+pub fn set_mix_layer_stack(
+    app_state: State<'_, AppState>,
+    layers: Vec<MixLayerSpecDto>,
+) -> Result<CompositorCapabilitiesDto, String> {
+    set_mix_layer_stack_impl(app_state.inner(), layers)
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod mix_ipc_tests {
@@ -189,7 +433,23 @@ mod mix_ipc_tests {
     //! GPU cost / adaptive resolution telemetry IPC contract pins.
 
     use super::*;
-    use chromaticity_render::compositor::{CompositeLayer, LayerTransform};
+
+    fn sample_layer_dto(id: &str, blend_mode: &str) -> MixLayerSpecDto {
+        MixLayerSpecDto {
+            id: id.to_string(),
+            blend_mode: blend_mode.to_string(),
+            opacity: 1.0,
+            visible: true,
+            x: 0.0,
+            y: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            rotation_deg: 0.0,
+            chroma_key_color: None,
+            chroma_similarity: None,
+            chroma_smoothness: None,
+        }
+    }
 
     #[test]
     fn gpu_cost_telemetry_reports_tier_scale_and_toggle_state() {
@@ -271,5 +531,187 @@ mod mix_ipc_tests {
         }
         let updated = get_compositor_capabilities_impl(&app);
         assert_eq!(updated.active_layer_count, 1);
+    }
+
+    #[test]
+    fn set_mix_layer_stack_maps_all_six_blend_modes_and_updates_active_count() {
+        let app = AppState::new();
+
+        let layers = vec![
+            MixLayerSpecDto {
+                x: 0.25,
+                y: -0.15,
+                scale_x: 1.5,
+                scale_y: 0.75,
+                rotation_deg: 90.0,
+                opacity: 0.8,
+                ..sample_layer_dto("layer-normal", "normal")
+            },
+            sample_layer_dto("layer-screen", "screen"),
+            sample_layer_dto("layer-add", "add"),
+            MixLayerSpecDto {
+                visible: false,
+                ..sample_layer_dto("layer-multiply", "multiply")
+            },
+            sample_layer_dto("layer-luma", "luma-key"),
+            MixLayerSpecDto {
+                chroma_key_color: Some("#0080ff".to_string()),
+                chroma_similarity: Some(0.35),
+                chroma_smoothness: Some(0.12),
+                ..sample_layer_dto("layer-chroma", "chroma-key")
+            },
+        ];
+
+        let caps = set_mix_layer_stack_impl(&app, layers).expect("set 6-layer stack");
+        assert_eq!(caps.active_layer_count, 6);
+        assert_eq!(caps.max_layers, COMPOSITOR_MAX_LAYERS);
+
+        let stack = app.compositor_stack.lock().unwrap();
+        let stored = stack.layers();
+        assert_eq!(stored.len(), 6);
+
+        // 0: normal + transform verification
+        assert_eq!(stored[0].id, "layer-normal");
+        assert_eq!(stored[0].z_index, 0);
+        assert!(stored[0].visible);
+        assert_eq!(stored[0].blend, BlendMode::Normal);
+        assert!((stored[0].transform.offset_xy[0] - 0.25).abs() < 1e-6);
+        assert!((stored[0].transform.offset_xy[1] + 0.15).abs() < 1e-6);
+        assert!((stored[0].transform.scale_xy[0] - 1.5).abs() < 1e-6);
+        assert!((stored[0].transform.scale_xy[1] - 0.75).abs() < 1e-6);
+        assert!((stored[0].transform.rotation_rad - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
+        assert!((stored[0].transform.opacity - 0.8).abs() < 1e-6);
+
+        // 1..3: screen, add, multiply (hidden)
+        assert_eq!(stored[1].blend, BlendMode::Screen);
+        assert_eq!(stored[2].blend, BlendMode::Additive);
+        assert_eq!(stored[3].blend, BlendMode::Multiply);
+        assert!(!stored[3].visible);
+
+        // 4: luma-key
+        match stored[4].blend {
+            BlendMode::LumaKey {
+                threshold,
+                softness,
+            } => {
+                assert!((threshold - DEFAULT_LUMA_THRESHOLD).abs() < 1e-6);
+                assert!((softness - DEFAULT_LUMA_SOFTNESS).abs() < 1e-6);
+            }
+            other => panic!("expected LumaKey, got {other:?}"),
+        }
+
+        // 5: chroma-key with #0080ff
+        match stored[5].blend {
+            BlendMode::ChromaKey {
+                key_rgb,
+                similarity,
+                smoothness,
+            } => {
+                assert!((key_rgb[0] - 0.0).abs() < 1e-5);
+                assert!((key_rgb[1] - (128.0 / 255.0)).abs() < 1e-5);
+                assert!((key_rgb[2] - 1.0).abs() < 1e-5);
+                assert!((similarity - 0.35).abs() < 1e-6);
+                assert!((smoothness - 0.12).abs() < 1e-6);
+            }
+            other => panic!("expected ChromaKey, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_mix_layer_stack_clamps_values_and_enforces_validation() {
+        let app = AppState::new();
+
+        // Seed an existing pixel buffer to verify preservation across updates.
+        {
+            let mut stack = app.compositor_stack.lock().unwrap();
+            stack.push_layer(CompositeLayer {
+                id: "clamped".to_string(),
+                visible: true,
+                z_index: 0,
+                blend: BlendMode::Normal,
+                transform: LayerTransform::default(),
+                width: 2,
+                height: 2,
+                rgba_pixels: vec![42_u8; 16],
+            });
+        }
+
+        let clamped_layers = vec![
+            MixLayerSpecDto {
+                opacity: 2.5,
+                scale_x: 0.0,
+                scale_y: 12.0,
+                x: f32::NAN,
+                y: f32::INFINITY,
+                rotation_deg: f32::NEG_INFINITY,
+                ..sample_layer_dto("clamped", "normal")
+            },
+            MixLayerSpecDto {
+                opacity: -0.5,
+                scale_x: f32::NAN,
+                scale_y: -3.0,
+                chroma_key_color: Some("#0f0".to_string()),
+                chroma_similarity: Some(3.0),
+                chroma_smoothness: Some(-0.2),
+                ..sample_layer_dto("neg", "chroma-key")
+            },
+        ];
+
+        let caps = set_mix_layer_stack_impl(&app, clamped_layers).expect("clamped stack");
+        assert_eq!(caps.active_layer_count, 2);
+
+        {
+            let stack = app.compositor_stack.lock().unwrap();
+            let layers = stack.layers();
+            assert!((layers[0].transform.opacity - 1.0).abs() < 1e-6);
+            assert!((layers[0].transform.scale_xy[0] - MIN_LAYER_SCALE).abs() < 1e-6);
+            assert!((layers[0].transform.scale_xy[1] - MAX_LAYER_SCALE).abs() < 1e-6);
+            assert!((layers[0].transform.offset_xy[0] - 0.0).abs() < 1e-6);
+            assert!((layers[0].transform.offset_xy[1] - 0.0).abs() < 1e-6);
+            assert!((layers[0].transform.rotation_rad - 0.0).abs() < 1e-6);
+            // Existing pixel buffer preserved.
+            assert_eq!(layers[0].width, 2);
+            assert_eq!(layers[0].height, 2);
+            assert_eq!(layers[0].rgba_pixels, vec![42_u8; 16]);
+
+            assert!((layers[1].transform.opacity - 0.0).abs() < 1e-6);
+            assert!((layers[1].transform.scale_xy[0] - 1.0).abs() < 1e-6);
+            assert!((layers[1].transform.scale_xy[1] - MIN_LAYER_SCALE).abs() < 1e-6);
+            assert_eq!(
+                layers[1].blend,
+                BlendMode::ChromaKey {
+                    key_rgb: [0.0, 1.0, 0.0],
+                    similarity: 1.0,
+                    smoothness: 0.0,
+                }
+            );
+        }
+
+        // Exact 16-layer cap is accepted.
+        let max_stack: Vec<MixLayerSpecDto> = (0..COMPOSITOR_MAX_LAYERS)
+            .map(|i| sample_layer_dto(&format!("l-{i}"), "normal"))
+            .collect();
+        let max_caps = set_mix_layer_stack_impl(&app, max_stack).expect("16 layers accepted");
+        assert_eq!(max_caps.active_layer_count, COMPOSITOR_MAX_LAYERS as usize);
+
+        // 17 layers exceeds cap and is rejected without mutating existing stack.
+        let over_cap: Vec<MixLayerSpecDto> = (0..=COMPOSITOR_MAX_LAYERS)
+            .map(|i| sample_layer_dto(&format!("l-{i}"), "normal"))
+            .collect();
+        let err = set_mix_layer_stack_impl(&app, over_cap).unwrap_err();
+        assert!(err.contains("exceeds maximum"));
+        assert_eq!(
+            get_compositor_capabilities_impl(&app).active_layer_count,
+            COMPOSITOR_MAX_LAYERS as usize
+        );
+
+        // Unknown blend mode, empty id, and malformed chroma hex are rejected.
+        assert!(set_mix_layer_stack_impl(&app, vec![sample_layer_dto("bad", "overlay")]).is_err());
+        assert!(set_mix_layer_stack_impl(&app, vec![sample_layer_dto("  ", "normal")]).is_err());
+        let bad_hex = MixLayerSpecDto {
+            chroma_key_color: Some("not-a-hex".to_string()),
+            ..sample_layer_dto("bad-hex", "chroma-key")
+        };
+        assert!(set_mix_layer_stack_impl(&app, vec![bad_hex]).is_err());
     }
 }

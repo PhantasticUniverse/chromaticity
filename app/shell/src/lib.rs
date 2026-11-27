@@ -419,6 +419,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::mix::get_gpu_cost_telemetry,
             commands::mix::set_adaptive_scale_enabled,
             commands::mix::get_compositor_capabilities,
+            commands::mix::set_mix_layer_stack,
             commands::feedback::load_scene_feedback,
             commands::feedback::save_scene_feedback,
             commands::author::read_scene_files,
