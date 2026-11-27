@@ -212,11 +212,15 @@ pub fn run() -> Result<(), tauri::Error> {
                     }
                 }
             };
-            // Map normalized [0, 1] input_gain (0.5 == unity, ±18 dB symmetric) to linear gain.
-            let input_gain_db = (input_gain_norm.clamp(0.0, 1.0) - 0.5) * 36.0;
-            let channel_pair_handle = app.state::<AppState>().live_audio_channel_pair_handle();
+            // Map normalized [0, 1] input_gain (0.5 == unity, ±18 dB symmetric) to linear gain
+            // and install into the lock-free live handle so Settings slider updates apply live.
+            let app_state_bootstrap = app.state::<AppState>();
+            app_state_bootstrap.set_live_input_gain_norm(input_gain_norm);
+            let channel_pair_handle = app_state_bootstrap.live_audio_channel_pair_handle();
+            let input_gain_handle = app_state_bootstrap.live_audio_input_gain_handle();
             let audio_config = AudioRuntimeConfig {
-                input_gain_linear: chromaticity_audio::metering::db_to_linear(input_gain_db),
+                input_gain_linear: input_gain_handle.get_linear(),
+                input_gain_handle: Some(input_gain_handle),
                 channel_pair: channel_pair_handle,
                 ..AudioRuntimeConfig::default()
             };

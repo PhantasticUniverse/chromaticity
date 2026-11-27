@@ -306,9 +306,10 @@ void main() {
     float eff_alpha = clamp(top.a * opacity, 0.0, 1.0);
 
     if (mode == 1) {
-        // Additive
-        vec3 out_rgb = clamp(base.rgb * base.a + top.rgb * eff_alpha, 0.0, 1.0);
+        // Additive (un-premultiply back to straight alpha matching all other modes)
         float out_a = clamp(base.a + eff_alpha, 0.0, 1.0);
+        vec3 sum_premul = base.rgb * base.a + top.rgb * eff_alpha;
+        vec3 out_rgb = (out_a > 1e-6) ? clamp(sum_premul / out_a, 0.0, 1.0) : vec3(0.0);
         fragColor = vec4(out_rgb, out_a);
         return;
     }
@@ -685,7 +686,7 @@ pub fn render_layer_stack(
             &layer.rgba_pixels,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(layer.width * 4),
+                bytes_per_row: layer.width.checked_mul(4),
                 rows_per_image: Some(layer.height),
             },
             layer_extent,

@@ -90,11 +90,21 @@
 
 use std::collections::VecDeque;
 use std::f32::consts::TAU;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use rustfft::{Fft, FftPlanner, num_complex::Complex32};
 
 use crate::frame::AudioFrame;
+
+fn cached_fft_1024() -> Arc<dyn Fft<f32>> {
+    static PLAN: OnceLock<Arc<dyn Fft<f32>>> = OnceLock::new();
+    Arc::clone(PLAN.get_or_init(|| FftPlanner::<f32>::new().plan_fft_forward(FFT_WINDOW_SIZE)))
+}
+
+#[inline]
+fn sanitize_finite(sample: f32) -> f32 {
+    if sample.is_finite() { sample } else { 0.0 }
+}
 
 /// Number of FFT bands the slice-1 snapshot exposes.
 ///
@@ -478,7 +488,7 @@ fn mono_mix(frame: &AudioFrame) -> Vec<f32> {
     let samples = frame.samples();
 
     if channels <= 1 {
-        return samples.to_vec();
+        return samples.iter().map(|&s| sanitize_finite(s)).collect();
     }
 
     let stride = usize::from(channels);
@@ -495,9 +505,9 @@ fn mono_mix(frame: &AudioFrame) -> Vec<f32> {
         for ch in 0..stride {
             // Bounds-checked indexing; `frames * stride <=
             // samples.len()` by construction.
-            sum += samples[base + ch];
+            sum += sanitize_finite(samples[base + ch]);
         }
-        out.push(sum * inv_stride);
+        out.push(sanitize_finite(sum * inv_stride));
     }
     out
 }
@@ -512,9 +522,19 @@ fn compute_rms(mono: &[f32]) -> f32 {
     if mono.is_empty() {
         return 0.0;
     }
-    let sum_sq: f32 = mono.iter().map(|s| s * s).sum();
+    let sum_sq: f32 = mono
+        .iter()
+        .map(|&s| {
+            let v = sanitize_finite(s);
+            v * v
+        })
+        .sum();
     let rms = (sum_sq / mono.len() as f32).sqrt();
-    rms.clamp(0.0, 1.0)
+    if rms.is_finite() {
+        rms.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
 }
 
 /// Root-mean-square over a mono analysis window, clamped to `[0, 1]`.
@@ -529,13 +549,17 @@ pub(crate) fn compute_rms_over_window(samples: &[f32]) -> f32 {
 /// Peak absolute magnitude over a mono buffer, clamped to `[0, 1]`.
 fn compute_peak(mono: &[f32]) -> f32 {
     let mut peak = 0.0_f32;
-    for s in mono {
-        let m = s.abs();
+    for &s in mono {
+        let m = sanitize_finite(s).abs();
         if m > peak {
             peak = m;
         }
     }
-    peak.clamp(0.0, 1.0)
+    if peak.is_finite() {
+        peak.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
 }
 
 /// Peak absolute magnitude over a mono analysis window, clamped to `[0, 1]`.
@@ -572,7 +596,7 @@ fn compute_fft_bands(mono: &[f32], sample_rate_hz: u32) -> [f32; FFT_BAND_COUNT]
         })
         .collect();
 
-    let fft: Arc<dyn Fft<f32>> = FftPlanner::<f32>::new().plan_fft_forward(FFT_WINDOW_SIZE);
+    let fft = cached_fft_1024();
     fft.process(&mut buffer);
 
     // Hann-windowed unit-sine reference magnitude. A Hann window of
@@ -671,8 +695,14 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
         return BPM_DEFAULT;
     }
 
-    let energy: f32 = mono.iter().map(|s| s * s).sum();
-    if energy <= f32::EPSILON {
+    let energy: f32 = mono
+        .iter()
+        .map(|&s| {
+            let v = sanitize_finite(s);
+            v * v
+        })
+        .sum();
+    if !energy.is_finite() || energy <= f32::EPSILON {
         return BPM_DEFAULT;
     }
 
@@ -687,7 +717,7 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
 
     let mut spectrum = vec![Complex32 { re: 0.0, im: 0.0 }; fft_len];
     for (slot, &sample) in spectrum.iter_mut().zip(mono.iter()) {
-        slot.re = sample;
+        slot.re = sanitize_finite(sample);
     }
     forward.process(&mut spectrum);
     for bin in &mut spectrum {
@@ -697,6 +727,9 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
     inverse.process(&mut spectrum);
 
     let inv_fft_len = 1.0 / fft_len as f32;
+    // Floor the overlap divisor at `mono.len() / 8` so very small overlaps
+    // near `max_lag` (e.g. `n == 1`) cannot blow up variance and pin BPM to 50.
+    let min_divisor = (mono.len() / 8).max(1);
     let mut best_lag = 0_usize;
     let mut best_score = 0.0_f32;
     for (offset, bin) in spectrum[min_lag..=max_lag].iter().enumerate() {
@@ -705,11 +738,9 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
         if n == 0 {
             break;
         }
-        // Normalise by FFT length and overlap length so longer lags don't
-        // get an artificially smaller score from the shorter overlap window.
         let acc = bin.re * inv_fft_len;
-        let score = acc / n as f32;
-        if score > best_score {
+        let score = acc / n.max(min_divisor) as f32;
+        if score.is_finite() && score > best_score {
             best_score = score;
             best_lag = lag;
         }

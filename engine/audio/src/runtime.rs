@@ -99,6 +99,7 @@
 //! T2 corpus and the `engine/runtime/src/scheduler/ipc.rs` T1 pins.
 
 use std::panic::AssertUnwindSafe;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -112,7 +113,7 @@ use crate::cpal_source::{
 };
 use crate::frame::AudioFrame;
 use crate::ingest::{IngestBoundary, IngestStatus};
-use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
+use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource};
 use crate::metering::apply_input_gain;
 use crate::silent::SilentSource;
 use crate::uniforms::{
@@ -124,6 +125,58 @@ use crate::uniforms::{
 /// producer loop (matches `BpmEstimator`'s 8-frame ≈ 2 s design window while
 /// keeping per-callback RMS/peak/FFT latency at ~21 ms and CPU < 1%).
 const BPM_UPDATE_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Pacing sleep when running on [`SilentSource`] (either construction-time
+/// silent fallback or negotiator [`IngestSource::SilentFallback`]) so the
+/// producer thread never spins a CPU core at 100% when no audio device is active.
+const SILENT_FALLBACK_BACKOFF: Duration = Duration::from_millis(2);
+
+/// Lock-free atomic linear input-gain multiplier shared between `Settings` IPC
+/// and the live [`AudioRuntime`] producer thread so Input Gain changes take
+/// effect immediately without restarting the audio stream.
+#[derive(Debug, Clone)]
+pub struct AudioInputGainHandle {
+    bits: Arc<AtomicU32>,
+}
+
+impl AudioInputGainHandle {
+    /// Construct a handle initialized to `linear` (non-finite or negative values
+    /// fall back to `1.0` unity).
+    #[must_use]
+    pub fn new(linear: f32) -> Self {
+        let sanitized = if linear.is_finite() && linear >= 0.0 {
+            linear
+        } else {
+            1.0
+        };
+        Self {
+            bits: Arc::new(AtomicU32::new(sanitized.to_bits())),
+        }
+    }
+
+    /// Atomically update the linear gain multiplier (non-finite/negative ignored
+    /// in favor of `1.0`).
+    pub fn set_linear(&self, linear: f32) {
+        let sanitized = if linear.is_finite() && linear >= 0.0 {
+            linear
+        } else {
+            1.0
+        };
+        self.bits.store(sanitized.to_bits(), Ordering::Release);
+    }
+
+    /// Atomically read the current linear gain multiplier.
+    #[must_use]
+    pub fn get_linear(&self) -> f32 {
+        f32::from_bits(self.bits.load(Ordering::Acquire))
+    }
+}
+
+impl Default for AudioInputGainHandle {
+    fn default() -> Self {
+        Self::new(1.0)
+    }
+}
 
 /// Back-off when [`IngestStatus::Pending`] or
 /// [`IngestStatus::WouldBlock`] is observed.
@@ -167,6 +220,10 @@ pub struct AudioRuntimeConfig {
     /// fast path preserving all existing `EV-AUDIO-TRACE` goldens).
     /// Non-finite or negative values fall back to `1.0`.
     pub input_gain_linear: f32,
+    /// Optional lock-free atomic input-gain handle. When provided, the live
+    /// producer thread reads gain dynamically on every frame so `Settings`
+    /// Input Gain updates apply immediately without restarting the stream.
+    pub input_gain_handle: Option<AudioInputGainHandle>,
     /// Lock-free atomic stereo channel-pair selector (`(left, right)`,
     /// 0-indexed, default `(0, 1)` = Ch 1-2 Master) used by multi-channel
     /// capture streams to isolate a single stereo pair without restarting
@@ -180,6 +237,7 @@ impl Default for AudioRuntimeConfig {
             bpm_window: 8,
             criteria: IngestModeCriteria::default(),
             input_gain_linear: 1.0,
+            input_gain_handle: None,
             channel_pair: AudioChannelPairHandle::default(),
         }
     }
@@ -207,7 +265,8 @@ impl Default for AudioRuntimeConfig {
 pub struct AudioRuntime {
     negotiator: IngestNegotiator,
     estimator: BpmEstimator,
-    input_gain_linear: f32,
+    input_gain: AudioInputGainHandle,
+    is_silent_primary: bool,
     channel_pair: AudioChannelPairHandle,
     shared: Arc<Mutex<AudioUniformSnapshot>>,
 }
@@ -242,7 +301,11 @@ impl AudioRuntime {
         let channel_pair = config.channel_pair.clone();
         match try_default_input_with_channel_pair(channel_pair) {
             Ok(cpal_source) => Self::from_primary(cpal_source, config),
-            Err(_) => Self::from_primary(SilentSource::new(u32::MAX), config),
+            Err(_) => {
+                let mut rt = Self::from_primary(SilentSource::new(u32::MAX), config);
+                rt.is_silent_primary = true;
+                rt
+            }
         }
     }
 
@@ -282,7 +345,11 @@ impl AudioRuntime {
         let channel_pair = config.channel_pair.clone();
         match try_input_by_preference_with_channel_pair(preference, channel_pair) {
             Ok(cpal_source) => Self::from_primary(cpal_source, config),
-            Err(_) => Self::from_primary(SilentSource::new(u32::MAX), config),
+            Err(_) => {
+                let mut rt = Self::from_primary(SilentSource::new(u32::MAX), config);
+                rt.is_silent_primary = true;
+                rt
+            }
         }
     }
 
@@ -305,16 +372,14 @@ impl AudioRuntime {
             Ok(e) => e,
             Err(_) => BpmEstimator::new(),
         };
-        let input_gain_linear =
-            if config.input_gain_linear.is_finite() && config.input_gain_linear >= 0.0 {
-                config.input_gain_linear
-            } else {
-                1.0
-            };
+        let input_gain = config
+            .input_gain_handle
+            .unwrap_or_else(|| AudioInputGainHandle::new(config.input_gain_linear));
         Self {
             negotiator,
             estimator,
-            input_gain_linear,
+            input_gain,
+            is_silent_primary: false,
             channel_pair: config.channel_pair,
             shared: Arc::new(Mutex::new(AudioUniformSnapshot::default())),
         }
@@ -346,12 +411,14 @@ impl AudioRuntime {
         let Self {
             mut negotiator,
             mut estimator,
-            input_gain_linear,
+            input_gain,
+            is_silent_primary,
             channel_pair,
             shared,
         } = self;
         let shared_for_thread = Arc::clone(&shared);
         let channel_pair_for_thread = channel_pair.clone();
+        let input_gain_for_thread = input_gain.clone();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
 
         let join = thread::Builder::new()
@@ -387,8 +454,9 @@ impl AudioRuntime {
                                     );
                                     frame = AudioFrame::new(frame.sample_rate_hz(), 2, stereo);
                                 }
-                                if input_gain_linear != 1.0 {
-                                    apply_input_gain(frame.samples_mut(), input_gain_linear);
+                                let gain_linear = input_gain_for_thread.get_linear();
+                                if (gain_linear - 1.0).abs() > f32::EPSILON {
+                                    apply_input_gain(frame.samples_mut(), gain_linear);
                                 }
                                 analysis_window.push(&frame);
                                 let bpm_ready = analysis_window.is_bpm_ready();
@@ -431,7 +499,13 @@ impl AudioRuntime {
                                         *guard = merged;
                                     }
                                 }
-                                LoopStep::Continue
+                                if is_silent_primary
+                                    || negotiator.active_source() == IngestSource::SilentFallback
+                                {
+                                    LoopStep::Backoff(SILENT_FALLBACK_BACKOFF)
+                                } else {
+                                    LoopStep::Continue
+                                }
                             }
                             IngestStatus::Pending | IngestStatus::WouldBlock => {
                                 LoopStep::Backoff(WOULD_BLOCK_BACKOFF)

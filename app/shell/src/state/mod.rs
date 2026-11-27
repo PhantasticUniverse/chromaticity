@@ -412,6 +412,9 @@ pub struct AppState {
     /// Updated immediately by `set_audio_channel_pair` with zero stream restart
     /// and zero mutex contention on the real-time audio thread.
     pub audio_channel_pair_atomic: chromaticity_audio::AudioChannelPairHandle,
+    /// Lock-free atomic linear input-gain handle shared with the live
+    /// [`chromaticity_audio::runtime::AudioRuntime`] producer thread.
+    pub audio_input_gain_atomic: chromaticity_audio::AudioInputGainHandle,
     /// Phase 7a crash-safe fMP4 recorder muxer (`Idle` / `Recording` / `Stopping`).
     pub recorder_muxer: Mutex<Option<chromaticity_runtime::recorder::Fmp4Muxer>>,
     /// Phase 7a keyframe-aligned rolling replay buffer ("save last 15–120 s").
@@ -508,6 +511,7 @@ impl AppState {
                 chromaticity_runtime::rekordbox_bridge::ChannelPairSelection::master_default(),
             )),
             audio_channel_pair_atomic: chromaticity_audio::AudioChannelPairHandle::default(),
+            audio_input_gain_atomic: chromaticity_audio::AudioInputGainHandle::default(),
             recorder_muxer: Mutex::new(
                 chromaticity_runtime::recorder::Fmp4Muxer::new(
                     chromaticity_runtime::recorder::Fmp4MuxerConfig::default(),
@@ -872,6 +876,26 @@ impl AppState {
     #[must_use]
     pub fn live_audio_channel_pair_handle(&self) -> chromaticity_audio::AudioChannelPairHandle {
         self.audio_channel_pair_atomic.clone()
+    }
+
+    /// Clone the lock-free [`chromaticity_audio::AudioInputGainHandle`] bound to
+    /// the live [`chromaticity_audio::runtime::AudioRuntime`].
+    #[must_use]
+    pub fn live_audio_input_gain_handle(&self) -> chromaticity_audio::AudioInputGainHandle {
+        self.audio_input_gain_atomic.clone()
+    }
+
+    /// Update the live audio runtime's input gain from normalized `[0, 1]`
+    /// Settings value (`0.5` == unity `0 dB`, symmetric `±18 dB` range).
+    pub fn set_live_input_gain_norm(&self, input_gain_norm: f32) {
+        let clamped = if input_gain_norm.is_finite() {
+            input_gain_norm.clamp(0.0, 1.0)
+        } else {
+            0.5
+        };
+        let gain_db = (clamped - 0.5) * 36.0;
+        let linear = chromaticity_audio::metering::db_to_linear(gain_db);
+        self.audio_input_gain_atomic.set_linear(linear);
     }
 
     /// Record a measured GPU frame time and base render target dimensions into

@@ -56,6 +56,7 @@ fn set_settings_impl(app: &AppState, settings: SettingsPayload) -> Result<(), St
     if let Some(path) = path.as_ref() {
         engine.save_to_path(path).map_err(|err| err.to_string())?;
     }
+    let live_gain_norm = engine.audio.input_gain;
     {
         let mut guard = match app.settings.lock() {
             Ok(g) => g,
@@ -63,6 +64,7 @@ fn set_settings_impl(app: &AppState, settings: SettingsPayload) -> Result<(), St
         };
         *guard = engine;
     }
+    app.set_live_input_gain_norm(live_gain_norm);
     if let Err(err) = osc::configure_live_osc_adapter(app) {
         eprintln!(
             "chromaticity-app: failed to reconfigure OSC adapter after settings update: {err}"
@@ -100,6 +102,7 @@ fn reset_settings_impl(app: &AppState) -> Result<SettingsPayload, String> {
         };
         *guard = defaults.clone();
     }
+    app.set_live_input_gain_norm(defaults.audio.input_gain);
     if let Err(err) = osc::configure_live_osc_adapter(app) {
         eprintln!(
             "chromaticity-app: failed to reconfigure OSC adapter after settings reset: {err}"
