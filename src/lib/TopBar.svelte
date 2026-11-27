@@ -63,6 +63,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     the `osc_health_snapshot` Tauri command every 5 s (Wave 2.1
   //     D.3 shipped the command + bridge type).
   import Icon from './Icon.svelte';
+  import { closeOutputWindow, openOutputWindow } from './ipc/output';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { loadedSceneStore } from './stores/loadedScene.svelte';
   import { midiStore } from './stores/midiStore.svelte';
@@ -292,6 +293,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     if (snap.local_addr) return `Listening · ${snap.local_addr}`;
     return `Unbound · ${snap.attempted_binds} attempts`;
   });
+  /** Stage output window open state toggled by the GO LIVE button. */
+  let outputWindowOpen = $state(false);
+
+  async function handleGoLiveClick(): Promise<void> {
+    try {
+      if (outputWindowOpen) {
+        const status = await closeOutputWindow();
+        outputWindowOpen = status.open;
+      } else {
+        const status = await openOutputWindow({ fullscreen: false });
+        outputWindowOpen = status.open;
+      }
+    } catch {
+      // Non-fatal in headless / browser preview mode.
+    }
+  }
 </script>
 
 <header class="top-bar">
@@ -412,10 +429,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <button
       type="button"
       class="top-bar__go-live"
-      title="Go live — visual stub in W15; output activation + entitlement check are post-MVP"
+      aria-pressed={outputWindowOpen ? 'true' : 'false'}
+      data-live={outputWindowOpen ? 'on' : 'off'}
+      title={outputWindowOpen
+        ? 'Close stage output window'
+        : 'Open stage output window on secondary display'}
+      onclick={() => void handleGoLiveClick()}
     >
       <span class="top-bar__go-live-glyph"><Icon name="play" size={11} /></span>
-      GO LIVE
+      {outputWindowOpen ? 'LIVE OUT' : 'GO LIVE'}
     </button>
   </div>
 </header>

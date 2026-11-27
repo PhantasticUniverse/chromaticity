@@ -20,6 +20,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import AppShell from './lib/AppShell.svelte';
   import HotkeyOverlay from './lib/HotkeyOverlay.svelte';
   import { overlayStack } from './lib/state';
+  import OutputStage from './lib/views/OutputStage.svelte';
+
+  const isOutputMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mode') === 'output';
 
   const hotkeysOpen = $derived(overlayStack.isOpen('hotkeys'));
 
@@ -43,6 +48,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   });
 </script>
 
-<AppShell />
+{#if isOutputMode}
+  <OutputStage />
+{:else}
+  <AppShell />
 
-<HotkeyOverlay open={hotkeysOpen} onCloseRequest={() => overlayStack.close('hotkeys')} />
+  <HotkeyOverlay open={hotkeysOpen} onCloseRequest={() => overlayStack.close('hotkeys')} />
+{/if}
