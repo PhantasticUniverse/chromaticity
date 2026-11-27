@@ -107,6 +107,15 @@ pub use data_ingest::{
     CASSETTE_FORMAT_VERSION, CassetteSample, DATA_UNIFORM_PREFIX, DataCassette, DataIngestEngine,
     DataIngestError, DataIngestState, DataSourceSpec, DataTransport, DataValue,
 };
+pub use rekordbox_bridge::{
+    ChannelPairMeter, ChannelPairSelection, DjDeviceKind, DjDeviceProfile, MultiChannelExtractor,
+    PRO_DJ_LINK_BEAT_PACKET_MIN_LEN, PRO_DJ_LINK_BEAT_PACKET_TYPE, PRO_DJ_LINK_BEAT_PORT,
+    PRO_DJ_LINK_KEEPALIVE_PORT, PRO_DJ_LINK_MAGIC, ProDjLinkBeat, REKORDBOX_MACOS_BUNDLE_ID,
+    REKORDBOX_MACOS_PROCESS_NAME, RekordboxBridgeError, RekordboxDeckState, RekordboxUniforms,
+    UNIFORM_DECK_BAR_BEAT, UNIFORM_DECK_BEAT_PHASE, UNIFORM_DECK_BPM, UNIFORM_DECK_CUE_PULSE,
+    UNIFORM_DECK_IS_MASTER, UNIFORM_DECK_PHRASE_ENERGY, UNIFORM_DECK_PLAYING,
+    parse_pro_dj_link_beat_packet,
+};
 pub use twitch_bridge::{
     CHAT_ARGS_PLACEHOLDER, TwitchBridgeError, TwitchConnectionState, TwitchEvent, TwitchEventKind,
     TwitchTriggerRule, TwitchVisualAction, TwitchVisualBridge, UNIFORM_TWITCH_BITS,
@@ -122,6 +131,7 @@ pub use script_bridge::{
 pub mod command_bus;
 pub mod crash_resume;
 pub mod data_ingest;
+pub mod rekordbox_bridge;
 pub mod scheduler;
 #[cfg(feature = "script-bridge")]
 pub mod script_bridge;
