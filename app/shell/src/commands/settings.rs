@@ -45,26 +45,27 @@ fn get_settings_impl(app: &AppState) -> Result<SettingsPayload, String> {
 /// temp-file scaffold.
 fn set_settings_impl(app: &AppState, settings: SettingsPayload) -> Result<(), String> {
     let engine: chromaticity_runtime::settings::Settings = settings.into();
-    // Resolve the persistence target BEFORE acquiring the mutex so
-    // the file I/O (which can be slow) doesn't hold the lock.
     let path_guard = match app.settings_path.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
     let path = path_guard.clone();
     drop(path_guard);
-    if let Some(path) = path.as_ref() {
-        engine.save_to_path(path).map_err(|err| err.to_string())?;
-    }
     let live_gain_norm = engine.audio.input_gain;
+    // Hold `app.settings` across disk persistence + in-memory swap + live gain
+    // update so overlapping `set_settings` / `reset_settings` calls cannot
+    // diverge disk vs memory.
     {
         let mut guard = match app.settings.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
+        if let Some(path) = path.as_ref() {
+            engine.save_to_path(path).map_err(|err| err.to_string())?;
+        }
         *guard = engine;
+        app.set_live_input_gain_norm(live_gain_norm);
     }
-    app.set_live_input_gain_norm(live_gain_norm);
     if let Err(err) = osc::configure_live_osc_adapter(app) {
         eprintln!(
             "chromaticity-app: failed to reconfigure OSC adapter after settings update: {err}"
@@ -83,26 +84,23 @@ fn set_settings_impl(app: &AppState, settings: SettingsPayload) -> Result<(), St
 /// the same canonical shape the engine just persisted.
 fn reset_settings_impl(app: &AppState) -> Result<SettingsPayload, String> {
     let defaults = chromaticity_runtime::settings::Settings::default();
-    // Resolve the persistence target BEFORE acquiring the mutex so
-    // the file I/O (which can be slow) doesn't hold the lock — same
-    // ordering as `set_settings_impl` above.
     let path_guard = match app.settings_path.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
     let path = path_guard.clone();
     drop(path_guard);
-    if let Some(path) = path.as_ref() {
-        defaults.save_to_path(path).map_err(|err| err.to_string())?;
-    }
     {
         let mut guard = match app.settings.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
+        if let Some(path) = path.as_ref() {
+            defaults.save_to_path(path).map_err(|err| err.to_string())?;
+        }
         *guard = defaults.clone();
+        app.set_live_input_gain_norm(defaults.audio.input_gain);
     }
-    app.set_live_input_gain_norm(defaults.audio.input_gain);
     if let Err(err) = osc::configure_live_osc_adapter(app) {
         eprintln!(
             "chromaticity-app: failed to reconfigure OSC adapter after settings reset: {err}"

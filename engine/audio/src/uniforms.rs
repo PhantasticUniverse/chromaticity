@@ -90,7 +90,7 @@
 
 use std::collections::VecDeque;
 use std::f32::consts::TAU;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use rustfft::{Fft, FftPlanner, num_complex::Complex32};
 
@@ -99,6 +99,27 @@ use crate::frame::AudioFrame;
 fn cached_fft_1024() -> Arc<dyn Fft<f32>> {
     static PLAN: OnceLock<Arc<dyn Fft<f32>>> = OnceLock::new();
     Arc::clone(PLAN.get_or_init(|| FftPlanner::<f32>::new().plan_fft_forward(FFT_WINDOW_SIZE)))
+}
+
+type CachedBpmFftPair = (usize, Arc<dyn Fft<f32>>, Arc<dyn Fft<f32>>);
+
+fn cached_bpm_fft_pair(fft_len: usize) -> (Arc<dyn Fft<f32>>, Arc<dyn Fft<f32>>) {
+    static CACHE: OnceLock<Mutex<Option<CachedBpmFftPair>>> = OnceLock::new();
+    let mutex = CACHE.get_or_init(|| Mutex::new(None));
+    let mut guard = match mutex.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    if let Some((cached_len, fwd, inv)) = guard.as_ref() {
+        if *cached_len == fft_len {
+            return (Arc::clone(fwd), Arc::clone(inv));
+        }
+    }
+    let mut planner = FftPlanner::<f32>::new();
+    let fwd = planner.plan_fft_forward(fft_len);
+    let inv = planner.plan_fft_inverse(fft_len);
+    *guard = Some((fft_len, Arc::clone(&fwd), Arc::clone(&inv)));
+    (fwd, inv)
 }
 
 #[inline]
@@ -428,10 +449,15 @@ pub(crate) fn extract_live_metering_snapshot(
     bpm: f32,
     bpm_availability: AudioAxisAvailability,
 ) -> AudioUniformSnapshot {
+    let safe_bpm = if bpm.is_finite() {
+        bpm.clamp(BPM_CLAMP_MIN, BPM_CLAMP_MAX)
+    } else {
+        BPM_DEFAULT
+    };
     let mono = mono_mix(recent_frame);
     if mono.is_empty() {
         return AudioUniformSnapshot {
-            bpm,
+            bpm: safe_bpm,
             bpm_availability,
             ..AudioUniformSnapshot::default()
         };
@@ -448,7 +474,7 @@ pub(crate) fn extract_live_metering_snapshot(
     };
 
     AudioUniformSnapshot {
-        bpm,
+        bpm: safe_bpm,
         bpm_availability,
         rms,
         peak,
@@ -522,16 +548,18 @@ fn compute_rms(mono: &[f32]) -> f32 {
     if mono.is_empty() {
         return 0.0;
     }
-    let sum_sq: f32 = mono
+    let sum_sq: f64 = mono
         .iter()
         .map(|&s| {
-            let v = sanitize_finite(s);
+            let v = f64::from(sanitize_finite(s));
             v * v
         })
         .sum();
-    let rms = (sum_sq / mono.len() as f32).sqrt();
+    let rms = (sum_sq / mono.len() as f64).sqrt() as f32;
     if rms.is_finite() {
         rms.clamp(0.0, 1.0)
+    } else if rms.is_sign_positive() {
+        1.0
     } else {
         0.0
     }
@@ -633,7 +661,13 @@ fn compute_fft_bands(mono: &[f32], sample_rate_hz: u32) -> [f32; FFT_BAND_COUNT]
         }
         let mean = sum / count as f32;
         let normalized = mean / reference;
-        *band_slot = normalized.clamp(0.0, 1.0);
+        *band_slot = if normalized.is_finite() {
+            normalized.clamp(0.0, 1.0)
+        } else if normalized.is_sign_positive() {
+            1.0
+        } else {
+            0.0
+        };
     }
 
     bands
@@ -710,10 +744,14 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
     // O(N log N) instead of O(N * max_lag) (~1B multiply-adds at 48 kHz).
     // Zero-padding to >= 2 * N eliminates circular wrap-around aliasing so
     // `ifft(|fft(padded)|^2)[lag] / fft_len == sum_{i=0}^{N-lag-1} x[i]*x[i+lag]`.
-    let fft_len = (mono.len().saturating_mul(2)).next_power_of_two();
-    let mut planner = FftPlanner::<f32>::new();
-    let forward = planner.plan_fft_forward(fft_len);
-    let inverse = planner.plan_fft_inverse(fft_len);
+    let Some(fft_len) = mono
+        .len()
+        .checked_mul(2)
+        .and_then(usize::checked_next_power_of_two)
+    else {
+        return BPM_DEFAULT;
+    };
+    let (forward, inverse) = cached_bpm_fft_pair(fft_len);
 
     let mut spectrum = vec![Complex32 { re: 0.0, im: 0.0 }; fft_len];
     for (slot, &sample) in spectrum.iter_mut().zip(mono.iter()) {

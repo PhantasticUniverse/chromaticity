@@ -211,9 +211,19 @@ struct LayerCompositeUniforms {
 }
 
 impl LayerCompositeUniforms {
+    #[inline]
+    fn finite_or(value: f32, default: f32) -> f32 {
+        if value.is_finite() { value } else { default }
+    }
+
     fn from_layer(layer: &CompositeLayer) -> Self {
-        let (sin_rot, cos_rot) = layer.transform.rotation_rad.sin_cos();
-        let opacity = layer.transform.opacity.clamp(0.0, 1.0);
+        let rot_rad = Self::finite_or(layer.transform.rotation_rad, 0.0);
+        let (sin_rot, cos_rot) = rot_rad.sin_cos();
+        let opacity = Self::finite_or(layer.transform.opacity, 1.0).clamp(0.0, 1.0);
+        let off_x = Self::finite_or(layer.transform.offset_xy[0], 0.0);
+        let off_y = Self::finite_or(layer.transform.offset_xy[1], 0.0);
+        let scale_x = Self::finite_or(layer.transform.scale_xy[0], 1.0);
+        let scale_y = Self::finite_or(layer.transform.scale_xy[1], 1.0);
 
         let (mode_id, key_rgb_p0, key_extra) = match layer.blend {
             BlendMode::Normal => (0.0_f32, [0.0; 4], [0.0; 4]),
@@ -225,8 +235,18 @@ impl LayerCompositeUniforms {
                 softness,
             } => (
                 4.0_f32,
-                [0.0, 0.0, 0.0, threshold],
-                [softness, 0.0, 0.0, 0.0],
+                [
+                    0.0,
+                    0.0,
+                    0.0,
+                    Self::finite_or(threshold, 0.1).clamp(0.0, 1.0),
+                ],
+                [
+                    Self::finite_or(softness, 0.05).clamp(0.0, 1.0),
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
             ),
             BlendMode::ChromaKey {
                 key_rgb,
@@ -234,8 +254,18 @@ impl LayerCompositeUniforms {
                 smoothness,
             } => (
                 5.0_f32,
-                [key_rgb[0], key_rgb[1], key_rgb[2], similarity],
-                [smoothness, 0.0, 0.0, 0.0],
+                [
+                    Self::finite_or(key_rgb[0], 0.0).clamp(0.0, 1.0),
+                    Self::finite_or(key_rgb[1], 1.0).clamp(0.0, 1.0),
+                    Self::finite_or(key_rgb[2], 0.0).clamp(0.0, 1.0),
+                    Self::finite_or(similarity, 0.25).clamp(0.0, 1.0),
+                ],
+                [
+                    Self::finite_or(smoothness, 0.08).clamp(0.0, 1.0),
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
             ),
             BlendMode::Overlay => (6.0_f32, [0.0; 4], [0.0; 4]),
             BlendMode::HardLight => (7.0_f32, [0.0; 4], [0.0; 4]),
@@ -244,12 +274,7 @@ impl LayerCompositeUniforms {
         };
 
         Self {
-            transform: [
-                layer.transform.offset_xy[0],
-                layer.transform.offset_xy[1],
-                layer.transform.scale_xy[0],
-                layer.transform.scale_xy[1],
-            ],
+            transform: [off_x, off_y, scale_x, scale_y],
             rot_opacity_mode: [cos_rot, sin_rot, opacity, mode_id],
             key_rgb_p0,
             key_extra,

@@ -364,9 +364,13 @@ impl AudioRuntime {
     where
         P: IngestBoundary + Send + 'static,
     {
+        let mut is_silent_primary = false;
         let negotiator = match IngestNegotiator::new(primary).with_criteria(config.criteria) {
             Ok(n) => n,
-            Err(_) => IngestNegotiator::new(SilentSource::new(u32::MAX)),
+            Err(_) => {
+                is_silent_primary = true;
+                IngestNegotiator::new(SilentSource::new(u32::MAX))
+            }
         };
         let estimator = match BpmEstimator::with_window(config.bpm_window) {
             Ok(e) => e,
@@ -379,7 +383,7 @@ impl AudioRuntime {
             negotiator,
             estimator,
             input_gain,
-            is_silent_primary: false,
+            is_silent_primary,
             channel_pair: config.channel_pair,
             shared: Arc::new(Mutex::new(AudioUniformSnapshot::default())),
         }
@@ -460,6 +464,13 @@ impl AudioRuntime {
                                 }
                                 analysis_window.push(&frame);
                                 let bpm_ready = analysis_window.is_bpm_ready();
+                                if !bpm_ready && prev_bpm_ready {
+                                    // Sample rate changed and reset the rolling window:
+                                    // clear stale tempo history so old BPM doesn't bleed in.
+                                    estimator.reset();
+                                    cached_bpm = BPM_DEFAULT;
+                                    last_bpm_update = None;
+                                }
                                 let bpm_availability = if bpm_ready {
                                     AudioAxisAvailability::Ready
                                 } else {
