@@ -527,7 +527,7 @@ pub fn resolve_youtube_stream_impl(video_id: &str) -> Result<YouTubeStreamDto, S
             "--no-playlist",
             "--no-warnings",
             "-f",
-            "best[ext=mp4][height<=1080]/best[height<=1080]/best",
+            "bestvideo[ext=mp4][vcodec^=avc1][height<=1080]/bestvideo[ext=mp4][height<=1080]/best[ext=mp4][height<=1080]/best",
             "--get-title",
             "--get-url",
             "--",
