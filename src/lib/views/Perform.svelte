@@ -1954,7 +1954,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * initial review. */
   .media-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    grid-auto-rows: max-content;
+    align-content: start;
+    align-items: start;
     gap: var(--space-lg);
   }
   /* Inset the SceneStill / SMPTE-test surfaces by 3 px so the tile's

@@ -106,7 +106,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
 <style>
   .media-card {
+    display: block;
+    width: 100%;
     aspect-ratio: 16 / 10;
+    min-height: 68px;
     border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--color-bg-3);
