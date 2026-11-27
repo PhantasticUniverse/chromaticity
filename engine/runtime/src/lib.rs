@@ -98,6 +98,14 @@
 // Convenience re-exports of the slice-2 public surface. Sibling
 // engine crates depend on `chromaticity_runtime::Command` and
 // `chromaticity_runtime::Event` shapes from slice-3 onward.
+pub use broadcast_stream::{
+    AbrAction, AdaptiveBitrateController, BASE_RECONNECT_DELAY_MS, BroadcastStreamError,
+    BroadcastStreamer, DEFAULT_ABR_ADDITIVE_INCREASE_KBPS, DEFAULT_ABR_CLEAN_WINDOW_MS,
+    DEFAULT_ABR_COOLDOWN_MS, DEFAULT_ABR_DROP_RATE_THRESHOLD, DEFAULT_ABR_RTT_SPIKE_MS, JitterHook,
+    MAX_ALLOWED_BITRATE_KBPS, MAX_RECONNECT_DELAY_MS, MIN_ALLOWED_BITRATE_KBPS,
+    REDACTED_SECRET_PLACEHOLDER, ReconnectPlan, ReconnectWatchdog, StreamEndpointConfig,
+    StreamProtocol, StreamSecretKey, StreamState, StreamTelemetrySample, zero_jitter,
+};
 pub use command_bus::{
     Command, CommandBus, CommandBusError, CommandChannel, ControlId, ControlValue,
     CrossbeamChannel, Event, EventPayload, EventSeq, InMemoryBus, MappingId, MappingSource,
@@ -140,6 +148,7 @@ pub use script_bridge::{
     ScriptBridgeError, ScriptBridgeReceiver, ScriptCommandRouter, script_bridge,
 };
 
+pub mod broadcast_stream;
 pub mod command_bus;
 pub mod crash_resume;
 pub mod data_ingest;
