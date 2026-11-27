@@ -106,6 +106,12 @@ pub use broadcast_stream::{
     REDACTED_SECRET_PLACEHOLDER, ReconnectPlan, ReconnectWatchdog, StreamEndpointConfig,
     StreamProtocol, StreamSecretKey, StreamState, StreamTelemetrySample, zero_jitter,
 };
+pub use clock_sync::{
+    AbletonLinkSnapshot, ClockSourceKind, ClockSyncCoordinator, ClockSyncMode, DEFAULT_CLOCK_BPM,
+    DEFAULT_CLOCK_TIMEOUT_MS, DEFAULT_MIDI_CLOCK_WINDOW, MAX_CLOCK_BPM, MAX_PHASE_OFFSET_BEATS,
+    MIDI_CLOCK_PPQN, MIDI_RT_CONTINUE, MIDI_RT_START, MIDI_RT_STOP, MIDI_RT_TIMING_CLOCK,
+    MIN_CLOCK_BPM, MIN_PHASE_OFFSET_BEATS, MidiClockEstimator, ResolvedClock,
+};
 pub use command_bus::{
     Command, CommandBus, CommandBusError, CommandChannel, ControlId, ControlValue,
     CrossbeamChannel, Event, EventPayload, EventSeq, InMemoryBus, MappingId, MappingSource,
@@ -153,6 +159,7 @@ pub use script_bridge::{
 };
 
 pub mod broadcast_stream;
+pub mod clock_sync;
 pub mod command_bus;
 pub mod crash_resume;
 pub mod cue_runner;
