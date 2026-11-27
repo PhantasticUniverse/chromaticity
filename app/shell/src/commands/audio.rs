@@ -388,4 +388,34 @@ mod tests {
             extract_selected_channel_pair(&app, 2, &stereo_only).expect("safe fallback");
         assert_eq!(fallback, vec![0.4, -0.4, 0.2, -0.2]);
     }
+
+    #[test]
+    fn set_audio_channel_pair_updates_atomic_handle_for_live_audio_runtime() {
+        let app = AppState::new();
+        let live_handle = app.live_audio_channel_pair_handle();
+        assert_eq!(live_handle.get_pair(), (0, 1));
+
+        // Wire the cloned handle into AudioRuntimeConfig just as `app/shell/src/lib.rs` does.
+        let config = chromaticity_audio::runtime::AudioRuntimeConfig {
+            channel_pair: live_handle.clone(),
+            ..chromaticity_audio::runtime::AudioRuntimeConfig::default()
+        };
+        let runtime = chromaticity_audio::runtime::AudioRuntime::new(config);
+        let runtime_handle = runtime.channel_pair_handle();
+        assert_eq!(runtime_handle.get_pair(), (0, 1));
+
+        // Switching to DDJ-FLX10 Ch 3-4 updates the runtime's atomic handle immediately
+        // without restarting the audio stream.
+        let updated = set_audio_channel_pair_impl(&app, 2, 3).expect("set Ch 3-4");
+        assert_eq!(updated.left_channel, 2);
+        assert_eq!(updated.right_channel, 3);
+        assert_eq!(live_handle.get_pair(), (2, 3));
+        assert_eq!(runtime_handle.get_pair(), (2, 3));
+
+        // Switching back to Master Ch 1-2 isolates Headphone Cue immediately.
+        let master = set_audio_channel_pair_impl(&app, 0, 1).expect("restore Master Ch 1-2");
+        assert_eq!(master.label, "Ch 1-2");
+        assert_eq!(live_handle.get_pair(), (0, 1));
+        assert_eq!(runtime_handle.get_pair(), (0, 1));
+    }
 }

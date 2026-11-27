@@ -398,6 +398,15 @@ pub struct AppState {
     /// (default `(0, 1)` = Ch 1–2 Master / REC OUT, isolating Headphone Cue Ch 3–4).
     pub audio_channel_pair:
         Arc<Mutex<chromaticity_runtime::rekordbox_bridge::ChannelPairSelection>>,
+    /// Lock-free atomic stereo channel-pair handle shared with the live
+    /// [`chromaticity_audio::runtime::AudioRuntime`] Core Audio / cpal callback.
+    /// Updated immediately by `set_audio_channel_pair` with zero stream restart
+    /// and zero mutex contention on the real-time audio thread.
+    pub audio_channel_pair_atomic: chromaticity_audio::AudioChannelPairHandle,
+    /// Phase 7a crash-safe fMP4 recorder muxer (`Idle` / `Recording` / `Stopping`).
+    pub recorder_muxer: Mutex<Option<chromaticity_runtime::recorder::Fmp4Muxer>>,
+    /// Phase 7a keyframe-aligned rolling replay buffer ("save last 15–120 s").
+    pub replay_buffer: Mutex<chromaticity_runtime::recorder::ReplayBuffer>,
     /// Live QuickJS `script.js` host (ADR-012 sandboxed worker).
     pub script_host: Mutex<crate::script_host::ScriptHost>,
     /// Active entitlement token installed via `install_license` (ADR-009).
@@ -481,6 +490,14 @@ impl AppState {
             audio_channel_pair: Arc::new(Mutex::new(
                 chromaticity_runtime::rekordbox_bridge::ChannelPairSelection::master_default(),
             )),
+            audio_channel_pair_atomic: chromaticity_audio::AudioChannelPairHandle::default(),
+            recorder_muxer: Mutex::new(
+                chromaticity_runtime::recorder::Fmp4Muxer::new(
+                    chromaticity_runtime::recorder::Fmp4MuxerConfig::default(),
+                )
+                .ok(),
+            ),
+            replay_buffer: Mutex::new(chromaticity_runtime::recorder::ReplayBuffer::default()),
             script_host: Mutex::new(crate::script_host::ScriptHost::new()),
             entitlement_token: Mutex::new(None),
             started_at: Instant::now(),
@@ -702,12 +719,20 @@ impl AppState {
                 "unlicensed"
             }
         };
+        let recorder = {
+            let guard = match self.recorder_muxer.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            guard.as_ref().map_or("idle", |muxer| muxer.state().label())
+        };
         serde_json::json!({
             "runtime": runtime,
             "loaded_scene": loaded_scene,
             "gpu_render": gpu_render,
             "script_host": script_host,
             "entitlement": entitlement,
+            "recorder": recorder,
             "midi_learn": midi_learn,
             "osc_sender": osc_sender,
             "crash_resume": crash_resume,
@@ -775,7 +800,10 @@ impl AppState {
         }
     }
 
-    /// Store the active stereo channel pair selection for multi-channel DJ capture.
+    /// Store the active stereo channel pair selection for multi-channel DJ capture,
+    /// immediately updating the lock-free [`chromaticity_audio::AudioChannelPairHandle`]
+    /// shared with the live audio runtime so Core Audio / cpal callbacks switch pairs
+    /// with zero stream restart and zero Cue bleed.
     pub fn store_audio_channel_pair(
         &self,
         selection: chromaticity_runtime::rekordbox_bridge::ChannelPairSelection,
@@ -789,6 +817,9 @@ impl AppState {
                 *guard = selection;
             }
         }
+        let left = selection.left_channel.min(usize::from(u16::MAX)) as u16;
+        let right = selection.right_channel.min(usize::from(u16::MAX)) as u16;
+        self.audio_channel_pair_atomic.set_pair(left, right);
     }
 
     /// Read the currently selected stereo channel pair for multi-channel DJ capture.
@@ -808,6 +839,13 @@ impl AppState {
         &self,
     ) -> Arc<Mutex<chromaticity_runtime::rekordbox_bridge::ChannelPairSelection>> {
         Arc::clone(&self.audio_channel_pair)
+    }
+
+    /// Clone the lock-free [`chromaticity_audio::AudioChannelPairHandle`] bound to
+    /// the live [`chromaticity_audio::runtime::AudioRuntime`].
+    #[must_use]
+    pub fn live_audio_channel_pair_handle(&self) -> chromaticity_audio::AudioChannelPairHandle {
+        self.audio_channel_pair_atomic.clone()
     }
 }
 

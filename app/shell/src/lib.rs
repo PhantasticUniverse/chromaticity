@@ -214,8 +214,10 @@ pub fn run() -> Result<(), tauri::Error> {
             };
             // Map normalized [0, 1] input_gain (0.5 == unity, ±18 dB symmetric) to linear gain.
             let input_gain_db = (input_gain_norm.clamp(0.0, 1.0) - 0.5) * 36.0;
+            let channel_pair_handle = app.state::<AppState>().live_audio_channel_pair_handle();
             let audio_config = AudioRuntimeConfig {
                 input_gain_linear: chromaticity_audio::metering::db_to_linear(input_gain_db),
+                channel_pair: channel_pair_handle,
                 ..AudioRuntimeConfig::default()
             };
             let runtime = AudioRuntime::with_preferred_device(
@@ -425,6 +427,10 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::output::close_output_window,
             commands::output::toggle_output_fullscreen,
             commands::output::output_window_status,
+            commands::recorder::start_recording,
+            commands::recorder::stop_recording,
+            commands::recorder::get_recorder_status,
+            commands::recorder::save_replay_buffer,
         ])
         .run(tauri::generate_context!())
 }
