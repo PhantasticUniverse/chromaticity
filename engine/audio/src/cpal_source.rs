@@ -94,7 +94,7 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -354,6 +354,119 @@ impl Drop for CpalStreamGuard {
     }
 }
 
+/// Lock-free atomic stereo channel-pair selector for multi-channel
+/// audio interfaces (e.g. 4/6/8/10-channel DJ mixers such as the
+/// Pioneer DDJ-FLX10).
+///
+/// Packs `(left_ch: u16, right_ch: u16)` (0-indexed) into a single
+/// `Arc<AtomicU32>` so the UI / IPC layer can switch the active stereo
+/// pair live without restarting the `cpal::Stream` and with zero
+/// mutexes on the real-time Core Audio callback thread.
+///
+/// Defaults to `(0, 1)` (Channels 1–2 Master), isolating Headphone Cue
+/// channels (Ch 3–4+) from visual reactivity.
+#[derive(Debug, Clone)]
+pub struct AudioChannelPairHandle {
+    packed: Arc<AtomicU32>,
+}
+
+impl AudioChannelPairHandle {
+    /// Construct a new channel-pair handle initialised to `(left, right)`
+    /// (0-indexed).
+    #[must_use]
+    pub fn new(left: u16, right: u16) -> Self {
+        Self {
+            packed: Arc::new(AtomicU32::new(Self::pack(left, right))),
+        }
+    }
+
+    /// Atomically update the active `(left, right)` channel pair
+    /// (0-indexed). Takes effect on the next audio callback without
+    /// restarting the stream.
+    pub fn set_pair(&self, left: u16, right: u16) {
+        self.packed
+            .store(Self::pack(left, right), Ordering::Release);
+    }
+
+    /// Atomically read the active `(left, right)` channel pair
+    /// (0-indexed). Lock-free and safe to call on real-time audio
+    /// threads.
+    #[must_use]
+    pub fn get_pair(&self) -> (u16, u16) {
+        let raw = self.packed.load(Ordering::Acquire);
+        let left = (raw >> 16) as u16;
+        let right = (raw & 0xFFFF) as u16;
+        (left, right)
+    }
+
+    #[inline]
+    fn pack(left: u16, right: u16) -> u32 {
+        (u32::from(left) << 16) | u32::from(right)
+    }
+}
+
+impl Default for AudioChannelPairHandle {
+    /// Default stereo pair: `(0, 1)` (Channels 1–2 Master).
+    fn default() -> Self {
+        Self::new(0, 1)
+    }
+}
+
+/// Sanitize a single `f32` PCM sample by replacing `NaN` / `±Inf` with `0.0`.
+#[inline]
+fn sanitize_sample(sample: f32) -> f32 {
+    if sample.is_finite() { sample } else { 0.0 }
+}
+
+/// Extract ONLY the selected `(left, right)` stereo pair (0-indexed)
+/// from an `N`-channel interleaved `f32` PCM buffer into `(mono, stereo)`.
+///
+/// - Completely isolates unselected channels (e.g. Headphone Cue on
+///   Ch 3–4+ of a DDJ-FLX10) so they can never bleed into visual
+///   analysis or metering.
+/// - Sanitizes non-finite samples (`NaN`, `±Inf`) to `0.0`.
+/// - Falls back safely without panicking when `left` or `right` is
+///   out of range (`>= channels`): `(0, 0)` for mono (`channels == 1`),
+///   `(0, 1)` for `channels >= 2`.
+/// - Returns `(Vec::new(), Vec::new())` when `interleaved` is empty or
+///   `channels == 0`.
+///
+/// Returned tuple:
+/// - `mono`: `0.5 * (L + R)` per frame (`frames` samples).
+/// - `stereo`: interleaved `[L0, R0, L1, R1, ...]` (`frames * 2` samples).
+#[must_use]
+pub fn extract_stereo_pair_to_mono_and_stereo(
+    interleaved: &[f32],
+    channels: usize,
+    left: usize,
+    right: usize,
+) -> (Vec<f32>, Vec<f32>) {
+    if interleaved.is_empty() || channels == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let (l_idx, r_idx) = if channels == 1 {
+        (0, 0)
+    } else if left < channels && right < channels {
+        (left, right)
+    } else {
+        (0, 1)
+    };
+
+    let frame_count = interleaved.len() / channels;
+    let mut mono = Vec::with_capacity(frame_count);
+    let mut stereo = Vec::with_capacity(frame_count * 2);
+
+    for frame in interleaved.chunks_exact(channels) {
+        let l = sanitize_sample(frame[l_idx]);
+        let r = sanitize_sample(frame[r_idx]);
+        mono.push(0.5 * (l + r));
+        stereo.push(l);
+        stereo.push(r);
+    }
+
+    (mono, stereo)
+}
+
 /// Sender half of the bounded channel, plus the closed flag the
 /// callback flips on panic / cpal `StreamError` / non-fatal errors.
 ///
@@ -366,6 +479,9 @@ struct CallbackState {
     /// default input config is resolved. Wrapped in `Mutex` so the
     /// closures can read the latest values without an `unsafe` cell.
     config: std::sync::Mutex<StreamFormat>,
+    /// Lock-free atomic stereo channel-pair selector read on every
+    /// real-time audio callback to isolate the active stereo pair.
+    channel_pair: AudioChannelPairHandle,
 }
 
 #[derive(Clone, Copy)]
@@ -386,6 +502,7 @@ pub struct CpalSource {
     consumer: Receiver<AudioFrame>,
     closed: Arc<AtomicBool>,
     pending_on_empty: bool,
+    channel_pair: AudioChannelPairHandle,
     /// Type-erased lifetime guard for the underlying `cpal::Stream`.
     /// Keeping the stream alive is the entire role of this field;
     /// `Drop` on the guard releases the audio-thread resources.
@@ -396,11 +513,19 @@ impl core::fmt::Debug for CpalSource {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("CpalSource")
             .field("closed", &self.closed.load(Ordering::Acquire))
+            .field("channel_pair", &self.channel_pair.get_pair())
             .finish_non_exhaustive()
     }
 }
 
 impl CpalSource {
+    /// Return a clone of the lock-free [`AudioChannelPairHandle`] bound
+    /// to this capture stream.
+    #[must_use]
+    pub fn channel_pair_handle(&self) -> AudioChannelPairHandle {
+        self.channel_pair.clone()
+    }
+
     /// Test-seam constructor used by both the production
     /// [`try_default_input`] path and the slice-3b T2 corpus
     /// (`engine/audio/tests/cpal_source.rs`).
@@ -418,7 +543,13 @@ impl CpalSource {
         closed: Arc<AtomicBool>,
         stream: Box<dyn StreamGuard>,
     ) -> Self {
-        Self::from_parts_with_empty_poll_status(consumer, closed, stream, false)
+        Self::from_parts_with_empty_poll_status(
+            consumer,
+            closed,
+            stream,
+            false,
+            AudioChannelPairHandle::default(),
+        )
     }
 
     fn from_parts_with_empty_poll_status(
@@ -426,11 +557,13 @@ impl CpalSource {
         closed: Arc<AtomicBool>,
         stream: Box<dyn StreamGuard>,
         pending_on_empty: bool,
+        channel_pair: AudioChannelPairHandle,
     ) -> Self {
         Self {
             consumer,
             closed,
             pending_on_empty,
+            channel_pair,
             _stream: stream,
         }
     }
@@ -504,6 +637,16 @@ impl IngestBoundary for CpalSource {
 /// stream and exit. The analyser side never sees a cpal type and
 /// never has to send one across threads.
 pub fn try_default_input() -> Result<CpalSource, AudioError> {
+    try_default_input_with_channel_pair(AudioChannelPairHandle::default())
+}
+
+/// Open the host default input device and start a `cpal::Stream`
+/// feeding [`CpalSource`], bound to the caller-supplied lock-free
+/// [`AudioChannelPairHandle`] so the active stereo channel pair can be
+/// changed live without restarting the stream.
+pub fn try_default_input_with_channel_pair(
+    channel_pair: AudioChannelPairHandle,
+) -> Result<CpalSource, AudioError> {
     let (sender, consumer) = bounded::<AudioFrame>(CHANNEL_CAPACITY);
     let closed = Arc::new(AtomicBool::new(false));
 
@@ -524,6 +667,7 @@ pub fn try_default_input() -> Result<CpalSource, AudioError> {
             sample_rate_hz: 0,
             channels: 0,
         }),
+        channel_pair: channel_pair.clone(),
     });
     let state_for_owner = state.clone();
 
@@ -554,6 +698,7 @@ pub fn try_default_input() -> Result<CpalSource, AudioError> {
                 owner: Some(owner),
             }),
             true,
+            channel_pair,
         )),
         Err(err) => {
             // Owner thread already exited (or is exiting); drop the
@@ -597,6 +742,16 @@ struct StreamSetup;
 /// Device dropdown surfaced by the AO during pre-alpha smoke testing
 /// (2026-05-13).
 pub fn try_input_by_preference(preference: Option<&str>) -> Result<CpalSource, AudioError> {
+    try_input_by_preference_with_channel_pair(preference, AudioChannelPairHandle::default())
+}
+
+/// Open a host input device by `preference` and start a `cpal::Stream`
+/// feeding [`CpalSource`], bound to the caller-supplied lock-free
+/// [`AudioChannelPairHandle`].
+pub fn try_input_by_preference_with_channel_pair(
+    preference: Option<&str>,
+    channel_pair: AudioChannelPairHandle,
+) -> Result<CpalSource, AudioError> {
     // The built-in system-audio (output loopback) sentinel routes to
     // the zero-install loopback path. On failure (macOS < 14.6, denied
     // audio-recording consent, or no output device) fall back to the
@@ -604,7 +759,7 @@ pub fn try_input_by_preference(preference: Option<&str>) -> Result<CpalSource, A
     // than going silent, with a one-shot warning the operator can see.
     if let Some(pref) = preference {
         if is_system_audio_preference(pref) {
-            return match try_system_audio_loopback() {
+            return match try_system_audio_loopback_with_channel_pair(channel_pair.clone()) {
                 Ok(source) => Ok(source),
                 Err(_) => {
                     eprintln!(
@@ -612,7 +767,7 @@ pub fn try_input_by_preference(preference: Option<&str>) -> Result<CpalSource, A
                          (macOS < 14.6, denied audio-recording permission, or no output \
                          device); falling back to the host default input"
                     );
-                    try_default_input()
+                    try_default_input_with_channel_pair(channel_pair)
                 }
             };
         }
@@ -638,9 +793,9 @@ pub fn try_input_by_preference(preference: Option<&str>) -> Result<CpalSource, A
                 );
             }
         }
-        return try_default_input();
+        return try_default_input_with_channel_pair(channel_pair);
     };
-    try_input_by_device_name(&device_name)
+    try_input_by_device_name(&device_name, channel_pair)
 }
 
 /// Resolve a persisted preference string to a concrete cpal device
@@ -701,7 +856,10 @@ pub(crate) fn is_system_audio_preference(preference: &str) -> bool {
 /// and start a `cpal::Stream` feeding [`CpalSource`]. Used by
 /// [`try_input_by_preference`] after the preference is resolved to a
 /// concrete device name on the current host.
-fn try_input_by_device_name(name: &str) -> Result<CpalSource, AudioError> {
+fn try_input_by_device_name(
+    name: &str,
+    channel_pair: AudioChannelPairHandle,
+) -> Result<CpalSource, AudioError> {
     let (sender, consumer) = bounded::<AudioFrame>(CHANNEL_CAPACITY);
     let closed = Arc::new(AtomicBool::new(false));
 
@@ -715,6 +873,7 @@ fn try_input_by_device_name(name: &str) -> Result<CpalSource, AudioError> {
             sample_rate_hz: 0,
             channels: 0,
         }),
+        channel_pair: channel_pair.clone(),
     });
     let state_for_owner = state.clone();
     let name_for_owner = name.to_string();
@@ -744,6 +903,7 @@ fn try_input_by_device_name(name: &str) -> Result<CpalSource, AudioError> {
                 owner: Some(owner),
             }),
             true,
+            channel_pair,
         )),
         Err(err) => {
             drop(shutdown_tx);
@@ -913,6 +1073,14 @@ fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream
 /// Evidence: `EV-INTEGRATION-MATRIX` (audio arm) — system-audio routing
 /// parity reached without a hand-installed virtual loopback device.
 pub fn try_system_audio_loopback() -> Result<CpalSource, AudioError> {
+    try_system_audio_loopback_with_channel_pair(AudioChannelPairHandle::default())
+}
+
+/// Open the host default OUTPUT device for system-audio loopback capture,
+/// bound to the caller-supplied lock-free [`AudioChannelPairHandle`].
+pub fn try_system_audio_loopback_with_channel_pair(
+    channel_pair: AudioChannelPairHandle,
+) -> Result<CpalSource, AudioError> {
     let (sender, consumer) = bounded::<AudioFrame>(CHANNEL_CAPACITY);
     let closed = Arc::new(AtomicBool::new(false));
 
@@ -926,6 +1094,7 @@ pub fn try_system_audio_loopback() -> Result<CpalSource, AudioError> {
             sample_rate_hz: 0,
             channels: 0,
         }),
+        channel_pair: channel_pair.clone(),
     });
     let state_for_owner = state.clone();
 
@@ -954,6 +1123,7 @@ pub fn try_system_audio_loopback() -> Result<CpalSource, AudioError> {
                 owner: Some(owner),
             }),
             true,
+            channel_pair,
         )),
         Err(err) => {
             drop(shutdown_tx);
@@ -1187,7 +1357,24 @@ fn publish_f32_frame(state: &CallbackState, data: &[f32]) {
         // flag honest under concurrent races.
         return;
     }
-    let frame = AudioFrame::new(sample_rate_hz, channels, data.to_vec());
+    let (left, right) = state.channel_pair.get_pair();
+    let (mono, stereo) = extract_stereo_pair_to_mono_and_stereo(
+        data,
+        usize::from(channels),
+        usize::from(left),
+        usize::from(right),
+    );
+    let frame = if channels == 1 {
+        if mono.is_empty() {
+            return;
+        }
+        AudioFrame::new(sample_rate_hz, 1, mono)
+    } else {
+        if stereo.is_empty() {
+            return;
+        }
+        AudioFrame::new(sample_rate_hz, 2, stereo)
+    };
     match state.sender.try_send(frame) {
         Ok(()) => {}
         Err(TrySendError::Full(_)) => {
@@ -1255,8 +1442,13 @@ mod cpal_source_pins {
         let _serialize = observability::test_serialize_lock();
         let (_tx, rx) = bounded::<AudioFrame>(4);
         let closed = Arc::new(AtomicBool::new(false));
-        let mut source =
-            CpalSource::from_parts_with_empty_poll_status(rx, closed, Box::new(NoopGuard), true);
+        let mut source = CpalSource::from_parts_with_empty_poll_status(
+            rx,
+            closed,
+            Box::new(NoopGuard),
+            true,
+            AudioChannelPairHandle::default(),
+        );
         let mut out = AudioFrame::default();
         assert_eq!(source.try_pull(&mut out), IngestStatus::Pending);
     }
@@ -1682,5 +1874,164 @@ mod cpal_source_pins {
             Ok(_) | Err(AudioError::CpalDeviceCapture { .. }) => {}
             other => panic!("unexpected result from system-audio preference: {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod channel_pair_routing_pins {
+    //! Evidence: EV-AUDIO-ROUTING-MATRIX (T1) — multi-channel stereo-pair
+    //! extraction and lock-free live channel-pair switching pins for
+    //! 4/6/8/10-channel DJ audio interfaces (e.g. DDJ-FLX10).
+
+    use super::*;
+    use crate::observability;
+    use crate::uniforms::extract_uniform_snapshot;
+
+    struct NoopGuard;
+    impl StreamGuard for NoopGuard {}
+
+    /// Build a 4-channel interleaved buffer (DDJ-FLX10 layout) where:
+    /// - Ch 1-2 (indices 0, 1) = Master (`master_l`, `master_r`)
+    /// - Ch 3-4 (indices 2, 3) = Headphone Cue (`cue_l`, `cue_r`)
+    fn ddj_flx10_4ch_buffer(
+        frames: usize,
+        master_l: f32,
+        master_r: f32,
+        cue_l: f32,
+        cue_r: f32,
+    ) -> Vec<f32> {
+        let mut buf = Vec::with_capacity(frames * 4);
+        for _ in 0..frames {
+            buf.push(master_l);
+            buf.push(master_r);
+            buf.push(cue_l);
+            buf.push(cue_r);
+        }
+        buf
+    }
+
+    #[test]
+    fn ddj_flx10_master_pair_has_zero_headphone_cue_bleed() {
+        // 4-channel buffer: 0.0 on Master Ch 1-2, 1.0 full-scale on Headphone Cue Ch 3-4.
+        let interleaved = ddj_flx10_4ch_buffer(128, 0.0, 0.0, 1.0, 1.0);
+        let (mono, stereo) = extract_stereo_pair_to_mono_and_stereo(&interleaved, 4, 0, 1);
+
+        assert_eq!(mono.len(), 128);
+        assert_eq!(stereo.len(), 256);
+        assert!(
+            mono.iter().all(|&s| s == 0.0),
+            "Master Ch 1-2 mono must be exact 0.0 with full-scale Cue on Ch 3-4"
+        );
+        assert!(
+            stereo.iter().all(|&s| s == 0.0),
+            "Master Ch 1-2 stereo must be exact 0.0 with full-scale Cue on Ch 3-4"
+        );
+    }
+
+    #[test]
+    fn live_atomic_handle_switch_extracts_ch34_without_stream_restart() {
+        let _serialize = observability::test_serialize_lock();
+        let (sender, consumer) = bounded::<AudioFrame>(4);
+        let closed = Arc::new(AtomicBool::new(false));
+        let channel_pair = AudioChannelPairHandle::default();
+        assert_eq!(channel_pair.get_pair(), (0, 1));
+
+        let state = CallbackState {
+            sender,
+            closed: closed.clone(),
+            config: std::sync::Mutex::new(StreamFormat {
+                sample_rate_hz: 48_000,
+                channels: 4,
+            }),
+            channel_pair: channel_pair.clone(),
+        };
+        let mut source = CpalSource::from_parts_with_empty_poll_status(
+            consumer,
+            closed,
+            Box::new(NoopGuard),
+            true,
+            channel_pair.clone(),
+        );
+
+        let interleaved = ddj_flx10_4ch_buffer(128, 0.0, 0.0, 1.0, 1.0);
+
+        // Callback 1: pair = (0, 1) -> exact 0.0 (zero Headphone Cue bleed).
+        publish_f32_frame(&state, &interleaved);
+        let mut frame = AudioFrame::default();
+        assert_eq!(source.try_pull(&mut frame), IngestStatus::Ready);
+        assert_eq!(frame.channels(), 2);
+        assert_eq!(frame.samples().len(), 256);
+        assert!(frame.samples().iter().all(|&s| s == 0.0));
+        let snap_master = extract_uniform_snapshot(&frame);
+        assert_eq!(snap_master.rms, 0.0);
+        assert_eq!(snap_master.peak, 0.0);
+
+        // Switch atomically to (2, 3) on the live handle without restarting stream.
+        source.channel_pair_handle().set_pair(2, 3);
+        assert_eq!(channel_pair.get_pair(), (2, 3));
+
+        // Callback 2: immediately extracts Ch 3-4 (1.0 full-scale).
+        publish_f32_frame(&state, &interleaved);
+        assert_eq!(source.try_pull(&mut frame), IngestStatus::Ready);
+        assert_eq!(frame.channels(), 2);
+        assert_eq!(frame.samples().len(), 256);
+        assert!(frame.samples().iter().all(|&s| s == 1.0));
+        let snap_cue = extract_uniform_snapshot(&frame);
+        assert!((snap_cue.rms - 1.0).abs() < 1e-6);
+        assert!((snap_cue.peak - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn out_of_range_channel_pair_falls_back_safely_without_panicking() {
+        // 4-channel buffer with distinct values per channel.
+        let buf_4ch = ddj_flx10_4ch_buffer(8, 0.2, 0.4, 0.8, 1.0);
+        // Out-of-range pair (4, 5) -> falls back to (0, 1).
+        let (mono, stereo) = extract_stereo_pair_to_mono_and_stereo(&buf_4ch, 4, 4, 5);
+        assert_eq!(mono.len(), 8);
+        assert_eq!(stereo.len(), 16);
+        assert!((mono[0] - 0.3).abs() < 1e-6);
+        assert!((stereo[0] - 0.2).abs() < 1e-6);
+        assert!((stereo[1] - 0.4).abs() < 1e-6);
+
+        // Partially out-of-range pair (2, 99) -> falls back to (0, 1).
+        let (mono_partial, stereo_partial) =
+            extract_stereo_pair_to_mono_and_stereo(&buf_4ch, 4, 2, 99);
+        assert!((mono_partial[0] - 0.3).abs() < 1e-6);
+        assert!((stereo_partial[0] - 0.2).abs() < 1e-6);
+        assert!((stereo_partial[1] - 0.4).abs() < 1e-6);
+
+        // 1-channel mono buffer with out-of-range (2, 3) -> falls back to (0, 0).
+        let mono_in = vec![0.5_f32; 4];
+        let (mono_out, stereo_out) = extract_stereo_pair_to_mono_and_stereo(&mono_in, 1, 2, 3);
+        assert_eq!(mono_out, vec![0.5; 4]);
+        assert_eq!(stereo_out, vec![0.5; 8]);
+
+        // Zero channels or empty buffer -> empty output, no panic.
+        assert_eq!(
+            extract_stereo_pair_to_mono_and_stereo(&buf_4ch, 0, 0, 1),
+            (Vec::new(), Vec::new())
+        );
+        assert_eq!(
+            extract_stereo_pair_to_mono_and_stereo(&[], 4, 0, 1),
+            (Vec::new(), Vec::new())
+        );
+    }
+
+    #[test]
+    fn non_finite_samples_are_sanitized_to_zero() {
+        let interleaved = vec![
+            f32::NAN,
+            f32::INFINITY,
+            0.5,
+            -0.5,
+            f32::NEG_INFINITY,
+            0.25,
+            0.75,
+            0.75,
+        ];
+        let (mono, stereo) = extract_stereo_pair_to_mono_and_stereo(&interleaved, 4, 0, 1);
+        assert_eq!(mono, vec![0.0, 0.125]);
+        assert_eq!(stereo, vec![0.0, 0.0, 0.0, 0.25]);
     }
 }

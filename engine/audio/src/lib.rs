@@ -227,7 +227,8 @@ pub mod uniforms;
 
 pub use bpm::BpmEstimator;
 pub use cpal_source::{
-    AudioDeviceInfo, AudioDeviceKind, enumerate_input_devices, enumerate_output_devices,
+    AudioChannelPairHandle, AudioDeviceInfo, AudioDeviceKind, enumerate_input_devices,
+    enumerate_output_devices, extract_stereo_pair_to_mono_and_stereo,
 };
 pub use error::AudioError;
 pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource};

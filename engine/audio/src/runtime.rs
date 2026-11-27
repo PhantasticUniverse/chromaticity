@@ -106,7 +106,10 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Sender, TryRecvError, bounded};
 
 use crate::bpm::BpmEstimator;
-use crate::cpal_source::{try_default_input, try_input_by_preference};
+use crate::cpal_source::{
+    AudioChannelPairHandle, extract_stereo_pair_to_mono_and_stereo,
+    try_default_input_with_channel_pair, try_input_by_preference_with_channel_pair,
+};
 use crate::frame::AudioFrame;
 use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
@@ -156,6 +159,11 @@ pub struct AudioRuntimeConfig {
     /// fast path preserving all existing `EV-AUDIO-TRACE` goldens).
     /// Non-finite or negative values fall back to `1.0`.
     pub input_gain_linear: f32,
+    /// Lock-free atomic stereo channel-pair selector (`(left, right)`,
+    /// 0-indexed, default `(0, 1)` = Ch 1-2 Master) used by multi-channel
+    /// capture streams to isolate a single stereo pair without restarting
+    /// the stream.
+    pub channel_pair: AudioChannelPairHandle,
 }
 
 impl Default for AudioRuntimeConfig {
@@ -164,6 +172,7 @@ impl Default for AudioRuntimeConfig {
             bpm_window: 8,
             criteria: IngestModeCriteria::default(),
             input_gain_linear: 1.0,
+            channel_pair: AudioChannelPairHandle::default(),
         }
     }
 }
@@ -191,6 +200,7 @@ pub struct AudioRuntime {
     negotiator: IngestNegotiator,
     estimator: BpmEstimator,
     input_gain_linear: f32,
+    channel_pair: AudioChannelPairHandle,
     shared: Arc<Mutex<AudioUniformSnapshot>>,
 }
 
@@ -199,6 +209,7 @@ impl core::fmt::Debug for AudioRuntime {
         f.debug_struct("AudioRuntime")
             .field("estimator_window", &self.estimator.window())
             .field("negotiator_active", &self.negotiator.active_source())
+            .field("channel_pair", &self.channel_pair.get_pair())
             .finish_non_exhaustive()
     }
 }
@@ -207,9 +218,9 @@ impl AudioRuntime {
     /// Construct a runtime with the default cpal input device.
     ///
     /// Falls back to a [`SilentSource`]-only configuration if
-    /// [`try_default_input`] returns an error (no default device,
-    /// unsupported sample format, stream-build / stream-play
-    /// failure). The fallback path produces zero snapshots
+    /// [`try_default_input_with_channel_pair`] returns an error (no
+    /// default device, unsupported sample format, stream-build /
+    /// stream-play failure). The fallback path produces zero snapshots
     /// indefinitely; consumers see [`AudioUniformSnapshot::default`]
     /// values with the BPM smoothed across the silent frames'
     /// per-frame autocorrelation result.
@@ -220,7 +231,8 @@ impl AudioRuntime {
     /// negotiator's default criteria.
     #[must_use]
     pub fn new(config: AudioRuntimeConfig) -> Self {
-        match try_default_input() {
+        let channel_pair = config.channel_pair.clone();
+        match try_default_input_with_channel_pair(channel_pair) {
             Ok(cpal_source) => Self::from_primary(cpal_source, config),
             Err(_) => Self::from_primary(SilentSource::new(u32::MAX), config),
         }
@@ -235,7 +247,7 @@ impl AudioRuntime {
     /// device (microphone on macOS) and the persisted
     /// `settings.audio.input_device` was inert. This constructor takes
     /// the persisted preference string and resolves it via
-    /// [`try_input_by_preference`]:
+    /// [`try_input_by_preference_with_channel_pair`]:
     ///
     /// - `None` or the Wave 2.1 sentinel `"default"` → host default
     ///   input (matches [`AudioRuntime::new`] semantics).
@@ -259,7 +271,8 @@ impl AudioRuntime {
     /// AUD.SRC).
     #[must_use]
     pub fn with_preferred_device(preference: Option<&str>, config: AudioRuntimeConfig) -> Self {
-        match try_input_by_preference(preference) {
+        let channel_pair = config.channel_pair.clone();
+        match try_input_by_preference_with_channel_pair(preference, channel_pair) {
             Ok(cpal_source) => Self::from_primary(cpal_source, config),
             Err(_) => Self::from_primary(SilentSource::new(u32::MAX), config),
         }
@@ -294,6 +307,7 @@ impl AudioRuntime {
             negotiator,
             estimator,
             input_gain_linear,
+            channel_pair: config.channel_pair,
             shared: Arc::new(Mutex::new(AudioUniformSnapshot::default())),
         }
     }
@@ -308,6 +322,12 @@ impl AudioRuntime {
         Arc::clone(&self.shared)
     }
 
+    /// Clone the lock-free [`AudioChannelPairHandle`] bound to this runtime.
+    #[must_use]
+    pub fn channel_pair_handle(&self) -> AudioChannelPairHandle {
+        self.channel_pair.clone()
+    }
+
     /// Spawn the producer thread.
     ///
     /// Returns an [`AudioRuntimeHandle`] that owns the thread's
@@ -319,9 +339,11 @@ impl AudioRuntime {
             mut negotiator,
             mut estimator,
             input_gain_linear,
+            channel_pair,
             shared,
         } = self;
         let shared_for_thread = Arc::clone(&shared);
+        let channel_pair_for_thread = channel_pair.clone();
         let (shutdown_tx, shutdown_rx) = bounded::<()>(1);
 
         let join = thread::Builder::new()
@@ -344,6 +366,16 @@ impl AudioRuntime {
                         let status = negotiator.try_pull(&mut frame);
                         match status {
                             IngestStatus::Ready => {
+                                if frame.channels() > 2 {
+                                    let (left, right) = channel_pair_for_thread.get_pair();
+                                    let (_, stereo) = extract_stereo_pair_to_mono_and_stereo(
+                                        frame.samples(),
+                                        usize::from(frame.channels()),
+                                        usize::from(left),
+                                        usize::from(right),
+                                    );
+                                    frame = AudioFrame::new(frame.sample_rate_hz(), 2, stereo);
+                                }
                                 if input_gain_linear != 1.0 {
                                     apply_input_gain(frame.samples_mut(), input_gain_linear);
                                 }
@@ -406,6 +438,7 @@ impl AudioRuntime {
 
         AudioRuntimeHandle {
             shared,
+            channel_pair,
             shutdown_tx: Some(shutdown_tx),
             join,
         }
@@ -430,6 +463,7 @@ enum LoopStep {
 /// is provided for tests and graceful app exit paths.
 pub struct AudioRuntimeHandle {
     shared: Arc<Mutex<AudioUniformSnapshot>>,
+    channel_pair: AudioChannelPairHandle,
     shutdown_tx: Option<Sender<()>>,
     join: Option<JoinHandle<()>>,
 }
@@ -438,6 +472,7 @@ impl core::fmt::Debug for AudioRuntimeHandle {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("AudioRuntimeHandle")
             .field("running", &self.join.is_some())
+            .field("channel_pair", &self.channel_pair.get_pair())
             .finish_non_exhaustive()
     }
 }
@@ -447,6 +482,12 @@ impl AudioRuntimeHandle {
     #[must_use]
     pub fn snapshot_handle(&self) -> Arc<Mutex<AudioUniformSnapshot>> {
         Arc::clone(&self.shared)
+    }
+
+    /// Lock-free stereo channel-pair selector bound to this runtime.
+    #[must_use]
+    pub fn channel_pair_handle(&self) -> AudioChannelPairHandle {
+        self.channel_pair.clone()
     }
 
     /// Signal the producer thread to stop and join it.
@@ -803,6 +844,7 @@ mod runtime_pins {
         assert_eq!(cfg.bpm_window, 8);
         assert_eq!(cfg.criteria, IngestModeCriteria::default());
         assert_eq!(cfg.input_gain_linear, 1.0);
+        assert_eq!(cfg.channel_pair.get_pair(), (0, 1));
     }
 
     #[test]
@@ -813,6 +855,7 @@ mod runtime_pins {
             bpm_window: 0,
             criteria: IngestModeCriteria::default(),
             input_gain_linear: 1.0,
+            ..AudioRuntimeConfig::default()
         };
         let runtime = AudioRuntime::from_primary(SilentSource::new(1), cfg);
         assert_eq!(runtime.estimator.window(), 8);
