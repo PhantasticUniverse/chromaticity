@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MidiDevicePayload, OscHealthSnapshot } from './ipc/bindings';
 import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
 import { bpmControlStore } from './stores/bpmControl.svelte';
+import { djAutopilotStore } from './stores/djAutopilot.svelte';
 import { loadedSceneStore } from './stores/loadedScene.svelte';
 import { midiStore } from './stores/midiStore.svelte';
 import { oscHealthStore } from './stores/oscHealth.svelte';
@@ -93,6 +94,7 @@ describe('TopBar shell component', () => {
     // from the default BPM fallback.
     audioSnapshotStore.snapshot = null;
     bpmControlStore.reset();
+    djAutopilotStore.reset();
     // Wave 2.4 Lane PERF.D — reset the three pill-driving stores so
     // a snapshot leak from one test doesn't bleed into the next.
     loadedSceneStore.reset();
@@ -332,13 +334,14 @@ describe('TopBar shell component', () => {
       expect(cam.getAttribute('aria-label')).toBe('Camera');
     });
 
-    it('renders the record button with the correct tooltip', () => {
+    it('renders the record button with the live start recording tooltip', () => {
       routeStore.set('perform');
       const { getByTestId } = render(TopBar);
       const rec = getByTestId('top-bar-record');
       expect(rec.tagName).toBe('BUTTON');
-      expect(rec.getAttribute('title')).toBe('Record (Wave 2.2)');
+      expect(rec.getAttribute('title')).toBe('Start recording');
       expect(rec.getAttribute('aria-label')).toBe('Record');
+      expect(rec.getAttribute('aria-pressed')).toBe('false');
     });
 
     it('hides the camera and record buttons on non-Perform routes', () => {
@@ -628,6 +631,95 @@ describe('TopBar shell component', () => {
       await Promise.resolve();
       expect(bpmControlStore.isListening).toBe(true);
       expect(getByTestId('top-bar-bpm-mode').textContent?.trim()).toBe('AUTO');
+    });
+  });
+
+  describe('1-click DJ Autopilot toggle', () => {
+    it('renders the DJ Autopilot button off by default and toggles djAutopilotStore', async () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      const djBtn = getByTestId('top-bar-dj-autopilot');
+
+      expect(djBtn.tagName).toBe('BUTTON');
+      expect(djBtn.getAttribute('aria-pressed')).toBe('false');
+      expect(djBtn).not.toHaveClass('top-bar__dj--active');
+      expect(djAutopilotStore.isActive).toBe(false);
+
+      await fireEvent.click(djBtn);
+      await Promise.resolve();
+
+      expect(djAutopilotStore.isActive).toBe(true);
+      expect(djBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(djBtn).toHaveClass('top-bar__dj--active');
+
+      await fireEvent.click(djBtn);
+      await Promise.resolve();
+
+      expect(djAutopilotStore.isActive).toBe(false);
+      expect(djBtn.getAttribute('aria-pressed')).toBe('false');
+      expect(djBtn).not.toHaveClass('top-bar__dj--active');
+    });
+  });
+
+  describe('Recorder IPC toggle', () => {
+    it('invokes start_recording and stop_recording via Tauri IPC and updates REC state', async () => {
+      const idleStatus = {
+        state: 'idle',
+        is_recording: false,
+        width: 1920,
+        height: 1080,
+        started_ms: null,
+        fragments_written: 0,
+        bytes_written: 0,
+        replay_gop_count: 0,
+        replay_packet_count: 0,
+        replay_retained_bytes: 0,
+        replay_retained_secs: 0,
+        replay_max_duration_secs: 60,
+      };
+      const recordingStatus = {
+        ...idleStatus,
+        state: 'recording',
+        is_recording: true,
+        started_ms: 1_700_000_000_000,
+        bytes_written: 1024,
+      };
+
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'get_recorder_status') return Promise.resolve(idleStatus);
+        if (cmd === 'start_recording') return Promise.resolve(recordingStatus);
+        if (cmd === 'stop_recording') return Promise.resolve(idleStatus);
+        return Promise.reject(new Error(`unexpected cmd: ${cmd}`));
+      });
+
+      routeStore.set('perform');
+      const { container, getByTestId } = render(TopBar);
+      await Promise.resolve();
+
+      const recBtn = getByTestId('top-bar-record');
+      const recPill = container.querySelector('.top-bar__rec');
+      expect(recPill).not.toBeNull();
+      expect(recPill?.getAttribute('data-state')).toBe('off');
+      expect(recBtn.getAttribute('aria-pressed')).toBe('false');
+
+      await fireEvent.click(recBtn);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(invokeMock).toHaveBeenCalledWith('start_recording');
+      expect(recPill?.getAttribute('data-state')).toBe('active');
+      expect(recBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(recBtn).toHaveClass('top-bar__icon-btn--recording');
+
+      if (!recPill) return;
+      await fireEvent.click(recPill);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(invokeMock).toHaveBeenCalledWith('stop_recording');
+      expect(recPill.getAttribute('data-state')).toBe('off');
+      expect(recBtn.getAttribute('aria-pressed')).toBe('false');
+      expect(recBtn).not.toHaveClass('top-bar__icon-btn--recording');
     });
   });
 });

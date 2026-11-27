@@ -64,9 +64,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     D.3 shipped the command + bridge type).
   import Icon from './Icon.svelte';
   import { closeOutputWindow, openOutputWindow } from './ipc/output';
+  import { getRecorderStatus, startRecording, stopRecording } from './ipc/recorder';
   import { fetchGpuRenderStatus } from './ipc/render';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { bpmControlStore } from './stores/bpmControl.svelte';
+  import { djAutopilotStore } from './stores/djAutopilot.svelte';
   import { loadedSceneStore } from './stores/loadedScene.svelte';
   import { midiStore } from './stores/midiStore.svelte';
   import { oscHealthStore } from './stores/oscHealth.svelte';
@@ -400,6 +402,42 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /** Stage output window open state toggled by the GO LIVE button. */
   let outputWindowOpen = $state(false);
 
+  /** Live crash-safe fMP4 recording state backed by `app/shell` recorder IPC. */
+  let isRecording = $state(false);
+  let recordingBusy = $state(false);
+
+  /** Reactive 1-click DJ Autopilot active state. */
+  const djAutopilotActive = $derived(djAutopilotStore.isActive);
+
+  // Hydrate initial recorder status on TopBar mount (gracefully no-ops outside Tauri).
+  $effect(() => {
+    let active = true;
+    void getRecorderStatus().then((status) => {
+      if (active && status) {
+        isRecording = status.is_recording;
+      }
+    });
+    return () => {
+      active = false;
+    };
+  });
+
+  async function handleRecordToggle(): Promise<void> {
+    if (recordingBusy) return;
+    recordingBusy = true;
+    try {
+      if (isRecording) {
+        const status = await stopRecording();
+        isRecording = status ? status.is_recording : false;
+      } else {
+        const status = await startRecording();
+        isRecording = status ? status.is_recording : true;
+      }
+    } finally {
+      recordingBusy = false;
+    }
+  }
+
   /** Live GPU FPS & frame-budget utilization polled from `gpu_render_status`. */
   let liveFps = $state<number | null>(null);
   let liveGpuPct = $state<number | null>(null);
@@ -717,9 +755,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <span class="top-bar__metric-value" data-testid="top-bar-gpu-value">{gpuDisplay}</span>
     </span>
     {#if routeStore.current === 'perform'}
-      <!-- Wave 2.1 Lane B.2 — camera + record buttons (visual stubs).
-           Real wiring lands in Wave 2.2. Bundle adoption:
-           `Chromaticity.html` lines 254-255. -->
+      <!-- Wave 2.1 Lane B.2 camera stub + Phase 7a live fMP4 recorder toggle. -->
       <button
         type="button"
         class="top-bar__icon-btn"
@@ -732,17 +768,42 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <button
         type="button"
         class="top-bar__icon-btn"
+        class:top-bar__icon-btn--recording={isRecording}
         data-testid="top-bar-record"
-        aria-label="Record"
-        title="Record (Wave 2.2)"
+        aria-pressed={isRecording ? 'true' : 'false'}
+        aria-label={isRecording ? 'Stop recording' : 'Record'}
+        title={isRecording ? 'Stop recording' : 'Start recording'}
+        onclick={() => void handleRecordToggle()}
       >
         <Icon name="record" size={11} />
       </button>
     {/if}
-    <span class="top-bar__rec" data-state="off" title="Recording status">
+    <button
+      type="button"
+      class="top-bar__rec"
+      data-state={isRecording ? 'active' : 'off'}
+      aria-pressed={isRecording ? 'true' : 'false'}
+      title={isRecording ? 'Recording active — click to stop' : 'Recording status — click to start'}
+      onclick={() => void handleRecordToggle()}
+    >
       <span class="top-bar__rec-dot" aria-hidden="true"></span>
       <span>REC</span>
-    </span>
+    </button>
+    <button
+      type="button"
+      class="top-bar__dj"
+      class:top-bar__dj--active={djAutopilotActive}
+      data-testid="top-bar-dj-autopilot"
+      aria-pressed={djAutopilotActive ? 'true' : 'false'}
+      aria-label={djAutopilotActive ? 'DJ Autopilot active' : 'DJ Autopilot'}
+      title={djAutopilotActive
+        ? `DJ Autopilot active (${djAutopilotStore.phraseIntervalBars}-bar phrase) — click to disable`
+        : 'Enable 1-click DJ Autopilot'}
+      onclick={() => djAutopilotStore.toggle()}
+    >
+      <span class="top-bar__dj-dot" aria-hidden="true"></span>
+      <span>DJ</span>
+    </button>
     <button
       type="button"
       class="top-bar__go-live"
@@ -1355,18 +1416,49 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     outline-offset: 2px;
   }
 
+  .top-bar__icon-btn--recording {
+    border-color: var(--color-signal-red);
+    color: var(--color-signal-red);
+    background: color-mix(in srgb, var(--color-signal-red) 14%, transparent);
+  }
+
   .top-bar__rec {
+    appearance: none;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px var(--space-xs);
+    padding: 3px var(--space-xs);
+    background: transparent;
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-xs);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-body-xs);
-    color: var(--color-text-3);
+    color: var(--color-text-2);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition:
+      border-color 120ms ease,
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .top-bar__rec:hover {
+    color: var(--color-text-0);
+    background: var(--color-bg-3);
+  }
+
+  .top-bar__rec:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .top-bar__rec[data-state='active'] {
+    border-color: var(--color-signal-red);
+    color: var(--color-signal-red);
+    background: color-mix(in srgb, var(--color-signal-red) 14%, transparent);
   }
 
   .top-bar__rec-dot {
@@ -1376,10 +1468,68 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     background: var(--color-text-3);
   }
 
-  /* `data-state='active'` selectors land alongside the REC IPC wiring
-     (W15+); kept off the stylesheet for now so svelte-check doesn't
-     flag them as unused. The active rule will paint the pill border
-     red and switch the dot to a signal-red glow. */
+  .top-bar__rec[data-state='active'] .top-bar__rec-dot {
+    background: var(--color-signal-red);
+    box-shadow: 0 0 6px var(--color-signal-red);
+  }
+
+  .top-bar__dj {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 7px;
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+    font-weight: 700;
+    color: var(--color-text-1);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition:
+      border-color 120ms ease,
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .top-bar__dj:hover {
+    color: var(--color-text-0);
+    background: var(--color-bg-3);
+    border-color: var(--color-line-3);
+  }
+
+  .top-bar__dj:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .top-bar__dj-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--color-text-3);
+  }
+
+  .top-bar__dj--active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-on-primary, #0c0e16);
+  }
+
+  .top-bar__dj--active:hover {
+    background: var(--color-primary);
+    color: var(--color-on-primary, #0c0e16);
+    filter: brightness(1.08);
+  }
+
+  .top-bar__dj--active .top-bar__dj-dot {
+    background: currentColor;
+  }
 
   .top-bar__metric {
     display: inline-flex;
@@ -1462,6 +1612,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
     .top-bar__go-live {
       padding: 4px var(--space-sm);
+    }
+  }
+
+  @media (max-width: 1120px) {
+    .top-bar__transport-timecode,
+    .top-bar__metric {
+      display: none;
+    }
+    .top-bar__dj {
+      padding: 3px 6px;
     }
   }
 </style>
