@@ -1060,4 +1060,38 @@ mod uniforms_drift_pins {
             "windowed RMS variance {windowed_variance} should be much lower than callback variance {callback_variance}",
         );
     }
+
+    #[test]
+    fn non_finite_samples_never_poison_rms_peak_fft_or_bpm() {
+        let mut samples = vec![0.25_f32; FFT_WINDOW_SIZE];
+        samples[10] = f32::NAN;
+        samples[20] = f32::INFINITY;
+        samples[30] = f32::NEG_INFINITY;
+        let frame = AudioFrame::new(48_000, 1, samples);
+        let snap = extract_uniform_snapshot(&frame);
+        assert!(snap.rms.is_finite() && snap.rms > 0.0 && snap.rms <= 1.0);
+        assert!(snap.peak.is_finite() && (snap.peak - 0.25).abs() < 1e-5);
+        assert!(snap.bpm.is_finite());
+        assert!(
+            snap.fft_bands
+                .iter()
+                .all(|b| b.is_finite() && *b >= 0.0 && *b <= 1.0)
+        );
+    }
+
+    #[test]
+    fn recent_frame_tracks_latest_1024_samples_for_low_latency_metering() {
+        let mut window = AudioAnalysisWindow::default();
+        // Push 2048 loud samples followed by 1024 silent samples.
+        window.push(&AudioFrame::new(48_000, 1, vec![0.9_f32; 2048]));
+        window.push(&AudioFrame::new(48_000, 1, vec![0.0_f32; FFT_WINDOW_SIZE]));
+
+        let recent = window.recent_frame(FFT_WINDOW_SIZE);
+        assert_eq!(recent.samples().len(), FFT_WINDOW_SIZE);
+        let live =
+            super::extract_live_metering_snapshot(&recent, 120.0, AudioAxisAvailability::Warming);
+        // Live metering reflects the latest 21 ms (silence), not stale 0.9 peaks.
+        assert_eq!(live.rms, 0.0);
+        assert_eq!(live.peak, 0.0);
+    }
 }

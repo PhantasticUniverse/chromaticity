@@ -1018,4 +1018,16 @@ mod runtime_pins {
 
         handle.shutdown();
     }
+
+    #[test]
+    fn live_input_gain_handle_updates_sanitizes_and_reads_atomically() {
+        let gain = AudioInputGainHandle::default();
+        assert_eq!(gain.get_linear(), 1.0);
+        gain.set_linear(2.5);
+        assert!((gain.get_linear() - 2.5).abs() < 1e-6);
+        gain.set_linear(f32::NAN);
+        assert_eq!(gain.get_linear(), 1.0);
+        gain.set_linear(-3.0);
+        assert_eq!(gain.get_linear(), 1.0);
+    }
 }

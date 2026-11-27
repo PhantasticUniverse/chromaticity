@@ -1476,4 +1476,100 @@ mod mix_ipc_tests {
         assert_eq!(stored[10].blend, BlendMode::HardLight);
         assert_eq!(stored[11].blend, BlendMode::HardLight);
     }
+
+    #[test]
+    fn youtube_proxy_security_parsers_and_loopback_http_invariants() {
+        assert_eq!(
+            parse_clen_from_url(
+                "https://rr1.googlevideo.com/videoplayback?itag=136&clen=424242&mime=video/mp4"
+            ),
+            Some(424_242)
+        );
+        assert_eq!(
+            parse_clen_from_url("https://rr1.googlevideo.com/videoplayback?clen=0"),
+            None
+        );
+        assert_eq!(parse_range_header("bytes=0-1023"), Some((0, Some(1023))));
+        assert_eq!(parse_range_header("bytes=4096-"), Some((4096, None)));
+        assert_eq!(parse_range_header("items=0-5"), None);
+
+        // SSRF & origin allowlists
+        assert!(is_allowed_youtube_media_url(
+            "https://rr1---sn-abc.googlevideo.com/videoplayback"
+        ));
+        assert!(is_allowed_youtube_media_url(
+            "https://manifest.googlevideo.com/api/manifest/hls"
+        ));
+        assert!(!is_allowed_youtube_media_url(
+            "http://rr1.googlevideo.com/videoplayback"
+        ));
+        assert!(!is_allowed_youtube_media_url("https://127.0.0.1/secret"));
+        assert!(!is_allowed_youtube_media_url(
+            "https://evil.com@googlevideo.com/x"
+        ));
+        assert!(is_allowed_proxy_origin("tauri://localhost"));
+        assert!(is_allowed_proxy_origin("http://localhost:1420"));
+        assert!(!is_allowed_proxy_origin("https://evil.example.com"));
+
+        // Loopback TCP protocol invariants (403 bad token, 405 POST, 404 missing, 200 HEAD, 416 OOB)
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
+        let addr = listener.local_addr().expect("local addr");
+        let streams: Arc<Mutex<HashMap<String, ProxiedYouTubeStream>>> =
+            Arc::new(Mutex::new(HashMap::from([(
+                "dQw4w9WgXcQ".to_string(),
+                ProxiedYouTubeStream {
+                    upstream_url: "https://rr1.googlevideo.com/videoplayback?clen=1024".to_string(),
+                    total_len: 1024,
+                    inserted_at: Instant::now(),
+                },
+            )])));
+        let token = "testtoken1234";
+
+        let send_req = |req: &str| -> String {
+            let streams_bg = Arc::clone(&streams);
+            let listener_clone = listener.try_clone().expect("clone listener");
+            let t = token.to_string();
+            let h = std::thread::spawn(move || {
+                let (conn, _) = listener_clone.accept().expect("accept");
+                handle_youtube_proxy_connection(conn, &streams_bg, &t);
+            });
+            let mut client = TcpStream::connect(addr).expect("connect");
+            client.write_all(req.as_bytes()).expect("write req");
+            let mut resp = String::new();
+            client.read_to_string(&mut resp).expect("read resp");
+            let _ = h.join();
+            resp
+        };
+
+        let r403 =
+            send_req("GET /video/wrongtoken/dQw4w9WgXcQ.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(r403.starts_with("HTTP/1.1 403 Forbidden"));
+
+        let r405 = send_req(
+            "POST /video/testtoken1234/dQw4w9WgXcQ.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        );
+        assert!(r405.starts_with("HTTP/1.1 405 Method Not Allowed"));
+
+        let r404 = send_req(
+            "GET /video/testtoken1234/unknown1234.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        );
+        assert!(r404.starts_with("HTTP/1.1 404 Not Found"));
+
+        let r200 = send_req(
+            "HEAD /video/testtoken1234/dQw4w9WgXcQ.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: tauri://localhost\r\n\r\n",
+        );
+        assert!(r200.starts_with("HTTP/1.1 200 OK"));
+        assert!(r200.contains("Content-Length: 1024"));
+        assert!(r200.contains("Access-Control-Allow-Origin: tauri://localhost"));
+
+        let r_evil = send_req(
+            "HEAD /video/testtoken1234/dQw4w9WgXcQ.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: https://evil.example\r\n\r\n",
+        );
+        assert!(!r_evil.contains("Access-Control-Allow-Origin:"));
+
+        let r416 = send_req(
+            "GET /video/testtoken1234/dQw4w9WgXcQ.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\nRange: bytes=2048-\r\n\r\n",
+        );
+        assert!(r416.starts_with("HTTP/1.1 416 Range Not Satisfiable"));
+    }
 }
