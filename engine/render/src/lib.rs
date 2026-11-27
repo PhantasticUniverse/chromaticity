@@ -354,6 +354,7 @@ pub mod composition;
 pub mod compositor;
 pub mod glsl_includes;
 pub mod multipass;
+pub mod nv12_convert;
 pub mod offline_replay;
 #[cfg(feature = "scene-adapter")]
 pub mod scene_adapter;
@@ -384,6 +385,7 @@ pub use multipass::{
     CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
     UniformInput, UniformValue, compile_and_render_multipass,
 };
+pub use nv12_convert::{ColorRange, Nv12Converter, Nv12Frame};
 pub use offline_replay::{
     OfflineRenderConfig, OfflineRenderReport, OfflineReplayError, RecordedFrame, ShowRecording,
     build_recorded_frame_uniforms, fnv1a_64, render_offline_recording,

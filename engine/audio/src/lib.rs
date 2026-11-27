@@ -241,6 +241,311 @@ pub use spectrum::{
 };
 pub use uniforms::{AudioAxisAvailability, AudioUniformSnapshot, extract_uniform_snapshot};
 
+/// Unified single-pass audio analysis snapshot combining legacy 4-band /
+/// 8-band uniform meters, stereo true-peak / AGC metering, the 64-band
+/// log-spaced FFT spectrum (plus 48-bar visualiser downsampling), and
+/// two-stage fused BPM tracking.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtendedAudioFrame {
+    /// Legacy producer-side uniform snapshot (`bpm`, `rms`, `peak`, `fft_bands[8]`).
+    pub uniform_snapshot: AudioUniformSnapshot,
+    /// Per-channel stereo RMS and peak magnitudes for the latest PCM block.
+    pub stereo_levels: StereoLevels,
+    /// 4× oversampled true peak in `dBTP` (`-100.0` floor on silence).
+    pub true_peak_dbtp: f32,
+    /// `true` when true peak reaches or exceeds `-1.0 dBTP` or discrete peak `>= 1.0`.
+    pub clip: bool,
+    /// Rolling p95 AGC normalisation and threshold-gate state.
+    pub agc: AgcOutput,
+    /// 4-band energy meters `[sub_bass, low_mid, high_mid, treble]` in `[0.0, 1.0]`
+    /// aggregated from the 64-band log-spaced spectrum.
+    pub four_band_energy: [f32; 4],
+    /// 64-band log-spaced FFT spectrum over `20 Hz ..= 20 kHz`, dB-compressed into `[0.0, 1.0]`.
+    pub spectrum_64: [f32; SPECTRUM_BANDS_64],
+    /// Area-weighted 48-bar downsampled spectrum for visualiser widgets.
+    pub spectrum_48: [f32; SPECTRUM_BANDS_48],
+    /// Half-wave rectified spectral-flux onset strength in `[0.0, 1.0]`.
+    pub onset_strength: f32,
+    /// Two-stage fused IOI + autocorrelation BPM estimate with confidence and beat flag.
+    pub bpm_estimate: BpmEstimate,
+}
+
+impl Default for ExtendedAudioFrame {
+    fn default() -> Self {
+        Self {
+            uniform_snapshot: AudioUniformSnapshot::default(),
+            stereo_levels: StereoLevels::default(),
+            true_peak_dbtp: metering::TRUE_PEAK_FLOOR_DBTP,
+            clip: false,
+            agc: AgcOutput::default(),
+            four_band_energy: [0.0; 4],
+            spectrum_64: [0.0; SPECTRUM_BANDS_64],
+            spectrum_48: [0.0; SPECTRUM_BANDS_48],
+            onset_strength: 0.0,
+            bpm_estimate: BpmEstimate::default(),
+        }
+    }
+}
+
+/// Stateful single-pass audio metering, 64-band log-spectrum, and fused
+/// BPM engine.
+///
+/// Feed interleaved PCM frames via [`Self::process_frame`] (or
+/// [`Self::process_pcm`]) to compute legacy 4-band/8-band meters,
+/// stereo true-peak / AGC metering, 64-band & 48-bar log spectra, and
+/// fused BPM confidence in one coherent pass without altering any
+/// existing public audio types.
+#[derive(Debug, Clone)]
+pub struct AudioMeterEngine {
+    mono_window_sr: Option<u32>,
+    mono_window: std::collections::VecDeque<f32>,
+    agc: AgcNormalizer,
+    onset_detector: SpectralFluxOnsetDetector,
+    fused_bpm: FusedBpmEstimator,
+    prev_spectrum_64: [f32; SPECTRUM_BANDS_64],
+    has_prev_spectrum: bool,
+    input_gain_linear: f32,
+    latest: ExtendedAudioFrame,
+}
+
+impl Default for AudioMeterEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AudioMeterEngine {
+    /// Construct a fresh [`AudioMeterEngine`] with unity input gain and
+    /// normative `docs/06` / ADR-023 metering defaults.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            mono_window_sr: None,
+            mono_window: std::collections::VecDeque::with_capacity(spectrum::SPECTRUM_FFT_SIZE),
+            agc: AgcNormalizer::new(),
+            onset_detector: SpectralFluxOnsetDetector::new(),
+            fused_bpm: FusedBpmEstimator::new(),
+            prev_spectrum_64: [0.0; SPECTRUM_BANDS_64],
+            has_prev_spectrum: false,
+            input_gain_linear: 1.0,
+            latest: ExtendedAudioFrame::default(),
+        }
+    }
+
+    /// Set the linear pre-analysis input gain multiplier.
+    /// Non-finite or negative values fall back to `1.0` (unity).
+    pub fn set_input_gain_linear(&mut self, gain_linear: f32) {
+        self.input_gain_linear = if gain_linear.is_finite() && gain_linear >= 0.0 {
+            gain_linear
+        } else {
+            1.0
+        };
+    }
+
+    /// Configure the AGC noise-gate threshold in `[0.0, 1.0]`.
+    pub fn set_agc_threshold(&mut self, threshold: f32) {
+        self.agc.set_threshold(threshold);
+    }
+
+    /// Reset all rolling windows, AGC history, onset state, and BPM lock.
+    pub fn reset(&mut self) {
+        self.mono_window_sr = None;
+        self.mono_window.clear();
+        self.agc.reset();
+        self.onset_detector.reset();
+        self.fused_bpm.reset();
+        self.prev_spectrum_64 = [0.0; SPECTRUM_BANDS_64];
+        self.has_prev_spectrum = false;
+        self.latest = ExtendedAudioFrame::default();
+    }
+
+    /// Return the most recently computed [`ExtendedAudioFrame`].
+    #[must_use]
+    pub fn latest(&self) -> &ExtendedAudioFrame {
+        &self.latest
+    }
+
+    /// Convenience wrapper that builds an [`frame::AudioFrame`] from raw
+    /// interleaved PCM samples and runs [`Self::process_frame`].
+    pub fn process_pcm(
+        &mut self,
+        sample_rate_hz: u32,
+        channels: u16,
+        interleaved_samples: &[f32],
+    ) -> ExtendedAudioFrame {
+        let frame = frame::AudioFrame::new(sample_rate_hz, channels, interleaved_samples.to_vec());
+        self.process_frame(&frame)
+    }
+
+    /// Analyse one incoming [`frame::AudioFrame`] and return an
+    /// [`ExtendedAudioFrame`] containing legacy meters, 64-band/48-bar
+    /// log spectra, onset flux, and fused BPM estimate.
+    pub fn process_frame(&mut self, input_frame: &frame::AudioFrame) -> ExtendedAudioFrame {
+        let channels = input_frame.channels();
+        let sample_rate_hz = input_frame.sample_rate_hz();
+
+        let conditioned: frame::AudioFrame;
+        let active_frame = if self.input_gain_linear != 1.0 {
+            let mut scaled = input_frame.samples().to_vec();
+            apply_input_gain(&mut scaled, self.input_gain_linear);
+            conditioned = frame::AudioFrame::new(sample_rate_hz, channels, scaled);
+            &conditioned
+        } else {
+            input_frame
+        };
+
+        let samples = active_frame.samples();
+        let ch_usize = usize::from(channels);
+        let stereo_levels = compute_stereo_levels(samples, ch_usize);
+
+        let (true_peak_dbtp, clip) = compute_frame_true_peak(samples, ch_usize);
+
+        // Maintain a bounded 1024-sample mono FFT window so every hop runs in
+        // O(N log N) without triggering the legacy 57,601-sample O(N^2) time-domain
+        // autocorrelation path; tempo tracking is handled by `FusedBpmEstimator`.
+        if self.mono_window_sr != Some(sample_rate_hz) {
+            self.mono_window_sr = Some(sample_rate_hz);
+            self.mono_window.clear();
+        }
+        push_mono_samples(&mut self.mono_window, samples, ch_usize);
+        let mono_slice: Vec<f32> = self.mono_window.iter().copied().collect();
+        let analysis_frame = frame::AudioFrame::new(sample_rate_hz, 1, mono_slice);
+
+        let mut uniform_snapshot = extract_uniform_snapshot(&analysis_frame);
+        let agc = self.agc.observe(uniform_snapshot.rms);
+
+        let spectrum_64 = compute_log_spectrum_64(analysis_frame.samples(), sample_rate_hz as f32);
+        let spectrum_48 = downsample_64_to_48(&spectrum_64);
+        let four_band_energy = aggregate_four_bands(&spectrum_64);
+
+        let raw_flux = if self.has_prev_spectrum {
+            let mut acc = 0.0_f32;
+            for (&curr, &prev) in spectrum_64.iter().zip(self.prev_spectrum_64.iter()) {
+                let diff = curr - prev;
+                if diff > 0.0 {
+                    acc += diff;
+                }
+            }
+            acc
+        } else {
+            self.has_prev_spectrum = true;
+            0.0
+        };
+        self.prev_spectrum_64 = spectrum_64;
+
+        let (onset_strength, detector_on_beat) = self.onset_detector.observe(&spectrum_64);
+
+        let frames_per_channel = if ch_usize > 0 {
+            samples.len() / ch_usize
+        } else {
+            0
+        };
+        let dt_secs = if sample_rate_hz > 0 && frames_per_channel > 0 {
+            frames_per_channel as f32 / sample_rate_hz as f32
+        } else {
+            0.0
+        };
+
+        let mut bpm_estimate = self.fused_bpm.push_onset_energy(raw_flux, dt_secs);
+        bpm_estimate.on_beat = bpm_estimate.on_beat || detector_on_beat;
+
+        uniform_snapshot.bpm = bpm_estimate.bpm;
+        uniform_snapshot.bpm_availability = if bpm_estimate.confidence >= 0.25 {
+            AudioAxisAvailability::Ready
+        } else {
+            AudioAxisAvailability::Warming
+        };
+
+        let extended = ExtendedAudioFrame {
+            uniform_snapshot,
+            stereo_levels,
+            true_peak_dbtp,
+            clip,
+            agc,
+            four_band_energy,
+            spectrum_64,
+            spectrum_48,
+            onset_strength,
+            bpm_estimate,
+        };
+        self.latest = extended.clone();
+        extended
+    }
+}
+
+/// Mix interleaved samples to mono and append into a rolling window capped at
+/// [`spectrum::SPECTRUM_FFT_SIZE`].
+fn push_mono_samples(
+    window: &mut std::collections::VecDeque<f32>,
+    samples: &[f32],
+    channels: usize,
+) {
+    if samples.is_empty() {
+        return;
+    }
+    if channels <= 1 {
+        for &s in samples {
+            if window.len() == spectrum::SPECTRUM_FFT_SIZE {
+                let _ = window.pop_front();
+            }
+            window.push_back(s);
+        }
+        return;
+    }
+    let inv = 1.0 / channels as f32;
+    for frame in samples.chunks_exact(channels) {
+        let sum: f32 = frame.iter().copied().sum();
+        if window.len() == spectrum::SPECTRUM_FFT_SIZE {
+            let _ = window.pop_front();
+        }
+        window.push_back(sum * inv);
+    }
+}
+
+/// Compute 4-band mean energy (`[0..16]`, `[16..32]`, `[32..48]`, `[48..64]`)
+/// from a 64-band log spectrum.
+fn aggregate_four_bands(spectrum_64: &[f32; SPECTRUM_BANDS_64]) -> [f32; 4] {
+    let mut out = [0.0_f32; 4];
+    for (band_idx, slot) in out.iter_mut().enumerate() {
+        let start = band_idx * 16;
+        let end = start + 16;
+        let sum: f32 = spectrum_64[start..end].iter().copied().sum();
+        *slot = (sum / 16.0).clamp(0.0, 1.0);
+    }
+    out
+}
+
+/// Compute true peak across mono or interleaved stereo/multi-channel PCM
+/// frames by evaluating each channel independently and taking the maximum.
+fn compute_frame_true_peak(samples: &[f32], channels: usize) -> (f32, bool) {
+    if samples.is_empty() || channels == 0 {
+        return (metering::TRUE_PEAK_FLOOR_DBTP, false);
+    }
+    if channels == 1 {
+        return compute_true_peak_dbtp(samples);
+    }
+    let frames = samples.len() / channels;
+    if frames == 0 {
+        return (metering::TRUE_PEAK_FLOOR_DBTP, false);
+    }
+    let mut ch_buf = Vec::with_capacity(frames);
+    let mut max_dbtp = metering::TRUE_PEAK_FLOOR_DBTP;
+    let mut any_clip = false;
+    let active_channels = channels.min(2);
+    for ch in 0..active_channels {
+        ch_buf.clear();
+        for f in 0..frames {
+            ch_buf.push(samples[f * channels + ch]);
+        }
+        let (dbtp, clip) = compute_true_peak_dbtp(&ch_buf);
+        if dbtp > max_dbtp {
+            max_dbtp = dbtp;
+        }
+        any_clip = any_clip || clip;
+    }
+    (max_dbtp, any_clip)
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod drift_pins {
@@ -383,5 +688,154 @@ mod ctor_placeholder {
         assert_eq!(frame.sample_rate_hz(), 44_100);
         assert_eq!(frame.channels(), 2);
         assert_eq!(frame.samples().len(), 4);
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod meter_engine_pins {
+    //! Evidence: EV-AUDIO-TRACE (T1) — end-to-end wired 64-band log spectrum,
+    //! 4-band / 8-band meters, stereo true-peak, AGC, and fused BPM analysis
+    //! pins (AUDIO-SPECTRUM-002).
+
+    use super::*;
+    use std::f32::consts::TAU;
+
+    fn expected_log_band(freq_hz: f32) -> usize {
+        let ratio = spectrum::SPECTRUM_MAX_HZ / spectrum::SPECTRUM_MIN_HZ;
+        let frac = (freq_hz / spectrum::SPECTRUM_MIN_HZ).ln() / ratio.ln();
+        ((frac * SPECTRUM_BANDS_64 as f32).floor() as isize)
+            .clamp(0, (SPECTRUM_BANDS_64 - 1) as isize) as usize
+    }
+
+    fn argmax(values: &[f32]) -> (usize, f32) {
+        let mut best_idx = 0_usize;
+        let mut best_val = f32::NEG_INFINITY;
+        for (i, &v) in values.iter().enumerate() {
+            if v > best_val {
+                best_val = v;
+                best_idx = i;
+            }
+        }
+        (best_idx, best_val)
+    }
+
+    #[test]
+    fn wired_engine_analyzes_sine_wave_across_64_band_48_bar_and_4_band_meters() {
+        let mut engine = AudioMeterEngine::new();
+        let sr = frame::DEFAULT_SAMPLE_RATE_HZ;
+        let sr_f = sr as f32;
+
+        // Feed 1024-sample stereo frames of a 1000 Hz sine (amplitude 0.5 on L, 0.25 on R).
+        let mut stereo_pcm = Vec::with_capacity(1024 * 2);
+        for i in 0..1024 {
+            let s = (TAU * 1000.0 * i as f32 / sr_f).sin();
+            stereo_pcm.push(0.5 * s);
+            stereo_pcm.push(0.25 * s);
+        }
+
+        let out = engine.process_pcm(sr, 2, &stereo_pcm);
+
+        // Legacy uniform snapshot is populated and FFT is Ready.
+        assert_eq!(
+            out.uniform_snapshot.fft_availability,
+            AudioAxisAvailability::Ready
+        );
+        assert!(out.uniform_snapshot.rms > 0.2);
+        assert!(out.uniform_snapshot.peak > 0.35);
+
+        // Stereo L/R levels preserve genuine channel separation.
+        assert!((out.stereo_levels.peak_l - 0.5).abs() < 0.02);
+        assert!((out.stereo_levels.peak_r - 0.25).abs() < 0.02);
+        assert!(out.true_peak_dbtp > -7.0 && out.true_peak_dbtp < -5.0);
+        assert!(!out.clip);
+
+        // 64-band log spectrum peaks at the expected 1000 Hz log band.
+        let (peak_bin, peak_val) = argmax(&out.spectrum_64);
+        let exp_bin = expected_log_band(1000.0);
+        assert!(
+            peak_bin.abs_diff(exp_bin) <= 1,
+            "1000 Hz sine expected near band {exp_bin}, got {peak_bin} (val={peak_val})"
+        );
+        assert!(
+            peak_val > 0.6,
+            "expected strong 1000 Hz peak, got {peak_val}"
+        );
+
+        // 48-bar downsampled spectrum and 4-band meters remain in [0, 1] and show energy.
+        assert!(
+            out.spectrum_48
+                .iter()
+                .all(|&v| v.is_finite() && (0.0..=1.0).contains(&v))
+        );
+        assert!(out.spectrum_48.iter().copied().fold(0.0_f32, f32::max) > 0.4);
+        assert!(
+            out.four_band_energy
+                .iter()
+                .all(|&v| v.is_finite() && (0.0..=1.0).contains(&v))
+        );
+        // 1000 Hz lies in the second quarter (bands 16..32 -> four_band_energy[1]) or third quarter.
+        assert!(out.four_band_energy[1] > 0.0 || out.four_band_energy[2] > 0.0);
+
+        // `latest()` mirrors the last returned frame.
+        assert_eq!(engine.latest(), &out);
+    }
+
+    #[test]
+    fn wired_engine_locks_onto_128_bpm_kick_pulse_end_to_end() {
+        let mut engine = AudioMeterEngine::new();
+        let sr = frame::DEFAULT_SAMPLE_RATE_HZ;
+        let hop_samples = 512_usize; // ~10.67 ms per hop
+        let beat_period_secs = 60.0_f64 / 128.0_f64; // 0.46875 s
+        let total_secs = 6.0_f64;
+        let total_samples = (total_secs * f64::from(sr)) as usize;
+
+        let mut last = ExtendedAudioFrame::default();
+        let mut beat_count = 0_usize;
+        let mut sample_cursor = 0_usize;
+
+        while sample_cursor < total_samples {
+            let chunk_len = hop_samples.min(total_samples - sample_cursor);
+            let mut chunk = Vec::with_capacity(chunk_len);
+            for i in 0..chunk_len {
+                let t = (sample_cursor + i) as f64 / f64::from(sr);
+                let phase_in_beat = t % beat_period_secs;
+                // Sharp 45 ms decaying 70 Hz kick pulse on every 128 BPM beat.
+                let sample = if phase_in_beat < 0.045 {
+                    let env = (-phase_in_beat / 0.015).exp() as f32;
+                    env * (TAU * 70.0 * phase_in_beat as f32).sin()
+                } else {
+                    0.0
+                };
+                chunk.push(sample);
+            }
+            sample_cursor += chunk_len;
+
+            last = engine.process_pcm(sr, 1, &chunk);
+            if last.bpm_estimate.on_beat {
+                beat_count += 1;
+            }
+        }
+
+        assert!(
+            beat_count >= 6,
+            "expected at least 6 detected beats across 6 s of 128 BPM kicks, got {beat_count}"
+        );
+        assert!(
+            (last.bpm_estimate.bpm - 128.0).abs() <= 3.0,
+            "expected wired FusedBpmEstimator to lock near 128 BPM (±3), got {:.2} BPM (conf={:.3})",
+            last.bpm_estimate.bpm,
+            last.bpm_estimate.confidence
+        );
+        assert!(
+            last.bpm_estimate.confidence >= 0.45,
+            "expected strong BPM lock confidence >= 0.45, got {:.3}",
+            last.bpm_estimate.confidence
+        );
+
+        // Reset returns engine to clean unlocked baseline.
+        engine.reset();
+        assert_eq!(engine.latest().bpm_estimate.confidence, 0.0);
+        assert_eq!(engine.latest().spectrum_64, [0.0; SPECTRUM_BANDS_64]);
     }
 }
