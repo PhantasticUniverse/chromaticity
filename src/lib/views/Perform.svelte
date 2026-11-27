@@ -2499,15 +2499,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * initial review. */
   .media-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-    grid-auto-rows: max-content;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    grid-auto-rows: 74px;
     align-content: start;
-    align-items: start;
+    align-items: stretch;
     gap: var(--space-sm);
     padding: var(--space-sm);
   }
   .media-grid :global(.media-card) {
-    min-height: 70px;
+    aspect-ratio: auto;
+    height: 74px;
+    min-height: 74px;
+    box-sizing: border-box;
   }
   /* Inset the SceneStill / SMPTE-test surfaces by 3 px so the tile's
    * outer border + background colour provide a clean "matt" frame
