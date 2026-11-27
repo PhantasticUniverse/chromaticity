@@ -117,6 +117,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../widgets/scene-kind-from-metadata';
   import type { SceneKind } from '../widgets/scene-renderers';
   import { isControlPreviewWired, SCENE_KINDS } from '../widgets/scene-renderers';
+  import SceneFeedbackBar from '../widgets/SceneFeedbackBar.svelte';
 
   /** Best-effort SceneKind coercion for the setlist fixture's `kind`
    * field (a free-form string). Falls back to `rings` when the fixture
@@ -1200,6 +1201,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       {/if}
     </div>
   {/if}
+  <SceneFeedbackBar
+    sceneId={loadedSceneId ?? sceneTitleName.toLowerCase()}
+    sceneTitle={sceneTitleName}
+    compact
+  />
 {/snippet}
 
 {#snippet audioReactivityPanel()}

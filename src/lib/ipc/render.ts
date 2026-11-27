@@ -71,3 +71,62 @@ export async function fetchGpuFrame(
     return null;
   }
 }
+
+const thumbnailCache = new Map<string, Uint8ClampedArray>();
+const MAX_THUMBNAIL_CACHE_ENTRIES = 96;
+
+/**
+ * Render (or retrieve from in-memory cache) a real Metal/Vulkan GPU RGBA8
+ * thumbnail for a `.chroma` scene package via `render_scene_thumbnail`.
+ * Returns `null` outside Tauri or if the package has no `main.glsl`.
+ */
+export async function fetchSceneThumbnail(
+  scenePath: string,
+  width = 320,
+  height = 180,
+): Promise<Uint8ClampedArray | null> {
+  const key = `${scenePath}@${width}x${height}`;
+  const cached = thumbnailCache.get(key);
+  if (cached) return cached;
+
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const raw = await invoke<ArrayBuffer | Uint8Array | number[]>('render_scene_thumbnail', {
+      scenePath,
+      width,
+      height,
+    });
+    const expectedLen = width * height * 4;
+    let pixels: Uint8ClampedArray | null = null;
+    if (raw instanceof ArrayBuffer && raw.byteLength === expectedLen) {
+      pixels = new Uint8ClampedArray(raw);
+    } else if (raw instanceof Uint8Array && raw.byteLength === expectedLen) {
+      pixels = new Uint8ClampedArray(raw.buffer, raw.byteOffset, raw.byteLength);
+    } else if (Array.isArray(raw) && raw.length === expectedLen) {
+      pixels = new Uint8ClampedArray(raw);
+    }
+    if (!pixels) return null;
+
+    if (thumbnailCache.size >= MAX_THUMBNAIL_CACHE_ENTRIES) {
+      const oldest = thumbnailCache.keys().next().value;
+      if (oldest !== undefined) thumbnailCache.delete(oldest);
+    }
+    thumbnailCache.set(key, pixels);
+    return pixels;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear the in-memory GPU thumbnail cache (used when a scene is re-saved in Author). */
+export function clearSceneThumbnailCache(scenePath?: string): void {
+  if (!scenePath) {
+    thumbnailCache.clear();
+    return;
+  }
+  for (const key of thumbnailCache.keys()) {
+    if (key.startsWith(`${scenePath}@`)) {
+      thumbnailCache.delete(key);
+    }
+  }
+}

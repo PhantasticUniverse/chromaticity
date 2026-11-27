@@ -43,6 +43,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     sceneSeedFromMetadata,
   } from '../widgets/scene-kind-from-metadata';
   import SceneCanvas from '../widgets/SceneCanvas.svelte';
+  import SceneFeedbackBar from '../widgets/SceneFeedbackBar.svelte';
   import SceneStill from '../widgets/SceneStill.svelte';
 
   let cards = $state<SceneCard[]>([]);
@@ -799,6 +800,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             Open in Author
           </button>
         </div>
+        <SceneFeedbackBar
+          sceneId={selectedCard.id}
+          sceneTitle={selectedCard.title || selectedCard.id}
+          compact
+        />
       </div>
     {:else}
       <div class="scene-detail__empty">
