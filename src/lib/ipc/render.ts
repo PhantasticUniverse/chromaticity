@@ -25,6 +25,21 @@ export async function fetchGpuRenderStatus(): Promise<GpuRenderStatusPayload | n
 }
 
 /**
+ * Compile and arm an in-memory GLSL 4.50 fragment shader from Author.
+ * Resolves with the updated GPU status or throws the `naga`/`wgpu` diagnostic.
+ */
+export async function compileAndPreviewShader(
+  sceneId: string,
+  fragmentGlsl: string,
+): Promise<GpuRenderStatusPayload> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<GpuRenderStatusPayload>('compile_and_preview_shader', {
+    sceneId,
+    fragmentGlsl,
+  });
+}
+
+/**
  * Render one live GPU RGBA8 frame at `(width, height)`.
  * Returns a `Uint8ClampedArray` of length `width * height * 4`, or `null`
  * if outside Tauri or if no `main.glsl` shader is armed.

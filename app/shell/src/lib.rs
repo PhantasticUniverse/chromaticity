@@ -398,6 +398,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::license::install_license,
             commands::license::remove_license,
             commands::license::request_trial,
+            commands::license::get_entitlement_status,
             commands::syphon::list_syphon_servers,
             commands::syphon::publish_syphon_output,
             commands::syphon::unpublish_syphon_output,
@@ -405,6 +406,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::scene::loaded_scene,
             commands::render::render_gpu_frame,
             commands::render::gpu_render_status,
+            commands::render::compile_and_preview_shader,
         ])
         .run(tauri::generate_context!())
 }

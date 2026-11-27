@@ -40,6 +40,7 @@ serde_json = "1"
 sha2 = "0.10"
 chromaticity-audio = { version = "0.0.0", path = "../../engine/audio" }
 chromaticity-camera-adapter = { version = "0.0.0", path = "../../integrations/camera-adapter" }
+chromaticity-entitlement = { version = "0.0.0", path = "../../engine/entitlement" }
 chromaticity-midi-adapter = { version = "0.0.0", path = "../../integrations/midi-adapter" }
 chromaticity-osc-adapter = { version = "0.0.0", path = "../../integrations/osc-adapter" }
 chromaticity-render = { version = "0.0.0", path = "../../engine/render", features = ["scene-adapter", "audio-binding"] }

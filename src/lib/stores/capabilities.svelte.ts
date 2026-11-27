@@ -29,6 +29,7 @@
 // pure backend change with no UI churn.
 
 import { LICENSE_FIXTURE } from '../data/license-fixtures';
+import { registerStateMachine } from '../state';
 
 /** Operator platform per the bundle `ChromaCtx.platform` literal union. */
 export type CapabilitiesPlatform = 'macos' | 'windows' | 'linux';
@@ -105,6 +106,35 @@ class CapabilitiesStore {
   }
 
   /**
+   * Hydrate capabilities from the Rust `chromaticity-entitlement` verifier
+   * (`get_entitlement_status`). Outside Tauri, keeps the seed snapshot.
+   */
+  async refreshFromEngine(): Promise<void> {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const status = await invoke<{
+        state: 'licensed' | 'expired' | 'unlicensed';
+        watermark_off: boolean;
+        granted_capabilities: string[];
+      }>('get_entitlement_status');
+      const map: Record<string, boolean> = {};
+      for (const cap of LICENSE_FIXTURE.capabilities) {
+        map[cap.id] = status.granted_capabilities.includes(cap.id);
+      }
+      for (const id of status.granted_capabilities) {
+        map[id] = true;
+      }
+      this.snapshot = {
+        licensed: status.state === 'licensed',
+        capabilities: map,
+        platform: this.snapshot.platform,
+      };
+    } catch {
+      // Outside Tauri (vite-dev / Vitest): retain the seed snapshot.
+    }
+  }
+
+  /**
    * Check whether a capability id is currently held. Returns `false`
    * for unknown capability ids — chrome callers MUST fail closed
    * (capability denied) when the verifier omits a row, matching the
@@ -116,3 +146,8 @@ class CapabilitiesStore {
 }
 
 export const capabilitiesStore = new CapabilitiesStore();
+
+registerStateMachine('capabilities', () => ({
+  licensed: capabilitiesStore.licensed,
+  platform: capabilitiesStore.platform,
+}));

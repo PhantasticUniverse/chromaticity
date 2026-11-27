@@ -467,6 +467,7 @@ version = "0.0.0"
 dependencies = [
  "chromaticity-audio",
  "chromaticity-camera-adapter",
+ "chromaticity-entitlement",
  "chromaticity-midi-adapter",
  "chromaticity-osc-adapter",
  "chromaticity-render",

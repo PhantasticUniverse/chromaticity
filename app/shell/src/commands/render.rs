@@ -55,3 +55,21 @@ pub fn gpu_render_status(app_state: State<'_, AppState>) -> Result<GpuRenderStat
     };
     Ok(gpu.status())
 }
+
+/// Compile and arm an in-memory GLSL 4.50 fragment shader from the Author
+/// editor, running an immediate 16×16 `naga` + `wgpu` validation pass so
+/// compile diagnostics surface synchronously while live preview updates.
+#[tauri::command]
+pub fn compile_and_preview_shader(
+    app_state: State<'_, AppState>,
+    scene_id: String,
+    fragment_glsl: String,
+) -> Result<GpuRenderStatus, String> {
+    let mut gpu = match app_state.gpu_renderer.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    gpu.set_inline_shader(scene_id, fragment_glsl);
+    let _ = gpu.render_frame(16, 16, 0.0, 0, &AudioUniformSnapshot::default(), [0.5; 8])?;
+    Ok(gpu.status())
+}

@@ -62,6 +62,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/author-fixtures';
   import Editor, { type EditorLanguage } from '../Editor.svelte';
   import Icon, { type IconName } from '../Icon.svelte';
+  import { compileAndPreviewShader } from '../ipc/render';
   import SceneDiff from '../SceneDiff.svelte';
   import Fader from '../widgets/Fader.svelte';
   import {
@@ -178,45 +179,62 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     buffers[activeFile] = next;
   }
 
+  let liveCompileDiagnostic = $state<{ level: 'ok' | 'warn'; tag: string; message: string } | null>(
+    null,
+  );
+
   function saveAll(): void {
-    // Local-only snapshot; engine-side persistence is Phase-4b PR 2
-    // carryforward per `EV-AUTHORING-LIVE-RELOAD`.
     saved = { ...buffers };
+    // Live-compile main.glsl through `naga` + `wgpu` when running inside Tauri.
+    void compileAndPreviewShader(AUTHOR_SCENE_META.title, buffers['main.glsl'])
+      .then((status) => {
+        liveCompileDiagnostic = {
+          level: 'ok',
+          tag: 'wgpu',
+          message: `Compiled & rendered (${status.last_frame_ms.toFixed(1)} ms)`,
+        };
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Ignore no-Tauri-runtime errors in browser/Vitest mode.
+        if (msg.includes('__TAURI') || msg.includes('invoke')) return;
+        liveCompileDiagnostic = {
+          level: 'warn',
+          tag: 'naga',
+          message: msg,
+        };
+      });
   }
 
   function revertActive(): void {
     buffers[activeFile] = saved[activeFile];
   }
 
-  /* ---------------- Load-backup popover -------------------------------- */
+  /* ---------------- Explicit popover state machine --------------------- */
 
-  let backupOpen = $state<boolean>(false);
+  type AuthorPopoverState = 'none' | 'backup' | 'compare';
+  let popover = $state<AuthorPopoverState>('none');
+  const backupOpen = $derived(popover === 'backup');
+  const compareOpen = $derived(popover === 'compare');
+
   function toggleBackup(): void {
-    backupOpen = !backupOpen;
-    if (backupOpen) compareOpen = false;
+    popover = popover === 'backup' ? 'none' : 'backup';
   }
   function loadBackup(id: string): void {
     const snap = AUTHOR_BACKUPS.find((b) => b.id === id);
     if (snap === undefined) return;
-    // Replace all tab buffers AND saved snapshots so the loaded
-    // backup becomes the new "clean" baseline. The user can then
-    // edit + Revert to discard back to the loaded backup.
     buffers = { ...snap.content };
     saved = { ...snap.content };
-    backupOpen = false;
+    popover = 'none';
   }
 
-  /* ---------------- Compare-a-scene popover + diff --------------------- */
-
-  let compareOpen = $state<boolean>(false);
   let compareSelectedIdx = $state<number | null>(null);
   function toggleCompare(): void {
-    compareOpen = !compareOpen;
-    if (compareOpen) backupOpen = false;
+    popover = popover === 'compare' ? 'none' : 'compare';
   }
   function pickCompare(row: AuthorSceneRow): void {
     compareSelectedIdx = row.idx;
-    compareOpen = false;
+    popover = 'none';
   }
   function clearCompare(): void {
     compareSelectedIdx = null;
@@ -459,6 +477,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <span class="au-author__console-msg">{row.message}</span>
             </div>
           {/each}
+          {#if liveCompileDiagnostic}
+            <div class="au-author__console-row">
+              <span class="mono au-author__console-ts">live</span>
+              <span
+                class="mono au-author__console-tag"
+                class:au-author__console-tag--ok={liveCompileDiagnostic.level === 'ok'}
+                class:au-author__console-tag--warn={liveCompileDiagnostic.level === 'warn'}
+                >{liveCompileDiagnostic.tag}</span
+              >
+              <span class="au-author__console-msg">{liveCompileDiagnostic.message}</span>
+            </div>
+          {/if}
         </div>
       {/if}
     </section>
@@ -482,6 +512,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         kind={sceneKindFromMetadata({ title: AUTHOR_SCENE_META.title })}
         seed={sceneSeedFromMetadata({ id: AUTHOR_SCENE_META.title })}
         audio
+        gpuLive
         ariaLabel={`Live scene preview · ${AUTHOR_SCENE_META.title} (placeholder canvas-2d pattern)`}
       />
       <span class="au-author__preview-label mono">{AUTHOR_SCENE_META.title}</span>
