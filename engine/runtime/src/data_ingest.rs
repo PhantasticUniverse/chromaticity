@@ -1279,6 +1279,7 @@ impl JsonParser<'_> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
+    //! Evidence: EV-DETERMINISM (T1) — ADR-017 data ingestion and cassette replay pins.
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 

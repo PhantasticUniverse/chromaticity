@@ -489,6 +489,7 @@ fn parse_f32_col(raw: &str, name: &str, line: usize) -> Result<f32, OfflineRepla
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod offline_replay_pins {
+    //! Evidence: EV-DETERMINISM (T1) — offline high-res GPU replay determinism pins.
     use super::*;
 
     const OFFLINE_TEST_SHADER: &str = r#"

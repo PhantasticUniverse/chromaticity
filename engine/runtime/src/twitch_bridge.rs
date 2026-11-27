@@ -1254,6 +1254,7 @@ impl JsonParser<'_> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
+    //! Evidence: EV-INTEGRATION-MATRIX (T1) — Twitch EventSub/Chat visual bridge pins.
     use super::*;
     use crate::data_ingest::{DataIngestEngine, DataSourceSpec, DataTransport};
 

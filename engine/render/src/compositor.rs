@@ -702,6 +702,7 @@ pub fn render_layer_stack(
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod compositor_tests {
+    //! Evidence: EV-RENDER-CONFORMANCE (T1) — GPU multi-layer blend and keying pins.
     use super::*;
 
     fn solid_rgba(width: u32, height: u32, rgba: [u8; 4]) -> Vec<u8> {
