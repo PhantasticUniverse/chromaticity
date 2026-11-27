@@ -353,6 +353,7 @@ pub mod camera_adapter;
 pub mod composition;
 pub mod compositor;
 pub mod glsl_includes;
+pub mod gpu_cost;
 pub mod multipass;
 pub mod nv12_convert;
 pub mod offline_replay;
@@ -381,6 +382,7 @@ pub use camera_adapter::{
 pub use composition::{PreparedScene, compose_transition_frame, compose_transition_frame_gpu};
 pub use compositor::{BlendMode, CompositeLayer, LayerStack, LayerTransform, render_layer_stack};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
+pub use gpu_cost::{AdaptiveScaleConfig, AdaptiveScaleController, GpuCostTier, ScaleDecision};
 pub use multipass::{
     CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
     UniformInput, UniformValue, compile_and_render_multipass,
