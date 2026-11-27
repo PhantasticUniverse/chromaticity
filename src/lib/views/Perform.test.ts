@@ -58,7 +58,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import Perform from './Perform.svelte';
-import { MEDIA_CARDS, MEDIA_DEFAULT_ACTIVE_INDEX, MEDIA_TABS } from '../data/perform-fixtures';
+import { MEDIA_DEFAULT_ACTIVE_INDEX, MEDIA_TABS } from '../data/perform-fixtures';
 import { resolveSetlistRowToSceneId } from '../data/perform-setlist-resolver';
 import { SETLIST_FIXTURE } from '../data/setlist-fixtures';
 import { clearCache as clearLibraryCache } from '../stores/library';
@@ -66,6 +66,8 @@ import { loadedSceneStore } from '../stores/loadedScene.svelte';
 import { performVariantStore } from '../stores/performVariant.svelte';
 import { playlistStore } from '../stores/playlist.svelte';
 import { presetStore } from '../stores/preset.svelte';
+import { routeStore } from '../stores/route.svelte';
+import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -125,14 +127,18 @@ beforeEach(() => {
   // setlist-row click test re-fetches via the mocked invoke instead
   // of replaying a prior test's `null` cached value.
   clearLibraryCache();
+  routeStore.set('perform');
+  youtubeLayerStore.reset();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   cleanup();
-  // Restore the default variant for the next describe block.
+  // Restore the default variant, route, and YouTube layer for the next block.
   performVariantStore.set('classic');
+  routeStore.set('perform');
+  youtubeLayerStore.reset();
 });
 
 describe('Perform view', () => {
@@ -316,10 +322,15 @@ describe('Perform view', () => {
     );
   });
 
-  it('default-paints the second media card (webcam) as active', () => {
-    const { container } = render(Perform);
+  it('default-paints the second media card (webcam) as active and omits fake demo video placeholders', () => {
+    const { container, getByTestId } = render(Perform);
     const cards = container.querySelectorAll('.media-card');
-    expect(cards.length).toBe(MEDIA_CARDS.length);
+    // 4 real live/calibration sources (`none`, `webcam`, `display`, `test card`)
+    // + 1 live `YouTube` card; zero fake `.mp4`/`.mov` placeholders.
+    expect(cards.length).toBe(5);
+    expect(container.textContent).not.toContain('jellyfish.mp4');
+    expect(container.textContent).not.toContain('RoadTrip.mp4');
+    expect(container.textContent).not.toContain('CloudAtlas.mp4');
     // `MEDIA_DEFAULT_ACTIVE_INDEX === 1` — the webcam tile.
     const activeCard = cards[MEDIA_DEFAULT_ACTIVE_INDEX];
     expect(activeCard).toBeDefined();
@@ -330,6 +341,8 @@ describe('Perform view', () => {
     expect(activeCard).toHaveClass('active');
     // First (none) tile is not active by default.
     expect(cards[0]).toHaveAttribute('aria-pressed', 'false');
+    // `+ Add Media` action card is present in the strip.
+    expect(getByTestId('media-add-action')).toBeInTheDocument();
   });
 
   it('clicking the test-card media tile swaps the preview to the TestCard surface', async () => {
@@ -339,11 +352,10 @@ describe('Perform view', () => {
     // (fallback "Glitch" title when no scene loaded). The widget
     // exposes role=img + the derived aria-label.
     expect(container.querySelector('[aria-label="Live scene preview · Glitch"]')).not.toBeNull();
-    const testCardIndex = MEDIA_CARDS.findIndex((c) => c.kind === 'test');
-    expect(testCardIndex).toBeGreaterThan(-1);
-    const cards = container.querySelectorAll('.media-card');
-    const testTile = cards[testCardIndex] as HTMLButtonElement | undefined;
-    expect(testTile).toBeDefined();
+    const testTile = container.querySelector(
+      '.media-card[data-kind="test"]',
+    ) as HTMLButtonElement | null;
+    expect(testTile).not.toBeNull();
     if (!testTile) return;
     await fireEvent.click(testTile);
     expect(testTile).toHaveAttribute('aria-pressed', 'true');
@@ -528,32 +540,53 @@ describe('Perform view', () => {
   });
 
   it('clicking the Live media tab filters the grid to live-capture cards (webcam kind)', async () => {
-    // Wave 2.4 Lane PERF.E — tab pills now filter MEDIA_CARDS by `kind`:
-    //   - `all`   → every card
-    //   - `live`  → live-capture sources (`webcam` kind covers
-    //               webcam + display tiles)
-    //   - `media` → non-live (`none` / `video` / `test`)
-    // The bundle's three tabs (`all` / `live` / `media`) map onto the
-    // four fixture kinds per the JSX docstring; the brief's later
-    // `videos / stills / webgl / webcam / test` taxonomy was not the
-    // tree's shape so this lane honours the existing fixture surface.
+    // Tab pills filter the real media strip cleanly:
+    //   - `all`   → 5 cards (`none`, `webcam`, `display`, `test card`, `YouTube`)
+    //   - `live`  → 2 live-capture sources (`webcam`, `display`)
+    //   - `media` → 3 non-live-capture sources (`none`, `test card`, `YouTube`)
     const { container, getByRole } = render(Perform);
-    // Default: all 15 cards render under the `all` tab.
-    expect(container.querySelectorAll('.media-card').length).toBe(MEDIA_CARDS.length);
+    // Default: all 5 real source cards render under the `all` tab.
+    expect(container.querySelectorAll('.media-card').length).toBe(5);
     const tablist = getByRole('tablist', { name: 'Media filter' });
     const liveTab = within(tablist).getByRole('tab', { name: 'live' });
     await fireEvent.click(liveTab);
-    // Only the 2 webcam-kind cards remain.
-    const webcamCount = MEDIA_CARDS.filter((c) => c.kind === 'webcam').length;
-    expect(webcamCount).toBe(2);
-    expect(container.querySelectorAll('.media-card').length).toBe(webcamCount);
-    // Switch back to `all` — grid restores to the full 15.
+    // Only the 2 live-capture webcam-kind cards remain.
+    expect(container.querySelectorAll('.media-card').length).toBe(2);
+    // Switch back to `all` — grid restores to all 5 real cards.
     await fireEvent.click(within(tablist).getByRole('tab', { name: 'all' }));
-    expect(container.querySelectorAll('.media-card').length).toBe(MEDIA_CARDS.length);
-    // Switch to `media` — only non-webcam cards (`none` / `video` / `test`).
+    expect(container.querySelectorAll('.media-card').length).toBe(5);
+    // Switch to `media` — only non-webcam cards (`none`, `test card`, `YouTube`).
     await fireEvent.click(within(tablist).getByRole('tab', { name: 'media' }));
-    const mediaCount = MEDIA_CARDS.filter((c) => c.kind !== 'webcam').length;
-    expect(container.querySelectorAll('.media-card').length).toBe(mediaCount);
+    expect(container.querySelectorAll('.media-card').length).toBe(3);
+  });
+
+  it('wires the YouTube card to youtubeLayerStore and routes + Add Media to Sources', async () => {
+    const { getByTestId } = render(Perform);
+    const ytCard = getByTestId('media-card-youtube');
+    const addCard = getByTestId('media-add-action');
+
+    // Empty YouTube store: card shows idle state and clicking opens Sources.
+    expect(ytCard).toHaveAttribute('data-youtube-ready', 'false');
+    expect(ytCard).toHaveAttribute('aria-pressed', 'false');
+    await fireEvent.click(ytCard);
+    expect(routeStore.current).toBe('sources');
+
+    // Reset route and load a valid YouTube stream: card reflects the video ID
+    // and clicking selects it without navigating away from Perform.
+    routeStore.set('perform');
+    youtubeLayerStore.load('dQw4w9WgXcQ');
+    await flushMicrotasks();
+
+    expect(ytCard).toHaveAttribute('data-youtube-ready', 'true');
+    expect(ytCard.textContent).toContain('YouTube · dQw4w9WgXcQ');
+    await fireEvent.click(ytCard);
+    expect(routeStore.current).toBe('perform');
+    expect(ytCard).toHaveAttribute('aria-pressed', 'true');
+    expect(ytCard).toHaveClass('active');
+
+    // Clicking `+ Add Media` always navigates to Sources.
+    await fireEvent.click(addCard);
+    expect(routeStore.current).toBe('sources');
   });
 
   it('renders the default Glitch preview label and Previous / Next nav buttons', () => {

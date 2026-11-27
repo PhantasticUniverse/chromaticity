@@ -77,7 +77,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     `stores/playlist.ts`) remain — they back the engine IPC tests and
   //     the W10 Inputs Inspector view. Only the Perform-side markup leaves.
   import {
-    MEDIA_CARDS,
     MEDIA_DEFAULT_ACTIVE_INDEX,
     MEDIA_TABS,
     META_CONTROL_GROUPS,
@@ -86,6 +85,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MediaTab,
     type PerformControlGroup,
     type PerformControlSpec,
+    type PerformMediaCard,
   } from '../data/perform-fixtures';
   import { resolveSetlistRowToSceneId } from '../data/perform-setlist-resolver';
   import { SETLIST_FIXTURE } from '../data/setlist-fixtures';
@@ -98,6 +98,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { performVariantStore } from '../stores/performVariant.svelte';
   import { playlistStore } from '../stores/playlist.svelte';
   import { presetStore } from '../stores/preset.svelte';
+  import { routeStore } from '../stores/route.svelte';
+  import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
   import {
     ControlGroup,
     Fader,
@@ -126,9 +128,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     return (SCENE_KINDS as readonly string[]).includes(k) ? (k as SceneKind) : 'rings';
   }
 
-  /** SceneKind for a media card — bundle parity is `rings` when the
-   * fixture does not declare one. */
-  const MEDIA_DEFAULT_SCENE_KIND: SceneKind = 'rings';
+  /**
+   * Real live & calibration inputs for the Perform Media strip.
+   * Replaces the previous 12 hardcoded placeholder `.mp4`/`.mov` tiles
+   * with honest live inputs (`none`, `webcam`, `display`, `test card`)
+   * plus a live YouTube stream slot bound to `youtubeLayerStore` and an
+   * `+ Add Media` action tile that navigates to `Sources`.
+   */
+  const PERFORM_MEDIA_CARDS: readonly PerformMediaCard[] = [
+    { id: 'm-none', label: 'none', kind: 'none', seed: 0 },
+    { id: 'm-webcam', label: 'webcam', kind: 'webcam', seed: 0 },
+    { id: 'm-display', label: 'display', kind: 'webcam', seed: 0 },
+    { id: 'm-test', label: 'test card', kind: 'test', seed: 0 },
+  ];
+
+  const YOUTUBE_MEDIA_ID = 'm-youtube';
 
   // Wave 2.1 Lane B.1 — layout variant. Lives in the module-singleton
   // `performVariantStore` so the TopBar's STANDARD / CONSOLE toggle and
@@ -144,28 +158,34 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // loaded scene. Until a scene is loaded the active id is `null`
   // and no row carries the active treatment.
   const loadedSceneId = $derived(loadedSceneStore.snapshot?.id ?? null);
-  let activeMedia = $state<number>(MEDIA_DEFAULT_ACTIVE_INDEX);
+  let activeMediaId = $state<string>(
+    PERFORM_MEDIA_CARDS[MEDIA_DEFAULT_ACTIVE_INDEX]?.id ?? 'm-webcam',
+  );
   let activeTab = $state<MediaTab>('all');
   let perfMode = $state<'perform' | 'edit'>('perform');
   let railMode = $state<'scenes' | 'presets' | 'edit' | 'add'>('scenes');
 
-  // Wave 2.4 Lane PERF.E — Media-tab pills now filter the media grid by
-  // card `kind`. The bundle's three tabs map onto the four fixture kinds
-  // (`none` / `webcam` / `video` / `test`) as:
-  //   - `all`   → every card
-  //   - `live`  → live-capture sources (`webcam` covers webcam + display)
-  //   - `media` → static / playable media (`none`, `video`, `test`)
+  // Wave 2.4 Lane PERF.E — Media-tab pills filter the real media grid by
+  // source category:
+  //   - `all`   → every real source (`none`, `webcam`, `display`, `test card`, `YouTube`)
+  //   - `live`  → live-capture sources (`webcam`, `display`)
+  //   - `media` → non-live-capture media (`none`, `test card`, `YouTube`)
   // The test-card tile stays special-cased in the preview pane (Wave 2.3
   // Lane Q.2 G.9) — that lives in `testCardActive` below and is
   // independent of which filter tab is active.
   const filteredMediaCards = $derived(
-    MEDIA_CARDS.filter((card) => {
+    PERFORM_MEDIA_CARDS.filter((card) => {
       if (activeTab === 'all') return true;
       if (activeTab === 'live') return card.kind === 'webcam';
-      // 'media' — non-live cards.
+      // 'media' — non-live-capture cards (`none`, `test card`).
       return card.kind !== 'webcam';
     }),
   );
+
+  const youtubeState = $derived(youtubeLayerStore.state);
+  const youtubeReady = $derived(youtubeState.kind === 'ready');
+  const youtubeCardActive = $derived(youtubeReady && activeMediaId === YOUTUBE_MEDIA_ID);
+  const showYouTubeCard = $derived(activeTab === 'all' || activeTab === 'media');
 
   // W18 PR1 locked: ChromaCtx / entitlement store does not exist yet, so
   // `unlicensed` is hardcoded false. Wire to the entitlement store when
@@ -177,7 +197,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // when the test-card MediaStrip card is active. Per the W18 PR1
   // frozen-frame contract, switching tiles dispatches no IPC; the hero
   // simply re-renders the alternate placeholder surface.
-  const testCardActive = $derived(MEDIA_CARDS[activeMedia]?.kind === 'test');
+  const testCardActive = $derived(activeMediaId === 'm-test');
 
   /**
    * Wave 2.4 Lane PERF.B — resolve a `SETLIST_FIXTURE` row to a real
@@ -210,8 +230,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
   }
 
-  function selectMedia(idx: number): void {
-    activeMedia = idx;
+  function selectMedia(id: string): void {
+    activeMediaId = id;
+  }
+
+  function handleYouTubeCardClick(): void {
+    if (youtubeLayerStore.isReady) {
+      activeMediaId = YOUTUBE_MEDIA_ID;
+      return;
+    }
+    routeStore.set('sources');
+  }
+
+  function openMediaSources(): void {
+    routeStore.set('sources');
   }
 
   function selectTab(tab: MediaTab): void {
@@ -1449,27 +1481,61 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
            refresh is Wave 2.5+ scope. -->
     </header>
     <div class="panel__body media-grid">
-      <!-- Wave 2.4 Lane PERF.E — render `filteredMediaCards` (filtered by
-           the active media-tab kind) but key + select by each card's
-           original MEDIA_CARDS index so `activeMedia` semantics stay
-           stable across tab switches. -->
       {#each filteredMediaCards as card (card.id)}
-        {@const originalIdx = MEDIA_CARDS.indexOf(card)}
-        <!-- Shared-primitive backfill — `MediaCard` widget closes the
-             W18 PR1 inline `mediaCardBlock` snippet placeholder. The
-             widget composes the W36 `SceneStill` canvas thumbnail
-             for `video` tiles in place of the previous hue-rotating
-             gradient surrogate; `none` / `webcam` / `test` surface
-             treatments stay bundle-faithful. -->
         <MediaCard
           label={card.label}
           kind={card.kind}
           seed={card.seed}
-          sceneKind={MEDIA_DEFAULT_SCENE_KIND}
-          active={originalIdx === activeMedia}
-          onClick={() => selectMedia(originalIdx)}
+          active={card.id === activeMediaId}
+          onClick={() => selectMedia(card.id)}
         />
       {/each}
+
+      {#if showYouTubeCard}
+        <button
+          type="button"
+          class="media-card media-card--youtube"
+          class:active={youtubeCardActive}
+          class:media-card--youtube-ready={youtubeReady}
+          data-kind="youtube"
+          data-youtube-ready={youtubeReady ? 'true' : 'false'}
+          data-testid="media-card-youtube"
+          title={youtubeState.kind === 'ready'
+            ? `YouTube stream ${youtubeState.videoId} (${youtubeState.blendMode}, ${Math.round(youtubeState.opacity * 100)}%)`
+            : 'Open Sources to load a YouTube visual stream'}
+          aria-label={youtubeState.kind === 'ready'
+            ? `YouTube · ${youtubeState.videoId}`
+            : 'YouTube — open Sources to load stream'}
+          aria-pressed={youtubeCardActive ? 'true' : 'false'}
+          onclick={handleYouTubeCardClick}
+        >
+          <span class="media-card__yt-surface" aria-hidden="true">
+            <Icon name="play" size={20} />
+          </span>
+          <span
+            class="media-card__yt-badge mono"
+            class:media-card__yt-badge--live={youtubeReady}
+            aria-hidden="true"
+          >
+            {youtubeReady ? 'LIVE' : 'YT'}
+          </span>
+          <span class="media-card__label mono">
+            {youtubeState.kind === 'ready' ? `YouTube · ${youtubeState.videoId}` : 'YouTube'}
+          </span>
+        </button>
+      {/if}
+
+      <button
+        type="button"
+        class="media-add-card"
+        data-testid="media-add-action"
+        title="Open Sources to add live media or a YouTube stream"
+        aria-label="Add Media or YouTube"
+        onclick={openMediaSources}
+      >
+        <Icon name="plus" size={18} />
+        <span class="media-add-card__label mono">+ Add Media</span>
+      </button>
     </div>
   </section>
 {/snippet}
@@ -2521,6 +2587,124 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .media-grid :global(.media-card__thumb),
   .media-grid :global(.media-card__test) {
     inset: 3px;
+  }
+  /* Live YouTube stream card in the Perform media strip. Mirrors the
+   * `MediaCard` visual contract (74 px height, 1px border, active glow,
+   * dark-backed bottom chip) while clearly distinguishing YouTube live
+   * stream status from local capture tiles. */
+  .media-card--youtube {
+    display: block;
+    width: 100%;
+    height: 74px;
+    min-height: 74px;
+    box-sizing: border-box;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--color-bg-2), var(--color-bg-0));
+    border: 1px solid var(--color-line-2);
+    position: relative;
+    cursor: pointer;
+    padding: 0;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+  .media-card--youtube:hover {
+    border-color: var(--color-primary);
+  }
+  .media-card--youtube.active {
+    border-color: var(--color-primary);
+    box-shadow:
+      0 0 0 1px var(--color-primary),
+      0 0 calc(12px * var(--glow, 1)) var(--color-primary);
+  }
+  .media-card--youtube:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .media-card__yt-surface {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--color-text-2);
+  }
+  .media-card--youtube-ready .media-card__yt-surface {
+    color: var(--color-primary);
+  }
+  .media-card__yt-badge {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 1px 5px;
+    border-radius: var(--radius-xs);
+    line-height: 1.3;
+    z-index: 2;
+  }
+  .media-card__yt-badge--live {
+    background: #b91c1c;
+    color: #fff;
+  }
+  .media-card--youtube .media-card__label {
+    position: absolute;
+    left: 4px;
+    bottom: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 500;
+    padding: 2px 4px;
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    z-index: 2;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  }
+  /* Action tile that routes the operator to Sources to add live media
+   * or a YouTube visual stream. */
+  .media-add-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    height: 74px;
+    min-height: 74px;
+    box-sizing: border-box;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--color-line-2);
+    background: var(--color-bg-2);
+    color: var(--color-text-2);
+    cursor: pointer;
+    padding: var(--space-xs);
+    transition:
+      border-color 120ms ease,
+      color 120ms ease,
+      background-color 120ms ease;
+  }
+  .media-add-card:hover {
+    border-color: var(--color-primary);
+    color: var(--color-text-1);
+    background: var(--color-bg-3);
+  }
+  .media-add-card:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .media-add-card__label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
   }
 
   /* ---------------- Preview hero ------------------------------------------ */
