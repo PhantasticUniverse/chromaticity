@@ -115,7 +115,15 @@ use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
 use crate::metering::apply_input_gain;
 use crate::silent::SilentSource;
-use crate::uniforms::{AudioAnalysisWindow, AudioUniformSnapshot, extract_uniform_snapshot};
+use crate::uniforms::{
+    AudioAnalysisWindow, AudioAxisAvailability, AudioUniformSnapshot, BPM_DEFAULT, FFT_WINDOW_SIZE,
+    extract_live_metering_snapshot,
+};
+
+/// Canonical 4 Hz cadence for tempo autocorrelation updates inside the live
+/// producer loop (matches `BpmEstimator`'s 8-frame ≈ 2 s design window while
+/// keeping per-callback RMS/peak/FFT latency at ~21 ms and CPU < 1%).
+const BPM_UPDATE_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Back-off when [`IngestStatus::Pending`] or
 /// [`IngestStatus::WouldBlock`] is observed.
@@ -351,6 +359,9 @@ impl AudioRuntime {
             .spawn(move || {
                 let mut frame = AudioFrame::default();
                 let mut analysis_window = AudioAnalysisWindow::default();
+                let mut cached_bpm = BPM_DEFAULT;
+                let mut last_bpm_update: Option<Instant> = None;
+                let mut prev_bpm_ready = false;
                 loop {
                     match shutdown_rx.try_recv() {
                         Ok(()) | Err(TryRecvError::Disconnected) => break,
@@ -379,18 +390,32 @@ impl AudioRuntime {
                                 if input_gain_linear != 1.0 {
                                     apply_input_gain(frame.samples_mut(), input_gain_linear);
                                 }
-                                let analysis_frame = analysis_window.observe(&frame);
-                                let analysis_snapshot = extract_uniform_snapshot(&analysis_frame);
-                                let smoothed_bpm = estimator.observe(&analysis_frame);
-                                let merged = AudioUniformSnapshot {
-                                    bpm: smoothed_bpm,
-                                    bpm_availability: analysis_snapshot.bpm_availability,
-                                    rms: analysis_snapshot.rms,
-                                    peak: analysis_snapshot.peak,
-                                    fft_bands: analysis_snapshot.fft_bands,
-                                    fft_availability: analysis_snapshot.fft_availability,
-                                    degraded: false,
+                                analysis_window.push(&frame);
+                                let bpm_ready = analysis_window.is_bpm_ready();
+                                let bpm_availability = if bpm_ready {
+                                    AudioAxisAvailability::Ready
+                                } else {
+                                    AudioAxisAvailability::Warming
                                 };
+                                let now = Instant::now();
+                                let should_update_bpm = bpm_ready
+                                    && (!prev_bpm_ready
+                                        || last_bpm_update.is_none_or(|prev| {
+                                            now.duration_since(prev) >= BPM_UPDATE_INTERVAL
+                                        }));
+                                if should_update_bpm {
+                                    let full_frame = analysis_window.full_frame();
+                                    cached_bpm = estimator.observe(&full_frame);
+                                    last_bpm_update = Some(now);
+                                }
+                                prev_bpm_ready = bpm_ready;
+
+                                let recent_frame = analysis_window.recent_frame(FFT_WINDOW_SIZE);
+                                let merged = extract_live_metering_snapshot(
+                                    &recent_frame,
+                                    cached_bpm,
+                                    bpm_availability,
+                                );
                                 match shared_for_thread.lock() {
                                     Ok(mut guard) => {
                                         *guard = merged;

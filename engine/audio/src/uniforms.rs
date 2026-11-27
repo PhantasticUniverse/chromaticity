@@ -202,10 +202,9 @@ pub(crate) struct AudioAnalysisWindow {
 }
 
 impl AudioAnalysisWindow {
-    /// Push one frame into the rolling mono window and return the
-    /// current accumulated analysis frame.
-    #[must_use]
-    pub(crate) fn observe(&mut self, frame: &AudioFrame) -> AudioFrame {
+    /// Push one frame into the rolling mono window without copying the full
+    /// BPM history buffer.
+    pub(crate) fn push(&mut self, frame: &AudioFrame) {
         let mono = mono_mix(frame);
         let sample_rate_hz = frame.sample_rate_hz();
         if self.sample_rate_hz != Some(sample_rate_hz) {
@@ -219,8 +218,43 @@ impl AudioAnalysisWindow {
         while self.samples.len() > capacity {
             let _ = self.samples.pop_front();
         }
+    }
 
+    /// Push one frame into the rolling mono window and return the
+    /// current accumulated analysis frame.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn observe(&mut self, frame: &AudioFrame) -> AudioFrame {
+        self.push(frame);
+        self.full_frame()
+    }
+
+    /// Snapshot the full rolling mono window (for 4 Hz BPM autocorrelation).
+    #[must_use]
+    pub(crate) fn full_frame(&self) -> AudioFrame {
+        let sample_rate_hz = self.sample_rate_hz.unwrap_or(0);
         AudioFrame::new(sample_rate_hz, 1, self.samples.iter().copied().collect())
+    }
+
+    /// Snapshot the most recent `max_samples` mono samples (e.g.
+    /// [`FFT_WINDOW_SIZE`] = 1024 samples ≈ 21.3 ms at 48 kHz) for
+    /// low-latency RMS/peak metering and live FFT spectrum extraction.
+    #[must_use]
+    pub(crate) fn recent_frame(&self, max_samples: usize) -> AudioFrame {
+        let sample_rate_hz = self.sample_rate_hz.unwrap_or(0);
+        let len = self.samples.len();
+        let start = len.saturating_sub(max_samples);
+        let samples: Vec<f32> = self.samples.iter().skip(start).copied().collect();
+        AudioFrame::new(sample_rate_hz, 1, samples)
+    }
+
+    /// Whether the rolling window holds enough samples for BPM analysis.
+    #[must_use]
+    pub(crate) fn is_bpm_ready(&self) -> bool {
+        let Some(sr) = self.sample_rate_hz else {
+            return false;
+        };
+        sr != 0 && self.samples.len() >= bpm_analysis_window_samples(sr)
     }
 
     /// Number of mono samples currently retained.
@@ -374,6 +408,46 @@ pub fn extract_uniform_snapshot(frame: &AudioFrame) -> AudioUniformSnapshot {
     }
 }
 
+/// Fast live-path snapshot extractor for the production audio runtime:
+/// computes RMS, peak, and 8-band FFT over `recent_frame` (typically the
+/// most recent 1024 samples ≈ 21 ms at 48 kHz) while carrying forward the
+/// 4 Hz smoothed BPM estimate without re-running autocorrelation.
+#[must_use]
+pub(crate) fn extract_live_metering_snapshot(
+    recent_frame: &AudioFrame,
+    bpm: f32,
+    bpm_availability: AudioAxisAvailability,
+) -> AudioUniformSnapshot {
+    let mono = mono_mix(recent_frame);
+    if mono.is_empty() {
+        return AudioUniformSnapshot {
+            bpm,
+            bpm_availability,
+            ..AudioUniformSnapshot::default()
+        };
+    }
+
+    let rms = compute_rms_over_window(&mono);
+    let peak = compute_peak_over_window(&mono);
+    let sample_rate_hz = recent_frame.sample_rate_hz();
+    let fft_bands = compute_fft_bands(&mono, sample_rate_hz);
+    let fft_availability = if sample_rate_hz != 0 && mono.len() >= FFT_WINDOW_SIZE {
+        AudioAxisAvailability::Ready
+    } else {
+        AudioAxisAvailability::Warming
+    };
+
+    AudioUniformSnapshot {
+        bpm,
+        bpm_availability,
+        rms,
+        peak,
+        fft_bands,
+        fft_availability,
+        degraded: false,
+    }
+}
+
 /// Slice-2 reuse helper: compute the per-frame autocorrelation BPM
 /// for `frame` using the same algorithm
 /// [`extract_uniform_snapshot`] uses internally.
@@ -484,12 +558,15 @@ fn compute_fft_bands(mono: &[f32], sample_rate_hz: u32) -> [f32; FFT_BAND_COUNT]
         return bands;
     }
 
-    // Hann-window the head of the buffer into a complex FFT input.
+    // Hann-window the most recent FFT_WINDOW_SIZE samples of the buffer
+    // into a complex FFT input so live spectrum updates track the latest
+    // audio instead of lagging by the full BPM history window.
+    let start = mono.len() - FFT_WINDOW_SIZE;
+    let tail = &mono[start..];
     let mut buffer: Vec<Complex32> = (0..FFT_WINDOW_SIZE)
         .map(|i| {
-            // Bounds-checked: i < FFT_WINDOW_SIZE <= mono.len() by
-            // the early-return above.
-            let s = mono[i];
+            // Bounds-checked: tail.len() == FFT_WINDOW_SIZE by construction.
+            let s = tail[i];
             let w = hann(i, FFT_WINDOW_SIZE);
             Complex32 { re: s * w, im: 0.0 }
         })
@@ -599,22 +676,38 @@ fn compute_bpm_autocorr(mono: &[f32], sample_rate_hz: u32) -> f32 {
         return BPM_DEFAULT;
     }
 
+    // Exact linear autocorrelation via the Wiener–Khinchin theorem in
+    // O(N log N) instead of O(N * max_lag) (~1B multiply-adds at 48 kHz).
+    // Zero-padding to >= 2 * N eliminates circular wrap-around aliasing so
+    // `ifft(|fft(padded)|^2)[lag] / fft_len == sum_{i=0}^{N-lag-1} x[i]*x[i+lag]`.
+    let fft_len = (mono.len().saturating_mul(2)).next_power_of_two();
+    let mut planner = FftPlanner::<f32>::new();
+    let forward = planner.plan_fft_forward(fft_len);
+    let inverse = planner.plan_fft_inverse(fft_len);
+
+    let mut spectrum = vec![Complex32 { re: 0.0, im: 0.0 }; fft_len];
+    for (slot, &sample) in spectrum.iter_mut().zip(mono.iter()) {
+        slot.re = sample;
+    }
+    forward.process(&mut spectrum);
+    for bin in &mut spectrum {
+        bin.re = bin.norm_sqr();
+        bin.im = 0.0;
+    }
+    inverse.process(&mut spectrum);
+
+    let inv_fft_len = 1.0 / fft_len as f32;
     let mut best_lag = 0_usize;
     let mut best_score = 0.0_f32;
-    for lag in min_lag..=max_lag {
+    for (offset, bin) in spectrum[min_lag..=max_lag].iter().enumerate() {
+        let lag = min_lag + offset;
         let n = mono.len() - lag;
         if n == 0 {
             break;
         }
-        let mut acc = 0.0_f32;
-        for i in 0..n {
-            // Bounds-checked: `i < n = mono.len() - lag` and
-            // `i + lag < mono.len()`.
-            acc += mono[i] * mono[i + lag];
-        }
-        // Normalise by overlap length so longer lags don't get
-        // an artificially smaller score from the shorter overlap
-        // window.
+        // Normalise by FFT length and overlap length so longer lags don't
+        // get an artificially smaller score from the shorter overlap window.
+        let acc = bin.re * inv_fft_len;
         let score = acc / n as f32;
         if score > best_score {
             best_score = score;
