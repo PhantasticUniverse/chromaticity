@@ -257,7 +257,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         />
       </div>
     {/if}
-    <div class="app-shell__view" class:app-shell__view--perform={routeStore.current === 'perform'}>
+    <div
+      class="app-shell__view"
+      class:app-shell__view--perform={routeStore.current === 'perform' ||
+        routeStore.current === 'author' ||
+        routeStore.current === 'patch'}
+    >
       {#if routeStore.current === 'perform'}
         <Perform />
       {:else if routeStore.current === 'library'}
@@ -356,18 +361,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .app-shell__view {
     flex: 1;
     overflow: auto;
-    padding: var(--space-3xl) var(--space-4xl);
+    padding: var(--space-lg) var(--space-xl);
     min-height: 0;
   }
-  /* Wave 2.3 Lane Q.2 (G.5 + G.8 + G.11) — Perform-only padding shrink.
-   * The default `--space-3xl --space-4xl` (24 / 32 px) padding eats
-   * 56 px of horizontal space, squeezing the 5-control-group strip
-   * below its fit-without-clip threshold. The bundle's `.view` has
-   * zero padding and `.perform` adds its own 10 px gutter
-   * (`styles.css` line 667). Mirror that here behind a Perform-only
-   * class to avoid disturbing the other routes' typography. */
   .app-shell__view--perform {
     padding: var(--space-md);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
   .app-shell__banner {
     flex-shrink: 0;

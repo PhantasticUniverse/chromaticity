@@ -449,7 +449,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <Icon name="record" size={11} />
       </button>
     {/if}
-    <span class="top-bar__rec" data-state="off" title="Recording (W15+ scope)">
+    <span class="top-bar__rec" data-state="off" title="Recording status">
       <span class="top-bar__rec-dot" aria-hidden="true"></span>
       <span>REC</span>
     </span>
@@ -472,15 +472,34 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <style>
   .top-bar {
     display: grid;
-    grid-template-columns: max-content 1fr max-content;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--space-md);
     padding: 0 var(--space-md);
     height: 52px;
+    min-width: 0;
     background: var(--color-bg-1);
     border-bottom: 1px solid var(--color-line-1);
     color: var(--color-text-0);
     font-size: var(--font-size-body-sm);
+  }
+
+  @media (max-width: 1380px) {
+    .top-bar {
+      gap: var(--space-sm);
+      padding: 0 var(--space-sm);
+    }
+    .top-bar__title {
+      display: none;
+    }
+    .top-bar__center,
+    .top-bar__hud,
+    .top-bar__pills {
+      gap: 6px;
+    }
+    .top-bar__transport-vu {
+      display: none;
+    }
   }
 
   .top-bar__brand {

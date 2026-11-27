@@ -1637,9 +1637,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   @media (max-width: 1399px) {
     .perform--console {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(170px, 0.42fr);
       grid-template-areas:
         'left middle'
         'right right';
+    }
+    .perform--console .perform__col-middle .preview {
+      max-height: clamp(160px, 30vh, 280px);
     }
   }
 
