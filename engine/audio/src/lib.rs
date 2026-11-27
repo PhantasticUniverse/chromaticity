@@ -222,6 +222,7 @@ pub mod metering;
 pub mod observability;
 pub mod runtime;
 pub mod silent;
+pub mod spectrum;
 pub mod uniforms;
 
 pub use bpm::BpmEstimator;
@@ -233,6 +234,10 @@ pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource}
 pub use metering::{
     AgcNormalizer, AgcOutput, SpectralFluxOnsetDetector, StereoLevels, apply_input_gain,
     compute_stereo_levels, compute_true_peak_dbtp, db_to_linear,
+};
+pub use spectrum::{
+    BpmEstimate, FusedBpmEstimator, SPECTRUM_BANDS_48, SPECTRUM_BANDS_64, compute_log_spectrum_64,
+    downsample_64_to_48,
 };
 pub use uniforms::{AudioAxisAvailability, AudioUniformSnapshot, extract_uniform_snapshot};
 
