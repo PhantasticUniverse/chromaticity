@@ -174,7 +174,7 @@ accounts. It functions as a navigation hub, not an asset catalog._
 | 4 | Vimeo presence | 1/GAP | None | Same posture. |
 | 5 | Instagram presence | 1/GAP | None | Same posture. |
 | 6 | Twitter / X presence | 1/GAP | None | Same posture. |
-| 7 | Email contact (`social@synesthesia.live`) | 3/MATCH | `xjbutler@gmail.com` (AO direct) | Direct email-AO is the V1 contact path. |
+| 7 | Email contact (`social@synesthesia.live`) | 3/MATCH | `maintainer@chromaticity.app` (AO direct) | Direct email-AO is the V1 contact path. |
 | 8 | Community GitHub repo #1 (Synesthesia Ecosystem, by Matto at `github.com/mattorp/synesthesia-ecosystem`) | 2/PARTIAL | `PhantasticUniverse/chromaticity` is single-repo first-party | The Synesthesia ecosystem-extension pattern (third-party utility-script repos around the main app) is a community-maturity signal Chromaticity has not yet earned. The first-party repo is open under proprietary license per `LICENSES/LicenseRef-Chromaticity-Proprietary.txt` so the substrate for community-extension repos exists. |
 | 9 | Community GitHub repo #2 (Synesthesia Scripts, by Shady Headstash at `github.com/headstash/synesthesia-scripts`) | 2/PARTIAL | Same as row 8 | Same posture. |
 

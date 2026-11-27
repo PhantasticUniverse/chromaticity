@@ -12,4 +12,4 @@ instead of the trailer-block signer would be a DCO integrity
 violation. A correct parser must select the trailer-block entry.
 
 Profile-Impact: none
-Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+Signed-off-by: Contributor Name <contributor@example.com>

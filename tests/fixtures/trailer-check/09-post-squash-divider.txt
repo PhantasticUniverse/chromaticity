@@ -21,9 +21,9 @@ Bundles two approved follow-ups from the evidence-tag-lint strict-graduation arc
 
 ## Trailers
 
-Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+Signed-off-by: Contributor Name <contributor@example.com>
 Profile-Impact: none
 
 ---------
 
-Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+Signed-off-by: Contributor Name <contributor@example.com>

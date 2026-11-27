@@ -77,4 +77,4 @@ that PR body.
 
 Profile-Impact: none
 
-Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+Signed-off-by: Contributor Name <contributor@example.com>

@@ -8,4 +8,4 @@ The script must fail this fixture with a diagnostic explicitly
 citing the missing Profile-Impact trailer so the commit author can
 fix it without guessing.
 
-Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+Signed-off-by: Contributor Name <contributor@example.com>

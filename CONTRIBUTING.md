@@ -106,7 +106,7 @@ Succession merges under T1/T2 carry `Succession-Waiver: T1` or
     Profile-Impact: none
     ADR: ADR-001
     Evidence: EV-DETERMINISM, EV-RENDER-CONFORMANCE
-    Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+    Signed-off-by: Contributor Name <contributor@example.com>
 
     feat(scene)!: drop legacy favslot alias on /favslot/{n}/save
 
@@ -114,7 +114,7 @@ Succession merges under T1/T2 carry `Succession-Waiver: T1` or
     Profile-Impact: compat-syn-v1-major
     ADR: ADR-005
     Evidence: EV-COMPAT-PROFILE-DIFF, EV-INTEGRATION-MATRIX
-    Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+    Signed-off-by: Contributor Name <contributor@example.com>
 
 ## Branching
 

@@ -16,4 +16,4 @@ mentions — any line that is neither blank nor trailer-shaped must
 act as a hard boundary walking upward from the end of the message.
 
 Profile-Impact: none
-Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+Signed-off-by: Contributor Name <contributor@example.com>

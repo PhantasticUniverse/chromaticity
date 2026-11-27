@@ -13,4 +13,4 @@ value. A correct parser must pick the trailer-block value, not the
 body-prose mention.
 
 Profile-Impact: none
-Signed-off-by: Xavier Butler <xjbutler@gmail.com>
+Signed-off-by: Contributor Name <contributor@example.com>

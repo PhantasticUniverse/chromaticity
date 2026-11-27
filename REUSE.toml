@@ -53,6 +53,21 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Chromaticity"
 SPDX-License-Identifier = "CC-BY-4.0"
 
+# Third-party Material for MkDocs and Lunr.js static assets emitted into
+# dist/help/assets/ by `mkdocs build`.
+[[annotations]]
+path = [
+  "dist/help/assets/javascripts/**",
+  "dist/help/assets/stylesheets/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "Martin Donath <martin.donath@squidfunk.com> (Material for MkDocs)",
+  "2020 Oliver Nightingale (Lunr.js)",
+  "2008 Taku Kudo (TinySegmenter)",
+]
+SPDX-License-Identifier = "MIT"
+
 # -----------------------------------------------------------------------------
 # Root repo-policy and governance files are proprietary (authoritative).
 # -----------------------------------------------------------------------------

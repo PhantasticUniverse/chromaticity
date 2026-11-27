@@ -58,7 +58,7 @@ Until resolution:
 
 The AO handle `@xjbutler` was an aspirational identity used in planning
 documents; the real GitHub account is `@PhantasticUniverse` (email
-`xjbutler@gmail.com`). The substitution landed with the first
+`maintainer@chromaticity.app`). The substitution landed with the first
 branch-protection re-harden (PR #4, commit `3cc163e`).
 
 The Deputy handle remains deferred pending onboarding per

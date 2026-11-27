@@ -33,9 +33,11 @@ npm run tauri dev
 
 ### Build Standalone Desktop Bundle
 
+Requires `mkdocs` (`pip install mkdocs-material`) for the in-app help corpus
+(`beforeBuildCommand` runs `npm run build:bundle` automatically):
+
 ```bash
-npm run build:bundle
-npx tauri build
+npx tauri build --bundles app
 ```
 
 ## Status

@@ -52,6 +52,9 @@ export default [
       // to do here, but the explicit ignore keeps any future
       // tooling sweep from accidentally claiming it.
       'docs-corpus/**',
+      // Local operator-dropped scenes & media (QuickJS scene scripts use runtime globals).
+      'scenes-local/**',
+      'media-local/**',
     ],
   },
 

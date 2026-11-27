@@ -12,10 +12,10 @@ All Rights Reserved.
 
 Chromaticity source code, binary releases, and proprietary asset material in
 this repository (collectively, the "Work") are the exclusive property of
-Chromaticity ("the Owner"). The Work is made available solely to individuals
-granted access in writing by the Owner, for the sole purpose of authoring,
-reviewing, building, testing, or operating Chromaticity itself on behalf of
-the Owner.
+Chromaticity ("the Owner"). Source visibility in this public repository is
+provided solely for inspection, evaluation, and authorized contribution; it
+does not grant any license to copy, redistribute, or use the Work beyond
+statutory rights and the terms below.
 
 Subject to a separate written authorization from the Owner, no license,
 express or implied, is granted by this file or by access to this repository.
@@ -43,9 +43,24 @@ In particular, and without limiting the foregoing, you MUST NOT:
      .chromaShow, and any trade dress derivative of the Work) to endorse,
      promote, or identify any derivative or third-party product.
 
+Documentation authored by the Owner under docs/ is licensed under
+Creative Commons Attribution 4.0 International (CC-BY-4.0) except where an
+individual file's SPDX header states otherwise. See
+LICENSES/CC-BY-4.0.txt for the full CC-BY-4.0 text.
+
+Third-party material, when present, is governed by the license of its
+originating project. The license text for each such license appears under
+LICENSES/<SPDX-ID>.txt; attribution, origin URL, pinned commit SHA, and
+clean-room review outcome are recorded under third_party/<origin>/
+(UPSTREAM-VERSION.md) and NOTICE.md per docs/43-development-standards.md
+Sec.10.3.
+
 THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 OWNER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
 ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
 CONNECTION WITH THE WORK OR THE USE OR OTHER DEALINGS IN THE WORK.
+
+For licensing inquiries, contact: legal@chromaticity.app
+For security reports, see: SECURITY.md
