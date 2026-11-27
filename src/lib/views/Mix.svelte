@@ -282,7 +282,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       if (!active || ctx === null) return;
       const video = canvas.parentElement?.querySelector('video');
       if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-        const maxW = 640;
+        const needsPixelKey = params.chromaKey !== null || params.lumaKey !== null;
+        const maxW = needsPixelKey ? 640 : 1280;
         const scale = Math.min(1, maxW / video.videoWidth);
         const w = Math.max(1, Math.round(video.videoWidth * scale));
         const h = Math.max(1, Math.round(video.videoHeight * scale));
@@ -290,12 +291,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         if (canvas.height !== h) canvas.height = h;
         try {
           ctx.drawImage(video, 0, 0, w, h);
-          const frame = ctx.getImageData(0, 0, w, h);
-          applyPixelKeyingToImageData(frame.data, {
-            chromaKey: params.chromaKey,
-            lumaKey: params.lumaKey,
-          });
-          ctx.putImageData(frame, 0, 0);
+          if (needsPixelKey) {
+            const frame = ctx.getImageData(0, 0, w, h);
+            applyPixelKeyingToImageData(frame.data, {
+              chromaKey: params.chromaKey,
+              lumaKey: params.lumaKey,
+            });
+            ctx.putImageData(frame, 0, 0);
+          }
         } catch {
           // Cross-origin or transient video decode errors are skipped cleanly.
         }
@@ -1450,7 +1453,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                         {#if youtubeMachine.kind === 'ready' && youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
                           <video
                             class="mix__live-video"
-                            class:mix__live-video--key-source={keying.active}
+                            class:mix__live-video--key-source={!youtubeInteractive}
                             class:mix__live-youtube--passthrough={dragState !== null ||
                               !youtubeInteractive}
                             data-testid="mix-youtube-video"
@@ -1472,7 +1475,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                               youtubeResolveError = `Video playback error (code ${code})`;
                             }}
                           ></video>
-                          {#if keying.active}
+                          {#if !youtubeInteractive || keying.active}
                             <canvas
                               class="mix__keyed-canvas"
                               data-testid="mix-keyed-canvas-youtube"
@@ -3766,7 +3769,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .mix__live-video--key-source {
     position: absolute;
     inset: 0;
-    opacity: 0;
+    opacity: 0.001;
     pointer-events: none;
   }
 
