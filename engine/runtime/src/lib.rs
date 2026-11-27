@@ -111,6 +111,10 @@ pub use command_bus::{
     CrossbeamChannel, Event, EventPayload, EventSeq, InMemoryBus, MappingId, MappingSource,
     PresetId, SnapSlotId,
 };
+pub use cue_runner::{
+    ConfigLoadOutcome, CueBpmMode, CueRunnerState, CueTransitionEvent, FootswitchAction,
+    SetlistCue, SetlistCueRunner, load_or_self_heal_json,
+};
 pub use data_ingest::{
     CASSETTE_FORMAT_VERSION, CassetteSample, DATA_UNIFORM_PREFIX, DataCassette, DataIngestEngine,
     DataIngestError, DataIngestState, DataSourceSpec, DataTransport, DataValue,
@@ -151,6 +155,7 @@ pub use script_bridge::{
 pub mod broadcast_stream;
 pub mod command_bus;
 pub mod crash_resume;
+pub mod cue_runner;
 pub mod data_ingest;
 pub mod pro_dj_link_listener;
 pub mod recorder;
