@@ -436,6 +436,10 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::recorder::stop_recording,
             commands::recorder::get_recorder_status,
             commands::recorder::save_replay_buffer,
+            commands::stream::start_twitch_stream,
+            commands::stream::stop_twitch_stream,
+            commands::stream::get_stream_status,
+            commands::stream::push_stream_frame,
         ])
         .run(tauri::generate_context!())
 }

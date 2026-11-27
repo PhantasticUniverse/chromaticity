@@ -416,6 +416,8 @@ pub struct AppState {
     pub recorder_muxer: Mutex<Option<chromaticity_runtime::recorder::Fmp4Muxer>>,
     /// Phase 7a keyframe-aligned rolling replay buffer ("save last 15–120 s").
     pub replay_buffer: Mutex<chromaticity_runtime::recorder::ReplayBuffer>,
+    /// Managed live Twitch RTMPS/RTMP `ffmpeg` publisher child process and state machine.
+    pub twitch_stream: Mutex<crate::commands::stream::TwitchStreamProcess>,
     /// Live QuickJS `script.js` host (ADR-012 sandboxed worker).
     pub script_host: Mutex<crate::script_host::ScriptHost>,
     /// Active entitlement token installed via `install_license` (ADR-009).
@@ -513,6 +515,7 @@ impl AppState {
                 .ok(),
             ),
             replay_buffer: Mutex::new(chromaticity_runtime::recorder::ReplayBuffer::default()),
+            twitch_stream: Mutex::new(crate::commands::stream::TwitchStreamProcess::new()),
             script_host: Mutex::new(crate::script_host::ScriptHost::new()),
             entitlement_token: Mutex::new(None),
             started_at: Instant::now(),
@@ -741,6 +744,13 @@ impl AppState {
             };
             guard.as_ref().map_or("idle", |muxer| muxer.state().label())
         };
+        let twitch_stream = {
+            let guard = match self.twitch_stream.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            guard.state_name()
+        };
         serde_json::json!({
             "runtime": runtime,
             "loaded_scene": loaded_scene,
@@ -748,6 +758,7 @@ impl AppState {
             "script_host": script_host,
             "entitlement": entitlement,
             "recorder": recorder,
+            "twitch_stream": twitch_stream,
             "midi_learn": midi_learn,
             "osc_sender": osc_sender,
             "crash_resume": crash_resume,
@@ -894,6 +905,12 @@ impl Drop for AppState {
         // Ensure background threads are torn down (scheduler_thread
         // before audio) BEFORE any other AppState field is dropped.
         self.shutdown_runtime();
+        // Ensure any running ffmpeg broadcast child process is killed and reaped.
+        let mut stream_guard = match self.twitch_stream.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        stream_guard.terminate_child();
     }
 }
 

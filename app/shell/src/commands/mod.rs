@@ -31,6 +31,7 @@ pub mod render;
 pub mod scene;
 pub mod settings;
 pub mod snap;
+pub mod stream;
 pub mod syphon;
 pub mod thumbnail;
 
