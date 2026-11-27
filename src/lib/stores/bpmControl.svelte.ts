@@ -15,6 +15,7 @@
 
 import { untrack } from 'svelte';
 
+import { setBpmOverride } from '../ipc/showtime';
 import { registerStateMachine } from '../state/diagnostics';
 
 export type BpmControlMachine =
@@ -76,6 +77,17 @@ class BpmControlStore {
     return this._phaseOffsetBeats;
   }
 
+  private syncToBackend(resyncNow = false): void {
+    const machine = untrack(() => this.machine);
+    const phaseOffsetBeats = untrack(() => this._phaseOffsetBeats);
+    void setBpmOverride({
+      mode: machine.kind,
+      ...(machine.kind === 'manual' ? { bpm: machine.bpm } : {}),
+      phaseOffsetBeats,
+      ...(resyncNow ? { resyncNow: true } : {}),
+    });
+  }
+
   /** Toggle BPM auto-listening ON (`auto`) or OFF (`manual`, locking `currentBpm`). */
   toggleListening(currentDetectedBpm = 120): void {
     const current = untrack(() => this.machine);
@@ -84,19 +96,23 @@ class BpmControlStore {
     } else {
       this.machine = { kind: 'auto' };
     }
+    this.syncToBackend();
   }
 
   setAuto(): void {
     this.machine = { kind: 'auto' };
+    this.syncToBackend();
   }
 
   setManualBpm(bpm: number): void {
     this.machine = { kind: 'manual', bpm: clampBpm(bpm) };
+    this.syncToBackend();
   }
 
   /** Disable BPM tracking & tempo clock completely (`off` mode). */
   setOff(): void {
     this.machine = { kind: 'off' };
+    this.syncToBackend();
   }
 
   /** Set continuous beatmatch phase scrub in `[-0.5, +0.5]` beats. */
@@ -105,18 +121,21 @@ class BpmControlStore {
       MIN_PHASE,
       Math.min(MAX_PHASE, Math.round(beats * 1000) / 1000),
     );
+    this.syncToBackend();
   }
 
   /** Momentary CDJ-style platter nudge (`deltaBeats`, e.g. `-0.05` or `+0.05`). */
   nudgePhase(deltaBeats: number): void {
     const current = untrack(() => this._phaseOffsetBeats);
     this._phaseOffsetBeats = wrapPhase(current + deltaBeats);
+    this.syncToBackend();
   }
 
   /** Snap downbeat phase to `nowMs` immediately (resets visual beat 1 to now). */
   resyncDownbeat(nowMs = Date.now()): void {
     this._resyncEpochMs = nowMs;
     this._phaseOffsetBeats = 0;
+    this.syncToBackend(true);
   }
 
   /** Record a manual tap-tempo hit; switches to `manual` once >= 2 taps are recorded. */
@@ -140,6 +159,7 @@ class BpmControlStore {
     if (avgMs <= 0) return null;
     const bpm = clampBpm(60000 / avgMs);
     this.machine = { kind: 'manual', bpm };
+    this.syncToBackend();
     return bpm;
   }
 

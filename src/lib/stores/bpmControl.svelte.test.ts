@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}));
 
 import { bpmControlStore } from './bpmControl.svelte';
 
 describe('bpmControlStore', () => {
   beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
     bpmControlStore.reset();
   });
 
@@ -60,5 +70,64 @@ describe('bpmControlStore', () => {
     expect(bpmControlStore.isOff).toBe(false);
     expect(bpmControlStore.isListening).toBe(true);
     expect(bpmControlStore.effectiveBpm(128)).toBe(128);
+  });
+
+  it('pushes every state change to set_bpm_override and sets resyncNow on resyncDownbeat', () => {
+    bpmControlStore.toggleListening(128);
+    expect(invokeMock).toHaveBeenLastCalledWith('set_bpm_override', {
+      mode: 'manual',
+      bpm: 128,
+      phaseOffsetBeats: 0,
+    });
+
+    bpmControlStore.setPhaseOffset(0.25);
+    expect(invokeMock).toHaveBeenLastCalledWith('set_bpm_override', {
+      mode: 'manual',
+      bpm: 128,
+      phaseOffsetBeats: 0.25,
+    });
+
+    bpmControlStore.nudgePhase(-0.05);
+    expect(invokeMock).toHaveBeenLastCalledWith('set_bpm_override', {
+      mode: 'manual',
+      bpm: 128,
+      phaseOffsetBeats: 0.2,
+    });
+
+    bpmControlStore.resyncDownbeat(2000);
+    expect(invokeMock).toHaveBeenLastCalledWith('set_bpm_override', {
+      mode: 'manual',
+      bpm: 128,
+      phaseOffsetBeats: 0,
+      resyncNow: true,
+    });
+
+    bpmControlStore.setOff();
+    expect(invokeMock).toHaveBeenLastCalledWith('set_bpm_override', {
+      mode: 'off',
+      phaseOffsetBeats: 0,
+    });
+
+    bpmControlStore.setAuto();
+    expect(invokeMock).toHaveBeenLastCalledWith('set_bpm_override', {
+      mode: 'auto',
+      phaseOffsetBeats: 0,
+    });
+
+    bpmControlStore.tap(1000);
+    bpmControlStore.tap(1500);
+    expect(invokeMock).toHaveBeenLastCalledWith('set_bpm_override', {
+      mode: 'manual',
+      bpm: 120,
+      phaseOffsetBeats: 0,
+    });
+  });
+
+  it('swallows IPC rejections gracefully when Tauri runtime is unavailable', async () => {
+    invokeMock.mockRejectedValue(new Error('not in tauri'));
+    bpmControlStore.setManualBpm(135);
+    bpmControlStore.resyncDownbeat(3000);
+    await Promise.resolve();
+    expect(bpmControlStore.manualBpm).toBe(135);
   });
 });

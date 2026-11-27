@@ -85,6 +85,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/settings-fixtures';
   import Icon from '../Icon.svelte';
   import { pickFolder } from '../ipc/picker';
+  import {
+    getAudioChannelPair,
+    getDjDeviceProfile,
+    inferDjDeviceProfileFallback,
+    setAudioChannelPair,
+    type DjDeviceProfilePayload,
+  } from '../ipc/showtime';
   import { audioDevicesStore } from '../stores/audioDevices.svelte';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import { settingsStore } from '../stores/settings.svelte';
@@ -270,6 +277,86 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * disk persistence so rapid slider drags collapse into one save. */
   const inputGainDb = $derived((audioSnapshot.input_gain - 0.5) * AUDIO_INPUT_GAIN_DB_RANGE_DB);
   const inputGainDbLabel = $derived(`${inputGainDb >= 0 ? '+' : ''}${inputGainDb.toFixed(1)} dB`);
+
+  /* ----- DJ / Rekordbox Master vs. Cue Routing -----
+   * Queries `get_dj_device_profile` whenever the selected input device
+   * changes (with a pure client-side fallback heuristic outside Tauri)
+   * and binds the active stereo channel pair to `set_audio_channel_pair`
+   * so Headphone Cue (Ch 3-4) stays isolated from visuals. */
+  interface AudioChannelPairOption {
+    readonly id: string;
+    readonly left: number;
+    readonly right: number;
+    readonly label: string;
+  }
+
+  const DJ_CHANNEL_PAIR_OPTIONS: readonly AudioChannelPairOption[] = [
+    { id: '0-1', left: 0, right: 1, label: 'Ch 1–2 (Master / REC OUT)' },
+    { id: '2-3', left: 2, right: 3, label: 'Ch 3–4 (Headphone Cue / Deck)' },
+    { id: '4-5', left: 4, right: 5, label: 'Ch 5–6' },
+    { id: '6-7', left: 6, right: 7, label: 'Ch 7–8' },
+  ];
+
+  const selectedInputDeviceName = $derived(
+    audioInputOptions.find((opt) => opt.id === audioSnapshot.input_device)?.label ??
+      audioSnapshot.input_device,
+  );
+
+  let djProfile = $state<DjDeviceProfilePayload>(inferDjDeviceProfileFallback('default', 4));
+  let selectedChannelPairId = $state<string>('0-1');
+
+  $effect(() => {
+    const deviceName = selectedInputDeviceName;
+    djProfile = inferDjDeviceProfileFallback(deviceName, 4);
+    let cancelled = false;
+    void getDjDeviceProfile(deviceName, 4).then((resolved) => {
+      if (!cancelled && resolved) {
+        djProfile = resolved;
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  $effect(() => {
+    let cancelled = false;
+    void getAudioChannelPair().then((pair) => {
+      if (!cancelled && pair) {
+        const key = `${pair.left_channel}-${pair.right_channel}`;
+        if (DJ_CHANNEL_PAIR_OPTIONS.some((opt) => opt.id === key)) {
+          selectedChannelPairId = key;
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  const djProfileBadgeLabel = $derived(
+    djProfile.recognized
+      ? djProfile.kind === 'ddj_flx10'
+        ? 'DDJ-FLX10 Detected'
+        : 'Rekordbox / DJ Profile'
+      : 'Stereo / Multi-Channel Input',
+  );
+
+  const isCuePairWarningActive = $derived.by(() => {
+    if (!djProfile.recognized) return false;
+    const cueKey = djProfile.cue_pair
+      ? `${djProfile.cue_pair.left_channel}-${djProfile.cue_pair.right_channel}`
+      : '2-3';
+    return selectedChannelPairId === cueKey;
+  });
+
+  function handleChannelPairChange(pairId: string): void {
+    selectedChannelPairId = pairId;
+    const option = DJ_CHANNEL_PAIR_OPTIONS.find((opt) => opt.id === pairId);
+    if (option) {
+      void setAudioChannelPair(option.left, option.right);
+    }
+  }
 
   /* ----- Graphics / Output — persisted via settingsStore -----
    * Same pattern as Audio: read through `graphicsSnapshot` (the
@@ -682,6 +769,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               onResetPeak={() => peakHold.reset()}
               ariaLabel="Audio input monitor"
             />
+          </div>
+        </div>
+      </div>
+      <div class="settings__dj-card" data-testid="dj-routing-card">
+        <div class="settings__dj-head">
+          <h3 class="settings__dj-title">DJ / Rekordbox Master vs. Cue Routing</h3>
+          <span
+            class="settings__dj-badge"
+            class:settings__dj-badge--recognized={djProfile.recognized}
+            data-testid="dj-profile-badge"
+          >
+            {djProfileBadgeLabel}
+          </span>
+        </div>
+        <p class="settings__dj-note" data-testid="dj-profile-note">{djProfile.notes}</p>
+        <div class="settings__dj-row">
+          <label for="dj-channel-pair" class="settings__label">Channel Pair</label>
+          <div class="settings__dj-controls">
+            <select
+              id="dj-channel-pair"
+              class="settings__select"
+              value={selectedChannelPairId}
+              onchange={(e) => handleChannelPairChange(e.currentTarget.value)}
+            >
+              {#each DJ_CHANNEL_PAIR_OPTIONS as opt (opt.id)}
+                <option value={opt.id}>{opt.label}</option>
+              {/each}
+            </select>
+            {#if isCuePairWarningActive}
+              <span class="settings__dj-warn" role="status" data-testid="dj-cue-warning">
+                Cue pair selected — Headphone Cue may leak into visuals. Use Ch 1–2 (Master).
+              </span>
+            {/if}
           </div>
         </div>
       </div>
@@ -1864,6 +1984,99 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-body-sm);
     min-width: 72px;
     text-align: right;
+  }
+
+  /* ----- DJ / Rekordbox Master vs. Cue Routing card ----- */
+
+  .settings__dj-card {
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-line-1);
+    border-radius: var(--radius-sm);
+    padding: var(--space-md);
+    margin: 0 0 var(--space-md) 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .settings__dj-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .settings__dj-title {
+    margin: 0;
+    font-size: var(--font-size-body-sm);
+    font-weight: 600;
+    color: var(--color-text-0);
+  }
+
+  .settings__dj-badge {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+    padding: 2px var(--space-sm);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-2);
+    color: var(--color-text-1);
+    white-space: nowrap;
+  }
+
+  .settings__dj-badge--recognized {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    border-color: var(--color-primary);
+  }
+
+  .settings__dj-note {
+    margin: 0;
+    color: var(--color-text-2);
+    font-size: var(--font-size-body-sm);
+    line-height: 1.4;
+  }
+
+  .settings__dj-row {
+    display: grid;
+    grid-template-columns: 184px minmax(0, 1fr);
+    gap: var(--space-sm) var(--space-lg);
+    align-items: center;
+  }
+
+  @media (max-width: 720px) {
+    .settings__dj-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .settings__dj-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .settings__dj-controls .settings__select {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .settings__dj-warn {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--space-sm);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-danger, #d04a4a);
+    background: var(--color-bg-2);
+    color: var(--color-text-0);
+    font-size: var(--font-size-body-xs);
+    line-height: 1.35;
   }
 
   /* ----- W42 Live Sources ----- */

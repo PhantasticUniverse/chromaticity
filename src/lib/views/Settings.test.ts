@@ -843,4 +843,80 @@ describe('Settings view', () => {
       vi.useRealTimers();
     }
   });
+
+  it('DJ / Rekordbox routing card queries profile on device change and warns on Cue pair selection', async () => {
+    const live: AudioDevicePayload[] = [
+      {
+        id: 'input-ddj-flx10',
+        name: 'Pioneer DJ DDJ-FLX10',
+        kind: 'Input',
+      },
+      {
+        id: 'input-built-in-mic',
+        name: 'Built-in Microphone',
+        kind: 'Input',
+      },
+    ];
+    audioDevicesStore.devices = live;
+
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'get_dj_device_profile' && args?.deviceName === 'Pioneer DJ DDJ-FLX10') {
+        return Promise.resolve({
+          kind: 'ddj_flx10',
+          display_name: 'Pioneer DJ DDJ-FLX10',
+          expected_channels: 4,
+          master_pair: { left_channel: 0, right_channel: 1, label: 'Ch 1-2' },
+          master_label: 'Ch 1–2 (Master / REC OUT)',
+          cue_pair: { left_channel: 2, right_channel: 3, label: 'Ch 3-4' },
+          cue_label: 'Ch 3–4 (Headphone Cue / Deck)',
+          supports_pc_master_out: true,
+          notes: 'Tap Ch 1–2 (Master / REC OUT); Cue Ch 3–4 isolated.',
+          recognized: true,
+        });
+      }
+      if (cmd === 'set_audio_channel_pair') {
+        return Promise.resolve({
+          left_channel: args?.leftChannel ?? 0,
+          right_channel: args?.rightChannel ?? 1,
+          label: 'Ch 3-4',
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
+
+    await fireEvent.change(input, { target: { value: 'input-ddj-flx10' } });
+
+    await vi.waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('get_dj_device_profile', {
+        deviceName: 'Pioneer DJ DDJ-FLX10',
+        channelCount: 4,
+      });
+    });
+
+    expect(within(audio).getByTestId('dj-profile-badge')).toHaveTextContent('DDJ-FLX10 Detected');
+    expect(within(audio).getByTestId('dj-profile-note')).toHaveTextContent(
+      /Tap Ch 1–2 \(Master \/ REC OUT\)/,
+    );
+    expect(within(audio).queryByTestId('dj-cue-warning')).toBeNull();
+
+    const pairSelect = within(audio).getByLabelText('Channel Pair') as HTMLSelectElement;
+    await fireEvent.change(pairSelect, { target: { value: '2-3' } });
+
+    expect(invokeMock).toHaveBeenCalledWith('set_audio_channel_pair', {
+      leftChannel: 2,
+      rightChannel: 3,
+    });
+    expect(within(audio).getByTestId('dj-cue-warning')).toBeInTheDocument();
+
+    await fireEvent.change(pairSelect, { target: { value: '0-1' } });
+    expect(invokeMock).toHaveBeenCalledWith('set_audio_channel_pair', {
+      leftChannel: 0,
+      rightChannel: 1,
+    });
+    expect(within(audio).queryByTestId('dj-cue-warning')).toBeNull();
+  });
 });
