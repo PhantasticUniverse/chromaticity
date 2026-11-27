@@ -59,11 +59,20 @@ pub fn render_gpu_frame(
             .latest_audio_snapshot()
             .copied()
             .unwrap_or_else(AudioUniformSnapshot::default);
-        let mut controls = [0.5_f32; 8];
+        let mut controls = [0.5_f32; 16];
         for (i, slot) in controls.iter_mut().enumerate() {
             if let Some(val) = state_guard.control_value(ControlId(i as u32)) {
                 *slot = val.0;
             }
+        }
+        // Pack 2D XY pad controls (legacy index 5 -> slots 5..6, flagship index 11 -> slots 11..12).
+        if let Some([x, y]) = state_guard.xy_control_value(ControlId(5)) {
+            controls[5] = x;
+            controls[6] = y;
+        }
+        if let Some([x, y]) = state_guard.xy_control_value(ControlId(11)) {
+            controls[11] = x;
+            controls[12] = y;
         }
         (frame, audio, controls)
     };
@@ -72,7 +81,7 @@ pub fn render_gpu_frame(
     let mut script_audio = audio;
     script_audio.bpm = resolved_bpm.bpm;
 
-    // Tick the QuickJS `script.js` host if active and fold emitted `ctrl_0..ctrl_7`
+    // Tick the QuickJS `script.js` host if active and fold emitted `ctrl_0..ctrl_15`
     // reactive overrides into this frame's uniform controls.
     {
         let mut script_guard = match app_state.script_host.lock() {
@@ -211,7 +220,7 @@ pub fn compile_and_preview_shader(
         Err(p) => p.into_inner(),
     };
     gpu.set_inline_shader(scene_id, fragment_glsl);
-    let _ = gpu.render_frame(16, 16, 0.0, 0, &AudioUniformSnapshot::default(), [0.5; 8])?;
+    let _ = gpu.render_frame(16, 16, 0.0, 0, &AudioUniformSnapshot::default(), [0.5; 16])?;
     Ok(gpu.status())
 }
 
@@ -258,7 +267,7 @@ pub fn render_scene_thumbnail_impl(
         THUMBNAIL_ELAPSED_SECS,
         THUMBNAIL_FRAME_INDEX,
         &preview_audio,
-        [0.5; 8],
+        [0.5; 16],
     )
 }
 

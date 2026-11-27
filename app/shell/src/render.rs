@@ -347,7 +347,7 @@ impl GpuPreviewEngine {
         elapsed_secs: f32,
         frame: u64,
         audio: &AudioUniformSnapshot,
-        controls: [f32; 8],
+        controls: [f32; 16],
     ) -> Result<Vec<u8>, String> {
         self.render_frame_with_bpm(
             width,
@@ -373,6 +373,8 @@ impl GpuPreviewEngine {
     /// - `chroma_AudioFFT` (`float[8]`: 8 log-spaced FFT bands)
     /// - `chroma_Ctrl0` (`vec4`: controls 0..3)
     /// - `chroma_Ctrl1` (`vec4`: controls 4..7)
+    /// - `chroma_Ctrl2` (`vec4`: controls 8..11)
+    /// - `chroma_Ctrl3` (`vec4`: controls 12..15, including XY.y & script.js envelopes)
     #[allow(clippy::too_many_arguments)]
     pub fn render_frame_with_bpm(
         &mut self,
@@ -381,7 +383,7 @@ impl GpuPreviewEngine {
         elapsed_secs: f32,
         frame: u64,
         audio: &AudioUniformSnapshot,
-        controls: [f32; 8],
+        controls: [f32; 16],
         bpm_override: &BpmOverrideState,
     ) -> Result<Vec<u8>, String> {
         let (scene_id, fragment_source) = match &self.state {
@@ -483,7 +485,7 @@ pub fn build_standard_uniforms(
     elapsed_secs: f32,
     frame: u64,
     audio: &AudioUniformSnapshot,
-    controls: [f32; 8],
+    controls: [f32; 16],
 ) -> Vec<UniformInput> {
     build_standard_uniforms_with_bpm(
         target_size,
@@ -504,7 +506,7 @@ pub fn build_standard_uniforms_with_bpm(
     elapsed_secs: f32,
     frame: u64,
     audio: &AudioUniformSnapshot,
-    controls: [f32; 8],
+    controls: [f32; 16],
     bpm_override: &BpmOverrideState,
 ) -> Vec<UniformInput> {
     let w = target_size.0 as f32;
@@ -550,6 +552,14 @@ pub fn build_standard_uniforms_with_bpm(
             name: "chroma_Ctrl1".to_string(),
             value: UniformValue::Vec4([controls[4], controls[5], controls[6], controls[7]]),
         },
+        UniformInput {
+            name: "chroma_Ctrl2".to_string(),
+            value: UniformValue::Vec4([controls[8], controls[9], controls[10], controls[11]]),
+        },
+        UniformInput {
+            name: "chroma_Ctrl3".to_string(),
+            value: UniformValue::Vec4([controls[12], controls[13], controls[14], controls[15]]),
+        },
     ]
 }
 
@@ -563,7 +573,7 @@ pub fn build_standard_spec(
     elapsed_secs: f32,
     frame: u64,
     audio: &AudioUniformSnapshot,
-    controls: [f32; 8],
+    controls: [f32; 16],
 ) -> MultipassSpec {
     let uniforms = build_standard_uniforms(target_size, elapsed_secs, frame, audio, controls);
 
@@ -619,7 +629,7 @@ void main() {
         assert_eq!(engine.state_name(), "idle");
         assert!(
             engine
-                .render_frame(32, 32, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 8])
+                .render_frame(32, 32, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 16])
                 .is_err()
         );
 
@@ -627,7 +637,14 @@ void main() {
         assert_eq!(engine.state_name(), "active");
 
         let bytes = engine
-            .render_frame(32, 32, 1.25, 10, &AudioUniformSnapshot::default(), [0.5; 8])
+            .render_frame(
+                32,
+                32,
+                1.25,
+                10,
+                &AudioUniformSnapshot::default(),
+                [0.5; 16],
+            )
             .expect("inline shader should render via wgpu");
         assert_eq!(bytes.len(), 32 * 32 * 4);
         assert_eq!(engine.status().frames_rendered, 1);
@@ -643,7 +660,7 @@ void main() {
                 1.26,
                 11,
                 &AudioUniformSnapshot::default(),
-                [0.75; 8],
+                [0.75; 16],
             )
             .expect("cached pipeline should handle resize and uniform update");
         assert_eq!(bytes2.len(), 64 * 36 * 4);
@@ -658,7 +675,7 @@ void main() {
             1.26,
             11,
             &AudioUniformSnapshot::default(),
-            [0.75; 8],
+            [0.75; 16],
         );
         let reference = renderer.render(&spec).expect("reference multipass render");
         assert_eq!(
@@ -671,7 +688,7 @@ void main() {
     fn invalid_shader_transitions_to_error_state_without_panicking() {
         let mut engine = GpuPreviewEngine::new();
         engine.set_inline_shader("broken".into(), "not valid glsl".into());
-        let err = engine.render_frame(16, 16, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 8]);
+        let err = engine.render_frame(16, 16, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 16]);
         assert!(err.is_err());
         assert_eq!(engine.state_name(), "error");
         assert!(engine.status().error.is_some());
@@ -726,7 +743,7 @@ void main() {
             engine.set_scene(id.clone(), &dir);
             assert_eq!(engine.state_name(), "active", "scene {id} should arm");
             let bytes = engine
-                .render_frame(w, h, 2.5, 150, &audio, [0.5; 8])
+                .render_frame(w, h, 2.5, 150, &audio, [0.5; 16])
                 .unwrap_or_else(|e| panic!("shader {id} failed to compile/render: {e}"));
             assert_eq!(bytes.len(), (w * h * 4) as usize);
             assert!(
@@ -741,7 +758,7 @@ void main() {
                 for i in 0..samples {
                     let t0 = Instant::now();
                     let _ = engine
-                        .render_frame(w, h, 2.5 + (i as f32) * 0.016, 151 + i, &audio, [0.5; 8])
+                        .render_frame(w, h, 2.5 + (i as f32) * 0.016, 151 + i, &audio, [0.5; 16])
                         .unwrap_or_else(|e| panic!("bench frame failed for {id}: {e}"));
                     total_ms += t0.elapsed().as_secs_f64() * 1000.0;
                 }
@@ -820,7 +837,7 @@ void main() {
             ..AudioUniformSnapshot::default()
         };
         let uniforms =
-            build_standard_uniforms_with_bpm((64, 36), 2.0, 120, &audio, [0.5; 8], &manual);
+            build_standard_uniforms_with_bpm((64, 36), 2.0, 120, &audio, [0.5; 16], &manual);
         let syn_bpm = uniforms
             .iter()
             .find(|u| u.name == "syn_BPM")
@@ -853,7 +870,8 @@ void main() {
             bpm: 140.0,
             ..AudioUniformSnapshot::default()
         };
-        let uniforms = build_standard_uniforms_with_bpm((64, 36), 4.0, 240, &audio, [0.5; 8], &off);
+        let uniforms =
+            build_standard_uniforms_with_bpm((64, 36), 4.0, 240, &audio, [0.5; 16], &off);
         let syn_bpm = uniforms
             .iter()
             .find(|u| u.name == "syn_BPM")
@@ -861,6 +879,143 @@ void main() {
         match syn_bpm.value {
             UniformValue::Vec4(v) => assert_eq!(v, [0.0, 0.0, 0.0, 0.0]),
             ref other => panic!("expected Vec4 for syn_BPM, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn grandmaster_flagship_scenes_validate_script_and_render_on_metal() {
+        use crate::script_host::ScriptHost;
+        use chromaticity_scene::loader::load_chroma_dir;
+        use chromaticity_scene::validator::{ValidationMode, validate};
+        use std::collections::BTreeSet;
+
+        let scenes_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("scenes-local");
+        let flagships = [
+            "gm-kerr-hologram-orrery.chroma",
+            "gm-dyson-prismatic-lotus.chroma",
+            "gm-hyperbolic-opal-cathedral.chroma",
+            "gm-quantum-ferro-nebula.chroma",
+        ];
+
+        let mut engine = GpuPreviewEngine::new();
+        let mut script_host = ScriptHost::new();
+
+        for folder in flagships {
+            let dir = scenes_root.join(folder);
+            assert!(
+                dir.is_dir(),
+                "missing flagship scene dir: {}",
+                dir.display()
+            );
+
+            // 1. Strict schema validation via chromaticity-scene
+            let scene =
+                load_chroma_dir(&dir).unwrap_or_else(|e| panic!("failed to load {folder}: {e}"));
+            let warnings = validate(&scene, ValidationMode::Strict)
+                .unwrap_or_else(|e| panic!("strict validation failed for {folder}: {e:?}"));
+            assert!(
+                warnings.is_empty(),
+                "{folder} produced strict warnings: {warnings:?}"
+            );
+            assert_eq!(
+                scene.controls.len(),
+                12,
+                "{folder} should declare 12 controls"
+            );
+
+            let groups: BTreeSet<String> = scene
+                .controls
+                .iter()
+                .map(|c| c.ui_group.clone().unwrap_or_default())
+                .collect();
+            assert_eq!(
+                groups,
+                ["Geometry", "Motion", "Optics", "Performance"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect::<BTreeSet<_>>(),
+                "{folder} must organize controls into the 4 canonical UI_GROUPs"
+            );
+            for c in &scene.controls {
+                assert!(
+                    c.description
+                        .as_deref()
+                        .is_some_and(|d| !d.trim().is_empty()),
+                    "{folder} control {} missing DESCRIPTION",
+                    c.name
+                );
+            }
+            let presets = scene
+                .extensions
+                .get("PRESETS")
+                .and_then(|v| v.as_array())
+                .unwrap_or_else(|| panic!("{folder} missing PRESETS array"));
+            assert_eq!(presets.len(), 5, "{folder} should ship 5 factory presets");
+
+            // 2. QuickJS script.js lifecycle + deterministic drift & transient decay
+            script_host.set_scene(folder.to_string(), &dir);
+            assert_eq!(
+                script_host.state_name(),
+                "active",
+                "{folder} script.js failed to arm: {:?}",
+                script_host.status().error
+            );
+            let mut controls = [0.5_f32; 16];
+            for step in 0..30u64 {
+                let peak = if step == 10 { 0.92 } else { 0.25 };
+                let audio = AudioUniformSnapshot {
+                    bpm: 126.0,
+                    rms: if step == 10 { 0.78 } else { 0.35 },
+                    peak,
+                    fft_bands: [0.6, 0.5, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15],
+                    ..AudioUniformSnapshot::default()
+                };
+                let emitted =
+                    script_host.tick(step as f32 * (1.0 / 60.0), 1.0 / 60.0, step, &audio);
+                assert_eq!(
+                    script_host.state_name(),
+                    "active",
+                    "{folder} script.js errored on tick {step}"
+                );
+                for (i, slot) in controls.iter_mut().enumerate().skip(13) {
+                    let key = format!("ctrl_{i}");
+                    if let Some(&val) = emitted.get(&key) {
+                        assert!(val.is_finite(), "{folder} emitted non-finite {key}");
+                        *slot = val;
+                    }
+                }
+            }
+            assert!(
+                (controls[13] - 0.5).abs() > 1e-4 || (controls[14] - 0.5).abs() > 1e-4,
+                "{folder} script.js should emit non-zero beat drift"
+            );
+            assert!(
+                controls[15] > 0.5,
+                "{folder} script.js should emit positive transient decay envelope after peak"
+            );
+
+            // 3. Live Metal wgpu compilation & render with all 16 control floats
+            engine.set_scene(folder.to_string(), &dir);
+            let audio = AudioUniformSnapshot {
+                bpm: 126.0,
+                rms: 0.48,
+                peak: 0.75,
+                fft_bands: [0.65, 0.55, 0.45, 0.38, 0.32, 0.28, 0.22, 0.18],
+                ..AudioUniformSnapshot::default()
+            };
+            let bytes = engine
+                .render_frame(640, 360, 2.5, 150, &audio, controls)
+                .unwrap_or_else(|e| panic!("{folder} Metal compile/render failed: {e}"));
+            assert_eq!(bytes.len(), 640 * 360 * 4);
+            assert!(
+                bytes
+                    .chunks_exact(4)
+                    .any(|px| px[0] > 0 || px[1] > 0 || px[2] > 0),
+                "{folder} rendered all-black frame"
+            );
         }
     }
 }
