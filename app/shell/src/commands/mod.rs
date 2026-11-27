@@ -12,6 +12,7 @@
 pub mod audio;
 pub mod camera;
 pub mod control;
+pub mod feedback;
 pub mod import;
 pub mod library;
 pub mod library_index;
