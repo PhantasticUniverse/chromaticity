@@ -102,10 +102,42 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 | ATS no third-party exceptions | planned:EV-ATS-NO-THIRD-PARTY-EXCEPTIONS | `adr/ADR-016-observability-and-telemetry-posture.md` §Evidence | Bundle-level ATS inspection remains planned. |
 | Platform conformance for release support classes | planned:EV-PLATFORM-CONFORMANCE | `30-mvp-support-matrix.md` §Evidence Binding | Cross-platform release support matrix validation remains planned. |
 
+## Broadcast, compositing & OBS parity (Phase 7 tracking)
+
+Tracks the full OBS Studio 33.0.1 broadcast surface (plus native Twitch interactivity) so Chromaticity can track both active Phase-7 targets and deferred/optional broadcast capabilities in one place.
+
+| Feature | Status | Reference | Notes |
+|---|---|---|---|
+| Multi-layer GPU scene compositor (blend modes, opacity, 2D transform, Luma/Chroma Key) | planned:gap:phase7-gpu-compositor | `engine/render/src/compositor.rs` (Phase 7) | Native `wgpu` multi-layer stack supporting Normal/Additive/Screen/Multiply, Luma Key, and Chroma Key green-screen removal. |
+| Nested scenes & layer groups | planned:gap:phase7-nested-scenes | Phase 7 compositor follow-up | Hierarchical scene-as-layer composition and grouped transforms/visibility. |
+| Interactive canvas transform / crop / snap handles | planned:gap:phase7-canvas-handles | Phase 7 UI follow-up | Direct-manipulation resize, rotate, crop, and alignment guides on the preview canvas. |
+| Studio Mode (dual Preview / Program canvases) | planned:gap:phase7-studio-mode | Phase 7 broadcast ergonomics | Private cue & parameter tweaking on Preview before firing GPU Transition to Program. |
+| Shader & alpha-matte Stinger transitions | planned:gap:phase7-stinger-transitions | `engine/render/src/transitions.rs` | Extends `TransitionOrchestrator` with custom GLSL transition shaders and alpha-matte stinger clips. |
+| Multiview (live grid of all scenes) | post-MVP | Phase 7+ broadcast ergonomics | Multi-scene live thumbnail monitoring grid for large stage shows. |
+| Hardware-encoded local recording (VideoToolbox / NVENC / AMF / QSV → fMP4/MKV/MOV) | planned:gap:phase7a-hw-record | Phase 7a | Zero-GPL OS-native hardware encoding fed via GPU BGRA→NV12 compute pass into pooled `IOSurface` / DX11 surfaces; crash-safe fragmented MP4. |
+| Rolling Replay Buffer ("save last N seconds" hotkey) | planned:gap:phase7a-replay-buffer | Phase 7a | Ring buffer of encoded GOPs in RAM flushed to disk on hotkey/OSC/MIDI trigger. |
+| Multi-track audio recording | post-MVP | Phase 7a+ | Separate isolated audio stems (Music / Mic / Alerts) inside recorded MKV/MP4 containers. |
+| Live streaming: RTMP / RTMPS (Enhanced RTMP HEVC/AV1) | planned:gap:phase7b-rtmp | Phase 7b | Pure-Rust `rml_rtmp` + `rustls` publisher with adaptive bitrate & reconnect watchdog. |
+| Live streaming: WHIP (WebRTC ultra-low-latency) | planned:gap:phase7b-whip | Phase 7b | Pure-Rust `str0m` WebRTC WHIP ingest for sub-second broadcast latency. |
+| Live streaming: SRT / RIST | post-MVP | Phase 7b+ | Reliable UDP contribution transport for venue/studio links. |
+| Display & Window Capture (`ScreenCaptureKit` macOS / WGC DXGI Windows) | planned:gap:phase7d-screen-capture | Phase 7d | Zero-copy `IOSurface` / DXGI texture capture into compositor layers. |
+| Media / Video Source (MP4/WebM/GIF playback with loop/seek) | planned:gap:phase7-media-source | Phase 7 | Hardware-decoded video & animated image layer playback. |
+| Text / Dynamic Typography overlay layer | planned:gap:phase7-text-layer | Phase 7 | Crisp GPU-composited text overlays (now-playing, track titles, live alerts, data readouts). |
+| Browser Source (embedded HTML/CSS/JS overlay) | post-MVP | Phase 7+ | Embedded webview layer for third-party stream alerts/widgets (optional; native Twitch/Data overlays reduce need). |
+| Image Slideshow / VLC Playlist source | post-MVP | Phase 7+ | Timed image/media carousel source layer. |
+| Video filters: 3D `.cube` LUT, Color Correction, Crop/Pad, Lanczos/CAS sharpen | planned:gap:phase7c-video-filters | Phase 7c | Native `engine/render` single-pass/multipass filter chain on any layer or output. |
+| Multi-bus broadcast audio mixer (System + Mic + Per-App + Media, gain/mute/pan/sync-offset) | planned:gap:phase7c-audio-mixer | Phase 7c | Lock-free multi-bus mixer extending `engine/audio` (retaining ADR-022 zero-install Core Audio Process Tap). |
+| Broadcast audio DSP filters (RNNoise suppression, Noise Gate, Compressor, Limiter, Expander, 3-band EQ, Ducking) | planned:gap:phase7c-audio-dsp | Phase 7c | Zero-alloc audio-thread DSP (pure-Rust `nnnoiseless` RNNoise + dynamics/EQ). |
+| Third-party VST2 / VST3 / AU audio plugin hosting | post-MVP | Phase 7+ | External plugin host; tracked for future evaluation if built-in DSP is insufficient. |
+| Virtual Camera output (macOS `CMIOExtension` / Windows `MFCreateVirtualCamera`) | planned:gap:phase7e-virtual-cam | Phase 7e | Expose Chromaticity live output as a system webcam for Zoom, Discord, Meet, and browser apps (macOS gated on Apple Developer ID signing). |
+| WebSocket remote-control API (`obs-websocket`-class JSON-RPC for Stream Deck / Touch Portal) | post-MVP | Phase 7+ | Loopback-default WebSocket control surface complementing OSC/MIDI. |
+| Profiles & Scene Collections (switchable full-app broadcast rigs) | post-MVP | Phase 7+ | Named collections bundling scenes, layer stacks, audio routing, and stream profiles. |
+| Native Twitch Integration (EventSub WebSocket + Chat + Channel Points → `chroma_Data_*` & triggers) | planned:gap:phase7-twitch | `engine/runtime/src/twitch_bridge.rs` (Phase 7) | Follows, Subs, Bits, Raids, Hype Trains, Channel Points, and Chat commands wired natively into reactive shader uniforms & rehearsal cassettes. |
+
 ## Summary tally
 
 These counts are informational only; this matrix is not a gate.
 
 | implemented | planned:* | post-MVP | intentionally-rejected | n/a |
 |---:|---:|---:|---:|---:|
-| 14 | 46 | 1 | 4 | 0 |
+| 14 | 62 | 10 | 4 | 0 |
