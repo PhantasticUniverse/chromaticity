@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W58 Audio Uniforms view tests — exercise the W17 PR3 + W25 PR1 routed-
 // view surface (header pill + freeze/resume toggle, spectrum hero, frequency

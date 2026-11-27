@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W33b capabilities-store tests — exercises the seed snapshot derived
 // from `LICENSE_FIXTURE`, the `has(capabilityId)` lookup contract,

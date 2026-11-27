@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Operator settings IPC handlers — Wave 2.1 Lane C.3 settings
-//! persistence (`/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`).
+//! persistence.
 //!
 //! Frontend → [`get_settings`] reads the current
 //! [`chromaticity_runtime::settings::Settings`] document held behind

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W57 Library view tests — exercise the W9 / W11 / W22 routed-view
 // surface (header CTAs, toolbar search + category chips + size

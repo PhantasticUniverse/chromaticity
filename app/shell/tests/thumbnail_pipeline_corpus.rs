@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! End-to-end corpus assertions for the Wave 4b.3 Lane A thumbnail
 //! pipeline against the repo-resident demo scenes.

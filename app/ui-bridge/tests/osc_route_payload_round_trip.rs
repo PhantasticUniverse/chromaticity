@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Evidence: EV-INTEGRATION-MATRIX (T2) — engine→UI OSC route binding
 //! IPC payload round-trip conformance (OSC arm, Wave 2.1 Lane D.3).

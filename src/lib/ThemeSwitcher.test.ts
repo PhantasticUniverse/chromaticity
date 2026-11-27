@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W48 ThemeSwitcher shell tests — verifies the W6 three-theme cycle
 // widget renders the canonical pulse/atelier/console options, and that

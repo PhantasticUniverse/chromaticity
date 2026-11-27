@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Meter widget tests — the world-class rebuild renders a LOGARITHMIC
 // dBFS ladder (src/lib/audio/metering.ts): `levelDb` maps to a segment

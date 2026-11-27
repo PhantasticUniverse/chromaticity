@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W51 AppShell shell-component tests — covers the W12 PR3 / W27 PR1 /
 // W28 PR1 / W29 PR1 / W33a / W44 orchestration: route → view dispatch,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Drift pin: `HELP_PAGES` must stay in step with the mkdocs `nav:`
 // block in `docs-corpus/mkdocs.yml` and the `help/*.html` mappings in

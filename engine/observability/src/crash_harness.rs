@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Crash-payload construction harness validating
 //! `EV-CRASH-PAYLOAD-REDACTION` per ADR-016 §Crash payloads.

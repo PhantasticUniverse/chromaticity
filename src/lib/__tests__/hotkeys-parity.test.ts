@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Evidence: EV-HOTKEY-PARITY-CONFORMANCE (T2) — Phase-4a wave 1a hotkey-parity
 // conformance corpus. Validates that the D/R/P/L bindings fire the documented

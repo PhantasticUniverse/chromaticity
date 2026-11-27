@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 2.6 Lane AUD.A (input) + Wave 2.7 Lane SET.C (output) cpal
 // device-listing singleton store, backed by two independent

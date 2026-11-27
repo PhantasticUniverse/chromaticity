@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W54 Import view tests — exercise the W19 PR2 full port: five
 // converter cards (Shadertoy / .chroma / .chromaPack / .synScene / ISF

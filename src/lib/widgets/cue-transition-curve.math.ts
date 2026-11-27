@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-13 PR2: pure math module backing `CueTransitionCurve.svelte`. Lives
 // alongside the component (rather than inside the .svelte module) so the

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W63 Editor wrapper tests — direct coverage of `src/lib/Editor.svelte`,
 // the W21 PR3 CodeMirror 6 wrapper consumed by the Author route view.

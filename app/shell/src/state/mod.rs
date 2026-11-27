@@ -329,7 +329,7 @@ pub struct AppState {
     pub loaded_scene: Mutex<Option<LoadedSceneRecord>>,
     /// Operator-facing OSC route binding registry.
     ///
-    /// Wave 2.1 Lane D.3 (`/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`).
+    /// Wave 2.1 Lane D.3.
     /// Seeded from
     /// [`chromaticity_osc_adapter::route_registry::OscRouteRegistry::with_default_seed`]
     /// in [`Self::new`] so the OSC view's routes table renders against

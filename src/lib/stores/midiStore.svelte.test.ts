@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 2.1 Lane D.1 MIDI device-listing store tests. Validates the
 // `list_midi_devices` Tauri command invocation, devices state

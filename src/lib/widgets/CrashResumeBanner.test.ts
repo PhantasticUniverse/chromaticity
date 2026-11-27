@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W44 CrashResumeBanner widget tests. The visual port is display-only
 // (live `CrashResumeState` IPC arrives in Phase-3+/4a), so tests verify

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-27 PR1 SnapBar fixture data + slot type. Lives outside the
 // `SnapBar.svelte` component because Svelte's `*.svelte` TS shim only

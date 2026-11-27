@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-43 OutputRoutingTile widget tests — closes the W27 PR2 status-
 // panel coverage gap. Verifies the per-platform Syphon (mac) / Spout

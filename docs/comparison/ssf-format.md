@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-<!-- SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Chromaticity -->
 
 # Synesthesia parity — SSF Format
 
@@ -41,7 +41,7 @@ equivalent at parity or better.
 - **Score:** 4 / EXCEEDS
 - **Chromaticity equivalent:** `.chroma` directory + `.chromaPack` zip
   transport. Loader entry point `chromaticity_scene::loader::load_chroma_dir`
-  at `/Users/xaviermac/Documents/2_Areas/Coding-Projects/chromaticity-dev/engine/scene/src/loader.rs`. Wire-format frozen at slice-3a per
+  at `engine/scene/src/loader.rs`. Wire-format frozen at slice-3a per
   `docs/02-synesthesia-contracts.md` §Observed root keys and
   `docs/05-scene-system.md` §Canonical Internal Scene Model. Help corpus
   page `docs-corpus/docs/scene-workflow.md` documents the package layout.

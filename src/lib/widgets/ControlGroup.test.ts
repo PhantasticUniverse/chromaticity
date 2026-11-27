@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W37 ControlGroup widget tests — close the W8 core-primitive coverage
 // gap flagged in the 2026-04-28 widget-coverage audit. The W8 visual

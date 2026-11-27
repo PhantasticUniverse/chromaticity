@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-22 PR2 platform-detection helper. Single read of `navigator.userAgent`
 // at module load to derive the current desktop platform (`'mac' | 'win'`),

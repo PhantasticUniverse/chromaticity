@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Phase-4d Wave 4d.4 `EV-SOAK-CHAOS` multi-profile validation corpus
 //! (PR 3 of 3). Tier declaration and evidence tag live on the inner

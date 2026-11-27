@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 2.2 Lane R.1 — Scene-metadata → SceneKind mapping helper. The
 // 16 canvas-2d procedural renderers in `./scene-renderers.ts` are

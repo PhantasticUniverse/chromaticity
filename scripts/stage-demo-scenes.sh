@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-# SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+# SPDX-FileCopyrightText: 2026 Chromaticity
 #
 # stage-demo-scenes — copy the bundled demo `.chroma` corpus from
 # engine/scene/tests/fixtures/scenes/library/ to the platform-default

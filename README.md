@@ -5,10 +5,38 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 # Chromaticity
 
-Chromaticity is a deterministic, audio-reactive live-visuals runtime and authoring
-environment targeting macOS and Windows. This repository is **private through Phase 0
-and Phase 1** per `docs/43-development-standards.md` §18.2. Flip to public is
-scheduled no earlier than Phase 4c and requires AO-signed approval.
+Chromaticity is a deterministic, audio-reactive live-visuals runtime, broadcast
+compositor, and authoring environment targeting macOS and Windows. This
+repository is **source-visible** under `LicenseRef-Chromaticity-Proprietary`
+(All Rights Reserved; see [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md)).
+
+## Prerequisites & Quickstart
+
+### Runtime Dependencies (for YouTube Visual Loops & Live Twitch Streaming)
+
+- **Node.js 20+** and **Rust 1.85+** (edition 2024)
+- **macOS (Homebrew):**
+  ```bash
+  brew install ffmpeg yt-dlp
+  ```
+- **macOS Permissions (System Settings → Privacy & Security):**
+  - **Microphone** — required for live audio reactivity, BPM/FFT analysis, and DJ mixer/audio interface capture.
+  - **Camera** — required for live Webcam / Chroma Key / Luma Key layers.
+  - **Screen & System Audio Recording** — required for Screen Capture layers and built-in System Audio loopback.
+
+### Run Locally
+
+```bash
+npm install
+npm run tauri dev
+```
+
+### Build Standalone Desktop Bundle
+
+```bash
+npm run build:bundle
+npx tauri build
+```
 
 ## Status
 
@@ -229,10 +257,16 @@ an `UPSTREAM-VERSION.md` (origin URL + version stamp + drop date), the
 upstream license file (e.g. `LICENSE.md`), and any upstream `README` —
 all reflected in `REUSE.toml`. Current vendor drops:
 
-- `third_party/lygia/` — Lygia v1.1.4 trial vendor; license election
-  deferred per `docs/13-risk-register.md` R-37.
+- `third_party/cpal-0.17.1-patched/` — Apache-2.0 vendored `cpal` 0.17.1 with
+  macOS CoreAudio Process Tap unmuted loopback patch.
+- `third_party/hg_sdf/` — MIT (elected over CC-BY-NC-4.0) Mercury Demogroup
+  GLSL SDF library.
+- `third_party/lygia/` — Lygia v1.1.4 trial vendor (`LicenseRef-Prosperity-3.0.0`);
+  commercial license election deferred per `docs/13-risk-register.md` R-37.
 - `third_party/Syphon-Framework/` — BSD-3-Clause clean-room reference
   for the macOS Syphon producer/consumer surface (`integrations/syphon-adapter`).
+
+See [`NOTICE.md`](NOTICE.md) for full third-party attribution.
 
 REUSE 3.2 compliance is enforced in CI (`reuse lint`). See
 `docs/43-development-standards.md` §10 for the full license/SPDX/SBOM policy.

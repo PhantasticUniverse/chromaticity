@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Typed Tauri IPC wrappers for the Wave 2.1 Lane A.1 scene-load
 // round-trip. Frontend callers invoke `loadScene(path)` to parse a

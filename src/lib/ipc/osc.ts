@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary */
-/* SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> */
+/* SPDX-FileCopyrightText: 2026 Chromaticity */
 //
 // Typed Tauri IPC wrappers for the Wave 2.1 Lane D.3 OSC route
 // binding handlers (`osc_routes_snapshot` / `bind_osc_route` /
@@ -11,7 +11,6 @@
 // restarts. The OSC IP/port + TX/RX toggles persist via the existing
 // `settingsStore` (Lane C.3 settings persistence).
 //
-// Plan: `/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`
 // Lane D.3.
 
 import { invoke } from '@tauri-apps/api/core';

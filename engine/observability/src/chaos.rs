@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Chaos-injection layer for soak runs per `docs/26-evidence-artifact-
 //! registry.md` row 40 `EV-SOAK-CHAOS` + `docs/44-phase-4-exit-scoping.md`

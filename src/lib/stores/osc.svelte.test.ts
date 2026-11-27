@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 2.1 Lane D.3 OSC route store tests. Validates the
 // `osc_routes_snapshot` / `bind_osc_route` / `unbind_osc_route` Tauri

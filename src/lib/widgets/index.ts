@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary */
-/* SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> */
+/* SPDX-FileCopyrightText: 2026 Chromaticity */
 
 // Wave-8 widget barrel. Re-exports the visual control primitives ported
 // from the chromaticity-planning bundle. W9 will wire pointer / IPC

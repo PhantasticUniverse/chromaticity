@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W32 Xy primitive tests — exercises the normalised dot positioning
 // against [-1, 1] and [0, 1] ranges, plus the readout formatting.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-12 PR3 route store tests. The store is a `$state`-backed
 // singleton with `current` (RouteName) and `set(name)`. The W16 / W18

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary */
-/* SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> */
+/* SPDX-FileCopyrightText: 2026 Chromaticity */
 //
 // Typed Tauri IPC wrappers for the Wave 2.1 Lane C.3 operator
 // settings persistence handlers (`get_settings` / `set_settings`).
@@ -11,7 +11,6 @@
 // at `~/Library/Application Support/<bundle id>/settings.toml`
 // (macOS) / per-platform equivalent.
 //
-// Plan: `/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`
 // Lane C.3.
 
 import { invoke } from '@tauri-apps/api/core';

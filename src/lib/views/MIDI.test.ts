@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W62 MIDI view tests — exercise the W18 PR3 + W23 PR3-4 + W24 PR2 routed-
 // view surface (tab vocabulary, learn-mode toggle round-trip, binding table

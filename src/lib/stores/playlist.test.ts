@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Phase-1 D4 playlist round-trip helper tests. The module exposes
 // `dispatchPlaylistAdvanceAndRead` (advance + read-back) and

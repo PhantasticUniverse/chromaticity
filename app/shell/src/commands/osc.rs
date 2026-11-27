@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! OSC adapter IPC surface.
 //!
 //! W14 PR4 introduced the [`osc_health_snapshot`] IPC command; Round 3
 //! wires it to the live UDP adapter owned by [`AppState`].
-//! Wave 2.1 Lane D.3 (`/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`)
+//! Wave 2.1 Lane D.3
 //! adds three operator-facing handlers backing the OSC view's routes
 //! table + bind / unbind affordances:
 //!

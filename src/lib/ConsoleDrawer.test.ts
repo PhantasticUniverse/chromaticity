@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W52 ConsoleDrawer shell tests — exercises the W21 PR4 global console
 // drawer: open/close gating off `consoleStore.isOpen`, autofocus on the

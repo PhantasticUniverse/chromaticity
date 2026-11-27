@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary */
-/* SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> */
+/* SPDX-FileCopyrightText: 2026 Chromaticity */
 //
 // Typed Tauri IPC wrappers for the Phase-1 D4 playlist round-trip.
 // Frontend callers invoke `advancePlaylist` to step the runtime

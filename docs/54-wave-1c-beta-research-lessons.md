@@ -1,6 +1,6 @@
 <!--
 SPDX-License-Identifier: CC-BY-4.0
-SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 # Wave 1c-β research-lessons
@@ -727,7 +727,7 @@ remediation.
 - `docs/13-risk-register.md` — R-37 cross-platform integration scope
   risk this research pass partially mitigates by surfacing the
   cautionary precedents above.
-- `/Users/xaviermac/Documents/2_Areas/Coding-Projects/reference-repos/{ffmpeg,vlc,Syphon-Framework}` —
+- `local reference checkouts (`ffmpeg`, `vlc`, `Syphon-Framework`)` —
   reference sources (NOT to be copied; pattern extraction OK under
   their respective licenses).
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-43 TestCard widget tests — closes the W21 PR2 NTSC SMPTE
 // calibration-pattern coverage gap. Static SVG only; verifies the

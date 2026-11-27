@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W49 SidebarRail shell tests — exercises the W16 PR2 / W18 PR3 / W19
 // PR1+PR2+PR3 13-icon nav rail. Routed (top-section, currently 13/13

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Evidence: EV-INTEGRATION-MATRIX (T2) — 2-component (XY) control
 //! value IPC payload round-trip conformance (parity-closure wave 2,

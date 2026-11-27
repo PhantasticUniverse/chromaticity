@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W45 BeatDots widget tests — rAF-driven primitive backfill. Bundle source:
 // `chromaticity-planning/ui-predev-bundle-v0.2-beta/components.jsx` lines

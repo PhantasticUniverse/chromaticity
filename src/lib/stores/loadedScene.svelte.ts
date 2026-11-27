@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 2.1 Lane A.1 loaded-scene IPC consumer store, backed by the
 // explicit `AsyncResource<LoadedScenePayload | null>` state machine so

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Synthetic T2 corpus for chromaticity-camera-adapter (Wave 1c-β
 //! Phase 2 PR 4). Hardware-rig validation explicitly deferred per

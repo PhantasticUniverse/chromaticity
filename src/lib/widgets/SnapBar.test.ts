@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // SnapBar widget tests — W43 baseline covered the 8-slot Perform-bar
 // rendering surface; Wave 2.1 Lane A.3 widens to cover the engine snap

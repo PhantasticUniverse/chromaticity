@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary */
-/* SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> */
+/* SPDX-FileCopyrightText: 2026 Chromaticity */
 
 /*
  * Setlist fixtures — TypeScript mirror of the v0.2 bundle's

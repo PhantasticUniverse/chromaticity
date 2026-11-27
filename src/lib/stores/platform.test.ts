@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Unit coverage for the W22 PR2 platform detector. `currentPlatform` is
 // evaluated once at module load, so each test stubs `navigator` BEFORE

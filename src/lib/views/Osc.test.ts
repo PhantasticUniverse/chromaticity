@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W55 Osc view tests — exercise the W14 PR4 / W16 routes-table render
 // (canonical / compatAlias / dir / type / range / family columns), the

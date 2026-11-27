@@ -4,7 +4,7 @@
 //! Persisted operator settings — TOML-serialised preferences in the
 //! per-user app data dir.
 //!
-//! Wave 2.1 Lane C.3 (`/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`)
+//! Wave 2.1 Lane C.3
 //! introduces this module so the Settings view's Audio / Graphics /
 //! Storage / General form state survives restart. Sits OUTSIDE the
 //! ADR-004 canonical [`crate::state::State`] core because operator

@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-<!-- SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Chromaticity -->
 
 # Synesthesia Manual parity comparison
 

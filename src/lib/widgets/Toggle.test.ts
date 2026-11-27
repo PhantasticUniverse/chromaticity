@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W37 Toggle widget tests — extended in Wave 2.1 Lane A.2 to cover
 // click → `onchange(!value)` dispatch. The W8 baseline contract (on /

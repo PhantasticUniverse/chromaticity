@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Evidence: EV-COMPAT-FIXTURE-COVERAGE (T2) — CP-01 fallback corpus
 //! compat-vs-strict assertions over the shipped `cp01-*.chroma`

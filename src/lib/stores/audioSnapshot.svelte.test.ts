@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 6 PR 2 audio-uniform IPC consumer store tests. Validates the
 // `audio_uniform_snapshot_changed` Tauri event subscription, snapshot

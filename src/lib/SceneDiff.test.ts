@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W50 SceneDiff vitest backfill — covers the W21 PR3 side-by-side
 // scene diff: header labels, LCS-derived row classification (same / add

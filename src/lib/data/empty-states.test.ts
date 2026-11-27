@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Shape pins for the per-view empty-state copy constants. Pure-data
 // fixtures; the consumers in `Library.test.ts` / `Playlist.test.ts` /

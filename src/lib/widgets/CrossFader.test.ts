@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W46 CrossFader interaction tests — horizontal A↔B crossfader with
 // pointer-drag. jsdom returns a 0×0 bounding rect by default; the

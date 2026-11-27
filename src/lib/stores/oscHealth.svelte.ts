@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 2.4 Lane PERF.D OSC health polling store, upgraded to an
 // explicit polling lifecycle + `AsyncResource<OscHealthSnapshot | null>`.

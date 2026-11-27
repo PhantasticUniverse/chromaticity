@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Evidence: EV-SCHEMA-LINT (T2) — scene-lint pipeline corpus
 //! conformance over the shipped `.chroma` fixture set.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W49 TopBar shell tests — exercises the W15 PR1 / W34a top bar shell.
 // Covers the brand wordmark + per-route subtitle, the three adapter

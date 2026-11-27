@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W50 NewSceneModal interaction tests — covers the W22 PR3 new-scene
 // modal stub: open/close gating, autofocus on the name input, Escape

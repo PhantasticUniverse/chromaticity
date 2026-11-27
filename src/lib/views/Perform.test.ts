@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W59 Perform view tests — routed-view backfill for the largest non-
 // Settings/Author/MIDI view (1108 LoC, default route). Bundle source:

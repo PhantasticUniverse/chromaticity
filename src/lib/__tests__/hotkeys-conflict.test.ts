@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Evidence: EV-HOTKEY-CONFLICT (T2) — Phase-4a wave 1a hotkey-conflict
 // conformance corpus. Validates the six conflict-and-priority rules in

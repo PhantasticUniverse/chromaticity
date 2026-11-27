@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 
 //! Evidence: EV-INTEGRATION-MATRIX (T2) — Wave 2.1 Lane A.1 scene-load
 //! IPC payload round-trip conformance.

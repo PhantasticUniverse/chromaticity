@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-43 DegradedBanner widget tests — closes the W28 PR1 banner
 // coverage gap. Verifies severity → ARIA role/aria-live mapping,

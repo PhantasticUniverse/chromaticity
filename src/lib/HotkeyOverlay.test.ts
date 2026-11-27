@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W48 HotkeyOverlay shell tests — covers the W8 `?`-toggle help dialog
 // with its dialog scaffolding, search-filter, Escape/close-button

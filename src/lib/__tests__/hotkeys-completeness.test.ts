@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Evidence: EV-HOTKEY-COMPLETENESS (T2) — Phase-4a wave 1a hotkey-completeness
 // conformance corpus. Validates that the canonical 57-row vocabulary in

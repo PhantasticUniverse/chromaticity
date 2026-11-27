@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-34a AdapterPill type vocabulary. Lives outside the
 // `AdapterPill.svelte` component because Svelte's `*.svelte` TS shim

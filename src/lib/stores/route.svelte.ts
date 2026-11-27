@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-12 PR3 app-shell route store. In-memory `$state`-backed singleton
 // keyed on a TypeScript string-literal union. NO URL routing — deep links

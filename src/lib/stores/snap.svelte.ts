@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 2.1 Lane A.3 Snap IPC consumer store. In-memory `$state`-backed
 // singleton wrapping the `recall_snap` / `save_snap` / `clear_snap` /

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W47 Icon shell-primitive tests — verifies the W19 PR3 ported icon
 // dispatcher renders the right SVG for the requested name + size, and

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W9 / W11 PR2 scene-library helper tests. The module wraps three
 // IPC reads (`default_scene_root`, `list_scene_packages`,

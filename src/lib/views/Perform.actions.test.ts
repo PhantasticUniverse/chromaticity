@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 2.4 Lane PERF.A Perform-view action-button tests. The W59
 // `Perform.test.ts` covers the routed-view smoke axis; the Wave 2.1

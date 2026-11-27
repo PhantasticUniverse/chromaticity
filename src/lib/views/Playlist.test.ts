@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W35 Playlist view tests — exercise the inspector edit-mode added on
 // top of the W13 PR3 cue-table render. The W13 read-mostly contract is

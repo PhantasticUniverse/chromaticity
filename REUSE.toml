@@ -59,6 +59,7 @@ SPDX-License-Identifier = "CC-BY-4.0"
 [[annotations]]
 path = [
   "LICENSE",
+  "NOTICE.md",
   "README.md",
   "CONTRIBUTING.md",
   "CODE_OF_CONDUCT.md",
@@ -242,3 +243,18 @@ path = "LICENSES/MIT.txt"
 precedence = "override"
 SPDX-FileCopyrightText = "2011-2021 Mercury Demogroup"
 SPDX-License-Identifier = "MIT"
+
+# cpal 0.17.1 patched vendor (macOS CoreAudio Process Tap unmuted loopback).
+# Upstream cpal is licensed Apache-2.0; verbatim license text mirrored at
+# `LICENSES/Apache-2.0.txt`.
+[[annotations]]
+path = "third_party/cpal-0.17.1-patched/**"
+precedence = "override"
+SPDX-FileCopyrightText = "cpal contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "LICENSES/Apache-2.0.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "The Apache Software Foundation"
+SPDX-License-Identifier = "Apache-2.0"

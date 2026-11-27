@@ -8,7 +8,6 @@
 //! [`chromaticity_ui_bridge::SettingsPayload`] across the ts-rs newtype
 //! cluster + bidirectional `From<chromaticity_runtime::settings::Settings>`
 //! conversion + serde JSON wire shape per the Wave 2.1 Lane C.3 plan
-//! (`/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`).
 //! Field-by-field equality across all four sub-payloads
 //! (general / audio / graphics / storage) is the load-bearing
 //! assertion: any future payload-shape divergence between the engine

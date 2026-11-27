@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-29 PR1 CommandPalette fixture data + action type. Lives outside
 // the `CommandPalette.svelte` component because Svelte's `*.svelte` TS

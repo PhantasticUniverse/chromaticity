@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W46 CommandPalette interaction tests — Wave-29 PR1 widget; bundle source
 // `chromaticity-planning/ui-predev-bundle-v0.2-beta/extras.jsx` lines 124-166.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W46 CuePad interaction tests — Wave-23 widget primitive; bundle source
 // `chromaticity-planning/ui-predev-bundle-v0.2-beta/components.jsx`

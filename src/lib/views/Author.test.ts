@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // W60 Author view tests — exercise the W18 PR2 + W21 PR3 + W28 PR2 routed
 // view surface: scene-info header card, editor toolbar (Save / Revert,

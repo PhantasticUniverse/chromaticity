@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Phase-4a TS-side conformance for EV-ENTITLEMENT-ENFORCEMENT.
 // Evidence: EV-ENTITLEMENT-ENFORCEMENT (T2) — TS-side complement to

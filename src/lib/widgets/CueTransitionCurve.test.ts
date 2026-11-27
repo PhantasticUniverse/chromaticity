@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave-13 PR2 spec for `CueTransitionCurve.svelte`. Exercises the pure
 // math module (`bezier1d`, `presetFor`) and the component's render +

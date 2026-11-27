@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
-// SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
+// SPDX-FileCopyrightText: 2026 Chromaticity
 //
 // Wave 1c-β Phase 4 Lane B Syphon source-picker + output-publish
 // singleton store, backed by `AsyncResource<readonly SyphonServerPayload[]>`.
