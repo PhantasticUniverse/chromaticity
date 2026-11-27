@@ -94,6 +94,17 @@ Closed the wave-1 deferred Lane D cluster across 11 PRs (`#499`–`#509`). The f
 
 Optional wave-1 Lane D items beyond these five remain deferred per AO call.
 
+### Parity-closure wave 3 (2026-11-27)
+
+Major parity closures and Synesthesia/OBS leapfrogs shipped since Wave 2:
+
+- **Live Metal GPU preview & 44 Metal-verified shaders** — real-time 214–704 FPS `wgpu`/Metal rendering pipeline with live Metal GPU thumbnails (`8aafd52`), QuickJS `script.js` host (`30ca792`), and `.synScene` / Shadertoy / V1-ISF-reject import IPC (`30ca792`, `7216984`).
+- **Zero-install macOS Core Audio Process Tap & 64-band FFT + fused BPM** — patched `cpal 0.17.1` Core Audio Process Tap (`f2187da`, `ADR-022`) eliminates BlackHole/virtual-driver installs, paired with `AudioMeterEngine` 64-band FFT and fused BPM tracking (`ca0df53`).
+- **Author IDE live preview + auto-repair & Patch visual modulation matrix** — live `naga`/`wgpu` shader preview with auto-repair diagnostics and `.chroma` save in `Author.svelte`, alongside interactive modulation patching and MIDI/playlist stores (`7216984`).
+- **Real-time external data ingestion, Scene Rating + Agent Feedback loop & Offline 4K Time-Machine Replay** — `ADR-017` external data-source ingestion, structured scene feedback & agent-digest export, and deterministic offline 4K replay rendering.
+- **Phase 7 OBS-killer engine primitives** — native `wgpu` multi-layer compositor (`engine/render/src/compositor.rs`), GPU BGRA→NV12 compute conversion pass (`engine/render/src/nv12_convert.rs`, `ca0df53`), and Twitch EventSub/Chat/Channel Points bridge (`engine/runtime/src/twitch_bridge.rs`).
+- **Phase 8 Rekordbox 7 / `DDJ-FLX10` & Beatmatch sync** — multi-channel Master vs. Cue stereo pair extractor with Pioneer/AlphaTheta profiles (`engine/runtime/src/rekordbox_bridge.rs`, `10769c0`), zero-install Rekordbox 7 `PC MASTER OUT` capture (`f2187da`), and live DJ BPM `AUTO / LOCK / OFF` + `-0.5..+0.5` beatmatch phase scrub wired to Metal GPU uniforms (`ad343cb`, `257ab95`, `10769c0`).
+
 ## Revisiting cadence
 
 The sweep is intended to be re-run when:
