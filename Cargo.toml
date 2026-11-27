@@ -83,3 +83,8 @@ incremental = true
 # `[workspace.metadata.hakari]` embedded form is not read by
 # cargo-hakari 0.9.36 and must not be re-introduced here — having
 # both locations invites silent drift.
+
+# ADR-022 / cpal #329: local patched cpal 0.17.1 (MSRV 1.85.0, Apache-2.0)
+# fixing the macOS Core Audio Process Tap all-zero loopback bug.
+[patch.crates-io]
+cpal = { path = "third_party/cpal-0.17.1-patched" }

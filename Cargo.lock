@@ -466,6 +466,7 @@ name = "chromaticity-app"
 version = "0.0.0"
 dependencies = [
  "chromaticity-audio",
+ "chromaticity-authoring",
  "chromaticity-camera-adapter",
  "chromaticity-entitlement",
  "chromaticity-midi-adapter",
@@ -921,8 +922,6 @@ dependencies = [
 [[package]]
 name = "cpal"
 version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b1f9c7312f19fc2fa12fd7acaf38de54e8320ba10d1a02dcbe21038def51ccb"
 dependencies = [
  "alsa 0.10.0",
  "coreaudio-rs",
@@ -945,7 +944,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "windows 0.62.2",
+ "windows 0.61.3",
 ]
 
 [[package]]

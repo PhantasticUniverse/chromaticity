@@ -900,16 +900,15 @@ fn build_default_input_stream(state: &Arc<CallbackState>) -> Result<cpal::Stream
 ///
 /// # Device assumption
 ///
-/// cpal builds the loopback (process-tap aggregate / WASAPI loopback)
-/// path only for an output device that does NOT support input
-/// (`!supports_input()`). For the normal default output (built-in
-/// speakers / headphones) that holds. A default output that ALSO reports
-/// input support — an aggregate / virtual device (e.g. BlackHole itself)
-/// set as the system output — would instead bind that device's real
-/// input side, so capture could land on the wrong (possibly silent) side
-/// without the `Err`-fallback in [`try_input_by_preference`] firing. A
-/// follow-up should surface a degraded signal when the resolved default
-/// output `supports_input()`.
+/// The workspace patches `cpal 0.17.1` (`third_party/cpal-0.17.1-patched`,
+/// ADR-022 / `cpal #329`) so that on macOS `default_output_device()` always
+/// constructs a Core Audio Process Tap loopback stream even when the default
+/// output device is duplex (`supports_input()` is `true`, e.g. USB audio
+/// interfaces, headsets, or aggregate devices), checks the
+/// `AudioHardwareCreateProcessTap` `OSStatus`, uses
+/// `initStereoGlobalTapButExcludeProcesses`, sets
+/// `kAudioAggregateDeviceTapAutoStartKey = true`, and assigns a unique
+/// per-instance aggregate device UID.
 ///
 /// Evidence: `EV-INTEGRATION-MATRIX` (audio arm) — system-audio routing
 /// parity reached without a hand-installed virtual loopback device.
