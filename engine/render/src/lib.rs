@@ -378,8 +378,8 @@ pub use camera_adapter::{
 pub use composition::{PreparedScene, compose_transition_frame, compose_transition_frame_gpu};
 pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
-    MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat, UniformInput,
-    UniformValue, compile_and_render_multipass,
+    CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
+    UniformInput, UniformValue, compile_and_render_multipass,
 };
 #[cfg(feature = "scene-adapter")]
 pub use scene_adapter::{AdapterError, SceneAdapterOptions};

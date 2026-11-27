@@ -11,7 +11,8 @@
 
 use chromaticity_audio::AudioUniformSnapshot;
 use chromaticity_render::{
-    MultipassRenderer, MultipassSpec, PassDef, TargetFormat, UniformInput, UniformValue,
+    CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, TargetFormat, UniformInput,
+    UniformValue,
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -58,6 +59,7 @@ pub struct GpuRenderStatus {
 pub struct GpuPreviewEngine {
     state: GpuRenderState,
     renderer: Option<MultipassRenderer>,
+    cached_pass: Option<CachedSinglePass>,
 }
 
 impl Default for GpuPreviewEngine {
@@ -73,6 +75,7 @@ impl GpuPreviewEngine {
         Self {
             state: GpuRenderState::Idle,
             renderer: None,
+            cached_pass: None,
         }
     }
 
@@ -83,6 +86,7 @@ impl GpuPreviewEngine {
     /// cleanly to [`GpuRenderState::Idle`] so the UI falls back to the
     /// procedural Canvas2D preview.
     pub fn set_scene(&mut self, scene_id: String, scene_dir: &Path) {
+        self.cached_pass = None;
         let shader_path = scene_dir.join("main.glsl");
         if !shader_path.is_file() {
             self.state = GpuRenderState::Idle;
@@ -110,6 +114,7 @@ impl GpuPreviewEngine {
     /// Arm an in-memory GLSL 4.50 fragment shader directly (used by live
     /// Author preview and unit tests).
     pub fn set_inline_shader(&mut self, scene_id: String, fragment_source: String) {
+        self.cached_pass = None;
         self.state = GpuRenderState::Active {
             scene_id,
             shader_path: PathBuf::from("<inline>"),
@@ -121,6 +126,7 @@ impl GpuPreviewEngine {
 
     /// Disarm the GPU preview engine back to [`GpuRenderState::Idle`].
     pub fn clear_scene(&mut self) {
+        self.cached_pass = None;
         self.state = GpuRenderState::Idle;
     }
 
@@ -218,18 +224,33 @@ impl GpuPreviewEngine {
             return Err("wgpu renderer unavailable".into());
         };
 
-        let spec = build_standard_spec(
-            &scene_id,
-            fragment_source,
-            (w, h),
-            elapsed_secs,
-            frame,
-            audio,
-            controls,
-        );
+        let uniforms = build_standard_uniforms((w, h), elapsed_secs, frame, audio, controls);
 
         let started = Instant::now();
-        match renderer.render(&spec) {
+        if self.cached_pass.is_none() {
+            match renderer.compile_cached_single_pass(
+                &scene_id,
+                &fragment_source,
+                &uniforms,
+                (w, h),
+            ) {
+                Ok(pass) => self.cached_pass = Some(pass),
+                Err(err) => {
+                    let msg = format!("shader compile failed: {err}");
+                    self.state = GpuRenderState::Error {
+                        scene_id,
+                        message: msg.clone(),
+                    };
+                    return Err(msg);
+                }
+            }
+        }
+
+        let Some(cached) = self.cached_pass.as_mut() else {
+            return Err("cached GPU pipeline unavailable".into());
+        };
+
+        match cached.render(renderer, (w, h), &uniforms) {
             Ok(bytes) => {
                 let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
                 if let GpuRenderState::Active {
@@ -244,6 +265,7 @@ impl GpuPreviewEngine {
                 Ok(bytes)
             }
             Err(err) => {
+                self.cached_pass = None;
                 let msg = format!("shader render failed: {err}");
                 self.state = GpuRenderState::Error {
                     scene_id,
@@ -255,23 +277,20 @@ impl GpuPreviewEngine {
     }
 }
 
-/// Construct the standard single-pass [`MultipassSpec`] carrying the
-/// Chromaticity std140 uniform block.
+/// Construct the standard Chromaticity std140 uniform vector for a frame.
 #[must_use]
-pub fn build_standard_spec(
-    label: &str,
-    fragment_glsl: String,
+pub fn build_standard_uniforms(
     target_size: (u32, u32),
     elapsed_secs: f32,
     frame: u64,
     audio: &AudioUniformSnapshot,
     controls: [f32; 8],
-) -> MultipassSpec {
+) -> Vec<UniformInput> {
     let w = target_size.0 as f32;
     let h = target_size.1 as f32;
     let aspect = if h > 0.0 { w / h } else { 1.0 };
 
-    let uniforms = vec![
+    vec![
         UniformInput {
             name: "chroma_Time".to_string(),
             value: UniformValue::Vec4([elapsed_secs, 1.0 / 60.0, frame as f32, aspect]),
@@ -304,7 +323,22 @@ pub fn build_standard_spec(
             name: "chroma_Ctrl1".to_string(),
             value: UniformValue::Vec4([controls[4], controls[5], controls[6], controls[7]]),
         },
-    ];
+    ]
+}
+
+/// Construct the standard single-pass [`MultipassSpec`] carrying the
+/// Chromaticity std140 uniform block.
+#[must_use]
+pub fn build_standard_spec(
+    label: &str,
+    fragment_glsl: String,
+    target_size: (u32, u32),
+    elapsed_secs: f32,
+    frame: u64,
+    audio: &AudioUniformSnapshot,
+    controls: [f32; 8],
+) -> MultipassSpec {
+    let uniforms = build_standard_uniforms(target_size, elapsed_secs, frame, audio, controls);
 
     MultipassSpec {
         passes: vec![PassDef {
@@ -373,6 +407,37 @@ void main() {
         // Verify alpha channel is opaque and non-zero RGB was written.
         assert_eq!(bytes[3], 255);
         assert!(bytes.iter().step_by(4).any(|&r| r > 0));
+
+        // Second frame reuses cached pipeline and handles dynamic resize.
+        let bytes2 = engine
+            .render_frame(
+                64,
+                36,
+                1.26,
+                11,
+                &AudioUniformSnapshot::default(),
+                [0.75; 8],
+            )
+            .expect("cached pipeline should handle resize and uniform update");
+        assert_eq!(bytes2.len(), 64 * 36 * 4);
+        assert_eq!(engine.status().frames_rendered, 2);
+
+        // Byte-identity pin: cached single-pass output equals MultipassRenderer::render.
+        let renderer = MultipassRenderer::new().expect("wgpu renderer");
+        let spec = build_standard_spec(
+            "test-scene",
+            SAMPLE_SHADER.into(),
+            (64, 36),
+            1.26,
+            11,
+            &AudioUniformSnapshot::default(),
+            [0.75; 8],
+        );
+        let reference = renderer.render(&spec).expect("reference multipass render");
+        assert_eq!(
+            bytes2, reference,
+            "CachedSinglePass must produce bit-identical bytes to MultipassRenderer::render"
+        );
     }
 
     #[test]
@@ -412,7 +477,10 @@ void main() {
         };
 
         let export_dir = std::env::var_os("CHROMATICITY_EXPORT_GALLERY_DIR").map(PathBuf::from);
-        let (w, h) = if export_dir.is_some() {
+        let bench_mode = std::env::var_os("CHROMATICITY_BENCH_SHADERS").is_some();
+        let (w, h) = if bench_mode {
+            (640u32, 360u32)
+        } else if export_dir.is_some() {
             (320u32, 180u32)
         } else {
             (32u32, 32u32)
@@ -440,6 +508,20 @@ void main() {
                     .any(|px| px[0] > 0 || px[1] > 0 || px[2] > 0),
                 "shader {id} rendered all-black output"
             );
+            if bench_mode {
+                let mut total_ms = 0.0_f64;
+                let samples = 10u64;
+                for i in 0..samples {
+                    let t0 = Instant::now();
+                    let _ = engine
+                        .render_frame(w, h, 2.5 + (i as f32) * 0.016, 151 + i, &audio, [0.5; 8])
+                        .unwrap_or_else(|e| panic!("bench frame failed for {id}: {e}"));
+                    total_ms += t0.elapsed().as_secs_f64() * 1000.0;
+                }
+                let avg_ms = total_ms / (samples as f64);
+                let fps = 1000.0 / avg_ms.max(0.001);
+                println!("BENCH {id}: {avg_ms:.2} ms/frame ({fps:.0} FPS) @ {w}x{h}");
+            }
             if let Some(ref out_dir) = export_dir {
                 let _ = std::fs::create_dir_all(out_dir);
                 let _ = std::fs::write(out_dir.join(format!("{id}.rgba")), &bytes);

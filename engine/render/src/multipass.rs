@@ -614,6 +614,335 @@ impl MultipassRenderer {
             spec,
         )
     }
+
+    /// Compile a single-pass GLSL 4.50 fragment shader once into a
+    /// [`CachedSinglePass`] whose pipeline, uniform buffer, offscreen
+    /// `Rgba8Unorm` target, and staging readback buffer are reused
+    /// across frames.
+    ///
+    /// # Errors
+    ///
+    /// - [`RenderError::TargetSizeInvalid`] — width or height is zero.
+    /// - [`RenderError::UniformBindingFailed`] — uniform encoding failed.
+    /// - [`RenderError::PassRenderFailed`] — GLSL parse / validation failed.
+    pub fn compile_cached_single_pass(
+        &self,
+        label: &str,
+        fragment_glsl: &str,
+        initial_uniforms: &[UniformInput],
+        target_size: (u32, u32),
+    ) -> Result<CachedSinglePass, RenderError> {
+        if target_size.0 == 0 || target_size.1 == 0 {
+            return Err(RenderError::TargetSizeInvalid(target_size));
+        }
+
+        let mut bgl_entries: Vec<wgpu::BindGroupLayoutEntry> = Vec::new();
+        let (uniform_buffer, uniform_slot_count) = if initial_uniforms.is_empty() {
+            (None, 0)
+        } else {
+            let slots = encode_uniform_slots(initial_uniforms, label)?;
+            let count = slots.len();
+            let buffer = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("chromaticity-render cached uniform buffer"),
+                    contents: bytemuck::cast_slice(&slots),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
+            bgl_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            });
+            (Some(buffer), count)
+        };
+
+        let bgl = self
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("chromaticity-render cached bind group layout"),
+                entries: &bgl_entries,
+            });
+
+        let fragment_module = compile_glsl_module(fragment_glsl, naga::ShaderStage::Fragment)
+            .map_err(|e| RenderError::PassRenderFailed {
+                pass_index: 0,
+                source: Box::new(e),
+            })?;
+        let fragment_shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("chromaticity-render cached fragment (user GLSL)"),
+                source: wgpu::ShaderSource::Naga(Cow::Owned(fragment_module)),
+            });
+
+        let pipeline_layout = self
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("chromaticity-render cached pipeline layout"),
+                bind_group_layouts: &[&bgl],
+                push_constant_ranges: &[],
+            });
+        let pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("chromaticity-render cached pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &self.vertex_shader,
+                    entry_point: Some("main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    buffers: &[],
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    unclipped_depth: false,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &fragment_shader,
+                    entry_point: Some("main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview: None,
+                cache: None,
+            });
+
+        let mut bg_entries: Vec<wgpu::BindGroupEntry> = Vec::new();
+        if let Some(buffer) = uniform_buffer.as_ref() {
+            bg_entries.push(wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            });
+        }
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("chromaticity-render cached bind group"),
+            layout: &bgl,
+            entries: &bg_entries,
+        });
+
+        let (target_texture, target_view, readback_buffer, padded_bytes_per_row) =
+            allocate_cached_targets(&self.device, target_size);
+
+        Ok(CachedSinglePass {
+            label: label.to_string(),
+            pipeline,
+            bind_group,
+            uniform_buffer,
+            uniform_slot_count,
+            target_size,
+            target_texture,
+            target_view,
+            readback_buffer,
+            padded_bytes_per_row,
+        })
+    }
+}
+
+/// Pre-compiled single-pass GPU pipeline with persistent uniform buffer,
+/// offscreen `Rgba8Unorm` render target, and staging readback buffer.
+///
+/// Created via [`MultipassRenderer::compile_cached_single_pass`] so
+/// per-frame rendering only uploads the uniform block (`queue.write_buffer`)
+/// and submits one render + copy encoder without recompiling GLSL or
+/// reallocating GPU targets.
+pub struct CachedSinglePass {
+    label: String,
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    uniform_buffer: Option<wgpu::Buffer>,
+    uniform_slot_count: usize,
+    target_size: (u32, u32),
+    target_texture: wgpu::Texture,
+    target_view: wgpu::TextureView,
+    readback_buffer: wgpu::Buffer,
+    padded_bytes_per_row: u32,
+}
+
+impl CachedSinglePass {
+    /// Render one frame into the cached offscreen target (resizing only
+    /// when `target_size` changes) and return tightly packed RGBA8 bytes.
+    ///
+    /// # Errors
+    ///
+    /// - [`RenderError::TargetSizeInvalid`] — width or height is zero.
+    /// - [`RenderError::UniformBindingFailed`] — uniform layout mismatch.
+    /// - [`RenderError::DeviceLoss`] / [`RenderError::BufferMap`] — GPU
+    ///   readback failure.
+    pub fn render(
+        &mut self,
+        renderer: &MultipassRenderer,
+        target_size: (u32, u32),
+        uniforms: &[UniformInput],
+    ) -> Result<Vec<u8>, RenderError> {
+        if target_size.0 == 0 || target_size.1 == 0 {
+            return Err(RenderError::TargetSizeInvalid(target_size));
+        }
+        if target_size != self.target_size {
+            let (tex, view, readback, padded) =
+                allocate_cached_targets(&renderer.device, target_size);
+            self.target_texture = tex;
+            self.target_view = view;
+            self.readback_buffer = readback;
+            self.padded_bytes_per_row = padded;
+            self.target_size = target_size;
+        }
+
+        if let Some(buffer) = self.uniform_buffer.as_ref() {
+            let slots = encode_uniform_slots(uniforms, &self.label)?;
+            if slots.len() != self.uniform_slot_count {
+                return Err(RenderError::UniformBindingFailed {
+                    pass_label: self.label.clone(),
+                    name: String::from("<block>"),
+                    reason: format!(
+                        "uniform slot count changed from {} to {}",
+                        self.uniform_slot_count,
+                        slots.len()
+                    ),
+                });
+            }
+            renderer
+                .queue
+                .write_buffer(buffer, 0, bytemuck::cast_slice(&slots));
+        }
+
+        let (width, height) = self.target_size;
+        let mut encoder = renderer
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("chromaticity-render cached frame encoder"),
+            });
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("chromaticity-render cached pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.target_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            rpass.set_pipeline(&self.pipeline);
+            rpass.set_bind_group(0, &self.bind_group, &[]);
+            rpass.draw(0..3, 0..1);
+        }
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.target_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &self.readback_buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.padded_bytes_per_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        renderer.queue.submit(Some(encoder.finish()));
+
+        let buffer_slice = self.readback_buffer.slice(..);
+        let (sender, receiver) = channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        loop {
+            match renderer.device.poll(wgpu::PollType::Wait) {
+                Ok(_) => {}
+                Err(e) => return Err(RenderError::DeviceLoss(format!("{e:?}"))),
+            }
+            match receiver.try_recv() {
+                Ok(Ok(())) => break,
+                Ok(Err(e)) => return Err(RenderError::BufferMap(format!("{e}"))),
+                Err(TryRecvError::Empty) => continue,
+                Err(TryRecvError::Disconnected) => {
+                    return Err(RenderError::BufferMap(
+                        "map_async sender dropped before completion".to_string(),
+                    ));
+                }
+            }
+        }
+
+        let unpadded_bytes_per_row = width * 4;
+        let mapped = buffer_slice.get_mapped_range();
+        let mut pixels = Vec::with_capacity((unpadded_bytes_per_row as usize) * (height as usize));
+        for row in 0..height {
+            let start = (row * self.padded_bytes_per_row) as usize;
+            let end = start + unpadded_bytes_per_row as usize;
+            pixels.extend_from_slice(&mapped[start..end]);
+        }
+        drop(mapped);
+        self.readback_buffer.unmap();
+        Ok(pixels)
+    }
+}
+
+fn allocate_cached_targets(
+    device: &wgpu::Device,
+    target_size: (u32, u32),
+) -> (wgpu::Texture, wgpu::TextureView, wgpu::Buffer, u32) {
+    let (width, height) = target_size;
+    let target_texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("chromaticity-render cached target"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let target_view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let unpadded_bytes_per_row = width * 4;
+    let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
+    let readback_size = u64::from(padded_bytes_per_row) * u64::from(height);
+    let readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("chromaticity-render cached readback"),
+        size: readback_size,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    (
+        target_texture,
+        target_view,
+        readback_buffer,
+        padded_bytes_per_row,
+    )
 }
 
 /// Compile every pass in `spec` and render them sequentially across
