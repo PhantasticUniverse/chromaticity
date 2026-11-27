@@ -69,6 +69,7 @@ pub mod import_reference;
 pub mod import_shadertoy;
 pub mod live_reload;
 pub mod scaffolder;
+pub mod shadertoy_license;
 pub mod ux_latency;
 
 pub use diagnostics::{
