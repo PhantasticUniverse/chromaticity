@@ -429,7 +429,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 </button>
               {/each}
               <p class="au-author__pop-foot mono">
-                Real backup persistence is Phase-4b PR 2 carryforward; these are fixture snapshots.
+                Local session snapshots — select a snapshot to restore its buffers.
               </p>
             </div>
           {/if}
@@ -674,7 +674,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         seed={sceneSeedFromMetadata({ id: AUTHOR_SCENE_META.title })}
         audio
         gpuLive
-        ariaLabel={`Live scene preview · ${AUTHOR_SCENE_META.title} (placeholder canvas-2d pattern)`}
+        ariaLabel={`Live scene preview · ${AUTHOR_SCENE_META.title}`}
       />
       <span class="au-author__preview-label mono">{AUTHOR_SCENE_META.title}</span>
       {#if flash}
@@ -744,12 +744,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               title={tab.label}
               onclick={() => selectTab(tab.id)}
             >
-              <Icon name={tab.icon} size={13} />
+              <Icon name={tab.icon} size={11} />
               <span class="au-author__tab-label">{tab.label}</span>
             </button>
           {/each}
         </div>
-        <span class="au-author__spacer" aria-hidden="true"></span>
         <div class="au-author__tab-actions" role="toolbar" aria-label="Inspector actions">
           <button
             class="au-author__icon-btn"
@@ -1116,14 +1115,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au-author {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 420px;
-    gap: var(--space-lg);
+    gap: var(--space-md);
     align-items: stretch;
+    height: 100%;
     min-height: 0;
+    overflow: hidden;
   }
 
   @media (max-width: 1100px) {
     .au-author {
       grid-template-columns: minmax(0, 1fr);
+      height: auto;
+      overflow: auto;
     }
   }
 
@@ -1131,8 +1134,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au-author__right {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--space-md);
     min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
   }
 
   .au-author__panel {
@@ -1152,8 +1158,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: grid;
     grid-template-columns: 72px minmax(0, 1fr) auto;
     gap: var(--space-md);
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-sm) var(--space-md);
     align-items: center;
+    flex-shrink: 0;
   }
 
   .au-author__thumb {
@@ -1161,7 +1168,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     width: 62px;
     height: 62px;
     border-radius: var(--radius-md);
-    overflow: hidden;
+    overflow: clip;
     border: 1px solid var(--color-line-2);
     background: var(--color-bg-1);
   }
@@ -1331,19 +1338,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   /* ---------------- Editor toolbar ------------------------------------- */
   .au-author__editor {
+    flex: 1 1 0;
     display: grid;
-    grid-template-rows: auto auto minmax(280px, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     overflow: hidden;
-    min-height: 360px;
+    min-height: 0;
+  }
+  .au-author__editor :global(.chr-editor) {
+    min-height: 0;
+    height: 100%;
   }
 
   .au-author__toolbar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-xs);
     padding: var(--space-xs) var(--space-md);
     border-bottom: 1px solid var(--color-line-1);
     background: var(--color-bg-3);
+    min-width: 0;
   }
 
   .au-author__toolbar-warn {
@@ -1418,7 +1432,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au-author__console {
     display: flex;
     flex-direction: column;
-    min-height: 110px;
+    flex-shrink: 0;
+    min-height: 0;
   }
   .au-author__console-head {
     display: flex;
@@ -1453,7 +1468,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .au-author__console-body {
     padding: var(--space-sm) var(--space-md);
-    max-height: 140px;
+    max-height: 120px;
     overflow: auto;
     display: flex;
     flex-direction: column;
@@ -1486,7 +1501,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /* ---------------- Right column: preview & tools --------------------- */
   .au-author__preview {
     position: relative;
-    aspect-ratio: 16 / 10;
+    aspect-ratio: 16 / 9;
+    flex-shrink: 0;
     background: var(--color-bg-2);
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-md);
@@ -1517,6 +1533,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au-author__previewtools {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     gap: var(--space-xs);
     padding: var(--space-xs) var(--space-md);
   }
@@ -1593,6 +1610,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   /* ---------------- Inspector ------------------------------------------ */
   .au-author__inspector {
+    flex: 1 1 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1601,29 +1620,47 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--space-xs) var(--space-sm);
     border-bottom: 1px solid var(--color-line-1);
     background: var(--color-bg-3);
+    min-width: 0;
+    flex-shrink: 0;
+    overflow: hidden;
   }
-  .au-author__tablist,
+  .au-author__tablist {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .au-author__tablist::-webkit-scrollbar {
+    display: none;
+  }
   .au-author__tab-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    flex-shrink: 0;
+    gap: 2px;
   }
   .au-author__tab {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: 4px var(--space-sm);
+    flex-shrink: 0;
+    white-space: nowrap;
+    gap: 3px;
+    padding: 3px 5px;
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--color-text-2);
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-caps-sm);
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: var(--letter-spacing-caps-sm);
+    letter-spacing: 0.02em;
     cursor: pointer;
     transition:
       background-color 120ms ease,
@@ -1647,6 +1684,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   .au-author__inspector-body {
+    flex: 1 1 0;
+    min-height: 0;
     overflow: auto;
     padding: 0;
     display: flex;

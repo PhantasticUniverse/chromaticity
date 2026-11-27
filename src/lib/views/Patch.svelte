@@ -82,6 +82,41 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   // ---- Mutable state -----------------------------------------------------
 
+  // Live viewport size observed via ResizeObserver so the shared 1100x600
+  // stage (containing BOTH SVG wires and DOM nodes) scales in lockstep.
+  let viewportEl = $state<HTMLDivElement | null>(null);
+  let viewportSize = $state<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  $effect(() => {
+    const el = viewportEl;
+    if (el === null) return;
+    const update = (): void => {
+      const rect = el.getBoundingClientRect();
+      viewportSize = { width: rect.width, height: rect.height };
+    };
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry === undefined) return;
+      viewportSize = {
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      };
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
+
+  // Unified scale factor applied identically to the shared stage wrapper
+  // (SVG wires + DOM nodes). Falls back to 1 when unmeasured (e.g. jsdom).
+  const stageScale = $derived.by(() => {
+    if (viewportSize.width <= 0 || viewportSize.height <= 0) return 1;
+    const fitX = viewportSize.width / CANVAS_W;
+    const fitY = viewportSize.height / CANVAS_H;
+    return Math.max(0.55, Math.min(1, fitX, fitY));
+  });
+
   // Live, draggable copy of the canonical node fixtures. Cloning the
   // readonly fixture keeps the seed pristine for unit-test
   // determinism while letting drag/undo mutate freely in-component.
@@ -182,12 +217,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     if (e.currentTarget instanceof Element) {
       e.currentTarget.setPointerCapture?.(e.pointerId);
     }
+    const scale = stageScale || 1;
     dragState = dragPointerDown(
       node.id,
       e.clientX,
       e.clientY,
-      e.clientX - node.x,
-      e.clientY - node.y,
+      e.clientX / scale - node.x,
+      e.clientY / scale - node.y,
     );
   }
 
@@ -203,8 +239,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       if (activeDrag.kind === 'idle') return;
       const node = nodes.find((n) => n.id === activeDrag.id);
       if (node === undefined) return;
-      const nextX = e.clientX - activeDrag.offsetX;
-      const nextY = e.clientY - activeDrag.offsetY;
+      const scale = stageScale || 1;
+      const nextX = e.clientX / scale - activeDrag.offsetX;
+      const nextY = e.clientY / scale - activeDrag.offsetY;
       // Soft-clamp to canvas bounds (allow node to peek 40px out so
       // wires stay visible during repositioning at edges).
       node.x = Math.max(-40, Math.min(CANVAS_W - 40, nextX));
@@ -268,7 +305,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               class="patch__palette-item"
               role="button"
               tabindex="0"
-              title="Drag {item} into the canvas (wiring scheduled for Phase-3+ patch-graph adapter)"
+              title="Drag {item} into the canvas"
             >
               <span class="patch__palette-name">{item}</span>
             </div>
@@ -293,81 +330,87 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       >
         <Icon name="undo" size={12} />
       </button>
-      <button
-        type="button"
-        class="patch__btn"
-        title="Auto Layout (Phase-3+ scope: graph-layout algorithm against the patch-graph adapter)"
-      >
-        Auto Layout
-      </button>
-      <button
-        type="button"
-        class="patch__btn patch__btn--primary"
-        title="Commit patch (Phase-3+ scope: runtime patch-graph IPC)"
-      >
+      <button type="button" class="patch__btn" title="Auto Layout"> Auto Layout </button>
+      <button type="button" class="patch__btn patch__btn--primary" title="Commit patch">
         Commit
       </button>
     </header>
 
-    <!-- Dotted-grid background -->
-    <div class="patch__grid" aria-hidden="true"></div>
+    <!-- Scrollable / auto-fitted viewport containing the unified 1:1 stage -->
+    <div class="patch__viewport" bind:this={viewportEl}>
+      <!-- Dotted-grid background -->
+      <div class="patch__grid" aria-hidden="true"></div>
 
-    <!-- Wire layer -->
-    <svg
-      class="patch__wires"
-      viewBox="0 0 {CANVAS_W} {CANVAS_H}"
-      preserveAspectRatio="xMinYMin meet"
-      role="img"
-      aria-label={ariaLabel}
-    >
-      {#each wirePaths as wire, i (i)}
-        <g>
-          <path d={wire.d} stroke={wire.color} stroke-width="2" fill="none" opacity="0.9" />
-          <circle cx={wire.x1} cy={wire.y1} r="3" fill={wire.color} />
-          <circle cx={wire.x2} cy={wire.y2} r="3" fill={wire.color} />
-        </g>
-      {/each}
-    </svg>
-
-    <!-- Node layer (DOM nodes positioned absolutely in canvas coords) -->
-    <div class="patch__nodes" aria-hidden="false">
-      {#each nodes as node (node.id)}
+      <div
+        class="patch__stage-sizer"
+        style="width: {Math.round(CANVAS_W * stageScale)}px; height: {Math.round(
+          CANVAS_H * stageScale,
+        )}px;"
+      >
         <div
-          class="patch__node"
-          class:patch__node--selected={selectedNodeId === node.id}
-          class:patch__node--dragging={draggingId === node.id}
-          style="left: {node.x}px; top: {node.y}px; width: {node.w}px;
-                 --node-tint: {PATCH_KIND_TINT[node.kind]};"
-          role="button"
-          tabindex="0"
-          aria-pressed={selectedNodeId === node.id}
-          aria-label="{node.title} — {node.pins.length} pins"
-          onpointerdown={(e) => handleNodePointerDown(e, node)}
-          onkeydown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              selectedNodeId = node.id;
-            }
-          }}
+          class="patch__stage"
+          style="width: {CANVAS_W}px; height: {CANVAS_H}px; transform: scale({stageScale});"
         >
-          <div class="patch__node-head">
-            <span class="patch__node-dot" aria-hidden="true"></span>
-            <span class="patch__node-title">{node.title}</span>
+          <!-- Wire layer (1:1 stage pixel coordinate system) -->
+          <svg
+            class="patch__wires"
+            width={CANVAS_W}
+            height={CANVAS_H}
+            viewBox="0 0 {CANVAS_W} {CANVAS_H}"
+            role="img"
+            aria-label={ariaLabel}
+          >
+            {#each wirePaths as wire, i (i)}
+              <g>
+                <path d={wire.d} stroke={wire.color} stroke-width="2" fill="none" opacity="0.9" />
+                <circle cx={wire.x1} cy={wire.y1} r="3" fill={wire.color} />
+                <circle cx={wire.x2} cy={wire.y2} r="3" fill={wire.color} />
+              </g>
+            {/each}
+          </svg>
+
+          <!-- Node layer (DOM nodes positioned absolutely in the exact same 1:1 stage coords) -->
+          <div class="patch__nodes" aria-hidden="false">
+            {#each nodes as node (node.id)}
+              <div
+                class="patch__node"
+                class:patch__node--selected={selectedNodeId === node.id}
+                class:patch__node--dragging={draggingId === node.id}
+                style="left: {node.x}px; top: {node.y}px; width: {node.w}px;
+                       --node-tint: {PATCH_KIND_TINT[node.kind]};"
+                role="button"
+                tabindex="0"
+                aria-pressed={selectedNodeId === node.id}
+                aria-label="{node.title} — {node.pins.length} pins"
+                onpointerdown={(e) => handleNodePointerDown(e, node)}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectedNodeId = node.id;
+                  }
+                }}
+              >
+                <div class="patch__node-head">
+                  <span class="patch__node-dot" aria-hidden="true"></span>
+                  <span class="patch__node-title">{node.title}</span>
+                </div>
+                {#each node.pins as pin, idx (pin)}
+                  <div
+                    class="patch__pin"
+                    style="height: {PATCH_ROW_H}px;"
+                    data-row-idx={idx}
+                    data-header-h={PATCH_HEADER_H}
+                  >
+                    <span class="patch__pin-name mono">{pin}</span>
+                    <span class="patch__pin-port patch__pin-port--in" aria-hidden="true"></span>
+                    <span class="patch__pin-port patch__pin-port--out" aria-hidden="true"></span>
+                  </div>
+                {/each}
+              </div>
+            {/each}
           </div>
-          {#each node.pins as pin, idx (pin)}
-            <div
-              class="patch__pin"
-              style="height: {PATCH_ROW_H}px;"
-              data-row-idx={idx}
-              data-header-h={PATCH_HEADER_H}
-            >
-              <span class="patch__pin-name mono">{pin}</span>
-              <span class="patch__pin-port patch__pin-port--in" aria-hidden="true"></span>
-              <span class="patch__pin-port patch__pin-port--out" aria-hidden="true"></span>
-            </div>
-          {/each}
         </div>
-      {/each}
+      </div>
     </div>
 
     <!-- Live Modulation toolbar strip -->
@@ -452,7 +495,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <button
                 type="button"
                 class="patch__btn patch__btn--ghost patch__btn--sm"
-                title="Route a source (Phase-3+ scope: source-picker against patch-graph adapter)"
+                title="Route a source"
               >
                 <Icon name="plus" size={10} /> route
               </button>
@@ -609,10 +652,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     overflow: hidden;
   }
   .patch__canvas-head {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    position: relative;
     z-index: 2;
     padding: var(--space-sm) var(--space-md);
     background: color-mix(in oklab, var(--color-bg-3) 85%, transparent);
@@ -627,6 +667,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     flex: 1;
   }
 
+  /* Auto-fitted / scrollable viewport for the unified 1:1 graph stage */
+  .patch__viewport {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   /* Dotted grid (matches bundle's `radial-gradient` background) */
   .patch__grid {
     position: absolute;
@@ -638,26 +690,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     z-index: 0;
   }
 
+  .patch__stage-sizer {
+    position: relative;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+
+  .patch__stage {
+    position: relative;
+    transform-origin: 0 0;
+  }
+
   .patch__wires {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    top: 0;
+    left: 0;
     z-index: 1;
     pointer-events: none;
     overflow: visible;
   }
 
   .patch__nodes {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
   }
 
   /* ---------------- Node ------------------------------------------ */
   .patch__node {
     position: absolute;
+    box-sizing: border-box;
     background: var(--color-bg-2);
     border: 1px solid var(--color-line-2);
     border-top: 2px solid var(--node-tint, var(--color-line-3));
@@ -683,8 +745,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     box-shadow: 0 16px 32px rgba(0, 0, 0, 0.55);
   }
   .patch__node-head {
-    padding: 6px var(--space-md);
-    height: 29px;
+    padding: 5px var(--space-md);
+    height: 27px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -738,10 +800,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     box-sizing: border-box;
   }
   .patch__pin-port--in {
-    left: -5px;
+    left: -6px;
   }
   .patch__pin-port--out {
-    right: -5px;
+    right: -6px;
   }
 
   /* The local `mono` utility — bundle's `<span className="mono">` analog. */
@@ -835,11 +897,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   /* ---------------- Live Modulation bar --------------------------- */
   .patch__mod-bar {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: relative;
     z-index: 2;
+    flex-shrink: 0;
     padding: var(--space-xs) var(--space-md);
     background: color-mix(in oklab, var(--color-bg-3) 88%, transparent);
     backdrop-filter: blur(6px);

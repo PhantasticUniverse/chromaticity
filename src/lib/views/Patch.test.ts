@@ -146,4 +146,30 @@ describe('Patch view', () => {
       'false',
     );
   });
+
+  it('mounts SVG wires and DOM nodes inside a shared 1:1 stage coordinate space', () => {
+    const { container } = render(Patch);
+    const stage = container.querySelector('.patch__stage') as HTMLElement | null;
+    expect(stage).not.toBeNull();
+    const svg = stage?.querySelector('svg.patch__wires');
+    const nodesLayer = stage?.querySelector('.patch__nodes');
+    expect(svg).not.toBeNull();
+    expect(nodesLayer).not.toBeNull();
+    // Explicit 1:1 pixel dimensions matching viewBox eliminate preserveAspectRatio drift.
+    expect(svg?.getAttribute('width')).toBe('1100');
+    expect(svg?.getAttribute('height')).toBe('600');
+    expect(svg?.getAttribute('viewBox')).toBe('0 0 1100 600');
+    expect(svg?.getAttribute('preserveAspectRatio')).toBeNull();
+    expect(stage?.style.width).toBe('1100px');
+    expect(stage?.style.height).toBe('600px');
+  });
+
+  it('keeps user-facing tooltips free of internal phase or wave jargon', () => {
+    const { container } = render(Patch);
+    const titled = container.querySelectorAll('[title]');
+    for (const el of titled) {
+      const title = el.getAttribute('title') ?? '';
+      expect(title).not.toMatch(/Phase-\d|W\d+|EV-|ADR-/);
+    }
+  });
 });

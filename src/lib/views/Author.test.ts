@@ -514,4 +514,19 @@ describe('Author view', () => {
       expect(mockClearSceneThumbnailCache).toHaveBeenCalledWith(scenePath);
     });
   });
+
+  it('keeps inspector tablist and action toolbar separated without internal dev jargon', async () => {
+    const { container, getByRole } = render(Author);
+    const tabsBar = container.querySelector('.au-author__tabs');
+    expect(tabsBar).not.toBeNull();
+    expect(tabsBar?.querySelector('.au-author__tablist')).not.toBeNull();
+    expect(tabsBar?.querySelector('.au-author__tab-actions')).not.toBeNull();
+    expect(tabsBar?.querySelectorAll('.au-author__tab').length).toBe(5);
+    expect(tabsBar?.querySelectorAll('.au-author__tab-actions button').length).toBe(3);
+
+    // Backup popover copy must not leak internal phase/PR/fixture jargon.
+    await fireEvent.click(getByRole('button', { name: 'load backup' }));
+    const foot = container.querySelector('.au-author__pop-foot');
+    expect(foot?.textContent ?? '').not.toMatch(/Phase-\d|PR \d|W\d+|EV-|fixture/i);
+  });
 });
