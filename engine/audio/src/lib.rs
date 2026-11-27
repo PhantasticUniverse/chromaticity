@@ -219,6 +219,7 @@ pub mod frame;
 pub mod ingest;
 pub mod ingest_negotiation;
 pub mod metering;
+pub mod mixer;
 pub mod observability;
 pub mod runtime;
 pub mod silent;
@@ -235,6 +236,11 @@ pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource}
 pub use metering::{
     AgcNormalizer, AgcOutput, SpectralFluxOnsetDetector, StereoLevels, apply_input_gain,
     compute_stereo_levels, compute_true_peak_dbtp, db_to_linear,
+};
+pub use mixer::{
+    BRICKWALL_CEILING_DB, BRICKWALL_CEILING_LINEAR, BroadcastMixer, BusConfig, BusId, BusMeter,
+    DynamicsConfig, MAX_BUS_GAIN_DB, MAX_SYNC_OFFSET_MS, MIN_BUS_GAIN_DB, constant_power_pan_gains,
+    stereo_balance_gains,
 };
 pub use spectrum::{
     BpmEstimate, FusedBpmEstimator, SPECTRUM_BANDS_48, SPECTRUM_BANDS_64, compute_log_spectrum_64,
