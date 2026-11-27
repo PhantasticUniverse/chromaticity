@@ -183,4 +183,86 @@ describe('Import view', () => {
       expect(getByText(/ISF_V2_DEFERRED/)).toBeInTheDocument();
     });
   });
+
+  it('displays amber Non-Commercial (-NC) warning badge and attribution notice for CC BY-NC Shadertoy GLSL', async () => {
+    const { getByRole, getByTestId } = render(Import);
+    const shadertoyInput = getByRole('textbox', {
+      name: 'Shadertoy.com source',
+    }) as HTMLInputElement;
+    const ccByNcGlsl = [
+      '// SPDX-License-Identifier: CC-BY-NC-4.0',
+      '// Author: Alex Rivera',
+      'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }',
+    ].join('\n');
+
+    await fireEvent.input(shadertoyInput, { target: { value: ccByNcGlsl } });
+
+    const shadertoyCard = getByRole('article', { name: /Shadertoy\.com converter/ });
+    const previewBtn = shadertoyCard.querySelector(
+      'button.import__btn:not(.import__btn--ghost):not(.import__btn--primary)',
+    ) as HTMLButtonElement;
+    await fireEvent.click(previewBtn);
+
+    await waitFor(() => {
+      const badge = getByTestId('import-license-badge');
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveAttribute('data-commercial-safe', 'false');
+      expect(badge).toHaveTextContent('Non-Commercial (-NC)');
+      expect(badge).toHaveTextContent('CC-BY-NC');
+      expect(badge).toHaveTextContent('Alex Rivera');
+      expect(badge).toHaveTextContent(/Commercial use is not permitted/i);
+    });
+  });
+
+  it('displays green Commercial Safe badge for MIT-licensed Shadertoy GLSL', async () => {
+    const { getByRole, getByTestId } = render(Import);
+    const shadertoyInput = getByRole('textbox', {
+      name: 'Shadertoy.com source',
+    }) as HTMLInputElement;
+    const mitGlsl = [
+      '// The MIT License',
+      '// Copyright (c) 2024 Inigo Quilez',
+      'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.0); }',
+    ].join('\n');
+
+    await fireEvent.input(shadertoyInput, { target: { value: mitGlsl } });
+
+    const shadertoyCard = getByRole('article', { name: /Shadertoy\.com converter/ });
+    const previewBtn = shadertoyCard.querySelector(
+      'button.import__btn:not(.import__btn--ghost):not(.import__btn--primary)',
+    ) as HTMLButtonElement;
+    await fireEvent.click(previewBtn);
+
+    await waitFor(() => {
+      const badge = getByTestId('import-license-badge');
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveAttribute('data-commercial-safe', 'true');
+      expect(badge).toHaveTextContent('Commercial Safe');
+      expect(badge).toHaveTextContent('MIT');
+      expect(badge).toHaveTextContent('Inigo Quilez');
+      expect(badge).not.toHaveTextContent('Non-Commercial (-NC)');
+    });
+  });
+
+  it('Synesthesia .synScene import invokes import_syn_scene, logs console output, and prepends a recent import', async () => {
+    const { container, getByRole, getByText } = render(Import);
+    const synInput = getByRole('textbox', {
+      name: 'Synesthesia Scene (.synScene) source',
+    }) as HTMLInputElement;
+    await fireEvent.input(synInput, {
+      target: { value: '/scenes/Neon_Pulse.synScene' },
+    });
+
+    const synCard = getByRole('article', { name: /Synesthesia Scene \(\.synScene\) converter/ });
+    const importBtn = synCard.querySelector('button.import__btn--primary') as HTMLButtonElement;
+    await fireEvent.click(importBtn);
+
+    await waitFor(() => {
+      expect(getByText('Neon Pulse')).toBeInTheDocument();
+      expect(getByText(/Synesthesia → scenes\/neon-pulse\.chroma/)).toBeInTheDocument();
+    });
+    expect(container.querySelectorAll('.import__console-line').length).toBeGreaterThan(
+      IMPORT_CONSOLE.length,
+    );
+  });
 });

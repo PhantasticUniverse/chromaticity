@@ -300,6 +300,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { id: '2-3', left: 2, right: 3, label: 'Ch 3–4 (Headphone Cue / Deck)' },
     { id: '4-5', left: 4, right: 5, label: 'Ch 5–6' },
     { id: '6-7', left: 6, right: 7, label: 'Ch 7–8' },
+    { id: '8-9', left: 8, right: 9, label: 'Ch 9–10' },
   ];
 
   const selectedInputDeviceName = $derived(

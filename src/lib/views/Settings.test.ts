@@ -923,5 +923,13 @@ describe('Settings view', () => {
       rightChannel: 1,
     });
     expect(within(audio).queryByTestId('dj-cue-warning')).toBeNull();
+
+    // DDJ-FLX10 exposes 10 USB input channels — Ch 9–10 (8, 9) must be selectable.
+    await fireEvent.change(pairSelect, { target: { value: '8-9' } });
+    expect(invokeMock).toHaveBeenCalledWith('set_audio_channel_pair', {
+      leftChannel: 8,
+      rightChannel: 9,
+    });
+    expect(pairSelect.value).toBe('8-9');
   });
 });

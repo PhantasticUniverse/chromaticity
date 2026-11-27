@@ -70,7 +70,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type RecentImport,
   } from '../data/import-fixtures';
   import Icon from '../Icon.svelte';
-  import { checkIsfImport, importShadertoySource } from '../ipc/import';
+  import {
+    checkIsfImport,
+    importShadertoySource,
+    importSynScene,
+    inspectShadertoyLicense,
+    type ShadertoyLicenseReport,
+  } from '../ipc/import';
 
   // Per-card input state. Map keyed on converter id so the state
   // persists when the operator switches cards. Defaults are empty
@@ -82,6 +88,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let consoleEntries = $state<readonly ImportConsoleEntry[]>([...IMPORT_CONSOLE]);
   let hasLiveConsoleEntries = $state<boolean>(false);
   let busyConverterId = $state<string | null>(null);
+  let shadertoyLicense = $state<ShadertoyLicenseReport | null>(null);
   let logSeq = 0;
 
   function appendConsole(level: ImportConsoleLevel, tag: string, message: string): void {
@@ -122,16 +129,30 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     try {
       if (converter.id === 'shadertoy') {
         if (raw.includes('/*{') || raw.toLowerCase().endsWith('.fs')) {
+          shadertoyLicense = null;
           await runIsfDiagnostic(raw);
           return;
         }
         appendConsole('info', 'fetch', raw || '(empty shadertoy source)');
         const result = await importShadertoySource(raw);
         if (!result.ok) {
+          shadertoyLicense = null;
           for (const warning of result.warnings) {
             appendConsole('warn', 'warn', warning);
           }
           return;
+        }
+        const sourceUrl = /^https?:\/\/.*shadertoy\.com\/view\//i.test(raw) ? raw : undefined;
+        const licenseReport = await inspectShadertoyLicense(raw, undefined, sourceUrl);
+        shadertoyLicense = licenseReport;
+        if (!licenseReport.is_commercial_safe) {
+          appendConsole(
+            'warn',
+            'license',
+            `${licenseReport.license}: ${licenseReport.warning ?? 'Non-commercial restriction applies.'}`,
+          );
+        } else {
+          appendConsole('info', 'license', `Commercial Safe — ${licenseReport.license}`);
         }
         const uniformSummary =
           result.remappedUniforms.length > 0 ? ` (${result.remappedUniforms.join(', ')})` : '';
@@ -161,6 +182,41 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         return;
       }
 
+      if (converter.id === 'syn-scene') {
+        if (!raw) {
+          appendConsole('warn', 'warn', 'No .synScene directory path provided.');
+          return;
+        }
+        appendConsole('info', 'scan', raw);
+        const result = await importSynScene(raw);
+        const scriptNote = result.has_script ? ', script.js' : '';
+        appendConsole(
+          'ok',
+          mode === 'preview' ? 'preview' : 'compile',
+          `synScene → ${result.scene_title} (${result.control_count} controls${scriptNote})`,
+        );
+        for (const warning of result.warnings) {
+          appendConsole('warn', 'warn', warning);
+        }
+        if (mode === 'import') {
+          const slug = result.scene_title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+          recentImports = [
+            {
+              id: `syn-${slug || 'scene'}-${++logSeq}`,
+              title: result.scene_title,
+              activity: `Synesthesia → ${result.output_dir}`,
+              kind: 'kaleido',
+              seed: (recentImports.length + 11) * 5,
+            },
+            ...recentImports,
+          ];
+        }
+        return;
+      }
+
       appendConsole('info', mode, `${converter.title}: ${raw || 'no source path provided'}`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -182,6 +238,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   function updateCardInput(id: string, value: string): void {
     cardInputs = { ...cardInputs, [id]: value };
+    if (id === 'shadertoy' && value.trim() === '') {
+      shadertoyLicense = null;
+    }
   }
 
   // Token-driven hue from a deterministic seed — mirrors the W17 PR1
@@ -267,6 +326,27 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               Import
             </button>
           </div>
+          {#if converter.id === 'shadertoy' && shadertoyLicense !== null}
+            <div
+              class="import__license"
+              class:import__license--safe={shadertoyLicense.is_commercial_safe}
+              class:import__license--warn={!shadertoyLicense.is_commercial_safe}
+              data-testid="import-license-badge"
+              data-commercial-safe={shadertoyLicense.is_commercial_safe ? 'true' : 'false'}
+              role="status"
+            >
+              <div class="import__license-head">
+                <span class="import__license-pill mono">
+                  {shadertoyLicense.is_commercial_safe ? 'Commercial Safe' : 'Non-Commercial (-NC)'}
+                </span>
+                <span class="import__license-spdx mono">{shadertoyLicense.license}</span>
+              </div>
+              <p class="import__license-notice mono">{shadertoyLicense.attribution_notice}</p>
+              {#if !shadertoyLicense.is_commercial_safe && shadertoyLicense.warning}
+                <p class="import__license-warning">{shadertoyLicense.warning}</p>
+              {/if}
+            </div>
+          {/if}
         </article>
       {/each}
     </div>
@@ -466,6 +546,78 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     align-items: center;
     gap: var(--space-sm);
     margin-top: var(--space-xs);
+  }
+
+  /* ---------------- License & attribution badge -------------------- */
+  .import__license {
+    margin-top: var(--space-xs);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-2);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .import__license--safe {
+    border-color: var(--color-success);
+    background: color-mix(in oklab, var(--color-success) 10%, var(--color-bg-2));
+  }
+
+  .import__license--warn {
+    border-color: var(--color-warning);
+    background: color-mix(in oklab, var(--color-warning) 10%, var(--color-bg-2));
+  }
+
+  .import__license-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .import__license-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: var(--radius-xs);
+    font-size: var(--font-size-caps-sm);
+    font-weight: 700;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    text-transform: uppercase;
+  }
+
+  .import__license--safe .import__license-pill {
+    border: 1px solid var(--color-success);
+    background: color-mix(in oklab, var(--color-success) 18%, var(--color-bg-3));
+    color: var(--color-text-0);
+  }
+
+  .import__license--warn .import__license-pill {
+    border: 1px solid var(--color-warning);
+    background: color-mix(in oklab, var(--color-warning) 18%, var(--color-bg-3));
+    color: var(--color-text-0);
+  }
+
+  .import__license-spdx {
+    font-size: var(--font-size-mono-sm);
+    font-weight: 600;
+    color: var(--color-text-0);
+  }
+
+  .import__license-notice {
+    margin: 0;
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
+    line-height: 1.4;
+  }
+
+  .import__license-warning {
+    margin: 0;
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
+    line-height: 1.4;
   }
 
   /* ---------------- Inputs ----------------------------------------- */

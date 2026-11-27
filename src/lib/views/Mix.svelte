@@ -87,6 +87,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   const selectedLayer = $derived(videoMixerStore.selectedLayer);
   const previewLayers = $derived(videoMixerStore.layers);
   const programLayers = $derived(videoMixerStore.programLayers);
+  const topProgramLayerId = $derived(
+    programLayers.find((layer) => videoMixerStore.isLayerRendered(layer, programLayers))?.id ??
+      null,
+  );
   const isStudioMode = $derived(videoMixerStore.mode === 'studio');
 
   const chromaFilter = $derived(
@@ -689,20 +693,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                       </div>
                     {/if}
 
-                    <div class="mix__stage-tag">
-                      <span>{layer.name}</span>
-                      {#if hasChroma}
-                        <span class="mix__fx-pill">CK</span>
-                      {/if}
-                      {#if hasLuma}
-                        <span class="mix__fx-pill">LK</span>
-                      {/if}
-                      {#if activeAudio?.enabled}
-                        <span class="mix__fx-pill mix__fx-pill--audio">
-                          {activeAudio.source.toUpperCase()}→{activeAudio.target.toUpperCase()}
-                        </span>
-                      {/if}
-                    </div>
+                    {#if isSelected}
+                      <div class="mix__stage-tag">
+                        <span>{layer.name}</span>
+                        {#if hasChroma}
+                          <span class="mix__fx-pill">CK</span>
+                        {/if}
+                        {#if hasLuma}
+                          <span class="mix__fx-pill">LK</span>
+                        {/if}
+                        {#if activeAudio?.enabled}
+                          <span class="mix__fx-pill mix__fx-pill--audio">
+                            {activeAudio.source.toUpperCase()}→{activeAudio.target.toUpperCase()}
+                          </span>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
 
                   {#if isSelected && !layer.locked}
@@ -776,9 +782,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                     style={layerStageStyle(layer, revIndex + 1)}
                   >
                     <div class="mix__layer-visual">
-                      <div class="mix__stage-tag">
-                        <span>{layer.name}</span>
-                      </div>
+                      {#if layer.id === topProgramLayerId}
+                        <div class="mix__stage-tag">
+                          <span>{layer.name}</span>
+                        </div>
+                      {/if}
                     </div>
                   </div>
                 {/if}
@@ -2368,6 +2376,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     border-radius: var(--radius-sm);
     background: var(--color-bg-3);
     border: 1px solid var(--color-line-2);
+    flex-shrink: 0;
   }
 
   .mix__selected-name {
@@ -2380,6 +2389,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     border-radius: var(--radius-md);
     background: var(--color-bg-2);
     overflow: hidden;
+    flex-shrink: 0;
   }
 
   .mix__section-toggle {
@@ -2403,6 +2413,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
+    overflow: visible;
+    height: auto;
   }
 
   .mix__field {

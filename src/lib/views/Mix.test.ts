@@ -258,4 +258,12 @@ describe('Mix view', () => {
       expect(getByTestId('mix-replay-status')).toHaveTextContent('Desktop Only');
     });
   });
+
+  it('renders the top-left stage layer pill only on the selected layer to prevent overlaps', () => {
+    const { getByTestId } = render(Mix);
+    const stageCanvas = getByTestId('mix-stage-canvas');
+    const stageTags = stageCanvas.querySelectorAll('.mix__stage-tag');
+    expect(stageTags).toHaveLength(1);
+    expect(stageTags[0]).toHaveTextContent(videoMixerStore.selectedLayer?.name ?? '');
+  });
 });
