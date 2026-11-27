@@ -28,12 +28,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // image. The bundle's vignette post-pass is part of `renderStill` and
   // is therefore inherited automatically.
   import { renderStill, type SceneKind } from './scene-renderers';
+  import { fetchSceneThumbnail } from '../ipc/render';
 
   type Props = {
     kind?: SceneKind;
     seed?: number;
     width?: number;
     height?: number;
+    /**
+     * Optional filesystem path to a `.chroma` scene package. When
+     * non-empty, asynchronously requests a GPU-rendered RGBA8 thumbnail
+     * via `fetchSceneThumbnail` and paints it over the initial
+     * procedural Canvas2D still.
+     */
+    scenePath?: string | undefined;
     /**
      * Optional ARIA description. Default `presentation` because the
      * canvas is decorative — the operator reads the label/identifier
@@ -42,19 +50,49 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     ariaLabel?: string;
   };
 
-  let { kind = 'rings', seed = 0, width = 200, height = 120, ariaLabel }: Props = $props();
+  let {
+    kind = 'rings',
+    seed = 0,
+    width = 200,
+    height = 120,
+    scenePath,
+    ariaLabel,
+  }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
 
   // Re-render whenever the canvas mounts or the renderer-controlling
-  // props (kind / seed / width / height) change. `width` / `height` set
-  // the canvas bitmap before the renderer runs so the routine sees the
-  // right `(w, h)`.
+  // props (kind / seed / width / height / scenePath) change. `width` /
+  // `height` set the canvas bitmap before the procedural renderer runs
+  // synchronously for instant first paint; when `scenePath` is provided,
+  // an async Metal/wgpu thumbnail fetch paints real RGBA8 pixels over
+  // the procedural fallback once ready.
   $effect(() => {
     if (!canvas) return;
-    canvas.width = width;
-    canvas.height = height;
-    renderStill(canvas, kind, seed);
+    const c = canvas;
+    const w = width;
+    const h = height;
+    const path = scenePath?.trim();
+
+    c.width = w;
+    c.height = h;
+    renderStill(c, kind, seed);
+
+    if (!path || typeof ImageData === 'undefined') return;
+
+    let cancelled = false;
+    void fetchSceneThumbnail(path, w, h).then((pixels) => {
+      if (cancelled || !pixels) return;
+      const ctx = c.getContext('2d');
+      if (!ctx || pixels.byteLength !== w * h * 4) return;
+      const clamped = new Uint8ClampedArray(pixels.byteLength);
+      clamped.set(pixels);
+      ctx.putImageData(new ImageData(clamped, w, h), 0, 0);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   });
 </script>
 

@@ -15,8 +15,17 @@
 // `feedback_vitest_svelte_cleanup_required.md` convention.
 
 import '@testing-library/jest-dom/vitest';
+import { waitFor } from '@testing-library/dom';
 import { cleanup, render } from '@testing-library/svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { fetchSceneThumbnailMock } = vi.hoisted(() => ({
+  fetchSceneThumbnailMock: vi.fn(),
+}));
+
+vi.mock('../ipc/render', () => ({
+  fetchSceneThumbnail: fetchSceneThumbnailMock,
+}));
 
 import { RENDERERS, SCENE_KINDS, renderStill, type SceneKind } from './scene-renderers';
 import SceneStill from './SceneStill.svelte';
@@ -122,8 +131,15 @@ describe('RENDERERS audio-reactivity contract (Wave 2.3 Q.1)', () => {
 });
 
 describe('SceneStill widget', () => {
+  beforeEach(() => {
+    fetchSceneThumbnailMock.mockReset();
+    fetchSceneThumbnailMock.mockResolvedValue(null);
+  });
+
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('renders a canvas element with the requested width and height', () => {
@@ -161,5 +177,125 @@ describe('SceneStill widget', () => {
       expect(container.querySelector('canvas')).not.toBeNull();
       unmount();
     }
+  });
+
+  function makeStub2dContext(putImageData: ReturnType<typeof vi.fn>): CanvasRenderingContext2D {
+    const gradient = { addColorStop: vi.fn() };
+    const noop = vi.fn();
+    return new Proxy(
+      {
+        putImageData,
+        createRadialGradient: vi.fn(() => gradient),
+        createLinearGradient: vi.fn(() => gradient),
+      },
+      {
+        get(target, prop) {
+          if (prop in target) return target[prop as keyof typeof target];
+          return noop;
+        },
+      },
+    ) as unknown as CanvasRenderingContext2D;
+  }
+
+  it('paints GPU RGBA8 pixels via putImageData when scenePath resolves', async () => {
+    class FakeImageData {
+      readonly data: Uint8ClampedArray;
+      readonly width: number;
+      readonly height: number;
+      constructor(data: Uint8ClampedArray, width: number, height: number) {
+        this.data = data;
+        this.width = width;
+        this.height = height;
+      }
+    }
+    vi.stubGlobal('ImageData', FakeImageData);
+
+    const putImageData = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      makeStub2dContext(putImageData),
+    );
+
+    const width = 4;
+    const height = 2;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    pixels[0] = 255;
+    pixels[3] = 255;
+    fetchSceneThumbnailMock.mockResolvedValueOnce(pixels);
+
+    render(SceneStill, {
+      props: {
+        kind: 'rings',
+        seed: 1,
+        width,
+        height,
+        scenePath: '/bundle/welcome.chroma',
+      },
+    });
+
+    await waitFor(() => {
+      expect(fetchSceneThumbnailMock).toHaveBeenCalledWith('/bundle/welcome.chroma', width, height);
+      expect(putImageData).toHaveBeenCalledTimes(1);
+    });
+    const [img, dx, dy] = putImageData.mock.calls[0] as [FakeImageData, number, number];
+    expect(img.width).toBe(width);
+    expect(img.height).toBe(height);
+    expect(img.data[0]).toBe(255);
+    expect(img.data[3]).toBe(255);
+    expect(dx).toBe(0);
+    expect(dy).toBe(0);
+  });
+
+  it('ignores stale GPU thumbnail responses after unmount', async () => {
+    class FakeImageData {
+      readonly data: Uint8ClampedArray;
+      readonly width: number;
+      readonly height: number;
+      constructor(data: Uint8ClampedArray, width: number, height: number) {
+        this.data = data;
+        this.width = width;
+        this.height = height;
+      }
+    }
+    vi.stubGlobal('ImageData', FakeImageData);
+
+    const putImageData = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      makeStub2dContext(putImageData),
+    );
+
+    let resolvePixels: ((px: Uint8ClampedArray | null) => void) | undefined;
+    fetchSceneThumbnailMock.mockReturnValueOnce(
+      new Promise<Uint8ClampedArray | null>((resolve) => {
+        resolvePixels = resolve;
+      }),
+    );
+
+    const { unmount } = render(SceneStill, {
+      props: {
+        kind: 'rings',
+        seed: 1,
+        width: 4,
+        height: 2,
+        scenePath: '/bundle/stale.chroma',
+      },
+    });
+
+    await waitFor(() => {
+      expect(fetchSceneThumbnailMock).toHaveBeenCalledTimes(1);
+    });
+    unmount();
+
+    resolvePixels?.(new Uint8ClampedArray(4 * 2 * 4));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(putImageData).not.toHaveBeenCalled();
+  });
+
+  it('skips GPU thumbnail fetch when scenePath is omitted', () => {
+    render(SceneStill, {
+      props: { kind: 'rings', seed: 1, width: 64, height: 36 },
+    });
+    expect(fetchSceneThumbnailMock).not.toHaveBeenCalled();
   });
 });

@@ -659,6 +659,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                 seed={sceneSeedFromMetadata(card)}
                 width={220}
                 height={138}
+                scenePath={card.path}
               />
               <!-- Wave 2.5 LIB.B — tag chips overlaid on the
                    thumbnail (top-left), heart-toggle overlaid on the
@@ -725,6 +726,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           kind={sceneKindFromMetadata(selectedCard)}
           seed={sceneSeedFromMetadata(selectedCard)}
           audio
+          gpuLive={loadedSceneStore.snapshot?.id === selectedCard.id}
           ariaLabel={`Preview of ${selectedCard.title || selectedCard.id}`}
         />
       </div>
