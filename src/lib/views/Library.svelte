@@ -323,7 +323,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // change.
   let lastCustomRootsKey: string | null = $state(null);
   $effect(() => {
-    const key = settingsStore.snapshot.storage.scene_folders.join(' ');
+    const key = settingsStore.snapshot.storage.scene_folders.join('\0');
     if (lastCustomRootsKey === null) {
       lastCustomRootsKey = key;
       return;
