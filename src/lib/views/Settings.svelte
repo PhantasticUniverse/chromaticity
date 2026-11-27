@@ -547,8 +547,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       clearTimeout(tapResetTimer);
     }
     tapResetTimer = setTimeout(() => {
+      // Clear the tap window after 2s of silence, but keep `tappedBpm` latched
+      // so the operator can still click Set without racing the timer.
       tapTimestamps = [];
-      tappedBpm = null;
       tapResetTimer = null;
     }, TAP_RESET_MS);
   }
@@ -565,6 +566,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const candidate = tappedBpm ?? tempoSnapshot.manual_bpm;
     const raw = Number.isFinite(candidate) ? candidate : 120;
     const clamped = Math.min(300, Math.max(20, Math.round(raw * 10) / 10));
+    tappedBpm = null;
     settingsStore.update({ tempo: { manual_bpm: clamped } });
   }
 
@@ -836,10 +838,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               max="7680"
               step="2"
               value={graphicsSnapshot.custom_width}
-              oninput={(e) => {
+              onchange={(e) => {
                 const parsed = Number.parseInt(e.currentTarget.value, 10);
-                if (Number.isFinite(parsed) && parsed >= 320 && parsed <= 7680) {
-                  settingsStore.update({ graphics: { custom_width: parsed - (parsed % 2) } });
+                if (Number.isFinite(parsed)) {
+                  const clamped = Math.min(7680, Math.max(320, parsed));
+                  const even = clamped - (clamped % 2);
+                  e.currentTarget.value = String(even);
+                  settingsStore.update({ graphics: { custom_width: even } });
+                } else {
+                  e.currentTarget.value = String(graphicsSnapshot.custom_width);
                 }
               }}
               disabled={!graphicsSnapshot.custom_resolution_enabled}
@@ -854,10 +861,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               max="4320"
               step="2"
               value={graphicsSnapshot.custom_height}
-              oninput={(e) => {
+              onchange={(e) => {
                 const parsed = Number.parseInt(e.currentTarget.value, 10);
-                if (Number.isFinite(parsed) && parsed >= 240 && parsed <= 4320) {
-                  settingsStore.update({ graphics: { custom_height: parsed - (parsed % 2) } });
+                if (Number.isFinite(parsed)) {
+                  const clamped = Math.min(4320, Math.max(240, parsed));
+                  const even = clamped - (clamped % 2);
+                  e.currentTarget.value = String(even);
+                  settingsStore.update({ graphics: { custom_height: even } });
+                } else {
+                  e.currentTarget.value = String(graphicsSnapshot.custom_height);
                 }
               }}
               disabled={!graphicsSnapshot.custom_resolution_enabled}
@@ -1376,6 +1388,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   settingsStore.update({ tempo: { manual_bpm: parsed } });
                 }
               }}
+              onchange={(e) => {
+                const parsed = Number.parseFloat(e.currentTarget.value);
+                if (Number.isFinite(parsed)) {
+                  const clamped = Math.min(300, Math.max(20, Math.round(parsed * 10) / 10));
+                  e.currentTarget.value = String(clamped);
+                  settingsStore.update({ tempo: { manual_bpm: clamped } });
+                } else {
+                  e.currentTarget.value = String(tempoSnapshot.manual_bpm);
+                }
+              }}
             />
             <button type="button" class="settings__btn settings__btn--ghost" onclick={setManualBpm}>
               Set
@@ -1397,6 +1419,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 const parsed = Number.parseFloat(e.currentTarget.value);
                 if (Number.isFinite(parsed) && parsed >= -200 && parsed <= 200) {
                   settingsStore.update({ tempo: { link_offset_ms: parsed } });
+                }
+              }}
+              onchange={(e) => {
+                const parsed = Number.parseFloat(e.currentTarget.value);
+                if (Number.isFinite(parsed)) {
+                  const clamped = Math.min(200, Math.max(-200, Math.round(parsed)));
+                  e.currentTarget.value = String(clamped);
+                  settingsStore.update({ tempo: { link_offset_ms: clamped } });
+                } else {
+                  e.currentTarget.value = String(tempoSnapshot.link_offset_ms);
                 }
               }}
             />

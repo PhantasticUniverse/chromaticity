@@ -3,6 +3,10 @@ SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
+<script module lang="ts">
+  let persistedBlackoutActive = false;
+</script>
+
 <script lang="ts">
   // Wave-18 PR1 Perform view full port — replaces the W12 PR3 single-page
   // dev surface (control 0 slider + readback, 16-slot snap grid, preset
@@ -76,6 +80,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   //     (`stores/control.ts`, `stores/snap.ts`, `stores/preset.ts`,
   //     `stores/playlist.ts`) remain — they back the engine IPC tests and
   //     the W10 Inputs Inspector view. Only the Perform-side markup leaves.
+  import { onDestroy } from 'svelte';
+
   import {
     MEDIA_DEFAULT_ACTIVE_INDEX,
     MEDIA_TABS,
@@ -549,7 +555,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   );
 
   let strobeActive = $state(false);
-  let blackoutActive = $state(false);
+  let blackoutActive = $state(persistedBlackoutActive);
 
   function setActiveFactoryPresetForScene(id: FactoryPresetId | null): void {
     activeFactoryPresetByScene = {
@@ -657,8 +663,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   function toggleBlackout(): void {
     const next = !blackoutActive;
     blackoutActive = next;
+    persistedBlackoutActive = next;
     dispatchControl(META_BLACKOUT_CONTROL_ID, next ? 1 : 0);
   }
+
+  onDestroy(() => {
+    releaseStrobe();
+  });
 
   function controlValueKey(id: number): string {
     if (id >= META_CONTROL_ID_BASE) return `meta:${id}`;

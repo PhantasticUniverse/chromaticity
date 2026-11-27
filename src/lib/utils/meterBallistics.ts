@@ -43,6 +43,7 @@ export function stepMeterBallistics(
 ): MeterBallisticsState {
   const safeTarget = Number.isFinite(targetRatio) ? Math.max(0, Math.min(1, targetRatio)) : 0;
   const safeDt = Number.isFinite(dtSec) ? Math.min(0.1, Math.max(0.001, dtSec)) : 0.016;
+  const safeNowMs = Number.isFinite(nowMs) ? nowMs : 0;
   const current = prev ?? { level: 0, peak: 0, peakHoldUntilMs: 0 };
 
   const releaseStep = METER_RELEASE_RATIO_PER_SEC * safeDt;
@@ -61,8 +62,8 @@ export function stepMeterBallistics(
   let nextHoldUntil = current.peakHoldUntilMs;
   if (nextLevel >= nextPeak) {
     nextPeak = nextLevel;
-    nextHoldUntil = nowMs + METER_PEAK_HOLD_MS;
-  } else if (nowMs >= nextHoldUntil) {
+    nextHoldUntil = safeNowMs + METER_PEAK_HOLD_MS;
+  } else if (safeNowMs >= nextHoldUntil) {
     nextPeak = Math.max(nextLevel, nextPeak - peakReleaseStep);
   }
 

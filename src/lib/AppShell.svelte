@@ -145,6 +145,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     WatermarkOverlay,
   } from './widgets';
 
+  let mixVisited = $state(false);
+  $effect(() => {
+    if (routeStore.current === 'mix') {
+      mixVisited = true;
+    }
+  });
+
   // Wave 2.3 Lane Q.2 (G.2) — DegradedBanner default visibility flips
   // from true to false so the unsigned local dev build no longer
   // surfaces the synthetic "Running on integrated GPU" warning. The
@@ -265,10 +272,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         routeStore.current === 'author' ||
         routeStore.current === 'patch'}
     >
+      {#if mixVisited}
+        <div
+          class="app-shell__mix-keepalive"
+          hidden={routeStore.current !== 'mix'}
+          aria-hidden={routeStore.current !== 'mix' ? 'true' : undefined}
+        >
+          <Mix />
+        </div>
+      {/if}
       {#if routeStore.current === 'perform'}
         <Perform />
       {:else if routeStore.current === 'mix'}
-        <Mix />
+        <!-- Rendered inside keepalive wrapper above so live Twitch/Webcam/Media never drop on route switch -->
       {:else if routeStore.current === 'library'}
         <Library />
       {:else if routeStore.current === 'author'}
@@ -375,6 +391,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+  .app-shell__mix-keepalive {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .app-shell__mix-keepalive[hidden] {
+    display: none;
   }
   .app-shell__banner {
     flex-shrink: 0;

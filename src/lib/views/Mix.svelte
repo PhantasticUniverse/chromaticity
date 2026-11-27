@@ -386,7 +386,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const apply = (nextMuted: boolean): void => {
       node.muted = nextMuted;
       const isJsdom = typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
-      if (!isJsdom && node.paused && typeof node.play === 'function') {
+      if (!isJsdom && !youtubeUserPaused && node.paused && typeof node.play === 'function') {
         void Promise.resolve(node.play()).catch(() => {});
       }
     };
@@ -542,7 +542,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   }
 
+  let streamSessionSeq = 0;
+
   function stopStreamCaptureLoop(): void {
+    streamSessionSeq += 1;
     if (streamRafId !== null && typeof cancelAnimationFrame === 'function') {
       cancelAnimationFrame(streamRafId);
     }
@@ -588,11 +591,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         if (!mediaEl) continue;
         if (mediaEl instanceof HTMLVideoElement && mediaEl.readyState < 2) continue;
 
-        ctx.save();
-        ctx.globalAlpha = layer.opacity;
-        ctx.globalCompositeOperation = canvasCompositeOp(layer.blendMode);
         const audio = findFilter<AudioLinkFilter>(layer, 'audioLink');
         const pulse = audio?.enabled ? liveAudioBand(audio.source) : 0;
+        const effOpacity =
+          audio?.enabled && audio.target === 'opacity'
+            ? Math.max(0, Math.min(1, layer.opacity * (0.45 + 0.55 * audio.amount * pulse)))
+            : layer.opacity;
+        const scaleBoost =
+          audio?.enabled && audio.target === 'scale' ? 1 + 0.14 * audio.amount * pulse : 1;
+
+        ctx.save();
+        // Apply layer.crop inset clip matching CSS clip-path: inset(top right bottom left)
+        const cropL = (layer.crop.left / 100) * width;
+        const cropT = (layer.crop.top / 100) * height;
+        const cropW = Math.max(0, width - cropL - (layer.crop.right / 100) * width);
+        const cropH = Math.max(0, height - cropT - (layer.crop.bottom / 100) * height);
+        if (cropL > 0 || cropT > 0 || cropW < width || cropH < height) {
+          ctx.beginPath();
+          ctx.rect(cropL, cropT, cropW, cropH);
+          ctx.clip();
+        }
+        ctx.globalAlpha = effOpacity;
+        ctx.globalCompositeOperation = canvasCompositeOp(layer.blendMode);
         const cssFilter = buildLayerCssFilter(layer, pulse);
         if ('filter' in ctx) {
           ctx.filter = cssFilter;
@@ -600,11 +620,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         const cx = width / 2 + (layer.transform.x / 100) * width;
         const cy = height / 2 + (layer.transform.y / 100) * height;
         ctx.translate(cx, cy);
-        ctx.rotate((layer.transform.rotationDeg * Math.PI) / 180);
         const stylize = findFilter<StylizeFilter>(layer, 'stylize');
         const flipX = stylize?.enabled && stylize.mirror === 'horizontal' ? -1 : 1;
         const flipY = stylize?.enabled && stylize.mirror === 'vertical' ? -1 : 1;
-        ctx.scale(layer.transform.scaleX * flipX, layer.transform.scaleY * flipY);
+        // Scale before rotate to match CSS `translate() scale() rotate()` order.
+        ctx.scale(
+          layer.transform.scaleX * scaleBoost * flipX,
+          layer.transform.scaleY * scaleBoost * flipY,
+        );
+        ctx.rotate((layer.transform.rotationDeg * Math.PI) / 180);
         try {
           ctx.drawImage(mediaEl, -width / 2, -height / 2, width, height);
         } catch {
@@ -635,21 +659,32 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         const canvas = compositeStageToCanvas(width, height);
         if (canvas !== null && typeof canvas.toBlob === 'function') {
           framePushInFlight = true;
+          const activeSession = streamSessionSeq;
           try {
             canvas.toBlob(
               (blob) => {
-                if (disposed || !streamStatus.is_live || blob === null) {
+                if (
+                  disposed ||
+                  activeSession !== streamSessionSeq ||
+                  !streamStatus.is_live ||
+                  blob === null
+                ) {
                   framePushInFlight = false;
                   return;
                 }
                 void blob
                   .arrayBuffer()
-                  .then((buf) => pushStreamFrame(new Uint8Array(buf)))
+                  .then((buf) => {
+                    if (disposed || activeSession !== streamSessionSeq) return null;
+                    return pushStreamFrame(new Uint8Array(buf));
+                  })
                   .then((pushedCount) => {
-                    if (disposed || !streamStatus.is_live) return;
+                    if (disposed || activeSession !== streamSessionSeq || !streamStatus.is_live) {
+                      return;
+                    }
                     if (pushedCount === null) {
                       return getStreamStatus().then((latest) => {
-                        if (disposed) return;
+                        if (disposed || activeSession !== streamSessionSeq) return;
                         if (latest === null || !latest.is_live) {
                           stopStreamCaptureLoop();
                           streamStatus = latest ?? {
@@ -2172,8 +2207,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                           ></canvas>
                         {:else if layer.kind === 'text'}
                           <div class="mix__visual-text">
-                            <span class="mix__visual-text-eyebrow">CHROMATICITY · LIVE</span>
-                            <span class="mix__visual-text-title">{layer.name}</span>
+                            <span class="mix__text-heading">{layer.name}</span>
+                            <span class="mix__text-sub">CHROMATICITY · LIVE</span>
                           </div>
                         {:else if layer.kind === 'youtube' && youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
                           <iframe
