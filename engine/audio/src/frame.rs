@@ -71,6 +71,13 @@ impl AudioFrame {
     pub fn samples(&self) -> &[f32] {
         &self.samples
     }
+
+    /// Mutable view over the interleaved sample buffer (used for
+    /// in-place pre-analysis conditioning such as ADR-023 input gain).
+    #[must_use]
+    pub fn samples_mut(&mut self) -> &mut [f32] {
+        &mut self.samples
+    }
 }
 
 impl Default for AudioFrame {

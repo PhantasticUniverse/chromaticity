@@ -218,6 +218,7 @@ pub mod error;
 pub mod frame;
 pub mod ingest;
 pub mod ingest_negotiation;
+pub mod metering;
 pub mod observability;
 pub mod runtime;
 pub mod silent;
@@ -229,6 +230,10 @@ pub use cpal_source::{
 };
 pub use error::AudioError;
 pub use ingest_negotiation::{IngestModeCriteria, IngestNegotiator, IngestSource};
+pub use metering::{
+    AgcNormalizer, AgcOutput, SpectralFluxOnsetDetector, StereoLevels, apply_input_gain,
+    compute_stereo_levels, compute_true_peak_dbtp, db_to_linear,
+};
 pub use uniforms::{AudioAxisAvailability, AudioUniformSnapshot, extract_uniform_snapshot};
 
 #[cfg(test)]

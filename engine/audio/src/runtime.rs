@@ -110,6 +110,7 @@ use crate::cpal_source::{try_default_input, try_input_by_preference};
 use crate::frame::AudioFrame;
 use crate::ingest::{IngestBoundary, IngestStatus};
 use crate::ingest_negotiation::{IngestModeCriteria, IngestNegotiator};
+use crate::metering::apply_input_gain;
 use crate::silent::SilentSource;
 use crate::uniforms::{AudioAnalysisWindow, AudioUniformSnapshot, extract_uniform_snapshot};
 
@@ -150,6 +151,11 @@ pub struct AudioRuntimeConfig {
     /// Invalid criteria fall back to [`IngestModeCriteria::default`]
     /// at construction time.
     pub criteria: IngestModeCriteria,
+    /// Linear input-gain multiplier applied to captured frames prior to
+    /// analysis (ADR-023 §7). Defaults to `1.0` (unity, bit-identical
+    /// fast path preserving all existing `EV-AUDIO-TRACE` goldens).
+    /// Non-finite or negative values fall back to `1.0`.
+    pub input_gain_linear: f32,
 }
 
 impl Default for AudioRuntimeConfig {
@@ -157,6 +163,7 @@ impl Default for AudioRuntimeConfig {
         Self {
             bpm_window: 8,
             criteria: IngestModeCriteria::default(),
+            input_gain_linear: 1.0,
         }
     }
 }
@@ -183,6 +190,7 @@ impl Default for AudioRuntimeConfig {
 pub struct AudioRuntime {
     negotiator: IngestNegotiator,
     estimator: BpmEstimator,
+    input_gain_linear: f32,
     shared: Arc<Mutex<AudioUniformSnapshot>>,
 }
 
@@ -276,9 +284,16 @@ impl AudioRuntime {
             Ok(e) => e,
             Err(_) => BpmEstimator::new(),
         };
+        let input_gain_linear =
+            if config.input_gain_linear.is_finite() && config.input_gain_linear >= 0.0 {
+                config.input_gain_linear
+            } else {
+                1.0
+            };
         Self {
             negotiator,
             estimator,
+            input_gain_linear,
             shared: Arc::new(Mutex::new(AudioUniformSnapshot::default())),
         }
     }
@@ -303,6 +318,7 @@ impl AudioRuntime {
         let Self {
             mut negotiator,
             mut estimator,
+            input_gain_linear,
             shared,
         } = self;
         let shared_for_thread = Arc::clone(&shared);
@@ -328,6 +344,9 @@ impl AudioRuntime {
                         let status = negotiator.try_pull(&mut frame);
                         match status {
                             IngestStatus::Ready => {
+                                if input_gain_linear != 1.0 {
+                                    apply_input_gain(frame.samples_mut(), input_gain_linear);
+                                }
                                 let analysis_frame = analysis_window.observe(&frame);
                                 let analysis_snapshot = extract_uniform_snapshot(&analysis_frame);
                                 let smoothed_bpm = estimator.observe(&analysis_frame);
@@ -783,6 +802,7 @@ mod runtime_pins {
         let cfg = AudioRuntimeConfig::default();
         assert_eq!(cfg.bpm_window, 8);
         assert_eq!(cfg.criteria, IngestModeCriteria::default());
+        assert_eq!(cfg.input_gain_linear, 1.0);
     }
 
     #[test]
@@ -792,8 +812,68 @@ mod runtime_pins {
         let cfg = AudioRuntimeConfig {
             bpm_window: 0,
             criteria: IngestModeCriteria::default(),
+            input_gain_linear: 1.0,
         };
         let runtime = AudioRuntime::from_primary(SilentSource::new(1), cfg);
         assert_eq!(runtime.estimator.window(), 8);
+    }
+
+    #[test]
+    fn runtime_applies_non_unity_input_gain_before_analysis() {
+        let _serialize = observability::test_serialize_lock();
+
+        #[derive(Debug)]
+        struct OneShotFrame {
+            frame: Option<AudioFrame>,
+            pulls: Arc<AtomicU32>,
+        }
+
+        impl IngestBoundary for OneShotFrame {
+            fn try_pull(&mut self, out: &mut AudioFrame) -> IngestStatus {
+                self.pulls.fetch_add(1, Ordering::Relaxed);
+                match self.frame.take() {
+                    Some(frame) => {
+                        *out = frame;
+                        IngestStatus::Ready
+                    }
+                    None => IngestStatus::Pending,
+                }
+            }
+        }
+
+        let pulls = Arc::new(AtomicU32::new(0));
+        let cfg = AudioRuntimeConfig {
+            input_gain_linear: 2.0,
+            ..AudioRuntimeConfig::default()
+        };
+        let runtime = AudioRuntime::from_primary(
+            OneShotFrame {
+                frame: Some(AudioFrame::new(DEFAULT_SAMPLE_RATE_HZ, 1, vec![0.25; 128])),
+                pulls: Arc::clone(&pulls),
+            },
+            cfg,
+        );
+        let snapshot_handle = runtime.snapshot_handle();
+        let handle = runtime.spawn();
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while pulls.load(Ordering::Relaxed) < 2 && Instant::now() < deadline {
+            thread::sleep(POLL_STEP);
+        }
+        assert!(pulls.load(Ordering::Relaxed) >= 2);
+
+        let snapshot = *snapshot_handle.lock().unwrap();
+        assert!(
+            (snapshot.rms - 0.5).abs() < 1e-5,
+            "expected gained RMS 0.5, got {}",
+            snapshot.rms
+        );
+        assert!(
+            (snapshot.peak - 0.5).abs() < 1e-5,
+            "expected gained peak 0.5, got {}",
+            snapshot.peak
+        );
+
+        handle.shutdown();
     }
 }
