@@ -158,13 +158,22 @@ export function parseYouTubeVideoId(input: string): string | null {
 }
 
 /**
- * Build a privacy-enhanced `youtube-nocookie.com` embed URL for a validated
- * 11-character video ID. Returns `null` if `videoId` fails strict validation.
+ * Build a YouTube embed URL for a validated 11-character video ID with
+ * explicit `playsinline`, `enablejsapi`, and HTTP(S) `origin` parameters
+ * so WKWebView / Tauri embeds satisfy YouTube's Referer/origin policy
+ * (avoiding Error 153). Returns `null` if `videoId` fails strict validation.
  */
 export function buildYouTubeEmbedUrl(videoId: string, muted = true): string | null {
   if (!isValidVideoId(videoId)) return null;
   const muteFlag = muted ? 1 : 0;
-  return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=${muteFlag}&loop=1&playlist=${videoId}&controls=1&rel=0&modestbranding=1`;
+  let originParam = '';
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const o = window.location.origin;
+    if (o.startsWith('http://') || o.startsWith('https://')) {
+      originParam = `&origin=${encodeURIComponent(o)}`;
+    }
+  }
+  return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=${muteFlag}&loop=1&playlist=${videoId}&controls=1&rel=0&playsinline=1&enablejsapi=1${originParam}`;
 }
 
 /** Map a `YouTubeBlendMode` to the corresponding CSS `mix-blend-mode` value. */

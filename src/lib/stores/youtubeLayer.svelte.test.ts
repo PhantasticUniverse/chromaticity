@@ -66,12 +66,12 @@ describe('parseYouTubeVideoId', () => {
 });
 
 describe('buildYouTubeEmbedUrl', () => {
-  it('builds a youtube-nocookie.com embed URL with mute flag and loop playlist', () => {
-    expect(buildYouTubeEmbedUrl(SAMPLE_ID, true)).toBe(
-      `https://www.youtube-nocookie.com/embed/${SAMPLE_ID}?autoplay=1&mute=1&loop=1&playlist=${SAMPLE_ID}&controls=1&rel=0&modestbranding=1`,
+  it('builds a youtube.com embed URL with mute flag, playsinline, and loop playlist', () => {
+    expect(buildYouTubeEmbedUrl(SAMPLE_ID, true)).toContain(
+      `https://www.youtube.com/embed/${SAMPLE_ID}?autoplay=1&mute=1&loop=1&playlist=${SAMPLE_ID}&controls=1&rel=0&playsinline=1&enablejsapi=1`,
     );
-    expect(buildYouTubeEmbedUrl(SAMPLE_ID, false)).toBe(
-      `https://www.youtube-nocookie.com/embed/${SAMPLE_ID}?autoplay=1&mute=0&loop=1&playlist=${SAMPLE_ID}&controls=1&rel=0&modestbranding=1`,
+    expect(buildYouTubeEmbedUrl(SAMPLE_ID, false)).toContain(
+      `https://www.youtube.com/embed/${SAMPLE_ID}?autoplay=1&mute=0&loop=1&playlist=${SAMPLE_ID}&controls=1&rel=0&playsinline=1&enablejsapi=1`,
     );
   });
 

@@ -53,8 +53,8 @@ describe('YouTubeLayer component', () => {
 
     const iframe = getByTitle(`YouTube visual layer (${SAMPLE_ID})`) as HTMLIFrameElement;
     expect(iframe).toBeInTheDocument();
-    expect(iframe.src).toBe(
-      `https://www.youtube-nocookie.com/embed/${SAMPLE_ID}?autoplay=1&mute=1&loop=1&playlist=${SAMPLE_ID}&controls=1&rel=0&modestbranding=1`,
+    expect(iframe.src).toContain(
+      `https://www.youtube.com/embed/${SAMPLE_ID}?autoplay=1&mute=1&loop=1&playlist=${SAMPLE_ID}&controls=1&rel=0&playsinline=1&enablejsapi=1`,
     );
     expect(iframe).toHaveAttribute(
       'allow',

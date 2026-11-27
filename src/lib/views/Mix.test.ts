@@ -317,7 +317,7 @@ describe('Mix view', () => {
 
     const iframe = getByTestId('mix-youtube-iframe') as HTMLIFrameElement;
     expect(iframe).toBeInTheDocument();
-    expect(iframe.src).toContain('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
+    expect(iframe.src).toContain('https://www.youtube.com/embed/dQw4w9WgXcQ');
     expect(iframe.src).toContain('mute=1');
     expect(iframe).toHaveClass('mix__live-youtube--passthrough');
 
