@@ -425,6 +425,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::author::write_scene_file,
             commands::import::import_shadertoy_source,
             commands::import::check_isf_import,
+            commands::import::import_syn_scene,
+            commands::import::inspect_shadertoy_license,
             commands::output::list_output_monitors,
             commands::output::open_output_window,
             commands::output::close_output_window,
