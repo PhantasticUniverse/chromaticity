@@ -22,6 +22,7 @@ vi.mock('../ipc/mix', () => ({
   getGpuCostTelemetry: vi.fn(),
   setAdaptiveScaleEnabled: vi.fn(),
   getCompositorCapabilities: vi.fn(),
+  resolveYouTubeStream: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('../ipc/recorder', () => ({

@@ -51,10 +51,30 @@ export async function setAdaptiveScaleEnabled(
   }
 }
 
+/** Serializable resolved direct video stream for a YouTube visual layer. */
+export interface YouTubeStreamDto {
+  readonly video_id: string;
+  readonly title: string;
+  readonly stream_url: string;
+}
+
 /** Query supported compositor blend modes, layer capacity, and readiness. Returns `null` outside Tauri. */
 export async function getCompositorCapabilities(): Promise<CompositorCapabilitiesDto | null> {
   try {
     return await invoke<CompositorCapabilitiesDto>('get_compositor_capabilities');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a direct playable MP4/video stream URL for a validated 11-character
+ * YouTube video ID via the desktop shell (`yt-dlp`), bypassing WKWebView
+ * iframe Error 153 restrictions. Returns `null` outside Tauri or if unavailable.
+ */
+export async function resolveYouTubeStream(videoId: string): Promise<YouTubeStreamDto | null> {
+  try {
+    return await invoke<YouTubeStreamDto>('resolve_youtube_stream', { videoId });
   } catch {
     return null;
   }

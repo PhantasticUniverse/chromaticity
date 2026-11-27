@@ -7,8 +7,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   import {
     getGpuCostTelemetry,
+    resolveYouTubeStream,
     setAdaptiveScaleEnabled,
     type GpuCostTelemetryDto,
+    type YouTubeStreamDto,
   } from '../ipc/mix';
   import { saveReplayBuffer } from '../ipc/recorder';
   import {
@@ -106,6 +108,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let webcamError = $state<string | null>(null);
   let youtubeUrlInput = $state('');
   let youtubeInteractive = $state(false);
+  let youtubeNativeStream = $state<YouTubeStreamDto | null>(null);
+  let youtubeResolving = $state(false);
+  let youtubeResolveSeq = 0;
   let twitchDrawerOpen = $state(false);
   let twitchIngestUrl = $state(DEFAULT_TWITCH_INGEST_URL);
   let twitchStreamKey = $state('');
@@ -184,14 +189,48 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     };
   }
 
+  function attachYouTubeMuted(node: HTMLVideoElement, muted: boolean) {
+    const apply = (nextMuted: boolean): void => {
+      node.muted = nextMuted;
+      const isJsdom = typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
+      if (!isJsdom && node.paused && typeof node.play === 'function') {
+        void Promise.resolve(node.play()).catch(() => {});
+      }
+    };
+    apply(muted);
+    return {
+      update(nextMuted: boolean) {
+        apply(nextMuted);
+      },
+    };
+  }
+
   function handleLoadYouTube(event: SubmitEvent): void {
     event.preventDefault();
-    youtubeLayerStore.load(youtubeUrlInput);
+    const next = youtubeLayerStore.load(youtubeUrlInput);
+    youtubeResolveSeq += 1;
+    const reqId = youtubeResolveSeq;
+    youtubeNativeStream = null;
+    if (next.kind !== 'ready') {
+      youtubeResolving = false;
+      return;
+    }
+    youtubeResolving = true;
+    void resolveYouTubeStream(next.videoId).then((resolved) => {
+      if (disposed || reqId !== youtubeResolveSeq) return;
+      youtubeResolving = false;
+      if (resolved !== null) {
+        youtubeNativeStream = resolved;
+      }
+    });
   }
 
   function handleClearYouTube(): void {
+    youtubeResolveSeq += 1;
     youtubeUrlInput = '';
     youtubeInteractive = false;
+    youtubeNativeStream = null;
+    youtubeResolving = false;
     youtubeLayerStore.clear();
   }
 
@@ -1141,7 +1180,21 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                           />
                         </div>
                       {:else if layer.kind === 'youtube'}
-                        {#if youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
+                        {#if youtubeMachine.kind === 'ready' && youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
+                          <!-- svelte-ignore a11y_media_has_caption -->
+                          <video
+                            class="mix__live-video"
+                            class:mix__live-youtube--passthrough={dragState !== null ||
+                              !youtubeInteractive}
+                            data-testid="mix-youtube-video"
+                            src={youtubeNativeStream.stream_url}
+                            autoplay
+                            loop
+                            playsinline
+                            controls={youtubeInteractive}
+                            use:attachYouTubeMuted={youtubeMachine.muted}
+                          ></video>
+                        {:else if youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
                           <iframe
                             class="mix__live-youtube"
                             class:mix__live-youtube--passthrough={dragState !== null ||
@@ -1302,6 +1355,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                             playsinline
                             muted
                             use:attachStream={webcamStream}
+                          ></video>
+                        {:else if layer.kind === 'youtube' && youtubeMachine.kind === 'ready' && youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
+                          <video
+                            class="mix__live-video mix__live-youtube--passthrough"
+                            src={youtubeNativeStream.stream_url}
+                            autoplay
+                            loop
+                            playsinline
+                            muted
                           ></video>
                         {:else if layer.kind === 'youtube' && youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
                           <iframe
@@ -1492,8 +1554,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
                   {#if youtubeMachine.kind === 'ready'}
                     <p class="mix__yt-status" data-testid="mix-youtube-status">
-                      Live ID: <code>{youtubeMachine.videoId}</code> ·
-                      {youtubeMachine.muted ? 'DJ Safe Muted' : 'Audio Active'}
+                      {#if youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
+                        Native HD: <code>{youtubeNativeStream.title}</code> ·
+                        {youtubeMachine.muted ? 'DJ Safe Muted' : 'Audio Active'}
+                      {:else if youtubeResolving}
+                        Resolving native stream for <code>{youtubeMachine.videoId}</code>…
+                      {:else}
+                        Live ID: <code>{youtubeMachine.videoId}</code> ·
+                        {youtubeMachine.muted ? 'DJ Safe Muted' : 'Audio Active'}
+                      {/if}
                     </p>
                   {/if}
                 </div>

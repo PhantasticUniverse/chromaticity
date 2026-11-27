@@ -14,6 +14,8 @@ use crate::state::AppState;
 use chromaticity_render::compositor::{BlendMode, CompositeLayer, LayerStack, LayerTransform};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::atomic::Ordering;
 use tauri::State;
 
@@ -426,6 +428,132 @@ pub fn set_mix_layer_stack(
     set_mix_layer_stack_impl(app_state.inner(), layers)
 }
 
+/// Serializable resolved direct video stream for a YouTube visual layer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct YouTubeStreamDto {
+    /// Validated 11-character YouTube video identifier.
+    pub video_id: String,
+    /// Video title returned by `yt-dlp`.
+    pub title: String,
+    /// Direct HTTPS media stream URL suitable for native `<video>` playback.
+    pub stream_url: String,
+}
+
+/// Validate a strict 11-character YouTube video ID (`[A-Za-z0-9_-]{11}`).
+#[must_use]
+pub fn is_valid_youtube_video_id(candidate: &str) -> bool {
+    candidate.len() == 11
+        && candidate
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Locate a local `yt-dlp` binary across common macOS/Linux/user install paths
+/// and `PATH`.
+#[must_use]
+pub fn resolve_yt_dlp_binary() -> Option<PathBuf> {
+    if let Some(home) = std::env::var_os("HOME") {
+        let local_bin = PathBuf::from(home).join(".local/bin/yt-dlp");
+        if local_bin.is_file() {
+            return Some(local_bin);
+        }
+    }
+    for candidate in [
+        PathBuf::from("/opt/homebrew/bin/yt-dlp"),
+        PathBuf::from("/usr/local/bin/yt-dlp"),
+    ] {
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    let bin_name = if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        "yt-dlp"
+    };
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let candidate = dir.join(bin_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Parse `yt-dlp --get-title --get-url` stdout into `(title, stream_url)`.
+pub fn parse_yt_dlp_output(video_id: &str, stdout: &str) -> Result<YouTubeStreamDto, String> {
+    let lines: Vec<&str> = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let stream_url = lines
+        .iter()
+        .rev()
+        .find(|line| line.starts_with("https://"))
+        .copied()
+        .ok_or_else(|| "yt-dlp did not return a direct HTTPS stream URL".to_string())?;
+    let title = lines
+        .iter()
+        .find(|line| !line.starts_with("https://") && !line.starts_with("http://"))
+        .copied()
+        .unwrap_or(video_id);
+    Ok(YouTubeStreamDto {
+        video_id: video_id.to_string(),
+        title: title.to_string(),
+        stream_url: stream_url.to_string(),
+    })
+}
+
+/// Resolve a direct playable HTTPS video stream URL for a validated YouTube
+/// video ID using `yt-dlp`. Runs synchronously (call via `spawn_blocking`).
+pub fn resolve_youtube_stream_impl(video_id: &str) -> Result<YouTubeStreamDto, String> {
+    let trimmed = video_id.trim();
+    if !is_valid_youtube_video_id(trimmed) {
+        return Err("invalid YouTube video ID (expected 11 characters)".to_string());
+    }
+    let yt_dlp = resolve_yt_dlp_binary()
+        .ok_or_else(|| "yt-dlp not found on system PATH or ~/.local/bin".to_string())?;
+    let watch_url = format!("https://www.youtube.com/watch?v={trimmed}");
+    let output = Command::new(yt_dlp)
+        .args([
+            "--no-update",
+            "--no-playlist",
+            "--no-warnings",
+            "-f",
+            "best[ext=mp4][height<=1080]/best[height<=1080]/best",
+            "--get-title",
+            "--get-url",
+            "--",
+            &watch_url,
+        ])
+        .output()
+        .map_err(|err| format!("failed to run yt-dlp: {err}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        return Err(if detail.is_empty() {
+            "yt-dlp failed to resolve YouTube stream".to_string()
+        } else {
+            format!("yt-dlp error: {detail}")
+        });
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_yt_dlp_output(trimmed, &stdout)
+}
+
+/// Resolve a direct playable HTTPS stream URL for a YouTube video ID so
+/// `Mix.svelte` can render it in a native `<video>` element (bypassing
+/// WKWebView iframe Error 153 and enabling direct canvas compositing).
+#[tauri::command]
+pub fn resolve_youtube_stream(video_id: String) -> Result<YouTubeStreamDto, String> {
+    resolve_youtube_stream_impl(&video_id)
+}
+
 #[cfg(test)]
 #[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod mix_ipc_tests {
@@ -433,6 +561,27 @@ mod mix_ipc_tests {
     //! GPU cost / adaptive resolution telemetry IPC contract pins.
 
     use super::*;
+
+    #[test]
+    fn youtube_video_id_validation_and_output_parsing() {
+        assert!(is_valid_youtube_video_id("8aBvuRwcbds"));
+        assert!(!is_valid_youtube_video_id("short"));
+        assert!(!is_valid_youtube_video_id("8aBvuRwcbds;rm"));
+        assert!(resolve_youtube_stream_impl("bad;id").is_err());
+
+        let parsed = parse_yt_dlp_output(
+            "8aBvuRwcbds",
+            "Best of WRC 2025\nhttps://rr3.googlevideo.com/videoplayback?itag=18\n",
+        )
+        .expect("valid yt-dlp output");
+        assert_eq!(parsed.video_id, "8aBvuRwcbds");
+        assert_eq!(parsed.title, "Best of WRC 2025");
+        assert_eq!(
+            parsed.stream_url,
+            "https://rr3.googlevideo.com/videoplayback?itag=18"
+        );
+        assert!(parse_yt_dlp_output("8aBvuRwcbds", "Title only\n").is_err());
+    }
 
     fn sample_layer_dto(id: &str, blend_mode: &str) -> MixLayerSpecDto {
         MixLayerSpecDto {

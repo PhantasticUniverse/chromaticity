@@ -420,6 +420,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::mix::set_adaptive_scale_enabled,
             commands::mix::get_compositor_capabilities,
             commands::mix::set_mix_layer_stack,
+            commands::mix::resolve_youtube_stream,
             commands::feedback::load_scene_feedback,
             commands::feedback::save_scene_feedback,
             commands::author::read_scene_files,
