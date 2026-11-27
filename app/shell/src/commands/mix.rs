@@ -693,23 +693,33 @@ fn handle_youtube_proxy_connection(
     };
 
     let range_arg = format!("{req_start}-{fetch_end}");
-    let curl_out = Command::new("/usr/bin/curl")
-        .args(["-sL", "-r", &range_arg, "--", &entry.upstream_url])
-        .output();
+    let mut output_opt = None;
+    for _attempt in 0..2 {
+        let curl_out = Command::new("/usr/bin/curl")
+            .args([
+                "-sL",
+                "--max-time",
+                "15",
+                "-r",
+                &range_arg,
+                "--",
+                &entry.upstream_url,
+            ])
+            .output();
+        if let Ok(out) = curl_out {
+            if out.status.success() && !out.stdout.is_empty() {
+                output_opt = Some(out);
+                break;
+            }
+        }
+    }
 
-    let Ok(output) = curl_out else {
+    let Some(output) = output_opt else {
         let _ = stream.write_all(
             b"HTTP/1.1 502 Bad Gateway\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
         );
         return;
     };
-
-    if !output.status.success() || output.stdout.is_empty() {
-        let _ = stream.write_all(
-            b"HTTP/1.1 502 Bad Gateway\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-        );
-        return;
-    }
 
     let body = &output.stdout;
     let actual_end = req_start.saturating_add(body.len().saturating_sub(1) as u64);
@@ -778,7 +788,7 @@ pub fn resolve_youtube_stream_impl(video_id: &str) -> Result<YouTubeStreamDto, S
             "--no-playlist",
             "--no-warnings",
             "-f",
-            "bestvideo[ext=mp4][vcodec^=avc1][height<=1080]/bestvideo[ext=mp4][height<=1080]/best[ext=mp4][height<=1080]/best",
+            "bestvideo[ext=mp4][vcodec^=avc1][height<=720]/bestvideo[ext=mp4][vcodec^=avc1][height<=1080]/best[ext=mp4][vcodec^=avc1][height<=720]/best[ext=mp4][height<=720]/best",
             "--get-title",
             "--get-url",
             "--",
@@ -801,6 +811,15 @@ pub fn resolve_youtube_stream_impl(video_id: &str) -> Result<YouTubeStreamDto, S
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut resolved = parse_yt_dlp_output(trimmed, &stdout)?;
+    let is_hls = resolved.stream_url.contains(".m3u8")
+        || resolved.stream_url.contains("manifest.googlevideo.com");
+    if is_hls {
+        eprintln!(
+            "[chromaticity][youtube] resolved HLS livestream {trimmed}: {}",
+            resolved.title
+        );
+        return Ok(resolved);
+    }
     let total_len = probe_upstream_content_length(&resolved.stream_url)?;
     let proxy = ensure_youtube_proxy()?;
     {
