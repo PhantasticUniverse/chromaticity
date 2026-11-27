@@ -56,6 +56,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     patchPinPosFrom,
   } from '../data/patch-fixtures';
   import Icon from '../Icon.svelte';
+  import {
+    dragPointerDown,
+    dragPointerMove,
+    dragPointerUp,
+    IDLE_DRAG_STATE,
+    type DragOrClickState,
+  } from '../state';
 
   // SVG viewbox — scaled to the canonical bundle layout (~1100x600).
   // Wires render in this same coordinate system so the SVG and absolute-
@@ -83,14 +90,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // editorial frame).
   let selectedNodeId = $state<string | null>(null);
 
-  // Active drag identity + offset between the pointer and the node's
-  // top-left corner at pointerdown. Both clear on pointerup.
-  let draggingId = $state<string | null>(null);
-  let dragOffsetX = 0;
-  let dragOffsetY = 0;
-  // Pointerdown location for click-vs-drag travel discrimination.
-  let pointerStartX = 0;
-  let pointerStartY = 0;
+  // Explicit click-vs-drag discriminated state machine (`idle` | `pending` | `dragging`).
+  let dragState = $state<DragOrClickState>(IDLE_DRAG_STATE);
+  const draggingId = $derived(dragState.kind === 'idle' ? null : dragState.id);
 
   // Position-snapshot undo stack. Each entry is the array of `(id, x, y)`
   // tuples captured immediately before a drag began.
@@ -179,38 +181,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     if (e.currentTarget instanceof Element) {
       e.currentTarget.setPointerCapture?.(e.pointerId);
     }
-    draggingId = node.id;
-    dragOffsetX = e.clientX - node.x;
-    dragOffsetY = e.clientY - node.y;
-    pointerStartX = e.clientX;
-    pointerStartY = e.clientY;
-    captureSnapshot();
+    dragState = dragPointerDown(
+      node.id,
+      e.clientX,
+      e.clientY,
+      e.clientX - node.x,
+      e.clientY - node.y,
+    );
   }
 
   $effect(() => {
-    if (draggingId === null) return;
+    if (dragState.kind === 'idle') return;
     const onMove = (e: PointerEvent): void => {
-      const node = nodes.find((n) => n.id === draggingId);
+      const moved = dragPointerMove(dragState, e.clientX, e.clientY, CLICK_TRAVEL_THRESHOLD);
+      if (moved.promotedToDrag) {
+        captureSnapshot();
+      }
+      const activeDrag = moved.state;
+      dragState = activeDrag;
+      if (activeDrag.kind === 'idle') return;
+      const node = nodes.find((n) => n.id === activeDrag.id);
       if (node === undefined) return;
-      const nextX = e.clientX - dragOffsetX;
-      const nextY = e.clientY - dragOffsetY;
+      const nextX = e.clientX - activeDrag.offsetX;
+      const nextY = e.clientY - activeDrag.offsetY;
       // Soft-clamp to canvas bounds (allow node to peek 40px out so
       // wires stay visible during repositioning at edges).
       node.x = Math.max(-40, Math.min(CANVAS_W - 40, nextX));
       node.y = Math.max(-40, Math.min(CANVAS_H - 40, nextY));
     };
-    const onUp = (e: PointerEvent): void => {
-      const travel = Math.hypot(e.clientX - pointerStartX, e.clientY - pointerStartY);
-      const releasedId = draggingId;
-      draggingId = null;
-      // If the gesture was below the click threshold, treat as a click
-      // and promote to selection. Drags above threshold leave selection
-      // unchanged.
-      if (travel < CLICK_TRAVEL_THRESHOLD && releasedId !== null) {
-        selectedNodeId = releasedId;
-        // The captured snapshot was a no-op (the node didn't move);
-        // pop it back off so the undo stack stays meaningful.
-        undoStack = undoStack.slice(0, -1);
+    const onUp = (): void => {
+      const outcome = dragPointerUp(dragState);
+      dragState = outcome.state;
+      if (outcome.action === 'click') {
+        selectedNodeId = outcome.id;
       }
     };
     window.addEventListener('pointermove', onMove);

@@ -26,3 +26,11 @@ pub mod settings;
 pub mod snap;
 pub mod syphon;
 pub mod thumbnail;
+
+/// Return a deterministic JSON snapshot of every shell state machine.
+#[tauri::command]
+pub fn inspect_state_machines(
+    app_state: tauri::State<'_, crate::state::AppState>,
+) -> Result<serde_json::Value, String> {
+    Ok(app_state.inspect_state_machines_snapshot())
+}

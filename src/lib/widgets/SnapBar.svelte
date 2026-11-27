@@ -45,6 +45,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { onMount, tick } from 'svelte';
 
   import Icon from '../Icon.svelte';
+  import {
+    beginRename,
+    cancelRenameState,
+    IDLE_RENAME_STATE,
+    updateRenameDraft,
+    type InlineRenameState,
+  } from '../state';
   import SceneStill from './SceneStill.svelte';
   import { DEFAULT_SNAP_SLOTS, type SnapSlot } from './snap-bar.fixtures';
   import { snapStore } from '../stores/snap.svelte';
@@ -67,35 +74,31 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     snapLabelsStore.hydrate();
   });
 
-  // Tracks which slot (if any) is currently in inline-rename mode.
-  // `null` when no rename is active; otherwise the 1-indexed slot id
-  // whose `.snap-slot__name` is replaced by the rename input.
-  let renamingSlot: number | null = $state(null);
-  let renameDraft: string = $state('');
+  // Explicit discriminated inline-rename state machine (`idle` | `renaming`).
+  let renameState = $state<InlineRenameState<number>>(IDLE_RENAME_STATE);
   let renameInputEl: HTMLInputElement | null = $state(null);
+
+  const renamingSlot = $derived(renameState.kind === 'renaming' ? renameState.slot : null);
 
   function labelFor(slot: SnapSlot): string {
     return snapLabelsStore.label(slot.i, slot.name);
   }
 
   async function startRename(slot: SnapSlot): Promise<void> {
-    renamingSlot = slot.i;
-    renameDraft = labelFor(slot);
+    renameState = beginRename(slot.i, labelFor(slot));
     await tick();
     renameInputEl?.focus();
     renameInputEl?.select();
   }
 
   function commitRename(): void {
-    if (renamingSlot === null) return;
-    snapLabelsStore.set(renamingSlot, renameDraft);
-    renamingSlot = null;
-    renameDraft = '';
+    if (renameState.kind !== 'renaming') return;
+    snapLabelsStore.set(renameState.slot, renameState.draft);
+    renameState = cancelRenameState();
   }
 
   function cancelRename(): void {
-    renamingSlot = null;
-    renameDraft = '';
+    renameState = cancelRenameState();
   }
 
   function handleContextMenu(event: MouseEvent, slot: SnapSlot): void {
@@ -195,11 +198,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </span>
       <span class="snap-slot__meta">
         <span class="snap-slot__num">{slot.i}</span>
-        {#if renamingSlot === slot.i}
+        {#if renameState.kind === 'renaming' && renameState.slot === slot.i}
           <input
             class="snap-slot__rename"
             type="text"
-            bind:value={renameDraft}
+            value={renameState.draft}
+            oninput={(event) => {
+              renameState = updateRenameDraft(renameState, event.currentTarget.value);
+            }}
             bind:this={renameInputEl}
             onkeydown={handleRenameKeydown}
             onblur={commitRename}

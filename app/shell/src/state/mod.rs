@@ -22,47 +22,39 @@
 //! [`chromaticity_runtime::scheduler::ipc::IpcEmit`]) into the Tauri
 //! shell so audio-uniform data flows end-to-end in production.
 //!
-//! [`AppState`] grows two optional lifecycle handles:
+//! [`AppState`] owns an explicit [`ShellRuntime`] lifecycle state
+//! machine:
 //!
-//! - [`AppState::audio`] — `Some(AudioRuntimeHandle)` once the audio
-//!   producer thread has been spawned via [`AudioRuntime::spawn`]; the
-//!   handle's `Drop` impl signals shutdown and best-effort joins the
-//!   producer thread on a 2-second timeout (PR 1 contract).
-//! - [`AppState::scheduler_thread`] — `Some(SchedulerThreadHandle)`
-//!   once the state-commit thread that drives
-//!   [`chromaticity_runtime::scheduler::Scheduler::tick`] at ~60 Hz
-//!   has been spawned. Carries an `Arc<AtomicBool>` shutdown flag the
-//!   thread polls between iterations + the spawned `JoinHandle` for
-//!   ordered shutdown.
-//!
-//! Both fields default to `None` so existing tests calling
-//! [`AppState::new`] continue to construct a runtime-free shell. The
-//! Tauri bootstrap path (`app/shell/src/lib.rs::run`) installs the
-//! handles via [`AppState::install_audio_and_scheduler`] from inside
-//! the Tauri builder's `setup` callback, after [`AppState::new`] has
-//! already been registered with `manage`.
+//! - [`ShellRuntime::Unbootstrapped`] — initial state from
+//!   [`AppState::new`], leaving background threads unspawned so
+//!   existing tests calling [`AppState::new`] continue to construct a
+//!   runtime-free shell.
+//! - [`ShellRuntime::Running`] — holds both the spawned
+//!   [`SchedulerThreadHandle`] (driving
+//!   [`chromaticity_runtime::scheduler::Scheduler::tick`] at ~60 Hz)
+//!   and the producer-side [`AudioRuntimeHandle`] (spawned via
+//!   [`AudioRuntime::spawn`]). Installed by the Tauri bootstrap path
+//!   (`app/shell/src/lib.rs::run`) via
+//!   [`AppState::install_audio_and_scheduler`] from inside the Tauri
+//!   builder's `setup` callback, after [`AppState::new`] has already
+//!   been registered with `manage`.
+//! - [`ShellRuntime::Stopped`] — terminal state entered after
+//!   explicit shutdown or drop.
 //!
 //! ## Ordered shutdown contract
 //!
-//! The composition's `Drop` ordering at app shutdown matters:
+//! Teardown ordering at app shutdown is enforced in code inside
+//! [`ShellRuntime::shutdown`] (invoked by both [`ShellRuntime::drop`]
+//! and [`AppState::drop`]), NOT by struct field declaration order:
 //!
-//! 1. **Signal scheduler-tick shutdown.** The state-commit thread
-//!    must stop touching `AppState` before any other field is dropped
-//!    — otherwise the thread could observe a half-dropped
-//!    [`AppState`] (Tauri-managed state has no guaranteed teardown
-//!    ordering between the manager and the spawned threads that
-//!    captured an [`AppHandle`] referencing it).
-//! 2. **Drop the audio runtime handle.** The producer thread is
-//!    independent of the scheduler; it's safe to drop after step 1.
-//!    [`chromaticity_audio::runtime::AudioRuntimeHandle::drop`] does
-//!    its own best-effort shutdown + 2-second join.
-//!
-//! [`SchedulerThreadHandle::drop`] performs step 1; the engine
-//! crate's [`AudioRuntimeHandle::drop`] performs step 2. The `Drop`
-//! order on [`AppState`] follows Rust's struct field-declaration
-//! order in reverse, so [`AppState::scheduler_thread`] is dropped
-//! BEFORE [`AppState::audio`] iff the field declarations match. Don't
-//! reorder the field declarations without updating the contract above.
+//! 1. **Drop `scheduler_thread` first.** The state-commit thread must
+//!    stop touching `AppState` before any other field is dropped —
+//!    otherwise the thread could observe a half-dropped [`AppState`].
+//!    [`SchedulerThreadHandle::drop`] signals shutdown and best-effort
+//!    joins on a 2-second timeout.
+//! 2. **Drop `audio` second.** The producer thread is independent of
+//!    the scheduler; [`AudioRuntimeHandle::drop`] performs its own
+//!    best-effort shutdown + 2-second join.
 
 use chromaticity_audio::runtime::AudioRuntimeHandle;
 use chromaticity_midi_adapter::MidiListenHandle;
@@ -74,6 +66,7 @@ use chromaticity_runtime::InMemoryBus;
 use chromaticity_runtime::settings::Settings;
 use chromaticity_runtime::state::State;
 use chromaticity_scene::schema::Scene;
+use chromaticity_ui_bridge::CrashResumeStatusPayload;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -103,8 +96,9 @@ const SCHEDULER_JOIN_POLL_STEP: Duration = Duration::from_millis(10);
 /// iterations; the [`Drop`] impl signals shutdown and best-effort
 /// joins on a 2-second deadline.
 ///
-/// See the module-level "Ordered shutdown contract" prose for why
-/// [`AppState`] declares the field BEFORE [`AppState::audio`].
+/// Managed as part of [`ShellRuntime::Running`], whose explicit
+/// [`ShellRuntime::shutdown`] / [`Drop`] tears this handle down
+/// BEFORE the audio runtime handle.
 pub struct SchedulerThreadHandle {
     join: Option<JoinHandle<()>>,
     shutdown: Arc<AtomicBool>,
@@ -165,15 +159,105 @@ impl Drop for SchedulerThreadHandle {
     }
 }
 
+/// Explicit lifecycle state machine for the shell's background audio
+/// producer and scheduler-tick threads.
+///
+/// Replaces the implicit pair of optional mutexes whose teardown order
+/// previously depended on struct field declaration order. Both
+/// [`Self::shutdown`] and [`Drop`] explicitly tear down
+/// `scheduler_thread` BEFORE `audio` in code.
+#[derive(Default)]
+pub enum ShellRuntime {
+    /// Initial state prior to Tauri bootstrap (or in runtime-free tests).
+    #[default]
+    Unbootstrapped,
+    /// Active production runtime owning both background thread handles.
+    Running {
+        scheduler_thread: SchedulerThreadHandle,
+        audio: AudioRuntimeHandle,
+    },
+    /// Explicitly shut down or dropped.
+    Stopped,
+}
+
+impl core::fmt::Debug for ShellRuntime {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Unbootstrapped => f.write_str("ShellRuntime::Unbootstrapped"),
+            Self::Running {
+                scheduler_thread, ..
+            } => f
+                .debug_struct("ShellRuntime::Running")
+                .field("scheduler_thread", scheduler_thread)
+                .field("audio", &"<AudioRuntimeHandle>")
+                .finish(),
+            Self::Stopped => f.write_str("ShellRuntime::Stopped"),
+        }
+    }
+}
+
+impl ShellRuntime {
+    /// Deterministic state label used by diagnostics and
+    /// `inspect_state_machines`.
+    #[must_use]
+    pub fn state_name(&self) -> &'static str {
+        match self {
+            Self::Unbootstrapped => "unbootstrapped",
+            Self::Running { .. } => "running",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    /// Return `true` iff both background handles are currently active.
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        matches!(self, Self::Running { .. })
+    }
+
+    /// Transition to [`Self::Stopped`], tearing down `scheduler_thread`
+    /// BEFORE `audio` in code.
+    ///
+    /// Idempotent: calling `shutdown` when already `Stopped` (or
+    /// `Unbootstrapped`) leaves the state machine in `Stopped` without
+    /// touching any handles.
+    pub fn shutdown(&mut self) {
+        self.stop_scheduler_first();
+        // Dropping the previous `Running` value invokes `Drop`, where
+        // `stop_scheduler_first` is a no-op (join already taken) and
+        // `audio` tears down second.
+        *self = Self::Stopped;
+    }
+
+    fn stop_scheduler_first(&mut self) {
+        if let Self::Running {
+            scheduler_thread, ..
+        } = self
+        {
+            // Explicit ordered teardown in code:
+            // 1. Stop and join the scheduler-tick thread first so it
+            //    stops accessing AppState before the audio runtime
+            //    tears down.
+            scheduler_thread.shutdown_inner();
+        }
+    }
+}
+
+impl Drop for ShellRuntime {
+    fn drop(&mut self) {
+        // 1. Explicitly stop and join `scheduler_thread` BEFORE Rust
+        //    drops the variant's fields (including `audio`).
+        self.stop_scheduler_first();
+        // 2. Rust then drops the variant's fields (`scheduler_thread`
+        //    is already joined and a no-op; `audio` tears down second).
+    }
+}
+
 /// Tauri-managed shell state.
 ///
-/// Field order is load-bearing: per the module-level "Ordered
-/// shutdown contract", [`Self::scheduler_thread`] MUST be declared
-/// AFTER [`Self::state`] / [`Self::bus`] AND BEFORE [`Self::audio`]
-/// so Rust's reverse-field-declaration drop order tears the
-/// scheduler thread down BEFORE the audio runtime, which is BEFORE
-/// the canonical state + bus. Reordering the fields without updating
-/// the prose breaks the contract silently.
+/// Background thread teardown ordering is enforced explicitly in
+/// [`AppState::drop`] and [`ShellRuntime::shutdown`] (scheduler thread
+/// first, audio runtime second) rather than relying on struct field
+/// declaration order.
 pub struct AppState {
     /// Canonical runtime state guarded behind a mutex so command
     /// handlers can apply committed events serially.
@@ -196,20 +280,21 @@ pub struct AppState {
     /// don't bootstrap persistence (the in-memory mutex still
     /// works; the write-through file I/O is skipped).
     pub settings_path: Mutex<Option<PathBuf>>,
-    /// Scheduler-tick thread handle. `Some` once the bootstrap path
-    /// has spawned the state-commit thread; `None` in test contexts
-    /// that construct a runtime-free [`AppState`] via
-    /// [`AppState::new`]. Behind a [`Mutex`] for interior mutability:
-    /// [`AppState::install_audio_and_scheduler`] takes `&self` since
-    /// the Tauri-managed state is reached via
-    /// [`tauri::Manager::state`] which yields `tauri::State<'_,
-    /// AppState>` (immutable shared borrow).
-    pub scheduler_thread: Mutex<Option<SchedulerThreadHandle>>,
-    /// Audio runtime handle. `Some` once the bootstrap path has
-    /// spawned the producer thread; `None` in test contexts. Drop
-    /// signals shutdown + best-effort joins per
-    /// [`chromaticity_audio::runtime::AudioRuntimeHandle::drop`].
-    pub audio: Mutex<Option<AudioRuntimeHandle>>,
+    /// Explicit lifecycle state machine owning the background
+    /// scheduler-tick thread and audio producer runtime handles.
+    /// Starts in [`ShellRuntime::Unbootstrapped`] in [`AppState::new`];
+    /// [`AppState::install_audio_and_scheduler`] transitions it to
+    /// [`ShellRuntime::Running`]; [`AppState::shutdown_runtime`] and
+    /// [`AppState::drop`] transition it to [`ShellRuntime::Stopped`],
+    /// explicitly dropping `scheduler_thread` before `audio`.
+    pub runtime: Mutex<ShellRuntime>,
+    /// Crash-resume recovery status recorded during Tauri bootstrap.
+    ///
+    /// `Some(payload)` when a saved crash-resume snapshot was found
+    /// and restored on launch; `None` when starting fresh or when
+    /// recovery failed. Owned directly by [`AppState`] rather than a
+    /// process-global static so each instance is isolated and testable.
+    pub crash_resume_status: Mutex<Option<CrashResumeStatusPayload>>,
     /// Active MIDI learn-mode listener handle. `Some` between a
     /// successful `start_midi_learn` IPC call and the matching
     /// `stop_midi_learn` (or until AppState teardown). The Wave 2.1
@@ -338,11 +423,12 @@ impl AppState {
     /// Construct a fresh shell state with a default canonical
     /// [`State`] and a freshly-instantiated [`InMemoryBus`].
     ///
-    /// Lifecycle handles ([`Self::audio`], [`Self::scheduler_thread`])
-    /// default to `None`; the Tauri bootstrap path installs them
-    /// post-`manage` via [`Self::install_audio_and_scheduler`].
-    /// Existing tests that exercise command handlers without
-    /// bootstrapping the runtime continue to work unchanged.
+    /// [`Self::runtime`] starts in [`ShellRuntime::Unbootstrapped`];
+    /// the Tauri bootstrap path transitions it to
+    /// [`ShellRuntime::Running`] post-`manage` via
+    /// [`Self::install_audio_and_scheduler`]. Existing tests that
+    /// exercise command handlers without bootstrapping the runtime
+    /// continue to work unchanged.
     #[must_use]
     pub fn new() -> Self {
         let osc_dispatch_queue = Arc::new(Mutex::new(Vec::new()));
@@ -366,8 +452,8 @@ impl AppState {
             bus: InMemoryBus::in_memory(),
             settings: Mutex::new(Settings::default()),
             settings_path: Mutex::new(None),
-            scheduler_thread: Mutex::new(None),
-            audio: Mutex::new(None),
+            runtime: Mutex::new(ShellRuntime::Unbootstrapped),
+            crash_resume_status: Mutex::new(None),
             midi_learn_handle: Mutex::new(None),
             loaded_scene: Mutex::new(None),
             osc_routes: Mutex::new(OscRouteRegistry::with_default_seed()),
@@ -439,9 +525,9 @@ impl AppState {
     /// [`Self::new`] is registered with `manage` and after the
     /// runtime + scheduler thread have been constructed against the
     /// managed [`AppState`]. Replaces any previously-installed
-    /// handles (their `Drop` impls fire as the slot values are
-    /// overwritten — the scheduler thread first, then the audio
-    /// runtime; matches the [`Drop`] order on [`AppState`] itself).
+    /// [`ShellRuntime::Running`] handles by calling
+    /// [`ShellRuntime::shutdown`] first (tearing down `scheduler_thread`
+    /// before `audio` in code).
     ///
     /// Mutex poison-recovery follows the workspace pattern: read
     /// through `match lock() { Ok(g) => g, Err(p) => p.into_inner() }`
@@ -451,29 +537,132 @@ impl AppState {
         audio: AudioRuntimeHandle,
         scheduler_thread: SchedulerThreadHandle,
     ) {
-        // Replace the audio handle first so the scheduler thread, if
-        // it's still running from a prior install, observes the
-        // shared snapshot through its `Arc<Mutex<...>>` clone before
-        // its handle is dropped. The replaced previous audio handle
-        // (if any) fires its `Drop` here.
-        match self.audio.lock() {
+        let mut guard = match self.runtime.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        if guard.is_running() {
+            guard.shutdown();
+        }
+        *guard = ShellRuntime::Running {
+            scheduler_thread,
+            audio,
+        };
+    }
+
+    /// Explicitly transition [`Self::runtime`] to [`ShellRuntime::Stopped`],
+    /// tearing down `scheduler_thread` before `audio`.
+    pub fn shutdown_runtime(&self) {
+        let mut guard = match self.runtime.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.shutdown();
+    }
+
+    /// Return the deterministic state name of [`Self::runtime`]
+    /// (`"unbootstrapped"`, `"running"`, or `"stopped"`).
+    #[must_use]
+    pub fn runtime_state_name(&self) -> &'static str {
+        let guard = match self.runtime.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.state_name()
+    }
+
+    /// Return `true` iff [`Self::runtime`] is currently in
+    /// [`ShellRuntime::Running`].
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        let guard = match self.runtime.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.is_running()
+    }
+
+    /// Record (or clear) the crash-resume recovery status payload.
+    pub fn set_crash_resume_status(&self, status: Option<CrashResumeStatusPayload>) {
+        match self.crash_resume_status.lock() {
             Ok(mut guard) => {
-                *guard = Some(audio);
+                *guard = status;
             }
             Err(poisoned) => {
                 let mut guard = poisoned.into_inner();
-                *guard = Some(audio);
+                *guard = status;
             }
         }
-        match self.scheduler_thread.lock() {
-            Ok(mut guard) => {
-                *guard = Some(scheduler_thread);
-            }
-            Err(poisoned) => {
-                let mut guard = poisoned.into_inner();
-                *guard = Some(scheduler_thread);
-            }
+    }
+
+    /// Read a clone of the current crash-resume recovery status payload.
+    #[must_use]
+    pub fn crash_resume_status(&self) -> Option<CrashResumeStatusPayload> {
+        match self.crash_resume_status.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
         }
+    }
+
+    /// Return a deterministic JSON snapshot of every shell state machine.
+    #[must_use]
+    pub fn inspect_state_machines_snapshot(&self) -> serde_json::Value {
+        let runtime = self.runtime_state_name();
+        let loaded_scene = {
+            let guard = match self.loaded_scene.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            match guard.as_ref() {
+                Some(record) => record
+                    .path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string(),
+                None => "none".to_string(),
+            }
+        };
+        let midi_learn = {
+            let guard = match self.midi_learn_handle.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            if guard.is_some() { "listening" } else { "idle" }
+        };
+        let osc_sender = {
+            let guard = match self.osc_sender.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            if guard.is_some() {
+                "ready"
+            } else {
+                "unavailable"
+            }
+        };
+        let crash_resume = {
+            let guard = match self.crash_resume_status.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            if guard.is_some() { "recovered" } else { "none" }
+        };
+        let settings_path_installed = {
+            let guard = match self.settings_path.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            guard.is_some()
+        };
+        serde_json::json!({
+            "runtime": runtime,
+            "loaded_scene": loaded_scene,
+            "midi_learn": midi_learn,
+            "osc_sender": osc_sender,
+            "crash_resume": crash_resume,
+            "settings_path_installed": settings_path_installed,
+        })
     }
 
     /// Store `value` as the current audio threshold, clamping to `[0.0, 1.0]`.
@@ -510,6 +699,14 @@ impl AppState {
     }
 }
 
+impl Drop for AppState {
+    fn drop(&mut self) {
+        // Ensure background threads are torn down (scheduler_thread
+        // before audio) BEFORE any other AppState field is dropped.
+        self.shutdown_runtime();
+    }
+}
+
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
@@ -541,17 +738,39 @@ mod app_state_pins {
     //!   pins that the shutdown flag clone given to the thread is
     //!   the same atomic the handle's drop signals.
 
-    use super::{AppState, SchedulerThreadHandle};
+    use super::{AppState, LoadedSceneRecord, SchedulerThreadHandle, ShellRuntime};
+    use chromaticity_audio::runtime::{AudioRuntime, AudioRuntimeConfig};
+    use chromaticity_scene::loader::load_chroma_dir;
+    use chromaticity_ui_bridge::{CrashResumeStatusPayload, ResumeStatusPayload};
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::thread;
     use std::time::{Duration, Instant};
 
+    fn spawn_test_scheduler(name: &str) -> (SchedulerThreadHandle, Arc<AtomicBool>) {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown_for_thread = Arc::clone(&shutdown);
+        let join = thread::Builder::new()
+            .name(name.into())
+            .spawn(move || {
+                while !shutdown_for_thread.load(Ordering::Relaxed) {
+                    thread::sleep(Duration::from_millis(2));
+                }
+            })
+            .unwrap();
+        (
+            SchedulerThreadHandle::new(join, Arc::clone(&shutdown)),
+            shutdown,
+        )
+    }
+
     #[test]
     fn app_state_new_starts_with_no_lifecycle_handles() {
         let app_state = AppState::new();
-        assert!(app_state.audio.lock().unwrap().is_none());
-        assert!(app_state.scheduler_thread.lock().unwrap().is_none());
+        assert!(!app_state.is_running());
+        assert_eq!(app_state.runtime_state_name(), "unbootstrapped");
+        assert!(app_state.crash_resume_status().is_none());
         // Wave 2.1 Lane D.2 — fresh AppState carries no active
         // learn-mode listener; the first `start_midi_learn` IPC
         // call installs one.
@@ -624,71 +843,157 @@ mod app_state_pins {
 
     #[test]
     fn install_audio_and_scheduler_replaces_existing_handles() {
-        // Spawn two no-op scheduler threads back to back; the second
-        // install replaces the first, dropping the prior handle and
-        // signalling its shutdown. This pins the "replace dropped
-        // prior" contract documented on
-        // `AppState::install_audio_and_scheduler`. We only exercise
-        // the scheduler half because the audio half requires a
-        // full `AudioRuntime` spawn which the producer-side T1 pins
-        // already cover (`engine/audio/src/runtime.rs` runtime_pins
-        // module).
         let app_state = AppState::new();
 
-        let make_handle = || {
-            let shutdown = Arc::new(AtomicBool::new(false));
-            let shutdown_for_thread = Arc::clone(&shutdown);
-            let join = thread::Builder::new()
-                .name("test-replace-target".into())
-                .spawn(move || {
-                    while !shutdown_for_thread.load(Ordering::Relaxed) {
-                        thread::sleep(Duration::from_millis(2));
-                    }
-                })
-                .unwrap();
-            (
-                SchedulerThreadHandle::new(join, Arc::clone(&shutdown)),
-                shutdown,
-            )
-        };
-
-        let (sched_a, flag_a) = make_handle();
-        // The audio half requires a real `AudioRuntimeHandle`. The
-        // public `AudioRuntime::new(default)` constructor falls back
-        // to a SilentSource-only runtime when no cpal default device
-        // is available (CI / headless / device-less environments per
-        // the PR 1 fallback contract); on dev machines with a real
-        // device it spawns an actual cpal stream which the test
-        // tears down via the `Drop` impl on `AudioRuntimeHandle`.
-        // Either path produces a runnable handle the install path
-        // owns.
-        use chromaticity_audio::runtime::{AudioRuntime, AudioRuntimeConfig};
+        let (sched_a, flag_a) = spawn_test_scheduler("test-replace-target-a");
         let runtime_a = AudioRuntime::new(AudioRuntimeConfig::default());
         let audio_a = runtime_a.spawn();
 
         app_state.install_audio_and_scheduler(audio_a, sched_a);
-        assert!(app_state.audio.lock().unwrap().is_some());
-        assert!(app_state.scheduler_thread.lock().unwrap().is_some());
+        assert!(app_state.is_running());
+        assert_eq!(app_state.runtime_state_name(), "running");
         assert!(!flag_a.load(Ordering::Relaxed));
 
-        let (sched_b, _flag_b) = make_handle();
+        let (sched_b, _flag_b) = spawn_test_scheduler("test-replace-target-b");
         let runtime_b = AudioRuntime::new(AudioRuntimeConfig::default());
         let audio_b = runtime_b.spawn();
 
         app_state.install_audio_and_scheduler(audio_b, sched_b);
+        assert!(app_state.is_running());
+        assert_eq!(app_state.runtime_state_name(), "running");
 
-        // Replacing the handle drops the prior, which signals
-        // shutdown via its `Drop` impl. Poll the flag to allow the
-        // bounded-join inside `Drop` to settle.
-        let deadline = Instant::now() + Duration::from_millis(500);
-        let mut signalled = false;
-        while Instant::now() < deadline {
-            if flag_a.load(Ordering::Relaxed) {
-                signalled = true;
-                break;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-        assert!(signalled, "prior handle's drop didn't signal shutdown");
+        // Replacing the running runtime calls `ShellRuntime::shutdown`,
+        // which signals and joins the prior scheduler thread before
+        // tearing down the prior audio runtime.
+        assert!(
+            flag_a.load(Ordering::Relaxed),
+            "prior handle's shutdown didn't signal before replacement completed"
+        );
+    }
+
+    #[test]
+    fn shell_runtime_transitions_and_ordered_shutdown() {
+        let mut rt = ShellRuntime::Unbootstrapped;
+        assert_eq!(rt.state_name(), "unbootstrapped");
+        assert!(!rt.is_running());
+
+        let (sched, sched_flag) = spawn_test_scheduler("test-shell-runtime-order");
+        let audio = AudioRuntime::new(AudioRuntimeConfig::default()).spawn();
+        rt = ShellRuntime::Running {
+            scheduler_thread: sched,
+            audio,
+        };
+        assert_eq!(rt.state_name(), "running");
+        assert!(rt.is_running());
+        assert!(!sched_flag.load(Ordering::Relaxed));
+
+        // Explicit shutdown transitions to Stopped and joins scheduler
+        // before dropping audio.
+        rt.shutdown();
+        assert_eq!(rt.state_name(), "stopped");
+        assert!(!rt.is_running());
+        assert!(sched_flag.load(Ordering::Relaxed));
+
+        // Idempotent second shutdown stays Stopped.
+        rt.shutdown();
+        assert_eq!(rt.state_name(), "stopped");
+    }
+
+    #[test]
+    fn app_state_drop_shuts_down_running_runtime() {
+        let (sched, sched_flag) = spawn_test_scheduler("test-app-state-drop");
+        let audio = AudioRuntime::new(AudioRuntimeConfig::default()).spawn();
+        let app_state = AppState::new();
+        app_state.install_audio_and_scheduler(audio, sched);
+        assert!(app_state.is_running());
+        assert!(!sched_flag.load(Ordering::Relaxed));
+
+        drop(app_state);
+        assert!(
+            sched_flag.load(Ordering::Relaxed),
+            "AppState::drop must signal and join scheduler_thread"
+        );
+    }
+
+    #[test]
+    fn crash_resume_status_is_isolated_per_app_state() {
+        let a = AppState::new();
+        let b = AppState::new();
+        assert!(a.crash_resume_status().is_none());
+        assert!(b.crash_resume_status().is_none());
+
+        let payload = CrashResumeStatusPayload {
+            show_name: "Recovered runtime state".to_string(),
+            controls: ResumeStatusPayload::Restored,
+            snaps: ResumeStatusPayload::Restored,
+            playlist: ResumeStatusPayload::Restored,
+            adapters: ResumeStatusPayload::Restored,
+            scene: ResumeStatusPayload::Partial,
+            p50: 12,
+        };
+        a.set_crash_resume_status(Some(payload.clone()));
+
+        assert_eq!(a.crash_resume_status(), Some(payload));
+        assert!(
+            b.crash_resume_status().is_none(),
+            "crash_resume_status must not leak across AppState instances"
+        );
+
+        a.set_crash_resume_status(None);
+        assert!(a.crash_resume_status().is_none());
+    }
+
+    #[test]
+    fn inspect_state_machines_snapshot_reflects_all_shell_states() {
+        let app_state = AppState::new();
+        let initial = app_state.inspect_state_machines_snapshot();
+        assert_eq!(initial["runtime"], "unbootstrapped");
+        assert_eq!(initial["loaded_scene"], "none");
+        assert_eq!(initial["midi_learn"], "idle");
+        assert!(
+            initial["osc_sender"] == "ready" || initial["osc_sender"] == "unavailable",
+            "unexpected osc_sender state: {}",
+            initial["osc_sender"]
+        );
+        assert_eq!(initial["crash_resume"], "none");
+        assert_eq!(initial["settings_path_installed"], false);
+
+        // Transition runtime -> running, settings_path -> installed,
+        // crash_resume -> recovered, loaded_scene -> demo-kaleido,
+        // osc_sender -> unavailable.
+        let (sched, _flag) = spawn_test_scheduler("test-inspect-sm");
+        let audio = AudioRuntime::new(AudioRuntimeConfig::default()).spawn();
+        app_state.install_audio_and_scheduler(audio, sched);
+        app_state.install_settings_path(PathBuf::from("/tmp/settings.toml"));
+        app_state.set_crash_resume_status(Some(CrashResumeStatusPayload {
+            show_name: "Recovered".to_string(),
+            controls: ResumeStatusPayload::Restored,
+            snaps: ResumeStatusPayload::Restored,
+            playlist: ResumeStatusPayload::Restored,
+            adapters: ResumeStatusPayload::Restored,
+            scene: ResumeStatusPayload::Partial,
+            p50: 4,
+        }));
+        let scene_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../engine/scene/tests/fixtures/scenes/library/demo-kaleido.chroma");
+        let scene = load_chroma_dir(&scene_path).unwrap();
+        *app_state.loaded_scene.lock().unwrap() = Some(LoadedSceneRecord {
+            scene,
+            path: scene_path,
+        });
+        *app_state.osc_sender.lock().unwrap() = None;
+
+        let active = app_state.inspect_state_machines_snapshot();
+        assert_eq!(active["runtime"], "running");
+        assert_eq!(active["loaded_scene"], "demo-kaleido");
+        assert_eq!(active["midi_learn"], "idle");
+        assert_eq!(active["osc_sender"], "unavailable");
+        assert_eq!(active["crash_resume"], "recovered");
+        assert_eq!(active["settings_path_installed"], true);
+
+        // Transition runtime -> stopped.
+        app_state.shutdown_runtime();
+        let stopped = app_state.inspect_state_machines_snapshot();
+        assert_eq!(stopped["runtime"], "stopped");
     }
 }

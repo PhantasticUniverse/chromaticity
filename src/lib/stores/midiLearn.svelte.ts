@@ -1,167 +1,202 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 //
-// Wave 2.1 Lane D.2 MIDI learn-mode singleton store. Backs the
-// operator-facing MIDI view learn-mode panel — `start(portId)` invokes
-// the `start_midi_learn` Tauri command (`app/shell/src/commands/midi.rs`),
-// subscribes to the `midi_learn_event` event channel, and records each
-// captured payload onto `captured`. `stop()` invokes `stop_midi_learn`
-// and detaches the listener.
-//
-// `.svelte.ts` extension is required for runes-in-module per the
-// `feedback_eslint_svelte_dot_ts_parser.md` user-memory convention; the
-// `audioSnapshot.svelte.ts` sibling is the live precedent for the
-// listener-shape pattern (idempotent `subscribe()` + dynamic-import +
-// no-Tauri-runtime swallow path).
-//
-// **State machine** (Wave 2.1 Lane D.2 minimal-viable single capture):
-//
-//   idle  ── start(portId)  ──▶  listening
-//   listening ── first event ──▶  captured   (replaces `captured`)
-//   captured ── stop() ──▶ idle
-//   listening ── stop() ──▶ idle
-//   any-state ── reset() ──▶ idle (also clears `captured`)
-//
-// The store stays in `'listening'` after the first event so subsequent
-// captures replace the displayed payload (re-capture without an extra
-// click). The UI surfaces a `state === 'captured'` view by re-checking
-// `captured !== null` against the `listening` state. Multi-message
-// learn (combining several CC ranges) is deferred to a follow-up wave
-// per the brief.
-//
-// **localStorage persistence**: Wave 2.1 Lane D.2 stores the most
-// recently captured payload to a fixed key on `confirm()`. The wiring
-// of this captured binding to a specific control target (the per-row
-// Bind button in the MIDI view's binding tables) is a follow-up wave;
-// today, `confirm()` just records the most-recent capture so the
-// operator can verify the learn-mode loop works end-to-end and a
-// future wave can read this localStorage entry as the seed for the
-// binding-assignment UX.
+// Wave 2.1 Lane D.2 MIDI learn-mode singleton store, upgraded to an
+// explicit discriminated union (`MidiLearnMachine`) where invalid
+// combinations (e.g. listening without a portId or captured without a
+// payload) are unrepresentable in TypeScript.
 
 import type { MidiLearnEventPayload } from '../ipc/bindings/MidiLearnEventPayload';
 import { MIDI_LEARN_EVENT, startMidiLearn, stopMidiLearn } from '../ipc/midi';
+import { formatErrorMessage, registerStateMachine } from '../state';
 
-/** Tauri unlisten handle returned by `listen()`. Stored so `stop()` can detach. */
 type UnlistenFn = () => void;
 
 /** localStorage key under which the most recent confirmed capture is recorded. */
 export const MIDI_LEARN_CONFIRMED_KEY = 'chromaticity.midi.learn.confirmed';
 
-/** Discriminated state for the learn-mode singleton store. */
+/** Back-compat state label for existing callers and tests. */
 export type MidiLearnState = 'idle' | 'listening' | 'captured';
 
+/** Explicit discriminated state machine for MIDI learn sessions. */
+export type MidiLearnMachine =
+  | {
+      readonly kind: 'idle';
+      readonly lastCaptured: MidiLearnEventPayload | null;
+      readonly error: string | null;
+    }
+  | { readonly kind: 'starting'; readonly portId: string }
+  | { readonly kind: 'listening'; readonly portId: string; readonly error: string | null }
+  | {
+      readonly kind: 'captured';
+      readonly portId: string;
+      readonly payload: MidiLearnEventPayload;
+    };
+
 class MidiLearnStore {
-  /** Current state-machine state. */
-  state = $state<MidiLearnState>('idle');
+  /** Explicit discriminated state machine. */
+  machine = $state<MidiLearnMachine>({ kind: 'idle', lastCaptured: null, error: null });
 
-  /** Most recent captured payload, or `null` if nothing captured yet. */
-  captured = $state<MidiLearnEventPayload | null>(null);
-
-  /** Port id the active session is listening on (or `null` when idle). */
-  activePortId = $state<string | null>(null);
-
-  /** Last operator-facing error from a failed `start_midi_learn` invocation. */
-  error = $state<string | null>(null);
+  /** Monotonic session counter to ignore stale async start/listen completions. */
+  #sessionId = 0;
 
   /** Detach handle returned by `listen()`. */
   #unlisten: UnlistenFn | null = null;
 
-  /**
-   * Start a learn session on `portId`. Invokes `start_midi_learn` on
-   * the shell, transitions state to `'listening'`, and subscribes to
-   * the `midi_learn_event` event channel. Replaces any prior session
-   * (stop + restart is the intentional UX for switching ports).
-   */
-  async start(portId: string): Promise<void> {
-    // Always tear down any prior listener before opening a fresh one —
-    // matches the shell-side replace-on-install posture for the
-    // `MidiListenHandle` slot on `AppState`.
-    await this.#detachListener();
+  /** Back-compat projection: `'idle' | 'listening' | 'captured'`. */
+  get state(): MidiLearnState {
+    return this.machine.kind === 'starting' ? 'listening' : this.machine.kind;
+  }
 
-    this.error = null;
-    this.captured = null;
-    this.activePortId = portId;
-    this.state = 'listening';
+  set state(next: MidiLearnState) {
+    const portId = this.activePortId ?? '';
+    const err = this.error;
+    const cap = this.captured;
+    if (next === 'idle') {
+      this.machine = { kind: 'idle', lastCaptured: cap, error: err };
+    } else if (next === 'listening') {
+      this.machine = { kind: 'listening', portId, error: err };
+    } else if (cap !== null) {
+      this.machine = { kind: 'captured', portId, payload: cap };
+    } else {
+      this.machine = { kind: 'listening', portId, error: err };
+    }
+  }
+
+  /** Back-compat projection: most recent captured payload, or `null`. */
+  get captured(): MidiLearnEventPayload | null {
+    switch (this.machine.kind) {
+      case 'captured':
+        return this.machine.payload;
+      case 'idle':
+        return this.machine.lastCaptured;
+      case 'starting':
+      case 'listening':
+        return null;
+    }
+  }
+
+  set captured(payload: MidiLearnEventPayload | null) {
+    if (this.machine.kind === 'idle') {
+      this.machine = { kind: 'idle', lastCaptured: payload, error: this.machine.error };
+    } else if (payload !== null) {
+      this.machine = { kind: 'captured', portId: this.machine.portId, payload };
+    } else {
+      this.machine = { kind: 'listening', portId: this.machine.portId, error: this.error };
+    }
+  }
+
+  /** Back-compat projection: active port id, or `null` when idle. */
+  get activePortId(): string | null {
+    return this.machine.kind === 'idle' ? null : this.machine.portId;
+  }
+
+  set activePortId(portId: string | null) {
+    if (portId === null) {
+      this.machine = { kind: 'idle', lastCaptured: this.captured, error: this.error };
+    } else if (this.machine.kind === 'captured') {
+      this.machine = { kind: 'captured', portId, payload: this.machine.payload };
+    } else {
+      this.machine = { kind: 'listening', portId, error: this.error };
+    }
+  }
+
+  /** Back-compat projection: last operator-facing error, or `null`. */
+  get error(): string | null {
+    switch (this.machine.kind) {
+      case 'idle':
+      case 'listening':
+        return this.machine.error;
+      case 'starting':
+      case 'captured':
+        return null;
+    }
+  }
+
+  set error(value: string | null) {
+    if (this.machine.kind === 'idle') {
+      this.machine = { kind: 'idle', lastCaptured: this.machine.lastCaptured, error: value };
+    } else if (this.machine.kind === 'listening') {
+      this.machine = { kind: 'listening', portId: this.machine.portId, error: value };
+    }
+  }
+
+  async start(portId: string): Promise<void> {
+    const sid = ++this.#sessionId;
+    await this.#detachListener();
+    if (sid !== this.#sessionId) return;
+
+    this.machine = { kind: 'starting', portId };
 
     try {
       await startMidiLearn(portId);
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
-      this.state = 'idle';
-      this.activePortId = null;
+      if (sid !== this.#sessionId) return;
+      this.machine = { kind: 'idle', lastCaptured: null, error: formatErrorMessage(e) };
       return;
     }
+
+    if (sid !== this.#sessionId) return;
+    this.machine = { kind: 'listening', portId, error: null };
 
     try {
       const { listen } = await import('@tauri-apps/api/event');
       const handle = await listen<MidiLearnEventPayload>(MIDI_LEARN_EVENT, (event) => {
-        this.captured = event.payload;
-        // Transition to `'captured'` on the first event; subsequent
-        // events keep replacing `captured` while the operator stays
-        // in this state (re-capture without an explicit re-arm).
-        this.state = 'captured';
+        if (sid !== this.#sessionId) return;
+        this.machine = { kind: 'captured', portId, payload: event.payload };
       });
+      if (sid !== this.#sessionId) {
+        try {
+          handle();
+        } catch {
+          // Swallow detach failure on superseded session.
+        }
+        return;
+      }
       this.#unlisten = handle;
     } catch (e) {
-      // Listener attach failed (no Tauri runtime — vite-dev or Vitest
-      // jsdom without IPC mock). The shell side has installed its
-      // listen handle; absent the frontend listener, no events surface,
-      // but state-machine semantics stay consistent. Mirrors the
-      // `audioSnapshot.svelte.ts` no-Tauri-runtime swallow path.
-      this.error = e instanceof Error ? e.message : String(e);
+      if (sid !== this.#sessionId) return;
+      this.machine = { kind: 'listening', portId, error: formatErrorMessage(e) };
     }
   }
 
-  /**
-   * Stop the active learn session. Invokes `stop_midi_learn` on the
-   * shell, detaches the event listener, and returns to `'idle'`.
-   * Captured payload is preserved (the operator can still see what
-   * was last captured); `reset()` clears it.
-   */
   async stop(): Promise<void> {
+    this.#sessionId += 1;
+    const preserved = this.captured;
     await this.#detachListener();
+    let stopError: string | null = null;
     try {
       await stopMidiLearn();
     } catch (e) {
-      // Swallow — outside Tauri the command rejects; nothing to clean
-      // up server-side and the state-machine transition still applies.
-      this.error = e instanceof Error ? e.message : String(e);
+      stopError = formatErrorMessage(e);
     }
-    this.state = 'idle';
-    this.activePortId = null;
+    this.machine = { kind: 'idle', lastCaptured: preserved, error: stopError };
   }
 
-  /**
-   * Confirm the most-recently captured payload by writing it to
-   * localStorage under [`MIDI_LEARN_CONFIRMED_KEY`]. Wave 2.1 Lane D.2
-   * minimal-viable surface: the captured binding is recorded as a
-   * "most recent confirmed" record so a future wave can use it as
-   * the seed for the binding-assignment UX. Does NOT detach the
-   * listener — the operator may want to re-capture without leaving
-   * learn mode. Returns the confirmed payload (or `null` if nothing
-   * captured yet).
-   */
   confirm(): MidiLearnEventPayload | null {
-    if (!this.captured) return null;
+    const payload = this.captured;
+    if (!payload) return null;
     try {
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(MIDI_LEARN_CONFIRMED_KEY, JSON.stringify(this.captured));
+        localStorage.setItem(MIDI_LEARN_CONFIRMED_KEY, JSON.stringify(payload));
       }
     } catch {
-      // localStorage may be unavailable (private browsing quota
-      // exhaustion, etc.); swallow rather than fail the confirm UX —
-      // the in-memory `captured` field still carries the value.
+      // localStorage may be unavailable; in-memory capture stays intact.
     }
-    return this.captured;
+    return payload;
   }
 
-  /** Clear the captured payload + state without invoking IPC. Used by
-   *  the Re-capture button to drop the previous capture and stay in
-   *  `'listening'` mode. */
   reset(): void {
-    this.captured = null;
-    if (this.state === 'captured') {
-      this.state = 'listening';
+    switch (this.machine.kind) {
+      case 'captured':
+        this.machine = { kind: 'listening', portId: this.machine.portId, error: null };
+        break;
+      case 'idle':
+        this.machine = { kind: 'idle', lastCaptured: null, error: this.machine.error };
+        break;
+      case 'starting':
+      case 'listening':
+        break;
     }
   }
 
@@ -170,8 +205,7 @@ class MidiLearnStore {
       try {
         this.#unlisten();
       } catch {
-        // Tauri's unlisten may throw if the runtime is shutting down;
-        // swallow so the state-machine transition completes.
+        // Tauri's unlisten may throw during shutdown; swallow cleanly.
       }
       this.#unlisten = null;
     }
@@ -179,3 +213,10 @@ class MidiLearnStore {
 }
 
 export const midiLearnStore = new MidiLearnStore();
+
+registerStateMachine('midiLearn', () => ({
+  kind: midiLearnStore.machine.kind,
+  activePortId: midiLearnStore.activePortId,
+  hasCapture: midiLearnStore.captured !== null,
+  error: midiLearnStore.error,
+}));

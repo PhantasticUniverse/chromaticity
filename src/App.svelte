@@ -19,8 +19,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // editable surface keep their `?` keystrokes.
   import AppShell from './lib/AppShell.svelte';
   import HotkeyOverlay from './lib/HotkeyOverlay.svelte';
+  import { overlayStack } from './lib/state';
 
-  let hotkeysOpen = $state(false);
+  const hotkeysOpen = $derived(overlayStack.isOpen('hotkeys'));
 
   $effect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -34,7 +35,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       }
       if (event.key === '?' || (event.key === '/' && event.shiftKey)) {
         event.preventDefault();
-        hotkeysOpen = !hotkeysOpen;
+        overlayStack.toggle('hotkeys');
       }
     };
     document.addEventListener('keydown', handler);
@@ -44,4 +45,4 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 <AppShell />
 
-<HotkeyOverlay open={hotkeysOpen} onCloseRequest={() => (hotkeysOpen = false)} />
+<HotkeyOverlay open={hotkeysOpen} onCloseRequest={() => overlayStack.close('hotkeys')} />

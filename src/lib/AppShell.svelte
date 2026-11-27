@@ -115,6 +115,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import ConsoleDrawer from './ConsoleDrawer.svelte';
   import type { CrashResumeStatusPayload } from './ipc/bindings';
   import SidebarRail from './SidebarRail.svelte';
+  import { overlayStack } from './state';
   import StatusBar from './StatusBar.svelte';
   import { capabilitiesStore } from './stores/capabilities.svelte';
   import { routeStore } from './stores/route.svelte';
@@ -151,11 +152,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // in `TWEAK_DEFAULTS` (line 54). Real adapter-health probing remains
   // `EV-INTEGRATION-MATRIX` scope; once that lands the visibility
   // will read from a capability flag rather than a hardcoded default.
-  let bannerVisible = $state(false);
+  type CrashResumeBannerState =
+    | { readonly kind: 'hidden' }
+    | { readonly kind: 'visible'; readonly payload: CrashResumeStatusPayload };
 
-  let crashResumeVisible = $state(false);
-  let crashResumeStatus = $state<CrashResumeStatusPayload | null>(null);
-  let commandPaletteOpen = $state(false);
+  let bannerVisible = $state(false);
+  let crashResume = $state<CrashResumeBannerState>({ kind: 'hidden' });
+  const commandPaletteOpen = $derived(overlayStack.isOpen('command-palette'));
 
   // Watermark visibility is the inverse of the `render.watermark.off`
   // capability per ADR-009: present when the capability is absent
@@ -191,8 +194,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         const { invoke } = await import('@tauri-apps/api/core');
         const status = await invoke<CrashResumeStatusPayload | null>('get_crash_resume_status');
         if (status) {
-          crashResumeStatus = status;
-          crashResumeVisible = true;
+          crashResume = { kind: 'visible', payload: status };
         }
       } catch {
         // Browser-mode / Vitest: no Tauri runtime, no recovered
@@ -206,12 +208,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
         if (event.key === 'k' || event.key === 'K') {
           event.preventDefault();
-          commandPaletteOpen = !commandPaletteOpen;
+          overlayStack.toggle('command-palette');
         }
       }
     };
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      overlayStack.close('command-palette');
+    };
   });
 </script>
 
@@ -234,21 +239,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         />
       </div>
     {/if}
-    {#if crashResumeVisible && crashResumeStatus}
+    {#if crashResume.kind === 'visible'}
       <div class="app-shell__banner">
         <CrashResumeBanner
-          showName={crashResumeStatus.showName}
-          controls={crashResumeStatus.controls}
-          snaps={crashResumeStatus.snaps}
-          playlist={crashResumeStatus.playlist}
-          adapters={crashResumeStatus.adapters}
-          scene={crashResumeStatus.scene}
-          p50={crashResumeStatus.p50}
+          showName={crashResume.payload.showName}
+          controls={crashResume.payload.controls}
+          snaps={crashResume.payload.snaps}
+          playlist={crashResume.payload.playlist}
+          adapters={crashResume.payload.adapters}
+          scene={crashResume.payload.scene}
+          p50={crashResume.payload.p50}
           onViewLog={() => routeStore.set('settings')}
           onSupport={() => {
             /* W44 follow-up: support-bundle modal port */
           }}
-          onDismiss={() => (crashResumeVisible = false)}
+          onDismiss={() => (crashResume = { kind: 'hidden' })}
         />
       </div>
     {/if}
@@ -298,7 +303,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
 <CommandPalette
   open={commandPaletteOpen}
-  onClose={() => (commandPaletteOpen = false)}
+  onClose={() => overlayStack.close('command-palette')}
   commands={commandPaletteActions}
 />
 

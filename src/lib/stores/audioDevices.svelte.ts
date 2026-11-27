@@ -2,122 +2,150 @@
 // SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 //
 // Wave 2.6 Lane AUD.A (input) + Wave 2.7 Lane SET.C (output) cpal
-// device-listing singleton store. Backs the operator-facing Settings →
-// Audio Device → Input Device / Output Device dropdowns in
-// `src/lib/views/Settings.svelte` — `refresh()` invokes the typed
-// `listAudioDevices` wrapper for inputs; `refreshOutput()` invokes the
-// parallel `listAudioOutputDevices` wrapper for outputs.
-//
-// `.svelte.ts` extension is required for runes-in-module per the
-// `feedback_eslint_svelte_dot_ts_parser.md` user-memory convention; the
-// Wave 2.1 Lane D.1 `midiStore.svelte.ts` is the load-bearing precedent
-// for this shape (class-instance singleton + module-level export).
-//
-// **Phase posture.** Both engine adapters
-// (`engine/audio/src/cpal_source.rs::enumerate_input_devices` +
-// `enumerate_output_devices`) collapse the `cpal::Host::input_devices`
-// / `cpal::Host::output_devices` failure (CI / headless / no-audio-
-// subsystem hosts) into `Ok(Vec::new())`, so the consumer view falls
-// back to the W21 PR1 fixture set uniformly for both "audio available
-// but no devices connected" and "audio subsystem unavailable".
-//
-// `refresh()` / `refreshOutput()` swallow the `invoke` rejection that
-// fires when running outside Tauri (vite-only `npm run dev`, Vitest
-// jsdom with no IPC mock) and record the error onto `error` /
-// `outputError` so callers can render an operator-facing banner if
-// they choose. The device lists are reset to empty vecs in that case
-// so the consumer view's fixture-fallback branch fires.
-//
-// `subscribe`-style listener detach is intentionally absent: the
-// command surface is a pull-model (`refresh()` is on demand), unlike
-// the audio snapshot store that listens to a push-model Tauri event
-// channel.
+// device-listing singleton store, backed by two independent
+// `AsyncResource<readonly AudioDevicePayload[]>` state machines.
+
+import { untrack } from 'svelte';
 
 import { listAudioDevices, listAudioOutputDevices } from '../ipc/audio';
 import type { AudioDevicePayload } from '../ipc/bindings/AudioDevicePayload';
+import {
+  beginRequest,
+  failRequest,
+  formatErrorMessage,
+  idleResource,
+  isResourceLoading,
+  registerStateMachine,
+  resourceError,
+  succeedRequest,
+  type AsyncResource,
+} from '../state';
 
 class AudioDevicesStore {
-  /** Latest input-enumeration result. Empty vec under the no-devices /
-   * no-audio-subsystem branch; non-empty when the host has connected
-   * cpal input devices. */
-  devices = $state<readonly AudioDevicePayload[]>([]);
+  /** Explicit discriminated state machine for input device enumeration. */
+  inputMachine: AsyncResource<readonly AudioDevicePayload[]> = $state(idleResource([]));
 
-  /** Wave 2.7 Lane SET.C — latest output-enumeration result. Same
-   * empty-vec graceful-fallback posture as `devices`. */
-  outputDevices = $state<readonly AudioDevicePayload[]>([]);
+  /** Explicit discriminated state machine for output device enumeration. */
+  outputMachine: AsyncResource<readonly AudioDevicePayload[]> = $state(idleResource([]));
 
-  /** Tracks the in-flight `refresh()` promise so the consumer view can
-   * render a loading spinner without dispatching duplicate enumeration
-   * calls. */
-  isLoading = $state(false);
+  #inputReqId = 0;
+  #outputReqId = 0;
 
-  /** Wave 2.7 Lane SET.C — output-side counterpart of `isLoading`.
-   * Tracked separately so the Input + Output dropdowns can render
-   * independent loading states (a slow output enumeration MUST NOT
-   * block the input dropdown's spinner from clearing). */
-  isLoadingOutput = $state(false);
+  get devices(): readonly AudioDevicePayload[] {
+    return this.inputMachine.data;
+  }
 
-  /** Last input-refresh error surface, or `null` on success / fresh
-   * state. Drives the operator-facing error banner when the input
-   * command fails (e.g. running outside Tauri). */
-  error = $state<string | null>(null);
+  set devices(value: readonly AudioDevicePayload[]) {
+    this.inputMachine = { kind: 'ready', requestId: ++this.#inputReqId, data: value };
+  }
 
-  /** Wave 2.7 Lane SET.C — output-side counterpart of `error`. */
-  outputError = $state<string | null>(null);
+  get outputDevices(): readonly AudioDevicePayload[] {
+    return this.outputMachine.data;
+  }
 
-  /** Invoke `list_audio_devices` and replace the input-device list.
-   * Sets `isLoading` for the duration; on failure, clears the device
-   * list and records the error. Idempotent on the failure path —
-   * callers can retry without first clearing state. */
+  set outputDevices(value: readonly AudioDevicePayload[]) {
+    this.outputMachine = { kind: 'ready', requestId: ++this.#outputReqId, data: value };
+  }
+
+  get isLoading(): boolean {
+    return isResourceLoading(this.inputMachine);
+  }
+
+  get isLoadingOutput(): boolean {
+    return isResourceLoading(this.outputMachine);
+  }
+
+  get error(): string | null {
+    return resourceError(this.inputMachine);
+  }
+
+  set error(value: string | null) {
+    this.inputMachine =
+      value === null
+        ? { kind: 'ready', requestId: ++this.#inputReqId, data: this.inputMachine.data }
+        : {
+            kind: 'error',
+            requestId: ++this.#inputReqId,
+            data: this.inputMachine.data,
+            error: value,
+          };
+  }
+
+  get outputError(): string | null {
+    return resourceError(this.outputMachine);
+  }
+
+  set outputError(value: string | null) {
+    this.outputMachine =
+      value === null
+        ? { kind: 'ready', requestId: ++this.#outputReqId, data: this.outputMachine.data }
+        : {
+            kind: 'error',
+            requestId: ++this.#outputReqId,
+            data: this.outputMachine.data,
+            error: value,
+          };
+  }
+
   async refresh(): Promise<void> {
-    this.isLoading = true;
-    this.error = null;
+    const reqId = ++this.#inputReqId;
+    this.inputMachine = beginRequest(
+      untrack(() => this.inputMachine),
+      reqId,
+    );
     try {
       const fresh = await listAudioDevices();
-      // Defensive coerce — a test harness that mocks `invoke` without
-      // a return value (or a degenerate runtime path) hands back
-      // `undefined`; the consumer view's `audioDevicesStore.devices.map`
-      // call would explode in that case. Collapsing to an empty vec
-      // routes those cases through the same fixture-fallback branch
-      // as the no-devices / no-Tauri-context paths.
-      this.devices = Array.isArray(fresh) ? fresh : [];
+      this.inputMachine = succeedRequest(
+        untrack(() => this.inputMachine),
+        reqId,
+        Array.isArray(fresh) ? fresh : [],
+      );
     } catch (e) {
-      this.devices = [];
-      this.error = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.isLoading = false;
+      this.inputMachine = failRequest(
+        untrack(() => this.inputMachine),
+        reqId,
+        formatErrorMessage(e),
+        [],
+      );
     }
   }
 
-  /** Wave 2.7 Lane SET.C — invoke `list_audio_output_devices` and
-   * replace the output-device list. Same lifecycle contract as
-   * `refresh()`: `isLoadingOutput` toggles around the in-flight
-   * promise; on failure, clears the device list and records the
-   * error. Idempotent on the failure path. */
   async refreshOutput(): Promise<void> {
-    this.isLoadingOutput = true;
-    this.outputError = null;
+    const reqId = ++this.#outputReqId;
+    this.outputMachine = beginRequest(
+      untrack(() => this.outputMachine),
+      reqId,
+    );
     try {
       const fresh = await listAudioOutputDevices();
-      this.outputDevices = Array.isArray(fresh) ? fresh : [];
+      this.outputMachine = succeedRequest(
+        untrack(() => this.outputMachine),
+        reqId,
+        Array.isArray(fresh) ? fresh : [],
+      );
     } catch (e) {
-      this.outputDevices = [];
-      this.outputError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.isLoadingOutput = false;
+      this.outputMachine = failRequest(
+        untrack(() => this.outputMachine),
+        reqId,
+        formatErrorMessage(e),
+        [],
+      );
     }
   }
 
-  /** Test-harness reset. Clears both device lists, both loading
-   * flags, and both error fields. */
   reset(): void {
-    this.devices = [];
-    this.outputDevices = [];
-    this.isLoading = false;
-    this.isLoadingOutput = false;
-    this.error = null;
-    this.outputError = null;
+    this.#inputReqId += 1;
+    this.#outputReqId += 1;
+    this.inputMachine = idleResource([]);
+    this.outputMachine = idleResource([]);
   }
 }
 
 export const audioDevicesStore = new AudioDevicesStore();
+
+registerStateMachine('audioDevices', () => ({
+  inputKind: audioDevicesStore.inputMachine.kind,
+  inputCount: audioDevicesStore.devices.length,
+  outputKind: audioDevicesStore.outputMachine.kind,
+  outputCount: audioDevicesStore.outputDevices.length,
+}));

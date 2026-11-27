@@ -35,8 +35,8 @@ use chromaticity_runtime::scheduler::Scheduler;
 use chromaticity_runtime::scheduler::audio::MutexAudioPull;
 use chromaticity_ui_bridge::{CrashResumeStatusPayload, ResumeStatusPayload};
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
@@ -60,27 +60,13 @@ const CRASH_RESUME_FILE_NAME: &str = "crash-resume.bin";
 /// after mutex stalls instead of writing in a burst.
 const CRASH_RESUME_SAVE_PERIOD: Duration = Duration::from_secs(1);
 
-static CRASH_RESUME_STATUS: OnceLock<Mutex<Option<CrashResumeStatusPayload>>> = OnceLock::new();
+pub use commands::inspect_state_machines;
 
 #[tauri::command]
-fn get_crash_resume_status() -> Result<Option<CrashResumeStatusPayload>, String> {
-    let guard = match crash_resume_status_slot().lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    Ok(guard.clone())
-}
-
-fn crash_resume_status_slot() -> &'static Mutex<Option<CrashResumeStatusPayload>> {
-    CRASH_RESUME_STATUS.get_or_init(|| Mutex::new(None))
-}
-
-fn set_crash_resume_status(status: Option<CrashResumeStatusPayload>) {
-    let mut guard = match crash_resume_status_slot().lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    *guard = status;
+fn get_crash_resume_status(
+    app_state: tauri::State<'_, AppState>,
+) -> Result<Option<CrashResumeStatusPayload>, String> {
+    Ok(app_state.crash_resume_status())
 }
 
 fn recover_crash_resume_snapshot(app_state: &AppState, save_path: &Path) {
@@ -94,7 +80,7 @@ fn recover_crash_resume_snapshot(app_state: &AppState, save_path: &Path) {
             };
             restore_all_supported_classes(&recovered, &mut state_guard);
             drop(state_guard);
-            set_crash_resume_status(Some(CrashResumeStatusPayload {
+            app_state.set_crash_resume_status(Some(CrashResumeStatusPayload {
                 show_name: "Recovered runtime state".to_string(),
                 controls: ResumeStatusPayload::Restored,
                 snaps: ResumeStatusPayload::Restored,
@@ -105,14 +91,14 @@ fn recover_crash_resume_snapshot(app_state: &AppState, save_path: &Path) {
             }));
         }
         Ok(None) => {
-            set_crash_resume_status(None);
+            app_state.set_crash_resume_status(None);
         }
         Err(err) => {
             eprintln!(
                 "chromaticity-app: failed to recover crash-resume snapshot from {}: {err}",
                 save_path.display()
             );
-            set_crash_resume_status(None);
+            app_state.set_crash_resume_status(None);
         }
     }
 }
@@ -346,13 +332,10 @@ pub fn run() -> Result<(), tauri::Error> {
                 })?;
 
             // (d) Install lifecycle handles onto the managed
-            // AppState. The handles' Drop impls fire at app shutdown
-            // (Tauri-managed state is dropped at exit) in
-            // declaration-reverse order: scheduler thread first
-            // (signals shutdown + bounded join), then audio runtime
-            // (signals shutdown + bounded join). Field declaration
-            // order on AppState pins this contract; see
-            // `app/shell/src/state/mod.rs` module prose.
+            // AppState. `ShellRuntime::shutdown` (invoked on
+            // `AppState::drop` and `ShellRuntime::drop`) explicitly
+            // tears down the scheduler thread first (signals shutdown
+            // + bounded join) and the audio runtime second.
             let scheduler_thread = crate::state::SchedulerThreadHandle::new(join, shutdown);
             let app_state = app.state::<AppState>();
             app_state.install_audio_and_scheduler(audio_handle, scheduler_thread);
@@ -398,6 +381,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::settings::set_settings,
             commands::settings::reset_settings,
             get_crash_resume_status,
+            commands::inspect_state_machines,
             commands::license::install_license,
             commands::license::remove_license,
             commands::license::request_trial,

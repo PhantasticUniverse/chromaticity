@@ -1,45 +1,44 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 //
-// Wave 2.1 Lane C.3 operator-settings singleton store
-// (`/Users/xaviermac/.claude/plans/inherited-percolating-quill.md`).
+// Wave 2.1 Lane C.3 operator-settings singleton store, upgraded to an
+// explicit discriminated state machine (`SettingsMachine`).
 //
-// Mounts the persisted settings document via the `get_settings`
-// Tauri IPC handler (`app/shell/src/commands/settings.rs`) and
-// debounces writes back via `set_settings`. Settings.svelte (and
-// any future consumer) binds form fields to `settingsStore.snapshot`
-// and calls `settingsStore.update({ ... })` to mutate; the store
-// schedules a single debounced write-through per the supplied
-// `DEBOUNCE_MS` window so rapid keystrokes / slider drags don't
-// thrash disk I/O.
+// State transitions:
+//   unhydrated ── load() ok ──────────────▶ clean
+//   unhydrated ── load() err/malformed ───▶ offline (in-memory edits only)
+//   clean      ── update() ───────────────▶ dirty (debounce timer armed)
+//   dirty      ── timer / flush() ────────▶ saving
+//   saving     ── update() ───────────────▶ saving (dirtyWhileSaving = true)
+//   saving     ── save ok (clean) ────────▶ clean
+//   saving     ── save ok (dirty) ────────▶ dirty (re-arms debounce)
+//   saving     ── save err ───────────────▶ clean (lastError recorded)
+//   any        ── resetToDefaults() ──────▶ resetting ──▶ clean (or prior + err)
 //
-// `.svelte.ts` extension is required for runes-in-module per the
-// `feedback_eslint_svelte_dot_ts_parser.md` user-memory convention;
-// the `audioSnapshot.svelte.ts` / `cameraStore.svelte.ts` siblings
-// are the live precedents.
-//
-// **Test posture.** When running outside Tauri (Vitest jsdom with
-// no mocked `invoke`, or `npm run dev` vite-only mode) the `load()`
-// promise rejects; the store swallows the failure and stays at the
-// bundle-faithful defaults so existing Settings.svelte fixture-
-// driven tests continue passing without changes. The `set_settings`
-// write-through follows the same posture — failures are recorded
-// to `error` but don't throw to the caller.
+// Back-compat `$derived` getters (`isLoaded`, `canPersist`, `error`) preserve
+// the exact public API so all views and tests continue working unchanged.
+
+import { untrack } from 'svelte';
 
 import type { SettingsPayload } from '../ipc/bindings';
+import { formatErrorMessage, registerStateMachine } from '../state';
 
-/** Debounce window for write-through to disk, in ms. Sized to
- * collapse a typical drag-slider stream (event per frame, ~16ms)
- * into a single save while still feeling responsive. */
+/** Debounce window for write-through to disk, in ms. */
 const DEBOUNCE_MS = 250;
+
+/** Explicit lifecycle state of `SettingsStore`. */
+export type SettingsMachine =
+  | { readonly kind: 'unhydrated' }
+  | { readonly kind: 'offline'; readonly error: string }
+  | { readonly kind: 'clean'; readonly lastError: string | null }
+  | { readonly kind: 'dirty'; readonly lastError: string | null }
+  | { readonly kind: 'saving'; readonly dirtyWhileSaving: boolean }
+  | { readonly kind: 'resetting' };
 
 /**
  * Bundle-faithful default settings document used as the initial
  * `$state` value and as the fallback when `load()` fails (e.g.
- * running outside Tauri). Matches the engine-side
- * `Settings::default()` shape verbatim — the engine remains the
- * source of truth, but duplicating the defaults here avoids
- * blocking the UI mount on the IPC round-trip.
+ * running outside Tauri). Matches `Settings::default()` verbatim.
  */
 export const DEFAULT_SETTINGS: SettingsPayload = {
   general: {
@@ -85,16 +84,12 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     sender_name: 'chrm',
   },
   osc: {
-    // ADR-013 §1: loopback-only by default; routable OSC bind is an
-    // explicit operator opt-in.
     local_ip: '127.0.0.1',
     port: 9000,
     out_host: '127.0.0.1',
     out_port: 9001,
     tx_enabled: true,
     rx_enabled: true,
-    // Compat dual-emit window (parity-closure wave 2 Lane D PR10).
-    // Off by default; operator opts in for legacy-controller migrations.
     dual_emit_enabled: false,
     dual_emit_until: null,
   },
@@ -113,11 +108,6 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
   },
 };
 
-/** Shallow-clone the defaults POJO for the initial `$state` value
- * and for `reset()`. `structuredClone` is overkill (DEFAULT_SETTINGS
- * is a plain object literal with primitives + arrays of primitives)
- * and triggers a DataCloneError when handed a Svelte 5 `$state`
- * proxy elsewhere. */
 function cloneDefaults(): SettingsPayload {
   return {
     general: { ...DEFAULT_SETTINGS.general },
@@ -137,102 +127,101 @@ function cloneDefaults(): SettingsPayload {
   };
 }
 
+function isValidSettingsPayload(value: unknown): value is SettingsPayload {
+  return Boolean(value && typeof value === 'object' && 'audio' in value && 'graphics' in value);
+}
+
 class SettingsStore {
-  /** Current in-memory settings document. Initial value is the
-   * bundle-faithful default; replaced verbatim by the first
-   * successful `load()` resolution. */
+  /** Current in-memory settings document. */
   snapshot = $state<SettingsPayload>(cloneDefaults());
 
-  /** Track whether load() has completed (success or failure). The
-   * Settings view can render a skeleton state pre-load if desired;
-   * the bundle-faithful default snapshot is always displayable, so
-   * the W21 PR1 form scaffolding renders unchanged. */
-  isLoaded = $state(false);
+  /** Explicit discriminated lifecycle state. */
+  machine = $state<SettingsMachine>({ kind: 'unhydrated' });
 
-  /** True only after `get_settings` returns a valid shell payload.
-   * Debounced saves are gated on this so pre-load fixture seeding
-   * cannot overwrite a persisted settings file. */
-  canPersist = $state(false);
+  /** Monotonic generation counter to drop stale async completions after reset(). */
+  #generation = 0;
 
   /** Tracks the in-flight load() promise (idempotency latch). */
   #loadPromise: Promise<void> | null = null;
 
-  /** Last load() / set() error surface, or null on success. Drives
-   * an optional operator-facing banner. */
-  error = $state<string | null>(null);
-
   /** Pending debounce timer for the write-through. */
   #saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /**
-   * Read the persisted settings document from the shell and replace
-   * the in-memory snapshot. Idempotent — subsequent calls return
-   * the same settled promise so view-mount `$effect`s can call
-   * this unconditionally.
-   *
-   * Failure mode: when the IPC import or invocation rejects (test
-   * harness with no mock, vite dev with no shell), the snapshot
-   * stays at the bundle-faithful default and `error` records the
-   * failure message. The store still resolves so callers' awaits
-   * complete.
-   */
-  load(): Promise<void> {
-    if (this.#loadPromise) return this.#loadPromise;
-    this.#loadPromise = this.#doLoad();
-    return this.#loadPromise;
+  /** Back-compat projection: `true` once `load()` has settled (or `resetToDefaults()` succeeded). */
+  get isLoaded(): boolean {
+    return this.machine.kind !== 'unhydrated';
   }
 
-  async #doLoad(): Promise<void> {
-    try {
-      const { getSettings } = await import('../ipc/settings');
-      const fresh = await getSettings();
-      // Guard against a malformed IPC response (mocked invoke
-      // returning `undefined`, or a future shape divergence between
-      // the shell and the bridge). The snapshot stays at the
-      // bundle-faithful default when the response is not a usable
-      // SettingsPayload; the error surface records the issue.
-      if (fresh && typeof fresh === 'object' && 'audio' in fresh && 'graphics' in fresh) {
-        this.snapshot = fresh;
-        this.canPersist = true;
-        this.error = null;
-      } else {
-        this.canPersist = false;
-        this.error = 'get_settings returned a malformed payload';
-      }
-    } catch (e) {
-      // Swallow — no Tauri runtime available; snapshot stays at
-      // the bundle-faithful default and the view renders normally.
-      this.canPersist = false;
-      this.error = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.isLoaded = true;
+  /** Back-compat projection: `true` iff hydrated against a live shell and safe to write through. */
+  get canPersist(): boolean {
+    return this.machine.kind !== 'unhydrated' && this.machine.kind !== 'offline';
+  }
+
+  /** Back-compat projection: last load/save/reset error, or `null`. */
+  get error(): string | null {
+    switch (this.machine.kind) {
+      case 'offline':
+        return this.machine.error;
+      case 'clean':
+      case 'dirty':
+        return this.machine.lastError;
+      case 'unhydrated':
+      case 'saving':
+      case 'resetting':
+        return null;
     }
   }
 
-  /**
-   * Apply a partial update to the snapshot and schedule a debounced
-   * write-through. The patch shape mirrors `Partial<SettingsPayload>`
-   * but with section-level granularity — pass `{ audio: { ... } }`
-   * to replace the audio section, or `{ general: { theme: 'Atelier' } }`
-   * to update a leaf.
-   *
-   * Sub-section patches are shallow-merged: if you pass
-   * `{ audio: { sample_rate_hz: 96000 } }` the other audio fields
-   * retain their current values.
-   */
+  load(): Promise<void> {
+    if (this.#loadPromise) return this.#loadPromise;
+    this.#loadPromise = this.#doLoad(this.#generation);
+    return this.#loadPromise;
+  }
+
+  async #doLoad(gen: number): Promise<void> {
+    try {
+      const { getSettings } = await import('../ipc/settings');
+      const fresh = await getSettings();
+      if (gen !== this.#generation) return;
+      if (isValidSettingsPayload(fresh)) {
+        this.snapshot = fresh;
+        this.machine = { kind: 'clean', lastError: null };
+      } else {
+        this.machine = { kind: 'offline', error: 'get_settings returned a malformed payload' };
+      }
+    } catch (e) {
+      if (gen !== this.#generation) return;
+      this.machine = { kind: 'offline', error: formatErrorMessage(e) };
+    }
+  }
+
   update(patch: SettingsPatch): void {
-    const next: SettingsPayload = {
-      general: { ...this.snapshot.general, ...(patch.general ?? {}) },
-      audio: { ...this.snapshot.audio, ...(patch.audio ?? {}) },
-      graphics: { ...this.snapshot.graphics, ...(patch.graphics ?? {}) },
-      storage: { ...this.snapshot.storage, ...(patch.storage ?? {}) },
-      live_sources: { ...this.snapshot.live_sources, ...(patch.live_sources ?? {}) },
-      osc: { ...this.snapshot.osc, ...(patch.osc ?? {}) },
-      tempo: { ...this.snapshot.tempo, ...(patch.tempo ?? {}) },
+    const snap = untrack(() => this.snapshot);
+    const cur = untrack(() => this.machine);
+    this.snapshot = {
+      general: { ...snap.general, ...(patch.general ?? {}) },
+      audio: { ...snap.audio, ...(patch.audio ?? {}) },
+      graphics: { ...snap.graphics, ...(patch.graphics ?? {}) },
+      storage: { ...snap.storage, ...(patch.storage ?? {}) },
+      live_sources: { ...snap.live_sources, ...(patch.live_sources ?? {}) },
+      osc: { ...snap.osc, ...(patch.osc ?? {}) },
+      tempo: { ...snap.tempo, ...(patch.tempo ?? {}) },
     };
-    this.snapshot = next;
-    if (this.isLoaded && this.canPersist) {
-      this.#scheduleSave();
+
+    switch (cur.kind) {
+      case 'clean':
+      case 'dirty':
+        this.machine = { kind: 'dirty', lastError: cur.lastError };
+        this.#scheduleSave();
+        break;
+      case 'saving':
+        this.machine = { kind: 'saving', dirtyWhileSaving: true };
+        break;
+      case 'unhydrated':
+      case 'offline':
+      case 'resetting':
+        // Pre-hydration / offline / resetting: keep in-memory update without scheduling disk I/O.
+        break;
     }
   }
 
@@ -242,103 +231,86 @@ class SettingsStore {
     }
     this.#saveTimer = setTimeout(() => {
       this.#saveTimer = null;
-      void this.#doSave();
+      void this.#doSave(this.#generation);
     }, DEBOUNCE_MS);
   }
 
-  async #doSave(): Promise<void> {
-    if (!this.isLoaded || !this.canPersist) {
+  async #doSave(gen: number): Promise<void> {
+    if (!this.canPersist || this.machine.kind === 'resetting') {
       return;
     }
+    this.machine = { kind: 'saving', dirtyWhileSaving: false };
     try {
       const { setSettings } = await import('../ipc/settings');
-      // Snapshot a structural copy so an in-flight save doesn't
-      // race a concurrent mutation — `setSettings` carries the
-      // payload to disk; the next update() iteration will pick up
-      // any newer state via its own debounced save. `$state.snapshot`
-      // unwraps the Svelte 5 reactive proxy into a plain POJO suitable
-      // for `structuredClone` (Tauri's IPC serializer + jsdom's
-      // postMessage equivalent both choke on the raw proxy).
       const plain = $state.snapshot(this.snapshot) as SettingsPayload;
       await setSettings(plain);
-      this.error = null;
+      if (gen !== this.#generation || this.machine.kind !== 'saving') return;
+      if (this.machine.dirtyWhileSaving) {
+        this.machine = { kind: 'dirty', lastError: null };
+        this.#scheduleSave();
+      } else {
+        this.machine = { kind: 'clean', lastError: null };
+      }
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      if (gen !== this.#generation || this.machine.kind !== 'saving') return;
+      this.machine = { kind: 'clean', lastError: formatErrorMessage(e) };
     }
   }
 
-  /**
-   * Force an immediate write-through, bypassing the debounce. Used
-   * by the Settings view when the user takes an action whose
-   * persistence shouldn't wait (e.g. clicking "Set" on a tap-tempo
-   * row). Awaits the in-flight save so callers can chain on
-   * completion.
-   */
   async flush(): Promise<void> {
     if (this.#saveTimer !== null) {
       clearTimeout(this.#saveTimer);
       this.#saveTimer = null;
     }
-    if (this.isLoaded && this.canPersist) {
-      await this.#doSave();
+    if (this.canPersist && this.machine.kind !== 'resetting') {
+      await this.#doSave(this.#generation);
     }
   }
 
-  /**
-   * Reset persisted settings to engine defaults.
-   *
-   * Wave 2.7 Lane SET.D: invokes the `reset_settings` Tauri command
-   * which swaps the in-memory document to `Settings::default()` AND
-   * writes the default document through to the on-disk TOML file.
-   * Hydrates the local snapshot from the returned payload so the
-   * Settings view re-renders without a follow-on `load()` round-trip.
-   *
-   * Cancels any pending debounced save (the in-flight write would
-   * race the reset write and clobber it). Errors are recorded onto
-   * `error` and the snapshot stays at its current state so the UI
-   * can surface a banner without the reset half-applying.
-   */
   async resetToDefaults(): Promise<void> {
     if (this.#saveTimer !== null) {
       clearTimeout(this.#saveTimer);
       this.#saveTimer = null;
     }
+    const prior = this.machine;
+    const gen = this.#generation;
+    this.machine = { kind: 'resetting' };
     try {
       const { resetSettings } = await import('../ipc/settings');
       const fresh = await resetSettings();
-      if (fresh && typeof fresh === 'object' && 'audio' in fresh && 'graphics' in fresh) {
+      if (gen !== this.#generation) return;
+      if (isValidSettingsPayload(fresh)) {
         this.snapshot = fresh;
-        this.isLoaded = true;
-        this.canPersist = true;
-        this.error = null;
+        this.machine = { kind: 'clean', lastError: null };
       } else {
-        this.error = 'reset_settings returned a malformed payload';
+        const msg = 'reset_settings returned a malformed payload';
+        this.machine =
+          prior.kind === 'unhydrated' || prior.kind === 'offline'
+            ? { kind: 'offline', error: msg }
+            : { kind: 'clean', lastError: msg };
       }
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      if (gen !== this.#generation) return;
+      const msg = formatErrorMessage(e);
+      this.machine =
+        prior.kind === 'unhydrated' || prior.kind === 'offline'
+          ? { kind: 'offline', error: msg }
+          : { kind: 'clean', lastError: msg };
     }
   }
 
-  /**
-   * Test-harness reset. Clears the snapshot to defaults, cancels
-   * the pending save, drops the load-idempotency latch.
-   */
   reset(): void {
+    this.#generation += 1;
     if (this.#saveTimer !== null) {
       clearTimeout(this.#saveTimer);
       this.#saveTimer = null;
     }
     this.snapshot = cloneDefaults();
-    this.isLoaded = false;
-    this.canPersist = false;
-    this.error = null;
+    this.machine = { kind: 'unhydrated' };
     this.#loadPromise = null;
   }
 }
 
-/** Section-level patch shape. Pass a subset of any section to
- * patch only that section's fields; missing sections leave the
- * current snapshot's section untouched. */
 export interface SettingsPatch {
   general?: Partial<SettingsPayload['general']>;
   audio?: Partial<SettingsPayload['audio']>;
@@ -350,3 +322,9 @@ export interface SettingsPatch {
 }
 
 export const settingsStore = new SettingsStore();
+
+registerStateMachine('settings', () => ({
+  kind: settingsStore.machine.kind,
+  canPersist: settingsStore.canPersist,
+  error: settingsStore.error,
+}));

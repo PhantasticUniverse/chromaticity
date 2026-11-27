@@ -28,6 +28,7 @@
 
 import { SvelteSet } from 'svelte/reactivity';
 
+import { overlayStack, registerStateMachine } from '../state';
 import type { RouteName } from './route.svelte';
 
 /** Console-entry severity levels. Drives the row's left-border tint
@@ -56,9 +57,18 @@ export const SEVERITY_CHIPS: readonly ConsoleSeverity[] = [
 ];
 
 class ConsoleStore {
-  /** Drawer visibility. Toggled by the StatusBar's Console button and
-   *  the drawer's close button / backdrop / Escape key. */
-  isOpen = $state(false);
+  /** Drawer visibility — backed by the global `overlayStack` (`'console'`). */
+  get isOpen(): boolean {
+    return overlayStack.isOpen('console');
+  }
+
+  set isOpen(value: boolean) {
+    if (value) {
+      overlayStack.open('console');
+    } else {
+      overlayStack.close('console');
+    }
+  }
 
   /** Live-tail pause flag. The drawer renders the same fixture corpus
    *  regardless; this gates a "paused" visual badge in the action row.
@@ -82,15 +92,15 @@ class ConsoleStore {
   query = $state('');
 
   toggle(): void {
-    this.isOpen = !this.isOpen;
+    overlayStack.toggle('console');
   }
 
   open(): void {
-    this.isOpen = true;
+    overlayStack.open('console');
   }
 
   close(): void {
-    this.isOpen = false;
+    overlayStack.close('console');
   }
 
   togglePause(): void {
@@ -121,3 +131,9 @@ class ConsoleStore {
 }
 
 export const consoleStore = new ConsoleStore();
+
+registerStateMachine('console', () => ({
+  isOpen: consoleStore.isOpen,
+  isPaused: consoleStore.isPaused,
+  sourceFilter: consoleStore.sourceFilter,
+}));
