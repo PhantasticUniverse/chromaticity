@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { MidiDevicePayload, OscHealthSnapshot } from './ipc/bindings';
 import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
+import { bpmControlStore } from './stores/bpmControl.svelte';
 import { loadedSceneStore } from './stores/loadedScene.svelte';
 import { midiStore } from './stores/midiStore.svelte';
 import { oscHealthStore } from './stores/oscHealth.svelte';
@@ -91,6 +92,7 @@ describe('TopBar shell component', () => {
     // Clear any audio snapshot a test injected so the next test starts
     // from the default BPM fallback.
     audioSnapshotStore.snapshot = null;
+    bpmControlStore.reset();
     // Wave 2.4 Lane PERF.D — reset the three pill-driving stores so
     // a snapshot leak from one test doesn't bleed into the next.
     loadedSceneStore.reset();
@@ -464,6 +466,144 @@ describe('TopBar shell component', () => {
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
       expect(pills[3]?.getAttribute('data-state')).toBe('off');
       expect(pills[3]?.getAttribute('title')).toContain('offline');
+    });
+  });
+
+  describe('BPM Auto-Listen & Beatmatch popover', () => {
+    it('renders the BPM pill with AUTO badge and accessible popover toggle attributes', () => {
+      routeStore.set('perform');
+      const { getByTestId, queryByTestId } = render(TopBar);
+      const pill = getByTestId('top-bar-bpm');
+      expect(pill.tagName).toBe('BUTTON');
+      expect(pill.getAttribute('aria-expanded')).toBe('false');
+      expect(pill.getAttribute('aria-controls')).toBe('top-bar-beatmatch-popover');
+      expect(getByTestId('top-bar-bpm-mode').textContent?.trim()).toBe('AUTO');
+      expect(queryByTestId('top-bar-beatmatch-popover')).toBeNull();
+    });
+
+    it('opens the beatmatch popover on click and closes on Escape or outside click', async () => {
+      routeStore.set('perform');
+      const { getByTestId, queryByTestId } = render(TopBar);
+      const pill = getByTestId('top-bar-bpm');
+
+      await fireEvent.click(pill);
+      expect(pill.getAttribute('aria-expanded')).toBe('true');
+      expect(getByTestId('top-bar-beatmatch-popover')).not.toBeNull();
+
+      await fireEvent.keyDown(window, { key: 'Escape' });
+      expect(pill.getAttribute('aria-expanded')).toBe('false');
+      expect(queryByTestId('top-bar-beatmatch-popover')).toBeNull();
+
+      await fireEvent.click(pill);
+      expect(getByTestId('top-bar-beatmatch-popover')).not.toBeNull();
+
+      await fireEvent.mouseDown(document.body);
+      expect(queryByTestId('top-bar-beatmatch-popover')).toBeNull();
+    });
+
+    it('toggles BPM Auto-Listen -> Manual Lock -> Auto-Listen and freezes detected tempo while locked', async () => {
+      routeStore.set('perform');
+      audioSnapshotStore.snapshot = {
+        bpm: 134.0,
+        bpm_availability: 'Ready',
+        rms: 0.4,
+        peak: 0.7,
+        fft_bands: [0, 0, 0, 0, 0, 0, 0, 0],
+        fft_availability: 'Ready',
+        degraded: false,
+      };
+      const { getByTestId } = render(TopBar);
+      await Promise.resolve();
+      expect(getByTestId('top-bar-bpm').textContent).toContain('134.0');
+      expect(getByTestId('top-bar-bpm-mode').textContent?.trim()).toBe('AUTO');
+
+      await fireEvent.click(getByTestId('top-bar-bpm'));
+      await fireEvent.click(getByTestId('bpm-mode-lock'));
+      await Promise.resolve();
+
+      expect(bpmControlStore.isListening).toBe(false);
+      expect(bpmControlStore.mode).toBe('manual');
+      expect(bpmControlStore.manualBpm).toBe(134);
+      expect(getByTestId('top-bar-bpm-mode').textContent?.trim()).toBe('LOCK');
+
+      // Live detector drift is ignored while locked.
+      audioSnapshotStore.snapshot = {
+        ...audioSnapshotStore.snapshot,
+        bpm: 146.5,
+      };
+      await Promise.resolve();
+      expect(getByTestId('top-bar-bpm').textContent).toContain('134.0');
+
+      // Switching back to Auto-Listen tracks live audio again.
+      await fireEvent.click(getByTestId('bpm-mode-auto'));
+      await Promise.resolve();
+      expect(bpmControlStore.isListening).toBe(true);
+      expect(bpmControlStore.mode).toBe('auto');
+      expect(getByTestId('top-bar-bpm-mode').textContent?.trim()).toBe('AUTO');
+      expect(getByTestId('top-bar-bpm').textContent).toContain('146.5');
+    });
+
+    it('supports manual BPM input, half/double buttons, and tap tempo', async () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      await fireEvent.click(getByTestId('top-bar-bpm'));
+
+      const bpmInput = getByTestId('bpm-manual-input') as HTMLInputElement;
+      await fireEvent.input(bpmInput, { target: { value: '140' } });
+      await Promise.resolve();
+      expect(bpmControlStore.mode).toBe('manual');
+      expect(bpmControlStore.manualBpm).toBe(140);
+      expect(bpmInput.value).toBe('140');
+      expect(getByTestId('top-bar-bpm').textContent).toContain('140.0');
+
+      await fireEvent.click(getByTestId('bpm-half'));
+      await Promise.resolve();
+      expect(bpmControlStore.manualBpm).toBe(70);
+
+      await fireEvent.click(getByTestId('bpm-double'));
+      await Promise.resolve();
+      expect(bpmControlStore.manualBpm).toBe(140);
+
+      // Two taps 500ms apart => 120 BPM.
+      vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      await fireEvent.click(getByTestId('bpm-tap'));
+      vi.advanceTimersByTime(500);
+      await fireEvent.click(getByTestId('bpm-tap'));
+      await Promise.resolve();
+      expect(bpmControlStore.mode).toBe('manual');
+      expect(bpmControlStore.manualBpm).toBe(120);
+    });
+
+    it('scrubs beatmatch phase with ASCII range value and Unicode display, nudges platter, and resyncs downbeat', async () => {
+      routeStore.set('perform');
+      const { getByTestId } = render(TopBar);
+      await fireEvent.click(getByTestId('top-bar-bpm'));
+
+      const scrub = getByTestId('bpm-phase-scrub') as HTMLInputElement;
+      expect(scrub.min).toBe('-0.5');
+      expect(scrub.max).toBe('0.5');
+      expect(scrub.step).toBe('0.01');
+
+      await fireEvent.input(scrub, { target: { value: '-0.15' } });
+      await Promise.resolve();
+      expect(bpmControlStore.phaseOffsetBeats).toBe(-0.15);
+      expect(scrub.value).toBe('-0.15');
+      expect(getByTestId('bpm-phase-display').textContent?.trim()).toBe('\u22120.15 beats');
+
+      await fireEvent.click(getByTestId('bpm-nudge-forward'));
+      await Promise.resolve();
+      expect(bpmControlStore.phaseOffsetBeats).toBe(-0.1);
+      expect(getByTestId('bpm-phase-display').textContent?.trim()).toBe('\u22120.10 beats');
+
+      await fireEvent.click(getByTestId('bpm-nudge-back'));
+      await Promise.resolve();
+      expect(bpmControlStore.phaseOffsetBeats).toBe(-0.15);
+
+      await fireEvent.click(getByTestId('bpm-resync'));
+      await Promise.resolve();
+      expect(bpmControlStore.phaseOffsetBeats).toBe(0);
+      expect(scrub.value).toBe('0');
+      expect(getByTestId('bpm-phase-display').textContent?.trim()).toBe('0.00 beats');
     });
   });
 });

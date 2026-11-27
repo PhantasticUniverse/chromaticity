@@ -66,6 +66,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { closeOutputWindow, openOutputWindow } from './ipc/output';
   import { fetchGpuRenderStatus } from './ipc/render';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
+  import { bpmControlStore } from './stores/bpmControl.svelte';
   import { loadedSceneStore } from './stores/loadedScene.svelte';
   import { midiStore } from './stores/midiStore.svelte';
   import { oscHealthStore } from './stores/oscHealth.svelte';
@@ -133,10 +134,102 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   const audioSnapshot = $derived(audioSnapshotStore.snapshot);
   const audioBpmReady = $derived(audioSnapshot?.bpm_availability === 'Ready');
-  const currentBpm = $derived(audioBpmReady ? (audioSnapshot?.bpm ?? DEFAULT_BPM) : DEFAULT_BPM);
+  const detectedBpm = $derived(audioBpmReady ? (audioSnapshot?.bpm ?? DEFAULT_BPM) : DEFAULT_BPM);
+  const currentBpm = $derived(bpmControlStore.effectiveBpm(detectedBpm));
+  const bpmListening = $derived(bpmControlStore.isListening);
   // BPM display formatting: bundle renders one decimal place
-  // (`Chromaticity.html` line 208 `128.0`). We mirror that.
-  const bpmDisplay = $derived(audioSnapshot && !audioBpmReady ? '--' : currentBpm.toFixed(1));
+  // (`Chromaticity.html` line 208 `128.0`). In manual LOCK mode we
+  // always show the locked tempo even while audio detection warms up.
+  const bpmDisplay = $derived(
+    bpmListening && audioSnapshot && !audioBpmReady ? '--' : currentBpm.toFixed(1),
+  );
+
+  // Beatmatch & BPM popover state.
+  let beatmatchOpen = $state(false);
+  let bpmAnchorEl = $state<HTMLDivElement | null>(null);
+  let bpmTriggerEl = $state<HTMLButtonElement | null>(null);
+
+  /** Format phase offset for human display (Unicode minus, signed beats). */
+  function formatPhaseDisplay(beats: number): string {
+    const rounded = Math.round(beats * 100) / 100;
+    if (rounded === 0) return '0.00 beats';
+    const abs = Math.abs(rounded).toFixed(2);
+    return rounded < 0 ? `\u2212${abs} beats` : `+${abs} beats`;
+  }
+
+  const phaseDisplay = $derived(formatPhaseDisplay(bpmControlStore.phaseOffsetBeats));
+  /** Machine-serialized ASCII numeric strings for DOM input `.value` attributes. */
+  const manualBpmInputValue = $derived(String(currentBpm));
+  const phaseScrubInputValue = $derived(String(bpmControlStore.phaseOffsetBeats));
+
+  function toggleBeatmatchPopover(): void {
+    beatmatchOpen = !beatmatchOpen;
+  }
+
+  function closeBeatmatchPopover(restoreFocus = false): void {
+    beatmatchOpen = false;
+    if (restoreFocus) {
+      bpmTriggerEl?.focus();
+    }
+  }
+
+  function handleSelectAutoMode(): void {
+    if (!bpmControlStore.isListening) {
+      bpmControlStore.toggleListening(detectedBpm);
+    }
+  }
+
+  function handleSelectManualMode(): void {
+    if (bpmControlStore.isListening) {
+      bpmControlStore.toggleListening(detectedBpm);
+    }
+  }
+
+  function handleManualBpmInput(event: Event): void {
+    const target = event.currentTarget as HTMLInputElement;
+    const parsed = Number(target.value);
+    if (Number.isFinite(parsed)) {
+      bpmControlStore.setManualBpm(parsed);
+    }
+  }
+
+  function handlePhaseScrubInput(event: Event): void {
+    const target = event.currentTarget as HTMLInputElement;
+    const parsed = Number(target.value);
+    if (Number.isFinite(parsed)) {
+      bpmControlStore.setPhaseOffset(parsed);
+    }
+  }
+
+  // Close the beatmatch popover on Escape or outside pointer click.
+  $effect(() => {
+    if (!beatmatchOpen) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeBeatmatchPopover(true);
+      }
+    };
+    const onMouseDown = (event: MouseEvent): void => {
+      const target = event.target as Node | null;
+      if (target && bpmAnchorEl && !bpmAnchorEl.contains(target)) {
+        closeBeatmatchPopover(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onMouseDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onMouseDown);
+    };
+  });
+
+  // Automatically close the popover when navigating away from Perform.
+  $effect(() => {
+    if (routeStore.current !== 'perform' && beatmatchOpen) {
+      beatmatchOpen = false;
+    }
+  });
 
   // Per-route subtitle. Hardcoded for W15; future enhancement could
   // accept a per-view dynamic count via route-store metadata (e.g.
@@ -386,15 +479,182 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <span class="top-bar__transport-beat" data-testid="top-bar-beat-dots">
         <BeatDots bpm={currentBpm} />
       </span>
-      <span class="top-bar__transport-bpm" data-testid="top-bar-bpm">
-        <span class="top-bar__transport-bpm-key">BPM</span>
-        <span
-          class="top-bar__transport-bpm-value"
-          class:top-bar__transport-bpm-value--warming={audioSnapshot !== null && !audioBpmReady}
+      <div class="top-bar__bpm-anchor" bind:this={bpmAnchorEl}>
+        <button
+          type="button"
+          class="top-bar__transport-bpm"
+          class:top-bar__transport-bpm--locked={!bpmListening}
+          class:top-bar__transport-bpm--open={beatmatchOpen}
+          data-testid="top-bar-bpm"
+          aria-expanded={beatmatchOpen ? 'true' : 'false'}
+          aria-controls="top-bar-beatmatch-popover"
+          aria-haspopup="dialog"
+          aria-label={`BPM ${bpmDisplay}, ${bpmListening ? 'Auto Listen' : 'Manual Lock'} mode. Open beatmatch controls`}
+          title="BPM & Beatmatch controls"
+          bind:this={bpmTriggerEl}
+          onclick={toggleBeatmatchPopover}
         >
-          {bpmDisplay}
-        </span>
-      </span>
+          <span class="top-bar__transport-bpm-key">BPM</span>
+          <span
+            class="top-bar__transport-bpm-value"
+            class:top-bar__transport-bpm-value--warming={bpmListening &&
+              audioSnapshot !== null &&
+              !audioBpmReady}
+          >
+            {bpmDisplay}
+          </span>
+          <span
+            class="top-bar__transport-bpm-mode"
+            class:top-bar__transport-bpm-mode--lock={!bpmListening}
+            data-testid="top-bar-bpm-mode"
+          >
+            {bpmListening ? 'AUTO' : 'LOCK'}
+          </span>
+        </button>
+
+        {#if beatmatchOpen}
+          <div
+            id="top-bar-beatmatch-popover"
+            class="top-bar__beatmatch-popover"
+            role="dialog"
+            aria-label="Beatmatch and BPM controls"
+            data-testid="top-bar-beatmatch-popover"
+          >
+            <div class="beatmatch__header">
+              <span class="beatmatch__title">Beatmatch &amp; BPM</span>
+              <span class="beatmatch__status" class:beatmatch__status--lock={!bpmListening}>
+                {bpmDisplay} · {bpmListening ? 'AUTO' : 'LOCK'}
+              </span>
+            </div>
+
+            <div class="beatmatch__section">
+              <span class="beatmatch__label">BPM Listening</span>
+              <div class="beatmatch__segmented" role="group" aria-label="BPM tracking mode">
+                <button
+                  type="button"
+                  class="beatmatch__seg-btn"
+                  class:beatmatch__seg-btn--active={bpmListening}
+                  aria-pressed={bpmListening ? 'true' : 'false'}
+                  data-testid="bpm-mode-auto"
+                  onclick={handleSelectAutoMode}
+                >
+                  Auto Listen
+                </button>
+                <button
+                  type="button"
+                  class="beatmatch__seg-btn"
+                  class:beatmatch__seg-btn--active={!bpmListening}
+                  aria-pressed={!bpmListening ? 'true' : 'false'}
+                  data-testid="bpm-mode-lock"
+                  onclick={handleSelectManualMode}
+                >
+                  Manual Lock
+                </button>
+              </div>
+            </div>
+
+            <div class="beatmatch__section">
+              <label class="beatmatch__label" for="top-bar-manual-bpm">Tempo (BPM)</label>
+              <div class="beatmatch__tempo-row">
+                <input
+                  id="top-bar-manual-bpm"
+                  type="number"
+                  class="beatmatch__bpm-input"
+                  min="40"
+                  max="240"
+                  step="0.1"
+                  value={manualBpmInputValue}
+                  data-testid="bpm-manual-input"
+                  aria-label="Manual BPM"
+                  oninput={handleManualBpmInput}
+                />
+                <button
+                  type="button"
+                  class="beatmatch__btn"
+                  data-testid="bpm-half"
+                  aria-label="Halve BPM"
+                  onclick={() => bpmControlStore.setManualBpm(currentBpm / 2)}
+                >
+                  ÷2
+                </button>
+                <button
+                  type="button"
+                  class="beatmatch__btn"
+                  data-testid="bpm-double"
+                  aria-label="Double BPM"
+                  onclick={() => bpmControlStore.setManualBpm(currentBpm * 2)}
+                >
+                  ×2
+                </button>
+                <button
+                  type="button"
+                  class="beatmatch__btn beatmatch__btn--accent"
+                  data-testid="bpm-tap"
+                  aria-label="Tap tempo"
+                  onclick={() => bpmControlStore.tap()}
+                >
+                  TAP
+                </button>
+              </div>
+            </div>
+
+            <div class="beatmatch__section">
+              <div class="beatmatch__phase-head">
+                <label class="beatmatch__label" for="top-bar-phase-scrub">Phase Scrub</label>
+                <span class="beatmatch__phase-value" data-testid="bpm-phase-display">
+                  {phaseDisplay}
+                </span>
+              </div>
+              <input
+                id="top-bar-phase-scrub"
+                type="range"
+                class="beatmatch__slider"
+                min="-0.5"
+                max="0.5"
+                step="0.01"
+                value={phaseScrubInputValue}
+                data-testid="bpm-phase-scrub"
+                aria-label="Beatmatch phase scrub in beats"
+                oninput={handlePhaseScrubInput}
+              />
+              <div class="beatmatch__slider-ticks" aria-hidden="true">
+                <span>−0.5</span>
+                <span>0</span>
+                <span>+0.5</span>
+              </div>
+              <div class="beatmatch__nudge-row">
+                <button
+                  type="button"
+                  class="beatmatch__btn"
+                  data-testid="bpm-nudge-back"
+                  aria-label="Nudge phase earlier by 5 percent of a beat"
+                  onclick={() => bpmControlStore.nudgePhase(-0.05)}
+                >
+                  ‹ −5%
+                </button>
+                <button
+                  type="button"
+                  class="beatmatch__btn beatmatch__btn--resync"
+                  data-testid="bpm-resync"
+                  aria-label="Resync downbeat to now"
+                  onclick={() => bpmControlStore.resyncDownbeat()}
+                >
+                  Resync 1
+                </button>
+                <button
+                  type="button"
+                  class="beatmatch__btn"
+                  data-testid="bpm-nudge-forward"
+                  aria-label="Nudge phase later by 5 percent of a beat"
+                  onclick={() => bpmControlStore.nudgePhase(0.05)}
+                >
+                  +5% ›
+                </button>
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
       <span class="top-bar__transport-vu" data-testid="top-bar-vu" aria-label="Audio meter">
         <VuStereo width={88} />
       </span>
@@ -471,6 +731,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
 <style>
   .top-bar {
+    position: relative;
+    z-index: var(--z-topbar, 20);
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
@@ -499,6 +761,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     }
     .top-bar__transport-vu {
       display: none;
+    }
+    .top-bar__transport-bpm {
+      padding: 2px 5px;
+      gap: 3px;
+    }
+    .top-bar__go-live {
+      padding: 4px var(--space-sm);
     }
   }
 
@@ -733,19 +1002,54 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     align-items: center;
   }
 
-  .top-bar__transport-bpm {
+  .top-bar__bpm-anchor {
+    position: relative;
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .top-bar__transport-bpm {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
     gap: 4px;
     padding: 2px var(--space-xs);
+    background: var(--color-bg-2);
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-xs);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-body-xs);
+    line-height: 1.2;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition:
+      border-color 120ms ease,
+      background-color 120ms ease;
+  }
+
+  .top-bar__transport-bpm:hover {
+    background: var(--color-bg-3);
+    border-color: var(--color-line-3);
+  }
+
+  .top-bar__transport-bpm:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .top-bar__transport-bpm--locked {
+    border-color: var(--color-signal-amber);
+  }
+
+  .top-bar__transport-bpm--open {
+    background: var(--color-bg-3);
+    border-color: var(--color-primary);
   }
 
   .top-bar__transport-bpm-key {
-    color: var(--color-text-3);
+    color: var(--color-text-2);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -757,7 +1061,244 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   .top-bar__transport-bpm-value--warming {
-    color: var(--color-text-3);
+    color: var(--color-text-2);
+  }
+
+  .top-bar__transport-bpm-mode {
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+    background: var(--color-bg-3);
+    color: var(--color-signal-cyan);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .top-bar__transport-bpm-mode--lock {
+    background: var(--color-signal-amber);
+    color: var(--color-bg-0);
+  }
+
+  .top-bar__beatmatch-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: var(--z-overlay, 900);
+    width: 288px;
+    padding: var(--space-lg);
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-md);
+    box-shadow:
+      0 14px 36px rgba(0, 0, 0, 0.55),
+      var(--shadow-panel);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    color: var(--color-text-0);
+  }
+
+  .beatmatch__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--color-line-1);
+  }
+
+  .beatmatch__title {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-md);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-text-1);
+  }
+
+  .beatmatch__status {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-signal-cyan);
+  }
+
+  .beatmatch__status--lock {
+    color: var(--color-signal-amber);
+  }
+
+  .beatmatch__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .beatmatch__label {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-md);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-2);
+  }
+
+  .beatmatch__segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .beatmatch__seg-btn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 6px var(--space-sm);
+    color: var(--color-text-1);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .beatmatch__seg-btn:not(:last-child) {
+    border-right: 1px solid var(--color-line-2);
+  }
+
+  .beatmatch__seg-btn:hover {
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
+  }
+
+  .beatmatch__seg-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  .beatmatch__seg-btn--active {
+    background: var(--color-primary);
+    color: var(--color-on-primary, #0c0e16);
+  }
+
+  .beatmatch__seg-btn--active:hover {
+    background: var(--color-primary);
+    color: var(--color-on-primary, #0c0e16);
+    filter: brightness(1.06);
+  }
+
+  .beatmatch__tempo-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: var(--space-xs);
+    align-items: center;
+  }
+
+  .beatmatch__bpm-input {
+    width: 100%;
+    min-width: 0;
+    padding: 5px 8px;
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    color: var(--color-text-0);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-md);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .beatmatch__bpm-input:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+
+  .beatmatch__btn {
+    appearance: none;
+    padding: 5px 8px;
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    color: var(--color-text-0);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
+  }
+
+  .beatmatch__btn:hover {
+    background: var(--color-bg-4);
+    border-color: var(--color-line-3);
+  }
+
+  .beatmatch__btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .beatmatch__btn--accent {
+    background: var(--color-bg-4);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .beatmatch__btn--resync {
+    background: var(--color-bg-4);
+    border-color: var(--color-signal-cyan);
+    color: var(--color-signal-cyan);
+  }
+
+  .beatmatch__phase-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-sm);
+  }
+
+  .beatmatch__phase-value {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-0);
+  }
+
+  .beatmatch__slider {
+    width: 100%;
+    margin: 2px 0;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
+
+  .beatmatch__slider:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .beatmatch__slider-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-family-mono);
+    font-size: 9px;
+    color: var(--color-text-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .beatmatch__nudge-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
   }
 
   .top-bar__transport-vu {
@@ -857,6 +1398,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
+    white-space: nowrap;
+    flex-shrink: 0;
     cursor: pointer;
   }
 
