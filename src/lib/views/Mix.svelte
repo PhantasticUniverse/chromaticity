@@ -1,0 +1,2489 @@
+<!--
+SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
+SPDX-FileCopyrightText: 2026 Chromaticity
+-->
+<script lang="ts">
+  import {
+    BLEND_MODE_OPTIONS,
+    LAYER_SOURCE_CATALOG,
+    videoMixerStore,
+    type AudioLinkSource,
+    type AudioLinkTarget,
+    type BlendMode,
+    type ChromaKeyFilter,
+    type ColorGradeFilter,
+    type LayerFilter,
+    type LayerSourceKind,
+    type LumaKeyFilter,
+    type AudioLinkFilter,
+    type MixLayer,
+  } from '../stores/videoMixer.svelte';
+
+  type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se';
+
+  interface PointerDragState {
+    readonly kind: 'move' | 'resize';
+    readonly pointerId: number;
+    readonly layerId: string;
+    readonly startClientX: number;
+    readonly startClientY: number;
+    readonly originX: number;
+    readonly originY: number;
+    readonly originScaleX: number;
+    readonly originScaleY: number;
+    readonly corner?: ResizeCorner;
+  }
+
+  let addMenuOpen = $state(false);
+  let sectionTransformOpen = $state(true);
+  let sectionCompositingOpen = $state(true);
+  let sectionFiltersOpen = $state(true);
+  let dragState = $state<PointerDragState | null>(null);
+  let snapGuideX = $state(false);
+  let snapGuideY = $state(false);
+  let stageCanvasEl = $state<HTMLDivElement | null>(null);
+
+  const selectedLayer = $derived(videoMixerStore.selectedLayer);
+  const previewLayers = $derived(videoMixerStore.layers);
+  const programLayers = $derived(videoMixerStore.programLayers);
+  const isStudioMode = $derived(videoMixerStore.mode === 'studio');
+
+  const chromaFilter = $derived(
+    selectedLayer ? findFilter<ChromaKeyFilter>(selectedLayer, 'chromaKey') : null,
+  );
+  const lumaFilter = $derived(
+    selectedLayer ? findFilter<LumaKeyFilter>(selectedLayer, 'lumaKey') : null,
+  );
+  const colorFilter = $derived(
+    selectedLayer ? findFilter<ColorGradeFilter>(selectedLayer, 'colorGrade') : null,
+  );
+  const audioFilter = $derived(
+    selectedLayer ? findFilter<AudioLinkFilter>(selectedLayer, 'audioLink') : null,
+  );
+
+  function findFilter<T extends LayerFilter>(layer: MixLayer, kind: T['kind']): T | null {
+    const match = layer.filters.find((item) => item.kind === kind);
+    return match ? (match as T) : null;
+  }
+
+  function sourceBadge(kind: LayerSourceKind): string {
+    return LAYER_SOURCE_CATALOG.find((item) => item.kind === kind)?.badge ?? 'SRC';
+  }
+
+  function sourceColorVar(kind: LayerSourceKind): string {
+    switch (kind) {
+      case 'shader':
+        return 'var(--color-primary)';
+      case 'youtube':
+        return 'var(--color-signal-red)';
+      case 'webcam':
+        return 'var(--color-signal-cyan)';
+      case 'screen':
+        return 'var(--color-signal-violet)';
+      case 'syphon':
+        return 'var(--color-signal-amber)';
+      case 'media':
+        return 'var(--color-signal-orange)';
+      case 'text':
+        return 'var(--color-signal-magenta)';
+    }
+  }
+
+  function formatSignedDisplay(value: number, suffix: string): string {
+    const abs = Math.abs(value);
+    const formatted = Number.isInteger(abs) ? String(abs) : abs.toFixed(1);
+    if (value < 0) return `−${formatted}${suffix}`;
+    if (value > 0) return `+${formatted}${suffix}`;
+    return `0${suffix}`;
+  }
+
+  function formatPercentDisplay(ratio: number): string {
+    return `${Math.round(ratio * 100)}%`;
+  }
+
+  function cssBlendMode(mode: BlendMode): string {
+    switch (mode) {
+      case 'screen':
+        return 'screen';
+      case 'add':
+        return 'lighten';
+      case 'multiply':
+        return 'multiply';
+      case 'normal':
+      case 'luma-key':
+      case 'chroma-key':
+        return 'normal';
+    }
+  }
+
+  function layerCssFilter(layer: MixLayer): string {
+    const parts: string[] = [];
+    const grade = findFilter<ColorGradeFilter>(layer, 'colorGrade');
+    if (grade?.enabled) {
+      parts.push(
+        `brightness(${grade.brightness}) contrast(${grade.contrast}) saturate(${grade.saturation}) hue-rotate(${grade.hue}deg)`,
+      );
+    }
+    const audio = findFilter<AudioLinkFilter>(layer, 'audioLink');
+    if (audio?.enabled && audio.target === 'glow') {
+      const px = Math.round(4 + audio.amount * 18);
+      parts.push(`drop-shadow(0 0 ${px}px rgba(196, 255, 61, 0.55))`);
+    }
+    return parts.length > 0 ? parts.join(' ') : 'none';
+  }
+
+  function layerStageStyle(layer: MixLayer, zIndex: number): string {
+    const { x, y, scaleX, scaleY, rotationDeg } = layer.transform;
+    const { top, right, bottom, left } = layer.crop;
+    const blend = cssBlendMode(layer.blendMode);
+    const filterCss = layerCssFilter(layer);
+    return [
+      `z-index: ${zIndex}`,
+      `opacity: ${layer.opacity}`,
+      `mix-blend-mode: ${blend}`,
+      `transform: translate(${x}%, ${y}%) scale(${scaleX}, ${scaleY}) rotate(${rotationDeg}deg)`,
+      `clip-path: inset(${top}% ${right}% ${bottom}% ${left}%)`,
+      `filter: ${filterCss}`,
+    ].join('; ');
+  }
+
+  function activeFilterCount(layer: MixLayer): number {
+    return layer.filters.filter((item) => item.enabled).length;
+  }
+
+  function handleAddSource(kind: LayerSourceKind): void {
+    videoMixerStore.addLayer(kind);
+    addMenuOpen = false;
+  }
+
+  function startMoveDrag(event: PointerEvent, layer: MixLayer): void {
+    if (event.button !== 0) return;
+    videoMixerStore.selectLayer(layer.id);
+    if (layer.locked) return;
+
+    event.stopPropagation();
+    const target = event.currentTarget as HTMLElement | null;
+    target?.setPointerCapture?.(event.pointerId);
+
+    dragState = {
+      kind: 'move',
+      pointerId: event.pointerId,
+      layerId: layer.id,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: layer.transform.x,
+      originY: layer.transform.y,
+      originScaleX: layer.transform.scaleX,
+      originScaleY: layer.transform.scaleY,
+    };
+    snapGuideX = Math.abs(layer.transform.x) <= 2;
+    snapGuideY = Math.abs(layer.transform.y) <= 2;
+  }
+
+  function startResizeDrag(event: PointerEvent, layer: MixLayer, corner: ResizeCorner): void {
+    if (event.button !== 0 || layer.locked) return;
+    event.stopPropagation();
+    const target = event.currentTarget as HTMLElement | null;
+    target?.setPointerCapture?.(event.pointerId);
+
+    dragState = {
+      kind: 'resize',
+      pointerId: event.pointerId,
+      layerId: layer.id,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: layer.transform.x,
+      originY: layer.transform.y,
+      originScaleX: layer.transform.scaleX,
+      originScaleY: layer.transform.scaleY,
+      corner,
+    };
+  }
+
+  function handleStagePointerMove(event: PointerEvent): void {
+    const active = dragState;
+    if (!active || active.pointerId !== event.pointerId) return;
+
+    const rect = stageCanvasEl?.getBoundingClientRect();
+    const width = rect && rect.width > 0 ? rect.width : 640;
+    const height = rect && rect.height > 0 ? rect.height : 360;
+    const dxPct = ((event.clientX - active.startClientX) / width) * 100;
+    const dyPct = ((event.clientY - active.startClientY) / height) * 100;
+
+    if (active.kind === 'move') {
+      let nextX = active.originX + dxPct;
+      let nextY = active.originY + dyPct;
+
+      if (Math.abs(nextX) <= 2.2) {
+        nextX = 0;
+        snapGuideX = true;
+      } else {
+        snapGuideX = false;
+      }
+
+      if (Math.abs(nextY) <= 2.2) {
+        nextY = 0;
+        snapGuideY = true;
+      } else {
+        snapGuideY = false;
+      }
+
+      videoMixerStore.updateTransform(active.layerId, { x: nextX, y: nextY });
+    } else {
+      const signX = active.corner === 'nw' || active.corner === 'sw' ? -1 : 1;
+      const signY = active.corner === 'nw' || active.corner === 'ne' ? -1 : 1;
+      const deltaX = (dxPct / 100) * signX * 1.4;
+      const deltaY = (dyPct / 100) * signY * 1.4;
+      videoMixerStore.updateTransform(active.layerId, {
+        scaleX: active.originScaleX + deltaX,
+        scaleY: active.originScaleY + deltaY,
+      });
+    }
+  }
+
+  function handleStagePointerUp(event: PointerEvent): void {
+    if (dragState && dragState.pointerId === event.pointerId) {
+      dragState = null;
+      snapGuideX = false;
+      snapGuideY = false;
+    }
+  }
+
+  function parseNumericInput(event: Event): number {
+    const input = event.currentTarget as HTMLInputElement;
+    return Number(input.value);
+  }
+</script>
+
+<div class="mix" data-testid="mix-view" data-mode={videoMixerStore.mode}>
+  <div class="mix__workspace">
+    <!-- LEFT PANE: LAYER STACK -->
+    <aside class="mix__pane mix__layers" aria-label="Layer Stack">
+      <div class="mix__pane-header">
+        <div class="mix__pane-title-group">
+          <h2 class="mix__pane-title">Layers</h2>
+          <span class="mix__count-pill" aria-label="{previewLayers.length} layers">
+            {previewLayers.length}
+          </span>
+        </div>
+
+        <div class="mix__add-wrap">
+          <button
+            type="button"
+            class="mix__btn mix__btn--primary"
+            aria-expanded={addMenuOpen}
+            aria-haspopup="menu"
+            onclick={() => (addMenuOpen = !addMenuOpen)}
+          >
+            + Add Source
+          </button>
+
+          {#if addMenuOpen}
+            <div class="mix__source-menu" role="menu" aria-label="Add video source">
+              {#each LAYER_SOURCE_CATALOG as item (item.kind)}
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="mix__source-option"
+                  onclick={() => handleAddSource(item.kind)}
+                >
+                  <span
+                    class="mix__kind-badge"
+                    style={`--kind-color: ${sourceColorVar(item.kind)}`}
+                  >
+                    {item.badge}
+                  </span>
+                  <span class="mix__source-label">{item.label}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <div class="mix__layer-list" role="list" aria-label="Compositor layers">
+        {#if previewLayers.length === 0}
+          <div class="mix__empty-stack">
+            <p>No layers on stage.</p>
+            <p class="mix__empty-hint">Use + Add Source to add a shader, feed, or overlay.</p>
+          </div>
+        {:else}
+          {#each previewLayers as layer, index (layer.id)}
+            {@const isSelected = layer.id === videoMixerStore.selectedLayerId}
+            {@const isRendered = videoMixerStore.isLayerRendered(layer, previewLayers)}
+            {@const fxCount = activeFilterCount(layer)}
+            <div
+              role="listitem"
+              class="mix__layer-row"
+              class:mix__layer-row--selected={isSelected}
+              class:mix__layer-row--dim={!isRendered}
+              data-layer-id={layer.id}
+            >
+              <button
+                type="button"
+                class="mix__layer-select"
+                aria-current={isSelected ? 'true' : undefined}
+                onclick={() => videoMixerStore.selectLayer(layer.id)}
+              >
+                <span class="mix__z-tag">Z{previewLayers.length - index}</span>
+                <span class="mix__kind-badge" style={`--kind-color: ${sourceColorVar(layer.kind)}`}>
+                  {sourceBadge(layer.kind)}
+                </span>
+                <span class="mix__layer-meta">
+                  <span class="mix__layer-name">{layer.name}</span>
+                  <span class="mix__layer-sub">
+                    {layer.blendMode} · {formatPercentDisplay(layer.opacity)}
+                    {#if fxCount > 0}
+                      · {fxCount} FX
+                    {/if}
+                  </span>
+                </span>
+              </button>
+
+              <div class="mix__layer-actions">
+                <button
+                  type="button"
+                  class="mix__icon-btn"
+                  class:mix__icon-btn--on={layer.visible}
+                  aria-label="{layer.visible ? 'Hide' : 'Show'} {layer.name}"
+                  aria-pressed={layer.visible}
+                  title={layer.visible ? 'Visible' : 'Hidden'}
+                  onclick={() => videoMixerStore.toggleVisible(layer.id)}
+                >
+                  {layer.visible ? 'V' : '—'}
+                </button>
+                <button
+                  type="button"
+                  class="mix__icon-btn"
+                  class:mix__icon-btn--warn={layer.locked}
+                  aria-label="{layer.locked ? 'Unlock' : 'Lock'} {layer.name}"
+                  aria-pressed={layer.locked}
+                  title={layer.locked ? 'Locked' : 'Unlocked'}
+                  onclick={() => videoMixerStore.toggleLocked(layer.id)}
+                >
+                  L
+                </button>
+                <button
+                  type="button"
+                  class="mix__icon-btn"
+                  class:mix__icon-btn--solo={layer.solo}
+                  aria-label="Solo {layer.name}"
+                  aria-pressed={layer.solo}
+                  title="Solo layer"
+                  onclick={() => videoMixerStore.toggleSolo(layer.id)}
+                >
+                  S
+                </button>
+                <button
+                  type="button"
+                  class="mix__icon-btn"
+                  aria-label="Move {layer.name} up"
+                  disabled={index === 0}
+                  title="Move layer up"
+                  onclick={() => videoMixerStore.moveLayer(layer.id, 'up')}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="mix__icon-btn"
+                  aria-label="Move {layer.name} down"
+                  disabled={index === previewLayers.length - 1}
+                  title="Move layer down"
+                  onclick={() => videoMixerStore.moveLayer(layer.id, 'down')}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  class="mix__icon-btn mix__icon-btn--danger"
+                  aria-label="Remove {layer.name}"
+                  disabled={layer.locked}
+                  title={layer.locked ? 'Unlock layer to delete' : 'Remove layer'}
+                  onclick={() => videoMixerStore.removeLayer(layer.id)}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </div>
+    </aside>
+
+    <!-- CENTER PANE: INTERACTIVE STAGE CANVAS -->
+    <section
+      class="mix__stage-pane"
+      aria-label="Compositor Stage"
+      onpointermove={handleStagePointerMove}
+      onpointerup={handleStagePointerUp}
+      onpointercancel={handleStagePointerUp}
+    >
+      <header class="mix__stage-header">
+        <div class="mix__mode-group" role="group" aria-label="Compositor output mode">
+          <button
+            type="button"
+            class="mix__seg-btn"
+            class:mix__seg-btn--active={!isStudioMode}
+            aria-pressed={!isStudioMode}
+            onclick={() => videoMixerStore.setMixMode('live')}
+          >
+            Live
+          </button>
+          <button
+            type="button"
+            class="mix__seg-btn"
+            class:mix__seg-btn--active={isStudioMode}
+            aria-pressed={isStudioMode}
+            onclick={() => videoMixerStore.setMixMode('studio')}
+          >
+            Studio Mode
+          </button>
+        </div>
+
+        <div class="mix__stage-controls">
+          {#if isStudioMode}
+            <button
+              type="button"
+              class="mix__btn mix__btn--transition"
+              onclick={() => videoMixerStore.cutToProgram()}
+            >
+              Transition → Program
+            </button>
+          {/if}
+
+          <button
+            type="button"
+            class="mix__btn"
+            disabled={!selectedLayer || selectedLayer.locked}
+            onclick={() => selectedLayer && videoMixerStore.fitToCanvas(selectedLayer.id)}
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            class="mix__btn"
+            disabled={!selectedLayer || selectedLayer.locked}
+            onclick={() => selectedLayer && videoMixerStore.resetTransform(selectedLayer.id)}
+          >
+            Reset
+          </button>
+          <span class="mix__res-badge" aria-label="Output resolution">1920×1080 · 60 FPS</span>
+        </div>
+      </header>
+
+      <div class="mix__monitors" class:mix__monitors--studio={isStudioMode}>
+        <!-- Primary interactive monitor (Live Program OR Studio Preview) -->
+        <div class="mix__monitor-frame">
+          <div class="mix__monitor-bar">
+            <span
+              class="mix__tally"
+              class:mix__tally--preview={isStudioMode}
+              class:mix__tally--program={!isStudioMode}
+            >
+              {isStudioMode ? 'PREVIEW' : 'PROGRAM · LIVE'}
+            </span>
+            {#if selectedLayer}
+              <span class="mix__monitor-readout">
+                {selectedLayer.name} · X {formatSignedDisplay(selectedLayer.transform.x, '%')} · Y
+                {formatSignedDisplay(selectedLayer.transform.y, '%')} ·
+                {formatPercentDisplay(selectedLayer.transform.scaleX)}
+              </span>
+            {/if}
+          </div>
+
+          <div
+            bind:this={stageCanvasEl}
+            class="mix__canvas"
+            data-testid="mix-stage-canvas"
+            aria-label={isStudioMode ? 'Studio Preview Canvas' : 'Live Program Canvas'}
+          >
+            <!-- Subtle checkerboard / grid studio floor -->
+            <div class="mix__canvas-grid" aria-hidden="true"></div>
+
+            <!-- Render bottom-to-top so index 0 sits at highest z-index -->
+            {#each [...previewLayers].reverse() as layer, revIndex (layer.id)}
+              {#if videoMixerStore.isLayerRendered(layer, previewLayers)}
+                {@const isSelected = layer.id === videoMixerStore.selectedLayerId}
+                {@const hasChroma = findFilter<ChromaKeyFilter>(layer, 'chromaKey')?.enabled}
+                {@const hasLuma = findFilter<LumaKeyFilter>(layer, 'lumaKey')?.enabled}
+                {@const activeAudio = findFilter<AudioLinkFilter>(layer, 'audioLink')}
+                <div
+                  role="presentation"
+                  class="mix__stage-layer mix__stage-layer--{layer.kind}"
+                  class:mix__stage-layer--selected={isSelected}
+                  class:mix__stage-layer--locked={layer.locked}
+                  style={layerStageStyle(layer, revIndex + 1)}
+                  data-stage-layer-id={layer.id}
+                  onpointerdown={(event) => startMoveDrag(event, layer)}
+                >
+                  <div class="mix__layer-visual">
+                    {#if layer.kind === 'shader'}
+                      <div class="mix__visual-shader" aria-hidden="true">
+                        <div class="mix__shader-orb mix__shader-orb--a"></div>
+                        <div class="mix__shader-orb mix__shader-orb--b"></div>
+                      </div>
+                    {:else if layer.kind === 'youtube'}
+                      <div class="mix__visual-youtube" aria-hidden="true">
+                        <span class="mix__visual-chip">YOUTUBE STREAM · MUTED</span>
+                        <div class="mix__visual-wave"></div>
+                      </div>
+                    {:else if layer.kind === 'webcam'}
+                      <div class="mix__visual-webcam" aria-hidden="true">
+                        <div class="mix__webcam-silhouette"></div>
+                        <span class="mix__visual-chip">
+                          {hasChroma ? 'CHROMA KEY LIVE' : 'CAMERA FEED'}
+                        </span>
+                      </div>
+                    {:else if layer.kind === 'syphon'}
+                      <div class="mix__visual-syphon" aria-hidden="true">
+                        <span class="mix__visual-chip">SYPHON · SYNESTHESIA BUS</span>
+                      </div>
+                    {:else if layer.kind === 'screen'}
+                      <div class="mix__visual-screen" aria-hidden="true">
+                        <span class="mix__visual-chip">WINDOW / DISPLAY CAPTURE</span>
+                      </div>
+                    {:else if layer.kind === 'text'}
+                      <div class="mix__visual-text">
+                        <span class="mix__text-heading">{layer.name}</span>
+                        <span class="mix__text-sub">LIVE VISUAL PERFORMANCE</span>
+                      </div>
+                    {:else}
+                      <div class="mix__visual-media" aria-hidden="true">
+                        <span class="mix__visual-chip">LOCAL MEDIA LOOP</span>
+                      </div>
+                    {/if}
+
+                    <div class="mix__stage-tag">
+                      <span>{layer.name}</span>
+                      {#if hasChroma}
+                        <span class="mix__fx-pill">CK</span>
+                      {/if}
+                      {#if hasLuma}
+                        <span class="mix__fx-pill">LK</span>
+                      {/if}
+                      {#if activeAudio?.enabled}
+                        <span class="mix__fx-pill mix__fx-pill--audio">
+                          {activeAudio.source.toUpperCase()}→{activeAudio.target.toUpperCase()}
+                        </span>
+                      {/if}
+                    </div>
+                  </div>
+
+                  {#if isSelected && !layer.locked}
+                    <div class="mix__selection-box" aria-hidden="true">
+                      <button
+                        type="button"
+                        class="mix__handle mix__handle--nw"
+                        tabindex="-1"
+                        aria-label="Resize top-left"
+                        onpointerdown={(e) => startResizeDrag(e, layer, 'nw')}
+                      ></button>
+                      <button
+                        type="button"
+                        class="mix__handle mix__handle--ne"
+                        tabindex="-1"
+                        aria-label="Resize top-right"
+                        onpointerdown={(e) => startResizeDrag(e, layer, 'ne')}
+                      ></button>
+                      <button
+                        type="button"
+                        class="mix__handle mix__handle--sw"
+                        tabindex="-1"
+                        aria-label="Resize bottom-left"
+                        onpointerdown={(e) => startResizeDrag(e, layer, 'sw')}
+                      ></button>
+                      <button
+                        type="button"
+                        class="mix__handle mix__handle--se"
+                        tabindex="-1"
+                        aria-label="Resize bottom-right"
+                        onpointerdown={(e) => startResizeDrag(e, layer, 'se')}
+                      ></button>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            {/each}
+
+            <!-- Magnetic center crosshair guides -->
+            {#if dragState !== null || snapGuideX || snapGuideY}
+              <div
+                class="mix__guide mix__guide--v"
+                class:mix__guide--snapped={snapGuideX}
+                aria-hidden="true"
+              ></div>
+              <div
+                class="mix__guide mix__guide--h"
+                class:mix__guide--snapped={snapGuideY}
+                aria-hidden="true"
+              ></div>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Secondary Program Monitor when Studio Mode is active -->
+        {#if isStudioMode}
+          <div class="mix__monitor-frame" data-testid="mix-program-monitor">
+            <div class="mix__monitor-bar">
+              <span class="mix__tally mix__tally--program">PROGRAM · ON AIR</span>
+              <span class="mix__monitor-readout">
+                Cuts: {videoMixerStore.transitionCount} · {programLayers.length} layers
+              </span>
+            </div>
+
+            <div class="mix__canvas mix__canvas--program" aria-label="Studio Program Output">
+              <div class="mix__canvas-grid" aria-hidden="true"></div>
+              {#each [...programLayers].reverse() as layer, revIndex (layer.id)}
+                {#if videoMixerStore.isLayerRendered(layer, programLayers)}
+                  <div
+                    class="mix__stage-layer mix__stage-layer--{layer.kind} mix__stage-layer--readonly"
+                    style={layerStageStyle(layer, revIndex + 1)}
+                  >
+                    <div class="mix__layer-visual">
+                      <div class="mix__stage-tag">
+                        <span>{layer.name}</span>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+              {/each}
+            </div>
+          </div>
+        {/if}
+      </div>
+    </section>
+
+    <!-- RIGHT PANE: LAYER INSPECTOR & EFFECTS / FILTERS RACK -->
+    <aside class="mix__pane mix__inspector" aria-label="Layer Inspector">
+      <div class="mix__pane-header">
+        <div class="mix__pane-title-group">
+          <h2 class="mix__pane-title">Inspector</h2>
+          {#if selectedLayer}
+            <span
+              class="mix__kind-badge"
+              style={`--kind-color: ${sourceColorVar(selectedLayer.kind)}`}
+            >
+              {sourceBadge(selectedLayer.kind)}
+            </span>
+          {/if}
+        </div>
+        {#if selectedLayer?.locked}
+          <span class="mix__lock-badge">Locked</span>
+        {/if}
+      </div>
+
+      {#if !selectedLayer}
+        <div class="mix__empty-inspector">
+          <p>Select a layer to inspect transform, compositing, and live effects.</p>
+        </div>
+      {:else}
+        <div class="mix__inspector-scroll">
+          <div class="mix__selected-banner">
+            <span class="mix__selected-name">{selectedLayer.name}</span>
+          </div>
+
+          <!-- COMPOSITING SECTION -->
+          <section class="mix__section" aria-label="Compositing">
+            <button
+              type="button"
+              class="mix__section-toggle"
+              aria-expanded={sectionCompositingOpen}
+              onclick={() => (sectionCompositingOpen = !sectionCompositingOpen)}
+            >
+              <span>Compositing</span>
+              <span class="mix__chevron">{sectionCompositingOpen ? '▾' : '▸'}</span>
+            </button>
+
+            {#if sectionCompositingOpen}
+              <div class="mix__section-body">
+                <div class="mix__field">
+                  <label class="mix__label" for="mix-blend-mode">Blend Mode</label>
+                  <select
+                    id="mix-blend-mode"
+                    class="mix__select"
+                    value={selectedLayer.blendMode}
+                    onchange={(e) =>
+                      videoMixerStore.setBlendMode(
+                        selectedLayer.id,
+                        (e.currentTarget as HTMLSelectElement).value as BlendMode,
+                      )}
+                  >
+                    {#each BLEND_MODE_OPTIONS as opt (opt.value)}
+                      <option value={opt.value}>{opt.label}</option>
+                    {/each}
+                  </select>
+                </div>
+
+                <div class="mix__field">
+                  <div class="mix__field-row">
+                    <label class="mix__label" for="mix-opacity">Opacity</label>
+                    <span class="mix__value-readout">
+                      {formatPercentDisplay(selectedLayer.opacity)}
+                    </span>
+                  </div>
+                  <input
+                    id="mix-opacity"
+                    type="range"
+                    class="mix__range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={String(selectedLayer.opacity)}
+                    aria-valuetext={formatPercentDisplay(selectedLayer.opacity)}
+                    oninput={(e) =>
+                      videoMixerStore.setOpacity(selectedLayer.id, parseNumericInput(e))}
+                  />
+                </div>
+              </div>
+            {/if}
+          </section>
+
+          <!-- TRANSFORM & CROP SECTION -->
+          <section class="mix__section" aria-label="Transform and Crop">
+            <button
+              type="button"
+              class="mix__section-toggle"
+              aria-expanded={sectionTransformOpen}
+              onclick={() => (sectionTransformOpen = !sectionTransformOpen)}
+            >
+              <span>Transform &amp; Crop</span>
+              <span class="mix__chevron">{sectionTransformOpen ? '▾' : '▸'}</span>
+            </button>
+
+            {#if sectionTransformOpen}
+              <div class="mix__section-body">
+                <div class="mix__grid-2">
+                  <div class="mix__field">
+                    <div class="mix__field-row">
+                      <label class="mix__label" for="mix-pos-x">Position X</label>
+                      <span class="mix__value-readout">
+                        {formatSignedDisplay(selectedLayer.transform.x, '%')}
+                      </span>
+                    </div>
+                    <input
+                      id="mix-pos-x"
+                      type="range"
+                      class="mix__range"
+                      min="-100"
+                      max="100"
+                      step="1"
+                      disabled={selectedLayer.locked}
+                      value={String(selectedLayer.transform.x)}
+                      oninput={(e) =>
+                        videoMixerStore.updateTransform(selectedLayer.id, {
+                          x: parseNumericInput(e),
+                        })}
+                    />
+                  </div>
+
+                  <div class="mix__field">
+                    <div class="mix__field-row">
+                      <label class="mix__label" for="mix-pos-y">Position Y</label>
+                      <span class="mix__value-readout">
+                        {formatSignedDisplay(selectedLayer.transform.y, '%')}
+                      </span>
+                    </div>
+                    <input
+                      id="mix-pos-y"
+                      type="range"
+                      class="mix__range"
+                      min="-100"
+                      max="100"
+                      step="1"
+                      disabled={selectedLayer.locked}
+                      value={String(selectedLayer.transform.y)}
+                      oninput={(e) =>
+                        videoMixerStore.updateTransform(selectedLayer.id, {
+                          y: parseNumericInput(e),
+                        })}
+                    />
+                  </div>
+                </div>
+
+                <div class="mix__grid-2">
+                  <div class="mix__field">
+                    <div class="mix__field-row">
+                      <label class="mix__label" for="mix-scale-x">Scale X</label>
+                      <span class="mix__value-readout">
+                        {formatPercentDisplay(selectedLayer.transform.scaleX)}
+                      </span>
+                    </div>
+                    <input
+                      id="mix-scale-x"
+                      type="range"
+                      class="mix__range"
+                      min="0.1"
+                      max="3"
+                      step="0.05"
+                      disabled={selectedLayer.locked}
+                      value={String(selectedLayer.transform.scaleX)}
+                      oninput={(e) =>
+                        videoMixerStore.updateTransform(selectedLayer.id, {
+                          scaleX: parseNumericInput(e),
+                        })}
+                    />
+                  </div>
+
+                  <div class="mix__field">
+                    <div class="mix__field-row">
+                      <label class="mix__label" for="mix-scale-y">Scale Y</label>
+                      <span class="mix__value-readout">
+                        {formatPercentDisplay(selectedLayer.transform.scaleY)}
+                      </span>
+                    </div>
+                    <input
+                      id="mix-scale-y"
+                      type="range"
+                      class="mix__range"
+                      min="0.1"
+                      max="3"
+                      step="0.05"
+                      disabled={selectedLayer.locked}
+                      value={String(selectedLayer.transform.scaleY)}
+                      oninput={(e) =>
+                        videoMixerStore.updateTransform(selectedLayer.id, {
+                          scaleY: parseNumericInput(e),
+                        })}
+                    />
+                  </div>
+                </div>
+
+                <div class="mix__field">
+                  <div class="mix__field-row">
+                    <label class="mix__label" for="mix-rotation">Rotation</label>
+                    <span class="mix__value-readout">
+                      {formatSignedDisplay(selectedLayer.transform.rotationDeg, '°')}
+                    </span>
+                  </div>
+                  <input
+                    id="mix-rotation"
+                    type="range"
+                    class="mix__range"
+                    min="-180"
+                    max="180"
+                    step="1"
+                    disabled={selectedLayer.locked}
+                    value={String(selectedLayer.transform.rotationDeg)}
+                    oninput={(e) =>
+                      videoMixerStore.updateTransform(selectedLayer.id, {
+                        rotationDeg: parseNumericInput(e),
+                      })}
+                  />
+                </div>
+
+                <div class="mix__crop-grid" role="group" aria-label="Edge crop percentages">
+                  <div class="mix__crop-cell">
+                    <label class="mix__mini-label" for="mix-crop-top">Crop T</label>
+                    <input
+                      id="mix-crop-top"
+                      type="number"
+                      class="mix__num"
+                      min="0"
+                      max="45"
+                      step="1"
+                      disabled={selectedLayer.locked}
+                      value={String(selectedLayer.crop.top)}
+                      oninput={(e) =>
+                        videoMixerStore.updateCrop(selectedLayer.id, {
+                          top: parseNumericInput(e),
+                        })}
+                    />
+                  </div>
+                  <div class="mix__crop-cell">
+                    <label class="mix__mini-label" for="mix-crop-right">Crop R</label>
+                    <input
+                      id="mix-crop-right"
+                      type="number"
+                      class="mix__num"
+                      min="0"
+                      max="45"
+                      step="1"
+                      disabled={selectedLayer.locked}
+                      value={String(selectedLayer.crop.right)}
+                      oninput={(e) =>
+                        videoMixerStore.updateCrop(selectedLayer.id, {
+                          right: parseNumericInput(e),
+                        })}
+                    />
+                  </div>
+                  <div class="mix__crop-cell">
+                    <label class="mix__mini-label" for="mix-crop-bottom">Crop B</label>
+                    <input
+                      id="mix-crop-bottom"
+                      type="number"
+                      class="mix__num"
+                      min="0"
+                      max="45"
+                      step="1"
+                      disabled={selectedLayer.locked}
+                      value={String(selectedLayer.crop.bottom)}
+                      oninput={(e) =>
+                        videoMixerStore.updateCrop(selectedLayer.id, {
+                          bottom: parseNumericInput(e),
+                        })}
+                    />
+                  </div>
+                  <div class="mix__crop-cell">
+                    <label class="mix__mini-label" for="mix-crop-left">Crop L</label>
+                    <input
+                      id="mix-crop-left"
+                      type="number"
+                      class="mix__num"
+                      min="0"
+                      max="45"
+                      step="1"
+                      disabled={selectedLayer.locked}
+                      value={String(selectedLayer.crop.left)}
+                      oninput={(e) =>
+                        videoMixerStore.updateCrop(selectedLayer.id, {
+                          left: parseNumericInput(e),
+                        })}
+                    />
+                  </div>
+                </div>
+              </div>
+            {/if}
+          </section>
+
+          <!-- EFFECTS & FILTERS RACK -->
+          <section class="mix__section" aria-label="Effects and Filters">
+            <button
+              type="button"
+              class="mix__section-toggle"
+              aria-expanded={sectionFiltersOpen}
+              onclick={() => (sectionFiltersOpen = !sectionFiltersOpen)}
+            >
+              <span>Effects &amp; Filters</span>
+              <span class="mix__chevron">{sectionFiltersOpen ? '▾' : '▸'}</span>
+            </button>
+
+            {#if sectionFiltersOpen}
+              <div class="mix__section-body mix__fx-rack">
+                <!-- Chroma Key -->
+                {#if chromaFilter}
+                  <div class="mix__fx-card" class:mix__fx-card--active={chromaFilter.enabled}>
+                    <div class="mix__fx-header">
+                      <span class="mix__fx-title">Chroma Key</span>
+                      <button
+                        type="button"
+                        class="mix__toggle-pill"
+                        class:mix__toggle-pill--on={chromaFilter.enabled}
+                        aria-label="Toggle Chroma Key"
+                        aria-pressed={chromaFilter.enabled}
+                        onclick={() => videoMixerStore.toggleFilter(selectedLayer.id, 'chromaKey')}
+                      >
+                        {chromaFilter.enabled ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    {#if chromaFilter.enabled}
+                      <div class="mix__fx-controls">
+                        <div class="mix__field-row">
+                          <label class="mix__mini-label" for="mix-ck-color">Key Color</label>
+                          <input
+                            id="mix-ck-color"
+                            type="color"
+                            class="mix__color"
+                            value={chromaFilter.keyColor}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'chromaKey', {
+                                keyColor: (e.currentTarget as HTMLInputElement).value,
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-ck-sim">Similarity</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(chromaFilter.similarity)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-ck-sim"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={String(chromaFilter.similarity)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'chromaKey', {
+                                similarity: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-ck-smooth">Smoothness</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(chromaFilter.smoothness)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-ck-smooth"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={String(chromaFilter.smoothness)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'chromaKey', {
+                                smoothness: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-ck-spill">Spill Reduction</label
+                            >
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(chromaFilter.spill)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-ck-spill"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={String(chromaFilter.spill)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'chromaKey', {
+                                spill: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+
+                <!-- Luma Key -->
+                {#if lumaFilter}
+                  <div class="mix__fx-card" class:mix__fx-card--active={lumaFilter.enabled}>
+                    <div class="mix__fx-header">
+                      <span class="mix__fx-title">Luma Key</span>
+                      <button
+                        type="button"
+                        class="mix__toggle-pill"
+                        class:mix__toggle-pill--on={lumaFilter.enabled}
+                        aria-label="Toggle Luma Key"
+                        aria-pressed={lumaFilter.enabled}
+                        onclick={() => videoMixerStore.toggleFilter(selectedLayer.id, 'lumaKey')}
+                      >
+                        {lumaFilter.enabled ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    {#if lumaFilter.enabled}
+                      <div class="mix__fx-controls">
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-lk-thresh">Threshold</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(lumaFilter.threshold)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-lk-thresh"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={String(lumaFilter.threshold)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'lumaKey', {
+                                threshold: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-lk-feather">Feather</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(lumaFilter.feather)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-lk-feather"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={String(lumaFilter.feather)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'lumaKey', {
+                                feather: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+
+                <!-- Color Grade -->
+                {#if colorFilter}
+                  <div class="mix__fx-card" class:mix__fx-card--active={colorFilter.enabled}>
+                    <div class="mix__fx-header">
+                      <span class="mix__fx-title">Color Grade</span>
+                      <button
+                        type="button"
+                        class="mix__toggle-pill"
+                        class:mix__toggle-pill--on={colorFilter.enabled}
+                        aria-label="Toggle Color Grade"
+                        aria-pressed={colorFilter.enabled}
+                        onclick={() => videoMixerStore.toggleFilter(selectedLayer.id, 'colorGrade')}
+                      >
+                        {colorFilter.enabled ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    {#if colorFilter.enabled}
+                      <div class="mix__fx-controls">
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-cg-bright">Brightness</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(colorFilter.brightness)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-cg-bright"
+                            type="range"
+                            class="mix__range"
+                            min="0.2"
+                            max="2"
+                            step="0.05"
+                            value={String(colorFilter.brightness)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'colorGrade', {
+                                brightness: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-cg-contrast">Contrast</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(colorFilter.contrast)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-cg-contrast"
+                            type="range"
+                            class="mix__range"
+                            min="0.2"
+                            max="2"
+                            step="0.05"
+                            value={String(colorFilter.contrast)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'colorGrade', {
+                                contrast: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-cg-sat">Saturation</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(colorFilter.saturation)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-cg-sat"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="2"
+                            step="0.05"
+                            value={String(colorFilter.saturation)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'colorGrade', {
+                                saturation: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-cg-hue">Hue Shift</label>
+                            <span class="mix__value-readout">
+                              {formatSignedDisplay(colorFilter.hue, '°')}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-cg-hue"
+                            type="range"
+                            class="mix__range"
+                            min="-180"
+                            max="180"
+                            step="1"
+                            value={String(colorFilter.hue)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'colorGrade', {
+                                hue: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+
+                <!-- Audio-Reactive Link -->
+                {#if audioFilter}
+                  <div
+                    class="mix__fx-card mix__fx-card--audio"
+                    class:mix__fx-card--active={audioFilter.enabled}
+                  >
+                    <div class="mix__fx-header">
+                      <span class="mix__fx-title">Audio-Reactive Link</span>
+                      <button
+                        type="button"
+                        class="mix__toggle-pill"
+                        class:mix__toggle-pill--on={audioFilter.enabled}
+                        aria-label="Toggle Audio-Reactive Link"
+                        aria-pressed={audioFilter.enabled}
+                        onclick={() => videoMixerStore.toggleFilter(selectedLayer.id, 'audioLink')}
+                      >
+                        {audioFilter.enabled ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    {#if audioFilter.enabled}
+                      <div class="mix__fx-controls">
+                        <div class="mix__grid-2">
+                          <div class="mix__field">
+                            <label class="mix__mini-label" for="mix-al-source">Audio Band</label>
+                            <select
+                              id="mix-al-source"
+                              class="mix__select"
+                              value={audioFilter.source}
+                              onchange={(e) =>
+                                videoMixerStore.updateFilter(selectedLayer.id, 'audioLink', {
+                                  source: (e.currentTarget as HTMLSelectElement)
+                                    .value as AudioLinkSource,
+                                })}
+                            >
+                              <option value="bass">Bass</option>
+                              <option value="mid">Mid</option>
+                              <option value="high">High</option>
+                              <option value="beat">Beat Pulse</option>
+                            </select>
+                          </div>
+
+                          <div class="mix__field">
+                            <label class="mix__mini-label" for="mix-al-target">Target</label>
+                            <select
+                              id="mix-al-target"
+                              class="mix__select"
+                              value={audioFilter.target}
+                              onchange={(e) =>
+                                videoMixerStore.updateFilter(selectedLayer.id, 'audioLink', {
+                                  target: (e.currentTarget as HTMLSelectElement)
+                                    .value as AudioLinkTarget,
+                                })}
+                            >
+                              <option value="opacity">Opacity</option>
+                              <option value="scale">Scale</option>
+                              <option value="glow">Glow</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-al-amount">Depth</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(audioFilter.amount)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-al-amount"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={String(audioFilter.amount)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'audioLink', {
+                                amount: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </section>
+        </div>
+      {/if}
+    </aside>
+  </div>
+
+  <!-- BOTTOM STRIP: COMPACT BROADCAST AUDIO MIXER -->
+  <section class="mix__audio-strip" aria-label="Broadcast Audio Mixer">
+    <div class="mix__audio-title">
+      <span>Audio Mixer</span>
+      <span class="mix__audio-sub">4-Bus Live</span>
+    </div>
+
+    <div class="mix__audio-channels">
+      {#each videoMixerStore.audioChannels as channel (channel.id)}
+        <div class="mix__audio-ch" class:mix__audio-ch--muted={channel.muted}>
+          <div class="mix__audio-ch-head">
+            <label class="mix__audio-label" for={`mix-audio-${channel.id}`}>
+              {channel.label}
+            </label>
+            <span class="mix__value-readout">{formatPercentDisplay(channel.gain)}</span>
+          </div>
+
+          <div
+            class="mix__meter-track"
+            role="meter"
+            aria-label="{channel.label} level"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(channel.level * 100)}
+          >
+            <div class="mix__meter-fill" style={`width: ${Math.round(channel.level * 100)}%`}></div>
+          </div>
+
+          <div class="mix__audio-ch-controls">
+            <input
+              id={`mix-audio-${channel.id}`}
+              type="range"
+              class="mix__range mix__range--audio"
+              min="0"
+              max="1"
+              step="0.01"
+              value={String(channel.gain)}
+              aria-label="{channel.label} gain"
+              oninput={(e) => videoMixerStore.setAudioGain(channel.id, parseNumericInput(e))}
+            />
+            <button
+              type="button"
+              class="mix__icon-btn"
+              class:mix__icon-btn--danger-on={channel.muted}
+              aria-label="Mute {channel.label}"
+              aria-pressed={channel.muted}
+              onclick={() => videoMixerStore.toggleAudioMute(channel.id)}
+            >
+              M
+            </button>
+            <button
+              type="button"
+              class="mix__icon-btn"
+              class:mix__icon-btn--solo={channel.solo}
+              aria-label="Solo {channel.label}"
+              aria-pressed={channel.solo}
+              onclick={() => videoMixerStore.toggleAudioSolo(channel.id)}
+            >
+              S
+            </button>
+          </div>
+        </div>
+      {/each}
+    </div>
+  </section>
+</div>
+
+<style>
+  .mix {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+    background: var(--color-bg-0);
+    color: var(--color-text-0);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-body-sm);
+  }
+
+  .mix__workspace {
+    display: grid;
+    grid-template-columns: 276px minmax(0, 1fr) 316px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .mix__pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--color-bg-1);
+    overflow: hidden;
+  }
+
+  .mix__layers {
+    border-right: 1px solid var(--color-line-1);
+  }
+
+  .mix__inspector {
+    border-left: 1px solid var(--color-line-1);
+  }
+
+  .mix__pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--color-line-1);
+    background: var(--color-bg-2);
+    flex-shrink: 0;
+  }
+
+  .mix__pane-title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 0;
+  }
+
+  .mix__pane-title {
+    margin: 0;
+    font-size: var(--font-size-caps-md);
+    font-weight: var(--font-weight-display);
+    letter-spacing: var(--letter-spacing-caps-md);
+    text-transform: uppercase;
+    color: var(--color-text-1);
+  }
+
+  .mix__count-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-4);
+    color: var(--color-text-1);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+  }
+
+  .mix__lock-badge {
+    padding: 2px 7px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 182, 77, 0.16);
+    border: 1px solid var(--color-warning);
+    color: var(--color-warning);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+  }
+
+  .mix__add-wrap {
+    position: relative;
+  }
+
+  .mix__source-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 30;
+    width: 224px;
+    padding: var(--space-xs);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-3);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .mix__source-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    width: 100%;
+    padding: 7px 8px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-0);
+    text-align: left;
+    cursor: pointer;
+    font-size: var(--font-size-body-sm);
+  }
+
+  .mix__source-option:hover,
+  .mix__source-option:focus-visible {
+    background: var(--color-bg-5);
+    outline: none;
+  }
+
+  .mix__source-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mix__layer-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .mix__layer-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-line-1);
+    background: var(--color-bg-2);
+    transition:
+      border-color var(--duration-fast) var(--easing-out),
+      background var(--duration-fast) var(--easing-out);
+  }
+
+  .mix__layer-row--selected {
+    border-color: var(--color-primary);
+    background: var(--color-bg-3);
+  }
+
+  .mix__layer-row--dim {
+    opacity: 0.52;
+  }
+
+  .mix__layer-select {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    min-width: 0;
+  }
+
+  .mix__layer-select:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  .mix__z-tag {
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--color-text-2);
+    width: 20px;
+    flex-shrink: 0;
+  }
+
+  .mix__kind-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 5px;
+    border-radius: var(--radius-xs);
+    border: 1px solid color-mix(in srgb, var(--kind-color) 55%, transparent);
+    background: color-mix(in srgb, var(--kind-color) 16%, transparent);
+    color: var(--color-text-0);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .mix__layer-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .mix__layer-name {
+    font-weight: var(--font-weight-label);
+    color: var(--color-text-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mix__layer-sub {
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--color-text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mix__layer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    padding-top: 2px;
+    border-top: 1px solid var(--color-line-1);
+  }
+
+  .mix__btn {
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-label);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .mix__btn:hover:not(:disabled) {
+    background: var(--color-bg-4);
+    border-color: var(--color-line-3);
+  }
+
+  .mix__btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .mix__btn--primary {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-on-primary);
+    font-weight: 600;
+  }
+
+  .mix__btn--primary:hover:not(:disabled) {
+    filter: brightness(1.06);
+    background: var(--color-primary);
+  }
+
+  .mix__btn--transition {
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+    color: #090a10;
+    font-weight: 600;
+  }
+
+  .mix__btn--transition:hover:not(:disabled) {
+    filter: brightness(1.08);
+    background: var(--color-danger);
+  }
+
+  .mix__icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 22px;
+    padding: 0 5px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-4);
+    color: var(--color-text-1);
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .mix__icon-btn:hover:not(:disabled) {
+    background: var(--color-bg-5);
+    color: var(--color-text-0);
+  }
+
+  .mix__icon-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .mix__icon-btn--on {
+    border-color: var(--color-signal-cyan);
+    color: var(--color-signal-cyan);
+  }
+
+  .mix__icon-btn--warn {
+    border-color: var(--color-warning);
+    background: rgba(255, 182, 77, 0.16);
+    color: var(--color-warning);
+  }
+
+  .mix__icon-btn--solo {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    font-weight: 700;
+  }
+
+  .mix__icon-btn--danger:hover:not(:disabled) {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+
+  .mix__icon-btn--danger-on {
+    border-color: var(--color-danger);
+    background: var(--color-danger);
+    color: #090a10;
+    font-weight: 700;
+  }
+
+  /* STAGE PANE */
+  .mix__stage-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--color-bg-0);
+    overflow: hidden;
+  }
+
+  .mix__stage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--color-line-1);
+    background: var(--color-bg-1);
+    flex-shrink: 0;
+  }
+
+  .mix__mode-group {
+    display: inline-flex;
+    padding: 2px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-2);
+  }
+
+  .mix__seg-btn {
+    padding: 4px 10px;
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--color-text-1);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-label);
+    cursor: pointer;
+  }
+
+  .mix__seg-btn--active {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    font-weight: 600;
+  }
+
+  .mix__stage-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .mix__res-badge {
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-2);
+    color: var(--color-text-1);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+  }
+
+  .mix__monitors {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    justify-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-lg);
+    overflow: auto;
+  }
+
+  .mix__monitors--studio {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mix__monitor-frame {
+    width: 100%;
+    max-width: 960px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    min-width: 0;
+  }
+
+  .mix__monitor-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    min-width: 0;
+  }
+
+  .mix__tally {
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  .mix__tally--preview {
+    background: rgba(61, 229, 255, 0.16);
+    border: 1px solid var(--color-signal-cyan);
+    color: var(--color-signal-cyan);
+  }
+
+  .mix__tally--program {
+    background: rgba(255, 77, 94, 0.18);
+    border: 1px solid var(--color-danger);
+    color: var(--color-danger);
+  }
+
+  .mix__monitor-readout {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mix__canvas {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-line-2);
+    background: #06070d;
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+
+  .mix__canvas--program {
+    border-color: rgba(255, 77, 94, 0.55);
+  }
+
+  .mix__canvas-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+  }
+
+  .mix__stage-layer {
+    position: absolute;
+    inset: 0;
+    transform-origin: center center;
+    cursor: grab;
+  }
+
+  .mix__stage-layer:active {
+    cursor: grabbing;
+  }
+
+  .mix__stage-layer--locked,
+  .mix__stage-layer--readonly {
+    cursor: default;
+  }
+
+  .mix__layer-visual {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .mix__visual-shader {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 35%, #2b175c 0%, #0d1633 48%, #070810 100%);
+  }
+
+  .mix__shader-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(28px);
+    opacity: 0.72;
+  }
+
+  .mix__shader-orb--a {
+    width: 44%;
+    height: 55%;
+    top: 12%;
+    left: 16%;
+    background: radial-gradient(circle, #c4ff3d 0%, rgba(61, 229, 255, 0.2) 65%, transparent 100%);
+  }
+
+  .mix__shader-orb--b {
+    width: 46%;
+    height: 58%;
+    bottom: 8%;
+    right: 14%;
+    background: radial-gradient(circle, #ff3d9e 0%, rgba(155, 107, 255, 0.2) 65%, transparent 100%);
+  }
+
+  .mix__visual-youtube {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(255, 77, 94, 0.22), rgba(61, 229, 255, 0.16));
+  }
+
+  .mix__visual-wave {
+    width: 62%;
+    height: 22%;
+    border-radius: var(--radius-md);
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(61, 229, 255, 0.45) 0 6px,
+      transparent 6px 12px
+    );
+    border: 1px solid rgba(61, 229, 255, 0.35);
+  }
+
+  .mix__visual-webcam {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 14px;
+    border: 2px solid rgba(61, 229, 255, 0.6);
+    border-radius: var(--radius-md);
+    background: radial-gradient(circle at 50% 35%, rgba(61, 229, 255, 0.22), rgba(7, 8, 16, 0.78));
+  }
+
+  .mix__webcam-silhouette {
+    width: 34%;
+    height: 54%;
+    border-radius: 50% 50% 24% 24%;
+    background: linear-gradient(180deg, rgba(244, 246, 251, 0.36), rgba(61, 229, 255, 0.18));
+    margin-bottom: 8px;
+  }
+
+  .mix__visual-syphon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(120deg, rgba(255, 182, 77, 0.25), rgba(155, 107, 255, 0.25));
+  }
+
+  .mix__visual-screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, rgba(155, 107, 255, 0.26), rgba(17, 20, 29, 0.85));
+  }
+
+  .mix__visual-media {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, rgba(255, 138, 61, 0.26), rgba(12, 14, 22, 0.85));
+  }
+
+  .mix__visual-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 24px;
+    border-radius: var(--radius-md);
+    background: rgba(7, 8, 16, 0.72);
+    border: 1px solid rgba(255, 61, 158, 0.55);
+  }
+
+  .mix__text-heading {
+    font-size: var(--font-size-display-md);
+    font-weight: var(--font-weight-display);
+    color: var(--color-text-0);
+  }
+
+  .mix__text-sub {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-primary);
+    letter-spacing: 0.12em;
+  }
+
+  .mix__visual-chip {
+    padding: 3px 8px;
+    border-radius: var(--radius-xs);
+    background: rgba(7, 8, 16, 0.72);
+    border: 1px solid rgba(244, 246, 251, 0.2);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--color-text-0);
+  }
+
+  .mix__stage-tag {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 7px;
+    border-radius: var(--radius-xs);
+    background: rgba(7, 8, 16, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--color-text-0);
+    pointer-events: none;
+  }
+
+  .mix__fx-pill {
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+    background: rgba(61, 229, 255, 0.22);
+    color: var(--color-signal-cyan);
+    font-weight: 700;
+  }
+
+  .mix__fx-pill--audio {
+    background: rgba(196, 255, 61, 0.22);
+    color: var(--color-primary);
+  }
+
+  .mix__selection-box {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--color-primary);
+    pointer-events: none;
+  }
+
+  .mix__handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    border-radius: 2px;
+    border: 1px solid var(--color-on-primary);
+    background: var(--color-primary);
+    pointer-events: auto;
+  }
+
+  .mix__handle--nw {
+    top: -6px;
+    left: -6px;
+    cursor: nwse-resize;
+  }
+
+  .mix__handle--ne {
+    top: -6px;
+    right: -6px;
+    cursor: nesw-resize;
+  }
+
+  .mix__handle--sw {
+    bottom: -6px;
+    left: -6px;
+    cursor: nesw-resize;
+  }
+
+  .mix__handle--se {
+    bottom: -6px;
+    right: -6px;
+    cursor: nwse-resize;
+  }
+
+  .mix__guide {
+    position: absolute;
+    pointer-events: none;
+    z-index: 99;
+    background: rgba(61, 229, 255, 0.35);
+  }
+
+  .mix__guide--v {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+  }
+
+  .mix__guide--h {
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+  }
+
+  .mix__guide--snapped {
+    background: var(--color-primary);
+    box-shadow: 0 0 8px var(--color-primary);
+  }
+
+  /* INSPECTOR PANE */
+  .mix__inspector-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .mix__selected-banner {
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+  }
+
+  .mix__selected-name {
+    font-weight: 600;
+    color: var(--color-text-0);
+  }
+
+  .mix__section {
+    border: 1px solid var(--color-line-1);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-2);
+    overflow: hidden;
+  }
+
+  .mix__section-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: var(--space-md) var(--space-lg);
+    border: 0;
+    background: var(--color-bg-3);
+    color: var(--color-text-0);
+    font-size: var(--font-size-caps-md);
+    font-weight: 600;
+    letter-spacing: var(--letter-spacing-caps-md);
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .mix__section-body {
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .mix__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .mix__field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+  }
+
+  .mix__label {
+    font-size: var(--font-size-label);
+    color: var(--color-text-1);
+    font-weight: var(--font-weight-label);
+  }
+
+  .mix__mini-label {
+    font-size: 11px;
+    color: var(--color-text-1);
+  }
+
+  .mix__value-readout {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
+  }
+
+  .mix__select,
+  .mix__num {
+    width: 100%;
+    padding: 5px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-4);
+    color: var(--color-text-0);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-body-sm);
+  }
+
+  .mix__num {
+    font-family: var(--font-family-mono);
+  }
+
+  .mix__range {
+    width: 100%;
+    accent-color: var(--color-primary);
+    margin: 0;
+  }
+
+  .mix__color {
+    width: 34px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .mix__grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-md);
+  }
+
+  .mix__crop-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-sm);
+  }
+
+  .mix__crop-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .mix__fx-rack {
+    gap: var(--space-sm);
+  }
+
+  .mix__fx-card {
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-3);
+    padding: var(--space-sm) var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .mix__fx-card--active {
+    border-color: var(--color-signal-cyan);
+  }
+
+  .mix__fx-card--audio.mix__fx-card--active {
+    border-color: var(--color-primary);
+  }
+
+  .mix__fx-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+  }
+
+  .mix__fx-title {
+    font-weight: 600;
+    color: var(--color-text-0);
+  }
+
+  .mix__toggle-pill {
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-line-3);
+    background: var(--color-bg-4);
+    color: var(--color-text-1);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .mix__toggle-pill--on {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+
+  .mix__fx-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding-top: var(--space-xs);
+    border-top: 1px solid var(--color-line-1);
+  }
+
+  .mix__empty-stack,
+  .mix__empty-inspector {
+    padding: var(--space-xl);
+    text-align: center;
+    color: var(--color-text-2);
+  }
+
+  .mix__empty-hint {
+    margin-top: var(--space-xs);
+    font-size: var(--font-size-mono-sm);
+  }
+
+  /* BOTTOM BROADCAST AUDIO MIXER */
+  .mix__audio-strip {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
+    border-top: 1px solid var(--color-line-1);
+    background: var(--color-bg-1);
+    flex-shrink: 0;
+  }
+
+  .mix__audio-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--font-size-caps-md);
+    font-weight: 600;
+    letter-spacing: var(--letter-spacing-caps-md);
+    text-transform: uppercase;
+    color: var(--color-text-1);
+  }
+
+  .mix__audio-sub {
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--color-text-2);
+    letter-spacing: 0.04em;
+  }
+
+  .mix__audio-channels {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-md);
+    min-width: 0;
+  }
+
+  .mix__audio-ch {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-line-1);
+    background: var(--color-bg-2);
+    min-width: 0;
+  }
+
+  .mix__audio-ch--muted {
+    opacity: 0.6;
+  }
+
+  .mix__audio-ch-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+  }
+
+  .mix__audio-label {
+    font-size: 11px;
+    font-weight: var(--font-weight-label);
+    color: var(--color-text-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mix__meter-track {
+    width: 100%;
+    height: 5px;
+    border-radius: var(--radius-full);
+    background: var(--color-bg-4);
+    overflow: hidden;
+  }
+
+  .mix__meter-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: linear-gradient(
+      90deg,
+      var(--color-signal-cyan) 0%,
+      var(--color-primary) 72%,
+      var(--color-danger) 100%
+    );
+    transition: width var(--duration-fast) var(--easing-out);
+  }
+
+  .mix__audio-ch-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .mix__range--audio {
+    flex: 1;
+    min-width: 0;
+  }
+
+  @media (max-width: 1120px) {
+    .mix__workspace {
+      grid-template-columns: 236px minmax(0, 1fr) 268px;
+    }
+
+    .mix__audio-channels {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 820px) {
+    .mix {
+      overflow-y: auto;
+    }
+
+    .mix__workspace {
+      grid-template-columns: minmax(0, 1fr);
+      overflow: visible;
+    }
+
+    .mix__monitors--studio {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .mix__audio-strip {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>
