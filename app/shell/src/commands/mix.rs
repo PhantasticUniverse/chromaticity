@@ -523,10 +523,11 @@ pub fn parse_yt_dlp_output(video_id: &str, stdout: &str) -> Result<YouTubeStream
     })
 }
 
-/// Maximum bytes fetched per upstream YouTube Range request (2 MiB).
+/// Maximum bytes fetched per upstream YouTube Range request (512 KiB).
 /// YouTube DASH servers reject open-ended `Range: bytes=0-` or large GETs with
-/// `403 Forbidden`, while <= 10 MiB chunked ranges return `206 Partial Content`.
-const YOUTUBE_PROXY_MAX_CHUNK_BYTES: u64 = 2 * 1024 * 1024;
+/// `403 Forbidden`, while 512 KiB chunks return `206 Partial Content` fast
+/// enough for sub-second first-frame decode in macOS WKWebView/AVFoundation.
+const YOUTUBE_PROXY_MAX_CHUNK_BYTES: u64 = 512 * 1024;
 
 #[derive(Debug, Clone)]
 struct ProxiedYouTubeStream {
