@@ -525,12 +525,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <header class="settings__header">
       <h1>settings</h1>
       <p class="settings__intro">
-        Operator preferences, devices, output, storage, hotkey reference, and about.
-        Wireframe-aligned with the bundle's <code>views/settings.jsx</code>; Audio, Graphics,
-        Storage, Tempo, OSC, and General preferences persist through the shell settings document.
-        W38 adds the right-rail Preview + Diagnostics panel mirroring the bundle's two-column
-        layout. W39 expands the Audio Device section with Channel Routing, Input Gain, and a
-        Monitoring meter.
+        Operator preferences, devices, output, storage, tempo sync, hotkey reference, and
+        diagnostics. Changes are saved automatically.
       </p>
     </header>
 
@@ -550,7 +546,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <option value={opt.id}>{opt.label}</option>
             {/each}
           </select>
-          <p class="settings__hint">
+          <p class="settings__hint settings__hint--field">
             Pick <strong>System Audio (built-in)</strong> to react to whatever your computer is
             playing — no extra software to install (macOS 14.6+ / Windows; macOS asks once for
             audio-recording permission). On older macOS, or to capture one specific app, install
@@ -690,9 +686,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
       </div>
       <p class="settings__hint">
-        Device choices are persisted and applied on restart. The Monitoring meter reads live RMS /
-        peak from the audio-uniform IPC seam when a snapshot is present, falling back to a
-        frozen-frame fixture during the no-snapshot startup window.
+        Device choices are saved and applied on restart. The monitoring meter displays live input
+        levels when an audio device is active.
       </p>
     </article>
 
@@ -908,7 +903,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               >Toggle fullscreen</button
             >
             <span class="settings__hint settings__hint--inline">
-              window-management IPC arrives in Phase-3+/4a
+              output window controls coming soon
             </span>
           </div>
         </div>
@@ -937,8 +932,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
       </div>
       <p class="settings__hint">
-        Capability-gated rows (custom resolution, HDR) carry <code>data-cap</code> attributes for the
-        W15+ entitlement infrastructure to discover.
+        Custom resolution and HDR output require a supported display and license tier.
       </p>
 
       <div class="settings__output-routing">
@@ -946,11 +940,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <OutputRoutingTile />
       </div>
       <p class="settings__hint">
-        Frozen-frame status panel — display + Syphon/Spout rows mirror the bundle's
-        <code>OutputRoutingTile</code>. Live adapter probing arrives in Phase-3+/4a per
-        <code>EV-INTEGRATION-MATRIX</code>; capability hints (<code>io.syphon.output</code>,
-        <code>io.spout.output</code>, <code>io.ndi.output</code>) ride along as
-        <code>data-cap</code> attributes for the W15+ entitlement infra.
+        Displays active video output destinations including connected displays, Syphon/Spout, and
+        NDI streams.
       </p>
     </article>
 
@@ -1059,12 +1050,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
       </div>
       <p class="settings__hint">
-        Frozen-frame; live source enumeration and the broadcast / receive IPC arrive in Phase-3+/4a
-        per <code>EV-INTEGRATION-MATRIX</code>. <code>data-cap</code> attributes (<code
-          >io.syphon.input</code
-        >, <code>io.syphon.output</code>, <code>io.ndi.input</code>,
-        <code>io.ndi.output</code>, <code>render.custom-resolution</code>) ride along for the W15+
-        entitlement infra to discover without further markup changes.
+        Live texture input and output preferences are saved automatically. Enable Spout, Syphon, or
+        NDI to share GPU textures with other applications.
       </p>
     </article>
 
@@ -1206,8 +1193,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           </button>
         </div>
         <p class="settings__hint">
-          Cache cleanup actions are visual-only in W21 PR1; thumbnail + render-cache eviction IPC
-          arrives alongside the Phase-3+/4a media adapter.
+          Cache cleanup clears stored scene thumbnails and compiled shader caches.
         </p>
       </div>
     </article>
@@ -1220,8 +1206,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <h3 class="settings__storage-title">BPM source priority</h3>
         </div>
         <p class="settings__hint settings__hint--inline">
-          First active source wins. Order is fixed in W22; drag-reorder + live source health arrives
-          in Phase-3+ per the M-10 BPM resolver.
+          First active tempo source wins. Automatic fallback follows the priority order below.
         </p>
         <ol class="settings__bpm-chain">
           {#each BPM_SOURCES as src, idx (src.id)}
@@ -1455,16 +1440,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             >
           </span>
           <p class="settings__hint">
-            Tuning weight applied to the audio onset estimator before it competes in the priority
-            chain. Tinted via <code>--tint</code> per the W18 ControlGroup cascade contract.
+            Tuning weight applied to the audio onset detector before it competes in the tempo
+            priority chain.
           </p>
         </div>
       </div>
 
       <p class="settings__hint">
-        Wave 2.7 Lane SET.A — Tempo & Sync values persist to the TOML settings store. Runtime tempo
-        arbiter, drag-reorder of the priority chain, and live Link peer count still land in Phase-3+
-        alongside the audio estimator.
+        Tempo and sync preferences are saved automatically and restored on launch.
       </p>
     </article>
 
@@ -1473,40 +1456,30 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <div class="settings__row">
         <ThemeSwitcher />
         <p class="settings__hint">
-          Three-theme cascade per <code>tokens.css</code>. Wave 2.7 Lane SET.A unified theme
-          persistence: selection writes through to the TOML settings store and survives restart.
+          Switch between Pulse, Atelier, and Stage visual themes. Your selection is saved
+          automatically.
         </p>
       </div>
       <div class="settings__row settings__row--locked" data-cap="io.osc.input">
         <label class="settings__toggle">
-          <input
-            type="checkbox"
-            disabled
-            checked
-            title="Entitlement-gated; arrives in W15+ alongside the OSC adapter UI"
-          />
+          <input type="checkbox" disabled checked title="Managed by your active license tier" />
           <span>OSC input adapter</span>
         </label>
-        <p class="settings__hint">Locked — entitlement infrastructure lands in W15+.</p>
+        <p class="settings__hint">Managed by your active license tier.</p>
       </div>
       <div class="settings__row settings__row--locked" data-cap="io.camera">
         <label class="settings__toggle">
-          <input
-            type="checkbox"
-            disabled
-            title="Entitlement-gated; arrives in W15+ alongside the Media library"
-          />
+          <input type="checkbox" disabled title="Managed by your active license tier" />
           <span>Live Sources (camera capture)</span>
         </label>
-        <p class="settings__hint">Locked — Media adapter integration lands in W15+.</p>
+        <p class="settings__hint">Managed by your active license tier.</p>
       </div>
     </article>
 
     <article class="settings__section">
       <h2>Hotkeys</h2>
       <p class="settings__hint">
-        Read-only reference. The hotkey overlay (<kbd>?</kbd>) shows the same data in modal form.
-        Rebinding is V2 scope per <code>docs/42-operator-hotkey-map.md</code> §V1.
+        Read-only reference. Press <kbd>?</kbd> anywhere to open the quick hotkey overlay.
       </p>
       {#each HOTKEYS as group (group.title)}
         <details class="settings__hotkey-group" open>
@@ -1557,9 +1530,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <article class="settings__section">
       <h2>Maintenance</h2>
       <p class="settings__hint">
-        Reset every operator preference (Audio / Graphics / Storage / OSC / General) to the
-        engine-side <code>Settings::default()</code> shape. The reset writes through to the on-disk TOML
-        file so it survives restart.
+        Reset every operator preference (Audio, Graphics, Storage, Tempo, OSC, and General) back to
+        factory defaults. This overwrites your saved settings file.
       </p>
       <div class="settings__row">
         <button type="button" class="settings__danger" onclick={openResetConfirm}>
@@ -1573,14 +1545,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <dl class="settings__about">
         <dt>version</dt>
         <dd>v{appVersion}</dd>
-        <dt>phase</dt>
-        <dd>Phase 4a EXIT achieved; Wave 2.x in progress</dd>
+        <dt>channel</dt>
+        <dd>Pre-release</dd>
         <dt>license</dt>
         <dd><code>LicenseRef-Chromaticity-Proprietary</code></dd>
         <dt>repo</dt>
         <dd><code>PhantasticUniverse/chromaticity</code></dd>
         <dt>toolkit</dt>
-        <dd>Tauri {tauriVersion} + Svelte 5 + Rust 2024 (per ADR-018)</dd>
+        <dd>Tauri {tauriVersion} + Svelte 5 + Rust</dd>
       </dl>
     </article>
   </div>
@@ -1613,21 +1585,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <button
           type="button"
           disabled
-          title="Generates a support bundle (logs + scene state + adapter health) in W15+"
+          title="Export logs, scene state, and adapter diagnostics as a support bundle"
         >
           <Icon name="save" size={12} /> Generate Support Bundle
         </button>
-        <button type="button" disabled title="Tail-style log viewer arrives in W15+">
-          View Logs
-        </button>
+        <button type="button" disabled title="Open live runtime log viewer">View Logs</button>
       </div>
       <p class="settings__hint">
-        Hardware values are frozen-frame fixtures mirroring the bundle's <code
-          >views/settings.jsx</code
-        >
-        Diagnostics rows. Live values stream in via the Phase-3+/4a runtime
-        <code>EV-OBSERVABILITY</code> metric pipeline; support-bundle IPC and log streaming arrive in
-        W15+ alongside the OSC view's adapter health surface.
+        System telemetry and adapter health metrics for live performance troubleshooting.
       </p>
     </article>
   </aside>
@@ -1756,15 +1721,37 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     margin: 0;
   }
 
+  .settings__hint a {
+    color: var(--color-primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .settings__hint a:hover {
+    color: color-mix(in oklab, var(--color-primary) 85%, white);
+  }
+
+  .settings__hint a:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
   .settings__hint--inline {
     margin: var(--space-xs) 0 var(--space-sm) 0;
+  }
+
+  .settings__hint--field,
+  .settings__field > .settings__hint {
+    grid-column: 2;
+    margin-top: calc(var(--space-xs) * -1);
   }
 
   /* ----- Form scaffolding (Audio / Graphics / Storage) ----- */
 
   .settings__form {
     display: grid;
-    grid-template-columns: 200px 1fr;
+    grid-template-columns: 200px minmax(0, 1fr);
     gap: var(--space-md) var(--space-lg);
     align-items: center;
     margin-bottom: var(--space-md);
@@ -1853,7 +1840,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   .settings__field-row--meter {
     flex: 1;
+    width: 100%;
     max-width: 420px;
+    min-width: 0;
+    flex-wrap: nowrap;
   }
 
   .settings__range {

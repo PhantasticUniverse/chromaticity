@@ -73,7 +73,7 @@ describe('Osc view', () => {
     // The port readout binds to settingsStore.osc.port; the
     // fresh-install default is the adapter-owned OSC in port.
     expect(heading).toHaveTextContent(/Port 9000/);
-    expect(getByText(/Wireframe-06 port from the bundle's/)).toBeInTheDocument();
+    expect(getByText(/Monitor OSC adapter health, configure ports/)).toBeInTheDocument();
   });
 
   it('renders the routes table headers in the canonical 7-column order', () => {

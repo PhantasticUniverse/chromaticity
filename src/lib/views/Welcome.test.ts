@@ -66,11 +66,12 @@ describe('Welcome view', () => {
     expect(routeStore.current).toBe('perform');
   });
 
-  it('Import Setlist card CTA is disabled with a tooltip pointing at the W17+ port', () => {
+  it('Import Setlist card CTA is enabled and routes to Import', async () => {
     const { getByRole } = render(Welcome);
     const importBtn = getByRole('button', { name: /Import…/ });
-    expect(importBtn).toBeDisabled();
-    expect(importBtn).toHaveAttribute('title', expect.stringMatching(/Import view arrives/));
+    expect(importBtn).not.toBeDisabled();
+    await fireEvent.click(importBtn);
+    expect(routeStore.current).toBe('import');
   });
 
   it('renders the audio / MIDI / Ableton Link hint row', () => {

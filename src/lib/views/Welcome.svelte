@@ -41,6 +41,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     routeStore.set('library');
   }
 
+  function launchImport(): void {
+    routeStore.set('import');
+  }
+
   function launchEmptyProject(): void {
     routeStore.set('perform');
   }
@@ -84,14 +88,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <span class="welcome-card__icon"><Icon name="folder" size={22} /></span>
         <h2 class="welcome-card__title">Import Setlist</h2>
         <p class="welcome-card__body">Bring an existing show in as JSON or .synx</p>
-        <button
-          type="button"
-          class="welcome-card__cta"
-          disabled
-          title="Import view arrives in W17+ (per chromaticity-planning/ui-predev-bundle-v0.2-beta/views/import.jsx)"
-        >
-          Import…
-        </button>
+        <button type="button" class="welcome-card__cta" onclick={launchImport}>Import…</button>
       </article>
 
       <article class="welcome-card">

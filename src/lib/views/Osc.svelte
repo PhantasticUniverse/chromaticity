@@ -63,6 +63,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   let healthSnapshot = $state<OscHealthSnapshot | null>(null);
   let healthError = $state<string | null>(null);
+  let browserPreviewMode = $state(false);
   let routeFilter = $state('');
   // Inline bind-target editor state — keyed by the canonical
   // address of the route whose inline panel is open.
@@ -142,7 +143,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       try {
         healthSnapshot = await invoke<OscHealthSnapshot>('osc_health_snapshot');
       } catch (err) {
-        healthError = toIpcError(err, 'osc_health_snapshot').message;
+        const parsed = toIpcError(err, 'osc_health_snapshot');
+        if (parsed.kind === 'invoke_unavailable') {
+          browserPreviewMode = true;
+          healthError = null;
+        } else {
+          healthError = parsed.message;
+        }
       }
     })();
   });
@@ -253,15 +260,21 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <span class="osc-view__title-port">— Port {listenPort}</span>
       </h1>
       <p class="osc-view__intro">
-        OSC adapter health, routes, and live monitor. Wireframe-06 port from the bundle's
-        <code>views/osc.jsx</code>; routes hydrate from the shell registry per
-        <code>docs/08</code>, and Ableton Link remains a transport stub.
+        Monitor OSC adapter health, configure ports, and inspect or bind live OSC routes.
       </p>
     </header>
 
     <article class="osc-view__health">
       <h2>Adapter</h2>
-      {#if healthError}
+      {#if browserPreviewMode}
+        <div class="osc-view__health-pill" data-state="preview">
+          <span class="osc-view__pill-dot" aria-hidden="true"></span>
+          <span class="osc-view__pill-label">Preview</span>
+        </div>
+        <p class="osc-view__hint">
+          Desktop runtime not connected — launch the Chromaticity app for live OSC adapter status.
+        </p>
+      {:else if healthError}
         <ErrorMessage error={healthError} />
         <p class="osc-view__hint">
           IPC error — typically expected in browser-mode (Tauri internals unset).
@@ -291,8 +304,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <article class="osc-view__settings-form">
       <h2>Operator settings</h2>
       <p class="osc-view__hint">
-        Persisted via the settings store (Wave 2.1 Lane C.3); changes survive restart. Bind / unbind
-        on individual routes validates target grammar and remains process-local.
+        Changes are saved automatically and persist across restarts. Route bindings validate target
+        syntax in real time.
       </p>
       <label class="osc-view__field">
         <span class="osc-view__caps">listen IP</span>
@@ -340,9 +353,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       </div>
       <h3>compat dual-emit</h3>
       <p class="osc-view__hint">
-        When enabled the outbound sender emits each message on both the canonical plural-root
-        address and the compat-syn-v1 alias simultaneously. Use during controller migration windows;
-        off by default (parity-closure wave 2 Lane D).
+        When enabled, outbound messages emit on both the canonical address and the legacy
+        Synesthesia alias simultaneously for controller migration. Off by default.
       </p>
       <div class="osc-view__field osc-view__field--toggle">
         <label class="osc-view__toggle">
@@ -383,8 +395,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <article class="osc-view__log">
       <h2>Live log</h2>
       <p class="osc-view__hint">
-        Hardcoded fixture in W14; real streaming via OSC-adapter event subscription is Phase-3
-        scope.
+        Recent inbound and outbound OSC messages (sample preview until live streaming is active).
       </p>
       <ul class="osc-view__log-list">
         {#each OSC_LIVE_LOG_FIXTURE as entry, i (i)}
@@ -413,7 +424,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         aria-label="filter OSC routes"
       />
     </header>
-    {#if oscStore.error}
+    {#if oscStore.error && toIpcError(oscStore.error).kind !== 'invoke_unavailable'}
       <p class="osc-view__hint">
         <ErrorMessage error={oscStore.error} />
       </p>
@@ -549,8 +560,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <article class="osc-view__link-panel">
       <h2>Ableton Link</h2>
       <p class="osc-view__hint">
-        Stub — Link integration is post-MVP per ADR-013 Phase-3+. UI shape is locked in now so the
-        Phase-3 wiring lands without surface churn.
+        Network tempo and beat-phase sync with Link-enabled applications on your local network.
       </p>
       <dl class="osc-view__link-dl">
         <dt>status</dt>
@@ -567,8 +577,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <article class="osc-view__hints">
       <h2>Hints</h2>
       <ul>
-        <li>Start MIDI-map mode <span class="osc-view__muted">(W15+)</span></li>
-        <li>Start OSC-map mode <span class="osc-view__muted">(W15+)</span></li>
+        <li>Start MIDI-map mode</li>
+        <li>Start OSC-map mode</li>
         <li>
           Show control hotkeys
           <kbd>?</kbd>
@@ -584,7 +594,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <li>
           Blackout
           <kbd>B</kbd>
-          <span class="osc-view__muted">(W15+)</span>
         </li>
       </ul>
     </article>
@@ -594,7 +603,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 <style>
   .osc-view {
     display: grid;
-    grid-template-columns: minmax(280px, 320px) 1fr minmax(240px, 280px);
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(195px, 230px);
     gap: var(--space-md);
     padding: var(--space-md) var(--space-lg);
     height: 100%;
@@ -904,25 +913,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   .osc-view__route-table col.col-canonical {
-    width: 26%;
+    width: 25%;
   }
   .osc-view__route-table col.col-alias {
-    width: 22%;
-  }
-  .osc-view__route-table col.col-dir {
-    width: 8%;
-  }
-  .osc-view__route-table col.col-type {
-    width: 7%;
-  }
-  .osc-view__route-table col.col-range {
     width: 19%;
   }
+  .osc-view__route-table col.col-dir {
+    width: 52px;
+  }
+  .osc-view__route-table col.col-type {
+    width: 54px;
+  }
+  .osc-view__route-table col.col-range {
+    width: 16%;
+  }
   .osc-view__route-table col.col-family {
-    width: 14%;
+    width: 112px;
   }
   .osc-view__route-table col.col-bind {
-    width: 12%;
+    width: 92px;
   }
 
   .osc-view__input {
@@ -1008,7 +1017,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   .osc-view__route-table th,
   .osc-view__route-table td {
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--space-xs) 6px;
     text-align: left;
     border-bottom: 1px solid var(--color-line-1);
     vertical-align: top;
@@ -1022,6 +1031,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    white-space: nowrap;
   }
 
   .osc-view__route-table tbody tr {

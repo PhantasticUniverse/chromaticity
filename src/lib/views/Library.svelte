@@ -272,7 +272,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           }
         } else {
           const reason = result.reason;
-          errors.push(reason instanceof Error ? reason.message : String(reason));
+          const parsed = toIpcError(reason);
+          if (parsed.kind !== 'invoke_unavailable') {
+            errors.push(reason instanceof Error ? reason.message : String(reason));
+          }
         }
       }
 
@@ -282,7 +285,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       // the merged grid.
       error = merged.length === 0 && errors.length > 0 ? errors.join('; ') : null;
     } catch (err) {
-      error = toIpcError(err, 'list_scene_packages').message;
+      const parsed = toIpcError(err, 'list_scene_packages');
+      error = parsed.kind === 'invoke_unavailable' ? null : parsed.message;
     }
   }
 
@@ -495,7 +499,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           type="button"
           class="library__cta primary"
           onclick={handleOpenNewScene}
-          title="Create a new scene (stub)"
+          title="Create a new scene"
         >
           <Icon name="plus" size={12} />
           New Scene
@@ -519,7 +523,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           onclick={handleGetMoreScenes}
           disabled={!tauriAvailable}
           title={tauriAvailable
-            ? 'Open the scene marketplace (stub)'
+            ? 'Open the scene marketplace'
             : 'External-link CTA disabled in browser preview — available in the native shell'}
         >
           <Icon name="upload" size={12} />

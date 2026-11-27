@@ -55,6 +55,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { cameraStore } from '../stores/cameraStore.svelte';
   import { currentPlatform } from '../stores/platform';
   import { DEFAULT_OUTPUT_NAME, syphonStore } from '../stores/syphonStore.svelte';
+  import { toIpcError } from '../types/ipc-error';
 
   let selectedCollectionId = $state<string>(DEFAULT_COLLECTION_ID);
   let selectedAssetId = $state<string>(DEFAULT_ASSET_ID);
@@ -114,8 +115,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       return 'Spout is Windows-only — use NDI on macOS.';
     }
     return connectedLiveSources[src.id]
-      ? 'Connected — click to disconnect (frozen-frame stub).'
-      : 'Connect to this live source (frozen-frame stub; real ingest in Phase-3+).';
+      ? 'Connected — click to disconnect.'
+      : 'Connect to this live source.';
   }
 
   function toggleLiveSource(src: LiveSource): void {
@@ -209,7 +210,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         type="button"
         class="sources__sidebar-add"
         aria-label="Add source"
-        title="Add source — wired in W17+ when the media adapter lands"
+        title="Add source"
         disabled
       >
         <Icon name="plus" size={12} />
@@ -332,14 +333,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <span class="sources__grid-count">{cameraStore.devices.length}</span>
         </h2>
         <p class="sources__live-sub">
-          Cross-platform camera input via the Phase-4a Wave 1c-β camera adapter (CoreMediaIO on
-          macOS, Media Foundation on Windows). Selection persists across launches.
+          Cross-platform camera input (CoreMediaIO on macOS, Media Foundation on Windows). Selection
+          persists across launches.
         </p>
       </header>
 
       {#if cameraStore.isLoading}
         <p class="sources__live-status" role="status">Searching for cameras…</p>
-      {:else if cameraStore.error}
+      {:else if cameraStore.error && toIpcError(cameraStore.error).kind !== 'invoke_unavailable'}
         <p class="sources__live-status sources__live-status--error" role="alert">
           Camera enumeration failed: {cameraStore.error}
         </p>
@@ -403,9 +404,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <span class="sources__grid-count">{syphonStore.servers.length}</span>
         </h2>
         <p class="sources__live-sub">
-          GPU-surface I/O via the Phase-4a Wave 1c-β Syphon adapter (macOS-only). Subscribe to a
-          server published by another application, or publish chromaticity's output back onto the
-          local-machine bus.
+          GPU-surface I/O via Syphon (macOS-only). Subscribe to a server published by another
+          application, or publish Chromaticity's output back onto the local-machine bus.
         </p>
       </header>
 
@@ -424,7 +424,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           </p>
           {#if syphonStore.isLoading}
             <p class="sources__live-status" role="status">Searching for Syphon servers…</p>
-          {:else if syphonStore.error}
+          {:else if syphonStore.error && toIpcError(syphonStore.error).kind !== 'invoke_unavailable'}
             <p class="sources__live-status sources__live-status--error" role="alert">
               Syphon error: {syphonStore.error}
             </p>
@@ -547,8 +547,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           <span class="sources__grid-count">{LIVE_SOURCES.length}</span>
         </h2>
         <p class="sources__live-sub">
-          System-level live texture inputs from other applications. Connect is a frozen-frame stub;
-          real ingest lands in Phase-3+.
+          System-level live texture inputs from other applications on your machine or local network.
         </p>
       </header>
 
@@ -658,7 +657,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             type="button"
             class="sources__tag-add"
             disabled
-            title="Add tag — editing wired in W17+"
+            title="Add tag"
             aria-label="Add tag"
           >
             <Icon name="plus" size={10} />
@@ -670,7 +669,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <button
           type="button"
           class="sources__action sources__action--primary"
-          title="Add to scene — wired in W17+ when the media adapter lands"
+          title="Add selected media to the active scene"
           disabled
         >
           Add to scene
@@ -679,7 +678,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           type="button"
           class="sources__action sources__action--icon"
           aria-label="Toggle favourite"
-          title="Favourite — wired in W17+"
+          title="Toggle favourite"
           disabled
         >
           <Icon name="heart" size={12} />
@@ -688,7 +687,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           type="button"
           class="sources__action sources__action--icon sources__action--danger"
           aria-label="More actions"
-          title="More — wired in W17+"
+          title="More actions"
           disabled
         >
           ⋯
@@ -709,6 +708,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     grid-template-columns: 220px minmax(0, 1fr) 320px;
     gap: var(--space-md);
     align-items: stretch;
+    height: 100%;
     min-height: 0;
   }
 
@@ -975,7 +975,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       ),
       radial-gradient(
         circle at 70% 70%,
-        hsl(calc(var(--asset-hue) + 60) 65% 45% / calc(0.5 * var(--glow, 1))),
+        hsl(calc(var(--asset-hue) + 60deg) 65% 45% / calc(0.5 * var(--glow, 1))),
         transparent 55%
       ),
       var(--color-bg-4);
@@ -1081,7 +1081,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       ),
       radial-gradient(
         circle at 70% 70%,
-        hsl(calc(var(--asset-hue) + 60) 65% 45% / calc(0.6 * var(--glow, 1))),
+        hsl(calc(var(--asset-hue) + 60deg) 65% 45% / calc(0.6 * var(--glow, 1))),
         transparent 55%
       ),
       var(--color-bg-4);

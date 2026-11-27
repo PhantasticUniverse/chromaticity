@@ -700,8 +700,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
                   {#each block.tokens as token, ti (ti)}
                     <span class="au__docs-token mono" style="color: {token.tint};"
                       >{token.text}</span
-                    >{#if block.tokens && ti < block.tokens.length - 1},
-                    {/if}
+                    >{#if block.tokens && ti < block.tokens.length - 1}<span>, </span>{/if}
                   {/each}
                 {/if}
                 {#if block.trailing}{block.trailing}{/if}
@@ -1168,33 +1167,38 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   .au__preview {
     position: relative;
-    aspect-ratio: 1 / 1;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    aspect-ratio: 16 / 9;
     background: var(--color-bg-2);
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-md);
     overflow: hidden;
+    contain: layout paint;
     box-shadow: var(--shadow-panel);
   }
   .au__preview-blob {
     position: absolute;
-    width: 70%;
-    height: 70%;
+    width: 60%;
+    height: 60%;
     border-radius: 50%;
-    filter: blur(36px);
+    filter: blur(32px);
     opacity: calc(0.65 * var(--glow, 1));
   }
   .au__preview-blob--bass {
-    top: -10%;
-    left: -10%;
+    top: 0;
+    left: 0;
     background: var(--color-band-bass);
   }
   .au__preview-blob--mid {
-    top: 20%;
-    right: -15%;
+    top: 15%;
+    right: 0;
     background: var(--color-band-mid);
   }
   .au__preview-blob--high {
-    bottom: -10%;
+    bottom: 0;
     left: 20%;
     background: var(--color-band-high);
   }
