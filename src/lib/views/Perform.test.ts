@@ -159,6 +159,9 @@ describe('Perform view', () => {
     expect(container.querySelector('.perform__col-middle')).not.toBeNull();
     expect(container.querySelector('.perform__col-right')).not.toBeNull();
     expect(getByLabelText('Perform').getAttribute('data-variant')).toBe('console');
+    // Preview lives inside the full-width studio letterbox wrapper in the middle column.
+    const middleCol = container.querySelector('.perform__col-middle');
+    expect(middleCol?.querySelector('.perform__preview > .preview')).not.toBeNull();
   });
 
   it('renders the Scene Controls panel with the Glitch scene name', () => {

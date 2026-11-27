@@ -35,9 +35,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import Sources from './Sources.svelte';
 import { LIVE_SOURCES, MEDIA_ASSETS, SOURCE_COLLECTIONS } from '../data/sources-fixtures';
+import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
 
 describe('Sources view', () => {
   afterEach(() => {
+    youtubeLayerStore.clear();
     cleanup();
   });
 
@@ -249,5 +251,22 @@ describe('Sources view', () => {
     const action = within(offlineRow as HTMLElement).getByRole('button');
     expect(action).toBeDisabled();
     expect(action.textContent?.trim()).toBe('Unavailable');
+  });
+
+  it('renders the YouTube Stream-In section with muted-by-default DJ posture', async () => {
+    const { getByLabelText, getByText } = render(Sources);
+    const ytSection = getByLabelText('YouTube stream-in');
+    expect(ytSection).toBeInTheDocument();
+    expect(within(ytSection).getByText(/YouTube Stream-In/)).toBeInTheDocument();
+    expect(within(ytSection).getByText(/Muted by default for DJing/i)).toBeInTheDocument();
+
+    const urlInput = within(ytSection).getByLabelText(
+      'YouTube URL or video ID',
+    ) as HTMLInputElement;
+    const loadBtn = within(ytSection).getByRole('button', { name: 'Load' });
+    await fireEvent.input(urlInput, { target: { value: 'https://youtu.be/dQw4w9WgXcQ' } });
+    await fireEvent.click(loadBtn);
+
+    expect(getByText('Muted (DJ Safe)')).toBeInTheDocument();
   });
 });

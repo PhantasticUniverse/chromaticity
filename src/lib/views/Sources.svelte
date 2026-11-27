@@ -40,6 +40,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //   - `Add to scene` is a visual stub at this slice (W14+ wires the
   //     real path into Library / Perform when the media adapter lands).
   //   - Heart-favourite and 3-dot (more) buttons are visual-only stubs.
+  import YouTubeLayer from '../components/YouTubeLayer.svelte';
   import {
     DEFAULT_ASSET_ID,
     DEFAULT_COLLECTION_ID,
@@ -322,6 +323,26 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </li>
       {/if}
     </ul>
+
+    <section class="sources__live sources__live--youtube" aria-label="YouTube stream-in">
+      <header class="sources__live-header">
+        <h2 class="sources__live-title">
+          <span class="sources__grid-eyebrow">Live</span>
+          <span class="sources__grid-sep" aria-hidden="true">·</span>
+          YouTube Stream-In
+          <span class="sources__grid-sep" aria-hidden="true">·</span>
+          <span class="sources__live-badge">Muted by default for DJing</span>
+        </h2>
+        <p class="sources__live-sub">
+          Paste any YouTube URL or video ID to layer live visuals into your set. Starts muted so
+          club audio stays clean until you opt in.
+        </p>
+      </header>
+
+      <div class="sources__youtube-frame">
+        <YouTubeLayer />
+      </div>
+    </section>
 
     <section class="sources__live sources__live--camera" aria-label="Camera devices">
       <header class="sources__live-header">
@@ -1221,6 +1242,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+  .sources__live--youtube {
+    max-height: none;
+    overflow: visible;
+    min-width: 0;
+  }
+  .sources__live-badge {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-1);
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    padding: 1px var(--space-xs);
+    font-weight: 500;
+  }
+  .sources__youtube-frame {
+    width: 100%;
+    min-width: 0;
+    background: var(--bg-canvas, #07080c);
+    border: 1px solid var(--color-line-1);
+    border-radius: var(--radius-md);
+    padding: var(--space-xs);
+    box-sizing: border-box;
   }
   .sources__live-title {
     margin: 0;

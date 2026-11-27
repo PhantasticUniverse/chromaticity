@@ -1144,63 +1144,65 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
        and updates engine state, but the preview pattern does
        not reflect those changes (real GPU pipeline is
        ADR-011 / Phase-2+). -->
-  {#if testCardActive}
-    <div class="preview preview--test">
-      <TestCard label="Test Card" />
-      <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — LIVE indicator + OUT label -->
-      <div class="preview__hud-row preview__hud-row--top">
-        <div class="preview__hud-left">
-          <span class="preview__live-tag" aria-label="Live output">
-            <span class="preview__live-dot" aria-hidden="true"></span>
-            LIVE
-          </span>
-          <span class="preview__scene-label">{sceneTitleName}</span>
+  <div class="perform__preview">
+    {#if testCardActive}
+      <div class="preview preview--test">
+        <TestCard label="Test Card" />
+        <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — LIVE indicator + OUT label -->
+        <div class="preview__hud-row preview__hud-row--top">
+          <div class="preview__hud-left">
+            <span class="preview__live-tag" aria-label="Live output">
+              <span class="preview__live-dot" aria-hidden="true"></span>
+              LIVE
+            </span>
+            <span class="preview__scene-label">{sceneTitleName}</span>
+          </div>
+          <div class="preview__hud-right">
+            <span class="preview__out-label">OUT → DISP 2</span>
+          </div>
         </div>
-        <div class="preview__hud-right">
-          <span class="preview__out-label">OUT → DISP 2</span>
-        </div>
+        {#if unlicensed}
+          <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
+        {/if}
       </div>
-      {#if unlicensed}
-        <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
-      {/if}
-    </div>
-  {:else}
-    <div class="preview">
-      <SceneCanvas
-        kind={previewKind}
-        seed={previewSeed}
-        audio
-        gpuLive
-        controls={controlSnapshot}
-        ariaLabel={`Live scene preview · ${sceneTitleName}`}
-      />
-      <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — Preview HUD chrome ported
-           from the bundle's `<Preview>` primitive (`components.jsx`
-           lines 202-229). Top-left: red LIVE pulse dot + "LIVE" caps
-           label + active scene name. Top-right: "OUT → DISP 2" output
-           routing label. Mirrors the bundle's `hud-row top` chrome at
-           `Chromaticity.html`-rendered scale; the bottom HUD row
-           (resolution / FPS / GPU / frame-time) is intentionally not
-           ported here — that data needs real telemetry IPC which
-           lands with the ADR-011 rendering backend (Wave 2.2+). -->
-      <div class="preview__hud-row preview__hud-row--top">
-        <div class="preview__hud-left">
-          <span class="preview__live-tag" aria-label="Live output">
-            <span class="preview__live-dot" aria-hidden="true"></span>
-            LIVE
-          </span>
-          <span class="preview__scene-label">{sceneTitleName}</span>
+    {:else}
+      <div class="preview">
+        <SceneCanvas
+          kind={previewKind}
+          seed={previewSeed}
+          audio
+          gpuLive
+          controls={controlSnapshot}
+          ariaLabel={`Live scene preview · ${sceneTitleName}`}
+        />
+        <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — Preview HUD chrome ported
+             from the bundle's `<Preview>` primitive (`components.jsx`
+             lines 202-229). Top-left: red LIVE pulse dot + "LIVE" caps
+             label + active scene name. Top-right: "OUT → DISP 2" output
+             routing label. Mirrors the bundle's `hud-row top` chrome at
+             `Chromaticity.html`-rendered scale; the bottom HUD row
+             (resolution / FPS / GPU / frame-time) is intentionally not
+             ported here — that data needs real telemetry IPC which
+             lands with the ADR-011 rendering backend (Wave 2.2+). -->
+        <div class="preview__hud-row preview__hud-row--top">
+          <div class="preview__hud-left">
+            <span class="preview__live-tag" aria-label="Live output">
+              <span class="preview__live-dot" aria-hidden="true"></span>
+              LIVE
+            </span>
+            <span class="preview__scene-label">{sceneTitleName}</span>
+          </div>
+          <div class="preview__hud-right">
+            <span class="preview__out-label">OUT → DISP 2</span>
+          </div>
         </div>
-        <div class="preview__hud-right">
-          <span class="preview__out-label">OUT → DISP 2</span>
-        </div>
+        {#if unlicensed}
+          <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
+          <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
+        {/if}
       </div>
-      {#if unlicensed}
-        <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
-        <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
-      {/if}
-    </div>
-  {/if}
+    {/if}
+  </div>
   <SceneFeedbackBar
     sceneId={loadedSceneId ?? sceneTitleName.toLowerCase()}
     sceneTitle={sceneTitleName}
@@ -1642,24 +1644,57 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         'left middle'
         'right right';
     }
-    .perform--console .perform__col-middle .preview {
-      max-height: clamp(160px, 30vh, 280px);
+    /* Cap the 16:9 canvas height while keeping the studio letterbox
+     * wrapper 100% wide so its right edge stays flush with Audio
+     * Reactivity below it at 1280×800 and intermediate widths. */
+    .perform--console .perform__col-middle .perform__preview .preview {
+      width: min(100%, calc(clamp(160px, 30vh, 280px) * 16 / 9));
     }
   }
 
-  @media (max-width: 1100px) {
+  @media (max-width: 1120px) {
+    .perform {
+      height: auto;
+      min-height: 100%;
+      overflow-y: auto;
+      gap: var(--space-sm);
+    }
     .perform--classic {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto;
       grid-template-areas:
         'left'
         'right';
     }
     .perform--console {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto;
       grid-template-areas:
         'left'
         'middle'
         'right';
+    }
+    .perform__col-left,
+    .perform__col-middle,
+    .perform__col-right,
+    .perform--classic .perform__col-right {
+      grid-template-rows: auto;
+      gap: var(--space-sm);
+    }
+    .perform--console .perform__col-middle .perform__preview .preview,
+    .perform--classic .perform__col-right .perform__preview .preview {
+      width: min(100%, calc(clamp(160px, 32vh, 260px) * 16 / 9));
+    }
+    .panel__head {
+      flex-wrap: wrap;
+      padding: var(--space-xs) var(--space-md);
+    }
+    .media-grid {
+      grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+      gap: var(--space-sm);
+    }
+    .scene-panel__list {
+      max-height: 320px;
     }
   }
 
@@ -1668,11 +1703,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
      last panel in each column absorbs remaining vertical space and
      adjacent panels honour their natural heights without spilling.
      The bundle's `.perform-left` uses 3 grid rows for SceneControls /
-     MetaControls / Media; the middle column has 2 rows for Preview
-     (auto, aspect-ratio constrained) + AudioReactivity (1fr). The
-     right column is a single panel grid row that fills remaining
-     space. `min-width: 0` + `min-height: 0` allow grid cells to
-     compress below their content. */
+     MetaControls / Media; the middle column has 3 rows for Preview
+     (auto, aspect-ratio constrained) + SceneFeedbackBar (auto) +
+     AudioReactivity (1fr). The right column is a single panel grid
+     row that fills remaining space. `min-width: 0` + `min-height: 0`
+     allow grid cells to compress below their content. */
   .perform__col-left {
     grid-area: left;
     display: grid;
@@ -1685,7 +1720,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .perform__col-middle {
     grid-area: middle;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     gap: var(--space-md);
     min-width: 0;
     min-height: 0;
@@ -1696,7 +1731,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: grid;
     /* Console variant: column hosts the ScenePanel only (1 row fills
        remaining vertical space). Classic variant overrides below to a
-       Preview hero (auto, aspect-ratio constrained) + ScenePanel
+       Preview hero (auto) + SceneFeedbackBar (auto) + ScenePanel
        (1fr) stack — matches the bundle's `.perform-right` column in
        perform.jsx variant === "classic". */
     grid-template-rows: minmax(0, 1fr);
@@ -1706,7 +1741,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   .perform--classic .perform__col-right {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
   }
 
   /* ---------------- Panel chrome (shared) ---------------------------------- */
@@ -1985,14 +2020,25 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
 
   /* ---------------- Preview hero ------------------------------------------ */
-  .preview {
-    position: relative;
-    aspect-ratio: 16 / 9;
-    background: var(--color-bg-1);
+  .perform__preview {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-canvas, #07080c);
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-md);
     overflow: hidden;
     box-shadow: var(--shadow-panel);
+    box-sizing: border-box;
+  }
+  .preview {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: var(--color-bg-1);
+    overflow: hidden;
   }
   /* Wave 2.2 Lane R.1 — `<SceneCanvas>` fills the preview tile.
      The widget owns its own rAF + ResizeObserver; CSS just sets
