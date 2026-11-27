@@ -36,6 +36,7 @@ vi.mock('../ipc/stream', () => ({
   stopTwitchStream: vi.fn(),
   getStreamStatus: vi.fn(),
   pushStreamFrame: vi.fn(),
+  listStreamAudioDevices: vi.fn().mockResolvedValue([]),
 }));
 
 const mockGetGpuCostTelemetry = vi.mocked(getGpuCostTelemetry);

@@ -136,6 +136,90 @@ pub fn resolve_ffmpeg_binary() -> Option<PathBuf> {
     None
 }
 
+/// Serializable macOS/host audio capture device entry for the Twitch stream
+/// Audio Source dropdown.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamAudioDeviceDto {
+    /// Device selector passed to `ffmpeg` (e.g. `":0"`, `":1"`).
+    pub value: String,
+    /// Human-readable device name (e.g. `"DDJ-FLX10 (:1)"`).
+    pub label: String,
+}
+
+/// Parse `ffmpeg -f avfoundation -list_devices true -i ""` stderr output into
+/// ordered audio input devices (`:0`, `:1`, ...).
+#[must_use]
+pub fn parse_avfoundation_audio_devices(stderr_text: &str) -> Vec<StreamAudioDeviceDto> {
+    let mut in_audio_section = false;
+    let mut devices = Vec::new();
+    for line in stderr_text.lines() {
+        if line.contains("AVFoundation audio devices:") {
+            in_audio_section = true;
+            continue;
+        }
+        if !in_audio_section {
+            continue;
+        }
+        if line.contains("AVFoundation video devices:") || line.contains("Error opening input") {
+            break;
+        }
+        if let Some(bracket_pos) = line.rfind("] [") {
+            let after = &line[bracket_pos + 3..];
+            if let Some((idx_str, rest)) = after.split_once(']') {
+                let idx_trim = idx_str.trim();
+                let name = rest.trim();
+                if !idx_trim.is_empty()
+                    && idx_trim.bytes().all(|b| b.is_ascii_digit())
+                    && !name.is_empty()
+                {
+                    devices.push(StreamAudioDeviceDto {
+                        value: format!(":{idx_trim}"),
+                        label: format!("{name} (:{idx_trim})"),
+                    });
+                }
+            }
+        }
+    }
+    devices
+}
+
+/// Enumerate real audio capture devices available to `ffmpeg` (macOS `avfoundation`).
+#[must_use]
+pub fn list_stream_audio_devices_impl() -> Vec<StreamAudioDeviceDto> {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(ffmpeg_path) = resolve_ffmpeg_binary() else {
+            return Vec::new();
+        };
+        let Ok(output) = Command::new(ffmpeg_path)
+            .args([
+                "-hide_banner",
+                "-f",
+                "avfoundation",
+                "-list_devices",
+                "true",
+                "-i",
+                "",
+            ])
+            .output()
+        else {
+            return Vec::new();
+        };
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        parse_avfoundation_audio_devices(&stderr)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Vec::new()
+    }
+}
+
+/// Return available live audio capture devices for the Twitch broadcast drawer.
+#[tauri::command]
+pub fn list_stream_audio_devices() -> Vec<StreamAudioDeviceDto> {
+    list_stream_audio_devices_impl()
+}
+
 /// Validates an optional audio input device string (e.g. `":0"` or `"BlackHole 2ch"`).
 ///
 /// Returns `Ok(None)` when the trimmed string is empty. Rejects leading `'-'`
@@ -199,6 +283,8 @@ pub fn build_twitch_ffmpeg_args(
         "-hide_banner".to_owned(),
         "-loglevel".to_owned(),
         "error".to_owned(),
+        "-thread_queue_size".to_owned(),
+        "512".to_owned(),
         "-f".to_owned(),
         "image2pipe".to_owned(),
         "-vcodec".to_owned(),
@@ -209,10 +295,14 @@ pub fn build_twitch_ffmpeg_args(
         "pipe:0".to_owned(),
     ];
 
+    let mut using_live_audio = false;
     #[cfg(target_os = "macos")]
     {
         if let Some(dev) = validated_audio {
+            using_live_audio = true;
             args.extend([
+                "-thread_queue_size".to_owned(),
+                "1024".to_owned(),
                 "-f".to_owned(),
                 "avfoundation".to_owned(),
                 "-i".to_owned(),
@@ -238,6 +328,13 @@ pub fn build_twitch_ffmpeg_args(
             "anullsrc=channel_layout=stereo:sample_rate=44100".to_owned(),
         ]);
     }
+
+    args.extend([
+        "-map".to_owned(),
+        "0:v:0".to_owned(),
+        "-map".to_owned(),
+        "1:a:0".to_owned(),
+    ]);
 
     #[cfg(target_os = "macos")]
     {
@@ -288,6 +385,13 @@ pub fn build_twitch_ffmpeg_args(
         "160k".to_owned(),
         "-ar".to_owned(),
         "44100".to_owned(),
+        "-ac".to_owned(),
+        "2".to_owned(),
+    ]);
+    if using_live_audio {
+        args.extend(["-af".to_owned(), "aresample=async=1:first_pts=0".to_owned()]);
+    }
+    args.extend([
         "-shortest".to_owned(),
         "-f".to_owned(),
         "flv".to_owned(),
@@ -877,7 +981,23 @@ mod tests {
         assert!(args.windows(2).any(|w| w == ["-c:a", "aac"]));
         assert!(args.windows(2).any(|w| w == ["-b:a", "160k"]));
         assert!(args.windows(2).any(|w| w == ["-ar", "44100"]));
+        assert!(args.windows(2).any(|w| w == ["-ac", "2"]));
+        assert!(args.windows(2).any(|w| w == ["-map", "0:v:0"]));
+        assert!(args.windows(2).any(|w| w == ["-map", "1:a:0"]));
         assert!(args.windows(2).any(|w| w == ["-f", "flv"]));
+
+        let parsed = parse_avfoundation_audio_devices(
+            "[AVFoundation indev @ 0x1] AVFoundation video devices:\n\
+             [AVFoundation indev @ 0x1] [0] FaceTime HD Camera\n\
+             [AVFoundation indev @ 0x1] AVFoundation audio devices:\n\
+             [AVFoundation indev @ 0x1] [0] MacBook Pro Microphone\n\
+             [AVFoundation indev @ 0x1] [1] DDJ-FLX10\n",
+        );
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].value, ":0");
+        assert_eq!(parsed[0].label, "MacBook Pro Microphone (:0)");
+        assert_eq!(parsed[1].value, ":1");
+        assert_eq!(parsed[1].label, "DDJ-FLX10 (:1)");
 
         #[cfg(target_os = "macos")]
         {

@@ -442,6 +442,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::stream::stop_twitch_stream,
             commands::stream::get_stream_status,
             commands::stream::push_stream_frame,
+            commands::stream::list_stream_audio_devices,
         ])
         .run(tauri::generate_context!())
 }

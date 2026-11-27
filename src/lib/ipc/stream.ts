@@ -79,6 +79,21 @@ export async function stopTwitchStream(): Promise<StreamStatusDto | null> {
   }
 }
 
+/** Serializable host audio capture device entry for Twitch broadcasting. */
+export interface StreamAudioDeviceDto {
+  readonly value: string;
+  readonly label: string;
+}
+
+/** Query available live audio capture devices (`avfoundation`) for Twitch streaming. */
+export async function listStreamAudioDevices(): Promise<readonly StreamAudioDeviceDto[]> {
+  try {
+    return await invoke<StreamAudioDeviceDto[]>('list_stream_audio_devices');
+  } catch {
+    return [];
+  }
+}
+
 /** Query the current live broadcast status snapshot. Returns `null` outside Tauri. */
 export async function getStreamStatus(): Promise<StreamStatusDto | null> {
   try {

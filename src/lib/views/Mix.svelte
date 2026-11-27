@@ -15,9 +15,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { saveReplayBuffer } from '../ipc/recorder';
   import {
     getStreamStatus,
+    listStreamAudioDevices,
     pushStreamFrame,
     startTwitchStream,
     stopTwitchStream,
+    type StreamAudioDeviceDto,
     type StreamStatusDto,
   } from '../ipc/stream';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
@@ -62,14 +64,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   const DEFAULT_TWITCH_INGEST_URL = 'rtmps://live.twitch.tv/app';
   const TWITCH_BITRATE_OPTIONS: ReadonlyArray<number> = [3500, 4500, 6000];
-  const TWITCH_AUDIO_DEVICE_OPTIONS: ReadonlyArray<{
-    readonly value: string;
-    readonly label: string;
-  }> = [
+  const FALLBACK_TWITCH_AUDIO_DEVICE_OPTIONS: ReadonlyArray<StreamAudioDeviceDto> = [
     { value: '', label: 'Silent (Visuals Only)' },
     { value: ':0', label: 'Live System / Mic (:0)' },
     { value: ':1', label: 'Live Audio (:1)' },
   ];
+  let twitchAudioDeviceOptions = $state<readonly StreamAudioDeviceDto[]>(
+    FALLBACK_TWITCH_AUDIO_DEVICE_OPTIONS,
+  );
   const DEFAULT_STREAM_WIDTH = 1280;
   const DEFAULT_STREAM_HEIGHT = 720;
   const DEFAULT_STREAM_FPS = 30;
@@ -722,6 +724,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       const snapshot = await getGpuCostTelemetry();
       if (!disposed && snapshot !== null && !adaptivePending) {
         gpuTelemetry = snapshot;
+      }
+    })();
+    void (async () => {
+      const devices = await listStreamAudioDevices();
+      if (!disposed && devices.length > 0) {
+        twitchAudioDeviceOptions = [{ value: '', label: 'Silent (Visuals Only)' }, ...devices];
+        if (twitchAudioDevice === null && devices[0]) {
+          twitchAudioDevice = devices[0].value;
+        }
       }
     })();
     void (async () => {
@@ -1516,7 +1527,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                     twitchAudioDevice = raw.length > 0 ? raw : null;
                   }}
                 >
-                  {#each TWITCH_AUDIO_DEVICE_OPTIONS as opt (opt.value)}
+                  {#each twitchAudioDeviceOptions as opt (opt.value)}
                     <option value={opt.value}>{opt.label}</option>
                   {/each}
                 </select>
