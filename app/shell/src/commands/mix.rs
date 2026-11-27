@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::State;
@@ -523,11 +523,11 @@ pub fn parse_yt_dlp_output(video_id: &str, stdout: &str) -> Result<YouTubeStream
     })
 }
 
-/// Maximum bytes fetched per upstream YouTube Range request (512 KiB).
+/// Maximum bytes fetched per upstream YouTube Range request (4 MiB).
 /// YouTube DASH servers reject open-ended `Range: bytes=0-` or large GETs with
-/// `403 Forbidden`, while 512 KiB chunks return `206 Partial Content` fast
-/// enough for sub-second first-frame decode in macOS WKWebView/AVFoundation.
-const YOUTUBE_PROXY_MAX_CHUNK_BYTES: u64 = 512 * 1024;
+/// `403 Forbidden`, while 4 MiB streamed chunks (~10s of 720p video) keep
+/// macOS WKWebView/AVFoundation smoothly buffered without mid-playback pauses.
+const YOUTUBE_PROXY_MAX_CHUNK_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 struct ProxiedYouTubeStream {
@@ -693,44 +693,49 @@ fn handle_youtube_proxy_connection(
     };
 
     let range_arg = format!("{req_start}-{fetch_end}");
-    let mut output_opt = None;
-    for _attempt in 0..2 {
-        let curl_out = Command::new("/usr/bin/curl")
-            .args([
-                "-sL",
-                "--max-time",
-                "15",
-                "-r",
-                &range_arg,
-                "--",
-                &entry.upstream_url,
-            ])
-            .output();
-        if let Ok(out) = curl_out {
-            if out.status.success() && !out.stdout.is_empty() {
-                output_opt = Some(out);
-                break;
-            }
+    let expected_len = fetch_end.saturating_sub(req_start).saturating_add(1);
+    let mut child = match Command::new("/usr/bin/curl")
+        .args([
+            "-sL",
+            "--fail",
+            "--max-time",
+            "25",
+            "-r",
+            &range_arg,
+            "--",
+            &entry.upstream_url,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => {
+            let _ = stream.write_all(
+                b"HTTP/1.1 502 Bad Gateway\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+            return;
         }
-    }
+    };
 
-    let Some(output) = output_opt else {
+    let Some(mut stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
         let _ = stream.write_all(
             b"HTTP/1.1 502 Bad Gateway\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
         );
         return;
     };
 
-    let body = &output.stdout;
-    let actual_end = req_start.saturating_add(body.len().saturating_sub(1) as u64);
     let header = format!(
-        "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {req_start}-{actual_end}/{}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 206 Partial Content\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {req_start}-{fetch_end}/{}\r\nContent-Length: {expected_len}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
         entry.total_len,
-        body.len()
     );
     if stream.write_all(header.as_bytes()).is_ok() {
-        let _ = stream.write_all(body);
+        let _ = std::io::copy(&mut stdout, &mut stream);
     }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn ensure_youtube_proxy() -> Result<&'static YouTubeProxyServer, String> {
