@@ -64,6 +64,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   //     D.3 shipped the command + bridge type).
   import Icon from './Icon.svelte';
   import { closeOutputWindow, openOutputWindow } from './ipc/output';
+  import { fetchGpuRenderStatus } from './ipc/render';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { loadedSceneStore } from './stores/loadedScene.svelte';
   import { midiStore } from './stores/midiStore.svelte';
@@ -296,6 +297,32 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /** Stage output window open state toggled by the GO LIVE button. */
   let outputWindowOpen = $state(false);
 
+  /** Live GPU FPS & frame-budget utilization polled from `gpu_render_status`. */
+  let liveFps = $state<number | null>(null);
+  let liveGpuPct = $state<number | null>(null);
+
+  $effect(() => {
+    let active = true;
+    const pollGpu = async (): Promise<void> => {
+      const status = await fetchGpuRenderStatus();
+      if (!active || !status || status.state !== 'active' || status.last_frame_ms <= 0) {
+        return;
+      }
+      const ms = status.last_frame_ms;
+      liveFps = Math.min(240, 1000 / ms);
+      liveGpuPct = Math.min(100, Math.max(1, Math.round((ms / 16.6667) * 100)));
+    };
+    void pollGpu();
+    const timer = window.setInterval(() => void pollGpu(), 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  });
+
+  const fpsDisplay = $derived(liveFps !== null ? liveFps.toFixed(1) : '61.0');
+  const gpuDisplay = $derived(liveGpuPct !== null ? `${liveGpuPct}%` : '42%');
+
   async function handleGoLiveClick(): Promise<void> {
     try {
       if (outputWindowOpen) {
@@ -381,23 +408,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       <AdapterPill kind="MIDI" state={midiState} detail={midiDetail} />
       <AdapterPill kind="OSC" state={oscState} detail={oscDetail} />
     </div>
-    <!-- Wave 2.3 Lane Q.2 (G.14) — bundle-faithful FPS placeholder.
-         The bundle renders `61.0` (Chromaticity.html line 245) until
-         real frame-rate telemetry wires via ADR-011 (Wave 2.2+). The
-         W15 PR1 `—` placeholder made the chrome read as broken; the
-         numeric stub mirrors the bundle so the topbar HUD reads
-         structurally complete. -->
-    <span class="top-bar__metric" title="Frames per second (bundle placeholder)">
+    <span
+      class="top-bar__metric"
+      title={liveFps !== null
+        ? 'Live GPU frames per second (from cached wgpu pipeline)'
+        : 'Frames per second (bundle placeholder)'}
+    >
       <span class="top-bar__metric-unit">fps</span>
-      <span class="top-bar__metric-value">61.0</span>
+      <span class="top-bar__metric-value">{fpsDisplay}</span>
     </span>
-    <!-- Wave 2.1 Lane B.2 — GPU readout. Static placeholder matching the
-         bundle's `Chromaticity.html` line 247 (`<span className="v
-         accent">42%</span>`). Real GPU telemetry wires when ADR-011
-         rendering backend lands (Wave 2.2+). -->
-    <span class="top-bar__metric" title="GPU utilization (Wave 2.2+: real telemetry via ADR-011)">
+    <span
+      class="top-bar__metric"
+      title={liveGpuPct !== null
+        ? 'Live GPU 60 Hz frame-time budget utilization'
+        : 'GPU utilization (Wave 2.2+: real telemetry via ADR-011)'}
+    >
       <span class="top-bar__metric-unit">gpu</span>
-      <span class="top-bar__metric-value" data-testid="top-bar-gpu-value">42%</span>
+      <span class="top-bar__metric-value" data-testid="top-bar-gpu-value">{gpuDisplay}</span>
     </span>
     {#if routeStore.current === 'perform'}
       <!-- Wave 2.1 Lane B.2 — camera + record buttons (visual stubs).
