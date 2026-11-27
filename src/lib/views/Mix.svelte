@@ -872,6 +872,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   }
 
+  /** Convert linear amplitude [0, 1] to OBS-style normalized dBFS meter [0, 1] (-60 dB..0 dB). */
+  function linearToMeterRatio(linear: number): number {
+    if (!Number.isFinite(linear) || linear <= 0.001) return 0;
+    const db = 20 * Math.log10(Math.min(1, linear));
+    return Math.max(0, Math.min(1, (db + 60) / 60));
+  }
+
   function liveChannelMeterLevel(channel: {
     readonly id: string;
     readonly gain: number;
@@ -884,19 +891,24 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const snap = liveAudioSnap;
     if (snap) {
       if (channel.id === 'master') {
-        return Math.min(1, Math.max(snap.rms * 1.8, snap.peak * 0.9) * channel.gain);
+        const amp = Math.max(snap.rms, snap.peak * 0.75) * channel.gain;
+        return linearToMeterRatio(amp);
       }
       if (channel.id === 'mic') {
-        const mid = (snap.fft_bands[2] + snap.fft_bands[3]) * 0.5;
-        return Math.min(1, mid * 1.4 * channel.gain);
+        // Show live input energy only when the active audio engine is receiving non-silent signal.
+        const amp = snap.degraded ? 0 : snap.rms * 0.85 * channel.gain;
+        return linearToMeterRatio(amp);
       }
       if (channel.id === 'media') {
         const activeYt =
           youtubeMachine.kind === 'ready' && !youtubeMachine.muted && !youtubeUserPaused;
-        return activeYt ? Math.min(1, Math.max(0.25, snap.rms * 1.2) * channel.gain) : 0;
+        const activeLocal = localMediaUrl !== null && localMediaKind === 'video';
+        if (!activeYt && !activeLocal) return 0;
+        return Math.min(1, 0.55 * channel.gain);
       }
       if (channel.id === 'alerts') {
-        return Math.min(1, snap.peak * 0.4 * channel.gain);
+        // Alerts bus stays quiet at 0 until an alert event fires.
+        return 0;
       }
     }
     return Math.min(1, channel.level * channel.gain);
