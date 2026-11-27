@@ -39,6 +39,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // The form fields below read and write the persisted settings store.
   // Runtime application of a few preferences is still subsystem-owned,
   // but the operator document itself survives restart.
+  import { onDestroy } from 'svelte';
+
   import {
     ampToDb,
     ExpEnvelope,
@@ -549,11 +551,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }, TAP_RESET_MS);
   }
 
+  onDestroy(() => {
+    if (tapResetTimer !== null) {
+      clearTimeout(tapResetTimer);
+      tapResetTimer = null;
+    }
+  });
+
   function setManualBpm() {
     // Clamp the operator-entered BPM into the canonical 20..=300
     // range, then write through settingsStore so it persists across
     // restart.
-    const clamped = Math.min(300, Math.max(20, Math.round(tempoSnapshot.manual_bpm * 10) / 10));
+    const raw = Number.isFinite(tempoSnapshot.manual_bpm) ? tempoSnapshot.manual_bpm : 120;
+    const clamped = Math.min(300, Math.max(20, Math.round(raw * 10) / 10));
     settingsStore.update({ tempo: { manual_bpm: clamped } });
   }
 
@@ -822,12 +832,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               max="7680"
               step="2"
               value={graphicsSnapshot.custom_width}
-              oninput={(e) =>
-                settingsStore.update({
-                  graphics: {
-                    custom_width: Number.parseInt(e.currentTarget.value, 10) || 0,
-                  },
-                })}
+              oninput={(e) => {
+                const parsed = Number.parseInt(e.currentTarget.value, 10);
+                if (Number.isFinite(parsed) && parsed > 0) {
+                  settingsStore.update({ graphics: { custom_width: parsed } });
+                }
+              }}
               disabled={!graphicsSnapshot.custom_resolution_enabled}
             />
             <span class="settings__times">×</span>
@@ -840,12 +850,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               max="4320"
               step="2"
               value={graphicsSnapshot.custom_height}
-              oninput={(e) =>
-                settingsStore.update({
-                  graphics: {
-                    custom_height: Number.parseInt(e.currentTarget.value, 10) || 0,
-                  },
-                })}
+              oninput={(e) => {
+                const parsed = Number.parseInt(e.currentTarget.value, 10);
+                if (Number.isFinite(parsed) && parsed > 0) {
+                  settingsStore.update({ graphics: { custom_height: parsed } });
+                }
+              }}
               disabled={!graphicsSnapshot.custom_resolution_enabled}
             />
           </div>
@@ -1269,10 +1279,20 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <h3 class="settings__storage-title">Cache</h3>
         </div>
         <div class="settings__row">
-          <button type="button" class="settings__btn settings__btn--ghost">
+          <button
+            type="button"
+            class="settings__btn settings__btn--ghost"
+            disabled
+            title="Thumbnail cache cleanup is coming in a future release"
+          >
             <Icon name="refresh" size={12} /> Clear thumbnails
           </button>
-          <button type="button" class="settings__btn settings__btn--ghost">
+          <button
+            type="button"
+            class="settings__btn settings__btn--ghost"
+            disabled
+            title="Shader render cache cleanup is coming in a future release"
+          >
             <Icon name="refresh" size={12} /> Clear render cache
           </button>
         </div>
@@ -1346,10 +1366,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               max="300"
               step="0.1"
               value={tempoSnapshot.manual_bpm}
-              oninput={(e) =>
-                settingsStore.update({
-                  tempo: { manual_bpm: Number.parseFloat(e.currentTarget.value) },
-                })}
+              oninput={(e) => {
+                const parsed = Number.parseFloat(e.currentTarget.value);
+                if (Number.isFinite(parsed)) {
+                  settingsStore.update({ tempo: { manual_bpm: parsed } });
+                }
+              }}
             />
             <button type="button" class="settings__btn settings__btn--ghost" onclick={setManualBpm}>
               Set
@@ -1367,10 +1389,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               max="200"
               step="1"
               value={tempoSnapshot.link_offset_ms}
-              oninput={(e) =>
-                settingsStore.update({
-                  tempo: { link_offset_ms: Number.parseFloat(e.currentTarget.value) },
-                })}
+              oninput={(e) => {
+                const parsed = Number.parseFloat(e.currentTarget.value);
+                if (Number.isFinite(parsed)) {
+                  settingsStore.update({ tempo: { link_offset_ms: parsed } });
+                }
+              }}
             />
             <span class="settings__hint settings__hint--inline">
               compensates for downstream-link latency, signed
@@ -1681,6 +1705,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     </article>
   </aside>
 </section>
+
+<svelte:window
+  onkeydown={(e) => {
+    if (resetConfirmOpen && e.key === 'Escape') {
+      closeResetConfirm();
+    }
+  }}
+/>
 
 {#if resetConfirmOpen}
   <div

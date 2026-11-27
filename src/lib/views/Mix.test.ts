@@ -11,8 +11,10 @@ import { getGpuCostTelemetry, setAdaptiveScaleEnabled } from '../ipc/mix';
 import { saveReplayBuffer } from '../ipc/recorder';
 import {
   getStreamStatus,
+  listStreamAudioDevices,
   pushStreamFrame,
   startTwitchStream,
+  startTwitchStreamDetailed,
   stopTwitchStream,
 } from '../ipc/stream';
 import { videoMixerStore } from '../stores/videoMixer.svelte';
@@ -33,6 +35,7 @@ vi.mock('../ipc/recorder', () => ({
 
 vi.mock('../ipc/stream', () => ({
   startTwitchStream: vi.fn(),
+  startTwitchStreamDetailed: vi.fn(),
   stopTwitchStream: vi.fn(),
   getStreamStatus: vi.fn(),
   pushStreamFrame: vi.fn(),
@@ -43,9 +46,11 @@ const mockGetGpuCostTelemetry = vi.mocked(getGpuCostTelemetry);
 const mockSetAdaptiveScaleEnabled = vi.mocked(setAdaptiveScaleEnabled);
 const mockSaveReplayBuffer = vi.mocked(saveReplayBuffer);
 const mockStartTwitchStream = vi.mocked(startTwitchStream);
+const mockStartTwitchStreamDetailed = vi.mocked(startTwitchStreamDetailed);
 const mockStopTwitchStream = vi.mocked(stopTwitchStream);
 const mockGetStreamStatus = vi.mocked(getStreamStatus);
 const mockPushStreamFrame = vi.mocked(pushStreamFrame);
+const mockListStreamAudioDevices = vi.mocked(listStreamAudioDevices);
 
 describe('Mix view', () => {
   beforeEach(() => {
@@ -63,6 +68,14 @@ describe('Mix view', () => {
     youtubeLayerStore.reset();
     mockGetGpuCostTelemetry.mockReset().mockResolvedValue(null);
     mockSetAdaptiveScaleEnabled.mockReset().mockResolvedValue(null);
+    mockListStreamAudioDevices.mockReset().mockResolvedValue([]);
+    mockStartTwitchStreamDetailed.mockReset().mockImplementation(async (params) => {
+      const data = await mockStartTwitchStream(params);
+      if (data === null) {
+        return { ok: false, error: 'Unable to start Twitch stream' };
+      }
+      return { ok: true, data };
+    });
     mockSaveReplayBuffer.mockReset().mockResolvedValue(null);
     mockStartTwitchStream.mockReset().mockResolvedValue(null);
     mockStopTwitchStream.mockReset().mockResolvedValue(null);
@@ -607,6 +620,23 @@ describe('Mix view', () => {
         fps: 30,
         audioDevice: ':0',
       });
+    });
+  });
+
+  it('renders enumerated host audio devices in the Twitch Audio Source dropdown', async () => {
+    mockListStreamAudioDevices.mockResolvedValue([
+      { value: ':0', label: 'MacBook Pro Microphone (:0)' },
+      { value: ':1', label: 'DDJ-FLX10 (:1)' },
+    ]);
+
+    const { getByTestId } = render(Mix);
+    await fireEvent.click(getByTestId('mix-twitch-toggle'));
+
+    await waitFor(() => {
+      const select = getByTestId('mix-twitch-audio') as HTMLSelectElement;
+      const optionLabels = Array.from(select.options).map((opt) => opt.textContent?.trim());
+      expect(optionLabels).toContain('DDJ-FLX10 (:1)');
+      expect(optionLabels).toContain('MacBook Pro Microphone (:0)');
     });
   });
 });

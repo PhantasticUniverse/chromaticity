@@ -17,7 +17,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     getStreamStatus,
     listStreamAudioDevices,
     pushStreamFrame,
-    startTwitchStream,
+    startTwitchStreamDetailed,
     stopTwitchStream,
     type StreamAudioDeviceDto,
     type StreamStatusDto,
@@ -47,6 +47,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   } from '../stores/videoMixer.svelte';
   import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
   import { applyPixelKeyingToImageData, buildLayerCssFilter } from '../utils/liveVideoFx';
+  import {
+    linearToMeterRatio,
+    stepMeterBallistics,
+    type MeterBallisticsState,
+  } from '../utils/meterBallistics';
   import {
     sceneKindFromMetadata,
     sceneSeedFromMetadata,
@@ -118,6 +123,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let snapGuideX = $state(false);
   let snapGuideY = $state(false);
   let stageCanvasEl = $state<HTMLDivElement | null>(null);
+  let programCanvasEl = $state<HTMLDivElement | null>(null);
   let gpuTelemetry = $state<GpuCostTelemetryDto>(DEFAULT_GPU_TELEMETRY);
   let adaptivePending = $state(false);
   let replayStatus = $state<ReplayStatus>('idle');
@@ -560,11 +566,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     ctx.fillStyle = '#06070d';
     ctx.fillRect(0, 0, width, height);
 
-    if (stageCanvasEl !== null) {
-      const layers = [...videoMixerStore.layers].reverse();
+    const sourceHostEl = isStudioMode && programCanvasEl !== null ? programCanvasEl : stageCanvasEl;
+    const sourceLayers = isStudioMode ? videoMixerStore.programLayers : videoMixerStore.layers;
+
+    if (sourceHostEl !== null) {
+      const layers = [...sourceLayers].reverse();
       for (const layer of layers) {
-        if (!videoMixerStore.isLayerRendered(layer, videoMixerStore.layers)) continue;
-        const layerEl = stageCanvasEl.querySelector<HTMLElement>(
+        if (!videoMixerStore.isLayerRendered(layer, sourceLayers)) continue;
+        const layerEl = sourceHostEl.querySelector<HTMLElement>(
           `[data-stage-layer-id="${layer.id}"]`,
         );
         const mediaEl = layerEl?.querySelector<
@@ -576,7 +585,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         ctx.save();
         ctx.globalAlpha = layer.opacity;
         ctx.globalCompositeOperation = canvasCompositeOp(layer.blendMode);
-        const cssFilter = buildLayerCssFilter(layer);
+        const audio = findFilter<AudioLinkFilter>(layer, 'audioLink');
+        const pulse = audio?.enabled ? liveAudioBand(audio.source) : 0;
+        const cssFilter = buildLayerCssFilter(layer, pulse);
         if ('filter' in ctx) {
           ctx.filter = cssFilter;
         }
@@ -629,12 +640,25 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   .arrayBuffer()
                   .then((buf) => pushStreamFrame(new Uint8Array(buf)))
                   .then((pushedCount) => {
-                    if (
-                      !disposed &&
-                      streamStatus.is_live &&
-                      pushedCount !== null &&
-                      (pushedCount <= 2 || pushedCount % 15 === 0)
-                    ) {
+                    if (disposed || !streamStatus.is_live) return;
+                    if (pushedCount === null) {
+                      void getStreamStatus().then((latest) => {
+                        if (disposed) return;
+                        if (latest === null || !latest.is_live) {
+                          stopStreamCaptureLoop();
+                          streamStatus = latest ?? {
+                            ...streamStatus,
+                            is_live: false,
+                            state: 'failed',
+                          };
+                          streamError =
+                            latest?.last_error ??
+                            'Twitch stream disconnected (encoder pipe closed).';
+                        }
+                      });
+                      return;
+                    }
+                    if (pushedCount <= 2 || pushedCount % 15 === 0) {
                       streamStatus = { ...streamStatus, frames_pushed: pushedCount };
                     }
                   })
@@ -674,7 +698,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     streamError = null;
     streamPending = true;
     try {
-      const next = await startTwitchStream({
+      const result = await startTwitchStreamDetailed({
         ingestUrl,
         streamKey,
         bitrateKbps: twitchBitrateKbps,
@@ -684,10 +708,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         ...(twitchAudioDevice !== null ? { audioDevice: twitchAudioDevice } : {}),
       });
       if (disposed) return;
-      if (next === null) {
-        streamError = 'Unable to start Twitch stream (desktop Tauri runtime + ffmpeg required).';
+      if (!result.ok) {
+        streamError =
+          result.error ||
+          'Unable to start Twitch stream (desktop Tauri runtime + ffmpeg required).';
         return;
       }
+      const next = result.data;
       streamStatus = next;
       if (next.last_error) {
         streamError = next.last_error;
@@ -754,6 +781,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   onDestroy(() => {
     disposed = true;
     stopStreamCaptureLoop();
+    if (meterRafId !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(meterRafId);
+      meterRafId = null;
+    }
+    if (offscreenStreamCanvas !== null) {
+      offscreenStreamCanvas.width = 0;
+      offscreenStreamCanvas.height = 0;
+      offscreenStreamCanvas = null;
+    }
+    twitchStreamKey = '';
     stopWebcam();
     stopScreenCapture();
     clearLocalMedia();
@@ -874,11 +911,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   // OBS-grade per-channel 60fps meter ballistics (fast attack, 24 dB/s release,
   // 800 ms peak hold) so meters snap on kicks and fall smoothly like a real mixer.
-  interface MeterBallisticsState {
-    level: number;
-    peak: number;
-    peakHoldUntilMs: number;
-  }
   const meterBallistics: Record<string, MeterBallisticsState> = {
     master: { level: 0, peak: 0, peakHoldUntilMs: 0 },
     mic: { level: 0, peak: 0, peakHoldUntilMs: 0 },
@@ -898,13 +930,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     alerts: 0,
   });
   let lastMeterTickMs = 0;
-
-  /** Convert linear amplitude [0, 1] to OBS-style normalized dBFS meter [0, 1] (-60 dB..0 dB). */
-  function linearToMeterRatio(linear: number): number {
-    if (!Number.isFinite(linear) || linear <= 0.001) return 0;
-    const db = 20 * Math.log10(Math.min(1, linear));
-    return Math.max(0, Math.min(1, (db + 60) / 60));
-  }
+  let meterRafId: number | null = null;
 
   function rawChannelMeterTarget(channel: {
     readonly id: string;
@@ -916,68 +942,57 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const anySolo = videoMixerStore.audioChannels.some((ch) => ch.solo);
     if (channel.muted || (anySolo && !channel.solo)) return 0;
     const snap = liveAudioSnap;
-    if (snap) {
-      if (channel.id === 'master') {
-        const amp = Math.max(snap.rms, snap.peak * 0.85) * channel.gain;
-        return linearToMeterRatio(amp);
-      }
-      if (channel.id === 'mic') {
-        const amp = snap.degraded ? 0 : snap.rms * 0.85 * channel.gain;
-        return linearToMeterRatio(amp);
-      }
-      if (channel.id === 'media') {
-        const activeYt =
-          youtubeMachine.kind === 'ready' && !youtubeMachine.muted && !youtubeUserPaused;
-        const activeLocal = localMediaUrl !== null && localMediaKind === 'video';
-        if (!activeYt && !activeLocal) return 0;
-        return Math.min(1, 0.55 * channel.gain);
-      }
-      if (channel.id === 'alerts') {
-        return 0;
-      }
+    if (snap && channel.id === 'master') {
+      const amp = Math.max(snap.rms, snap.peak * 0.85) * channel.gain;
+      return linearToMeterRatio(amp);
     }
-    return Math.min(1, channel.level * channel.gain);
+    // Mic, YouTube/Media, and Alerts do not yet have dedicated capture
+    // analysers; return 0 honestly instead of mirroring Master or fabricating
+    // synthetic bars.
+    return 0;
   }
 
-  $effect(() => {
-    const _snap = liveAudioSnap;
+  function stepAllMeters(now: number): void {
     const channels = videoMixerStore.audioChannels;
-    void _snap;
-    const now = typeof performance !== 'undefined' ? performance.now() : 0;
     const dtSec =
       lastMeterTickMs > 0 ? Math.min(0.1, Math.max(0.001, (now - lastMeterTickMs) / 1000)) : 0.016;
     lastMeterTickMs = now;
 
-    // OBS Studio default falloff: ~24 dB/s over 60 dB range = ~0.42 ratio/sec.
-    const releaseStep = 0.42 * dtSec;
-    const peakReleaseStep = 0.28 * dtSec;
     const nextLevels: Record<string, number> = {};
     const nextPeaks: Record<string, number> = {};
-
     for (const ch of channels) {
       const target = rawChannelMeterTarget(ch);
-      const st = meterBallistics[ch.id] ?? { level: 0, peak: 0, peakHoldUntilMs: 0 };
-      meterBallistics[ch.id] = st;
-
-      if (target >= st.level) {
-        st.level = st.level + (target - st.level) * 0.85;
-      } else {
-        st.level = Math.max(target, st.level - releaseStep);
-      }
-
-      if (st.level >= st.peak) {
-        st.peak = st.level;
-        st.peakHoldUntilMs = now + 800;
-      } else if (now >= st.peakHoldUntilMs) {
-        st.peak = Math.max(st.level, st.peak - peakReleaseStep);
-      }
-
-      nextLevels[ch.id] = st.level;
-      nextPeaks[ch.id] = st.peak;
+      const next = stepMeterBallistics(meterBallistics[ch.id], target, dtSec, now);
+      meterBallistics[ch.id] = next;
+      nextLevels[ch.id] = next.level;
+      nextPeaks[ch.id] = next.peak;
     }
-
     smoothedMeterLevels = nextLevels;
     smoothedMeterPeaks = nextPeaks;
+  }
+
+  $effect(() => {
+    const _snap = liveAudioSnap;
+    const _channels = videoMixerStore.audioChannels;
+    void _snap;
+    void _channels;
+    const now = typeof performance !== 'undefined' ? performance.now() : 0;
+    stepAllMeters(now);
+  });
+
+  onMount(() => {
+    if (typeof requestAnimationFrame !== 'function') return;
+    const decayTick = (now: number): void => {
+      if (disposed) return;
+      const anyActive = Object.values(meterBallistics).some(
+        (st) => st.level > 0.001 || st.peak > 0.001,
+      );
+      if (anyActive) {
+        stepAllMeters(now);
+      }
+      meterRafId = requestAnimationFrame(decayTick);
+    };
+    meterRafId = requestAnimationFrame(decayTick);
   });
 
   function liveChannelMeterLevel(channel: {
@@ -1234,6 +1249,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }, 3000);
   }
 </script>
+
+<svelte:window
+  onkeydown={(e) => {
+    if (addMenuOpen && e.key === 'Escape') {
+      addMenuOpen = false;
+    }
+  }}
+/>
 
 <div class="mix" data-testid="mix-view" data-mode={videoMixerStore.mode}>
   <div class="mix__workspace">
@@ -1987,7 +2010,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   </div>
 
                   {#if isSelected && !layer.locked}
-                    <div class="mix__selection-box" aria-hidden="true">
+                    <div class="mix__selection-box">
                       <button
                         type="button"
                         class="mix__handle mix__handle--nw"
@@ -2048,12 +2071,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               </span>
             </div>
 
-            <div class="mix__canvas mix__canvas--program" aria-label="Studio Program Output">
+            <div
+              class="mix__canvas mix__canvas--program"
+              aria-label="Studio Program Output"
+              bind:this={programCanvasEl}
+            >
               <div class="mix__canvas-grid" aria-hidden="true"></div>
               {#each [...programLayers].reverse() as layer, revIndex (layer.id)}
                 {#if videoMixerStore.isLayerRendered(layer, programLayers)}
                   <div
                     class="mix__stage-layer mix__stage-layer--{layer.kind} mix__stage-layer--readonly"
+                    data-stage-layer-id={layer.id}
                     style={layerStageStyle(layer, revIndex + 1)}
                   >
                     <div class="mix__layer-visual">

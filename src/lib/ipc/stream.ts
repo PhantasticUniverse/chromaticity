@@ -41,10 +41,15 @@ export interface StartTwitchStreamParams {
   readonly audioDevice?: string | null;
 }
 
-/** Start a live Twitch RTMPS/RTMP broadcast stream. Returns `null` outside Tauri or on IPC error. */
-export async function startTwitchStream(
+/** Detailed result preserving backend Rust error strings for live diagnostics. */
+export type StreamIpcResult<T> =
+  | { readonly ok: true; readonly data: T }
+  | { readonly ok: false; readonly error: string };
+
+/** Start a live Twitch RTMPS/RTMP broadcast stream, preserving backend error text. */
+export async function startTwitchStreamDetailed(
   params: StartTwitchStreamParams,
-): Promise<StreamStatusDto | null> {
+): Promise<StreamIpcResult<StreamStatusDto>> {
   try {
     const payload: {
       ingestUrl: string;
@@ -64,10 +69,22 @@ export async function startTwitchStream(
     if (params.height !== undefined) payload.height = params.height;
     if (params.fps !== undefined) payload.fps = params.fps;
 
-    return await invoke<StreamStatusDto>('start_twitch_stream', payload);
-  } catch {
-    return null;
+    const data = await invoke<StreamStatusDto>('start_twitch_stream', payload);
+    return { ok: true, data };
+  } catch (err) {
+    return {
+      ok: false,
+      error: typeof err === 'string' ? err : err instanceof Error ? err.message : String(err),
+    };
   }
+}
+
+/** Start a live Twitch RTMPS/RTMP broadcast stream. Returns `null` outside Tauri or on IPC error. */
+export async function startTwitchStream(
+  params: StartTwitchStreamParams,
+): Promise<StreamStatusDto | null> {
+  const res = await startTwitchStreamDetailed(params);
+  return res.ok ? res.data : null;
 }
 
 /** Stop the active Twitch broadcast stream and reap any running encoder. Returns `null` outside Tauri. */
@@ -104,21 +121,21 @@ export async function getStreamStatus(): Promise<StreamStatusDto | null> {
 }
 
 /**
- * Push one raw RGBA frame (`width * height * 4` bytes) into the active encoder
+ * Push one JPEG frame into the active encoder (`image2pipe` / `mjpeg`)
  * over Tauri v2's zero-copy raw binary IPC channel (`Uint8Array` / `ArrayBuffer`),
  * avoiding multi-megabyte JSON serialization on the main thread.
- * Returns total frames pushed or `null`.
+ * Returns total frames pushed or `null` if the pipe closed or failed.
  */
 export async function pushStreamFrame(
-  rgbaBytes: readonly number[] | Uint8Array | Uint8ClampedArray,
+  jpegBytes: readonly number[] | Uint8Array | Uint8ClampedArray,
 ): Promise<number | null> {
   try {
     const raw =
-      rgbaBytes instanceof Uint8Array
-        ? rgbaBytes
-        : rgbaBytes instanceof Uint8ClampedArray
-          ? new Uint8Array(rgbaBytes.buffer, rgbaBytes.byteOffset, rgbaBytes.byteLength)
-          : new Uint8Array(rgbaBytes);
+      jpegBytes instanceof Uint8Array
+        ? jpegBytes
+        : jpegBytes instanceof Uint8ClampedArray
+          ? new Uint8Array(jpegBytes.buffer, jpegBytes.byteOffset, jpegBytes.byteLength)
+          : new Uint8Array(jpegBytes);
     return await invoke<number>('push_stream_frame', raw);
   } catch {
     return null;
