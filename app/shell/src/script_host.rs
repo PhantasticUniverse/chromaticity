@@ -63,11 +63,179 @@ enum WorkerRequest {
         rms: f32,
         peak: f32,
         bpm: f32,
+        bass_level: f32,
+        mid_level: f32,
+        mid_high_level: f32,
+        high_level: f32,
+        on_beat: f32,
+        beat_time: f32,
         reply: Sender<Result<ScriptTickOutput, String>>,
     },
     Clear,
     Shutdown,
 }
+
+/// Sanitize a floating-point scalar before interpolating into QuickJS source.
+#[inline]
+fn sanitize_js_f32(value: f32) -> f32 {
+    if value.is_finite() { value } else { 0.0 }
+}
+
+/// Synesthesia legacy (`inputs.*` / `uniforms.*` Proxies) and modern
+/// (`setUniform(name, val)` + `syn_*` / `TIME` globals) JavaScript
+/// compatibility shim injected before evaluating a scene's `script.js`.
+const SYNESTHESIA_COMPAT_PREAMBLE: &str = r#"
+(function __chromaticityInstallSynCompat() {
+  const __inputsBacking = Object.create(null);
+  const __uniformsBacking = Object.create(null);
+
+  function __safeEmit(name, val) {
+    if (typeof name !== 'string' || name.length === 0) {
+      return;
+    }
+    if (typeof val === 'number') {
+      if (Number.isFinite(val)) {
+        __uniformsBacking[name] = val;
+        if (typeof __chromaticityEmit === 'function') {
+          __chromaticityEmit(name, val);
+        }
+      }
+      return;
+    }
+    if (typeof val === 'boolean') {
+      const numeric = val ? 1.0 : 0.0;
+      __uniformsBacking[name] = numeric;
+      if (typeof __chromaticityEmit === 'function') {
+        __chromaticityEmit(name, numeric);
+      }
+      return;
+    }
+    if (Array.isArray(val)) {
+      const suffixes = ['_x', '_y', '_z', '_w'];
+      for (let i = 0; i < val.length && i < suffixes.length; i++) {
+        const elem = val[i];
+        if (typeof elem === 'number' && Number.isFinite(elem)) {
+          const key = name + suffixes[i];
+          __uniformsBacking[key] = elem;
+          if (typeof __chromaticityEmit === 'function') {
+            __chromaticityEmit(key, elem);
+          }
+        }
+      }
+    }
+  }
+
+  globalThis.__chromaticitySyncGlobals = function __chromaticitySyncGlobals(
+    elapsedSecs,
+    frame,
+    rms,
+    peak,
+    bpm,
+    bassLevel,
+    midLevel,
+    midHighLevel,
+    highLevel,
+    onBeat,
+    beatTime
+  ) {
+    const level = rms;
+    globalThis.chroma_Time = elapsedSecs;
+    globalThis.chroma_Frame = frame;
+    globalThis.chroma_AudioRMS = rms;
+    globalThis.chroma_AudioPeak = peak;
+    globalThis.TIME = elapsedSecs;
+    globalThis.syn_Time = elapsedSecs;
+    globalThis.syn_BPM = bpm;
+    globalThis.syn_Level = level;
+    globalThis.syn_Presence = level;
+    globalThis.syn_BassLevel = bassLevel;
+    globalThis.syn_BassPresence = bassLevel;
+    globalThis.syn_MidLevel = midLevel;
+    globalThis.syn_MidPresence = midLevel;
+    globalThis.syn_MidHighLevel = midHighLevel;
+    globalThis.syn_HighLevel = highLevel;
+    globalThis.syn_HighPresence = highLevel;
+    globalThis.syn_OnBeat = onBeat;
+    globalThis.syn_BeatTime = beatTime;
+
+    __inputsBacking.chroma_Time = elapsedSecs;
+    __inputsBacking.chroma_Frame = frame;
+    __inputsBacking.chroma_AudioRMS = rms;
+    __inputsBacking.chroma_AudioPeak = peak;
+    __inputsBacking.TIME = elapsedSecs;
+    __inputsBacking.syn_Time = elapsedSecs;
+    __inputsBacking.syn_BPM = bpm;
+    __inputsBacking.syn_Level = level;
+    __inputsBacking.syn_Presence = level;
+    __inputsBacking.syn_BassLevel = bassLevel;
+    __inputsBacking.syn_BassPresence = bassLevel;
+    __inputsBacking.syn_MidLevel = midLevel;
+    __inputsBacking.syn_MidPresence = midLevel;
+    __inputsBacking.syn_MidHighLevel = midHighLevel;
+    __inputsBacking.syn_HighLevel = highLevel;
+    __inputsBacking.syn_HighPresence = highLevel;
+    __inputsBacking.syn_OnBeat = onBeat;
+    __inputsBacking.syn_BeatTime = beatTime;
+  };
+
+  globalThis.__chromaticitySyncGlobals(0.0, 0, 0.0, 0.0, 120.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+  globalThis.setUniform = function setUniform(name, val) {
+    __safeEmit(name, val);
+  };
+
+  if (typeof globalThis.print !== 'function') {
+    globalThis.print = function print() {};
+  }
+  if (typeof globalThis.log !== 'function') {
+    globalThis.log = function log() {};
+  }
+
+  globalThis.inputs = new Proxy(__inputsBacking, {
+    get(target, prop) {
+      if (typeof prop === 'symbol') {
+        return target[prop];
+      }
+      if (Object.prototype.hasOwnProperty.call(target, prop)) {
+        return target[prop];
+      }
+      const globalVal = globalThis[prop];
+      if (typeof globalVal === 'number' && Number.isFinite(globalVal)) {
+        return globalVal;
+      }
+      return 0.0;
+    },
+    set(target, prop, value) {
+      if (typeof prop === 'string') {
+        target[prop] = value;
+      }
+      return true;
+    },
+    has() {
+      return true;
+    }
+  });
+
+  globalThis.uniforms = new Proxy(__uniformsBacking, {
+    get(target, prop) {
+      if (typeof prop === 'symbol') {
+        return target[prop];
+      }
+      if (Object.prototype.hasOwnProperty.call(target, prop)) {
+        return target[prop];
+      }
+      return 0.0;
+    },
+    set(target, prop, value) {
+      if (typeof prop === 'string') {
+        target[prop] = value;
+        __safeEmit(prop, value);
+      }
+      return true;
+    }
+  });
+})();
+"#;
 
 struct CollectingSender {
     writes: Arc<Mutex<HashMap<String, f32>>>,
@@ -93,6 +261,9 @@ impl ScriptCommandSender for CollectingSender {
             }
             _ => return Ok(()),
         };
+        if !scalar.is_finite() {
+            return Ok(());
+        }
         if let Ok(mut map) = self.writes.lock() {
             map.insert(name, scalar);
         }
@@ -233,14 +404,44 @@ impl ScriptHost {
             return HashMap::new();
         };
         let (reply_tx, reply_rx) = mpsc::channel();
+        let elapsed_secs = sanitize_js_f32(elapsed_secs);
+        let dt = sanitize_js_f32(dt);
+        let rms = sanitize_js_f32(audio.rms).clamp(0.0, 1.0);
+        let peak = sanitize_js_f32(audio.peak).clamp(0.0, 1.0);
+        let bpm = sanitize_js_f32(audio.bpm).max(0.0);
+        let bass_level =
+            sanitize_js_f32((audio.fft_bands[0] + audio.fft_bands[1]) * 0.5).clamp(0.0, 1.0);
+        let mid_level =
+            sanitize_js_f32((audio.fft_bands[2] + audio.fft_bands[3]) * 0.5).clamp(0.0, 1.0);
+        let mid_high_level =
+            sanitize_js_f32((audio.fft_bands[4] + audio.fft_bands[5]) * 0.5).clamp(0.0, 1.0);
+        let high_level =
+            sanitize_js_f32((audio.fft_bands[6] + audio.fft_bands[7]) * 0.5).clamp(0.0, 1.0);
+        let beat_time = if bpm > 0.0 {
+            sanitize_js_f32(elapsed_secs * (bpm / 60.0))
+        } else {
+            0.0
+        };
+        let on_beat = if bpm > 0.0 && beat_time.fract() < 0.12 {
+            1.0
+        } else {
+            0.0
+        };
+
         if tx
             .send(WorkerRequest::Tick {
                 elapsed_secs,
                 dt,
                 frame,
-                rms: audio.rms,
-                peak: audio.peak,
-                bpm: audio.bpm,
+                rms,
+                peak,
+                bpm,
+                bass_level,
+                mid_level,
+                mid_high_level,
+                high_level,
+                on_beat,
+                beat_time,
                 reply: reply_tx,
             })
             .is_err()
@@ -382,8 +583,9 @@ fn run_script_worker(rx: Receiver<WorkerRequest>) {
                     }
                 };
 
-                let init_source =
-                    format!("{source}\n;if (typeof setup === 'function') {{ setup(); }}\n");
+                let init_source = format!(
+                    "{SYNESTHESIA_COMPAT_PREAMBLE}\n{source}\n;if (typeof setup === 'function') {{ setup(); }}\n"
+                );
                 match runtime.execute(&init_source) {
                     Ok(_) => {
                         let emitted = drain_writes(&writes);
@@ -403,6 +605,12 @@ fn run_script_worker(rx: Receiver<WorkerRequest>) {
                 rms,
                 peak,
                 bpm,
+                bass_level,
+                mid_level,
+                mid_high_level,
+                high_level,
+                on_beat,
+                beat_time,
                 reply,
             } => {
                 let Some((runtime, writes)) = active_runtime.as_ref() else {
@@ -410,11 +618,11 @@ fn run_script_worker(rx: Receiver<WorkerRequest>) {
                     continue;
                 };
                 let tick_script = format!(
-                    "globalThis.chroma_Time = {elapsed_secs};\
-                     globalThis.chroma_Frame = {frame};\
-                     globalThis.chroma_AudioRMS = {rms};\
-                     globalThis.chroma_AudioPeak = {peak};\
-                     globalThis.syn_BPM = {bpm};\
+                    "globalThis.__chromaticitySyncGlobals(\
+                        {elapsed_secs}, {frame}, {rms}, {peak}, {bpm}, \
+                        {bass_level}, {mid_level}, {mid_high_level}, {high_level}, \
+                        {on_beat}, {beat_time}\
+                     );\
                      if (typeof update === 'function') {{ update({dt}); }}"
                 );
                 match runtime.execute(&tick_script) {
@@ -483,5 +691,97 @@ mod script_host_pins {
         host.set_inline_script("broken".into(), "function (( {".into());
         assert_eq!(host.state_name(), "error");
         assert!(host.status().error.is_some());
+    }
+
+    #[test]
+    fn script_host_synesthesia_legacy_inputs_and_uniforms_proxy_emits_finite_values() {
+        let mut host = ScriptHost::new();
+        host.set_inline_script(
+            "syn-legacy".into(),
+            r#"
+            var accum = 0.0;
+            function update(dt) {
+                var unknownFallback = inputs.nonexistent_control_xyz;
+                accum += (inputs.syn_BassLevel * 2.0 + unknownFallback) * dt;
+                uniforms.my_pulse = inputs.syn_BassLevel + inputs.syn_Time * 0.1;
+                uniforms.accum_time = accum;
+                uniforms.bpm_echo = inputs.syn_BPM;
+            }
+            "#
+            .into(),
+        );
+        assert_eq!(host.state_name(), "active");
+
+        let audio = AudioUniformSnapshot {
+            bpm: 128.0,
+            rms: 0.4,
+            peak: 0.7,
+            fft_bands: [0.8, 0.6, 0.5, 0.3, 0.25, 0.15, 0.1, 0.05],
+            ..AudioUniformSnapshot::default()
+        };
+        let out = host.tick(2.0, 0.5, 10, &audio);
+        assert_eq!(host.state_name(), "active");
+        assert!(host.status().error.is_none());
+        assert_eq!(host.status().ticks_executed, 1);
+
+        // Bass average = (0.8 + 0.6) / 2 = 0.7; my_pulse = 0.7 + 2.0 * 0.1 = 0.9
+        let pulse = out.get("my_pulse").copied().expect("my_pulse emitted");
+        assert!(pulse.is_finite());
+        assert!((pulse - 0.9).abs() < 1e-4, "pulse={pulse}");
+
+        let accum = out.get("accum_time").copied().expect("accum_time emitted");
+        assert!(accum.is_finite());
+        assert!((accum - 0.7).abs() < 1e-4, "accum={accum}");
+
+        let bpm_echo = out.get("bpm_echo").copied().expect("bpm_echo emitted");
+        assert!((bpm_echo - 128.0).abs() < 1e-4, "bpm_echo={bpm_echo}");
+    }
+
+    #[test]
+    fn script_host_synesthesia_modern_set_uniform_and_globals_update_every_tick() {
+        let mut host = ScriptHost::new();
+        host.set_inline_script(
+            "syn-modern".into(),
+            r#"
+            function update(dt) {
+                setUniform('my_pulse', syn_BassLevel);
+                setUniform('bands_sum', syn_MidLevel + syn_MidHighLevel + syn_HighLevel);
+                setUniform('level_val', syn_Level);
+                setUniform('beat_val', syn_BeatTime);
+                setUniform('on_beat', syn_OnBeat);
+                setUniform('time_diff', Math.abs(syn_Time - TIME));
+                setUniform('bpm_val', syn_BPM);
+                setUniform('vec_pair', [syn_BassLevel, syn_HighLevel]);
+            }
+            "#
+            .into(),
+        );
+        assert_eq!(host.state_name(), "active");
+
+        let audio = AudioUniformSnapshot {
+            bpm: 120.0,
+            rms: 0.55,
+            peak: 0.85,
+            fft_bands: [0.9, 0.7, 0.6, 0.4, 0.3, 0.2, 0.2, 0.1],
+            ..AudioUniformSnapshot::default()
+        };
+        let out = host.tick(1.0, 1.0 / 60.0, 60, &audio);
+        assert_eq!(host.state_name(), "active");
+        assert!(host.status().error.is_none());
+
+        assert!((out.get("my_pulse").copied().unwrap() - 0.8).abs() < 1e-4);
+        // mid = 0.5, midHigh = 0.25, high = 0.15 => sum = 0.9
+        assert!((out.get("bands_sum").copied().unwrap() - 0.9).abs() < 1e-4);
+        assert!((out.get("level_val").copied().unwrap() - 0.55).abs() < 1e-4);
+        // 1.0s at 120 BPM => 2.0 beats (exact integer => on_beat == 1.0)
+        assert!((out.get("beat_val").copied().unwrap() - 2.0).abs() < 1e-4);
+        assert!((out.get("on_beat").copied().unwrap() - 1.0).abs() < 1e-4);
+        assert!(out.get("time_diff").copied().unwrap().abs() < 1e-5);
+        assert!((out.get("bpm_val").copied().unwrap() - 120.0).abs() < 1e-4);
+        assert!((out.get("vec_pair_x").copied().unwrap() - 0.8).abs() < 1e-4);
+        assert!((out.get("vec_pair_y").copied().unwrap() - 0.15).abs() < 1e-4);
+
+        // Every emitted value must be finite.
+        assert!(out.values().all(|v| v.is_finite()));
     }
 }

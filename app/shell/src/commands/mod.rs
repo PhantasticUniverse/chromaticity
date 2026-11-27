@@ -20,6 +20,7 @@ pub mod library_index;
 pub mod library_search;
 pub mod license;
 pub mod midi;
+pub mod mix;
 pub mod osc;
 pub mod output;
 pub mod picker;

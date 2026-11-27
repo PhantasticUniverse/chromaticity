@@ -392,6 +392,15 @@ pub struct AppState {
     pub audio_threshold: Mutex<f32>,
     /// Live GPU preview renderer (`wgpu` + `naga` GLSL 4.50).
     pub gpu_renderer: Mutex<crate::render::GpuPreviewEngine>,
+    /// Hysteresis-guarded adaptive resolution scale controller driven by live
+    /// GPU frame times (`chromaticity_render::gpu_cost::AdaptiveScaleController`).
+    pub adaptive_scale: Mutex<chromaticity_render::gpu_cost::AdaptiveScaleController>,
+    /// Whether adaptive resolution scaling is enabled for live output.
+    pub adaptive_scale_enabled: AtomicBool,
+    /// Logical base `(width, height)` target used to compute scaled dimensions.
+    pub adaptive_base_size: Mutex<(u32, u32)>,
+    /// Live multi-layer GPU compositor stack (`chromaticity_render::compositor::LayerStack`).
+    pub compositor_stack: Mutex<chromaticity_render::compositor::LayerStack>,
     /// Live BPM override and beatmatch phase-scrub state applied to GPU uniforms.
     pub bpm_override: Mutex<crate::render::BpmOverrideState>,
     /// Active stereo channel pair selected for multi-channel DJ / Rekordbox capture
@@ -486,6 +495,12 @@ impl AppState {
             osc_dispatch_queue,
             audio_threshold: Mutex::new(0.0_f32),
             gpu_renderer: Mutex::new(crate::render::GpuPreviewEngine::new()),
+            adaptive_scale: Mutex::new(
+                chromaticity_render::gpu_cost::AdaptiveScaleController::default(),
+            ),
+            adaptive_scale_enabled: AtomicBool::new(true),
+            adaptive_base_size: Mutex::new((1920, 1080)),
+            compositor_stack: Mutex::new(chromaticity_render::compositor::LayerStack::new()),
             bpm_override: Mutex::new(crate::render::BpmOverrideState::default()),
             audio_channel_pair: Arc::new(Mutex::new(
                 chromaticity_runtime::rekordbox_bridge::ChannelPairSelection::master_default(),
@@ -846,6 +861,31 @@ impl AppState {
     #[must_use]
     pub fn live_audio_channel_pair_handle(&self) -> chromaticity_audio::AudioChannelPairHandle {
         self.audio_channel_pair_atomic.clone()
+    }
+
+    /// Record a measured GPU frame time and base render target dimensions into
+    /// [`Self::adaptive_scale`] and [`Self::adaptive_base_size`].
+    pub fn record_gpu_frame_cost(&self, base_width: u32, base_height: u32, frame_time_ms: f32) {
+        if base_width > 0 && base_height > 0 {
+            match self.adaptive_base_size.lock() {
+                Ok(mut guard) => {
+                    *guard = (base_width, base_height);
+                }
+                Err(poisoned) => {
+                    let mut guard = poisoned.into_inner();
+                    *guard = (base_width, base_height);
+                }
+            }
+        }
+        match self.adaptive_scale.lock() {
+            Ok(mut ctrl) => {
+                let _ = ctrl.record_frame(frame_time_ms);
+            }
+            Err(poisoned) => {
+                let mut ctrl = poisoned.into_inner();
+                let _ = ctrl.record_frame(frame_time_ms);
+            }
+        }
     }
 }
 

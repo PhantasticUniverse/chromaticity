@@ -97,19 +97,24 @@ pub fn render_gpu_frame(
         }
     }
 
-    let mut gpu = match app_state.gpu_renderer.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
+    let (bytes, last_frame_ms) = {
+        let mut gpu = match app_state.gpu_renderer.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let bytes = gpu.render_frame_with_bpm(
+            width,
+            height,
+            elapsed_secs,
+            frame,
+            &audio,
+            controls,
+            &bpm_override,
+        )?;
+        let last_frame_ms = gpu.status().last_frame_ms;
+        (bytes, last_frame_ms)
     };
-    let bytes = gpu.render_frame_with_bpm(
-        width,
-        height,
-        elapsed_secs,
-        frame,
-        &audio,
-        controls,
-        &bpm_override,
-    )?;
+    app_state.record_gpu_frame_cost(width, height, last_frame_ms);
     Ok(tauri::ipc::Response::new(bytes))
 }
 
