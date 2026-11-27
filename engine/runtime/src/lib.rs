@@ -107,6 +107,12 @@ pub use data_ingest::{
     CASSETTE_FORMAT_VERSION, CassetteSample, DATA_UNIFORM_PREFIX, DataCassette, DataIngestEngine,
     DataIngestError, DataIngestState, DataSourceSpec, DataTransport, DataValue,
 };
+pub use pro_dj_link_listener::{
+    AutoTransitionConfig, AutoTransitionPlanner, DEFAULT_ENERGY_DROP_HIGH_THRESHOLD,
+    DEFAULT_ENERGY_DROP_LOW_THRESHOLD, DEFAULT_ENERGY_SURGE_DELTA, DEFAULT_PHRASE_INTERVAL_BARS,
+    DEFAULT_PRO_DJ_LINK_TIMEOUT_MS, DEFAULT_TRANSITION_COOLDOWN_MS, ProDjLinkListener,
+    ProDjLinkListenerError, ProDjLinkPollResult, ProDjLinkSyncState, TransitionTrigger,
+};
 pub use recorder::{
     DEFAULT_REPLAY_DURATION_SECS, DEFAULT_REPLAY_MAX_BYTES, DEFAULT_SAMPLE_DURATION_90KHZ,
     EncodedPacket, Fmp4Muxer, Fmp4MuxerConfig, IsoBoxHeader, MAX_REPLAY_DURATION_SECS,
@@ -137,6 +143,7 @@ pub use script_bridge::{
 pub mod command_bus;
 pub mod crash_resume;
 pub mod data_ingest;
+pub mod pro_dj_link_listener;
 pub mod recorder;
 pub mod rekordbox_bridge;
 pub mod scheduler;
