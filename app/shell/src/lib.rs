@@ -256,7 +256,7 @@ pub fn run() -> Result<(), tauri::Error> {
                     let mut next_crash_resume_save = Instant::now() + CRASH_RESUME_SAVE_PERIOD;
                     let mut crash_resume_adapter = crash_resume_path_for_thread
                         .map(|path| CrashResumeAdapter::new(CanonicalBinarySnapshotter, path));
-                    while !shutdown_for_thread.load(Ordering::Relaxed) {
+                    while !shutdown_for_thread.load(Ordering::Acquire) {
                         let tick_outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let should_capture_crash_resume = crash_resume_adapter.is_some()
                                 && Instant::now() >= next_crash_resume_save;

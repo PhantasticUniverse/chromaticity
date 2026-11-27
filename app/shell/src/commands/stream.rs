@@ -250,7 +250,20 @@ pub fn validate_audio_device(raw: &str) -> Result<Option<String>, String> {
                 .to_owned(),
         );
     }
-    Ok(Some(trimmed.to_owned()))
+    // `avfoundation` uses `VIDEO:AUDIO` syntax. Reject any non-empty video
+    // prefix (e.g. `0:1` would silently open webcam 0) and ensure a leading `:`
+    // so bare device names (e.g. `BlackHole 2ch`) open as audio-only inputs.
+    if let Some((video_part, audio_part)) = trimmed.split_once(':') {
+        if !video_part.is_empty() || audio_part.trim().is_empty() || audio_part.contains(':') {
+            return Err(
+                "audio device must use audio-only `:index` or `:name` format (no video prefix)"
+                    .to_owned(),
+            );
+        }
+        Ok(Some(format!(":{}", audio_part.trim())))
+    } else {
+        Ok(Some(format!(":{trimmed}")))
+    }
 }
 
 /// Builds the `ffmpeg` argument list for live Twitch RTMPS/RTMP FLV publishing.
@@ -678,7 +691,7 @@ pub fn start_twitch_stream_impl(
     let target_height = height.unwrap_or(DEFAULT_STREAM_HEIGHT);
     let target_fps = fps.unwrap_or(DEFAULT_STREAM_FPS);
 
-    let secret = StreamSecretKey::new(stream_key);
+    let secret = StreamSecretKey::new(stream_key.trim());
     validate_stream_dimensions(target_width, target_height, target_fps)
         .map_err(|err| secret.redact_in_text(&err))?;
 
@@ -740,27 +753,50 @@ pub fn start_twitch_stream_impl(
         let _ = std::thread::Builder::new()
             .name("chromaticity-ffmpeg-stderr".into())
             .spawn(move || {
+                // Buffer complete lines locally so a concurrent reader can
+                // never observe an unredacted half-key straddling a read chunk.
+                let mut pending = String::new();
                 let mut buf = [0u8; 1024];
                 loop {
                     match stderr.read(&mut buf) {
-                        Ok(0) | Err(_) => break,
+                        Ok(0) | Err(_) => {
+                            if !pending.is_empty() {
+                                let scrubbed = secret_for_thread.redact_in_text(&pending);
+                                let mut guard = match tail_for_thread.lock() {
+                                    Ok(g) => g,
+                                    Err(p) => p.into_inner(),
+                                };
+                                guard.push_str(&scrubbed);
+                            }
+                            break;
+                        }
                         Ok(n) => {
-                            let chunk = String::from_utf8_lossy(&buf[..n]);
-                            let mut guard = match tail_for_thread.lock() {
-                                Ok(g) => g,
-                                Err(p) => p.into_inner(),
-                            };
-                            guard.push_str(&chunk);
-                            // Redact over the accumulated buffer so stream keys
-                            // straddling 1024-byte chunk boundaries can never leak.
-                            let scrubbed = secret_for_thread.redact_in_text(&guard);
-                            *guard = scrubbed;
-                            if guard.len() > MAX_STDERR_CAPTURE_BYTES {
-                                let mut drain_to = guard.len() - MAX_STDERR_CAPTURE_BYTES;
-                                while !guard.is_char_boundary(drain_to) && drain_to < guard.len() {
-                                    drain_to += 1;
+                            pending.push_str(&String::from_utf8_lossy(&buf[..n]));
+                            if let Some(last_nl) = pending.rfind('\n') {
+                                let complete = pending.drain(..=last_nl).collect::<String>();
+                                let scrubbed = secret_for_thread.redact_in_text(&complete);
+                                let mut guard = match tail_for_thread.lock() {
+                                    Ok(g) => g,
+                                    Err(p) => p.into_inner(),
+                                };
+                                guard.push_str(&scrubbed);
+                                if guard.len() > MAX_STDERR_CAPTURE_BYTES {
+                                    let mut drain_to = guard.len() - MAX_STDERR_CAPTURE_BYTES;
+                                    while !guard.is_char_boundary(drain_to)
+                                        && drain_to < guard.len()
+                                    {
+                                        drain_to += 1;
+                                    }
+                                    guard.drain(..drain_to);
                                 }
-                                guard.drain(..drain_to);
+                            } else if pending.len() > MAX_STDERR_CAPTURE_BYTES {
+                                let scrubbed = secret_for_thread.redact_in_text(&pending);
+                                pending.clear();
+                                let mut guard = match tail_for_thread.lock() {
+                                    Ok(g) => g,
+                                    Err(p) => p.into_inner(),
+                                };
+                                guard.push_str(&scrubbed);
                             }
                         }
                     }
@@ -781,12 +817,12 @@ pub fn start_twitch_stream_impl(
     let writer_error = Arc::new(Mutex::new(None::<String>));
     let writer_error_bg = Arc::clone(&writer_error);
     let secret_for_writer = secret.clone();
-    let _ = std::thread::Builder::new()
+    if let Err(err) = std::thread::Builder::new()
         .name("chromaticity-ffmpeg-writer".into())
         .spawn(move || {
             for frame in frame_rx {
-                if let Err(err) = stdin.write_all(&frame) {
-                    let msg = secret_for_writer.redact_in_text(&err.to_string());
+                if let Err(write_err) = stdin.write_all(&frame) {
+                    let msg = secret_for_writer.redact_in_text(&write_err.to_string());
                     let mut guard = match writer_error_bg.lock() {
                         Ok(g) => g,
                         Err(p) => p.into_inner(),
@@ -796,7 +832,14 @@ pub fn start_twitch_stream_impl(
                 }
             }
             drop(stdin);
-        });
+        })
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+        let msg = format!("failed to spawn ffmpeg writer thread: {err}");
+        proc_guard.last_error = Some(msg.clone());
+        return Err(msg);
+    }
 
     proc_guard.protocol = config.protocol;
     proc_guard.ingest_url = config.ingest_url;
@@ -1152,7 +1195,7 @@ mod tests {
             assert!(with_device.windows(2).any(|w| w == ["-f", "lavfi"]));
         }
 
-        // Named device with spaces, hyphens, and underscores is accepted.
+        // Named device with spaces, hyphens, and underscores is normalized to `:name` audio-only.
         let named = build_twitch_ffmpeg_args(
             "rtmps://live.twitch.tv/app",
             &secret,
@@ -1168,13 +1211,23 @@ mod tests {
             assert!(
                 named
                     .windows(2)
-                    .any(|w| w == ["-i", "BlackHole 2ch_main-1"])
+                    .any(|w| w == ["-i", ":BlackHole 2ch_main-1"])
             );
         }
 
-        // Unsafe device strings are rejected cleanly without leaking secrets.
+        // Unsafe device strings (including `0:1` video+audio prefix) are rejected cleanly.
         let too_long = "a".repeat(MAX_AUDIO_DEVICE_LEN + 1);
-        for unsafe_dev in ["-f", "-i", "--evil", ":0;rm -rf /", "dev|pipe", &too_long] {
+        for unsafe_dev in [
+            "-f",
+            "-i",
+            "--evil",
+            "0:1",
+            ":0:1",
+            ":",
+            ":0;rm -rf /",
+            "dev|pipe",
+            &too_long,
+        ] {
             let err = build_twitch_ffmpeg_args(
                 "rtmps://live.twitch.tv/app",
                 &secret,
