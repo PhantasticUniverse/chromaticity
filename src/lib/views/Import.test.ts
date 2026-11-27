@@ -13,7 +13,7 @@
 // `feedback_vitest_svelte_cleanup_required.md` convention.
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import Import from './Import.svelte';
@@ -144,5 +144,43 @@ describe('Import view', () => {
     const { getByRole } = render(Import);
     const clearBtn = getByRole('button', { name: 'clear' });
     expect(clearBtn).toBeDisabled();
+  });
+
+  it('Shadertoy import invokes the IPC bridge, logs console output, and prepends a recent import', async () => {
+    const { container, getByRole, getByText } = render(Import);
+    const shadertoyInput = getByRole('textbox', {
+      name: 'Shadertoy.com source',
+    }) as HTMLInputElement;
+    await fireEvent.input(shadertoyInput, {
+      target: { value: 'https://www.shadertoy.com/view/Xds3zN' },
+    });
+
+    const shadertoyCard = getByRole('article', { name: /Shadertoy\.com converter/ });
+    const importBtn = shadertoyCard.querySelector(
+      'button.import__btn--primary',
+    ) as HTMLButtonElement;
+    await fireEvent.click(importBtn);
+
+    await waitFor(() => {
+      expect(getByText('Xds3zN')).toBeInTheDocument();
+    });
+    expect(container.querySelectorAll('.import__console-line').length).toBeGreaterThan(
+      IMPORT_CONSOLE.length,
+    );
+    expect(getByRole('button', { name: 'clear' })).not.toBeDisabled();
+  });
+
+  it('dropping an ISF file on the ISF card logs the V1 ISF_V2_DEFERRED diagnostic', async () => {
+    const { getByRole, getByText } = render(Import);
+    const isfCard = getByRole('article', { name: /Interactive Shader Format \(ISF\) converter/ });
+    await fireEvent.drop(isfCard, {
+      dataTransfer: {
+        getData: () => '/*{"DESCRIPTION":"test"}*/ void main() {}',
+      },
+    });
+
+    await waitFor(() => {
+      expect(getByText(/ISF_V2_DEFERRED/)).toBeInTheDocument();
+    });
   });
 });

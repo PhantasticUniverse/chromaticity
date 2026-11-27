@@ -64,9 +64,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     PREVIEW_LABEL,
     PREVIEW_SEED,
     RECENT_IMPORTS,
+    type ImportConsoleEntry,
+    type ImportConsoleLevel,
     type ImportConverter,
+    type RecentImport,
   } from '../data/import-fixtures';
   import Icon from '../Icon.svelte';
+  import { checkIsfImport, importShadertoySource } from '../ipc/import';
 
   // Per-card input state. Map keyed on converter id so the state
   // persists when the operator switches cards. Defaults are empty
@@ -74,6 +78,107 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   let cardInputs = $state<Record<string, string>>(
     Object.fromEntries(IMPORT_CONVERTERS.map((c) => [c.id, ''])),
   );
+  let recentImports = $state<readonly RecentImport[]>([...RECENT_IMPORTS]);
+  let consoleEntries = $state<readonly ImportConsoleEntry[]>([...IMPORT_CONSOLE]);
+  let hasLiveConsoleEntries = $state<boolean>(false);
+  let busyConverterId = $state<string | null>(null);
+  let logSeq = 0;
+
+  function appendConsole(level: ImportConsoleLevel, tag: string, message: string): void {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    consoleEntries = [
+      ...consoleEntries,
+      {
+        id: `live-${++logSeq}`,
+        time: `${hh}:${mm}`,
+        level,
+        tag,
+        message,
+      },
+    ];
+    hasLiveConsoleEntries = true;
+  }
+
+  function clearConsole(): void {
+    consoleEntries = [...IMPORT_CONSOLE];
+    hasLiveConsoleEntries = false;
+  }
+
+  async function runIsfDiagnostic(source: string): Promise<void> {
+    const diag = await checkIsfImport(source);
+    appendConsole('warn', 'isf', `${diag.code}: ${diag.message}`);
+    appendConsole('info', 'isf', diag.escapeHatch);
+  }
+
+  async function handleConverterAction(
+    converter: ImportConverter,
+    mode: 'preview' | 'import',
+  ): Promise<void> {
+    if (isDisabled(converter)) return;
+    const raw = (cardInputs[converter.id] ?? '').trim();
+    busyConverterId = converter.id;
+    try {
+      if (converter.id === 'shadertoy') {
+        if (raw.includes('/*{') || raw.toLowerCase().endsWith('.fs')) {
+          await runIsfDiagnostic(raw);
+          return;
+        }
+        appendConsole('info', 'fetch', raw || '(empty shadertoy source)');
+        const result = await importShadertoySource(raw);
+        if (!result.ok) {
+          for (const warning of result.warnings) {
+            appendConsole('warn', 'warn', warning);
+          }
+          return;
+        }
+        const uniformSummary =
+          result.remappedUniforms.length > 0 ? ` (${result.remappedUniforms.join(', ')})` : '';
+        appendConsole(
+          'ok',
+          mode === 'preview' ? 'preview' : 'compile',
+          `shadertoy → ${result.title}${uniformSummary}`,
+        );
+        for (const warning of result.warnings) {
+          appendConsole('warn', 'warn', warning);
+        }
+        if (mode === 'import') {
+          recentImports = [
+            {
+              id: `${result.sceneId}-${++logSeq}`,
+              title: result.title,
+              activity:
+                result.source === 'tauri'
+                  ? 'Shadertoy → imported (.chroma)'
+                  : 'Shadertoy → preview import',
+              kind: 'plasma',
+              seed: (recentImports.length + 7) * 3,
+            },
+            ...recentImports,
+          ];
+        }
+        return;
+      }
+
+      appendConsole('info', mode, `${converter.title}: ${raw || 'no source path provided'}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      appendConsole('err', 'error', msg);
+    } finally {
+      busyConverterId = null;
+    }
+  }
+
+  function handleCardDrop(converter: ImportConverter, event: DragEvent): void {
+    if (converter.id !== 'isf') return;
+    event.preventDefault();
+    const droppedText =
+      event.dataTransfer?.getData('text/plain') ||
+      event.dataTransfer?.files?.[0]?.name ||
+      'dropped.fs';
+    void runIsfDiagnostic(droppedText);
+  }
 
   function updateCardInput(id: string, value: string): void {
     cardInputs = { ...cardInputs, [id]: value };
@@ -105,6 +210,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           class="import__card"
           class:import__card--disabled={isDisabled(converter)}
           aria-label="{converter.title} converter"
+          ondragover={(event) => {
+            if (converter.id === 'isf') event.preventDefault();
+          }}
+          ondrop={(event) => handleCardDrop(converter, event)}
         >
           <header class="import__card-head">
             <h3 class="import__card-title">{converter.title}</h3>
@@ -138,20 +247,22 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             <button
               type="button"
               class="import__btn"
-              disabled={isDisabled(converter)}
+              disabled={isDisabled(converter) || busyConverterId === converter.id}
+              onclick={() => void handleConverterAction(converter, 'preview')}
               title={isDisabled(converter)
                 ? 'V2 deferred — preview unavailable'
-                : 'Preview — wired post-Phase-1 when the converter lands'}
+                : `Preview ${converter.title} conversion`}
             >
               Preview
             </button>
             <button
               type="button"
               class="import__btn import__btn--primary"
-              disabled={isDisabled(converter)}
+              disabled={isDisabled(converter) || busyConverterId === converter.id}
+              onclick={() => void handleConverterAction(converter, 'import')}
               title={isDisabled(converter)
                 ? 'V2 deferred — import unavailable'
-                : 'Import — wired post-Phase-1 when the converter lands'}
+                : `Import ${converter.title} source`}
             >
               Import
             </button>
@@ -180,7 +291,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <h3 class="import__panel-title">Recent Imports</h3>
       </header>
       <ul class="import__recent">
-        {#each RECENT_IMPORTS as row (row.id)}
+        {#each recentImports as row (row.id)}
           <li class="import__recent-row">
             <span
               class="import__recent-thumb"
@@ -214,14 +325,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <button
           type="button"
           class="import__btn import__btn--ghost"
-          title="Clear console — visual stub"
-          disabled
+          title={hasLiveConsoleEntries
+            ? 'Clear live console entries'
+            : 'Clear console — visual stub'}
+          disabled={!hasLiveConsoleEntries}
+          onclick={clearConsole}
         >
           clear
         </button>
       </header>
       <ol class="import__console" aria-live="off">
-        {#each IMPORT_CONSOLE as entry (entry.id)}
+        {#each consoleEntries as entry (entry.id)}
           <li class="import__console-line mono">
             <span class="import__console-time">{entry.time}</span>
             <span class="import__console-tag" data-level={entry.level}>{entry.tag}</span>

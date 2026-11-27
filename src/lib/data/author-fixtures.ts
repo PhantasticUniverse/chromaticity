@@ -163,25 +163,25 @@ export interface AuthorConsoleRow {
   readonly message: string;
 }
 
-/** Verbatim from the bundle's hard-coded console rows. */
+/** Sample authoring console rows (clean-room `.chroma` packages). */
 export const AUTHOR_CONSOLE_ROWS: readonly AuthorConsoleRow[] = [
   {
     time: '13:27:02',
     level: 'info',
     tag: 'load',
-    message: 'No scene.json file found in lygia_digitizer_demo.synScene',
+    message: 'No scene.json file found in lygia_digitizer_demo.chroma',
   },
   {
     time: '13:27:02',
     level: 'info',
     tag: 'load',
-    message: 'No scene.json file found in simple_tygia_scene.synScene',
+    message: 'No scene.json file found in simple_lygia_scene.chroma',
   },
   {
     time: '13:27:02',
     level: 'info',
     tag: 'load',
-    message: 'No scene.json file found in spectrozonal.synScene',
+    message: 'No scene.json file found in spectrozonal.chroma',
   },
   {
     time: '13:28:00',

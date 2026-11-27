@@ -160,7 +160,7 @@ export const CONSOLE_FIXTURES: readonly ConsoleEntry[] = [
     time: '13:27:11',
     severity: 'scan',
     source: 'scene-import',
-    message: 'No scene.json file found in lygia_digitizer_demo.synScene',
+    message: 'No scene.json file found in lygia_digitizer_demo.chroma',
   },
   {
     id: 'import-fetch-1',

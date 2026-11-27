@@ -45,6 +45,9 @@ import {
   RELATIVE_ENCODER_MODES,
 } from '../data/midi-fixtures';
 import type { MidiDevicePayload } from '../ipc/bindings/MidiDevicePayload';
+import type { MidiLearnEventPayload } from '../ipc/bindings/MidiLearnEventPayload';
+import { midiBindingsStore } from '../stores/midiBindings.svelte';
+import { midiLearnStore } from '../stores/midiLearn.svelte';
 import { midiStore } from '../stores/midiStore.svelte';
 
 // Mirror the W18 fixture device-name set onto the live IPC wire shape so
@@ -92,6 +95,8 @@ describe('MIDI view', () => {
     // test) re-seed the mock before render.
     invokeMock.mockResolvedValue([...LIVE_DEVICES_FIXTURE]);
     midiStore.reset();
+    midiBindingsStore.reset();
+    midiLearnStore.machine = { kind: 'idle', lastCaptured: null, error: null };
   });
 
   afterEach(() => {
@@ -99,6 +104,8 @@ describe('MIDI view', () => {
     vi.restoreAllMocks();
     cleanup();
     midiStore.reset();
+    midiBindingsStore.reset();
+    midiLearnStore.machine = { kind: 'idle', lastCaptured: null, error: null };
   });
 
   it('renders the section landmark, all 7 tabs, and defaults to the global tab', () => {
@@ -904,5 +911,84 @@ describe('MIDI view', () => {
       `[data-cap="${MIDI_CAPABILITY.learn}"][aria-label^="Learn from "]`,
     );
     expect(learnButtons.length).toBe(LIVE_DEVICES_FIXTURE.length);
+  });
+
+  it('G6.2 — binds a captured MIDI CC message to a typed target and dispatches set_control', async () => {
+    const sampleCc: MidiLearnEventPayload = {
+      port_id: 'input-0',
+      raw_bytes: [0xb0, 74, 64],
+      channel: 1,
+      kind: 'ControlChange',
+      note_or_cc: 74,
+      velocity_or_value: 64,
+    };
+
+    const { container, getByLabelText, getByRole } = render(MIDI);
+    await waitFor(() => {
+      expect(midiStore.devices.length).toBe(LIVE_DEVICES_FIXTURE.length);
+    });
+
+    await fireEvent.click(getByRole('button', { name: /Click to map/ }));
+    const targetInput = getByLabelText('Binding target control') as HTMLInputElement;
+    await fireEvent.input(targetInput, { target: { value: 'scene.warp_amount' } });
+
+    midiLearnStore.machine = { kind: 'captured', portId: 'input-0', payload: sampleCc };
+    invokeMock.mockClear();
+
+    await fireEvent.click(getByRole('button', { name: 'Bind' }));
+
+    expect(midiBindingsStore.bindings).toHaveLength(1);
+    expect(midiBindingsStore.bindings[0]?.target).toBe('scene.warp_amount');
+    expect(container.querySelectorAll('.midi__active-row').length).toBe(1);
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'set_control',
+        expect.objectContaining({
+          value: expect.closeTo(64 / 127, 4),
+        }),
+      );
+    });
+  });
+
+  it('G6.2 — test dispatch, unbind, and clear-all operate on active bindings', async () => {
+    const cc1: MidiLearnEventPayload = {
+      port_id: 'input-0',
+      raw_bytes: [0xb0, 21, 127],
+      channel: 1,
+      kind: 'ControlChange',
+      note_or_cc: 21,
+      velocity_or_value: 127,
+    };
+    const cc2: MidiLearnEventPayload = {
+      port_id: 'input-0',
+      raw_bytes: [0xb0, 22, 64],
+      channel: 1,
+      kind: 'ControlChange',
+      note_or_cc: 22,
+      velocity_or_value: 64,
+    };
+    midiBindingsStore.bind('meta.hue', cc1);
+    midiBindingsStore.bind('meta.contrast', cc2);
+
+    const { container, getByRole } = render(MIDI);
+    expect(container.querySelectorAll('.midi__active-row').length).toBe(2);
+
+    invokeMock.mockClear();
+    await fireEvent.click(getByRole('button', { name: 'Test dispatch meta.hue' }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('set_control', expect.objectContaining({ value: 1 }));
+    });
+    expect(container.querySelector('[data-midi-last-dispatched]')?.textContent).toContain(
+      'meta.hue → 1.00',
+    );
+
+    await fireEvent.click(getByRole('button', { name: 'Unbind meta.hue' }));
+    expect(midiBindingsStore.bindings).toHaveLength(1);
+    expect(container.querySelectorAll('.midi__active-row').length).toBe(1);
+
+    await fireEvent.click(getByRole('button', { name: 'Clear all active MIDI bindings' }));
+    expect(midiBindingsStore.bindings).toHaveLength(0);
+    expect(container.querySelectorAll('.midi__active-row').length).toBe(0);
   });
 });

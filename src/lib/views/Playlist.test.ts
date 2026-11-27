@@ -13,13 +13,19 @@
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import Playlist from './Playlist.svelte';
+import { PLAYLIST_CUES_STORAGE_KEY, playlistStore } from '../stores/playlist.svelte';
 
 describe('Playlist view (W35 inspector edit-mode)', () => {
+  beforeEach(() => {
+    playlistStore.reset();
+  });
+
   afterEach(() => {
     cleanup();
+    playlistStore.reset();
   });
 
   it('renders the playlist sidebar with the five fixture entries', () => {
@@ -122,5 +128,47 @@ describe('Playlist view (W35 inspector edit-mode)', () => {
     // inspector form unmounts (no `selectedCue`).
     expect(queryByLabelText('Cue label')).toBeNull();
     expect(getByText(/select a cue to inspect/)).toBeInTheDocument();
+  });
+
+  it('G6.5 — Play/Pause toggle updates playlistStore playback state', async () => {
+    const { getByRole } = render(Playlist);
+    const playBtn = getByRole('button', { name: 'Play' });
+    expect(playBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(playlistStore.playback).toBe('stopped');
+
+    await fireEvent.click(playBtn);
+    expect(playlistStore.playback).toBe('playing');
+    const pauseBtn = getByRole('button', { name: 'Pause' });
+    expect(pauseBtn).toHaveAttribute('aria-pressed', 'true');
+
+    await fireEvent.click(pauseBtn);
+    expect(playlistStore.playback).toBe('stopped');
+  });
+
+  it('G6.5 — Shuffle switches to a different cue in the active playlist', async () => {
+    const { getByLabelText, getByRole } = render(Playlist);
+    expect((getByLabelText('Cue label') as HTMLInputElement).value).toBe('First Drop');
+
+    await fireEvent.click(getByRole('button', { name: 'Shuffle' }));
+    expect((getByLabelText('Cue label') as HTMLInputElement).value).not.toBe('First Drop');
+  });
+
+  it('G6.5 — Save commits cue edits to playlistStore and persists to localStorage', async () => {
+    const { container, getByLabelText, getByRole } = render(Playlist);
+    const labelInput = getByLabelText('Cue label') as HTMLInputElement;
+    await fireEvent.input(labelInput, { target: { value: 'First Drop · Live' } });
+    await fireEvent.click(getByRole('button', { name: 'Save' }));
+
+    const rows = container.querySelectorAll('.playlist-view__cue-table tbody tr');
+    expect(rows[2]?.textContent).toContain('First Drop · Live');
+    expect(localStorage.getItem(PLAYLIST_CUES_STORAGE_KEY)).toContain('First Drop · Live');
+  });
+
+  it('G6.5 — Delete removes the selected cue from playlistStore and updates table count', async () => {
+    const { container, getByRole } = render(Playlist);
+    expect(container.querySelectorAll('.playlist-view__cue-table tbody tr').length).toBe(10);
+
+    await fireEvent.click(getByRole('button', { name: 'Delete' }));
+    expect(container.querySelectorAll('.playlist-view__cue-table tbody tr').length).toBe(9);
   });
 });

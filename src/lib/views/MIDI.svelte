@@ -93,6 +93,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     type MidiTabId,
   } from '../data/midi-fixtures';
   import Icon from '../Icon.svelte';
+  import { setControl } from '../ipc';
+  import type { ControlId } from '../ipc/bindings';
+  import { loadedSceneStore } from '../stores/loadedScene.svelte';
+  import { midiBindingsStore, type MidiControlBinding } from '../stores/midiBindings.svelte';
   import { midiLearnStore } from '../stores/midiLearn.svelte';
   import { midiStore } from '../stores/midiStore.svelte';
   import { CuePad, type CuePadCell } from '../widgets';
@@ -221,8 +225,60 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     void midiLearnStore.stop();
   }
 
+  let lastDispatched = $state<string | null>(null);
+
+  const DEFAULT_CONTROL_TARGETS: readonly string[] = [
+    'meta.hue',
+    'meta.brightness',
+    'meta.contrast',
+    'scene.warp_amount',
+    'scene.speed',
+  ];
+
+  const availableTargets = $derived.by<readonly string[]>(() => {
+    const sceneTargets = loadedSceneStore.snapshot?.controls.map((c) => c.name) ?? [];
+    return Array.from(new Set([...sceneTargets, ...DEFAULT_CONTROL_TARGETS]));
+  });
+
+  function resolveControlId(target: string): ControlId {
+    const controls = loadedSceneStore.snapshot?.controls ?? [];
+    const idx = controls.findIndex((c) => c.name === target);
+    if (idx >= 0) return idx;
+    const numeric = /(\d+)$/.exec(target.trim());
+    if (numeric?.[1]) {
+      const parsed = Number.parseInt(numeric[1], 10);
+      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+    }
+    let hash = 2166136261;
+    for (let i = 0; i < target.length; i += 1) {
+      hash ^= target.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return ((hash >>> 0) % 65535) + 1;
+  }
+
+  async function dispatchBindingControl(
+    binding: MidiControlBinding,
+    ccValue?: number,
+  ): Promise<void> {
+    const raw = ccValue ?? binding.event.velocity_or_value ?? 127;
+    const normalized = Math.max(0, Math.min(1, raw / 127));
+    const controlId = resolveControlId(binding.target);
+    try {
+      await setControl(controlId, normalized);
+    } catch {
+      // Outside Tauri or unmocked IPC: swallow so browser preview stays resilient.
+    }
+    lastDispatched = `${binding.target} → ${normalized.toFixed(2)}`;
+  }
+
   function confirmCapture(): void {
-    midiLearnStore.confirm();
+    const captured = midiLearnStore.confirm();
+    const target = learnTarget.trim();
+    if (captured && target.length > 0) {
+      const binding = midiBindingsStore.bind(target, captured);
+      void dispatchBindingControl(binding);
+    }
     learning = false;
     void midiLearnStore.stop();
   }
@@ -990,8 +1046,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           {/if}
 
           <div class="midi__learn-row">
-            <span class="midi__caps">target</span>
-            <span class="midi__learn-target mono">{learnTarget}</span>
+            <label class="midi__caps" for="midi-learn-target-input">target</label>
+            <input
+              id="midi-learn-target-input"
+              type="text"
+              class="midi__input midi__input--target"
+              aria-label="Binding target control"
+              list="midi-control-targets"
+              bind:value={learnTarget}
+            />
+            <datalist id="midi-control-targets">
+              {#each availableTargets as targetOption (targetOption)}
+                <option value={targetOption}></option>
+              {/each}
+            </datalist>
           </div>
 
           <div class="midi__learn-grid">
@@ -1090,6 +1158,74 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         </div>
       </article>
     {/if}
+
+    <!-- Active learned MIDI bindings (G6.2) -->
+    <article class="midi__panel midi__panel--bindings" aria-label="Active MIDI bindings">
+      <header class="midi__panel-head">
+        <h2 class="midi__panel-title">Active Bindings</h2>
+        <span class="midi__panel-sub mono">{midiBindingsStore.bindings.length} bound</span>
+        <span class="midi__toolbar-spacer" aria-hidden="true"></span>
+        <button
+          type="button"
+          class="midi__btn midi__btn--danger"
+          aria-label="Clear all active MIDI bindings"
+          disabled={midiBindingsStore.bindings.length === 0}
+          onclick={() => {
+            midiBindingsStore.reset();
+            lastDispatched = null;
+          }}
+        >
+          Clear all
+        </button>
+      </header>
+      <div class="midi__panel-body">
+        {#if midiBindingsStore.bindings.length === 0}
+          <p class="midi__panel-prose mono">
+            No active bindings yet — capture a MIDI input in Learn Mode to bind a control.
+          </p>
+        {:else}
+          <ul class="midi__active-list">
+            {#each midiBindingsStore.bindings as binding (binding.id)}
+              <li class="midi__active-row" data-binding-id={binding.id}>
+                <span class="midi__active-info">
+                  <span class="midi__active-target mono">{binding.target}</span>
+                  <span class="midi__active-source mono">
+                    {binding.event.port_id} · CH {binding.event.channel ?? '—'} ·
+                    {captureKindLabel(binding.event.kind)}
+                    {#if binding.event.note_or_cc !== null && binding.event.note_or_cc !== undefined}
+                      #{binding.event.note_or_cc}
+                    {/if}
+                  </span>
+                </span>
+                <span class="midi__active-actions">
+                  <button
+                    type="button"
+                    class="midi__btn"
+                    aria-label="Test dispatch {binding.target}"
+                    onclick={() => void dispatchBindingControl(binding)}
+                  >
+                    Test
+                  </button>
+                  <button
+                    type="button"
+                    class="midi__btn midi__btn--icon midi__btn--danger"
+                    aria-label="Unbind {binding.target}"
+                    onclick={() => midiBindingsStore.unbind(binding.id)}
+                  >
+                    <Icon name="x" size={10} />
+                  </button>
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastDispatched}
+          <p class="midi__panel-prose mono" data-midi-last-dispatched>
+            Last dispatch: {lastDispatched}
+          </p>
+        {/if}
+      </div>
+    </article>
 
     <!-- M-10 BPM Sync Source -->
     <article class="midi__panel">
@@ -2050,10 +2186,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     flex-direction: column;
     gap: var(--space-xs);
   }
-  .midi__learn-target {
-    font-size: var(--font-size-display-sm);
-    color: var(--color-primary);
-  }
   .midi__learn-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -2243,6 +2375,54 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .midi__mtc-uniform {
     color: var(--color-info);
+  }
+
+  /* ---------------- Active bindings panel (G6.2) ------------------- */
+  .midi__input--target {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  .midi__active-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+  .midi__active-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-1);
+    border-radius: var(--radius-xs);
+  }
+  .midi__active-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .midi__active-target {
+    color: var(--color-text-0);
+    font-size: var(--font-size-mono-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .midi__active-source {
+    color: var(--color-text-3);
+    font-size: var(--font-size-caps-sm);
+  }
+  .midi__active-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    flex-shrink: 0;
   }
 
   /* ---------------- Shared utility -------------------------------- */

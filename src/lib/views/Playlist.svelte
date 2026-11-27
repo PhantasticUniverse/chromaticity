@@ -43,7 +43,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { EMPTY_PLAYLIST_CUES } from '../data/empty-states';
   import {
     PLAYLISTS,
-    FESTIVAL_SET_CUES,
     SCENE_OPTIONS,
     CONTROL_PRESET_OPTIONS,
     CUE_TRIGGER_OPTIONS,
@@ -53,6 +52,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/playlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import Icon from '../Icon.svelte';
+  import { playlistStore } from '../stores/playlist.svelte';
   import { CueTransitionCurve, SceneStill } from '../widgets';
   import type { CueKind } from '../widgets/cue-transition-curve.math';
   import {
@@ -86,9 +86,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     { id: 'beat-snap', label: 'Beat Snap' },
   ];
 
-  const currentCues = $derived<readonly CueFixture[]>(
-    selectedPlaylistId === 'festival-set-dusk' ? FESTIVAL_SET_CUES : [],
-  );
+  const currentCues = $derived<readonly CueFixture[]>(playlistStore.cuesFor(selectedPlaylistId));
 
   const selectedCue = $derived<CueFixture | undefined>(
     currentCues.find((c) => c.index === selectedCueIndex),
@@ -97,6 +95,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const activePlaylistName = $derived<string>(
     PLAYLISTS.find((p) => p.id === selectedPlaylistId)?.name ?? '',
   );
+
+  const isPlaying = $derived<boolean>(playlistStore.playback === 'playing');
 
   // W35: keep `cueDraft` synced to the current selection. The effect reads
   // `selectedCue` (and therefore re-runs when its identity changes) and
@@ -122,11 +122,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   function selectPlaylist(id: string): void {
     selectedPlaylistId = id;
-    // Reset to the wireframe-canonical cue default when switching back to
-    // the populated playlist; otherwise leave the index as-is (the empty
-    // playlists render the EmptyState placeholder, not the inspector).
-    if (id === 'festival-set-dusk') {
+    const nextCues = playlistStore.cuesFor(id);
+    if (id === 'festival-set-dusk' && nextCues.some((c) => c.index === 3)) {
       selectedCueIndex = 3;
+    } else if (nextCues[0]) {
+      selectedCueIndex = nextCues[0].index;
     }
   }
 
@@ -134,21 +134,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     selectedCueIndex = index;
   }
 
+  function togglePlayback(): void {
+    playlistStore.togglePlayback();
+  }
+
+  function handleShuffle(): void {
+    if (currentCues.length < 2) return;
+    void playlistStore.shuffle(currentCues.length);
+    const candidates = currentCues.filter((c) => c.index !== selectedCueIndex);
+    const pick = candidates[Math.floor(Math.random() * candidates.length)] ?? candidates[0];
+    if (pick) {
+      selectedCueIndex = pick.index;
+    }
+  }
+
   function commitDraft(): void {
-    // W35 read-mostly: Save is inert at this slice. Phase-3
-    // EV-PRESET-PLAYLIST persistence will wire IPC + dispatch a cue
-    // mutation command. Until then, the form's submit handler exists
-    // for keyboard accessibility (Enter inside any input) but performs
-    // no propagation. The local draft is preserved until the next cue
-    // selection swap.
+    if (!selectedCue || !cueDraft) return;
+    playlistStore.saveCue(selectedPlaylistId, selectedCue.index, {
+      name: cueDraft.label,
+      scene: cueDraft.scene,
+      duration: cueDraft.duration,
+      crossfade: cueDraft.crossfade,
+      transition: cueDraft.transition,
+      controlPreset: cueDraft.controlPreset,
+      trigger: cueDraft.trigger,
+    });
   }
 
   function deleteDraft(): void {
-    // Same posture as `commitDraft` — inert at W35; Phase-3 wires
-    // removal. Reading `selectedCueIndex` keeps the function signature
-    // consumer-compatible with a future variant that will dispatch a
-    // delete command keyed on the active cue index.
-    void selectedCueIndex;
+    if (!selectedCue) return;
+    const removedIndex = selectedCue.index;
+    const remaining = currentCues.filter((c) => c.index !== removedIndex);
+    playlistStore.deleteCue(selectedPlaylistId, removedIndex);
+    selectedCueIndex = remaining[0]?.index ?? -1;
   }
 
   // Map the inspector-side 4-way `CueTransitionKind` onto the
@@ -192,9 +210,29 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <main class="playlist-view__cues">
     <header class="playlist-view__cues-header">
       <h2>{activePlaylistName}</h2>
-      <span class="playlist-view__cues-count">
-        {currentCues.length} cue{currentCues.length === 1 ? '' : 's'}
-      </span>
+      <div class="playlist-view__transport" role="group" aria-label="Playlist playback controls">
+        <button
+          type="button"
+          class="playlist-view__transport-btn"
+          class:active={isPlaying}
+          aria-pressed={isPlaying}
+          onclick={togglePlayback}
+          disabled={currentCues.length === 0}
+        >
+          {isPlaying ? 'Pause' : 'Play'}
+        </button>
+        <button
+          type="button"
+          class="playlist-view__transport-btn"
+          onclick={handleShuffle}
+          disabled={currentCues.length < 2}
+        >
+          Shuffle
+        </button>
+        <span class="playlist-view__cues-count">
+          {currentCues.length} cue{currentCues.length === 1 ? '' : 's'}
+        </span>
+      </div>
     </header>
 
     {#if currentCues.length === 0}
@@ -506,9 +544,39 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .playlist-view__cues-header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: var(--space-sm);
+  }
+  .playlist-view__transport {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+  .playlist-view__transport-btn {
+    background: var(--color-bg-3);
+    color: var(--color-text-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    padding: 2px var(--space-sm);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    cursor: pointer;
+  }
+  .playlist-view__transport-btn:hover:not(:disabled) {
+    background: var(--color-bg-4);
+    color: var(--color-text-0);
+  }
+  .playlist-view__transport-btn.active {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    border-color: var(--color-primary);
+  }
+  .playlist-view__transport-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .playlist-view__cues-header h2 {
     margin: 0;
