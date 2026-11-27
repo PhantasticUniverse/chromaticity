@@ -44,4 +44,21 @@ describe('bpmControlStore', () => {
     expect(bpmControlStore.tap(2000)).toBe(120);
     expect(bpmControlStore.mode).toBe('manual');
   });
+
+  it('supports off mode returning 0 BPM and 0 beat position', () => {
+    bpmControlStore.setPhaseOffset(0.25);
+    bpmControlStore.setOff();
+
+    expect(bpmControlStore.mode).toBe('off');
+    expect(bpmControlStore.isOff).toBe(true);
+    expect(bpmControlStore.isListening).toBe(false);
+    expect(bpmControlStore.manualBpm).toBeNull();
+    expect(bpmControlStore.effectiveBpm(128)).toBe(0);
+    expect(bpmControlStore.beatPosition(5000, 128)).toBe(0);
+
+    bpmControlStore.setAuto();
+    expect(bpmControlStore.isOff).toBe(false);
+    expect(bpmControlStore.isListening).toBe(true);
+    expect(bpmControlStore.effectiveBpm(128)).toBe(128);
+  });
 });

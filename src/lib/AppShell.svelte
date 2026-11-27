@@ -338,7 +338,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .app-shell__topbar {
     grid-area: topbar;
-    overflow: hidden;
+    overflow: visible;
+    position: relative;
+    z-index: 40;
   }
   .app-shell__rail {
     grid-area: rail;

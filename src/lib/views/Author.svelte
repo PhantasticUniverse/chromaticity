@@ -1741,6 +1741,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   .au-author__input {
     width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     background: var(--color-bg-1);
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-sm);

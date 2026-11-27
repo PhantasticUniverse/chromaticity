@@ -605,5 +605,29 @@ describe('TopBar shell component', () => {
       expect(scrub.value).toBe('0');
       expect(getByTestId('bpm-phase-display').textContent?.trim()).toBe('0.00 beats');
     });
+
+    it('switches to OFF mode showing BPM OFF badge and pausing BeatDots', async () => {
+      const { getByTestId } = render(TopBar);
+      await fireEvent.click(getByTestId('top-bar-bpm'));
+
+      const offBtn = getByTestId('bpm-mode-off');
+      await fireEvent.click(offBtn);
+      await Promise.resolve();
+
+      expect(bpmControlStore.isOff).toBe(true);
+      expect(offBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(getByTestId('bpm-mode-auto').getAttribute('aria-pressed')).toBe('false');
+      expect(getByTestId('bpm-mode-lock').getAttribute('aria-pressed')).toBe('false');
+      expect(getByTestId('top-bar-bpm-mode').textContent?.trim()).toBe('OFF');
+      expect(getByTestId('top-bar-bpm').textContent?.replace(/\s+/g, ' ').trim()).toBe('BPM OFF');
+      const dots = getByTestId('top-bar-beat-dots').querySelector('[role="img"]');
+      expect(dots?.getAttribute('aria-label')).toBe('Beat tracking off');
+
+      // Switching back to Auto Listen restores live numeric BPM display.
+      await fireEvent.click(getByTestId('bpm-mode-auto'));
+      await Promise.resolve();
+      expect(bpmControlStore.isListening).toBe(true);
+      expect(getByTestId('top-bar-bpm-mode').textContent?.trim()).toBe('AUTO');
+    });
   });
 });

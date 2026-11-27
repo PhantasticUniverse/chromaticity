@@ -300,10 +300,12 @@ const rings: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
   ctx.globalCompositeOperation = 'screen';
   for (let i = 0; i < 14; i++) {
     const ringWarp = Math.sin(i * 0.9 + seed + t * 0.7) * warp * Math.min(w, h) * 0.035;
-    const r =
+    const r = Math.max(
+      0.5,
       (Math.sin(t * 0.5 + i * 0.4 + seed) * 0.5 + 0.5) * Math.min(w, h) * 0.45 +
-      i * (6 + warp * 3) +
-      ringWarp;
+        i * (6 + warp * 3) +
+        ringWarp,
+    );
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.strokeStyle = `hsla(${(t * 70 + i * 30 + seed * 90) % 360},95%,70%,${0.35 - i * 0.02})`;
@@ -551,7 +553,10 @@ const tunnel: SceneRenderer = (ctx, t, seed, w, h, lvl, ...rest) => {
     ctx.stroke();
   }
   for (let r = 20; r < Math.max(w, h); r += 40) {
-    const rr = r + ((t * (45 + warp * 55)) % 40) + Math.sin(r * 0.035 + t * 1.5 + seed) * warp * 18;
+    const rr = Math.max(
+      0.5,
+      r + ((t * (45 + warp * 55)) % 40) + Math.sin(r * 0.035 + t * 1.5 + seed) * warp * 18,
+    );
     ctx.beginPath();
     ctx.arc(0, 0, rr, 0, Math.PI * 2);
     ctx.strokeStyle = `hsla(${(t * 50 + r + seed * 40) % 360} 90% 70% / ${0.4 + lvl * 0.3})`;

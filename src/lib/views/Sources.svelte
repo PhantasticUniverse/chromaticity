@@ -815,7 +815,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: flex;
     flex-direction: column;
     min-width: 0;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
   .sources__grid-header {
     display: flex;
@@ -824,6 +825,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     padding: var(--space-sm) var(--space-md);
     border-bottom: 1px solid var(--color-line-1);
     flex-wrap: wrap;
+    flex-shrink: 0;
   }
   .sources__grid-title {
     margin: 0;
@@ -919,9 +921,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: var(--space-md);
     padding: var(--space-md);
-    overflow: auto;
-    min-height: 0;
-    flex: 1;
+    flex: 0 0 auto;
   }
   .sources__asset-cell {
     display: contents;

@@ -49,8 +49,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   });
 
   const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
+  const isOff = $derived(bpm <= 0);
   const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
-  const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
+  const liveBpm = $derived(isOff ? 0 : liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
 
   let now = $state(0);
   let reduceMotion = $state(false);
@@ -67,7 +68,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   });
 
   $effect(() => {
-    if (reduceMotion) {
+    if (reduceMotion || isOff) {
       now = 0;
       return;
     }
@@ -81,17 +82,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     return () => cancelAnimationFrame(raf);
   });
 
-  const cur = $derived(Math.floor(((now * liveBpm) / 60) % 4));
+  const cur = $derived(isOff ? -1 : Math.floor(((now * liveBpm) / 60) % 4));
 
   const DOTS: ReadonlyArray<number> = [0, 1, 2, 3];
 </script>
 
 <div
   class="beat-dots"
+  class:beat-dots--off={isOff}
   role="img"
-  aria-label={liveSnapshot !== null && !bpmReady
-    ? `Beat ${cur + 1} of 4, BPM warming`
-    : `Beat ${cur + 1} of 4 at ${liveBpm} BPM`}
+  aria-label={isOff
+    ? 'Beat tracking off'
+    : liveSnapshot !== null && !bpmReady
+      ? `Beat ${cur + 1} of 4, BPM warming`
+      : `Beat ${cur + 1} of 4 at ${liveBpm} BPM`}
 >
   {#each DOTS as i (i)}
     <span
@@ -108,6 +112,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+  .beat-dots--off {
+    opacity: 0.45;
   }
   .beat-dots__dot {
     width: 10px;

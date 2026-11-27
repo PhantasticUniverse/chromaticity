@@ -19,7 +19,8 @@ import { registerStateMachine } from '../state/diagnostics';
 
 export type BpmControlMachine =
   | { readonly kind: 'auto' }
-  | { readonly kind: 'manual'; readonly bpm: number };
+  | { readonly kind: 'manual'; readonly bpm: number }
+  | { readonly kind: 'off' };
 
 const MIN_BPM = 40;
 const MAX_BPM = 240;
@@ -55,12 +56,16 @@ class BpmControlStore {
     );
   }
 
-  get mode(): 'auto' | 'manual' {
+  get mode(): 'auto' | 'manual' | 'off' {
     return this.machine.kind;
   }
 
   get isListening(): boolean {
     return this.machine.kind === 'auto';
+  }
+
+  get isOff(): boolean {
+    return this.machine.kind === 'off';
   }
 
   get manualBpm(): number | null {
@@ -87,6 +92,11 @@ class BpmControlStore {
 
   setManualBpm(bpm: number): void {
     this.machine = { kind: 'manual', bpm: clampBpm(bpm) };
+  }
+
+  /** Disable BPM tracking & tempo clock completely (`off` mode). */
+  setOff(): void {
+    this.machine = { kind: 'off' };
   }
 
   /** Set continuous beatmatch phase scrub in `[-0.5, +0.5]` beats. */
@@ -135,11 +145,13 @@ class BpmControlStore {
 
   /** Resolve the effective BPM for visuals & transport HUD. */
   effectiveBpm(detectedBpm: number): number {
+    if (this.machine.kind === 'off') return 0;
     return this.machine.kind === 'manual' ? this.machine.bpm : clampBpm(detectedBpm);
   }
 
   /** Compute current continuous beat position `[0, ∞)` including phase scrub & downbeat resync. */
   beatPosition(nowMs: number, detectedBpm: number): number {
+    if (this.machine.kind === 'off') return 0;
     const bpm = this.effectiveBpm(detectedBpm);
     const elapsedBeats = ((nowMs - this._resyncEpochMs) / 60000) * bpm;
     return elapsedBeats + this._phaseOffsetBeats;

@@ -1062,7 +1062,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         title="Reset to defaults"
         onclick={resetMetaControlsToDefaults}
       >
-        Default
+        <Icon name="grid" size={12} /> Default
       </button>
       <button
         type="button"
@@ -1789,6 +1789,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .cg-wrap {
     flex: 0 0 auto;
     min-width: 0;
+    display: flex;
   }
   /* Wave 2.4 Lane PERF.A — per-row dim affordance. The cg-row wraps a
    * single widget cell (Fader / Knob / Toggle / Swatch) and carries
@@ -1818,6 +1819,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * 6-8 px inner gaps). */
   .cg-wrap :global(.group) {
     padding: var(--space-xs) var(--space-sm) var(--space-sm);
+    height: 100%;
+    box-sizing: border-box;
   }
   .cg-wrap :global(.group-grid) {
     gap: var(--space-xs);

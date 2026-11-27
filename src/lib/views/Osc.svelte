@@ -851,7 +851,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   .osc-view__log-list li {
     display: grid;
-    grid-template-columns: 60px max-content 1fr max-content;
+    grid-template-columns: 54px max-content minmax(0, 1fr) max-content;
     gap: var(--space-xs);
     align-items: baseline;
     padding: 2px var(--space-xs);
@@ -859,6 +859,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-body-xs);
     color: var(--color-text-1);
     border-radius: var(--radius-xs);
+    min-width: 0;
+  }
+
+  .osc-view__log-list li code {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .osc-view__log-list li:hover {
@@ -943,6 +951,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-family: var(--font-family-mono);
     font-size: var(--font-size-body-xs);
     width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .osc-view__field--toggle {
