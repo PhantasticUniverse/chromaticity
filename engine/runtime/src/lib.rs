@@ -125,6 +125,14 @@ pub use data_ingest::{
     CASSETTE_FORMAT_VERSION, CassetteSample, DATA_UNIFORM_PREFIX, DataCassette, DataIngestEngine,
     DataIngestError, DataIngestState, DataSourceSpec, DataTransport, DataValue,
 };
+pub use dmx_artnet::{
+    ARTNET_DMX_HEADER_LEN, ARTNET_DMX_PACKET_LEN, ARTNET_MAGIC, ARTNET_OPCODE_DMX, ARTNET_PORT,
+    ARTNET_PROTOCOL_VERSION, ArtNetDmxPacket, DMX_CHANNEL_COUNT, DMX_NULL_START_CODE, DmxFixture,
+    DmxUniverse, FixtureKind, SACN_ACN_PACKET_ID, SACN_DMX_PACKET_LEN, SACN_MAX_PRIORITY,
+    SACN_PORT, SACN_VECTOR_DMP_SET_PROPERTY, SACN_VECTOR_E131_DATA_PACKET,
+    SACN_VECTOR_ROOT_E131_DATA, SpectralBandSource, SpectralDmxMapper, decode_artnet_dmx,
+    encode_artnet_dmx, encode_sacn_dmx, map_audio_to_universe,
+};
 pub use pro_dj_link_listener::{
     AutoTransitionConfig, AutoTransitionPlanner, DEFAULT_ENERGY_DROP_HIGH_THRESHOLD,
     DEFAULT_ENERGY_DROP_LOW_THRESHOLD, DEFAULT_ENERGY_SURGE_DELTA, DEFAULT_PHRASE_INTERVAL_BARS,
@@ -164,6 +172,7 @@ pub mod command_bus;
 pub mod crash_resume;
 pub mod cue_runner;
 pub mod data_ingest;
+pub mod dmx_artnet;
 pub mod pro_dj_link_listener;
 pub mod recorder;
 pub mod rekordbox_bridge;
