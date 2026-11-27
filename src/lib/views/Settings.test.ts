@@ -655,7 +655,7 @@ describe('Settings view', () => {
     }
   });
 
-  it('Diagnostics rail renders the six fixture rows and the disabled support / log buttons', () => {
+  it('Diagnostics rail renders honest idle defaults and the disabled support / log buttons', () => {
     const { container } = render(Settings);
     const diag = getSection(container, 'Diagnostics');
     // Six DT keys (GPU / FPS / Audio Latency / MIDI Devices / Syphon /
@@ -666,6 +666,11 @@ describe('Settings view', () => {
     expect(within(diag).getByText('MIDI Devices')).toBeInTheDocument();
     expect(within(diag).getByText('Syphon / Spout')).toBeInTheDocument();
     expect(within(diag).getByText('Ableton Link')).toBeInTheDocument();
+    // Avoid misleading hardcoded live telemetry strings when idle.
+    expect(within(diag).queryByText(/Streaming → OBS/)).toBeNull();
+    expect(within(diag).queryByText(/4 peers · 128\.00 BPM/)).toBeNull();
+    expect(within(diag).getAllByText('Idle').length).toBeGreaterThanOrEqual(3);
+    expect(within(diag).getByText('Idle · 0 peers')).toBeInTheDocument();
     // The two action buttons are stub-disabled pending W15+ work.
     const supportBundle = within(diag).getByRole('button', { name: /Generate Support Bundle/ });
     const viewLogs = within(diag).getByRole('button', { name: 'View Logs' });

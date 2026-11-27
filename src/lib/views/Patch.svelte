@@ -80,6 +80,50 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // overflow; bounded to keep memory predictable across long sessions.
   const UNDO_DEPTH = 10;
 
+  // Signal-type wire palette (keyed by source node category) so every
+  // cable's signal domain is immediately legible at a glance.
+  type WireSignalKind = 'audio' | 'mod' | 'midi' | 'video';
+
+  const WIRE_SIGNALS: readonly {
+    readonly kind: WireSignalKind;
+    readonly label: string;
+    readonly color: string;
+  }[] = [
+    { kind: 'audio', label: 'Audio', color: '#38bdf8' },
+    { kind: 'mod', label: 'Mod', color: '#a78bfa' },
+    { kind: 'midi', label: 'MIDI/OSC', color: '#a3e635' },
+    { kind: 'video', label: 'Video', color: '#fbbf24' },
+  ];
+
+  const WIRE_SIGNAL_COLOR: Readonly<Record<WireSignalKind, string>> = {
+    audio: '#38bdf8',
+    mod: '#a78bfa',
+    midi: '#a3e635',
+    video: '#fbbf24',
+  };
+
+  function signalKindForSource(
+    node: MutablePatchNode | undefined,
+    fallbackId: string,
+  ): WireSignalKind {
+    const id = (node?.id ?? fallbackId).toLowerCase();
+    const title = (node?.title ?? '').toLowerCase();
+    if (id === 'audio' || title.includes('audio')) return 'audio';
+    if (
+      node?.kind === 'mod' ||
+      id === 'lfo' ||
+      title.includes('lfo') ||
+      title.includes('envelope') ||
+      title.includes('math')
+    ) {
+      return 'mod';
+    }
+    if (id === 'midi' || id === 'osc' || title.includes('midi') || title.includes('osc')) {
+      return 'midi';
+    }
+    return 'video';
+  }
+
   // ---- Mutable state -----------------------------------------------------
 
   // Live viewport size observed via ResizeObserver so the shared 1100x600
@@ -126,6 +170,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // editorial frame).
   let selectedNodeId = $state<string | null>(null);
 
+  // Hovered wire index for cable focus + connection readout pill.
+  let hoveredWireIdx = $state<number | null>(null);
+
   // Explicit click-vs-drag discriminated state machine (`idle` | `pending` | `dragging`).
   let dragState = $state<DragOrClickState>(IDLE_DRAG_STATE);
   const draggingId = $derived(dragState.kind === 'idle' ? null : dragState.id);
@@ -157,16 +204,29 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     PATCH_WIRES.map((w) => {
       const [x1, y1] = patchPinPosFrom(nodes, w.from[0], w.from[1], 'out');
       const [x2, y2] = patchPinPosFrom(nodes, w.to[0], w.to[1], 'in');
-      const mx = (x1 + x2) / 2;
+      const sx = x1 + 4;
+      const tx = x2 - 6;
+      const mx = (sx + tx) / 2;
+      const sourceNode = nodes.find((n) => n.id === w.from[0]);
+      const signalKind = signalKindForSource(sourceNode, w.from[0]);
+      const color = WIRE_SIGNAL_COLOR[signalKind];
       return {
-        d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`,
-        x1,
+        d: `M${sx},${y1} C${mx},${y1} ${mx},${y2} ${tx},${y2}`,
+        sx,
         y1,
-        x2,
+        tx,
         y2,
-        color: w.color,
+        midX: mx,
+        midY: (y1 + y2) / 2,
+        signalKind,
+        color,
+        label: `${w.from[0]}.${w.from[1]} → ${w.to[0]}.${w.to[1]}`,
       };
     }),
+  );
+
+  const hoveredWire = $derived(
+    hoveredWireIdx === null ? null : (wirePaths[hoveredWireIdx] ?? null),
   );
 
   const canUndo = $derived(undoStack.length > 0);
@@ -319,6 +379,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <article class="patch__panel patch__canvas" aria-label="Patch canvas">
     <header class="patch__canvas-head">
       <h2 class="patch__panel-title">Patch · Glitch</h2>
+      <div class="patch__legend" role="list" aria-label="Wire signal legend">
+        {#each WIRE_SIGNALS as sig, idx (sig.kind)}
+          {#if idx > 0}
+            <span class="patch__legend-sep" aria-hidden="true">·</span>
+          {/if}
+          <span class="patch__legend-item" role="listitem">
+            <span class="patch__legend-dot" style="background: {sig.color};" aria-hidden="true"
+            ></span>
+            <span class="patch__legend-label">{sig.label}</span>
+          </span>
+        {/each}
+      </div>
       <span class="patch__canvas-spacer" aria-hidden="true"></span>
       <button
         type="button"
@@ -360,14 +432,76 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             role="img"
             aria-label={ariaLabel}
           >
+            <defs>
+              {#each WIRE_SIGNALS as sig (sig.kind)}
+                <marker
+                  id="patch-arrow-{sig.kind}"
+                  viewBox="0 0 8 8"
+                  refX="6.5"
+                  refY="4"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto"
+                >
+                  <polygon points="0 1, 7 4, 0 7" fill={sig.color} />
+                </marker>
+              {/each}
+            </defs>
             {#each wirePaths as wire, i (i)}
-              <g>
-                <path d={wire.d} stroke={wire.color} stroke-width="2" fill="none" opacity="0.9" />
-                <circle cx={wire.x1} cy={wire.y1} r="3" fill={wire.color} />
-                <circle cx={wire.x2} cy={wire.y2} r="3" fill={wire.color} />
+              <g
+                class="patch__wire"
+                class:patch__wire--hovered={hoveredWireIdx === i}
+                class:patch__wire--dimmed={hoveredWireIdx !== null && hoveredWireIdx !== i}
+                style="color: {wire.color};"
+                role="presentation"
+                data-signal={wire.signalKind}
+                data-connection={wire.label}
+                onpointerenter={() => (hoveredWireIdx = i)}
+                onpointerleave={() => {
+                  if (hoveredWireIdx === i) hoveredWireIdx = null;
+                }}
+              >
+                <title>{wire.label}</title>
+                <path
+                  class="patch__wire-hit"
+                  d={wire.d}
+                  stroke="transparent"
+                  stroke-width="14"
+                  fill="none"
+                />
+                <path
+                  class="patch__wire-path"
+                  d={wire.d}
+                  stroke={wire.color}
+                  stroke-width={hoveredWireIdx === i ? 3.2 : 2.2}
+                  fill="none"
+                  marker-end="url(#patch-arrow-{wire.signalKind})"
+                />
+                <circle
+                  cx={wire.sx}
+                  cy={wire.y1}
+                  r={hoveredWireIdx === i ? 4 : 3}
+                  fill={wire.color}
+                />
               </g>
             {/each}
           </svg>
+
+          {#if hoveredWire}
+            <div
+              class="patch__wire-tooltip mono"
+              style="left: {hoveredWire.midX}px; top: {hoveredWire.midY}px; --wire-color: {hoveredWire.color};"
+              role="status"
+              aria-live="polite"
+            >
+              <span
+                class="patch__wire-tooltip-dot"
+                style="background: {hoveredWire.color};"
+                aria-hidden="true"
+              ></span>
+              <span>{hoveredWire.label}</span>
+            </div>
+          {/if}
 
           <!-- Node layer (DOM nodes positioned absolutely in the exact same 1:1 stage coords) -->
           <div class="patch__nodes" aria-hidden="false">
@@ -610,7 +744,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   /* ---------------- Palette (left column) ------------------------- */
   .patch__palette-body {
     overflow: auto;
-    padding: var(--space-md);
+    padding: var(--space-md) var(--space-md) 12px;
+    padding-bottom: 12px;
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
@@ -666,6 +801,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .patch__canvas-spacer {
     flex: 1;
   }
+  .patch__legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 9px;
+    background: color-mix(in oklab, var(--color-bg-1) 78%, transparent);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-full);
+    flex-shrink: 0;
+  }
+  .patch__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .patch__legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .patch__legend-label {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    color: var(--color-text-1);
+    letter-spacing: 0.03em;
+  }
+  .patch__legend-sep {
+    color: var(--color-text-3);
+    font-size: var(--font-size-caps-sm);
+    line-height: 1;
+    user-select: none;
+  }
 
   /* Auto-fitted / scrollable viewport for the unified 1:1 graph stage */
   .patch__viewport {
@@ -709,16 +878,64 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     pointer-events: none;
     overflow: visible;
   }
+  .patch__wire {
+    pointer-events: stroke;
+    cursor: pointer;
+    transition: opacity 120ms ease;
+  }
+  .patch__wire-hit {
+    pointer-events: stroke;
+  }
+  .patch__wire-path {
+    opacity: 0.9;
+    transition:
+      opacity 120ms ease,
+      stroke-width 120ms ease,
+      filter 120ms ease;
+  }
+  .patch__wire--hovered .patch__wire-path {
+    opacity: 1;
+    filter: drop-shadow(0 0 6px currentColor);
+  }
+  .patch__wire--dimmed {
+    opacity: 0.22;
+  }
+  .patch__wire-tooltip {
+    position: absolute;
+    z-index: 4;
+    transform: translate(-50%, -125%);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklab, var(--color-bg-0) 92%, transparent);
+    border: 1px solid
+      color-mix(in oklab, var(--wire-color, var(--color-primary)) 65%, var(--color-line-2));
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+    color: var(--color-text-0);
+    font-size: var(--font-size-mono-sm);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .patch__wire-tooltip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
 
   .patch__nodes {
     position: absolute;
     inset: 0;
     z-index: 2;
+    pointer-events: none;
   }
 
   /* ---------------- Node ------------------------------------------ */
   .patch__node {
     position: absolute;
+    pointer-events: auto;
     box-sizing: border-box;
     background: var(--color-bg-2);
     border: 1px solid var(--color-line-2);

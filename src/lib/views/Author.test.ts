@@ -312,6 +312,11 @@ describe('Author view', () => {
     expect(pause).toHaveAttribute('aria-pressed', 'false');
     expect(screenshot).toBeInTheDocument();
     expect(inTools.getByText('60 fps')).toBeInTheDocument();
+    expect(tools.querySelector('.au-author__previewtools-group--left')).not.toBeNull();
+    expect(tools.querySelector('.au-author__previewtools-group--right')).not.toBeNull();
+    const meter = tools.querySelector('.au-author__previewtools-meter');
+    expect(meter).not.toBeNull();
+    expect(meter?.textContent).toContain('AUDIO');
   });
 
   it('toggling pause flips aria-pressed and the on-modifier class', async () => {

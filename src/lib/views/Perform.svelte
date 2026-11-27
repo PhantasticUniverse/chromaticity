@@ -1639,10 +1639,16 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   @media (max-width: 1399px) {
     .perform--console {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr) minmax(170px, 0.42fr);
+      grid-template-rows: minmax(0, 1fr) minmax(290px, 0.44fr);
       grid-template-areas:
         'left middle'
         'right right';
+    }
+    .perform--console .perform__col-right {
+      min-height: 290px;
+    }
+    .perform--console .scene-panel__list {
+      min-height: 150px;
     }
     /* Cap the 16:9 canvas height while keeping the studio letterbox
      * wrapper 100% wide so its right edge stays flush with Audio
@@ -1797,33 +1803,24 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     overflow: auto;
   }
 
-  /* Wave 2.3 Lane Q.2 (G.5 + G.8) — control-group row strip. Each
-   * group sizes to content (`flex: 0 0 auto`) so wider groups like
-   * Meta Controls' COLOR (6 controls) get the horizontal space they
-   * need to keep all children inside the bordered box. The
-   * `panel__body--row-scroll` flex container honours the bundle's
-   * `row-scroll` posture: when the combined width exceeds the panel,
-   * the strip scrolls horizontally rather than spilling widgets out
-   * of their group containers. Niggle A fix per the 2026-05-11 AO
-   * follow-up: the previous `flex: 1 1 0` equal-width treatment
-   * forced every group to a single shared width which clipped the
-   * COLOR group's box border around only the first three of its six
-   * children.
-   *
-   * Inner widget gap shrinks to `--space-xs` to keep the 6-widget
-   * COLOR group reasonably narrow while still preserving the 40 px
-   * widget min-width (the fader / toggle / knob hit-target floor). */
+  /* Control-group wrapping strip: wrap cleanly into 1–2 dense rows with
+   * zero horizontal scrollbar so operators don't have to scroll sideways
+   * to reach 5–6 control groups. */
   .panel__body--row-scroll {
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     display: flex;
-    gap: var(--space-xs);
+    flex-wrap: wrap;
     align-items: stretch;
+    align-content: flex-start;
+    gap: 6px;
+    padding: var(--space-sm);
   }
 
   .cg-wrap {
     flex: 0 0 auto;
     min-width: 0;
+    max-width: 100%;
     display: flex;
   }
   /* Wave 2.4 Lane PERF.A — per-row dim affordance. The cg-row wraps a
@@ -1853,12 +1850,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * 1440 viewport (`styles.css` line 668 `.perform` 10 px gap implies
    * 6-8 px inner gaps). */
   .cg-wrap :global(.group) {
-    padding: var(--space-xs) var(--space-sm) var(--space-sm);
+    padding: 4px 6px 6px;
     height: 100%;
     box-sizing: border-box;
   }
   .cg-wrap :global(.group-grid) {
-    gap: var(--space-xs);
+    gap: 4px;
   }
 
   /* ---------------- Buttons ----------------------------------------------- */
@@ -2002,11 +1999,15 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * initial review. */
   .media-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
     grid-auto-rows: max-content;
     align-content: start;
     align-items: start;
-    gap: var(--space-lg);
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+  }
+  .media-grid :global(.media-card) {
+    min-height: 70px;
   }
   /* Inset the SceneStill / SMPTE-test surfaces by 3 px so the tile's
    * outer border + background colour provide a clean "matt" frame

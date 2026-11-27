@@ -42,7 +42,7 @@ type SourceCollectionIcon = 'folder' | 'camera' | 'heart' | 'refresh' | 'fullscr
 /** A logical source collection rendered in the left sidebar. */
 export interface SourceCollection {
   readonly id: string;
-  /** Display label, may include backslashes for D:\Media etc. */
+  /** Platform-neutral display label for the source collection. */
   readonly name: string;
   /** Asset count chip rendered on the right of each row. */
   readonly count: number;
@@ -55,26 +55,16 @@ export interface SourceCollection {
   readonly cap?: string;
 }
 
-/** Bundle line-by-line:
- *   { n: "All Media",         c: 247, icon: "folder",     active: true },
- *   { n: "Live Sources",      c:   3, icon: "camera",     cap: "io.camera" },
- *   { n: "Favorites",         c:  42, icon: "heart" },
- *   { n: "Recently Added",    c:  14, icon: "refresh" },
- *   { n: "D:\\Media",         c: 136, icon: "folder" },
- *   { n: "D:\\Media\\Loops",  c:  44, icon: "folder" },
- *   { n: "D:\\Media\\Stills", c:  67, icon: "folder" },
- *   { n: "D:\\Stock\\Textures", c: 18, icon: "folder" },
- *   { n: "Desktop Capture",   c:   1, icon: "fullscreen" },
- */
+/** Platform-neutral source collections shown in the left sidebar. */
 export const SOURCE_COLLECTIONS: readonly SourceCollection[] = [
   { id: 'all-media', name: 'All Media', count: 247, icon: 'folder' },
   { id: 'live-sources', name: 'Live Sources', count: 3, icon: 'camera', cap: 'io.camera' },
   { id: 'favorites', name: 'Favorites', count: 42, icon: 'heart' },
   { id: 'recently-added', name: 'Recently Added', count: 14, icon: 'refresh' },
-  { id: 'd-media', name: 'D:\\Media', count: 136, icon: 'folder' },
-  { id: 'd-media-loops', name: 'D:\\Media\\Loops', count: 44, icon: 'folder' },
-  { id: 'd-media-stills', name: 'D:\\Media\\Stills', count: 67, icon: 'folder' },
-  { id: 'd-stock-textures', name: 'D:\\Stock\\Textures', count: 18, icon: 'folder' },
+  { id: 'media-library', name: 'Media Library', count: 136, icon: 'folder' },
+  { id: 'media-loops', name: 'Loops', count: 44, icon: 'folder' },
+  { id: 'media-stills', name: 'Stills', count: 67, icon: 'folder' },
+  { id: 'stock-textures', name: 'Textures', count: 18, icon: 'folder' },
   { id: 'desktop-capture', name: 'Desktop Capture', count: 1, icon: 'fullscreen' },
 ];
 

@@ -59,10 +59,16 @@ describe('Sources view', () => {
       const matches = getAllByText(collection.name);
       expect(matches.length).toBeGreaterThanOrEqual(1);
     }
-    // Sidebar list contains exactly nine collection-row buttons.
+    // Sidebar list contains exactly nine collection-row buttons with
+    // platform-neutral labels (no Windows drive-letter paths).
     const rowBtns = sidebar.querySelectorAll('.sources__collection-row');
     expect(rowBtns.length).toBe(SOURCE_COLLECTIONS.length);
     expect(rowBtns.length).toBe(9);
+    expect(sidebar.textContent).not.toContain('D:\\');
+    expect(within(sidebar).getByText('Media Library')).toBeInTheDocument();
+    expect(within(sidebar).getByText('Loops')).toBeInTheDocument();
+    expect(within(sidebar).getByText('Stills')).toBeInTheDocument();
+    expect(within(sidebar).getByText('Textures')).toBeInTheDocument();
   });
 
   it('defaults to the All Media collection (active row + grid title)', () => {

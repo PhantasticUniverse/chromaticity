@@ -50,9 +50,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   import { HOTKEYS } from '../data/hotkeys';
   import {
     ABLETON_LINK_PEER_FIXTURE,
-    AUDIO_CHANNEL_LAYOUTS,
-    AUDIO_CHANNEL_LEFT_OPTIONS,
-    AUDIO_CHANNEL_RIGHT_OPTIONS,
     AUDIO_INPUT_DEVICES,
     AUDIO_INPUT_GAIN_DB_RANGE_DB,
     AUDIO_LATENCY_HINTS,
@@ -250,25 +247,33 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     liveAudioOutputOptions.length > 0 ? liveAudioOutputOptions : AUDIO_OUTPUT_DEVICES,
   );
 
-  // W38 right-rail Diagnostics hardware data — bundle-faithful fixture
-  // mirroring `views/settings.jsx` lines 187-194 (the right-column
-  // Diagnostics panel rows). Frozen-frame; live values arrive with the
-  // Phase-3+/4a `EV-OBSERVABILITY` runtime metric stream and the OSC view's
-  // adapter-health surface. The strings here parallel the bundle's W20
-  // wireframe-capture exactly so future operators see the same shape they
-  // saw in the bundle preview.
+  // Right-rail Diagnostics rows. Show honest idle/off defaults when no
+  // live runtime adapter snapshot is active rather than hardcoded fake
+  // telemetry values.
   interface DiagnosticsRow {
     readonly key: string;
     readonly value: string;
   }
-  const DIAGNOSTICS: readonly DiagnosticsRow[] = [
-    { key: 'GPU', value: 'Apple M3 Pro · 42% · 16 GB' },
-    { key: 'FPS / Frame', value: '61 · 16.4ms' },
-    { key: 'Audio Latency', value: '5.3 ms' },
-    { key: 'MIDI Devices', value: '2 connected' },
-    { key: 'Syphon / Spout', value: 'Streaming → OBS' },
-    { key: 'Ableton Link', value: '4 peers · 128.00 BPM' },
-  ];
+  const diagnosticsRows = $derived<readonly DiagnosticsRow[]>([
+    { key: 'GPU', value: 'Idle' },
+    { key: 'FPS / Frame', value: 'Idle' },
+    {
+      key: 'Audio Latency',
+      value: audioSnapshotStore.snapshot ? 'Live' : 'Idle',
+    },
+    { key: 'MIDI Devices', value: '0 connected' },
+    {
+      key: 'Syphon / Spout',
+      value:
+        liveSourcesSnapshot.syphon_output_enabled || liveSourcesSnapshot.syphon_input_enabled
+          ? 'Idle'
+          : 'Off',
+    },
+    {
+      key: 'Ableton Link',
+      value: settingsStore.snapshot.tempo.ableton_link_enabled ? 'Idle · 0 peers' : 'Off',
+    },
+  ]);
 
   /* ----- Audio Device — persisted via settingsStore -----
    * The form fields below read live from `settingsStore.snapshot.audio`
@@ -339,7 +344,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       ? djProfile.kind === 'ddj_flx10'
         ? 'DDJ-FLX10 Detected'
         : 'Rekordbox / DJ Profile'
-      : 'Stereo / Multi-Channel Input',
+      : 'Stereo / Multi-Channel',
   );
 
   const isCuePairWarningActive = $derived.by(() => {
@@ -691,49 +696,40 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
             {/each}
           </select>
         </div>
-        <div class="settings__field">
-          <label for="channel-layout" class="settings__label">Channel Layout</label>
-          <select
-            id="channel-layout"
-            class="settings__select"
-            value={audioSnapshot.channel_layout}
-            onchange={(e) =>
-              settingsStore.update({ audio: { channel_layout: e.currentTarget.value } })}
-          >
-            {#each AUDIO_CHANNEL_LAYOUTS as opt (opt.id)}
-              <option value={opt.id}>{opt.label}</option>
-            {/each}
-          </select>
-        </div>
-        <div class="settings__field">
-          <span class="settings__label">Channel Routing</span>
+        <div class="settings__field" data-testid="dj-routing-row">
+          <span class="settings__label">DJ / Master Bus</span>
           <div class="settings__field-row">
-            <label class="settings__a11y-only" for="channel-left">Left channel</label>
+            <label class="settings__a11y-only" for="dj-channel-pair">Channel Pair</label>
             <select
-              id="channel-left"
-              class="settings__select settings__select--compact"
-              value={audioSnapshot.channel_left}
-              onchange={(e) =>
-                settingsStore.update({ audio: { channel_left: e.currentTarget.value } })}
+              id="dj-channel-pair"
+              class="settings__select"
+              value={selectedChannelPairId}
+              onchange={(e) => handleChannelPairChange(e.currentTarget.value)}
             >
-              {#each AUDIO_CHANNEL_LEFT_OPTIONS as opt (opt.id)}
+              {#each DJ_CHANNEL_PAIR_OPTIONS as opt (opt.id)}
                 <option value={opt.id}>{opt.label}</option>
               {/each}
             </select>
-            <label class="settings__a11y-only" for="channel-right">Right channel</label>
-            <select
-              id="channel-right"
-              class="settings__select settings__select--compact"
-              value={audioSnapshot.channel_right}
-              onchange={(e) =>
-                settingsStore.update({ audio: { channel_right: e.currentTarget.value } })}
+            <span
+              class="settings__dj-badge"
+              class:settings__dj-badge--recognized={djProfile.recognized}
+              data-testid="dj-profile-badge"
             >
-              {#each AUDIO_CHANNEL_RIGHT_OPTIONS as opt (opt.id)}
-                <option value={opt.id}>{opt.label}</option>
-              {/each}
-            </select>
-            <span class="settings__hint settings__hint--inline">stereo</span>
+              {djProfileBadgeLabel}
+            </span>
           </div>
+          <p class="settings__hint settings__hint--field" data-testid="dj-profile-note">
+            {djProfile.notes}
+          </p>
+          {#if isCuePairWarningActive}
+            <p
+              class="settings__dj-warn settings__hint--field"
+              role="status"
+              data-testid="dj-cue-warning"
+            >
+              Cue pair selected — Headphone Cue may leak into visuals. Use Ch 1–2 (Master).
+            </p>
+          {/if}
         </div>
         <div class="settings__field">
           <label for="input-gain" class="settings__label">Input Gain</label>
@@ -769,39 +765,6 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               onResetPeak={() => peakHold.reset()}
               ariaLabel="Audio input monitor"
             />
-          </div>
-        </div>
-      </div>
-      <div class="settings__dj-card" data-testid="dj-routing-card">
-        <div class="settings__dj-head">
-          <h3 class="settings__dj-title">DJ / Rekordbox Master vs. Cue Routing</h3>
-          <span
-            class="settings__dj-badge"
-            class:settings__dj-badge--recognized={djProfile.recognized}
-            data-testid="dj-profile-badge"
-          >
-            {djProfileBadgeLabel}
-          </span>
-        </div>
-        <p class="settings__dj-note" data-testid="dj-profile-note">{djProfile.notes}</p>
-        <div class="settings__dj-row">
-          <label for="dj-channel-pair" class="settings__label">Channel Pair</label>
-          <div class="settings__dj-controls">
-            <select
-              id="dj-channel-pair"
-              class="settings__select"
-              value={selectedChannelPairId}
-              onchange={(e) => handleChannelPairChange(e.currentTarget.value)}
-            >
-              {#each DJ_CHANNEL_PAIR_OPTIONS as opt (opt.id)}
-                <option value={opt.id}>{opt.label}</option>
-              {/each}
-            </select>
-            {#if isCuePairWarningActive}
-              <span class="settings__dj-warn" role="status" data-testid="dj-cue-warning">
-                Cue pair selected — Headphone Cue may leak into visuals. Use Ch 1–2 (Master).
-              </span>
-            {/if}
           </div>
         </div>
       </div>
@@ -1694,7 +1657,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     <article class="settings__section settings__section--diag">
       <h2>Diagnostics</h2>
       <dl class="settings__diag-data">
-        {#each DIAGNOSTICS as row (row.key)}
+        {#each diagnosticsRows as row (row.key)}
           <div class="settings__diag-row">
             <dt class="settings__diag-key">{row.key}</dt>
             <dd class="settings__diag-value">{row.value}</dd>
@@ -1986,36 +1949,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     text-align: right;
   }
 
-  /* ----- DJ / Rekordbox Master vs. Cue Routing card ----- */
-
-  .settings__dj-card {
-    background: var(--color-bg-1);
-    border: 1px solid var(--color-line-1);
-    border-radius: var(--radius-sm);
-    padding: var(--space-md);
-    margin: 0 0 var(--space-md) 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-    min-width: 0;
-    max-width: 100%;
-    box-sizing: border-box;
-  }
-
-  .settings__dj-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-sm);
-    flex-wrap: wrap;
-  }
-
-  .settings__dj-title {
-    margin: 0;
-    font-size: var(--font-size-body-sm);
-    font-weight: 600;
-    color: var(--color-text-0);
-  }
+  /* ----- DJ / Master Bus status pill & cue-bleed warning ----- */
 
   .settings__dj-badge {
     font-family: var(--font-family-mono);
@@ -2034,40 +1968,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     border-color: var(--color-primary);
   }
 
-  .settings__dj-note {
-    margin: 0;
-    color: var(--color-text-2);
-    font-size: var(--font-size-body-sm);
-    line-height: 1.4;
-  }
-
-  .settings__dj-row {
-    display: grid;
-    grid-template-columns: 184px minmax(0, 1fr);
-    gap: var(--space-sm) var(--space-lg);
-    align-items: center;
-  }
-
-  @media (max-width: 720px) {
-    .settings__dj-row {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  .settings__dj-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    flex-wrap: wrap;
-    min-width: 0;
-  }
-
-  .settings__dj-controls .settings__select {
-    max-width: 100%;
-    min-width: 0;
-  }
-
   .settings__dj-warn {
+    margin: 0;
+    justify-self: start;
     display: inline-flex;
     align-items: center;
     padding: 2px var(--space-sm);

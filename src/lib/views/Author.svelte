@@ -587,13 +587,18 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     </section>
 
     <!-- Console output -->
-    <section class="au-author__panel au-author__console" aria-label="Scene console output">
+    <section
+      class="au-author__panel au-author__console"
+      class:au-author__console--collapsed={!consoleOpen}
+      aria-label="Scene console output"
+    >
       <div class="au-author__console-head">
         <button
           class="au-author__icon-btn"
           class:au-author__icon-btn--collapsed={!consoleOpen}
           type="button"
           aria-expanded={consoleOpen ? 'true' : 'false'}
+          aria-label={consoleOpen ? 'Collapse console' : 'Expand console'}
           onclick={() => (consoleOpen = !consoleOpen)}
           title={consoleOpen ? 'Collapse console' : 'Expand console'}
         >
@@ -682,52 +687,59 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       {/if}
     </div>
 
-    <!-- Preview tools (bundle-faithful, visual stubs) -->
+    <!-- Studio preview toolbar -->
     <div class="au-author__panel au-author__previewtools" role="region" aria-label="Preview tools">
-      <button
-        class="au-author__previewtools-btn"
-        class:au-author__previewtools-btn--on={!hudVisible}
-        type="button"
-        title="Show / hide HUD"
-        aria-label="Show or hide HUD"
-        aria-pressed={hudVisible ? 'false' : 'true'}
-        onclick={toggleHud}
-      >
-        <Icon name="eye" size={14} />
-      </button>
-      <button
-        class="au-author__previewtools-btn"
-        type="button"
-        title="Toggle fullscreen"
-        aria-label="Toggle fullscreen"
-      >
-        <Icon name="fullscreen" size={14} />
-      </button>
-      <button
-        class="au-author__previewtools-btn"
-        class:au-author__previewtools-btn--on={paused}
-        type="button"
-        title="Pause rendering"
-        aria-label="Pause rendering"
-        aria-pressed={paused ? 'true' : 'false'}
-        onclick={togglePaused}
-      >
-        <Icon name={paused ? 'play' : 'pause'} size={14} />
-      </button>
-      <div class="au-author__previewtools-fps mono">60 fps</div>
-      <span class="au-author__spacer" aria-hidden="true"></span>
-      <div class="au-author__previewtools-vu">
-        <VuStereo live={true} />
+      <div class="au-author__previewtools-group au-author__previewtools-group--left">
+        <button
+          class="au-author__previewtools-btn"
+          class:au-author__previewtools-btn--on={paused}
+          type="button"
+          title={paused ? 'Resume rendering' : 'Pause rendering'}
+          aria-label="Pause rendering"
+          aria-pressed={paused ? 'true' : 'false'}
+          onclick={togglePaused}
+        >
+          <Icon name={paused ? 'play' : 'pause'} size={13} />
+        </button>
+        <button
+          class="au-author__previewtools-btn"
+          type="button"
+          title="Fullscreen / detach preview"
+          aria-label="Toggle fullscreen"
+        >
+          <Icon name="fullscreen" size={13} />
+        </button>
+        <button
+          class="au-author__previewtools-btn"
+          class:au-author__previewtools-btn--on={!hudVisible}
+          type="button"
+          title="Show / hide HUD"
+          aria-label="Show or hide HUD"
+          aria-pressed={hudVisible ? 'false' : 'true'}
+          onclick={toggleHud}
+        >
+          <Icon name="eye" size={13} />
+        </button>
+        <span class="au-author__previewtools-fps mono">60 fps</span>
       </div>
-      <button
-        class="au-author__previewtools-btn"
-        type="button"
-        title="Screenshot"
-        aria-label="Capture screenshot"
-        onclick={triggerScreenshot}
-      >
-        <Icon name="camera" size={14} />
-      </button>
+
+      <div class="au-author__previewtools-group au-author__previewtools-group--right">
+        <div class="au-author__previewtools-meter" role="group" aria-label="Audio stereo level">
+          <span class="au-author__previewtools-meter-label mono" aria-hidden="true">AUDIO</span>
+          <div class="au-author__previewtools-vu">
+            <VuStereo live={true} width={84} />
+          </div>
+        </div>
+        <button
+          class="au-author__previewtools-btn au-author__previewtools-btn--capture"
+          type="button"
+          title="Capture screenshot"
+          aria-label="Capture screenshot"
+          onclick={triggerScreenshot}
+        >
+          <Icon name="camera" size={13} />
+        </button>
+      </div>
     </div>
 
     <!-- Inspector panel with tab strip -->
@@ -1439,9 +1451,12 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-md);
+    padding: 4px var(--space-md);
     border-bottom: 1px solid var(--color-line-1);
     background: var(--color-bg-3);
+  }
+  .au-author__console--collapsed .au-author__console-head {
+    border-bottom: 0;
   }
   .au-author__section-label {
     font-family: var(--font-family-mono);
@@ -1467,8 +1482,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     letter-spacing: var(--letter-spacing-caps-sm);
   }
   .au-author__console-body {
-    padding: var(--space-sm) var(--space-md);
-    max-height: 120px;
+    padding: 6px var(--space-md);
+    max-height: 104px;
     overflow: auto;
     display: flex;
     flex-direction: column;
@@ -1533,24 +1548,44 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au-author__previewtools {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     flex-shrink: 0;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-md);
+    gap: var(--space-sm);
+    padding: 6px var(--space-sm);
+    min-height: 38px;
+  }
+  .au-author__previewtools-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .au-author__previewtools-group--right {
+    gap: 6px;
+    flex-shrink: 0;
   }
   .au-author__previewtools-fps {
-    font-size: var(--font-size-mono-sm);
-    color: var(--color-text-3);
-  }
-  /* W28 PR2 — bundle PreviewTools button shape. Wider hit-target than
-     the 24px icon-btn used elsewhere in Author so the strip reads as a
-     dedicated chrome row rather than a list of generic icon affordances;
-     `--on` mirrors the bundle's `on` class (active pause / hidden HUD). */
-  .au-author__previewtools-btn {
-    width: 28px;
+    display: inline-flex;
+    align-items: center;
     height: 24px;
+    padding: 0 7px;
+    margin-left: 2px;
+    border-radius: var(--radius-xs);
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-line-2);
+    font-size: var(--font-size-caps-sm);
+    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-1);
+    white-space: nowrap;
+  }
+  .au-author__previewtools-btn {
+    width: 26px;
+    height: 26px;
     padding: 0;
-    background: transparent;
-    border: 1px solid transparent;
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-1);
     border-radius: var(--radius-sm);
     color: var(--color-text-2);
     cursor: pointer;
@@ -1563,7 +1598,8 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
       color 120ms ease;
   }
   .au-author__previewtools-btn:hover:not(:disabled) {
-    background: var(--color-bg-3);
+    background: var(--color-bg-4);
+    border-color: var(--color-line-2);
     color: var(--color-text-0);
   }
   .au-author__previewtools-btn:focus-visible {
@@ -1572,12 +1608,34 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   }
   .au-author__previewtools-btn--on {
     color: var(--color-primary);
-    border-color: color-mix(in oklab, var(--color-primary) 35%, var(--color-line-2));
-    background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+    border-color: color-mix(in oklab, var(--color-primary) 40%, var(--color-line-2));
+    background: color-mix(in oklab, var(--color-primary) 12%, var(--color-bg-3));
+  }
+  .au-author__previewtools-meter {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 26px;
+    padding: 0 8px;
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+  }
+  .au-author__previewtools-meter-label {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-2);
+    line-height: 1;
+    user-select: none;
   }
   .au-author__previewtools-vu {
     display: flex;
     align-items: center;
+  }
+  .au-author__previewtools-vu :global(.vu-stereo) {
+    height: 14px;
   }
 
   /* Screenshot flash overlay — covers the preview tile (the visual area

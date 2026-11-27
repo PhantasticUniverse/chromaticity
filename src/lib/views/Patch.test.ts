@@ -44,10 +44,59 @@ describe('Patch view', () => {
     expect(getByRole('button', { name: /Stage Out — 3 pins/ })).toBeInTheDocument();
   });
 
-  it('renders all six wires as SVG paths', () => {
+  it('renders all six wires as signal-colored SVG paths with directional arrowheads', () => {
     const { container } = render(Patch);
-    const paths = container.querySelectorAll('.patch__wires path');
+    const paths = container.querySelectorAll('.patch__wires path.patch__wire-path');
     expect(paths.length).toBe(6);
+
+    // Signal-type color mapping: audio (#38bdf8), mod (#a78bfa), midi (#a3e635), video (#fbbf24).
+    const strokes = Array.from(paths).map((p) => p.getAttribute('stroke'));
+    expect(strokes).toEqual(['#38bdf8', '#38bdf8', '#a78bfa', '#a3e635', '#fbbf24', '#fbbf24']);
+
+    // Every cable terminates with a signal-matched SVG arrowhead marker.
+    const markers = Array.from(paths).map((p) => p.getAttribute('marker-end'));
+    expect(markers).toEqual([
+      'url(#patch-arrow-audio)',
+      'url(#patch-arrow-audio)',
+      'url(#patch-arrow-mod)',
+      'url(#patch-arrow-midi)',
+      'url(#patch-arrow-video)',
+      'url(#patch-arrow-video)',
+    ]);
+    expect(container.querySelectorAll('.patch__wires defs marker').length).toBe(4);
+  });
+
+  it('renders the signal legend pill strip in the canvas header', () => {
+    const { container } = render(Patch);
+    const legend = container.querySelector('.patch__legend');
+    expect(legend).not.toBeNull();
+    if (legend === null) return;
+    const inLegend = within(legend as HTMLElement);
+    expect(inLegend.getByText('Audio')).toBeInTheDocument();
+    expect(inLegend.getByText('Mod')).toBeInTheDocument();
+    expect(inLegend.getByText('MIDI/OSC')).toBeInTheDocument();
+    expect(inLegend.getByText('Video')).toBeInTheDocument();
+  });
+
+  it('hovering a wire highlights it, dims unrelated wires, and shows the connection readout', async () => {
+    const { container } = render(Patch);
+    const wires = container.querySelectorAll('.patch__wire');
+    expect(wires.length).toBe(6);
+    expect(container.querySelector('.patch__wire-tooltip')).toBeNull();
+
+    const firstWire = wires[0] as SVGGElement;
+    await fireEvent.pointerEnter(firstWire);
+
+    expect(firstWire).toHaveClass('patch__wire--hovered');
+    expect(wires[1]).toHaveClass('patch__wire--dimmed');
+    const tooltip = container.querySelector('.patch__wire-tooltip');
+    expect(tooltip).not.toBeNull();
+    expect(tooltip?.textContent).toContain('audio.bass → scene.pusher');
+
+    await fireEvent.pointerLeave(firstWire);
+    expect(firstWire).not.toHaveClass('patch__wire--hovered');
+    expect(wires[1]).not.toHaveClass('patch__wire--dimmed');
+    expect(container.querySelector('.patch__wire-tooltip')).toBeNull();
   });
 
   it('inspector defaults to the bundle Color Processor frame', () => {
