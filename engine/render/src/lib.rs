@@ -353,6 +353,7 @@ pub mod camera_adapter;
 pub mod composition;
 pub mod glsl_includes;
 pub mod multipass;
+pub mod offline_replay;
 #[cfg(feature = "scene-adapter")]
 pub mod scene_adapter;
 pub mod shader_cache;
@@ -380,6 +381,10 @@ pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
 pub use multipass::{
     CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
     UniformInput, UniformValue, compile_and_render_multipass,
+};
+pub use offline_replay::{
+    OfflineRenderConfig, OfflineRenderReport, OfflineReplayError, RecordedFrame, ShowRecording,
+    build_recorded_frame_uniforms, fnv1a_64, render_offline_recording,
 };
 #[cfg(feature = "scene-adapter")]
 pub use scene_adapter::{AdapterError, SceneAdapterOptions};

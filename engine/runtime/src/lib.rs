@@ -103,6 +103,10 @@ pub use command_bus::{
     CrossbeamChannel, Event, EventPayload, EventSeq, InMemoryBus, MappingId, MappingSource,
     PresetId, SnapSlotId,
 };
+pub use data_ingest::{
+    CASSETTE_FORMAT_VERSION, CassetteSample, DATA_UNIFORM_PREFIX, DataCassette, DataIngestEngine,
+    DataIngestError, DataIngestState, DataSourceSpec, DataTransport, DataValue,
+};
 
 #[cfg(feature = "script-bridge")]
 pub use script_bridge::{
@@ -111,6 +115,7 @@ pub use script_bridge::{
 
 pub mod command_bus;
 pub mod crash_resume;
+pub mod data_ingest;
 pub mod scheduler;
 #[cfg(feature = "script-bridge")]
 pub mod script_bridge;
