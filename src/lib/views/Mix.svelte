@@ -133,6 +133,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let youtubeResolving = $state(false);
   let youtubeResolveError = $state<string | null>(null);
   let youtubeResolveSeq = 0;
+  let youtubeVideoEl = $state<HTMLVideoElement | null>(null);
+  let youtubeUserPaused = $state(false);
+  let youtubeCurrentTime = $state(0);
+  let youtubeDuration = $state(0);
+  let youtubePlaybackRate = $state(1);
+  const YOUTUBE_SPEED_OPTIONS: ReadonlyArray<number> = [0.5, 0.75, 1, 1.25, 1.5, 2];
   let twitchDrawerOpen = $state(false);
   let twitchIngestUrl = $state(DEFAULT_TWITCH_INGEST_URL);
   let twitchStreamKey = $state('');
@@ -392,6 +398,58 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     triggerYouTubeNativeResolve(next.videoId);
   }
 
+  function formatMediaTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+    const whole = Math.floor(seconds);
+    const hrs = Math.floor(whole / 3600);
+    const mins = Math.floor((whole % 3600) / 60);
+    const secs = whole % 60;
+    const secStr = String(secs).padStart(2, '0');
+    if (hrs > 0) {
+      return `${hrs}:${String(mins).padStart(2, '0')}:${secStr}`;
+    }
+    return `${mins}:${secStr}`;
+  }
+
+  function toggleYouTubePlayPause(): void {
+    const el = youtubeVideoEl;
+    if (!el) return;
+    if (el.paused) {
+      youtubeUserPaused = false;
+      if (typeof el.play === 'function') {
+        void Promise.resolve(el.play()).catch(() => {});
+      }
+    } else {
+      youtubeUserPaused = true;
+      if (typeof el.pause === 'function') {
+        el.pause();
+      }
+    }
+  }
+
+  function seekYouTubeTo(targetSeconds: number): void {
+    const el = youtubeVideoEl;
+    if (!el || !Number.isFinite(targetSeconds)) return;
+    const maxSec = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : youtubeDuration;
+    const clamped = Math.max(0, maxSec > 0 ? Math.min(maxSec, targetSeconds) : targetSeconds);
+    el.currentTime = clamped;
+    youtubeCurrentTime = clamped;
+  }
+
+  function jumpYouTubeBy(deltaSeconds: number): void {
+    const el = youtubeVideoEl;
+    const base = el ? el.currentTime : youtubeCurrentTime;
+    seekYouTubeTo(base + deltaSeconds);
+  }
+
+  function setYouTubeSpeed(rate: number): void {
+    if (!Number.isFinite(rate) || rate <= 0) return;
+    youtubePlaybackRate = rate;
+    if (youtubeVideoEl) {
+      youtubeVideoEl.playbackRate = rate;
+    }
+  }
+
   function handleClearYouTube(): void {
     youtubeResolveSeq += 1;
     youtubeUrlInput = '';
@@ -399,6 +457,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     youtubeNativeStream = null;
     youtubeResolveError = null;
     youtubeResolving = false;
+    youtubeUserPaused = false;
+    youtubeCurrentTime = 0;
+    youtubeDuration = 0;
+    youtubePlaybackRate = 1;
     youtubeLayerStore.clear();
   }
 
@@ -1469,6 +1531,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                       {:else if layer.kind === 'youtube'}
                         {#if youtubeMachine.kind === 'ready' && youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
                           <video
+                            bind:this={youtubeVideoEl}
                             class="mix__live-video"
                             class:mix__live-video--key-source={!youtubeInteractive}
                             class:mix__live-youtube--passthrough={dragState !== null ||
@@ -1486,6 +1549,42 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                             muted
                             controls={youtubeInteractive}
                             use:attachYouTubeMuted={youtubeMachine.muted}
+                            onloadedmetadata={(e) => {
+                              const el = e.currentTarget as HTMLVideoElement;
+                              if (Number.isFinite(el.duration) && el.duration > 0) {
+                                youtubeDuration = el.duration;
+                              }
+                              el.playbackRate = youtubePlaybackRate;
+                            }}
+                            ontimeupdate={(e) => {
+                              const el = e.currentTarget as HTMLVideoElement;
+                              youtubeCurrentTime = el.currentTime;
+                              if (Number.isFinite(el.duration) && el.duration > 0) {
+                                youtubeDuration = el.duration;
+                              }
+                            }}
+                            onplay={() => {
+                              youtubeUserPaused = false;
+                            }}
+                            onpause={(e) => {
+                              if (!youtubeUserPaused && !youtubeInteractive) {
+                                const el = e.currentTarget as HTMLVideoElement;
+                                if (typeof el.play === 'function') {
+                                  void Promise.resolve(el.play()).catch(() => {});
+                                }
+                              }
+                            }}
+                            onstalled={(e) => {
+                              const el = e.currentTarget as HTMLVideoElement;
+                              if (
+                                el.paused &&
+                                !youtubeUserPaused &&
+                                !youtubeInteractive &&
+                                typeof el.play === 'function'
+                              ) {
+                                void Promise.resolve(el.play()).catch(() => {});
+                              }
+                            }}
                             onerror={(e) => {
                               const el = e.currentTarget as HTMLVideoElement;
                               const code = el.error?.code ?? 0;
@@ -1978,6 +2077,84 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                       </button>
                     {/if}
                   </div>
+
+                  {#if youtubeMachine.kind === 'ready' && youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
+                    <div
+                      class="mix__yt-transport"
+                      role="group"
+                      aria-label="YouTube playback controls"
+                      data-testid="mix-youtube-transport"
+                    >
+                      <div class="mix__yt-actions">
+                        <button
+                          type="button"
+                          class="mix__btn mix__btn--compact mix__btn--primary"
+                          data-testid="mix-youtube-playpause"
+                          aria-pressed={!youtubeUserPaused}
+                          onclick={toggleYouTubePlayPause}
+                        >
+                          {youtubeUserPaused ? '▶ Play' : '⏸ Pause'}
+                        </button>
+                        <button
+                          type="button"
+                          class="mix__btn mix__btn--compact"
+                          title="Jump back 10 seconds"
+                          onclick={() => jumpYouTubeBy(-10)}
+                        >
+                          −10s
+                        </button>
+                        <button
+                          type="button"
+                          class="mix__btn mix__btn--compact"
+                          title="Jump forward 10 seconds"
+                          onclick={() => jumpYouTubeBy(10)}
+                        >
+                          +10s
+                        </button>
+                        <button
+                          type="button"
+                          class="mix__btn mix__btn--compact"
+                          title="Restart from 0:00"
+                          onclick={() => seekYouTubeTo(0)}
+                        >
+                          ↺ 0:00
+                        </button>
+                        <select
+                          aria-label="YouTube playback speed"
+                          class="mix__select"
+                          style="width: auto; min-width: 62px;"
+                          value={String(youtubePlaybackRate)}
+                          onchange={(e) =>
+                            setYouTubeSpeed(Number((e.currentTarget as HTMLSelectElement).value))}
+                        >
+                          {#each YOUTUBE_SPEED_OPTIONS as rate (rate)}
+                            <option value={String(rate)}>{rate}×</option>
+                          {/each}
+                        </select>
+                      </div>
+
+                      <div class="mix__field">
+                        <div class="mix__field-row">
+                          <label class="mix__label" for="mix-youtube-seek">Timeline</label>
+                          <span class="mix__value-readout">
+                            {formatMediaTime(youtubeCurrentTime)} / {formatMediaTime(
+                              youtubeDuration,
+                            )}
+                          </span>
+                        </div>
+                        <input
+                          id="mix-youtube-seek"
+                          type="range"
+                          class="mix__range"
+                          min="0"
+                          max={String(Math.max(1, Math.floor(youtubeDuration)))}
+                          step="1"
+                          value={String(Math.floor(youtubeCurrentTime))}
+                          oninput={(e) => seekYouTubeTo(parseNumericInput(e))}
+                        />
+                      </div>
+                    </div>
+                  {/if}
 
                   {#if youtubeMachine.kind === 'ready'}
                     <p class="mix__yt-status" data-testid="mix-youtube-status">
