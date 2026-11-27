@@ -107,6 +107,12 @@ pub use data_ingest::{
     CASSETTE_FORMAT_VERSION, CassetteSample, DATA_UNIFORM_PREFIX, DataCassette, DataIngestEngine,
     DataIngestError, DataIngestState, DataSourceSpec, DataTransport, DataValue,
 };
+pub use recorder::{
+    DEFAULT_REPLAY_DURATION_SECS, DEFAULT_REPLAY_MAX_BYTES, DEFAULT_SAMPLE_DURATION_90KHZ,
+    EncodedPacket, Fmp4Muxer, Fmp4MuxerConfig, IsoBoxHeader, MAX_REPLAY_DURATION_SECS,
+    MIN_REPLAY_DURATION_SECS, RecorderError, RecorderState, ReplayBuffer, TIMESCALE_90KHZ,
+    build_fragment, build_init_segment, parse_box_headers,
+};
 pub use rekordbox_bridge::{
     ChannelPairMeter, ChannelPairSelection, DjDeviceKind, DjDeviceProfile, MultiChannelExtractor,
     PRO_DJ_LINK_BEAT_PACKET_MIN_LEN, PRO_DJ_LINK_BEAT_PACKET_TYPE, PRO_DJ_LINK_BEAT_PORT,
@@ -131,6 +137,7 @@ pub use script_bridge::{
 pub mod command_bus;
 pub mod crash_resume;
 pub mod data_ingest;
+pub mod recorder;
 pub mod rekordbox_bridge;
 pub mod scheduler;
 #[cfg(feature = "script-bridge")]
