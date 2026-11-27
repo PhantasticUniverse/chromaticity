@@ -4,11 +4,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  BLEND_MODE_OPTIONS,
+  FX_PRESETS,
   videoMixerStore,
   type AudioLinkFilter,
   type ChromaKeyFilter,
   type ColorGradeFilter,
   type LumaKeyFilter,
+  type StylizeFilter,
 } from './videoMixer.svelte';
 import { inspectAllStateMachines, registeredStateMachineNames } from '../state/diagnostics';
 
@@ -205,6 +208,7 @@ describe('videoMixerStore', () => {
       enabled: true,
       threshold: 0.35,
       feather: 0.22,
+      invert: false,
     });
     expect(cg).toEqual({
       kind: 'colorGrade',
@@ -213,6 +217,10 @@ describe('videoMixerStore', () => {
       contrast: 1.15,
       saturation: 1.4,
       hue: -35,
+      gamma: 1,
+      invert: 0,
+      sepia: 0,
+      grayscale: 0,
     });
     expect(al).toEqual({
       kind: 'audioLink',
@@ -221,6 +229,52 @@ describe('videoMixerStore', () => {
       target: 'scale',
       amount: 0.85,
     });
+  });
+
+  it('supports all 10 blend modes, StylizeFilter clamping, LumaKey invert, ColorGrade extensions, and FX presets', () => {
+    expect(BLEND_MODE_OPTIONS).toHaveLength(10);
+    expect(FX_PRESETS).toHaveLength(7);
+
+    const id = 'layer-shader-1';
+    videoMixerStore.setBlendMode(id, 'hard-light');
+    expect(videoMixerStore.layers.find((l) => l.id === id)?.blendMode).toBe('hard-light');
+
+    videoMixerStore.toggleFilter(id, 'stylize');
+    videoMixerStore.updateFilter(id, 'stylize', {
+      blur: 30,
+      bloom: 0.75,
+      vignette: 0.5,
+      chromaticAberration: 16,
+      scanlines: 0.4,
+      mirror: 'quad',
+    });
+
+    const st = videoMixerStore.layers
+      .find((l) => l.id === id)
+      ?.filters.find((f) => f.kind === 'stylize') as StylizeFilter;
+    expect(st).toEqual({
+      kind: 'stylize',
+      enabled: true,
+      blur: 24,
+      bloom: 0.75,
+      vignette: 0.5,
+      chromaticAberration: 12,
+      scanlines: 0.4,
+      mirror: 'quad',
+    });
+
+    videoMixerStore.applyFxPreset(id, 'vhs-glitch');
+    const vhsLayer = videoMixerStore.layers.find((l) => l.id === id);
+    const vhsStylize = vhsLayer?.filters.find((f) => f.kind === 'stylize') as StylizeFilter;
+    const vhsGrade = vhsLayer?.filters.find((f) => f.kind === 'colorGrade') as ColorGradeFilter;
+    expect(vhsStylize.enabled).toBe(true);
+    expect(vhsStylize.chromaticAberration).toBe(5);
+    expect(vhsStylize.scanlines).toBe(0.55);
+    expect(vhsGrade.sepia).toBe(0.22);
+
+    videoMixerStore.applyFxPreset(id, 'reset-all');
+    const resetLayer = videoMixerStore.layers.find((l) => l.id === id);
+    expect(resetLayer?.filters.every((f) => !f.enabled)).toBe(true);
   });
 
   it('isolates Preview from Program in Studio Mode until cutToProgram is called', () => {

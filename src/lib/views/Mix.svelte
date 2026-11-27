@@ -23,6 +23,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import {
     BLEND_MODE_OPTIONS,
     DEFAULT_SHADER_SCENE_ID,
+    FX_PRESETS,
     LAYER_SOURCE_CATALOG,
     MIX_SHADER_SCENES,
     videoMixerStore,
@@ -32,13 +33,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type BlendMode,
     type ChromaKeyFilter,
     type ColorGradeFilter,
+    type FxPresetId,
     type LayerFilter,
     type LayerSourceKind,
     type LumaKeyFilter,
+    type MirrorMode,
     type MixLayer,
     type MixShaderSceneOption,
+    type StylizeFilter,
   } from '../stores/videoMixer.svelte';
   import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
+  import { applyPixelKeyingToImageData, buildLayerCssFilter } from '../utils/liveVideoFx';
   import {
     sceneKindFromMetadata,
     sceneSeedFromMetadata,
@@ -56,6 +61,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   const DEFAULT_TWITCH_INGEST_URL = 'rtmps://live.twitch.tv/app';
   const TWITCH_BITRATE_OPTIONS: ReadonlyArray<number> = [3500, 4500, 6000];
+  const TWITCH_AUDIO_DEVICE_OPTIONS: ReadonlyArray<{
+    readonly value: string;
+    readonly label: string;
+  }> = [
+    { value: '', label: 'Silent (Visuals Only)' },
+    { value: ':0', label: 'Live System / Mic (:0)' },
+    { value: ':1', label: 'Live Audio (:1)' },
+  ];
   const DEFAULT_STREAM_WIDTH = 1280;
   const DEFAULT_STREAM_HEIGHT = 720;
   const DEFAULT_STREAM_FPS = 30;
@@ -93,6 +106,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let addMenuOpen = $state(false);
   let sectionShaderOpen = $state(true);
   let sectionYouTubeOpen = $state(true);
+  let sectionScreenOpen = $state(true);
+  let sectionMediaOpen = $state(true);
   let sectionTransformOpen = $state(true);
   let sectionCompositingOpen = $state(true);
   let sectionFiltersOpen = $state(true);
@@ -106,6 +121,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let webcamStream = $state.raw<MediaStream | null>(null);
   let webcamPending = $state(false);
   let webcamError = $state<string | null>(null);
+  let screenStream = $state.raw<MediaStream | null>(null);
+  let screenPending = $state(false);
+  let screenError = $state<string | null>(null);
+  let localMediaUrl = $state<string | null>(null);
+  let localMediaKind = $state<'video' | 'image' | null>(null);
+  let localMediaName = $state<string | null>(null);
   let youtubeUrlInput = $state('');
   let youtubeInteractive = $state(false);
   let youtubeNativeStream = $state<YouTubeStreamDto | null>(null);
@@ -116,6 +137,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let twitchIngestUrl = $state(DEFAULT_TWITCH_INGEST_URL);
   let twitchStreamKey = $state('');
   let twitchBitrateKbps = $state<number>(6000);
+  let twitchAudioDevice = $state<string | null>(null);
   let streamStatus = $state<StreamStatusDto>(DEFAULT_STREAM_STATUS);
   let streamPending = $state(false);
   let streamError = $state<string | null>(null);
@@ -169,6 +191,136 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     } finally {
       webcamPending = false;
     }
+  }
+
+  function stopScreenCapture(): void {
+    const active = screenStream;
+    screenStream = null;
+    screenError = null;
+    if (active !== null) {
+      for (const track of active.getTracks()) {
+        track.stop();
+      }
+    }
+  }
+
+  async function startScreenCapture(): Promise<void> {
+    if (screenPending || screenStream !== null) return;
+    screenError = null;
+    const mediaDevices = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
+    if (!mediaDevices || typeof mediaDevices.getDisplayMedia !== 'function') {
+      screenError = 'Screen capture is unavailable in this environment.';
+      return;
+    }
+
+    screenPending = true;
+    try {
+      const stream = await mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      if (disposed) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
+      for (const track of stream.getTracks()) {
+        track.addEventListener?.('ended', () => {
+          if (!disposed && screenStream === stream) {
+            screenStream = null;
+          }
+        });
+      }
+      screenStream = stream;
+    } catch (err: unknown) {
+      if (disposed) return;
+      screenError =
+        err instanceof Error && err.message.trim().length > 0
+          ? err.message
+          : 'Screen capture permission denied or cancelled.';
+    } finally {
+      screenPending = false;
+    }
+  }
+
+  function clearLocalMedia(): void {
+    if (localMediaUrl !== null && typeof URL !== 'undefined' && URL.revokeObjectURL) {
+      URL.revokeObjectURL(localMediaUrl);
+    }
+    localMediaUrl = null;
+    localMediaKind = null;
+    localMediaName = null;
+  }
+
+  function handleLocalMediaFile(event: Event): void {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (localMediaUrl !== null && typeof URL !== 'undefined' && URL.revokeObjectURL) {
+      URL.revokeObjectURL(localMediaUrl);
+    }
+    localMediaUrl = URL.createObjectURL(file);
+    localMediaKind = file.type.startsWith('image/') ? 'image' : 'video';
+    localMediaName = file.name;
+  }
+
+  interface KeyedCanvasParams {
+    readonly chromaKey: ChromaKeyFilter | null;
+    readonly lumaKey: LumaKeyFilter | null;
+  }
+
+  function keyedVideoCanvas(canvas: HTMLCanvasElement, initialParams: KeyedCanvasParams) {
+    let params = initialParams;
+    let rafId: number | null = null;
+    let active = true;
+
+    const isJsdom = typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
+    const ctx = isJsdom ? null : canvas.getContext('2d', { willReadFrequently: true });
+
+    const renderFrame = (): void => {
+      if (!active || ctx === null) return;
+      const video = canvas.parentElement?.querySelector('video');
+      if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+        const maxW = 640;
+        const scale = Math.min(1, maxW / video.videoWidth);
+        const w = Math.max(1, Math.round(video.videoWidth * scale));
+        const h = Math.max(1, Math.round(video.videoHeight * scale));
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        try {
+          ctx.drawImage(video, 0, 0, w, h);
+          const frame = ctx.getImageData(0, 0, w, h);
+          applyPixelKeyingToImageData(frame.data, {
+            chromaKey: params.chromaKey,
+            lumaKey: params.lumaKey,
+          });
+          ctx.putImageData(frame, 0, 0);
+        } catch {
+          // Cross-origin or transient video decode errors are skipped cleanly.
+        }
+      }
+      if (active && typeof requestAnimationFrame === 'function') {
+        rafId = requestAnimationFrame(renderFrame);
+      }
+    };
+
+    if (ctx !== null && typeof requestAnimationFrame === 'function') {
+      rafId = requestAnimationFrame(renderFrame);
+    }
+
+    return {
+      update(nextParams: KeyedCanvasParams) {
+        params = nextParams;
+      },
+      destroy() {
+        active = false;
+        if (rafId !== null && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(rafId);
+        }
+        rafId = null;
+      },
+    };
   }
 
   function attachStream(node: HTMLVideoElement, stream: MediaStream | null) {
@@ -261,7 +413,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   function canvasCompositeOp(
     mode: BlendMode,
-  ): 'source-over' | 'screen' | 'lighter' | 'multiply' | 'lighten' {
+  ):
+    | 'source-over'
+    | 'screen'
+    | 'lighter'
+    | 'multiply'
+    | 'overlay'
+    | 'hard-light'
+    | 'difference'
+    | 'exclusion'
+    | 'lighten' {
     switch (mode) {
       case 'screen':
         return 'screen';
@@ -269,6 +430,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         return 'lighter';
       case 'multiply':
         return 'multiply';
+      case 'overlay':
+        return 'overlay';
+      case 'hard-light':
+        return 'hard-light';
+      case 'difference':
+        return 'difference';
+      case 'exclusion':
+        return 'exclusion';
       case 'luma-key':
         return 'lighten';
       case 'normal':
@@ -308,20 +477,27 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         const layerEl = stageCanvasEl.querySelector<HTMLElement>(
           `[data-stage-layer-id="${layer.id}"]`,
         );
-        const mediaEl = layerEl?.querySelector<HTMLCanvasElement | HTMLVideoElement>(
-          'canvas, video',
-        );
+        const mediaEl = layerEl?.querySelector<
+          HTMLCanvasElement | HTMLVideoElement | HTMLImageElement
+        >('canvas.mix__keyed-canvas, canvas, video, img');
         if (!mediaEl) continue;
         if (mediaEl instanceof HTMLVideoElement && mediaEl.readyState < 2) continue;
 
         ctx.save();
         ctx.globalAlpha = layer.opacity;
         ctx.globalCompositeOperation = canvasCompositeOp(layer.blendMode);
+        const cssFilter = buildLayerCssFilter(layer);
+        if ('filter' in ctx) {
+          ctx.filter = cssFilter;
+        }
         const cx = width / 2 + (layer.transform.x / 100) * width;
         const cy = height / 2 + (layer.transform.y / 100) * height;
         ctx.translate(cx, cy);
         ctx.rotate((layer.transform.rotationDeg * Math.PI) / 180);
-        ctx.scale(layer.transform.scaleX, layer.transform.scaleY);
+        const stylize = findFilter<StylizeFilter>(layer, 'stylize');
+        const flipX = stylize?.enabled && stylize.mirror === 'horizontal' ? -1 : 1;
+        const flipY = stylize?.enabled && stylize.mirror === 'vertical' ? -1 : 1;
+        ctx.scale(layer.transform.scaleX * flipX, layer.transform.scaleY * flipY);
         try {
           ctx.drawImage(mediaEl, -width / 2, -height / 2, width, height);
         } catch {
@@ -398,6 +574,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         width: DEFAULT_STREAM_WIDTH,
         height: DEFAULT_STREAM_HEIGHT,
         fps: DEFAULT_STREAM_FPS,
+        ...(twitchAudioDevice !== null ? { audioDevice: twitchAudioDevice } : {}),
       });
       if (disposed) return;
       if (next === null) {
@@ -461,6 +638,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     disposed = true;
     stopStreamCaptureLoop();
     stopWebcam();
+    stopScreenCapture();
+    clearLocalMedia();
     if (replayFeedbackTimer !== null) {
       clearTimeout(replayFeedbackTimer);
       replayFeedbackTimer = null;
@@ -486,6 +665,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   );
   const colorFilter = $derived(
     selectedLayer ? findFilter<ColorGradeFilter>(selectedLayer, 'colorGrade') : null,
+  );
+  const stylizeFilter = $derived(
+    selectedLayer ? findFilter<StylizeFilter>(selectedLayer, 'stylize') : null,
   );
   const audioFilter = $derived(
     selectedLayer ? findFilter<AudioLinkFilter>(selectedLayer, 'audioLink') : null,
@@ -539,6 +721,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         return 'plus-lighter';
       case 'multiply':
         return 'multiply';
+      case 'overlay':
+        return 'overlay';
+      case 'hard-light':
+        return 'hard-light';
+      case 'difference':
+        return 'difference';
+      case 'exclusion':
+        return 'exclusion';
       case 'luma-key':
         return 'lighten';
       case 'normal':
@@ -547,20 +737,53 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   }
 
-  function layerCssFilter(layer: MixLayer): string {
-    const parts: string[] = [];
-    const grade = findFilter<ColorGradeFilter>(layer, 'colorGrade');
-    if (grade?.enabled) {
-      parts.push(
-        `brightness(${grade.brightness}) contrast(${grade.contrast}) saturate(${grade.saturation}) hue-rotate(${grade.hue}deg)`,
-      );
-    }
+  function resolveEffectiveKeying(layer: MixLayer): {
+    readonly chromaKey: ChromaKeyFilter | null;
+    readonly lumaKey: LumaKeyFilter | null;
+    readonly active: boolean;
+  } {
+    const ck = findFilter<ChromaKeyFilter>(layer, 'chromaKey');
+    const lk = findFilter<LumaKeyFilter>(layer, 'lumaKey');
+    const effectiveCk = ck?.enabled
+      ? ck
+      : layer.blendMode === 'chroma-key' && ck
+        ? { ...ck, enabled: true }
+        : null;
+    const effectiveLk = lk?.enabled
+      ? lk
+      : layer.blendMode === 'luma-key' && lk
+        ? { ...lk, enabled: true }
+        : null;
+    return {
+      chromaKey: effectiveCk,
+      lumaKey: effectiveLk,
+      active: effectiveCk !== null || effectiveLk !== null,
+    };
+  }
+
+  function effectiveRgbSplit(layer: MixLayer): number {
+    const stylize = findFilter<StylizeFilter>(layer, 'stylize');
     const audio = findFilter<AudioLinkFilter>(layer, 'audioLink');
-    if (audio?.enabled && audio.target === 'glow') {
-      const px = Math.round(4 + audio.amount * 18);
-      parts.push(`drop-shadow(0 0 ${px}px rgba(196, 255, 61, 0.55))`);
+    const base = stylize?.enabled ? stylize.chromaticAberration : 0;
+    const audioOffset = audio?.enabled && audio.target === 'rgb-split' ? audio.amount * 8 : 0;
+    return Math.round((base + audioOffset) * 10) / 10;
+  }
+
+  function layerMediaStyle(layer: MixLayer): string {
+    const parts = [`filter: ${buildLayerCssFilter(layer)}`];
+    const stylize = findFilter<StylizeFilter>(layer, 'stylize');
+    if (stylize?.enabled) {
+      if (stylize.mirror === 'horizontal') {
+        parts.push('transform: scaleX(-1)');
+      } else if (stylize.mirror === 'vertical') {
+        parts.push('transform: scaleY(-1)');
+      }
     }
-    return parts.length > 0 ? parts.join(' ') : 'none';
+    return parts.join('; ');
+  }
+
+  function handleApplyFxPreset(layerId: string, presetId: FxPresetId): void {
+    videoMixerStore.applyFxPreset(layerId, presetId);
   }
 
   function layerStageStyle(layer: MixLayer, zIndex: number): string {
@@ -1094,6 +1317,25 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 </select>
               </div>
 
+              <div class="mix__field mix__twitch-field--audio">
+                <label class="mix__mini-label" for="mix-twitch-audio">Audio Source</label>
+                <select
+                  id="mix-twitch-audio"
+                  data-testid="mix-twitch-audio"
+                  class="mix__select"
+                  value={twitchAudioDevice ?? ''}
+                  disabled={streamStatus.is_live || streamPending}
+                  onchange={(e) => {
+                    const raw = (e.currentTarget as HTMLSelectElement).value;
+                    twitchAudioDevice = raw.length > 0 ? raw : null;
+                  }}
+                >
+                  {#each TWITCH_AUDIO_DEVICE_OPTIONS as opt (opt.value)}
+                    <option value={opt.value}>{opt.label}</option>
+                  {/each}
+                </select>
+              </div>
+
               <div class="mix__twitch-submit">
                 <button
                   type="submit"
@@ -1166,8 +1408,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 {@const isSelected = layer.id === videoMixerStore.selectedLayerId}
                 {@const hasChroma = findFilter<ChromaKeyFilter>(layer, 'chromaKey')?.enabled}
                 {@const hasLuma = findFilter<LumaKeyFilter>(layer, 'lumaKey')?.enabled}
+                {@const stylize = findFilter<StylizeFilter>(layer, 'stylize')}
                 {@const activeAudio = findFilter<AudioLinkFilter>(layer, 'audioLink')}
-                {@const mediaFilter = layerCssFilter(layer)}
+                {@const keying = resolveEffectiveKeying(layer)}
+                {@const mediaFilter = buildLayerCssFilter(layer)}
+                {@const rgbSplitPx = effectiveRgbSplit(layer)}
                 <div
                   role="presentation"
                   class="mix__stage-layer mix__stage-layer--{layer.kind}"
@@ -1180,8 +1425,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   <div class="mix__layer-visual">
                     <div
                       class="mix__layer-media"
-                      style={`filter: ${mediaFilter}`}
+                      class:mix__layer-media--mirror-quad={stylize?.enabled &&
+                        stylize.mirror === 'quad'}
+                      style={layerMediaStyle(layer)}
                       data-layer-filter={mediaFilter}
+                      data-mirror={stylize?.enabled ? stylize.mirror : 'none'}
+                      data-rgb-split={rgbSplitPx > 0 ? String(rgbSplitPx) : undefined}
                     >
                       {#if layer.kind === 'shader'}
                         {@const shaderMeta = resolveShaderScene(layer)}
@@ -1202,16 +1451,26 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                           <!-- svelte-ignore a11y_media_has_caption -->
                           <video
                             class="mix__live-video"
+                            class:mix__live-video--key-source={keying.active}
                             class:mix__live-youtube--passthrough={dragState !== null ||
                               !youtubeInteractive}
                             data-testid="mix-youtube-video"
                             src={youtubeNativeStream.stream_url}
+                            crossorigin="anonymous"
                             autoplay
                             loop
                             playsinline
                             controls={youtubeInteractive}
                             use:attachYouTubeMuted={youtubeMachine.muted}
                           ></video>
+                          {#if keying.active}
+                            <canvas
+                              class="mix__keyed-canvas"
+                              data-testid="mix-keyed-canvas-youtube"
+                              aria-hidden="true"
+                              use:keyedVideoCanvas={keying}
+                            ></canvas>
+                          {/if}
                         {:else if youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
                           <iframe
                             class="mix__live-youtube"
@@ -1233,12 +1492,21 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                         {#if webcamStream !== null}
                           <video
                             class="mix__live-video"
+                            class:mix__live-video--key-source={keying.active}
                             data-testid="mix-webcam-video"
                             autoplay
                             playsinline
                             muted
                             use:attachStream={webcamStream}
                           ></video>
+                          {#if keying.active}
+                            <canvas
+                              class="mix__keyed-canvas"
+                              data-testid="mix-keyed-canvas-webcam"
+                              aria-hidden="true"
+                              use:keyedVideoCanvas={keying}
+                            ></canvas>
+                          {/if}
                         {:else}
                           <div class="mix__visual-webcam">
                             <div class="mix__webcam-silhouette" aria-hidden="true"></div>
@@ -1261,20 +1529,106 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                           <span class="mix__visual-chip">SYPHON · SYNESTHESIA BUS</span>
                         </div>
                       {:else if layer.kind === 'screen'}
-                        <div class="mix__visual-screen" aria-hidden="true">
-                          <span class="mix__visual-chip">WINDOW / DISPLAY CAPTURE</span>
-                        </div>
+                        {#if screenStream !== null}
+                          <video
+                            class="mix__live-video"
+                            class:mix__live-video--key-source={keying.active}
+                            data-testid="mix-screen-video"
+                            autoplay
+                            playsinline
+                            muted
+                            use:attachStream={screenStream}
+                          ></video>
+                          {#if keying.active}
+                            <canvas
+                              class="mix__keyed-canvas"
+                              data-testid="mix-keyed-canvas-screen"
+                              aria-hidden="true"
+                              use:keyedVideoCanvas={keying}
+                            ></canvas>
+                          {/if}
+                        {:else}
+                          <div class="mix__visual-screen">
+                            <span class="mix__visual-chip">WINDOW / DISPLAY CAPTURE</span>
+                            <button
+                              type="button"
+                              class="mix__btn mix__btn--compact mix__webcam-inline-btn"
+                              disabled={screenPending}
+                              onpointerdown={(event) => event.stopPropagation()}
+                              onclick={() => void startScreenCapture()}
+                            >
+                              {screenPending ? 'Capturing…' : 'Start Screen Capture'}
+                            </button>
+                          </div>
+                        {/if}
                       {:else if layer.kind === 'text'}
                         <div class="mix__visual-text">
                           <span class="mix__text-heading">{layer.name}</span>
                           <span class="mix__text-sub">LIVE VISUAL PERFORMANCE</span>
                         </div>
+                      {:else if localMediaUrl !== null && localMediaKind === 'video'}
+                        <video
+                          class="mix__live-video"
+                          class:mix__live-video--key-source={keying.active}
+                          data-testid="mix-media-video"
+                          src={localMediaUrl}
+                          autoplay
+                          loop
+                          playsinline
+                          muted
+                        ></video>
+                        {#if keying.active}
+                          <canvas
+                            class="mix__keyed-canvas"
+                            data-testid="mix-keyed-canvas-media"
+                            aria-hidden="true"
+                            use:keyedVideoCanvas={keying}
+                          ></canvas>
+                        {/if}
+                      {:else if localMediaUrl !== null && localMediaKind === 'image'}
+                        <img
+                          class="mix__live-video"
+                          data-testid="mix-media-image"
+                          src={localMediaUrl}
+                          alt={localMediaName ?? 'Local media image'}
+                        />
                       {:else}
                         <div class="mix__visual-media" aria-hidden="true">
                           <span class="mix__visual-chip">LOCAL MEDIA LOOP</span>
                         </div>
                       {/if}
                     </div>
+
+                    {#if stylize?.enabled && stylize.vignette > 0}
+                      <div
+                        class="mix__fx-vignette"
+                        data-testid="mix-fx-vignette"
+                        style={`background: radial-gradient(ellipse at center, transparent ${Math.round(
+                          (1 - stylize.vignette * 0.65) * 100,
+                        )}%, rgba(0, 0, 0, ${(0.45 + stylize.vignette * 0.5).toFixed(2)}) 100%)`}
+                        aria-hidden="true"
+                      ></div>
+                    {/if}
+
+                    {#if stylize?.enabled && stylize.scanlines > 0}
+                      <div
+                        class="mix__fx-scanlines"
+                        data-testid="mix-fx-scanlines"
+                        style={`background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, ${(
+                          stylize.scanlines * 0.65
+                        ).toFixed(2)}) 0 2px, transparent 2px 4px)`}
+                        aria-hidden="true"
+                      ></div>
+                    {/if}
+
+                    {#if rgbSplitPx > 0}
+                      <div
+                        class="mix__fx-rgb-split"
+                        data-testid="mix-fx-rgb-split"
+                        style={`box-shadow: inset ${rgbSplitPx}px 0 0 rgba(255, 45, 85, 0.35), inset -${rgbSplitPx}px 0 0 rgba(0, 229, 255, 0.35)`}
+                        aria-hidden="true"
+                      ></div>
+                    {/if}
 
                     {#if isSelected}
                       <div class="mix__stage-tag">
@@ -1284,6 +1638,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                         {/if}
                         {#if hasLuma}
                           <span class="mix__fx-pill">LK</span>
+                        {/if}
+                        {#if stylize?.enabled}
+                          <span class="mix__fx-pill">FX</span>
                         {/if}
                         {#if activeAudio?.enabled}
                           <span class="mix__fx-pill mix__fx-pill--audio">
@@ -1365,7 +1722,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                     style={layerStageStyle(layer, revIndex + 1)}
                   >
                     <div class="mix__layer-visual">
-                      <div class="mix__layer-media" style={`filter: ${layerCssFilter(layer)}`}>
+                      <div class="mix__layer-media" style={layerMediaStyle(layer)}>
                         {#if layer.kind === 'webcam' && webcamStream !== null}
                           <video
                             class="mix__live-video"
@@ -1374,6 +1731,29 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                             muted
                             use:attachStream={webcamStream}
                           ></video>
+                        {:else if layer.kind === 'screen' && screenStream !== null}
+                          <video
+                            class="mix__live-video"
+                            autoplay
+                            playsinline
+                            muted
+                            use:attachStream={screenStream}
+                          ></video>
+                        {:else if layer.kind === 'media' && localMediaUrl !== null && localMediaKind === 'video'}
+                          <video
+                            class="mix__live-video"
+                            src={localMediaUrl}
+                            autoplay
+                            loop
+                            playsinline
+                            muted
+                          ></video>
+                        {:else if layer.kind === 'media' && localMediaUrl !== null && localMediaKind === 'image'}
+                          <img
+                            class="mix__live-video"
+                            src={localMediaUrl}
+                            alt={localMediaName ?? 'Program media'}
+                          />
                         {:else if layer.kind === 'youtube' && youtubeMachine.kind === 'ready' && youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
                           <video
                             class="mix__live-video mix__live-youtube--passthrough"
@@ -1585,6 +1965,95 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                         {/if}
                       {/if}
                     </p>
+                  {/if}
+                </div>
+              {/if}
+            </section>
+          {/if}
+
+          {#if selectedLayer.kind === 'screen'}
+            <!-- LIVE SCREEN CAPTURE SECTION -->
+            <section class="mix__section" aria-label="Screen Capture">
+              <button
+                type="button"
+                class="mix__section-toggle"
+                aria-expanded={sectionScreenOpen}
+                onclick={() => (sectionScreenOpen = !sectionScreenOpen)}
+              >
+                <span>Screen Capture</span>
+                <span class="mix__chevron">{sectionScreenOpen ? '▾' : '▸'}</span>
+              </button>
+
+              {#if sectionScreenOpen}
+                <div class="mix__section-body">
+                  <div class="mix__yt-actions">
+                    <button
+                      type="button"
+                      class="mix__btn mix__btn--compact"
+                      class:mix__btn--primary={screenStream === null}
+                      class:mix__btn--danger={screenStream !== null}
+                      data-testid="mix-screen-toggle"
+                      aria-pressed={screenStream !== null}
+                      disabled={screenPending}
+                      onclick={() =>
+                        screenStream !== null ? stopScreenCapture() : void startScreenCapture()}
+                    >
+                      {screenPending
+                        ? 'Capturing…'
+                        : screenStream !== null
+                          ? 'Stop Screen'
+                          : 'Start Screen Capture'}
+                    </button>
+                  </div>
+                  {#if screenError !== null}
+                    <p class="mix__yt-error" role="alert" data-testid="mix-screen-error">
+                      {screenError}
+                    </p>
+                  {/if}
+                </div>
+              {/if}
+            </section>
+          {/if}
+
+          {#if selectedLayer.kind === 'media'}
+            <!-- LOCAL MEDIA PICKER SECTION -->
+            <section class="mix__section" aria-label="Local Media">
+              <button
+                type="button"
+                class="mix__section-toggle"
+                aria-expanded={sectionMediaOpen}
+                onclick={() => (sectionMediaOpen = !sectionMediaOpen)}
+              >
+                <span>Local Media</span>
+                <span class="mix__chevron">{sectionMediaOpen ? '▾' : '▸'}</span>
+              </button>
+
+              {#if sectionMediaOpen}
+                <div class="mix__section-body">
+                  <div class="mix__field">
+                    <label class="mix__label" for="mix-media-file">Load Video / Image</label>
+                    <input
+                      id="mix-media-file"
+                      data-testid="mix-media-input"
+                      type="file"
+                      class="mix__file-input"
+                      accept="video/*,image/*"
+                      onchange={handleLocalMediaFile}
+                    />
+                  </div>
+                  {#if localMediaUrl !== null}
+                    <div class="mix__yt-actions">
+                      <span class="mix__yt-status" data-testid="mix-media-name">
+                        {localMediaName ?? 'Loaded media'}
+                      </span>
+                      <button
+                        type="button"
+                        class="mix__btn mix__btn--compact"
+                        onclick={clearLocalMedia}
+                      >
+                        Clear
+                      </button>
+                    </div>
                   {/if}
                 </div>
               {/if}
@@ -1868,6 +2337,25 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
             {#if sectionFiltersOpen}
               <div class="mix__section-body mix__fx-rack">
+                <!-- 1-Click FX Presets -->
+                <div class="mix__preset-block">
+                  <span class="mix__mini-label">1-Click FX Presets</span>
+                  <div class="mix__preset-strip" role="group" aria-label="FX Presets">
+                    {#each FX_PRESETS as preset (preset.id)}
+                      <button
+                        type="button"
+                        class="mix__preset-pill"
+                        class:mix__preset-pill--reset={preset.id === 'reset-all'}
+                        data-testid={`mix-fx-preset-${preset.id}`}
+                        title={preset.description}
+                        onclick={() => handleApplyFxPreset(selectedLayer.id, preset.id)}
+                      >
+                        {preset.label}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+
                 <!-- Chroma Key -->
                 {#if chromaFilter}
                   <div class="mix__fx-card" class:mix__fx-card--active={chromaFilter.enabled}>
@@ -2028,6 +2516,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                               })}
                           />
                         </div>
+                        <div class="mix__field-row">
+                          <span class="mix__mini-label">Invert Key (Remove Bright)</span>
+                          <button
+                            type="button"
+                            class="mix__toggle-pill"
+                            class:mix__toggle-pill--on={lumaFilter.invert}
+                            aria-label="Invert Luma Key"
+                            aria-pressed={lumaFilter.invert}
+                            onclick={() =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'lumaKey', {
+                                invert: !lumaFilter.invert,
+                              })}
+                          >
+                            {lumaFilter.invert ? 'ON' : 'OFF'}
+                          </button>
+                        </div>
                       </div>
                     {/if}
                   </div>
@@ -2135,6 +2639,233 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                               })}
                           />
                         </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-cg-gamma">Gamma</label>
+                            <span class="mix__value-readout">
+                              {colorFilter.gamma.toFixed(2)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-cg-gamma"
+                            type="range"
+                            class="mix__range"
+                            min="0.2"
+                            max="3"
+                            step="0.05"
+                            value={String(colorFilter.gamma)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'colorGrade', {
+                                gamma: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-cg-invert">Invert</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(colorFilter.invert)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-cg-invert"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={String(colorFilter.invert)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'colorGrade', {
+                                invert: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-cg-sepia">Sepia</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(colorFilter.sepia)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-cg-sepia"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={String(colorFilter.sepia)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'colorGrade', {
+                                sepia: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-cg-gray">Grayscale</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(colorFilter.grayscale)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-cg-gray"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={String(colorFilter.grayscale)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'colorGrade', {
+                                grayscale: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+
+                <!-- Stylize & VJ FX -->
+                {#if stylizeFilter}
+                  <div class="mix__fx-card" class:mix__fx-card--active={stylizeFilter.enabled}>
+                    <div class="mix__fx-header">
+                      <span class="mix__fx-title">Stylize &amp; VJ FX</span>
+                      <button
+                        type="button"
+                        class="mix__toggle-pill"
+                        class:mix__toggle-pill--on={stylizeFilter.enabled}
+                        aria-label="Toggle Stylize FX"
+                        aria-pressed={stylizeFilter.enabled}
+                        onclick={() => videoMixerStore.toggleFilter(selectedLayer.id, 'stylize')}
+                      >
+                        {stylizeFilter.enabled ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    {#if stylizeFilter.enabled}
+                      <div class="mix__fx-controls">
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-st-blur">Blur</label>
+                            <span class="mix__value-readout">{stylizeFilter.blur}px</span>
+                          </div>
+                          <input
+                            id="mix-st-blur"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="24"
+                            step="0.5"
+                            value={String(stylizeFilter.blur)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'stylize', {
+                                blur: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-st-bloom">Bloom</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(stylizeFilter.bloom)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-st-bloom"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={String(stylizeFilter.bloom)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'stylize', {
+                                bloom: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-st-vignette">Vignette</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(stylizeFilter.vignette)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-st-vignette"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={String(stylizeFilter.vignette)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'stylize', {
+                                vignette: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-st-rgb">RGB Split</label>
+                            <span class="mix__value-readout">
+                              {stylizeFilter.chromaticAberration}px
+                            </span>
+                          </div>
+                          <input
+                            id="mix-st-rgb"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="12"
+                            step="0.5"
+                            value={String(stylizeFilter.chromaticAberration)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'stylize', {
+                                chromaticAberration: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <div class="mix__field-row">
+                            <label class="mix__mini-label" for="mix-st-scan">Scanlines</label>
+                            <span class="mix__value-readout">
+                              {formatPercentDisplay(stylizeFilter.scanlines)}
+                            </span>
+                          </div>
+                          <input
+                            id="mix-st-scan"
+                            type="range"
+                            class="mix__range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={String(stylizeFilter.scanlines)}
+                            oninput={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'stylize', {
+                                scanlines: parseNumericInput(e),
+                              })}
+                          />
+                        </div>
+                        <div class="mix__field">
+                          <label class="mix__mini-label" for="mix-st-mirror">Mirror Mode</label>
+                          <select
+                            id="mix-st-mirror"
+                            class="mix__select"
+                            value={stylizeFilter.mirror}
+                            onchange={(e) =>
+                              videoMixerStore.updateFilter(selectedLayer.id, 'stylize', {
+                                mirror: (e.currentTarget as HTMLSelectElement).value as MirrorMode,
+                              })}
+                          >
+                            <option value="none">None</option>
+                            <option value="horizontal">Horizontal</option>
+                            <option value="vertical">Vertical</option>
+                            <option value="quad">Quad Kaleido</option>
+                          </select>
+                        </div>
                       </div>
                     {/if}
                   </div>
@@ -2196,6 +2927,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                               <option value="opacity">Opacity</option>
                               <option value="scale">Scale</option>
                               <option value="glow">Glow</option>
+                              <option value="hue">Hue Shift</option>
+                              <option value="blur">Blur</option>
+                              <option value="rgb-split">RGB Split</option>
                             </select>
                           </div>
                         </div>
@@ -2784,7 +3518,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   .mix__twitch-fields {
     display: grid;
-    grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1.2fr) 124px auto;
+    grid-template-columns: minmax(160px, 1.3fr) minmax(140px, 1.1fr) 116px 168px auto;
     align-items: end;
     gap: var(--space-sm);
   }
@@ -3018,6 +3752,81 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     object-fit: cover;
     display: block;
     background: #000;
+  }
+
+  .mix__live-video--key-source {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .mix__keyed-canvas {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+  }
+
+  .mix__layer-media--mirror-quad {
+    box-shadow: inset 0 0 0 1px rgba(196, 255, 61, 0.25);
+  }
+
+  .mix__fx-vignette,
+  .mix__fx-scanlines,
+  .mix__fx-rgb-split {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .mix__fx-rgb-split {
+    mix-blend-mode: screen;
+  }
+
+  .mix__preset-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mix__preset-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .mix__preset-pill {
+    padding: 3px 7px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-4);
+    color: var(--color-text-0);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .mix__preset-pill:hover,
+  .mix__preset-pill:focus-visible {
+    border-color: var(--color-primary);
+    background: color-mix(in oklab, var(--color-primary) 16%, var(--color-bg-4));
+    outline: none;
+  }
+
+  .mix__preset-pill--reset {
+    border-color: var(--color-line-3);
+    color: var(--color-text-1);
+  }
+
+  .mix__file-input {
+    width: 100%;
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
   }
 
   .mix__live-youtube {

@@ -17,6 +17,7 @@ import {
 } from '../ipc/stream';
 import { videoMixerStore } from '../stores/videoMixer.svelte';
 import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
+import { applyPixelKeyingToImageData, parseHexRgb } from '../utils/liveVideoFx';
 
 vi.mock('../ipc/mix', () => ({
   getGpuCostTelemetry: vi.fn(),
@@ -495,5 +496,116 @@ describe('Mix view', () => {
     expect(videoMixerStore.layers.find((l) => l.id === 'layer-shader-1')?.sceneId).toBe(
       'gm-hyperbolic-opal-cathedral',
     );
+  });
+
+  it('applies 1-click FX presets, Stylize VJ FX controls, and new blend modes in the inspector', async () => {
+    const { getByLabelText, getByRole, getByTestId } = render(Mix);
+
+    // Select shader layer and verify new blend mode option works.
+    const layerStack = getByLabelText('Layer Stack');
+    await fireEvent.click(within(layerStack).getByText('Chromaticity Shader'));
+
+    const blendSelect = getByLabelText('Blend Mode') as HTMLSelectElement;
+    expect(blendSelect.options).toHaveLength(10);
+    await fireEvent.change(blendSelect, { target: { value: 'difference' } });
+    expect(videoMixerStore.selectedLayer?.blendMode).toBe('difference');
+
+    // Click VHS Glitch 1-click preset and verify stage overlays appear.
+    await fireEvent.click(getByTestId('mix-fx-preset-vhs-glitch'));
+    expect(getByTestId('mix-fx-scanlines')).toBeInTheDocument();
+    expect(getByTestId('mix-fx-rgb-split')).toBeInTheDocument();
+    expect(getByTestId('mix-fx-vignette')).toBeInTheDocument();
+
+    // Update Stylize Blur & Mirror Mode directly via inspector controls.
+    const blurSlider = getByLabelText('Blur') as HTMLInputElement;
+    await fireEvent.input(blurSlider, { target: { value: '4.5' } });
+    expect(blurSlider.value).toBe('4.5');
+
+    const mirrorSelect = getByLabelText('Mirror Mode') as HTMLSelectElement;
+    await fireEvent.change(mirrorSelect, { target: { value: 'horizontal' } });
+
+    const shaderMedia = getByTestId('mix-stage-canvas').querySelector(
+      '[data-stage-layer-id="layer-shader-1"] .mix__layer-media',
+    );
+    expect(shaderMedia).toHaveAttribute('data-mirror', 'horizontal');
+    expect(shaderMedia?.getAttribute('data-layer-filter')).toContain('blur(4.5px)');
+
+    // Reset All clears active filters cleanly.
+    await fireEvent.click(getByTestId('mix-fx-preset-reset-all'));
+    const stylizeToggle = getByRole('button', { name: 'Toggle Stylize FX' });
+    expect(stylizeToggle).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('performs live YCbCr chroma keying with spill suppression and Rec. 709 luma keying (including invert)', () => {
+    expect(parseHexRgb('#00d26a')).toEqual([0, 210, 106]);
+
+    // Pixel 0: pure green screen (#00d26a) -> keyed transparent.
+    // Pixel 1: bright red foreground (#e63946) -> stays opaque.
+    // Pixel 2: green-tinted edge (#70b070) -> spill suppressed.
+    const chromaPixels = new Uint8ClampedArray([
+      0, 210, 106, 255, 230, 57, 70, 255, 112, 176, 112, 255,
+    ]);
+    applyPixelKeyingToImageData(chromaPixels, {
+      chromaKey: {
+        kind: 'chromaKey',
+        enabled: true,
+        keyColor: '#00d26a',
+        similarity: 0.42,
+        smoothness: 0.14,
+        spill: 0.5,
+      },
+    });
+    expect(chromaPixels[3]).toBe(0);
+    expect(chromaPixels[7]).toBe(255);
+    expect(chromaPixels[9]).toBeLessThan(176);
+
+    // Luma key: black pixel removed, white pixel preserved; invert flips behavior.
+    const lumaDark = new Uint8ClampedArray([5, 5, 5, 255, 240, 240, 240, 255]);
+    applyPixelKeyingToImageData(lumaDark, {
+      lumaKey: { kind: 'lumaKey', enabled: true, threshold: 0.2, feather: 0.1, invert: false },
+    });
+    expect(lumaDark[3]).toBe(0);
+    expect(lumaDark[7]).toBe(255);
+
+    const lumaInverted = new Uint8ClampedArray([5, 5, 5, 255, 240, 240, 240, 255]);
+    applyPixelKeyingToImageData(lumaInverted, {
+      lumaKey: { kind: 'lumaKey', enabled: true, threshold: 0.5, feather: 0.1, invert: true },
+    });
+    expect(lumaInverted[3]).toBe(255);
+    expect(lumaInverted[7]).toBe(0);
+  });
+
+  it('forwards selected Twitch Audio Source device to startTwitchStream', async () => {
+    mockStartTwitchStream.mockResolvedValue({
+      state: 'live',
+      is_live: true,
+      protocol: 'rtmps',
+      ingest_url: 'rtmps://live.twitch.tv/app',
+      bitrate_kbps: 6000,
+      width: 1280,
+      height: 720,
+      fps: 30,
+      frames_pushed: 0,
+      encoder: 'h264_videotoolbox',
+      last_error: null,
+    });
+
+    const { getByLabelText, getByTestId } = render(Mix);
+    await fireEvent.click(getByTestId('mix-twitch-toggle'));
+    await fireEvent.input(getByLabelText('Stream Key'), { target: { value: 'live_audio_key' } });
+    await fireEvent.change(getByTestId('mix-twitch-audio'), { target: { value: ':0' } });
+    await fireEvent.click(getByTestId('mix-twitch-start'));
+
+    await waitFor(() => {
+      expect(mockStartTwitchStream).toHaveBeenCalledWith({
+        ingestUrl: 'rtmps://live.twitch.tv/app',
+        streamKey: 'live_audio_key',
+        bitrateKbps: 6000,
+        width: 1280,
+        height: 720,
+        fps: 30,
+        audioDevice: ':0',
+      });
+    });
   });
 });

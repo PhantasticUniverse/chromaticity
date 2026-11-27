@@ -38,6 +38,7 @@ export interface StartTwitchStreamParams {
   readonly width?: number;
   readonly height?: number;
   readonly fps?: number;
+  readonly audioDevice?: string | null;
 }
 
 /** Start a live Twitch RTMPS/RTMP broadcast stream. Returns `null` outside Tauri or on IPC error. */
@@ -52,9 +53,11 @@ export async function startTwitchStream(
       width?: number;
       height?: number;
       fps?: number;
+      audioDevice: string | null;
     } = {
       ingestUrl: params.ingestUrl,
       streamKey: params.streamKey,
+      audioDevice: params.audioDevice ?? null,
     };
     if (params.bitrateKbps !== undefined) payload.bitrateKbps = params.bitrateKbps;
     if (params.width !== undefined) payload.width = params.width;

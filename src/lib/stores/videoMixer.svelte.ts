@@ -55,10 +55,21 @@ export type LayerSourceKind =
   | 'media'
   | 'text';
 
-export type BlendMode = 'normal' | 'screen' | 'add' | 'multiply' | 'luma-key' | 'chroma-key';
+export type BlendMode =
+  | 'normal'
+  | 'screen'
+  | 'add'
+  | 'multiply'
+  | 'overlay'
+  | 'hard-light'
+  | 'difference'
+  | 'exclusion'
+  | 'luma-key'
+  | 'chroma-key';
 
-export type AudioLinkTarget = 'opacity' | 'scale' | 'glow';
+export type AudioLinkTarget = 'opacity' | 'scale' | 'glow' | 'hue' | 'blur' | 'rgb-split';
 export type AudioLinkSource = 'bass' | 'mid' | 'high' | 'beat';
+export type MirrorMode = 'none' | 'horizontal' | 'vertical' | 'quad';
 
 export interface ChromaKeyFilter {
   readonly kind: 'chromaKey';
@@ -74,6 +85,7 @@ export interface LumaKeyFilter {
   readonly enabled: boolean;
   readonly threshold: number;
   readonly feather: number;
+  readonly invert: boolean;
 }
 
 export interface ColorGradeFilter {
@@ -83,6 +95,21 @@ export interface ColorGradeFilter {
   readonly contrast: number;
   readonly saturation: number;
   readonly hue: number;
+  readonly gamma: number;
+  readonly invert: number;
+  readonly sepia: number;
+  readonly grayscale: number;
+}
+
+export interface StylizeFilter {
+  readonly kind: 'stylize';
+  readonly enabled: boolean;
+  readonly blur: number;
+  readonly bloom: number;
+  readonly vignette: number;
+  readonly chromaticAberration: number;
+  readonly scanlines: number;
+  readonly mirror: MirrorMode;
 }
 
 export interface AudioLinkFilter {
@@ -93,8 +120,28 @@ export interface AudioLinkFilter {
   readonly amount: number;
 }
 
-export type LayerFilter = ChromaKeyFilter | LumaKeyFilter | ColorGradeFilter | AudioLinkFilter;
+export type LayerFilter =
+  | ChromaKeyFilter
+  | LumaKeyFilter
+  | ColorGradeFilter
+  | StylizeFilter
+  | AudioLinkFilter;
 export type LayerFilterKind = LayerFilter['kind'];
+
+export type FxPresetId =
+  | 'green-screen'
+  | 'luma-knockout'
+  | 'neon-bloom'
+  | 'vhs-glitch'
+  | 'kaleido-mirror'
+  | 'noir-contrast'
+  | 'reset-all';
+
+export interface FxPresetOption {
+  readonly id: FxPresetId;
+  readonly label: string;
+  readonly description: string;
+}
 
 export type LayerFilterPatch<K extends LayerFilterKind> = Partial<
   Omit<Extract<LayerFilter, { readonly kind: K }>, 'kind'>
@@ -174,8 +221,50 @@ export const BLEND_MODE_OPTIONS: ReadonlyArray<{
   { value: 'screen', label: 'Screen' },
   { value: 'add', label: 'Add (Linear Dodge)' },
   { value: 'multiply', label: 'Multiply' },
+  { value: 'overlay', label: 'Overlay' },
+  { value: 'hard-light', label: 'Hard Light' },
+  { value: 'difference', label: 'Difference' },
+  { value: 'exclusion', label: 'Exclusion' },
   { value: 'luma-key', label: 'Luma Key' },
   { value: 'chroma-key', label: 'Chroma Key' },
+];
+
+export const FX_PRESETS: ReadonlyArray<FxPresetOption> = [
+  {
+    id: 'green-screen',
+    label: 'Green Screen',
+    description: 'Clean YCbCr chroma key with spill suppression',
+  },
+  {
+    id: 'luma-knockout',
+    label: 'Luma Knockout',
+    description: 'Remove dark or black backgrounds cleanly',
+  },
+  {
+    id: 'neon-bloom',
+    label: 'Neon Bloom',
+    description: 'Vibrant saturation with bloom and reactive glow',
+  },
+  {
+    id: 'vhs-glitch',
+    label: 'VHS Glitch',
+    description: 'Chromatic aberration, CRT scanlines, and retro grade',
+  },
+  {
+    id: 'kaleido-mirror',
+    label: 'Kaleido Mirror',
+    description: 'Quad symmetry mirror with hue shift and bloom',
+  },
+  {
+    id: 'noir-contrast',
+    label: 'Noir Contrast',
+    description: 'High-contrast monochrome with studio vignette',
+  },
+  {
+    id: 'reset-all',
+    label: 'Reset All',
+    description: 'Disable and reset all filters on this layer',
+  },
 ];
 
 function clamp(value: number, min: number, max: number, fallback: number): number {
@@ -225,6 +314,7 @@ function createDefaultFilters(overrides?: {
       enabled: false,
       threshold: 0.18,
       feather: 0.1,
+      invert: false,
     },
     {
       kind: 'colorGrade',
@@ -233,6 +323,20 @@ function createDefaultFilters(overrides?: {
       contrast: 1,
       saturation: 1,
       hue: 0,
+      gamma: 1,
+      invert: 0,
+      sepia: 0,
+      grayscale: 0,
+    },
+    {
+      kind: 'stylize',
+      enabled: false,
+      blur: 0,
+      bloom: 0,
+      vignette: 0,
+      chromaticAberration: 0,
+      scanlines: 0,
+      mirror: 'none',
     },
     {
       kind: 'audioLink',
@@ -318,11 +422,16 @@ function defaultNameForKind(kind: LayerSourceKind): string {
   return entry ? entry.defaultName : 'Layer';
 }
 
+function isMirrorMode(value: unknown): value is MirrorMode {
+  return value === 'none' || value === 'horizontal' || value === 'vertical' || value === 'quad';
+}
+
 function sanitizeFilterPatch(
   filter: LayerFilter,
   patch: Partial<Omit<ChromaKeyFilter, 'kind'>> &
     Partial<Omit<LumaKeyFilter, 'kind'>> &
     Partial<Omit<ColorGradeFilter, 'kind'>> &
+    Partial<Omit<StylizeFilter, 'kind'>> &
     Partial<Omit<AudioLinkFilter, 'kind'>>,
 ): LayerFilter {
   switch (filter.kind) {
@@ -359,6 +468,7 @@ function sanitizeFilterPatch(
           patch.feather !== undefined
             ? roundTo(clamp(patch.feather, 0, 1, filter.feather), 2)
             : filter.feather,
+        invert: typeof patch.invert === 'boolean' ? patch.invert : filter.invert,
       };
     case 'colorGrade':
       return {
@@ -380,6 +490,48 @@ function sanitizeFilterPatch(
           patch.hue !== undefined
             ? Math.round(clamp(patch.hue, -180, 180, filter.hue))
             : filter.hue,
+        gamma:
+          patch.gamma !== undefined
+            ? roundTo(clamp(patch.gamma, 0.2, 3, filter.gamma), 2)
+            : filter.gamma,
+        invert:
+          typeof patch.invert === 'number'
+            ? roundTo(clamp(patch.invert, 0, 1, filter.invert), 2)
+            : filter.invert,
+        sepia:
+          patch.sepia !== undefined
+            ? roundTo(clamp(patch.sepia, 0, 1, filter.sepia), 2)
+            : filter.sepia,
+        grayscale:
+          patch.grayscale !== undefined
+            ? roundTo(clamp(patch.grayscale, 0, 1, filter.grayscale), 2)
+            : filter.grayscale,
+      };
+    case 'stylize':
+      return {
+        ...filter,
+        enabled: patch.enabled ?? filter.enabled,
+        blur:
+          patch.blur !== undefined
+            ? roundTo(clamp(patch.blur, 0, 24, filter.blur), 1)
+            : filter.blur,
+        bloom:
+          patch.bloom !== undefined
+            ? roundTo(clamp(patch.bloom, 0, 1, filter.bloom), 2)
+            : filter.bloom,
+        vignette:
+          patch.vignette !== undefined
+            ? roundTo(clamp(patch.vignette, 0, 1, filter.vignette), 2)
+            : filter.vignette,
+        chromaticAberration:
+          patch.chromaticAberration !== undefined
+            ? roundTo(clamp(patch.chromaticAberration, 0, 12, filter.chromaticAberration), 1)
+            : filter.chromaticAberration,
+        scanlines:
+          patch.scanlines !== undefined
+            ? roundTo(clamp(patch.scanlines, 0, 1, filter.scanlines), 2)
+            : filter.scanlines,
+        mirror: isMirrorMode(patch.mirror) ? patch.mirror : filter.mirror,
       };
     case 'audioLink':
       return {
@@ -676,6 +828,198 @@ class VideoMixerStore {
         return sanitizeFilterPatch(filter, patch);
       }),
     }));
+  }
+
+  /** Apply a curated 1-click OBS/VJ FX preset to a layer. */
+  applyFxPreset(layerId: string, presetId: FxPresetId): void {
+    this.updateLayer(layerId, (layer) => {
+      const defaults = createDefaultFilters();
+      switch (presetId) {
+        case 'green-screen':
+          return {
+            ...layer,
+            blendMode: 'chroma-key',
+            filters: layer.filters.map((filter) =>
+              filter.kind === 'chromaKey'
+                ? {
+                    ...filter,
+                    enabled: true,
+                    keyColor: '#00d26a',
+                    similarity: 0.42,
+                    smoothness: 0.14,
+                    spill: 0.35,
+                  }
+                : filter,
+            ),
+          };
+        case 'luma-knockout':
+          return {
+            ...layer,
+            blendMode: 'luma-key',
+            filters: layer.filters.map((filter) =>
+              filter.kind === 'lumaKey'
+                ? {
+                    ...filter,
+                    enabled: true,
+                    threshold: 0.18,
+                    feather: 0.12,
+                    invert: false,
+                  }
+                : filter,
+            ),
+          };
+        case 'neon-bloom':
+          return {
+            ...layer,
+            filters: layer.filters.map((filter) => {
+              if (filter.kind === 'colorGrade') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  brightness: 1.08,
+                  contrast: 1.2,
+                  saturation: 1.65,
+                  hue: 0,
+                  gamma: 1,
+                  invert: 0,
+                  sepia: 0,
+                  grayscale: 0,
+                };
+              }
+              if (filter.kind === 'stylize') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  blur: 0,
+                  bloom: 0.65,
+                  vignette: 0.15,
+                  chromaticAberration: 0,
+                  scanlines: 0,
+                  mirror: 'none',
+                };
+              }
+              if (filter.kind === 'audioLink') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  target: 'glow',
+                  source: 'bass',
+                  amount: 0.55,
+                };
+              }
+              return filter;
+            }),
+          };
+        case 'vhs-glitch':
+          return {
+            ...layer,
+            filters: layer.filters.map((filter) => {
+              if (filter.kind === 'colorGrade') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  brightness: 1,
+                  contrast: 1.18,
+                  saturation: 1.15,
+                  hue: 0,
+                  gamma: 1,
+                  invert: 0,
+                  sepia: 0.22,
+                  grayscale: 0,
+                };
+              }
+              if (filter.kind === 'stylize') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  blur: 0,
+                  bloom: 0.2,
+                  vignette: 0.3,
+                  chromaticAberration: 5,
+                  scanlines: 0.55,
+                  mirror: 'none',
+                };
+              }
+              return filter;
+            }),
+          };
+        case 'kaleido-mirror':
+          return {
+            ...layer,
+            filters: layer.filters.map((filter) => {
+              if (filter.kind === 'colorGrade') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  brightness: 1.05,
+                  contrast: 1.1,
+                  saturation: 1.35,
+                  hue: 45,
+                  gamma: 1,
+                  invert: 0,
+                  sepia: 0,
+                  grayscale: 0,
+                };
+              }
+              if (filter.kind === 'stylize') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  blur: 0,
+                  bloom: 0.45,
+                  vignette: 0,
+                  chromaticAberration: 0,
+                  scanlines: 0,
+                  mirror: 'quad',
+                };
+              }
+              return filter;
+            }),
+          };
+        case 'noir-contrast':
+          return {
+            ...layer,
+            filters: layer.filters.map((filter) => {
+              if (filter.kind === 'colorGrade') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  brightness: 0.96,
+                  contrast: 1.55,
+                  saturation: 1,
+                  hue: 0,
+                  gamma: 0.95,
+                  invert: 0,
+                  sepia: 0,
+                  grayscale: 1,
+                };
+              }
+              if (filter.kind === 'stylize') {
+                return {
+                  ...filter,
+                  enabled: true,
+                  blur: 0,
+                  bloom: 0,
+                  vignette: 0.55,
+                  chromaticAberration: 0,
+                  scanlines: 0,
+                  mirror: 'none',
+                };
+              }
+              return filter;
+            }),
+          };
+        case 'reset-all':
+          return {
+            ...layer,
+            blendMode:
+              layer.blendMode === 'chroma-key' || layer.blendMode === 'luma-key'
+                ? 'normal'
+                : layer.blendMode,
+            filters: defaults,
+          };
+      }
+    });
   }
 
   /** Switch between Live Mode and Studio Mode (Preview vs. Program). */
