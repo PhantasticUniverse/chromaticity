@@ -1448,7 +1448,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                         </div>
                       {:else if layer.kind === 'youtube'}
                         {#if youtubeMachine.kind === 'ready' && youtubeNativeStream !== null && youtubeNativeStream.video_id === youtubeMachine.videoId}
-                          <!-- svelte-ignore a11y_media_has_caption -->
                           <video
                             class="mix__live-video"
                             class:mix__live-video--key-source={keying.active}
@@ -1456,12 +1455,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                               !youtubeInteractive}
                             data-testid="mix-youtube-video"
                             src={youtubeNativeStream.stream_url}
-                            crossorigin="anonymous"
                             autoplay
                             loop
                             playsinline
+                            muted
                             controls={youtubeInteractive}
                             use:attachYouTubeMuted={youtubeMachine.muted}
+                            onerror={(e) => {
+                              const el = e.currentTarget as HTMLVideoElement;
+                              const code = el.error?.code ?? 0;
+                              youtubeResolveError = `Video playback error (code ${code})`;
+                            }}
                           ></video>
                           {#if keying.active}
                             <canvas
