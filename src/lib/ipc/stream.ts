@@ -88,13 +88,23 @@ export async function getStreamStatus(): Promise<StreamStatusDto | null> {
   }
 }
 
-/** Push one raw RGBA frame (`width * height * 4` bytes) into the active encoder. Returns total frames pushed or `null`. */
+/**
+ * Push one raw RGBA frame (`width * height * 4` bytes) into the active encoder
+ * over Tauri v2's zero-copy raw binary IPC channel (`Uint8Array` / `ArrayBuffer`),
+ * avoiding multi-megabyte JSON serialization on the main thread.
+ * Returns total frames pushed or `null`.
+ */
 export async function pushStreamFrame(
   rgbaBytes: readonly number[] | Uint8Array | Uint8ClampedArray,
 ): Promise<number | null> {
   try {
-    const bytes = Array.isArray(rgbaBytes) ? rgbaBytes : Array.from(rgbaBytes);
-    return await invoke<number>('push_stream_frame', { rgbaBytes: bytes });
+    const raw =
+      rgbaBytes instanceof Uint8Array
+        ? rgbaBytes
+        : rgbaBytes instanceof Uint8ClampedArray
+          ? new Uint8Array(rgbaBytes.buffer, rgbaBytes.byteOffset, rgbaBytes.byteLength)
+          : new Uint8Array(rgbaBytes);
+    return await invoke<number>('push_stream_frame', raw);
   } catch {
     return null;
   }

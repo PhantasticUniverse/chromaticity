@@ -199,6 +199,8 @@ pub fn build_twitch_ffmpeg_args(
         "-hide_banner".to_owned(),
         "-loglevel".to_owned(),
         "error".to_owned(),
+        "-use_wallclock_as_timestamps".to_owned(),
+        "1".to_owned(),
         "-f".to_owned(),
         "rawvideo".to_owned(),
         "-pix_fmt".to_owned(),
@@ -688,7 +690,7 @@ pub fn get_stream_status_impl(app: &AppState) -> Result<StreamStatusDto, String>
 }
 
 /// Inner implementation for [`push_stream_frame`].
-pub fn push_stream_frame_impl(app: &AppState, rgba_bytes: Vec<u8>) -> Result<u64, String> {
+pub fn push_stream_frame_impl(app: &AppState, rgba_bytes: &[u8]) -> Result<u64, String> {
     let mut proc_guard = match app.twitch_stream.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
@@ -711,7 +713,7 @@ pub fn push_stream_frame_impl(app: &AppState, rgba_bytes: Vec<u8>) -> Result<u64
     }
 
     let write_result = match proc_guard.stdin.as_mut() {
-        Some(stdin) => stdin.write_all(&rgba_bytes),
+        Some(stdin) => stdin.write_all(rgba_bytes),
         None => {
             return Err("cannot push stream frame while stream is not live".to_owned());
         }
@@ -774,13 +776,19 @@ pub fn get_stream_status(app_state: State<'_, AppState>) -> Result<StreamStatusD
     get_stream_status_impl(app_state.inner())
 }
 
-/// Pipe one raw RGBA frame (`width * height * 4` bytes) into the active encoder.
+/// Pipe one raw RGBA frame (`width * height * 4` bytes) into the active encoder
+/// via Tauri v2 raw binary IPC (`InvokeBody::Raw`), avoiding JSON serialization.
 #[tauri::command]
 pub fn push_stream_frame(
     app_state: State<'_, AppState>,
-    rgba_bytes: Vec<u8>,
+    request: tauri::ipc::Request<'_>,
 ) -> Result<u64, String> {
-    push_stream_frame_impl(app_state.inner(), rgba_bytes)
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => push_stream_frame_impl(app_state.inner(), bytes),
+        tauri::ipc::InvokeBody::Json(_) => {
+            Err("push_stream_frame requires raw binary Uint8Array/ArrayBuffer body".to_owned())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -907,7 +915,7 @@ mod tests {
 
         // Pushing a frame while idle fails cleanly without panicking.
         let frame_bytes = vec![0u8; (status.width * status.height * 4) as usize];
-        let push_err = push_stream_frame_impl(&app, frame_bytes).unwrap_err();
+        let push_err = push_stream_frame_impl(&app, &frame_bytes).unwrap_err();
         assert!(push_err.contains("not live"));
     }
 
