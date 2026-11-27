@@ -56,9 +56,11 @@ describe('YouTubeLayer component', () => {
     expect(iframe.src).toBe(
       `https://www.youtube-nocookie.com/embed/${SAMPLE_ID}?autoplay=1&mute=1&loop=1&playlist=${SAMPLE_ID}&controls=1&rel=0&modestbranding=1`,
     );
-    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
-    expect(iframe).toHaveAttribute('allow', 'autoplay; encrypted-media');
-    expect(iframe).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    expect(iframe).toHaveAttribute(
+      'allow',
+      'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
+    );
+    expect(iframe).toHaveAttribute('referrerpolicy', 'origin');
     expect(iframe.style.opacity).toBe('0.85');
     expect(iframe.style.mixBlendMode).toBe('screen');
 

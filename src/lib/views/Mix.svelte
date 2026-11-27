@@ -1149,9 +1149,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                             data-testid="mix-youtube-iframe"
                             src={youtubeEmbedUrl}
                             title={`YouTube visual layer (${youtubeMachine.videoId})`}
-                            sandbox="allow-scripts allow-same-origin allow-presentation"
-                            allow="autoplay; encrypted-media"
-                            referrerpolicy="strict-origin-when-cross-origin"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            referrerpolicy="origin"
                           ></iframe>
                         {:else}
                           <div class="mix__visual-youtube" aria-hidden="true">
@@ -1309,9 +1308,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                             class="mix__live-youtube mix__live-youtube--passthrough"
                             src={youtubeEmbedUrl}
                             title={`Program YouTube layer (${youtubeMachine.videoId})`}
-                            sandbox="allow-scripts allow-same-origin allow-presentation"
-                            allow="autoplay; encrypted-media"
-                            referrerpolicy="strict-origin-when-cross-origin"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            referrerpolicy="origin"
                           ></iframe>
                         {:else if layer.kind === 'shader'}
                           {@const shaderMeta = resolveShaderScene(layer)}

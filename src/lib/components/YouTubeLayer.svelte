@@ -143,9 +143,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         class:yt-iframe-luma-key={machine.blendMode === 'luma-key'}
         src={embedUrl}
         title={`YouTube visual layer (${machine.videoId})`}
-        sandbox="allow-scripts allow-same-origin allow-presentation"
-        allow="autoplay; encrypted-media"
-        referrerpolicy="strict-origin-when-cross-origin"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        referrerpolicy="origin"
         style={`opacity: ${machine.opacity}; mix-blend-mode: ${youtubeBlendModeToCss(machine.blendMode)};`}
       ></iframe>
     </div>
