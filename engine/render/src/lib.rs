@@ -355,6 +355,7 @@ pub mod compositor;
 pub mod glsl_includes;
 pub mod gpu_cost;
 pub mod multipass;
+pub mod multipass_pingpong;
 pub mod nv12_convert;
 pub mod offline_replay;
 #[cfg(feature = "scene-adapter")]
@@ -387,6 +388,7 @@ pub use multipass::{
     CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
     UniformInput, UniformValue, compile_and_render_multipass,
 };
+pub use multipass_pingpong::{DEFAULT_FEEDBACK_WGSL, FeedbackUniforms, PingPongFeedbackPipeline};
 pub use nv12_convert::{ColorRange, Nv12Converter, Nv12Frame};
 pub use offline_replay::{
     OfflineRenderConfig, OfflineRenderReport, OfflineReplayError, RecordedFrame, ShowRecording,
