@@ -20,6 +20,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     stopTwitchStream,
     type StreamStatusDto,
   } from '../ipc/stream';
+  import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import {
     BLEND_MODE_OPTIONS,
     DEFAULT_SHADER_SCENE_ID,
@@ -274,6 +275,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   interface KeyedCanvasParams {
     readonly chromaKey: ChromaKeyFilter | null;
     readonly lumaKey: LumaKeyFilter | null;
+    readonly quadMirror: boolean;
   }
 
   function keyedVideoCanvas(canvas: HTMLCanvasElement, initialParams: KeyedCanvasParams) {
@@ -296,7 +298,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         if (canvas.width !== w) canvas.width = w;
         if (canvas.height !== h) canvas.height = h;
         try {
-          ctx.drawImage(video, 0, 0, w, h);
+          if (params.quadMirror) {
+            const hw = w / 2;
+            const hh = h / 2;
+            ctx.drawImage(video, 0, 0, hw, hh);
+            ctx.save();
+            ctx.translate(w, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, hw, hh);
+            ctx.restore();
+            ctx.save();
+            ctx.translate(0, h);
+            ctx.scale(1, -1);
+            ctx.drawImage(video, 0, 0, hw, hh);
+            ctx.restore();
+            ctx.save();
+            ctx.translate(w, h);
+            ctx.scale(-1, -1);
+            ctx.drawImage(video, 0, 0, hw, hh);
+            ctx.restore();
+          } else {
+            ctx.drawImage(video, 0, 0, w, h);
+          }
           if (needsPixelKey) {
             const frame = ctx.getImageData(0, 0, w, h);
             applyPixelKeyingToImageData(frame.data, {
@@ -694,6 +717,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   onMount(() => {
+    void audioSnapshotStore.subscribe();
     void (async () => {
       const snapshot = await getGpuCostTelemetry();
       if (!disposed && snapshot !== null && !adaptivePending) {
@@ -819,13 +843,75 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   }
 
+  const liveAudioSnap = $derived(audioSnapshotStore.snapshot);
+
+  function liveAudioBand(source: AudioLinkSource): number {
+    const snap = liveAudioSnap;
+    if (!snap) return 0;
+    const b = snap.fft_bands;
+    switch (source) {
+      case 'bass':
+        return Math.min(1, (b[0] + b[1]) * 0.65);
+      case 'mid':
+        return Math.min(1, ((b[2] + b[3] + b[4]) / 3) * 1.2);
+      case 'high':
+        return Math.min(1, ((b[5] + b[6] + b[7]) / 3) * 1.3);
+      case 'beat':
+        return Math.min(1, snap.peak);
+    }
+  }
+
+  function liveChannelMeterLevel(channel: {
+    readonly id: string;
+    readonly gain: number;
+    readonly level: number;
+    readonly muted: boolean;
+    readonly solo: boolean;
+  }): number {
+    const anySolo = videoMixerStore.audioChannels.some((ch) => ch.solo);
+    if (channel.muted || (anySolo && !channel.solo)) return 0;
+    const snap = liveAudioSnap;
+    if (snap) {
+      if (channel.id === 'master') {
+        return Math.min(1, Math.max(snap.rms * 1.8, snap.peak * 0.9) * channel.gain);
+      }
+      if (channel.id === 'mic') {
+        const mid = (snap.fft_bands[2] + snap.fft_bands[3]) * 0.5;
+        return Math.min(1, mid * 1.4 * channel.gain);
+      }
+      if (channel.id === 'media') {
+        const activeYt =
+          youtubeMachine.kind === 'ready' && !youtubeMachine.muted && !youtubeUserPaused;
+        return activeYt ? Math.min(1, Math.max(0.25, snap.rms * 1.2) * channel.gain) : 0;
+      }
+      if (channel.id === 'alerts') {
+        return Math.min(1, snap.peak * 0.4 * channel.gain);
+      }
+    }
+    return Math.min(1, channel.level * channel.gain);
+  }
+
+  $effect(() => {
+    const mediaCh = videoMixerStore.audioChannels.find((ch) => ch.id === 'media');
+    const el = youtubeVideoEl;
+    if (!mediaCh || !el) return;
+    el.volume = Math.max(0, Math.min(1, mediaCh.gain));
+    const anySolo = videoMixerStore.audioChannels.some((ch) => ch.solo);
+    const busMuted = mediaCh.muted || (anySolo && !mediaCh.solo);
+    const ytMuted = youtubeMachine.kind === 'ready' ? youtubeMachine.muted : true;
+    el.muted = ytMuted || busMuted;
+  });
+
   function resolveEffectiveKeying(layer: MixLayer): {
     readonly chromaKey: ChromaKeyFilter | null;
     readonly lumaKey: LumaKeyFilter | null;
+    readonly quadMirror: boolean;
     readonly active: boolean;
   } {
     const ck = findFilter<ChromaKeyFilter>(layer, 'chromaKey');
     const lk = findFilter<LumaKeyFilter>(layer, 'lumaKey');
+    const stylize = findFilter<StylizeFilter>(layer, 'stylize');
+    const quadMirror = Boolean(stylize?.enabled && stylize.mirror === 'quad');
     const effectiveCk = ck?.enabled
       ? ck
       : layer.blendMode === 'chroma-key' && ck
@@ -839,7 +925,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     return {
       chromaKey: effectiveCk,
       lumaKey: effectiveLk,
-      active: effectiveCk !== null || effectiveLk !== null,
+      quadMirror,
+      active: effectiveCk !== null || effectiveLk !== null || quadMirror,
     };
   }
 
@@ -847,12 +934,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const stylize = findFilter<StylizeFilter>(layer, 'stylize');
     const audio = findFilter<AudioLinkFilter>(layer, 'audioLink');
     const base = stylize?.enabled ? stylize.chromaticAberration : 0;
-    const audioOffset = audio?.enabled && audio.target === 'rgb-split' ? audio.amount * 8 : 0;
+    const pulse = audio?.enabled ? Math.max(0.15, liveAudioBand(audio.source)) : 0;
+    const audioOffset =
+      audio?.enabled && audio.target === 'rgb-split' ? audio.amount * 10 * pulse : 0;
     return Math.round((base + audioOffset) * 10) / 10;
   }
 
   function layerMediaStyle(layer: MixLayer): string {
-    const parts = [`filter: ${buildLayerCssFilter(layer)}`];
+    const audio = findFilter<AudioLinkFilter>(layer, 'audioLink');
+    const pulse = audio?.enabled ? liveAudioBand(audio.source) : 0;
+    const parts = [`filter: ${buildLayerCssFilter(layer, pulse)}`];
     const stylize = findFilter<StylizeFilter>(layer, 'stylize');
     if (stylize?.enabled) {
       if (stylize.mirror === 'horizontal') {
@@ -872,11 +963,24 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const { x, y, scaleX, scaleY, rotationDeg } = layer.transform;
     const { top, right, bottom, left } = layer.crop;
     const blend = cssBlendMode(layer.blendMode);
+    const audio = findFilter<AudioLinkFilter>(layer, 'audioLink');
+    const pulse = audio?.enabled ? liveAudioBand(audio.source) : 0;
+    const effOpacity =
+      audio?.enabled && audio.target === 'opacity'
+        ? Math.max(
+            0.05,
+            Math.min(1, layer.opacity * (1 - audio.amount * 0.65 + pulse * audio.amount)),
+          )
+        : layer.opacity;
+    const scaleBoost =
+      audio?.enabled && audio.target === 'scale' ? 1 + pulse * audio.amount * 0.25 : 1;
+    const effScaleX = Math.round(scaleX * scaleBoost * 1000) / 1000;
+    const effScaleY = Math.round(scaleY * scaleBoost * 1000) / 1000;
     return [
       `z-index: ${zIndex}`,
-      `opacity: ${layer.opacity}`,
+      `opacity: ${effOpacity}`,
       `mix-blend-mode: ${blend}`,
-      `transform: translate(${x}%, ${y}%) scale(${scaleX}, ${scaleY}) rotate(${rotationDeg}deg)`,
+      `transform: translate(${x}%, ${y}%) scale(${effScaleX}, ${effScaleY}) rotate(${rotationDeg}deg)`,
       `clip-path: inset(${top}% ${right}% ${bottom}% ${left}%)`,
     ].join('; ');
   }
@@ -3182,6 +3286,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
     <div class="mix__audio-channels">
       {#each videoMixerStore.audioChannels as channel (channel.id)}
+        {@const meterPct = Math.round(liveChannelMeterLevel(channel) * 100)}
         <div class="mix__audio-ch" class:mix__audio-ch--muted={channel.muted}>
           <div class="mix__audio-ch-head">
             <label class="mix__audio-label" for={`mix-audio-${channel.id}`}>
@@ -3196,9 +3301,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             aria-label="{channel.label} level"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={Math.round(channel.level * 100)}
+            aria-valuenow={meterPct}
           >
-            <div class="mix__meter-fill" style={`width: ${Math.round(channel.level * 100)}%`}></div>
+            <div class="mix__meter-fill" style={`width: ${meterPct}%`}></div>
           </div>
 
           <div class="mix__audio-ch-controls">
