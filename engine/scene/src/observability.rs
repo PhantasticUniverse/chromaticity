@@ -238,8 +238,8 @@ mod observability_emission {
             name: "brightness".to_string(),
             kind: None,
             default: ControlValue::Float(0.5),
-            min: Some(0.0),
-            max: Some(1.0),
+            min: Some(0.0.into()),
+            max: Some(1.0.into()),
             ..ControlDecl::default()
         });
         scene

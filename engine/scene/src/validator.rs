@@ -55,7 +55,7 @@ use chromaticity_observability::catalog::{SceneLintCategory, SceneValidationOutc
 
 use crate::lint::Warning;
 use crate::observability::validation_counters;
-use crate::schema::{ControlDecl, ControlKind, ControlValue, Scene};
+use crate::schema::{ControlBound, ControlDecl, ControlKind, ControlValue, Scene};
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
@@ -204,10 +204,12 @@ pub fn validate(scene: &Scene, mode: ValidationMode) -> Result<Vec<Warning>, Val
 /// Author-supplied MIN/MAX are never overwritten — this function is
 /// read-only against `decl` per `docs/28` §CP-01 line 46.
 fn coerce_missing_type(decl: &ControlDecl) -> Option<ControlKind> {
-    // Step 1 — slider: MIN, MAX, numeric DEFAULT, DEFAULT∈[MIN,MAX].
-    if let (Some(min), Some(max), ControlValue::Float(default)) =
-        (decl.min, decl.max, &decl.default)
-    {
+    // Step 1 — slider: scalar MIN, MAX, numeric DEFAULT, DEFAULT∈[MIN,MAX].
+    if let (Some(min), Some(max), ControlValue::Float(default)) = (
+        decl.min.as_ref().and_then(ControlBound::as_scalar),
+        decl.max.as_ref().and_then(ControlBound::as_scalar),
+        &decl.default,
+    ) {
         let d = *default;
         if min <= max && d >= min && d <= max {
             return Some(ControlKind::Slider);
@@ -319,7 +321,9 @@ mod drift_pins {
     //! loader + golden-corpus fixtures.
 
     use crate::lint::Warning;
-    use crate::schema::{ControlDecl, ControlValue, NodeRef, PassSpec, Scene, UniformBinding};
+    use crate::schema::{
+        ControlBound, ControlDecl, ControlValue, NodeRef, PassSpec, Scene, UniformBinding,
+    };
 
     use super::{ValidationError, ValidationMode, validate};
 
@@ -405,8 +409,8 @@ mod drift_pins {
             name: "brightness".to_string(),
             kind: None,
             default: ControlValue::Float(1.0),
-            min: Some(0.0),
-            max: Some(2.0),
+            min: Some(0.0.into()),
+            max: Some(2.0.into()),
             ..ControlDecl::default()
         });
 
@@ -460,8 +464,8 @@ mod drift_pins {
             name: "gain".to_string(),
             kind: None,
             default: ControlValue::Float(5.0),
-            min: Some(2.5),
-            max: Some(7.5),
+            min: Some(2.5.into()),
+            max: Some(7.5.into()),
             ..ControlDecl::default()
         });
 
@@ -476,8 +480,16 @@ mod drift_pins {
         // Input scene is untouched: author-supplied min / max
         // survive the validate pass unchanged.
         let decl = &scene.controls[0];
-        assert_eq!(decl.min, Some(2.5), "min must not be overwritten");
-        assert_eq!(decl.max, Some(7.5), "max must not be overwritten");
+        assert_eq!(
+            decl.min,
+            Some(ControlBound::Scalar(2.5)),
+            "min must not be overwritten"
+        );
+        assert_eq!(
+            decl.max,
+            Some(ControlBound::Scalar(7.5)),
+            "max must not be overwritten"
+        );
     }
 
     #[test]
@@ -573,8 +585,8 @@ mod compat_fixture_coverage {
             name: name.to_string(),
             kind: None,
             default,
-            min,
-            max,
+            min: min.map(Into::into),
+            max: max.map(Into::into),
             ..ControlDecl::default()
         });
         scene

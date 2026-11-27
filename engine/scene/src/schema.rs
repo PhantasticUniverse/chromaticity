@@ -268,6 +268,38 @@ impl Default for ControlValue {
     }
 }
 
+/// Bound value for a control's `MIN` or `MAX` wire key.
+///
+/// Scalar controls (`slider`, `knob`) encode numeric bounds like
+/// `"MIN": 0.0`, while multi-component controls (`xy`, `color`) in
+/// Synesthesia `.synScene` packages encode per-component array bounds
+/// like `"MIN": [0, 0]`, `"MAX": [1, 1]` or 3-element color bounds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ControlBound {
+    /// Scalar numeric bound (e.g. `"MIN": 0.0`).
+    Scalar(f64),
+    /// Per-component vector bound (e.g. `"MIN": [0, 0]`, `"MAX": [1, 1]`).
+    Vec(Vec<f64>),
+}
+
+impl ControlBound {
+    /// Return the scalar value if this bound is [`Self::Scalar`], or
+    /// `None` if it is a vector bound.
+    pub fn as_scalar(&self) -> Option<f64> {
+        match self {
+            Self::Scalar(v) => Some(*v),
+            Self::Vec(_) => None,
+        }
+    }
+}
+
+impl From<f64> for ControlBound {
+    fn from(v: f64) -> Self {
+        Self::Scalar(v)
+    }
+}
+
 /// Canonical control declaration.
 ///
 /// Slice-3a wire mapping per `docs/02` §Observed control keys:
@@ -276,8 +308,8 @@ impl Default for ControlValue {
 /// - `TYPE` → [`Self::kind`] (optional; [`None`] triggers the CP-01
 ///   missing-TYPE fallback in [`crate::validator`]).
 /// - `DEFAULT` → [`Self::default`].
-/// - `MIN` → [`Self::min`] (optional).
-/// - `MAX` → [`Self::max`] (optional).
+/// - `MIN` → [`Self::min`] (optional; scalar or per-component vector).
+/// - `MAX` → [`Self::max`] (optional; scalar or per-component vector).
 /// - `UI_GROUP`, `DESCRIPTION`, `PARAMS`, `DEF_COLOR`, `LABELS`,
 ///   `VALUES`, `IS_META`, and legacy `LABEL` are preserved explicitly
 ///   so clean-room fixture coverage can reason about reference-observed
@@ -298,9 +330,9 @@ pub struct ControlDecl {
     #[serde(rename = "DEFAULT", default)]
     pub default: ControlValue,
     #[serde(rename = "MIN", default)]
-    pub min: Option<f64>,
+    pub min: Option<ControlBound>,
     #[serde(rename = "MAX", default)]
-    pub max: Option<f64>,
+    pub max: Option<ControlBound>,
     #[serde(rename = "UI_GROUP", default, skip_serializing_if = "Option::is_none")]
     pub ui_group: Option<String>,
     #[serde(

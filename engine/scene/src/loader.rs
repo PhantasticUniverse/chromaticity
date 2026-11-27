@@ -162,7 +162,8 @@ mod loader_drift_pins {
     //! at `engine/scene/tests/validator/main.rs`.
 
     use super::{LoadError, load_chroma_dir, parse_scene_json};
-    use crate::schema::{ControlKind, ControlValue};
+    use crate::schema::{ControlBound, ControlKind, ControlValue};
+    use crate::validator::{ValidationMode, validate};
 
     #[test]
     fn empty_string_is_json_error() {
@@ -231,8 +232,100 @@ mod loader_drift_pins {
         assert_eq!(c.name, "brightness");
         assert_eq!(c.kind, Some(ControlKind::Slider));
         assert_eq!(c.default, ControlValue::Float(0.5));
-        assert_eq!(c.min, Some(0.0));
-        assert_eq!(c.max, Some(1.0));
+        assert_eq!(c.min, Some(ControlBound::Scalar(0.0)));
+        assert_eq!(c.max, Some(ControlBound::Scalar(1.0)));
+    }
+
+    #[test]
+    fn beats_in_4d_array_bounds_on_xy_and_color_parse_and_validate_in_compat() {
+        let scene = parse_scene_json(
+            r#"{
+                "TITLE": "Beats in 4D",
+                "CONTROLS": [
+                    {
+                        "NAME": "xy_offset",
+                        "TYPE": "xy",
+                        "DEFAULT": [0.5, 0.5],
+                        "MIN": [0, 0],
+                        "MAX": [1, 1]
+                    },
+                    {
+                        "NAME": "palette_tint",
+                        "TYPE": "color",
+                        "DEFAULT": [0.2, 0.4, 0.8],
+                        "MIN": [0, 0, 0],
+                        "MAX": [1, 1, 1]
+                    },
+                    {
+                        "NAME": "inferred_xy",
+                        "DEFAULT": [0.25, 0.75],
+                        "MIN": [0, 0],
+                        "MAX": [1, 1]
+                    },
+                    {
+                        "NAME": "inferred_color",
+                        "DEFAULT": [0.1, 0.2, 0.3],
+                        "MIN": [0, 0, 0],
+                        "MAX": [1, 1, 1]
+                    },
+                    {
+                        "NAME": "gain",
+                        "TYPE": "slider",
+                        "DEFAULT": 0.5,
+                        "MIN": 0.0,
+                        "MAX": 2.0
+                    }
+                ]
+            }"#,
+        )
+        .expect("array MIN/MAX on xy and color controls must parse");
+
+        assert_eq!(scene.controls.len(), 5);
+        assert_eq!(
+            scene.controls[0].min,
+            Some(ControlBound::Vec(vec![0.0, 0.0]))
+        );
+        assert_eq!(
+            scene.controls[0].max,
+            Some(ControlBound::Vec(vec![1.0, 1.0]))
+        );
+        assert_eq!(
+            scene.controls[0]
+                .min
+                .as_ref()
+                .and_then(ControlBound::as_scalar),
+            None
+        );
+        assert_eq!(
+            scene.controls[1].min,
+            Some(ControlBound::Vec(vec![0.0, 0.0, 0.0]))
+        );
+        assert_eq!(
+            scene.controls[1].max,
+            Some(ControlBound::Vec(vec![1.0, 1.0, 1.0]))
+        );
+        assert_eq!(
+            scene.controls[4]
+                .min
+                .as_ref()
+                .and_then(ControlBound::as_scalar),
+            Some(0.0)
+        );
+        assert_eq!(
+            scene.controls[4]
+                .max
+                .as_ref()
+                .and_then(ControlBound::as_scalar),
+            Some(2.0)
+        );
+
+        let warnings = validate(&scene, ValidationMode::Compat)
+            .expect("beats_in_4d-style array bounds must validate cleanly in Compat mode");
+        assert_eq!(
+            warnings.len(),
+            2,
+            "expected CP-01 coercion warnings only for the two missing-TYPE controls"
+        );
     }
 
     #[test]

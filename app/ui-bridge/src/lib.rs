@@ -433,8 +433,14 @@ impl From<chromaticity_scene::schema::ControlDecl> for ControlSchemaPayload {
             name: decl.name,
             kind: decl.kind.map(Into::into),
             default: decl.default.into(),
-            min: decl.min,
-            max: decl.max,
+            min: decl
+                .min
+                .as_ref()
+                .and_then(chromaticity_scene::schema::ControlBound::as_scalar),
+            max: decl
+                .max
+                .as_ref()
+                .and_then(chromaticity_scene::schema::ControlBound::as_scalar),
             ui_group: decl.ui_group,
             description: decl.description,
             label: decl.label,

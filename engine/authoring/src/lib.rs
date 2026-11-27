@@ -70,6 +70,7 @@ pub mod import_shadertoy;
 pub mod live_reload;
 pub mod scaffolder;
 pub mod shadertoy_license;
+pub mod syn_import;
 pub mod ux_latency;
 
 pub use diagnostics::{
@@ -88,6 +89,10 @@ pub use live_reload::{
 };
 pub use scaffolder::{
     ScaffolderConfig, ScaffolderError, ScaffolderReport, load_scaffolded_scene, scaffold_to_path,
+};
+pub use syn_import::{
+    SynImportError, SynImportReport, import_syn_scene_to_chroma, rewrite_pow_calls,
+    rewrite_syn_glsl,
 };
 pub use ux_latency::{
     AUTHORING_BUDGETS, BudgetExceeded, DOCS_BUDGETS, LatencyBudget, LatencyMeasurement,
