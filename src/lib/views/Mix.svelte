@@ -12,9 +12,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   } from '../ipc/mix';
   import { saveReplayBuffer } from '../ipc/recorder';
   import {
+    getStreamStatus,
+    pushStreamFrame,
+    startTwitchStream,
+    stopTwitchStream,
+    type StreamStatusDto,
+  } from '../ipc/stream';
+  import {
     BLEND_MODE_OPTIONS,
+    DEFAULT_SHADER_SCENE_ID,
     LAYER_SOURCE_CATALOG,
+    MIX_SHADER_SCENES,
     videoMixerStore,
+    type AudioLinkFilter,
     type AudioLinkSource,
     type AudioLinkTarget,
     type BlendMode,
@@ -23,10 +33,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type LayerFilter,
     type LayerSourceKind,
     type LumaKeyFilter,
-    type AudioLinkFilter,
     type MixLayer,
+    type MixShaderSceneOption,
   } from '../stores/videoMixer.svelte';
   import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
+  import {
+    sceneKindFromMetadata,
+    sceneSeedFromMetadata,
+  } from '../widgets/scene-kind-from-metadata';
+  import SceneCanvas from '../widgets/SceneCanvas.svelte';
 
   const DEFAULT_GPU_TELEMETRY: GpuCostTelemetryDto = {
     tier: 'Light',
@@ -35,6 +50,26 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     scaled_width: 1920,
     scaled_height: 1080,
     adaptive_enabled: true,
+  };
+
+  const DEFAULT_TWITCH_INGEST_URL = 'rtmps://live.twitch.tv/app';
+  const TWITCH_BITRATE_OPTIONS: ReadonlyArray<number> = [3500, 4500, 6000];
+  const DEFAULT_STREAM_WIDTH = 1280;
+  const DEFAULT_STREAM_HEIGHT = 720;
+  const DEFAULT_STREAM_FPS = 30;
+
+  const DEFAULT_STREAM_STATUS: StreamStatusDto = {
+    state: 'offline',
+    is_live: false,
+    protocol: 'rtmps',
+    ingest_url: DEFAULT_TWITCH_INGEST_URL,
+    bitrate_kbps: 6000,
+    width: DEFAULT_STREAM_WIDTH,
+    height: DEFAULT_STREAM_HEIGHT,
+    fps: DEFAULT_STREAM_FPS,
+    frames_pushed: 0,
+    encoder: 'h264_videotoolbox',
+    last_error: null,
   };
 
   type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se';
@@ -54,6 +89,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   let addMenuOpen = $state(false);
+  let sectionShaderOpen = $state(true);
   let sectionYouTubeOpen = $state(true);
   let sectionTransformOpen = $state(true);
   let sectionCompositingOpen = $state(true);
@@ -70,9 +106,20 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let webcamError = $state<string | null>(null);
   let youtubeUrlInput = $state('');
   let youtubeInteractive = $state(false);
+  let twitchDrawerOpen = $state(false);
+  let twitchIngestUrl = $state(DEFAULT_TWITCH_INGEST_URL);
+  let twitchStreamKey = $state('');
+  let twitchBitrateKbps = $state<number>(6000);
+  let streamStatus = $state<StreamStatusDto>(DEFAULT_STREAM_STATUS);
+  let streamPending = $state(false);
+  let streamError = $state<string | null>(null);
 
   let disposed = false;
   let replayFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let streamRafId: number | null = null;
+  let lastStreamFrameAt = 0;
+  let framePushInFlight = false;
+  let offscreenStreamCanvas: HTMLCanvasElement | null = null;
 
   function stopWebcam(): void {
     const active = webcamStream;
@@ -148,6 +195,193 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     youtubeLayerStore.clear();
   }
 
+  function resolveShaderScene(layer: MixLayer): MixShaderSceneOption {
+    const id = layer.sceneId ?? DEFAULT_SHADER_SCENE_ID;
+    const match = MIX_SHADER_SCENES.find((item) => item.id === id);
+    if (match) return match;
+    return {
+      id,
+      label: id,
+      kind: sceneKindFromMetadata({ id }),
+      seed: sceneSeedFromMetadata({ id }),
+    };
+  }
+
+  function canvasCompositeOp(
+    mode: BlendMode,
+  ): 'source-over' | 'screen' | 'lighter' | 'multiply' | 'lighten' {
+    switch (mode) {
+      case 'screen':
+        return 'screen';
+      case 'add':
+        return 'lighter';
+      case 'multiply':
+        return 'multiply';
+      case 'luma-key':
+        return 'lighten';
+      case 'normal':
+      case 'chroma-key':
+        return 'source-over';
+    }
+  }
+
+  function stopStreamCaptureLoop(): void {
+    if (streamRafId !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(streamRafId);
+    }
+    streamRafId = null;
+    framePushInFlight = false;
+  }
+
+  function compositeStageToRgba(width: number, height: number): Uint8ClampedArray | null {
+    if (typeof document === 'undefined') return null;
+    if (offscreenStreamCanvas === null) {
+      offscreenStreamCanvas = document.createElement('canvas');
+    }
+    if (offscreenStreamCanvas.width !== width) offscreenStreamCanvas.width = width;
+    if (offscreenStreamCanvas.height !== height) offscreenStreamCanvas.height = height;
+
+    const ctx = offscreenStreamCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#06070d';
+    ctx.fillRect(0, 0, width, height);
+
+    if (stageCanvasEl !== null) {
+      const layers = [...videoMixerStore.layers].reverse();
+      for (const layer of layers) {
+        if (!videoMixerStore.isLayerRendered(layer, videoMixerStore.layers)) continue;
+        const layerEl = stageCanvasEl.querySelector<HTMLElement>(
+          `[data-stage-layer-id="${layer.id}"]`,
+        );
+        const mediaEl = layerEl?.querySelector<HTMLCanvasElement | HTMLVideoElement>(
+          'canvas, video',
+        );
+        if (!mediaEl) continue;
+        if (mediaEl instanceof HTMLVideoElement && mediaEl.readyState < 2) continue;
+
+        ctx.save();
+        ctx.globalAlpha = layer.opacity;
+        ctx.globalCompositeOperation = canvasCompositeOp(layer.blendMode);
+        const cx = width / 2 + (layer.transform.x / 100) * width;
+        const cy = height / 2 + (layer.transform.y / 100) * height;
+        ctx.translate(cx, cy);
+        ctx.rotate((layer.transform.rotationDeg * Math.PI) / 180);
+        ctx.scale(layer.transform.scaleX, layer.transform.scaleY);
+        try {
+          ctx.drawImage(mediaEl, -width / 2, -height / 2, width, height);
+        } catch {
+          // Skip tainted or not-yet-ready media sources cleanly.
+        }
+        ctx.restore();
+      }
+    }
+
+    try {
+      return ctx.getImageData(0, 0, width, height).data;
+    } catch {
+      return null;
+    }
+  }
+
+  function startStreamCaptureLoop(): void {
+    stopStreamCaptureLoop();
+    if (typeof requestAnimationFrame !== 'function') return;
+    lastStreamFrameAt = 0;
+
+    const tick = (now: number): void => {
+      if (disposed || !streamStatus.is_live) {
+        stopStreamCaptureLoop();
+        return;
+      }
+      const frameIntervalMs = 1000 / Math.max(1, streamStatus.fps || DEFAULT_STREAM_FPS);
+      if (!framePushInFlight && now - lastStreamFrameAt >= frameIntervalMs) {
+        lastStreamFrameAt = now;
+        const width = streamStatus.width || DEFAULT_STREAM_WIDTH;
+        const height = streamStatus.height || DEFAULT_STREAM_HEIGHT;
+        const rgba = compositeStageToRgba(width, height);
+        if (rgba !== null) {
+          framePushInFlight = true;
+          void pushStreamFrame(rgba)
+            .then((pushedCount) => {
+              if (!disposed && streamStatus.is_live && pushedCount !== null) {
+                streamStatus = { ...streamStatus, frames_pushed: pushedCount };
+              }
+            })
+            .finally(() => {
+              framePushInFlight = false;
+            });
+        }
+      }
+      streamRafId = requestAnimationFrame(tick);
+    };
+
+    streamRafId = requestAnimationFrame(tick);
+  }
+
+  async function handleStartTwitchStream(event?: SubmitEvent): Promise<void> {
+    event?.preventDefault();
+    if (streamPending) return;
+    if (streamStatus.is_live) {
+      await handleStopTwitchStream();
+      return;
+    }
+
+    const ingestUrl = twitchIngestUrl.trim() || DEFAULT_TWITCH_INGEST_URL;
+    const streamKey = twitchStreamKey.trim();
+    if (streamKey.length === 0) {
+      streamError = 'Enter your Twitch stream key before going live.';
+      return;
+    }
+
+    streamError = null;
+    streamPending = true;
+    try {
+      const next = await startTwitchStream({
+        ingestUrl,
+        streamKey,
+        bitrateKbps: twitchBitrateKbps,
+        width: DEFAULT_STREAM_WIDTH,
+        height: DEFAULT_STREAM_HEIGHT,
+        fps: DEFAULT_STREAM_FPS,
+      });
+      if (disposed) return;
+      if (next === null) {
+        streamError = 'Unable to start Twitch stream (desktop Tauri runtime + ffmpeg required).';
+        return;
+      }
+      streamStatus = next;
+      if (next.last_error) {
+        streamError = next.last_error;
+      }
+      if (next.is_live) {
+        startStreamCaptureLoop();
+      }
+    } finally {
+      streamPending = false;
+    }
+  }
+
+  async function handleStopTwitchStream(): Promise<void> {
+    if (streamPending) return;
+    streamPending = true;
+    stopStreamCaptureLoop();
+    try {
+      const next = await stopTwitchStream();
+      if (disposed) return;
+      if (next !== null) {
+        streamStatus = next;
+      } else {
+        streamStatus = { ...streamStatus, state: 'offline', is_live: false };
+      }
+      streamError = null;
+    } finally {
+      streamPending = false;
+    }
+  }
+
   onMount(() => {
     void (async () => {
       const snapshot = await getGpuCostTelemetry();
@@ -155,10 +389,20 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         gpuTelemetry = snapshot;
       }
     })();
+    void (async () => {
+      const status = await getStreamStatus();
+      if (!disposed && status !== null) {
+        streamStatus = status;
+        if (status.is_live) {
+          startStreamCaptureLoop();
+        }
+      }
+    })();
   });
 
   onDestroy(() => {
     disposed = true;
+    stopStreamCaptureLoop();
     stopWebcam();
     if (replayFeedbackTimer !== null) {
       clearTimeout(replayFeedbackTimer);
@@ -500,6 +744,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   <span class="mix__layer-name">{layer.name}</span>
                   <span class="mix__layer-sub">
                     {layer.blendMode} · {formatPercentDisplay(layer.opacity)}
+                    {#if layer.kind === 'shader'}
+                      · {resolveShaderScene(layer).label}
+                    {/if}
                     {#if fxCount > 0}
                       · {fxCount} FX
                     {/if}
@@ -706,9 +953,126 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               Desktop Only
             </span>
           {/if}
+          <button
+            type="button"
+            class="mix__btn mix__btn--compact"
+            class:mix__btn--twitch-live={streamStatus.is_live}
+            data-testid="mix-twitch-toggle"
+            aria-expanded={twitchDrawerOpen}
+            aria-controls="mix-twitch-drawer"
+            onclick={() => (twitchDrawerOpen = !twitchDrawerOpen)}
+          >
+            {streamStatus.is_live ? 'Twitch Live' : 'Stream to Twitch'}
+          </button>
+          {#if streamStatus.is_live}
+            <span class="mix__twitch-live-badge" role="status" data-testid="mix-twitch-live-badge">
+              <span class="mix__live-dot" aria-hidden="true"></span>
+              <span>LIVE · TWITCH</span>
+              <span class="mix__twitch-meta">
+                {streamStatus.encoder} · {streamStatus.frames_pushed}f
+              </span>
+            </span>
+          {/if}
           <span class="mix__res-badge" aria-label="Output resolution">1920×1080 · 60 FPS</span>
         </div>
       </header>
+
+      {#if twitchDrawerOpen}
+        <div
+          id="mix-twitch-drawer"
+          class="mix__twitch-drawer"
+          role="region"
+          aria-label="Twitch Live Broadcast"
+          data-testid="mix-twitch-drawer"
+        >
+          <form
+            class="mix__twitch-form"
+            onsubmit={(e) => void handleStartTwitchStream(e)}
+            novalidate
+          >
+            <div class="mix__twitch-fields">
+              <div class="mix__field mix__twitch-field--url">
+                <label class="mix__mini-label" for="mix-twitch-ingest-url">Ingest URL</label>
+                <input
+                  id="mix-twitch-ingest-url"
+                  type="url"
+                  class="mix__text-input"
+                  bind:value={twitchIngestUrl}
+                  placeholder={DEFAULT_TWITCH_INGEST_URL}
+                  autocomplete="off"
+                  spellcheck={false}
+                  disabled={streamStatus.is_live || streamPending}
+                />
+              </div>
+
+              <div class="mix__field mix__twitch-field--key">
+                <label class="mix__mini-label" for="mix-twitch-stream-key">Stream Key</label>
+                <input
+                  id="mix-twitch-stream-key"
+                  type="password"
+                  class="mix__text-input"
+                  bind:value={twitchStreamKey}
+                  placeholder="live_••••••••"
+                  autocomplete="off"
+                  spellcheck={false}
+                  disabled={streamStatus.is_live || streamPending}
+                />
+              </div>
+
+              <div class="mix__field mix__twitch-field--bitrate">
+                <label class="mix__mini-label" for="mix-twitch-bitrate">Bitrate</label>
+                <select
+                  id="mix-twitch-bitrate"
+                  class="mix__select"
+                  value={String(twitchBitrateKbps)}
+                  disabled={streamStatus.is_live || streamPending}
+                  onchange={(e) => {
+                    const next = Number((e.currentTarget as HTMLSelectElement).value);
+                    if (Number.isFinite(next) && next > 0) twitchBitrateKbps = next;
+                  }}
+                >
+                  {#each TWITCH_BITRATE_OPTIONS as kbps (kbps)}
+                    <option value={String(kbps)}>{kbps} kbps</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div class="mix__twitch-submit">
+                <button
+                  type="submit"
+                  class="mix__btn"
+                  class:mix__btn--primary={!streamStatus.is_live}
+                  class:mix__btn--danger={streamStatus.is_live}
+                  data-testid="mix-twitch-start"
+                  disabled={streamPending}
+                >
+                  {#if streamPending}
+                    {streamStatus.is_live ? 'Stopping…' : 'Connecting…'}
+                  {:else if streamStatus.is_live}
+                    Stop Stream
+                  {:else}
+                    Start Twitch Stream
+                  {/if}
+                </button>
+              </div>
+            </div>
+
+            {#if streamError !== null}
+              <p class="mix__yt-error" role="alert" data-testid="mix-twitch-error">
+                {streamError}
+              </p>
+            {/if}
+
+            {#if streamStatus.is_live}
+              <p class="mix__twitch-telemetry" data-testid="mix-twitch-telemetry">
+                Encoder: <code>{streamStatus.encoder}</code> · Frames pushed:
+                <code>{streamStatus.frames_pushed}</code> · {streamStatus.width}×{streamStatus.height}
+                @ {streamStatus.fps} FPS · {streamStatus.bitrate_kbps} kbps
+              </p>
+            {/if}
+          </form>
+        </div>
+      {/if}
 
       <div class="mix__monitors" class:mix__monitors--studio={isStudioMode}>
         <!-- Primary interactive monitor (Live Program OR Studio Preview) -->
@@ -763,9 +1127,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                       data-layer-filter={mediaFilter}
                     >
                       {#if layer.kind === 'shader'}
-                        <div class="mix__visual-shader" aria-hidden="true">
-                          <div class="mix__shader-orb mix__shader-orb--a"></div>
-                          <div class="mix__shader-orb mix__shader-orb--b"></div>
+                        {@const shaderMeta = resolveShaderScene(layer)}
+                        <div
+                          class="mix__visual-shader"
+                          data-scene-id={shaderMeta.id}
+                          aria-hidden="true"
+                        >
+                          <SceneCanvas
+                            kind={shaderMeta.kind}
+                            seed={shaderMeta.seed}
+                            audio
+                            dpr={1}
+                          />
                         </div>
                       {:else if layer.kind === 'youtube'}
                         {#if youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
@@ -941,9 +1314,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                             referrerpolicy="strict-origin-when-cross-origin"
                           ></iframe>
                         {:else if layer.kind === 'shader'}
-                          <div class="mix__visual-shader" aria-hidden="true">
-                            <div class="mix__shader-orb mix__shader-orb--a"></div>
-                            <div class="mix__shader-orb mix__shader-orb--b"></div>
+                          {@const shaderMeta = resolveShaderScene(layer)}
+                          <div
+                            class="mix__visual-shader"
+                            data-scene-id={shaderMeta.id}
+                            aria-hidden="true"
+                          >
+                            <SceneCanvas
+                              kind={shaderMeta.kind}
+                              seed={shaderMeta.seed}
+                              audio
+                              dpr={1}
+                            />
                           </div>
                         {/if}
                       </div>
@@ -990,6 +1372,44 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <div class="mix__selected-banner">
             <span class="mix__selected-name">{selectedLayer.name}</span>
           </div>
+
+          {#if selectedLayer.kind === 'shader'}
+            <!-- CHROMATICITY SHADER SCENE PICKER -->
+            <section class="mix__section" aria-label="Chromaticity Scene">
+              <button
+                type="button"
+                class="mix__section-toggle"
+                aria-expanded={sectionShaderOpen}
+                onclick={() => (sectionShaderOpen = !sectionShaderOpen)}
+              >
+                <span>Chromaticity Scene</span>
+                <span class="mix__chevron">{sectionShaderOpen ? '▾' : '▸'}</span>
+              </button>
+
+              {#if sectionShaderOpen}
+                <div class="mix__section-body">
+                  <div class="mix__field">
+                    <label class="mix__label" for="mix-shader-scene-select">Scene</label>
+                    <select
+                      id="mix-shader-scene-select"
+                      data-testid="mix-shader-scene-select"
+                      class="mix__select"
+                      value={selectedLayer.sceneId ?? DEFAULT_SHADER_SCENE_ID}
+                      onchange={(e) =>
+                        videoMixerStore.setLayerScene(
+                          selectedLayer.id,
+                          (e.currentTarget as HTMLSelectElement).value,
+                        )}
+                    >
+                      {#each MIX_SHADER_SCENES as scene (scene.id)}
+                        <option value={scene.id}>{scene.label}</option>
+                      {/each}
+                    </select>
+                  </div>
+                </div>
+              {/if}
+            </section>
+          {/if}
 
           {#if selectedLayer.kind === 'youtube'}
             <!-- YOUTUBE STREAM-IN SECTION -->
@@ -2219,6 +2639,92 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     color: var(--color-text-0);
   }
 
+  .mix__btn--twitch-live {
+    border-color: var(--color-danger);
+    background: color-mix(in oklab, var(--color-danger) 20%, var(--color-bg-3));
+    color: var(--color-text-0);
+  }
+
+  .mix__btn--danger {
+    border-color: var(--color-danger);
+    background: var(--color-danger);
+    color: #090a10;
+    font-weight: 600;
+  }
+
+  .mix__twitch-live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-danger);
+    background: color-mix(in oklab, var(--color-danger) 18%, var(--color-bg-2));
+    color: var(--color-text-0);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .mix__live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-danger);
+    box-shadow: 0 0 8px var(--color-danger);
+    animation: mix-live-pulse 1.4s ease-in-out infinite;
+  }
+
+  .mix__twitch-meta {
+    font-weight: 500;
+    color: var(--color-text-1);
+  }
+
+  .mix__twitch-drawer {
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--color-line-1);
+    background: var(--color-bg-2);
+    flex-shrink: 0;
+  }
+
+  .mix__twitch-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .mix__twitch-fields {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1.2fr) 124px auto;
+    align-items: end;
+    gap: var(--space-sm);
+  }
+
+  .mix__twitch-submit {
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .mix__twitch-telemetry {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
+  }
+
+  @keyframes mix-live-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.85);
+    }
+  }
+
   .mix__webcam-error {
     display: inline-flex;
     align-items: center;
@@ -2445,30 +2951,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .mix__visual-shader {
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at 30% 35%, #2b175c 0%, #0d1633 48%, #070810 100%);
-  }
-
-  .mix__shader-orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(28px);
-    opacity: 0.72;
-  }
-
-  .mix__shader-orb--a {
-    width: 44%;
-    height: 55%;
-    top: 12%;
-    left: 16%;
-    background: radial-gradient(circle, #c4ff3d 0%, rgba(61, 229, 255, 0.2) 65%, transparent 100%);
-  }
-
-  .mix__shader-orb--b {
-    width: 46%;
-    height: 58%;
-    bottom: 8%;
-    right: 14%;
-    background: radial-gradient(circle, #ff3d9e 0%, rgba(155, 107, 255, 0.2) 65%, transparent 100%);
+    background: #070810;
   }
 
   .mix__visual-youtube {

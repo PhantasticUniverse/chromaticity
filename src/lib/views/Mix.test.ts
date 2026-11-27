@@ -9,6 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Mix from './Mix.svelte';
 import { getGpuCostTelemetry, setAdaptiveScaleEnabled } from '../ipc/mix';
 import { saveReplayBuffer } from '../ipc/recorder';
+import {
+  getStreamStatus,
+  pushStreamFrame,
+  startTwitchStream,
+  stopTwitchStream,
+} from '../ipc/stream';
 import { videoMixerStore } from '../stores/videoMixer.svelte';
 import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
 
@@ -22,23 +28,49 @@ vi.mock('../ipc/recorder', () => ({
   saveReplayBuffer: vi.fn(),
 }));
 
+vi.mock('../ipc/stream', () => ({
+  startTwitchStream: vi.fn(),
+  stopTwitchStream: vi.fn(),
+  getStreamStatus: vi.fn(),
+  pushStreamFrame: vi.fn(),
+}));
+
 const mockGetGpuCostTelemetry = vi.mocked(getGpuCostTelemetry);
 const mockSetAdaptiveScaleEnabled = vi.mocked(setAdaptiveScaleEnabled);
 const mockSaveReplayBuffer = vi.mocked(saveReplayBuffer);
+const mockStartTwitchStream = vi.mocked(startTwitchStream);
+const mockStopTwitchStream = vi.mocked(stopTwitchStream);
+const mockGetStreamStatus = vi.mocked(getStreamStatus);
+const mockPushStreamFrame = vi.mocked(pushStreamFrame);
 
 describe('Mix view', () => {
   beforeEach(() => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
     videoMixerStore.reset();
     youtubeLayerStore.reset();
     mockGetGpuCostTelemetry.mockReset().mockResolvedValue(null);
     mockSetAdaptiveScaleEnabled.mockReset().mockResolvedValue(null);
     mockSaveReplayBuffer.mockReset().mockResolvedValue(null);
+    mockStartTwitchStream.mockReset().mockResolvedValue(null);
+    mockStopTwitchStream.mockReset().mockResolvedValue(null);
+    mockGetStreamStatus.mockReset().mockResolvedValue(null);
+    mockPushStreamFrame.mockReset().mockResolvedValue(null);
   });
 
   afterEach(() => {
     videoMixerStore.reset();
     youtubeLayerStore.reset();
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it('renders the 3-pane compositor workspace, default 3-layer stack, and 4-channel audio mixer', () => {
@@ -353,5 +385,113 @@ describe('Mix view', () => {
         value: originalMediaDevices,
       });
     }
+  });
+
+  it('opens the Twitch Go-Live drawer, starts and stops a stream with a masked stream key, and displays live telemetry', async () => {
+    mockStartTwitchStream.mockResolvedValue({
+      state: 'live',
+      is_live: true,
+      protocol: 'rtmps',
+      ingest_url: 'rtmps://live.twitch.tv/app',
+      bitrate_kbps: 4500,
+      width: 1280,
+      height: 720,
+      fps: 30,
+      frames_pushed: 42,
+      encoder: 'h264_videotoolbox',
+      last_error: null,
+    });
+    mockStopTwitchStream.mockResolvedValue({
+      state: 'offline',
+      is_live: false,
+      protocol: 'rtmps',
+      ingest_url: 'rtmps://live.twitch.tv/app',
+      bitrate_kbps: 4500,
+      width: 1280,
+      height: 720,
+      fps: 30,
+      frames_pushed: 42,
+      encoder: 'h264_videotoolbox',
+      last_error: null,
+    });
+
+    const { getByLabelText, getByTestId, queryByTestId } = render(Mix);
+
+    expect(queryByTestId('mix-twitch-drawer')).not.toBeInTheDocument();
+    expect(queryByTestId('mix-twitch-live-badge')).not.toBeInTheDocument();
+
+    const toggleBtn = getByTestId('mix-twitch-toggle');
+    await fireEvent.click(toggleBtn);
+    expect(getByTestId('mix-twitch-drawer')).toBeInTheDocument();
+
+    const keyInput = getByLabelText('Stream Key') as HTMLInputElement;
+    expect(keyInput.type).toBe('password');
+    expect(keyInput).toHaveAttribute('autocomplete', 'off');
+
+    await fireEvent.input(keyInput, { target: { value: 'live_test_secret_999' } });
+
+    const bitrateSelect = getByLabelText('Bitrate') as HTMLSelectElement;
+    await fireEvent.change(bitrateSelect, { target: { value: '4500' } });
+
+    const startStopBtn = getByTestId('mix-twitch-start');
+    await fireEvent.click(startStopBtn);
+
+    await waitFor(() => {
+      expect(mockStartTwitchStream).toHaveBeenCalledWith({
+        ingestUrl: 'rtmps://live.twitch.tv/app',
+        streamKey: 'live_test_secret_999',
+        bitrateKbps: 4500,
+        width: 1280,
+        height: 720,
+        fps: 30,
+      });
+      const liveBadge = getByTestId('mix-twitch-live-badge');
+      expect(liveBadge).toHaveTextContent('LIVE · TWITCH');
+      expect(liveBadge).toHaveTextContent('h264_videotoolbox');
+      expect(liveBadge).toHaveTextContent('42f');
+      expect(startStopBtn).toHaveTextContent('Stop Stream');
+    });
+
+    await fireEvent.click(startStopBtn);
+
+    await waitFor(() => {
+      expect(mockStopTwitchStream).toHaveBeenCalledTimes(1);
+      expect(queryByTestId('mix-twitch-live-badge')).not.toBeInTheDocument();
+      expect(startStopBtn).toHaveTextContent('Start Twitch Stream');
+    });
+  });
+
+  it('switches a shader layer scene independently via the inspector scene picker', async () => {
+    const { getByLabelText, getByRole, getByTestId } = render(Mix);
+
+    const layerStack = getByLabelText('Layer Stack');
+    await fireEvent.click(within(layerStack).getByText('Chromaticity Shader'));
+
+    const sceneSelect = getByTestId('mix-shader-scene-select') as HTMLSelectElement;
+    expect(sceneSelect.value).toBe('gm-kerr-hologram-orrery');
+
+    await fireEvent.change(sceneSelect, { target: { value: 'gm-hyperbolic-opal-cathedral' } });
+    expect(videoMixerStore.selectedLayer?.sceneId).toBe('gm-hyperbolic-opal-cathedral');
+
+    const baseStageShader = getByTestId('mix-stage-canvas').querySelector(
+      '[data-stage-layer-id="layer-shader-1"] .mix__visual-shader',
+    );
+    expect(baseStageShader).toHaveAttribute('data-scene-id', 'gm-hyperbolic-opal-cathedral');
+
+    // Add a second Chromaticity Shader layer and switch its scene without affecting the first.
+    await fireEvent.click(getByRole('button', { name: '+ Add Source' }));
+    await fireEvent.click(getByRole('menuitem', { name: /Chromaticity Shader/i }));
+
+    const secondLayerId = videoMixerStore.selectedLayerId;
+    expect(secondLayerId).not.toBe('layer-shader-1');
+    const secondSceneSelect = getByTestId('mix-shader-scene-select') as HTMLSelectElement;
+    await fireEvent.change(secondSceneSelect, { target: { value: 'showdown-black-hole' } });
+
+    expect(videoMixerStore.layers.find((l) => l.id === secondLayerId)?.sceneId).toBe(
+      'showdown-black-hole',
+    );
+    expect(videoMixerStore.layers.find((l) => l.id === 'layer-shader-1')?.sceneId).toBe(
+      'gm-hyperbolic-opal-cathedral',
+    );
   });
 });

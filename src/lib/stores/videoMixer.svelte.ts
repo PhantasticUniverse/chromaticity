@@ -16,8 +16,35 @@
 import { untrack } from 'svelte';
 
 import { registerStateMachine } from '../state/diagnostics';
+import type { SceneKind } from '../widgets/scene-renderers';
 
 export type MixMode = 'live' | 'studio';
+
+export const DEFAULT_SHADER_SCENE_ID = 'gm-kerr-hologram-orrery';
+
+export interface MixShaderSceneOption {
+  readonly id: string;
+  readonly label: string;
+  readonly kind: SceneKind;
+  readonly seed: number;
+}
+
+export const MIX_SHADER_SCENES: ReadonlyArray<MixShaderSceneOption> = [
+  { id: 'gm-kerr-hologram-orrery', label: 'Kerr Hologram Orrery', kind: 'orbit', seed: 7 },
+  { id: 'gm-dyson-prismatic-lotus', label: 'Dyson Prismatic Lotus', kind: 'kaleido', seed: 14 },
+  {
+    id: 'gm-hyperbolic-opal-cathedral',
+    label: 'Hyperbolic Opal Cathedral',
+    kind: 'lattice',
+    seed: 23,
+  },
+  { id: 'gm-quantum-ferro-nebula', label: 'Quantum Ferro Nebula', kind: 'plasma', seed: 31 },
+  { id: 'holo-dichroic-monolith', label: 'Dichroic Monolith', kind: 'tunnel', seed: 42 },
+  { id: 'psy-alien-ferrofluid-crown', label: 'Alien Ferrofluid Crown', kind: 'fluid', seed: 51 },
+  { id: 'showdown-black-hole', label: 'Showdown Black Hole', kind: 'rings', seed: 59 },
+  { id: 'gm-cyber-filament-loom', label: 'Cyber Filament Loom', kind: 'filaments', seed: 19 },
+  { id: 'gm-voronoi-crystal-bloom', label: 'Voronoi Crystal Bloom', kind: 'cells', seed: 37 },
+];
 
 export type LayerSourceKind =
   | 'shader'
@@ -92,6 +119,7 @@ export interface MixLayer {
   readonly id: string;
   readonly name: string;
   readonly kind: LayerSourceKind;
+  readonly sceneId?: string;
   readonly visible: boolean;
   readonly locked: boolean;
   readonly solo: boolean;
@@ -263,6 +291,7 @@ function createSeedLayers(): MixLayer[] {
       id: 'layer-shader-1',
       name: 'Chromaticity Shader',
       kind: 'shader',
+      sceneId: DEFAULT_SHADER_SCENE_ID,
       visible: true,
       locked: false,
       solo: false,
@@ -441,10 +470,17 @@ class VideoMixerStore {
           ? `${baseName} ${sameKindCount + 1}`
           : baseName;
 
+    const defaultShaderScene =
+      kind === 'shader'
+        ? (MIX_SHADER_SCENES[sameKindCount % MIX_SHADER_SCENES.length]?.id ??
+          DEFAULT_SHADER_SCENE_ID)
+        : undefined;
+
     const layer: MixLayer = {
       id: `layer-${kind}-${this.nextIdCounter}`,
       name: resolvedName,
       kind,
+      ...(defaultShaderScene !== undefined ? { sceneId: defaultShaderScene } : {}),
       visible: true,
       locked: false,
       solo: false,
@@ -576,6 +612,16 @@ class VideoMixerStore {
 
   setBlendMode(id: string, mode: BlendMode): void {
     this.updateLayer(id, (layer) => ({ ...layer, blendMode: mode }));
+  }
+
+  /** Assign a Chromaticity Scene ID to a `shader` layer so multiple shader layers can run distinct scenes. */
+  setLayerScene(id: string, sceneId: string): void {
+    const trimmed = sceneId.trim();
+    if (trimmed.length === 0) return;
+    this.updateLayer(id, (layer) => {
+      if (layer.kind !== 'shader' || layer.sceneId === trimmed) return layer;
+      return { ...layer, sceneId: trimmed };
+    });
   }
 
   setOpacity(id: string, value: number): void {
