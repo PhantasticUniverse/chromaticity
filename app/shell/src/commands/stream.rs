@@ -288,6 +288,7 @@ pub fn build_twitch_ffmpeg_args(
         "160k".to_owned(),
         "-ar".to_owned(),
         "44100".to_owned(),
+        "-shortest".to_owned(),
         "-f".to_owned(),
         "flv".to_owned(),
         destination,
@@ -731,6 +732,13 @@ pub fn push_stream_frame_impl(app: &AppState, frame_bytes: &[u8]) -> Result<u64,
     }
 
     proc_guard.frames_pushed = proc_guard.frames_pushed.saturating_add(1);
+    if proc_guard.frames_pushed == 1 || proc_guard.frames_pushed % 60 == 0 {
+        eprintln!(
+            "[chromaticity][stream] pushed frame #{} ({} bytes)",
+            proc_guard.frames_pushed,
+            frame_bytes.len()
+        );
+    }
     Ok(proc_guard.frames_pushed)
 }
 
@@ -778,12 +786,16 @@ pub fn push_stream_frame(
     app_state: State<'_, AppState>,
     request: tauri::ipc::Request<'_>,
 ) -> Result<u64, String> {
-    match request.body() {
+    let result = match request.body() {
         tauri::ipc::InvokeBody::Raw(bytes) => push_stream_frame_impl(app_state.inner(), bytes),
         tauri::ipc::InvokeBody::Json(_) => {
             Err("push_stream_frame requires raw binary Uint8Array/ArrayBuffer body".to_owned())
         }
+    };
+    if let Err(ref err) = result {
+        eprintln!("[chromaticity][stream] push_stream_frame error: {err}");
     }
+    result
 }
 
 #[cfg(test)]

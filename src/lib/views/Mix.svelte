@@ -531,32 +531,36 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         const canvas = compositeStageToCanvas(width, height);
         if (canvas !== null && typeof canvas.toBlob === 'function') {
           framePushInFlight = true;
-          canvas.toBlob(
-            (blob) => {
-              if (disposed || !streamStatus.is_live || blob === null) {
-                framePushInFlight = false;
-                return;
-              }
-              void blob
-                .arrayBuffer()
-                .then((buf) => pushStreamFrame(new Uint8Array(buf)))
-                .then((pushedCount) => {
-                  if (
-                    !disposed &&
-                    streamStatus.is_live &&
-                    pushedCount !== null &&
-                    (pushedCount <= 2 || pushedCount % 15 === 0)
-                  ) {
-                    streamStatus = { ...streamStatus, frames_pushed: pushedCount };
-                  }
-                })
-                .finally(() => {
+          try {
+            canvas.toBlob(
+              (blob) => {
+                if (disposed || !streamStatus.is_live || blob === null) {
                   framePushInFlight = false;
-                });
-            },
-            'image/jpeg',
-            0.8,
-          );
+                  return;
+                }
+                void blob
+                  .arrayBuffer()
+                  .then((buf) => pushStreamFrame(new Uint8Array(buf)))
+                  .then((pushedCount) => {
+                    if (
+                      !disposed &&
+                      streamStatus.is_live &&
+                      pushedCount !== null &&
+                      (pushedCount <= 2 || pushedCount % 15 === 0)
+                    ) {
+                      streamStatus = { ...streamStatus, frames_pushed: pushedCount };
+                    }
+                  })
+                  .finally(() => {
+                    framePushInFlight = false;
+                  });
+              },
+              'image/jpeg',
+              0.8,
+            );
+          } catch {
+            framePushInFlight = false;
+          }
         }
       }
       streamRafId = requestAnimationFrame(tick);
