@@ -346,6 +346,7 @@
 //!   (`docs/adr/ADR-018-non-scene-ui-toolkit.md`).
 
 pub mod adapter_selection;
+pub mod async_compiler;
 #[cfg(feature = "audio-binding")]
 pub mod audio_adapter;
 #[cfg(feature = "camera-binding")]
@@ -369,6 +370,9 @@ pub mod transitions;
 pub use adapter_selection::{
     AdapterId, AdapterType, Backend, GpuSelectionPolicy, SelectedAdapter,
     enumerate_adapter_summaries, select_adapter,
+};
+pub use async_compiler::{
+    AsyncShaderCompiler, CompileJobState, CompiledShaderArtifact, ShaderLanguage,
 };
 #[cfg(feature = "audio-binding")]
 pub use audio_adapter::{
