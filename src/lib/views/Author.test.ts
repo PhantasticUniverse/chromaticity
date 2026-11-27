@@ -39,9 +39,35 @@
 // embedded `VuStereo` widget probes a canvas; the warnings are inert.
 
 import '@testing-library/jest-dom/vitest';
-import { within } from '@testing-library/dom';
+import { waitFor, within } from '@testing-library/dom';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const {
+  mockCompileAndPreviewShader,
+  mockClearSceneThumbnailCache,
+  mockReadSceneFiles,
+  mockWriteSceneFile,
+} = vi.hoisted(() => ({
+  mockCompileAndPreviewShader: vi.fn(),
+  mockClearSceneThumbnailCache: vi.fn(),
+  mockReadSceneFiles: vi.fn(),
+  mockWriteSceneFile: vi.fn(),
+}));
+
+vi.mock('../ipc/render', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../ipc/render')>();
+  return {
+    ...actual,
+    compileAndPreviewShader: mockCompileAndPreviewShader,
+    clearSceneThumbnailCache: mockClearSceneThumbnailCache,
+  };
+});
+
+vi.mock('../ipc/author', () => ({
+  readSceneFiles: mockReadSceneFiles,
+  writeSceneFile: mockWriteSceneFile,
+}));
 
 import Author from './Author.svelte';
 import {
@@ -52,6 +78,7 @@ import {
   AUTHOR_SCENE_META,
   AUTHOR_SCENE_ROWS,
 } from '../data/author-fixtures';
+import { loadedSceneStore } from '../stores/loadedScene.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
   vi.stubGlobal(
@@ -72,9 +99,18 @@ function stubMatchMedia(reduce: boolean): void {
 describe('Author view', () => {
   beforeEach(() => {
     stubMatchMedia(false);
+    loadedSceneStore.reset();
+    mockCompileAndPreviewShader.mockReset();
+    mockCompileAndPreviewShader.mockRejectedValue(new Error('__TAURI__ not available'));
+    mockClearSceneThumbnailCache.mockReset();
+    mockReadSceneFiles.mockReset();
+    mockReadSceneFiles.mockResolvedValue(null);
+    mockWriteSceneFile.mockReset();
+    mockWriteSceneFile.mockResolvedValue(false);
   });
 
   afterEach(() => {
+    loadedSceneStore.reset();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     cleanup();
@@ -367,5 +403,115 @@ describe('Author view', () => {
     await fireEvent.click(within(tabs).getByRole('tab', { name: /Inputs/ }));
     expect(getByRole('heading', { name: 'Inputs Inspector' })).toBeInTheDocument();
     expect(getByText(/lives at its own route/)).toBeInTheDocument();
+  });
+
+  it('Auto-Repair GLSL upgrades the active shader, logs fixes + Naga-26 warnings, and triggers live compile', async () => {
+    mockCompileAndPreviewShader.mockResolvedValue({
+      state: 'active',
+      scene_id: AUTHOR_SCENE_META.title,
+      frames_rendered: 1,
+      last_frame_ms: 4.2,
+      error: null,
+    });
+
+    const { container, getByRole } = render(Author);
+    const repairBtn = getByRole('button', { name: /Auto-Repair GLSL/i });
+    expect(repairBtn).toBeEnabled();
+
+    await fireEvent.click(repairBtn);
+
+    // Fixture GLSL lacks `#version 450`, so Auto-Repair mutates the buffer and marks it dirty.
+    expect(container.querySelector('.au-author__toolbar-warn')).not.toBeNull();
+    // Console logs both the applied fix summary and the Naga-26 `mat2` advisory warning.
+    const consoleBody = container.querySelector('.au-author__console-body') as HTMLElement;
+    expect(within(consoleBody).getByText(/Upgrade to #version 450/i)).toBeInTheDocument();
+    expect(within(consoleBody).getByText(/Detected `mat2`/i)).toBeInTheDocument();
+
+    // Live GPU compile is triggered with the repaired `#version 450` source.
+    expect(mockCompileAndPreviewShader).toHaveBeenCalledTimes(1);
+    const [, compiledSource] = mockCompileAndPreviewShader.mock.calls[0] as [string, string];
+    expect(compiledSource.startsWith('#version 450')).toBe(true);
+
+    await waitFor(() => {
+      expect(within(consoleBody).getByText(/Compiled & rendered \(4\.2 ms\)/)).toBeInTheDocument();
+    });
+
+    // Switching to a non-GLSL tab disables Auto-Repair GLSL.
+    const tabRow = container.querySelector('.au-author__filetabs') as HTMLElement;
+    await fireEvent.click(within(tabRow).getByRole('tab', { name: 'script.js' }));
+    expect(repairBtn).toBeDisabled();
+  });
+
+  it('shows Copy Repair Prompt on GPU compile error and copies structured prompt to clipboard', async () => {
+    mockCompileAndPreviewShader.mockRejectedValue(
+      new Error('naga: unknown identifier mat2 constructor at line 45'),
+    );
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const { getByRole, queryByRole } = render(Author);
+    expect(queryByRole('button', { name: /Copy Repair Prompt/i })).toBeNull();
+
+    await fireEvent.click(getByRole('button', { name: /Auto-Repair GLSL/i }));
+
+    const copyBtn = await waitFor(() => getByRole('button', { name: /Copy Repair Prompt/i }));
+    await fireEvent.click(copyBtn);
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copiedPrompt = writeText.mock.calls[0]?.[0] as string;
+    expect(copiedPrompt).toContain('# Chromaticity GLSL 4.50 Repair Request');
+    expect(copiedPrompt).toContain('naga: unknown identifier mat2 constructor at line 45');
+  });
+
+  it('Save persists active file to disk and invalidates thumbnail cache for a loaded .chroma scene', async () => {
+    const scenePath = '/tmp/demo-scene.chroma';
+    loadedSceneStore.snapshot = {
+      id: 'demo-scene',
+      path: scenePath,
+      name: 'Demo Scene',
+      credit: 'Chromaticity',
+      description: 'Test scene',
+      controls: [],
+      schema_version: 1,
+    };
+    mockReadSceneFiles.mockResolvedValue({
+      main_glsl: 'void main() { gl_FragColor = vec4(1.0); }',
+      scene_json: null,
+      script_js: null,
+    });
+    mockWriteSceneFile.mockResolvedValue(true);
+    mockCompileAndPreviewShader.mockResolvedValue({
+      state: 'active',
+      scene_id: 'demo-scene',
+      frames_rendered: 1,
+      last_frame_ms: 2.0,
+      error: null,
+    });
+
+    const { container, getByRole } = render(Author);
+
+    await waitFor(() => {
+      expect(mockReadSceneFiles).toHaveBeenCalledWith(scenePath);
+    });
+
+    // Run Auto-Repair so main.glsl becomes dirty, then click Save.
+    await fireEvent.click(getByRole('button', { name: /Auto-Repair GLSL/i }));
+    const saveBtn = container.querySelector(
+      'button[aria-label="Save all tabs"]',
+    ) as HTMLButtonElement;
+    expect(saveBtn).toBeEnabled();
+    await fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mockWriteSceneFile).toHaveBeenCalledWith(
+        scenePath,
+        'main.glsl',
+        expect.stringContaining('#version 450'),
+      );
+      expect(mockClearSceneThumbnailCache).toHaveBeenCalledWith(scenePath);
+    });
   });
 });

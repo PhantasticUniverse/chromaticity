@@ -46,6 +46,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   // (secondary, lower boost). New feature work must NOT add fresh
   // `syn_*` symbols beyond what the catalog documents. This view
   // consumes the vocabulary; it does not extend it.
+  import { autoRepairGlsl, buildAgentRepairPrompt } from '../authoring/glslRepair';
   import {
     AUTHOR_BACKUPS,
     AUTHOR_COMPARISON_SOURCES,
@@ -62,8 +63,10 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   } from '../data/author-fixtures';
   import Editor, { type EditorLanguage } from '../Editor.svelte';
   import Icon, { type IconName } from '../Icon.svelte';
-  import { compileAndPreviewShader } from '../ipc/render';
+  import { readSceneFiles, writeSceneFile, type EditableSceneFileName } from '../ipc/author';
+  import { clearSceneThumbnailCache, compileAndPreviewShader } from '../ipc/render';
   import SceneDiff from '../SceneDiff.svelte';
+  import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import Fader from '../widgets/Fader.svelte';
   import {
     sceneKindFromMetadata,
@@ -179,14 +182,74 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     buffers[activeFile] = next;
   }
 
+  interface AuthorDiagnosticRow {
+    readonly id: number;
+    readonly time: string;
+    readonly level: 'ok' | 'warn';
+    readonly tag: string;
+    readonly message: string;
+  }
+
   let liveCompileDiagnostic = $state<{ level: 'ok' | 'warn'; tag: string; message: string } | null>(
     null,
   );
+  let diagnosticRows = $state<AuthorDiagnosticRow[]>([]);
+  let nextDiagnosticId = 1;
+  let promptCopied = $state<boolean>(false);
+  let promptCopiedTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function saveAll(): void {
-    saved = { ...buffers };
+  const loadedScene = $derived(loadedSceneStore.snapshot);
+  const activeScenePath = $derived(loadedScene?.path ?? null);
+  const activeSceneId = $derived(loadedScene?.id ?? AUTHOR_SCENE_META.title);
+  const hasCompileError = $derived(liveCompileDiagnostic?.level === 'warn');
+
+  function appendDiagnostic(level: 'ok' | 'warn', tag: string, message: string): void {
+    diagnosticRows = [
+      ...diagnosticRows,
+      { id: nextDiagnosticId++, time: 'live', level, tag, message },
+    ];
+  }
+
+  function clearDiagnostics(): void {
+    diagnosticRows = [];
+    liveCompileDiagnostic = null;
+  }
+
+  function toDiskFileName(file: AuthorFileTab): EditableSceneFileName | null {
+    if (file === 'main.glsl') return 'main.glsl';
+    if (file === 'config.json') return 'scene.json';
+    if (file === 'script.js') return 'script.js';
+    return null;
+  }
+
+  // Hydrate editor buffers from disk when a real `.chroma` scene is loaded in Tauri.
+  let diskHydrateSeq = 0;
+  $effect(() => {
+    const scenePath = activeScenePath;
+    if (!scenePath) return;
+    const seq = ++diskHydrateSeq;
+    void readSceneFiles(scenePath).then((bundle) => {
+      if (!bundle || seq !== diskHydrateSeq) return;
+      const nextBuffers: Record<AuthorFileTab, string> = {
+        'main.glsl': bundle.main_glsl ?? AUTHOR_FILE_SOURCES['main.glsl'],
+        'script.js': bundle.script_js ?? AUTHOR_FILE_SOURCES['script.js'],
+        'config.json': bundle.scene_json ?? AUTHOR_FILE_SOURCES['config.json'],
+        'readme.md': AUTHOR_FILE_SOURCES['readme.md'],
+      };
+      buffers = nextBuffers;
+      saved = { ...nextBuffers };
+    });
+  });
+
+  $effect(() => {
+    return () => {
+      if (promptCopiedTimer !== null) clearTimeout(promptCopiedTimer);
+    };
+  });
+
+  function runLiveGpuCompile(sceneId: string, glslSource: string): void {
     // Live-compile main.glsl through `naga` + `wgpu` when running inside Tauri.
-    void compileAndPreviewShader(AUTHOR_SCENE_META.title, buffers['main.glsl'])
+    void compileAndPreviewShader(sceneId, glslSource)
       .then((status) => {
         liveCompileDiagnostic = {
           level: 'ok',
@@ -204,6 +267,63 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           message: msg,
         };
       });
+  }
+
+  function handleAutoRepairGlsl(): void {
+    const result = autoRepairGlsl(buffers['main.glsl']);
+    if (result.changed) {
+      buffers['main.glsl'] = result.source;
+      const summary = result.applied.map((a) => `${a.label} (×${a.count})`).join('; ');
+      appendDiagnostic('ok', 'repair', `Applied GLSL 4.50 auto-repair: ${summary}`);
+    } else {
+      appendDiagnostic('ok', 'repair', 'GLSL 4.50 auto-repair: no deterministic rewrites needed.');
+    }
+    for (const warning of result.warnings) {
+      appendDiagnostic('warn', 'naga', warning);
+    }
+    consoleOpen = true;
+    runLiveGpuCompile(activeSceneId, buffers['main.glsl']);
+  }
+
+  async function handleCopyRepairPrompt(): Promise<void> {
+    if (!liveCompileDiagnostic || liveCompileDiagnostic.level !== 'warn') return;
+    const prompt = buildAgentRepairPrompt(
+      activeSceneId,
+      buffers['main.glsl'],
+      liveCompileDiagnostic.message,
+    );
+    try {
+      await navigator.clipboard?.writeText(prompt);
+      promptCopied = true;
+      if (promptCopiedTimer !== null) clearTimeout(promptCopiedTimer);
+      promptCopiedTimer = setTimeout(() => {
+        promptCopied = false;
+        promptCopiedTimer = null;
+      }, 1800);
+      appendDiagnostic('ok', 'repair', `Copied AI repair prompt for ${activeSceneId}.`);
+    } catch {
+      appendDiagnostic('warn', 'repair', 'Clipboard write failed — copy the error manually.');
+    }
+  }
+
+  function saveAll(): void {
+    const activeTab = activeFile;
+    const activeDiskFile = toDiskFileName(activeTab);
+    const activeContent = buffers[activeTab];
+    const scenePath = activeScenePath;
+    saved = { ...buffers };
+
+    // Best-effort persist the active allowlisted file to the `.chroma` package
+    // and invalidate its cached GPU thumbnail so Library refreshes automatically.
+    if (scenePath && activeDiskFile) {
+      void writeSceneFile(scenePath, activeDiskFile, activeContent).then((ok) => {
+        if (!ok) return;
+        clearSceneThumbnailCache(scenePath);
+        appendDiagnostic('ok', 'disk', `Saved ${activeDiskFile} to ${scenePath}`);
+      });
+    }
+
+    runLiveGpuCompile(activeSceneId, buffers['main.glsl']);
   }
 
   function revertActive(): void {
@@ -379,6 +499,29 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           </span>
         {/if}
         <span class="au-author__spacer" aria-hidden="true"></span>
+        <button
+          class="au-author__btn au-author__btn--repair"
+          type="button"
+          disabled={activeFile !== 'main.glsl'}
+          onclick={handleAutoRepairGlsl}
+          title={activeFile === 'main.glsl'
+            ? 'Auto-repair GLSL 4.50 / Naga 26 incompatibilities and re-compile'
+            : 'Switch to main.glsl to run GLSL auto-repair'}
+        >
+          <Icon name="flash" size={11} />
+          Auto-Repair GLSL
+        </button>
+        {#if hasCompileError}
+          <button
+            class="au-author__btn au-author__btn--warn"
+            type="button"
+            onclick={handleCopyRepairPrompt}
+            title="Copy structured GLSL 4.50 repair prompt for an AI agent"
+          >
+            <Icon name="copy" size={11} />
+            {promptCopied ? 'Copied Prompt' : 'Copy Repair Prompt'}
+          </button>
+        {/if}
         <button class="au-author__btn au-author__btn--ghost" type="button" disabled>
           show Chromaticity docs
         </button>
@@ -462,7 +605,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <label class="au-author__console-toggle mono">
           <input type="checkbox" bind:checked={logMidi} /> log MIDI
         </label>
-        <button class="au-author__btn au-author__btn--ghost" type="button" disabled>clear</button>
+        <button
+          class="au-author__btn au-author__btn--ghost"
+          type="button"
+          disabled={diagnosticRows.length === 0 && liveCompileDiagnostic === null}
+          onclick={clearDiagnostics}
+        >
+          clear
+        </button>
       </div>
       {#if consoleOpen}
         <div class="au-author__console-body">
@@ -477,9 +627,20 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               <span class="au-author__console-msg">{row.message}</span>
             </div>
           {/each}
+          {#each diagnosticRows as row (row.id)}
+            <div class="au-author__console-row">
+              <span class="mono au-author__console-time">{row.time}</span>
+              <span
+                class="mono au-author__console-tag"
+                class:au-author__console-tag--ok={row.level === 'ok'}
+                class:au-author__console-tag--warn={row.level === 'warn'}>{row.tag}</span
+              >
+              <span class="au-author__console-msg">{row.message}</span>
+            </div>
+          {/each}
           {#if liveCompileDiagnostic}
             <div class="au-author__console-row">
-              <span class="mono au-author__console-ts">live</span>
+              <span class="mono au-author__console-time">live</span>
               <span
                 class="mono au-author__console-tag"
                 class:au-author__console-tag--ok={liveCompileDiagnostic.level === 'ok'}
@@ -1127,6 +1288,14 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   .au-author__btn--danger {
     color: var(--color-danger);
     border-color: color-mix(in oklab, var(--color-danger) 35%, var(--color-line-2));
+  }
+  .au-author__btn--repair {
+    color: var(--color-text-0);
+    border-color: color-mix(in oklab, var(--color-primary) 45%, var(--color-line-2));
+  }
+  .au-author__btn--warn {
+    color: var(--color-text-0);
+    border-color: color-mix(in oklab, var(--color-warning) 50%, var(--color-line-2));
   }
 
   .au-author__icon-btn {
