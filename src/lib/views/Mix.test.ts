@@ -10,6 +10,7 @@ import Mix from './Mix.svelte';
 import { getGpuCostTelemetry, setAdaptiveScaleEnabled } from '../ipc/mix';
 import { saveReplayBuffer } from '../ipc/recorder';
 import { videoMixerStore } from '../stores/videoMixer.svelte';
+import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
 
 vi.mock('../ipc/mix', () => ({
   getGpuCostTelemetry: vi.fn(),
@@ -28,6 +29,7 @@ const mockSaveReplayBuffer = vi.mocked(saveReplayBuffer);
 describe('Mix view', () => {
   beforeEach(() => {
     videoMixerStore.reset();
+    youtubeLayerStore.reset();
     mockGetGpuCostTelemetry.mockReset().mockResolvedValue(null);
     mockSetAdaptiveScaleEnabled.mockReset().mockResolvedValue(null);
     mockSaveReplayBuffer.mockReset().mockResolvedValue(null);
@@ -35,6 +37,7 @@ describe('Mix view', () => {
 
   afterEach(() => {
     videoMixerStore.reset();
+    youtubeLayerStore.reset();
     cleanup();
   });
 
@@ -265,5 +268,90 @@ describe('Mix view', () => {
     const stageTags = stageCanvas.querySelectorAll('.mix__stage-tag');
     expect(stageTags).toHaveLength(1);
     expect(stageTags[0]).toHaveTextContent(videoMixerStore.selectedLayer?.name ?? '');
+  });
+
+  it('loads a pasted YouTube URL in the inspector, renders the live embed iframe, and applies live CSS color grade filter', async () => {
+    const { getByLabelText, getByRole, getByTestId } = render(Mix);
+
+    // Select the YouTube layer from the Layer Stack.
+    const layerStack = getByLabelText('Layer Stack');
+    await fireEvent.click(within(layerStack).getByText('YouTube Visual Loop (Muted)'));
+
+    const urlInput = getByLabelText('YouTube URL or Video ID') as HTMLInputElement;
+    await fireEvent.input(urlInput, {
+      target: { value: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Load' }));
+
+    const iframe = getByTestId('mix-youtube-iframe') as HTMLIFrameElement;
+    expect(iframe).toBeInTheDocument();
+    expect(iframe.src).toContain('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
+    expect(iframe.src).toContain('mute=1');
+    expect(iframe).toHaveClass('mix__live-youtube--passthrough');
+
+    // Toggle Muted (DJ Safe) -> Audio Live updates embed URL mute flag.
+    const muteBtn = getByTestId('mix-youtube-mute');
+    expect(muteBtn).toHaveAttribute('aria-pressed', 'true');
+    await fireEvent.click(muteBtn);
+    expect(muteBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(iframe.src).toContain('mute=0');
+
+    // Enable Color Grade and adjust brightness + hue; verify live CSS filter string on media wrapper.
+    const cgToggle = getByRole('button', { name: 'Toggle Color Grade' });
+    await fireEvent.click(cgToggle);
+    const brightSlider = getByLabelText('Brightness') as HTMLInputElement;
+    await fireEvent.input(brightSlider, { target: { value: '1.5' } });
+    const hueSlider = getByLabelText('Hue Shift') as HTMLInputElement;
+    await fireEvent.input(hueSlider, { target: { value: '90' } });
+
+    const mediaWrapper = iframe.closest('.mix__layer-media');
+    expect(mediaWrapper).not.toBeNull();
+    expect(mediaWrapper).toHaveAttribute(
+      'data-layer-filter',
+      'brightness(1.5) contrast(1) saturate(1) hue-rotate(90deg)',
+    );
+  });
+
+  it('starts and stops live webcam capture cleanly and stops all MediaStream tracks on unmount', async () => {
+    const stopTrack = vi.fn();
+    const fakeStream = {
+      getTracks: () => [{ stop: stopTrack }],
+    } as unknown as MediaStream;
+
+    const getUserMedia = vi.fn().mockResolvedValue(fakeStream);
+    const originalMediaDevices = navigator.mediaDevices;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    try {
+      const { getByTestId, queryByTestId, unmount } = render(Mix);
+
+      const webcamBtn = getByTestId('mix-webcam-toggle');
+      expect(webcamBtn).toHaveTextContent('Start Webcam');
+      await fireEvent.click(webcamBtn);
+
+      await waitFor(() => {
+        expect(getUserMedia).toHaveBeenCalledWith({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+        expect(getByTestId('mix-webcam-video')).toBeInTheDocument();
+        expect(webcamBtn).toHaveTextContent('Stop Webcam');
+      });
+
+      const videoEl = getByTestId('mix-webcam-video') as HTMLVideoElement;
+      expect(videoEl.srcObject).toBe(fakeStream);
+
+      unmount();
+      expect(stopTrack).toHaveBeenCalledTimes(1);
+      expect(queryByTestId('mix-webcam-video')).not.toBeInTheDocument();
+    } finally {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: originalMediaDevices,
+      });
+    }
   });
 });

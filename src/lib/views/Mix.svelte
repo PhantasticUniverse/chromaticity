@@ -26,6 +26,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type AudioLinkFilter,
     type MixLayer,
   } from '../stores/videoMixer.svelte';
+  import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
 
   const DEFAULT_GPU_TELEMETRY: GpuCostTelemetryDto = {
     tier: 'Light',
@@ -53,6 +54,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   let addMenuOpen = $state(false);
+  let sectionYouTubeOpen = $state(true);
   let sectionTransformOpen = $state(true);
   let sectionCompositingOpen = $state(true);
   let sectionFiltersOpen = $state(true);
@@ -63,9 +65,88 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let gpuTelemetry = $state<GpuCostTelemetryDto>(DEFAULT_GPU_TELEMETRY);
   let adaptivePending = $state(false);
   let replayStatus = $state<ReplayStatus>('idle');
+  let webcamStream = $state.raw<MediaStream | null>(null);
+  let webcamPending = $state(false);
+  let webcamError = $state<string | null>(null);
+  let youtubeUrlInput = $state('');
+  let youtubeInteractive = $state(false);
 
   let disposed = false;
   let replayFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function stopWebcam(): void {
+    const active = webcamStream;
+    webcamStream = null;
+    webcamError = null;
+    if (active !== null) {
+      for (const track of active.getTracks()) {
+        track.stop();
+      }
+    }
+  }
+
+  async function startWebcam(): Promise<void> {
+    if (webcamPending || webcamStream !== null) return;
+    webcamError = null;
+    const mediaDevices = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
+    if (!mediaDevices || typeof mediaDevices.getUserMedia !== 'function') {
+      webcamError = 'Camera capture is unavailable in this environment.';
+      return;
+    }
+
+    webcamPending = true;
+    try {
+      const stream = await mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      if (disposed) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
+      webcamStream = stream;
+    } catch (err: unknown) {
+      if (disposed) return;
+      webcamError =
+        err instanceof Error && err.message.trim().length > 0
+          ? err.message
+          : 'Camera permission denied or device unavailable.';
+    } finally {
+      webcamPending = false;
+    }
+  }
+
+  function attachStream(node: HTMLVideoElement, stream: MediaStream | null) {
+    const apply = (next: MediaStream | null): void => {
+      node.srcObject = next;
+      const isJsdom = typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
+      if (next !== null && !isJsdom && typeof node.play === 'function') {
+        void Promise.resolve(node.play()).catch(() => {});
+      }
+    };
+    apply(stream);
+    return {
+      update(next: MediaStream | null) {
+        apply(next);
+      },
+      destroy() {
+        node.srcObject = null;
+      },
+    };
+  }
+
+  function handleLoadYouTube(event: SubmitEvent): void {
+    event.preventDefault();
+    youtubeLayerStore.load(youtubeUrlInput);
+  }
+
+  function handleClearYouTube(): void {
+    youtubeUrlInput = '';
+    youtubeInteractive = false;
+    youtubeLayerStore.clear();
+  }
 
   onMount(() => {
     void (async () => {
@@ -78,6 +159,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   onDestroy(() => {
     disposed = true;
+    stopWebcam();
     if (replayFeedbackTimer !== null) {
       clearTimeout(replayFeedbackTimer);
       replayFeedbackTimer = null;
@@ -85,6 +167,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   });
 
   const selectedLayer = $derived(videoMixerStore.selectedLayer);
+  const youtubeMachine = $derived(youtubeLayerStore.state);
+  const youtubeEmbedUrl = $derived(youtubeLayerStore.embedUrl);
   const previewLayers = $derived(videoMixerStore.layers);
   const programLayers = $derived(videoMixerStore.programLayers);
   const topProgramLayerId = $derived(
@@ -151,11 +235,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       case 'screen':
         return 'screen';
       case 'add':
-        return 'lighten';
+        return 'plus-lighter';
       case 'multiply':
         return 'multiply';
-      case 'normal':
       case 'luma-key':
+        return 'lighten';
+      case 'normal':
       case 'chroma-key':
         return 'normal';
     }
@@ -181,14 +266,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const { x, y, scaleX, scaleY, rotationDeg } = layer.transform;
     const { top, right, bottom, left } = layer.crop;
     const blend = cssBlendMode(layer.blendMode);
-    const filterCss = layerCssFilter(layer);
     return [
       `z-index: ${zIndex}`,
       `opacity: ${layer.opacity}`,
       `mix-blend-mode: ${blend}`,
       `transform: translate(${x}%, ${y}%) scale(${scaleX}, ${scaleY}) rotate(${rotationDeg}deg)`,
       `clip-path: inset(${top}% ${right}% ${bottom}% ${left}%)`,
-      `filter: ${filterCss}`,
     ].join('; ');
   }
 
@@ -552,6 +635,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           >
             Reset
           </button>
+          <button
+            type="button"
+            class="mix__btn mix__btn--compact"
+            class:mix__btn--webcam-live={webcamStream !== null}
+            data-testid="mix-webcam-toggle"
+            aria-pressed={webcamStream !== null}
+            disabled={webcamPending}
+            onclick={() => (webcamStream !== null ? stopWebcam() : void startWebcam())}
+          >
+            {webcamPending ? 'Starting…' : webcamStream !== null ? 'Stop Webcam' : 'Start Webcam'}
+          </button>
+          {#if webcamError !== null}
+            <span class="mix__webcam-error" role="alert" data-testid="mix-webcam-error">
+              {webcamError}
+            </span>
+          {/if}
           <span
             class="mix__gpu-badge"
             class:mix__gpu-badge--light={gpuTelemetry.tier === 'Light'}
@@ -647,6 +746,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 {@const hasChroma = findFilter<ChromaKeyFilter>(layer, 'chromaKey')?.enabled}
                 {@const hasLuma = findFilter<LumaKeyFilter>(layer, 'lumaKey')?.enabled}
                 {@const activeAudio = findFilter<AudioLinkFilter>(layer, 'audioLink')}
+                {@const mediaFilter = layerCssFilter(layer)}
                 <div
                   role="presentation"
                   class="mix__stage-layer mix__stage-layer--{layer.kind}"
@@ -657,41 +757,81 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   onpointerdown={(event) => startMoveDrag(event, layer)}
                 >
                   <div class="mix__layer-visual">
-                    {#if layer.kind === 'shader'}
-                      <div class="mix__visual-shader" aria-hidden="true">
-                        <div class="mix__shader-orb mix__shader-orb--a"></div>
-                        <div class="mix__shader-orb mix__shader-orb--b"></div>
-                      </div>
-                    {:else if layer.kind === 'youtube'}
-                      <div class="mix__visual-youtube" aria-hidden="true">
-                        <span class="mix__visual-chip">YOUTUBE STREAM · MUTED</span>
-                        <div class="mix__visual-wave"></div>
-                      </div>
-                    {:else if layer.kind === 'webcam'}
-                      <div class="mix__visual-webcam" aria-hidden="true">
-                        <div class="mix__webcam-silhouette"></div>
-                        <span class="mix__visual-chip">
-                          {hasChroma ? 'CHROMA KEY LIVE' : 'CAMERA FEED'}
-                        </span>
-                      </div>
-                    {:else if layer.kind === 'syphon'}
-                      <div class="mix__visual-syphon" aria-hidden="true">
-                        <span class="mix__visual-chip">SYPHON · SYNESTHESIA BUS</span>
-                      </div>
-                    {:else if layer.kind === 'screen'}
-                      <div class="mix__visual-screen" aria-hidden="true">
-                        <span class="mix__visual-chip">WINDOW / DISPLAY CAPTURE</span>
-                      </div>
-                    {:else if layer.kind === 'text'}
-                      <div class="mix__visual-text">
-                        <span class="mix__text-heading">{layer.name}</span>
-                        <span class="mix__text-sub">LIVE VISUAL PERFORMANCE</span>
-                      </div>
-                    {:else}
-                      <div class="mix__visual-media" aria-hidden="true">
-                        <span class="mix__visual-chip">LOCAL MEDIA LOOP</span>
-                      </div>
-                    {/if}
+                    <div
+                      class="mix__layer-media"
+                      style={`filter: ${mediaFilter}`}
+                      data-layer-filter={mediaFilter}
+                    >
+                      {#if layer.kind === 'shader'}
+                        <div class="mix__visual-shader" aria-hidden="true">
+                          <div class="mix__shader-orb mix__shader-orb--a"></div>
+                          <div class="mix__shader-orb mix__shader-orb--b"></div>
+                        </div>
+                      {:else if layer.kind === 'youtube'}
+                        {#if youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
+                          <iframe
+                            class="mix__live-youtube"
+                            class:mix__live-youtube--passthrough={dragState !== null ||
+                              !youtubeInteractive}
+                            data-testid="mix-youtube-iframe"
+                            src={youtubeEmbedUrl}
+                            title={`YouTube visual layer (${youtubeMachine.videoId})`}
+                            sandbox="allow-scripts allow-same-origin allow-presentation"
+                            allow="autoplay; encrypted-media"
+                            referrerpolicy="strict-origin-when-cross-origin"
+                          ></iframe>
+                        {:else}
+                          <div class="mix__visual-youtube" aria-hidden="true">
+                            <span class="mix__visual-chip">YOUTUBE STREAM · PASTE URL</span>
+                            <div class="mix__visual-wave"></div>
+                          </div>
+                        {/if}
+                      {:else if layer.kind === 'webcam'}
+                        {#if webcamStream !== null}
+                          <video
+                            class="mix__live-video"
+                            data-testid="mix-webcam-video"
+                            autoplay
+                            playsinline
+                            muted
+                            use:attachStream={webcamStream}
+                          ></video>
+                        {:else}
+                          <div class="mix__visual-webcam">
+                            <div class="mix__webcam-silhouette" aria-hidden="true"></div>
+                            <span class="mix__visual-chip">
+                              {hasChroma ? 'CHROMA KEY READY' : 'CAMERA FEED'}
+                            </span>
+                            <button
+                              type="button"
+                              class="mix__btn mix__btn--compact mix__webcam-inline-btn"
+                              disabled={webcamPending}
+                              onpointerdown={(event) => event.stopPropagation()}
+                              onclick={() => void startWebcam()}
+                            >
+                              {webcamPending ? 'Starting…' : 'Enable Camera'}
+                            </button>
+                          </div>
+                        {/if}
+                      {:else if layer.kind === 'syphon'}
+                        <div class="mix__visual-syphon" aria-hidden="true">
+                          <span class="mix__visual-chip">SYPHON · SYNESTHESIA BUS</span>
+                        </div>
+                      {:else if layer.kind === 'screen'}
+                        <div class="mix__visual-screen" aria-hidden="true">
+                          <span class="mix__visual-chip">WINDOW / DISPLAY CAPTURE</span>
+                        </div>
+                      {:else if layer.kind === 'text'}
+                        <div class="mix__visual-text">
+                          <span class="mix__text-heading">{layer.name}</span>
+                          <span class="mix__text-sub">LIVE VISUAL PERFORMANCE</span>
+                        </div>
+                      {:else}
+                        <div class="mix__visual-media" aria-hidden="true">
+                          <span class="mix__visual-chip">LOCAL MEDIA LOOP</span>
+                        </div>
+                      {/if}
+                    </div>
 
                     {#if isSelected}
                       <div class="mix__stage-tag">
@@ -782,6 +922,31 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                     style={layerStageStyle(layer, revIndex + 1)}
                   >
                     <div class="mix__layer-visual">
+                      <div class="mix__layer-media" style={`filter: ${layerCssFilter(layer)}`}>
+                        {#if layer.kind === 'webcam' && webcamStream !== null}
+                          <video
+                            class="mix__live-video"
+                            autoplay
+                            playsinline
+                            muted
+                            use:attachStream={webcamStream}
+                          ></video>
+                        {:else if layer.kind === 'youtube' && youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
+                          <iframe
+                            class="mix__live-youtube mix__live-youtube--passthrough"
+                            src={youtubeEmbedUrl}
+                            title={`Program YouTube layer (${youtubeMachine.videoId})`}
+                            sandbox="allow-scripts allow-same-origin allow-presentation"
+                            allow="autoplay; encrypted-media"
+                            referrerpolicy="strict-origin-when-cross-origin"
+                          ></iframe>
+                        {:else if layer.kind === 'shader'}
+                          <div class="mix__visual-shader" aria-hidden="true">
+                            <div class="mix__shader-orb mix__shader-orb--a"></div>
+                            <div class="mix__shader-orb mix__shader-orb--b"></div>
+                          </div>
+                        {/if}
+                      </div>
                       {#if layer.id === topProgramLayerId}
                         <div class="mix__stage-tag">
                           <span>{layer.name}</span>
@@ -825,6 +990,98 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <div class="mix__selected-banner">
             <span class="mix__selected-name">{selectedLayer.name}</span>
           </div>
+
+          {#if selectedLayer.kind === 'youtube'}
+            <!-- YOUTUBE STREAM-IN SECTION -->
+            <section class="mix__section" aria-label="YouTube Stream">
+              <button
+                type="button"
+                class="mix__section-toggle"
+                aria-expanded={sectionYouTubeOpen}
+                onclick={() => (sectionYouTubeOpen = !sectionYouTubeOpen)}
+              >
+                <span>YouTube Stream</span>
+                <span class="mix__chevron">{sectionYouTubeOpen ? '▾' : '▸'}</span>
+              </button>
+
+              {#if sectionYouTubeOpen}
+                <div class="mix__section-body">
+                  <form class="mix__yt-form" onsubmit={handleLoadYouTube} novalidate>
+                    <label class="mix__label" for="mix-youtube-url">YouTube URL or Video ID</label>
+                    <div class="mix__yt-input-row">
+                      <input
+                        id="mix-youtube-url"
+                        type="text"
+                        class="mix__text-input"
+                        bind:value={youtubeUrlInput}
+                        placeholder="https://youtube.com/watch?v=… or ID"
+                        autocomplete="off"
+                        spellcheck={false}
+                        aria-invalid={youtubeMachine.kind === 'error' ? 'true' : undefined}
+                      />
+                      <button type="submit" class="mix__btn mix__btn--primary mix__btn--compact">
+                        Load
+                      </button>
+                      {#if youtubeMachine.kind !== 'empty' || youtubeUrlInput.trim().length > 0}
+                        <button
+                          type="button"
+                          class="mix__btn mix__btn--compact"
+                          onclick={handleClearYouTube}
+                        >
+                          Clear
+                        </button>
+                      {/if}
+                    </div>
+                  </form>
+
+                  {#if youtubeMachine.kind === 'error'}
+                    <p class="mix__yt-error" role="alert" data-testid="mix-youtube-error">
+                      {youtubeMachine.message}
+                    </p>
+                  {/if}
+
+                  <div class="mix__yt-actions">
+                    <button
+                      type="button"
+                      class="mix__btn mix__btn--compact"
+                      class:mix__btn--active={youtubeMachine.kind === 'ready'
+                        ? youtubeMachine.muted
+                        : true}
+                      data-testid="mix-youtube-mute"
+                      aria-pressed={youtubeMachine.kind === 'ready' ? youtubeMachine.muted : true}
+                      disabled={youtubeMachine.kind !== 'ready'}
+                      onclick={() => youtubeLayerStore.toggleMuted()}
+                    >
+                      {youtubeMachine.kind === 'ready' && !youtubeMachine.muted
+                        ? 'Audio Live'
+                        : 'Muted (DJ Safe)'}
+                    </button>
+
+                    {#if youtubeMachine.kind === 'ready'}
+                      <button
+                        type="button"
+                        class="mix__btn mix__btn--compact"
+                        class:mix__btn--active={youtubeInteractive}
+                        data-testid="mix-youtube-interact"
+                        aria-pressed={youtubeInteractive}
+                        title="Allow clicking inside the YouTube player instead of dragging the layer"
+                        onclick={() => (youtubeInteractive = !youtubeInteractive)}
+                      >
+                        {youtubeInteractive ? 'Player Controls: ON' : 'Drag Layer Mode'}
+                      </button>
+                    {/if}
+                  </div>
+
+                  {#if youtubeMachine.kind === 'ready'}
+                    <p class="mix__yt-status" data-testid="mix-youtube-status">
+                      Live ID: <code>{youtubeMachine.videoId}</code> ·
+                      {youtubeMachine.muted ? 'DJ Safe Muted' : 'Audio Active'}
+                    </p>
+                  {/if}
+                </div>
+              {/if}
+            </section>
+          {/if}
 
           <!-- COMPOSITING SECTION -->
           <section class="mix__section" aria-label="Compositing">
@@ -1956,6 +2213,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     color: var(--color-text-0);
   }
 
+  .mix__btn--webcam-live {
+    border-color: var(--color-signal-cyan);
+    background: color-mix(in oklab, var(--color-signal-cyan) 18%, var(--color-bg-3));
+    color: var(--color-text-0);
+  }
+
+  .mix__webcam-error {
+    display: inline-flex;
+    align-items: center;
+    max-width: 240px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-danger);
+    background: color-mix(in oklab, var(--color-danger) 14%, var(--color-bg-2));
+    color: var(--color-danger);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .mix__gpu-badge {
     display: inline-flex;
     align-items: center;
@@ -2082,6 +2361,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     border: 1px solid var(--color-line-2);
     background: #06070d;
     overflow: hidden;
+    isolation: isolate;
     user-select: none;
     touch-action: none;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -2125,6 +2405,41 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     align-items: center;
     justify-content: center;
     overflow: hidden;
+  }
+
+  .mix__layer-media {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .mix__live-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #000;
+  }
+
+  .mix__live-youtube {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: #000;
+  }
+
+  .mix__live-youtube--passthrough {
+    pointer-events: none;
+  }
+
+  .mix__webcam-inline-btn {
+    margin-top: 8px;
   }
 
   .mix__visual-shader {
@@ -2449,7 +2764,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   .mix__select,
-  .mix__num {
+  .mix__num,
+  .mix__text-input {
     width: 100%;
     padding: 5px 8px;
     border-radius: var(--radius-sm);
@@ -2458,6 +2774,48 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     color: var(--color-text-0);
     font-family: var(--font-family-sans);
     font-size: var(--font-size-body-sm);
+  }
+
+  .mix__text-input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mix__yt-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mix__yt-input-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    min-width: 0;
+  }
+
+  .mix__yt-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .mix__yt-error {
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-danger);
+    background: color-mix(in oklab, var(--color-danger) 14%, var(--color-bg-2));
+    color: var(--color-danger);
+    font-size: var(--font-size-mono-sm);
+  }
+
+  .mix__yt-status {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
   }
 
   .mix__num {
