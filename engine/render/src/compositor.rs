@@ -13,7 +13,8 @@
 //!   (`offset_xy`), non-uniform scale (`scale_xy`), rotation around layer
 //!   center (`rotation_rad`), and master opacity (`opacity`).
 //! - **Blend modes** ([`BlendMode`]): `Normal` (Porter-Duff source-over),
-//!   `Additive`, `Screen`, and `Multiply`.
+//!   `Additive`, `Screen`, `Multiply`, `Overlay`, `HardLight`, `Difference`,
+//!   and `Exclusion`.
 //! - **Keying modes** ([`BlendMode`]): `LumaKey` (Rec. 709 luminance
 //!   threshold + softness) and `ChromaKey` (RGB Euclidean color distance
 //!   similarity + smoothness for green/blue-screen removal).
@@ -57,6 +58,14 @@ pub enum BlendMode {
         /// Feathering width beyond `similarity` for smooth edge falloff.
         smoothness: f32,
     },
+    /// Overlay blend (Multiply when `base < 0.5`, Screen when `base >= 0.5`).
+    Overlay,
+    /// Hard Light blend (Multiply when `top < 0.5`, Screen when `top >= 0.5`).
+    HardLight,
+    /// Difference blend (`abs(base - top)`).
+    Difference,
+    /// Exclusion blend (`base + top - 2 * base * top`).
+    Exclusion,
 }
 
 /// 2D affine transform and master opacity applied to a [`CompositeLayer`].
@@ -228,6 +237,10 @@ impl LayerCompositeUniforms {
                 [key_rgb[0], key_rgb[1], key_rgb[2], similarity],
                 [smoothness, 0.0, 0.0, 0.0],
             ),
+            BlendMode::Overlay => (6.0_f32, [0.0; 4], [0.0; 4]),
+            BlendMode::HardLight => (7.0_f32, [0.0; 4], [0.0; 4]),
+            BlendMode::Difference => (8.0_f32, [0.0; 4], [0.0; 4]),
+            BlendMode::Exclusion => (9.0_f32, [0.0; 4], [0.0; 4]),
         };
 
         Self {
@@ -317,6 +330,58 @@ void main() {
         float out_a = eff_alpha + base.a * (1.0 - eff_alpha);
         vec3 out_rgb = (out_a > 1e-6)
             ? (mix(base.rgb, mul_rgb, eff_alpha) * base.a + top.rgb * eff_alpha * (1.0 - base.a)) / out_a
+            : vec3(0.0);
+        fragColor = vec4(clamp(out_rgb, 0.0, 1.0), clamp(out_a, 0.0, 1.0));
+        return;
+    }
+
+    if (mode == 6) {
+        // Overlay: Multiply when base < 0.5, Screen when base >= 0.5.
+        vec3 overlay_rgb = mix(
+            2.0 * base.rgb * top.rgb,
+            vec3(1.0) - 2.0 * (vec3(1.0) - base.rgb) * (vec3(1.0) - top.rgb),
+            step(vec3(0.5), base.rgb)
+        );
+        float out_a = eff_alpha + base.a * (1.0 - eff_alpha);
+        vec3 out_rgb = (out_a > 1e-6)
+            ? (mix(base.rgb, overlay_rgb, eff_alpha) * base.a + top.rgb * eff_alpha * (1.0 - base.a)) / out_a
+            : vec3(0.0);
+        fragColor = vec4(clamp(out_rgb, 0.0, 1.0), clamp(out_a, 0.0, 1.0));
+        return;
+    }
+
+    if (mode == 7) {
+        // HardLight: Multiply when top < 0.5, Screen when top >= 0.5.
+        vec3 hard_light_rgb = mix(
+            2.0 * base.rgb * top.rgb,
+            vec3(1.0) - 2.0 * (vec3(1.0) - base.rgb) * (vec3(1.0) - top.rgb),
+            step(vec3(0.5), top.rgb)
+        );
+        float out_a = eff_alpha + base.a * (1.0 - eff_alpha);
+        vec3 out_rgb = (out_a > 1e-6)
+            ? (mix(base.rgb, hard_light_rgb, eff_alpha) * base.a + top.rgb * eff_alpha * (1.0 - base.a)) / out_a
+            : vec3(0.0);
+        fragColor = vec4(clamp(out_rgb, 0.0, 1.0), clamp(out_a, 0.0, 1.0));
+        return;
+    }
+
+    if (mode == 8) {
+        // Difference: abs(base - top).
+        vec3 diff_rgb = abs(base.rgb - top.rgb);
+        float out_a = eff_alpha + base.a * (1.0 - eff_alpha);
+        vec3 out_rgb = (out_a > 1e-6)
+            ? (mix(base.rgb, diff_rgb, eff_alpha) * base.a + top.rgb * eff_alpha * (1.0 - base.a)) / out_a
+            : vec3(0.0);
+        fragColor = vec4(clamp(out_rgb, 0.0, 1.0), clamp(out_a, 0.0, 1.0));
+        return;
+    }
+
+    if (mode == 9) {
+        // Exclusion: base + top - 2.0 * base * top.
+        vec3 excl_rgb = base.rgb + top.rgb - 2.0 * base.rgb * top.rgb;
+        float out_a = eff_alpha + base.a * (1.0 - eff_alpha);
+        vec3 out_rgb = (out_a > 1e-6)
+            ? (mix(base.rgb, excl_rgb, eff_alpha) * base.a + top.rgb * eff_alpha * (1.0 - base.a)) / out_a
             : vec3(0.0);
         fragColor = vec4(clamp(out_rgb, 0.0, 1.0), clamp(out_a, 0.0, 1.0));
         return;
@@ -1043,5 +1108,94 @@ mod compositor_tests {
         });
         let out_scr = render_layer_stack(&renderer, &scr_stack, (w, h)).unwrap();
         assert_rgba_near(pixel_at(&out_scr, w, 4, 4), [255, 0, 255, 255], 1);
+    }
+
+    #[test]
+    fn overlay_hard_light_difference_and_exclusion_blend_modes() {
+        let renderer = MultipassRenderer::new().expect("wgpu adapter required");
+        let (w, h) = (8, 8);
+
+        let composite_pair =
+            |base_rgba: [u8; 4], top_rgba: [u8; 4], blend: BlendMode, opacity: f32| {
+                let mut stack = LayerStack::new();
+                stack.push_layer(CompositeLayer {
+                    id: "bg".to_string(),
+                    visible: true,
+                    z_index: 0,
+                    blend: BlendMode::Normal,
+                    transform: LayerTransform::default(),
+                    width: w,
+                    height: h,
+                    rgba_pixels: solid_rgba(w, h, base_rgba),
+                });
+                stack.push_layer(CompositeLayer {
+                    id: "top".to_string(),
+                    visible: true,
+                    z_index: 1,
+                    blend,
+                    transform: LayerTransform {
+                        opacity,
+                        ..LayerTransform::default()
+                    },
+                    width: w,
+                    height: h,
+                    rgba_pixels: solid_rgba(w, h, top_rgba),
+                });
+                let out = render_layer_stack(&renderer, &stack, (w, h)).unwrap();
+                pixel_at(&out, w, 4, 4)
+            };
+
+        // Overlay dark branch (base < 0.5): 2 * base * top.
+        let overlay_dark = composite_pair(
+            [64, 64, 64, 255],
+            [128, 255, 0, 255],
+            BlendMode::Overlay,
+            1.0,
+        );
+        assert_rgba_near(overlay_dark, [64, 128, 0, 255], 2);
+
+        // Overlay bright branch (base >= 0.5): 1 - 2 * (1 - base) * (1 - top).
+        let overlay_bright = composite_pair(
+            [192, 192, 192, 255],
+            [128, 0, 255, 255],
+            BlendMode::Overlay,
+            1.0,
+        );
+        assert_rgba_near(overlay_bright, [192, 129, 255, 255], 2);
+
+        // HardLight: Multiply when top < 0.5, Screen when top >= 0.5.
+        let hard_light = composite_pair(
+            [128, 200, 100, 255],
+            [64, 192, 128, 255],
+            BlendMode::HardLight,
+            1.0,
+        );
+        assert_rgba_near(hard_light, [64, 228, 101, 255], 2);
+
+        // Difference: abs(base - top) at full opacity and 50% opacity.
+        let diff_full = composite_pair(
+            [200, 50, 128, 255],
+            [50, 200, 128, 255],
+            BlendMode::Difference,
+            1.0,
+        );
+        assert_rgba_near(diff_full, [150, 150, 0, 255], 2);
+
+        let diff_half = composite_pair(
+            [200, 0, 0, 255],
+            [200, 0, 0, 255],
+            BlendMode::Difference,
+            0.5,
+        );
+        assert_rgba_near(diff_half, [100, 0, 0, 255], 2);
+
+        // Exclusion: base + top - 2 * base * top.
+        let excl = composite_pair(
+            [255, 128, 0, 255],
+            [255, 128, 255, 255],
+            BlendMode::Exclusion,
+            1.0,
+        );
+        assert_rgba_near(excl, [0, 128, 255, 255], 2);
     }
 }

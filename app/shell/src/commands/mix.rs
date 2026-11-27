@@ -54,7 +54,8 @@ pub struct MixLayerSpecDto {
     /// Stable layer identifier.
     pub id: String,
     /// Blend or keying mode identifier: `"normal"`, `"screen"`, `"add"`,
-    /// `"multiply"`, `"luma-key"`, or `"chroma-key"`.
+    /// `"multiply"`, `"luma-key"`, `"chroma-key"`, `"overlay"`, `"hard-light"`,
+    /// `"difference"`, or `"exclusion"`.
     pub blend_mode: String,
     /// Master layer opacity (`0.0..=1.0`, clamped).
     pub opacity: f32,
@@ -127,6 +128,10 @@ const fn blend_mode_label(mode: BlendMode) -> &'static str {
         BlendMode::Multiply => "Multiply",
         BlendMode::LumaKey { .. } => "LumaKey",
         BlendMode::ChromaKey { .. } => "ChromaKey",
+        BlendMode::Overlay => "Overlay",
+        BlendMode::HardLight => "HardLight",
+        BlendMode::Difference => "Difference",
+        BlendMode::Exclusion => "Exclusion",
     }
 }
 
@@ -148,6 +153,10 @@ fn supported_blend_modes() -> Vec<String> {
             similarity: 0.25,
             smoothness: 0.1,
         },
+        BlendMode::Overlay,
+        BlendMode::HardLight,
+        BlendMode::Difference,
+        BlendMode::Exclusion,
     ];
     variants
         .into_iter()
@@ -313,6 +322,10 @@ fn parse_blend_mode(dto: &MixLayerSpecDto) -> Result<BlendMode, String> {
         "add" | "additive" => Ok(BlendMode::Additive),
         "screen" => Ok(BlendMode::Screen),
         "multiply" => Ok(BlendMode::Multiply),
+        "overlay" => Ok(BlendMode::Overlay),
+        "hard-light" | "hardlight" | "hard_light" => Ok(BlendMode::HardLight),
+        "difference" => Ok(BlendMode::Difference),
+        "exclusion" => Ok(BlendMode::Exclusion),
         "luma-key" | "lumakey" | "luma_key" => Ok(BlendMode::LumaKey {
             threshold: DEFAULT_LUMA_THRESHOLD,
             softness: DEFAULT_LUMA_SOFTNESS,
@@ -672,6 +685,10 @@ mod mix_ipc_tests {
                 "Multiply",
                 "LumaKey",
                 "ChromaKey",
+                "Overlay",
+                "HardLight",
+                "Difference",
+                "Exclusion",
             ]
         );
 
@@ -866,12 +883,63 @@ mod mix_ipc_tests {
         );
 
         // Unknown blend mode, empty id, and malformed chroma hex are rejected.
-        assert!(set_mix_layer_stack_impl(&app, vec![sample_layer_dto("bad", "overlay")]).is_err());
+        assert!(
+            set_mix_layer_stack_impl(&app, vec![sample_layer_dto("bad", "bogus-mode")]).is_err()
+        );
         assert!(set_mix_layer_stack_impl(&app, vec![sample_layer_dto("  ", "normal")]).is_err());
         let bad_hex = MixLayerSpecDto {
             chroma_key_color: Some("not-a-hex".to_string()),
             ..sample_layer_dto("bad-hex", "chroma-key")
         };
         assert!(set_mix_layer_stack_impl(&app, vec![bad_hex]).is_err());
+    }
+
+    #[test]
+    fn set_mix_layer_stack_parses_and_round_trips_all_ten_blend_modes() {
+        let app = AppState::new();
+
+        let layers = vec![
+            sample_layer_dto("l-normal", "normal"),
+            sample_layer_dto("l-add", "additive"),
+            sample_layer_dto("l-screen", "screen"),
+            sample_layer_dto("l-multiply", "multiply"),
+            sample_layer_dto("l-luma", "luma-key"),
+            sample_layer_dto("l-chroma", "chroma-key"),
+            sample_layer_dto("l-overlay", "overlay"),
+            sample_layer_dto("l-hard-light", "hard-light"),
+            sample_layer_dto("l-difference", "difference"),
+            sample_layer_dto("l-exclusion", "exclusion"),
+            sample_layer_dto("l-hardlight-alias", "hardlight"),
+            sample_layer_dto("l-hard-light-snake", "hard_light"),
+        ];
+
+        let caps = set_mix_layer_stack_impl(&app, layers).expect("all 10 modes + aliases parse");
+        assert_eq!(caps.active_layer_count, 12);
+        assert_eq!(caps.blend_modes.len(), 10);
+
+        let stack = app.compositor_stack.lock().unwrap();
+        let stored = stack.layers();
+        let expected_labels = [
+            "Normal",
+            "Additive",
+            "Screen",
+            "Multiply",
+            "LumaKey",
+            "ChromaKey",
+            "Overlay",
+            "HardLight",
+            "Difference",
+            "Exclusion",
+        ];
+        for (idx, expected_label) in expected_labels.iter().enumerate() {
+            assert_eq!(blend_mode_label(stored[idx].blend), *expected_label);
+            assert_eq!(caps.blend_modes[idx], *expected_label);
+        }
+        assert_eq!(stored[6].blend, BlendMode::Overlay);
+        assert_eq!(stored[7].blend, BlendMode::HardLight);
+        assert_eq!(stored[8].blend, BlendMode::Difference);
+        assert_eq!(stored[9].blend, BlendMode::Exclusion);
+        assert_eq!(stored[10].blend, BlendMode::HardLight);
+        assert_eq!(stored[11].blend, BlendMode::HardLight);
     }
 }

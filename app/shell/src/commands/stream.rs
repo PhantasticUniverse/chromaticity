@@ -56,6 +56,9 @@ const MAX_STREAM_FPS: u32 = 120;
 /// Maximum bytes retained from `ffmpeg` stderr for redacted error diagnostics.
 const MAX_STDERR_CAPTURE_BYTES: usize = 4_096;
 
+/// Maximum permitted length for an optional `avfoundation` audio device identifier.
+const MAX_AUDIO_DEVICE_LEN: usize = 64;
+
 /// Serializable live broadcast status snapshot returned across IPC.
 ///
 /// Intentionally omits the stream key so credentials can never cross the IPC
@@ -133,13 +136,43 @@ pub fn resolve_ffmpeg_binary() -> Option<PathBuf> {
     None
 }
 
+/// Validates an optional audio input device string (e.g. `":0"` or `"BlackHole 2ch"`).
+///
+/// Returns `Ok(None)` when the trimmed string is empty. Rejects leading `'-'`
+/// (preventing ffmpeg option injection), strings longer than 64 characters, and
+/// characters outside `[A-Za-z0-9:_\- ]`.
+pub fn validate_audio_device(raw: &str) -> Result<Option<String>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.len() > MAX_AUDIO_DEVICE_LEN {
+        return Err(format!(
+            "audio device identifier exceeds maximum length of {MAX_AUDIO_DEVICE_LEN} characters"
+        ));
+    }
+    if trimmed.starts_with('-') {
+        return Err("audio device identifier must not start with '-'".to_owned());
+    }
+    if !trimmed
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b':' | b'-' | b'_' | b' '))
+    {
+        return Err(
+            "audio device identifier contains unsupported characters (allowed: alphanumeric, ':', '-', '_', space)"
+                .to_owned(),
+        );
+    }
+    Ok(Some(trimmed.to_owned()))
+}
+
 /// Builds the `ffmpeg` argument list for live Twitch RTMPS/RTMP FLV publishing.
 ///
-/// Configures raw RGBA video on `pipe:0`, a silent 44.1 kHz stereo AAC audio
-/// track (required by Twitch ingest), hardware `h264_videotoolbox` on macOS
-/// (falling back to `libx264` on non-macOS), and FLV output targeting
-/// `{trimmed_ingest}/{stream_key}`.
-#[must_use]
+/// Configures raw RGBA video on `pipe:0`, either a validated macOS
+/// `avfoundation` audio capture input when `audio_device` is supplied on macOS
+/// or a silent 44.1 kHz stereo `anullsrc` AAC audio track (required by Twitch
+/// ingest), hardware `h264_videotoolbox` on macOS (falling back to `libx264` on
+/// non-macOS), and FLV output targeting `{trimmed_ingest}/{stream_key}`.
 pub fn build_twitch_ffmpeg_args(
     ingest_url: &str,
     stream_key: &StreamSecretKey,
@@ -147,7 +180,13 @@ pub fn build_twitch_ffmpeg_args(
     width: u32,
     height: u32,
     fps: u32,
-) -> Vec<String> {
+    audio_device: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let validated_audio = match audio_device {
+        Some(raw) => validate_audio_device(raw).map_err(|err| stream_key.redact_in_text(&err))?,
+        None => None,
+    };
+
     let trimmed_ingest = ingest_url.trim().trim_end_matches('/');
     let destination = format!("{trimmed_ingest}/{}", stream_key.expose_secret());
     let video_size = format!("{width}x{height}");
@@ -170,11 +209,37 @@ pub fn build_twitch_ffmpeg_args(
         fps_str,
         "-i".to_owned(),
         "pipe:0".to_owned(),
-        "-f".to_owned(),
-        "lavfi".to_owned(),
-        "-i".to_owned(),
-        "anullsrc=channel_layout=stereo:sample_rate=44100".to_owned(),
     ];
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(dev) = validated_audio {
+            args.extend([
+                "-f".to_owned(),
+                "avfoundation".to_owned(),
+                "-i".to_owned(),
+                dev,
+            ]);
+        } else {
+            args.extend([
+                "-f".to_owned(),
+                "lavfi".to_owned(),
+                "-i".to_owned(),
+                "anullsrc=channel_layout=stereo:sample_rate=44100".to_owned(),
+            ]);
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = validated_audio;
+        args.extend([
+            "-f".to_owned(),
+            "lavfi".to_owned(),
+            "-i".to_owned(),
+            "anullsrc=channel_layout=stereo:sample_rate=44100".to_owned(),
+        ]);
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -230,7 +295,7 @@ pub fn build_twitch_ffmpeg_args(
         destination,
     ]);
 
-    args
+    Ok(args)
 }
 
 /// Managed `ffmpeg` child process and broadcast state machine stored on [`AppState`].
@@ -478,6 +543,7 @@ pub fn build_validated_endpoint_config(
 }
 
 /// Inner implementation for [`start_twitch_stream`].
+#[allow(clippy::too_many_arguments)]
 pub fn start_twitch_stream_impl(
     app: &AppState,
     ingest_url: String,
@@ -486,6 +552,7 @@ pub fn start_twitch_stream_impl(
     width: Option<u32>,
     height: Option<u32>,
     fps: Option<u32>,
+    audio_device: Option<String>,
 ) -> Result<StreamStatusDto, String> {
     let target_bitrate = bitrate_kbps.unwrap_or(DEFAULT_STREAM_BITRATE_KBPS);
     let target_width = width.unwrap_or(DEFAULT_STREAM_WIDTH);
@@ -497,6 +564,16 @@ pub fn start_twitch_stream_impl(
         .map_err(|err| secret.redact_in_text(&err))?;
 
     let config = build_validated_endpoint_config(&ingest_url, secret.clone(), target_bitrate)?;
+    let args = build_twitch_ffmpeg_args(
+        &config.ingest_url,
+        &config.stream_key,
+        target_bitrate,
+        target_width,
+        target_height,
+        target_fps,
+        audio_device.as_deref(),
+    )?;
+
     let mut streamer = BroadcastStreamer::new(config.clone())
         .map_err(|err| secret.redact_in_text(&err.to_string()))?;
     streamer
@@ -507,15 +584,6 @@ pub fn start_twitch_stream_impl(
         "ffmpeg binary not found (checked /opt/homebrew/bin/ffmpeg, /usr/local/bin/ffmpeg, and PATH)"
             .to_owned()
     })?;
-
-    let args = build_twitch_ffmpeg_args(
-        &config.ingest_url,
-        &config.stream_key,
-        target_bitrate,
-        target_width,
-        target_height,
-        target_fps,
-    );
 
     let mut proc_guard = match app.twitch_stream.lock() {
         Ok(g) => g,
@@ -671,6 +739,7 @@ pub fn push_stream_frame_impl(app: &AppState, rgba_bytes: Vec<u8>) -> Result<u64
 
 /// Start a live Twitch RTMPS/RTMP broadcast stream via external `ffmpeg`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn start_twitch_stream(
     app_state: State<'_, AppState>,
     ingest_url: String,
@@ -679,6 +748,7 @@ pub fn start_twitch_stream(
     width: Option<u32>,
     height: Option<u32>,
     fps: Option<u32>,
+    audio_device: Option<String>,
 ) -> Result<StreamStatusDto, String> {
     start_twitch_stream_impl(
         app_state.inner(),
@@ -688,6 +758,7 @@ pub fn start_twitch_stream(
         width,
         height,
         fps,
+        audio_device,
     )
 }
 
@@ -776,7 +847,9 @@ mod tests {
             1920,
             1080,
             60,
-        );
+            None,
+        )
+        .unwrap();
 
         assert!(args.windows(2).any(|w| w == ["-f", "rawvideo"]));
         assert!(args.windows(2).any(|w| w == ["-pix_fmt", "rgba"]));
@@ -836,5 +909,89 @@ mod tests {
         let frame_bytes = vec![0u8; (status.width * status.height * 4) as usize];
         let push_err = push_stream_frame_impl(&app, frame_bytes).unwrap_err();
         assert!(push_err.contains("not live"));
+    }
+
+    #[test]
+    fn build_twitch_ffmpeg_args_handles_audio_device_and_rejects_unsafe_values() {
+        let secret_raw = "live_audio_test_secret_key";
+        let secret = StreamSecretKey::new(secret_raw);
+
+        // None and whitespace-only fall back to silent anullsrc.
+        for empty_opt in [None, Some(""), Some("   ")] {
+            let args = build_twitch_ffmpeg_args(
+                "rtmps://live.twitch.tv/app",
+                &secret,
+                6_000,
+                1280,
+                720,
+                30,
+                empty_opt,
+            )
+            .unwrap();
+            assert!(args.windows(2).any(|w| w == ["-f", "lavfi"]));
+            assert!(
+                args.windows(2)
+                    .any(|w| w == ["-i", "anullsrc=channel_layout=stereo:sample_rate=44100"])
+            );
+            assert!(!args.iter().any(|a| a == "avfoundation"));
+        }
+
+        // Valid audio device selects avfoundation on macOS (and anullsrc elsewhere).
+        let with_device = build_twitch_ffmpeg_args(
+            "rtmps://live.twitch.tv/app",
+            &secret,
+            6_000,
+            1280,
+            720,
+            30,
+            Some("  :0  "),
+        )
+        .unwrap();
+        #[cfg(target_os = "macos")]
+        {
+            assert!(with_device.windows(2).any(|w| w == ["-f", "avfoundation"]));
+            assert!(with_device.windows(2).any(|w| w == ["-i", ":0"]));
+            assert!(!with_device.iter().any(|a| a.contains("anullsrc")));
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert!(with_device.windows(2).any(|w| w == ["-f", "lavfi"]));
+        }
+
+        // Named device with spaces, hyphens, and underscores is accepted.
+        let named = build_twitch_ffmpeg_args(
+            "rtmps://live.twitch.tv/app",
+            &secret,
+            6_000,
+            1280,
+            720,
+            30,
+            Some("BlackHole 2ch_main-1"),
+        )
+        .unwrap();
+        #[cfg(target_os = "macos")]
+        {
+            assert!(
+                named
+                    .windows(2)
+                    .any(|w| w == ["-i", "BlackHole 2ch_main-1"])
+            );
+        }
+
+        // Unsafe device strings are rejected cleanly without leaking secrets.
+        let too_long = "a".repeat(MAX_AUDIO_DEVICE_LEN + 1);
+        for unsafe_dev in ["-f", "-i", "--evil", ":0;rm -rf /", "dev|pipe", &too_long] {
+            let err = build_twitch_ffmpeg_args(
+                "rtmps://live.twitch.tv/app",
+                &secret,
+                6_000,
+                1280,
+                720,
+                30,
+                Some(unsafe_dev),
+            )
+            .unwrap_err();
+            assert!(!err.contains(secret_raw), "secret leaked into error: {err}");
+        }
     }
 }
