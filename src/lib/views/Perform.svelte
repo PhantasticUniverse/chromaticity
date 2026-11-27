@@ -363,6 +363,271 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   const SCENELESS_CONTROL_SCOPE = 'fixture';
   let controlValues = $state<ControlValueCache>({});
 
+  /**
+   * Curated Factory Presets for the Perform view's Scene Controls strip.
+   * Each preset defines a cohesive mood profile with named overrides for
+   * common flagship scene controls plus deterministic fallback curves so
+   * any loaded scene shifts cleanly into that mood on a single click.
+   */
+  type FactoryPresetId =
+    | 'default'
+    | 'deep-club'
+    | 'peak-strobe'
+    | 'iridescent-drift'
+    | 'sub-bass-minimal';
+
+  interface FactoryPresetSpec {
+    readonly id: FactoryPresetId;
+    readonly label: string;
+    readonly description: string;
+    readonly overrides: Readonly<Record<string, number>>;
+    readonly scalarScale: number;
+    readonly scalarOffset: number;
+    readonly toggleActive: boolean;
+    readonly xyTarget: readonly [number, number];
+  }
+
+  const FACTORY_PRESETS: readonly FactoryPresetSpec[] = [
+    {
+      id: 'default',
+      label: 'Default',
+      description: 'Reset scene controls to their authored factory defaults',
+      overrides: {},
+      scalarScale: 1,
+      scalarOffset: 0,
+      toggleActive: false,
+      xyTarget: [0, 0],
+    },
+    {
+      id: 'deep-club',
+      label: 'Deep Club',
+      description: 'Low-end pulse, rich dark saturation, hypnotic mid-tempo motion',
+      overrides: {
+        speed: 0.35,
+        rotation_speed: 0.28,
+        intensity: 0.68,
+        energy: 0.64,
+        bloom: 0.55,
+        glow: 0.6,
+        hue: 0.72,
+        saturation: 0.88,
+        contrast: 0.76,
+        density: 0.52,
+        bass_react: 0.9,
+        audio_react: 0.82,
+        feedback: 0.65,
+        invert: 0,
+      },
+      scalarScale: 0.75,
+      scalarOffset: 0.14,
+      toggleActive: false,
+      xyTarget: [-0.25, -0.15],
+    },
+    {
+      id: 'peak-strobe',
+      label: 'Peak Strobe',
+      description: 'High-energy peak drop with fast motion, sharp contrast, and active FX',
+      overrides: {
+        speed: 0.92,
+        rotation_speed: 0.88,
+        intensity: 0.96,
+        energy: 0.95,
+        bloom: 0.85,
+        glow: 0.9,
+        hue: 0.12,
+        saturation: 0.95,
+        contrast: 0.94,
+        density: 0.86,
+        chaos: 0.84,
+        glitch: 0.82,
+        bass_react: 0.95,
+        audio_react: 0.95,
+        feedback: 0.78,
+        invert: 1,
+      },
+      scalarScale: 0.45,
+      scalarOffset: 0.52,
+      toggleActive: true,
+      xyTarget: [0.45, 0.35],
+    },
+    {
+      id: 'iridescent-drift',
+      label: 'Iridescent Drift',
+      description: 'Prismatic colour sweep, silky slow drift, wide harmonic bloom',
+      overrides: {
+        speed: 0.24,
+        rotation_speed: 0.2,
+        intensity: 0.58,
+        energy: 0.5,
+        bloom: 0.78,
+        glow: 0.82,
+        hue: 0.54,
+        saturation: 0.92,
+        contrast: 0.52,
+        density: 0.62,
+        warp: 0.7,
+        symmetry: 0.75,
+        feedback: 0.72,
+        invert: 0,
+      },
+      scalarScale: 0.6,
+      scalarOffset: 0.28,
+      toggleActive: false,
+      xyTarget: [0.2, -0.3],
+    },
+    {
+      id: 'sub-bass-minimal',
+      label: 'Sub-Bass Minimal',
+      description: 'Sparse architectural geometry locked to sub-bass transients',
+      overrides: {
+        speed: 0.18,
+        rotation_speed: 0.12,
+        intensity: 0.42,
+        energy: 0.38,
+        bloom: 0.25,
+        glow: 0.3,
+        hue: 0.05,
+        saturation: 0.35,
+        contrast: 0.85,
+        density: 0.22,
+        chaos: 0.1,
+        glitch: 0.08,
+        bass_react: 0.88,
+        audio_react: 0.76,
+        feedback: 0.2,
+        invert: 0,
+      },
+      scalarScale: 0.45,
+      scalarOffset: 0.08,
+      toggleActive: false,
+      xyTarget: [0, 0],
+    },
+  ];
+
+  /** Dedicated Meta-Control IDs for instant Live FX pads (1070+ sub-namespace). */
+  const META_STROBE_CONTROL_ID = META_CONTROL_ID_BASE + 70;
+  const META_BLACKOUT_CONTROL_ID = META_CONTROL_ID_BASE + 71;
+
+  let activeFactoryPresetByScene = $state<Record<string, FactoryPresetId | null>>({});
+  const activeSceneScopeKey = $derived(loadedSceneId ?? SCENELESS_CONTROL_SCOPE);
+  const activeFactoryPresetId = $derived<FactoryPresetId | null>(
+    activeSceneScopeKey in activeFactoryPresetByScene
+      ? (activeFactoryPresetByScene[activeSceneScopeKey] ?? null)
+      : 'default',
+  );
+
+  let strobeActive = $state(false);
+  let blackoutActive = $state(false);
+
+  function setActiveFactoryPresetForScene(id: FactoryPresetId | null): void {
+    activeFactoryPresetByScene = {
+      ...activeFactoryPresetByScene,
+      [activeSceneScopeKey]: id,
+    };
+  }
+
+  function clampUnit(value: number): number {
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function factoryPresetValueForSchema(
+    preset: FactoryPresetSpec,
+    ctl: ControlSchemaPayload,
+    idx: number,
+  ): number | null {
+    if (ctl.kind === 'Color') return null;
+    const normalizedName = ctl.name.trim().toLowerCase();
+    const override = preset.overrides[normalizedName];
+    if (typeof override === 'number') {
+      return ctl.kind === 'Toggle' ? (override >= 0.5 ? 1 : 0) : clampUnit(override);
+    }
+    if (ctl.kind === 'Toggle') {
+      return preset.toggleActive ? 1 : 0;
+    }
+    const base = defaultValueToFloat(ctl.default, ctl.min, ctl.max) ?? 0.5;
+    // Slight deterministic per-index spread keeps adjacent faders visually distinct.
+    const spread = ((idx % 3) - 1) * 0.04;
+    return clampUnit(base * preset.scalarScale + preset.scalarOffset + spread);
+  }
+
+  function applyFactoryPreset(preset: FactoryPresetSpec): void {
+    if (preset.id === 'default') {
+      resetSceneControlsToDefaults();
+      return;
+    }
+    const snapshot = loadedSceneStore.snapshot;
+    if (snapshot) {
+      snapshot.controls.forEach((ctl, idx) => {
+        if (ctl.kind === 'Xy') {
+          const min = typeof ctl.min === 'number' ? ctl.min : -1;
+          const max = typeof ctl.max === 'number' ? ctl.max : 1;
+          const mid = (min + max) / 2;
+          const half = (max - min) / 2;
+          dispatchXyControl(idx, [
+            mid + preset.xyTarget[0] * half,
+            mid + preset.xyTarget[1] * half,
+          ]);
+          return;
+        }
+        const value = factoryPresetValueForSchema(preset, ctl, idx);
+        if (value !== null) {
+          dispatchControl(idx, value);
+        }
+      });
+    } else {
+      for (const group of SCENE_CONTROL_GROUPS) {
+        for (const ctl of group.controls) {
+          if (ctl.kind === 'swatch' || ctl.controlId === undefined) continue;
+          if (ctl.kind === 'toggle') {
+            dispatchControl(ctl.controlId, preset.toggleActive ? 1 : 0);
+          } else if (ctl.kind === 'fader' || ctl.kind === 'knob') {
+            dispatchControl(
+              ctl.controlId,
+              clampUnit(ctl.value * preset.scalarScale + preset.scalarOffset),
+            );
+          } else if (ctl.kind === 'xy') {
+            dispatchXyControl(ctl.controlId, preset.xyTarget);
+          }
+        }
+      }
+    }
+    setActiveFactoryPresetForScene(preset.id);
+  }
+
+  function activateStrobe(): void {
+    if (strobeActive) return;
+    strobeActive = true;
+    dispatchControl(META_STROBE_CONTROL_ID, 1);
+  }
+
+  function releaseStrobe(): void {
+    if (!strobeActive) return;
+    strobeActive = false;
+    dispatchControl(META_STROBE_CONTROL_ID, 0);
+  }
+
+  function handleStrobeKeydown(event: KeyboardEvent): void {
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      if (!event.repeat) {
+        activateStrobe();
+      }
+    }
+  }
+
+  function handleStrobeKeyup(event: KeyboardEvent): void {
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      releaseStrobe();
+    }
+  }
+
+  function toggleBlackout(): void {
+    const next = !blackoutActive;
+    blackoutActive = next;
+    dispatchControl(META_BLACKOUT_CONTROL_ID, next ? 1 : 0);
+  }
+
   function controlValueKey(id: number): string {
     if (id >= META_CONTROL_ID_BASE) return `meta:${id}`;
     return `${loadedSceneId ?? SCENELESS_CONTROL_SCOPE}:${id}`;
@@ -404,6 +669,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    */
   function dispatchControl(id: number, value: number): void {
     if (controlLockStore.isLocked(id)) return;
+    if (id < META_CONTROL_ID_BASE) {
+      setActiveFactoryPresetForScene(null);
+    }
     const key = controlValueKey(id);
     controlValues = { ...controlValues, [key]: value };
     void dispatchAndRead(id, value)
@@ -428,6 +696,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    */
   function dispatchXyControl(id: number, value: readonly [number, number]): void {
     if (controlLockStore.isLocked(id)) return;
+    if (id < META_CONTROL_ID_BASE) {
+      setActiveFactoryPresetForScene(null);
+    }
     const key = controlValueKey(id);
     controlValues = { ...controlValues, [key]: value };
     void dispatchXy(id, [value[0], value[1]])
@@ -544,11 +815,23 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     const snapshot = loadedSceneStore.snapshot;
     if (snapshot) {
       snapshot.controls.forEach((ctl, idx) => {
+        if (ctl.kind === 'Xy') {
+          const defXy: readonly [number, number] =
+            Array.isArray(ctl.default) &&
+            ctl.default.length >= 2 &&
+            typeof ctl.default[0] === 'number' &&
+            typeof ctl.default[1] === 'number'
+              ? [ctl.default[0], ctl.default[1]]
+              : [0, 0];
+          dispatchXyControl(idx, defXy);
+          return;
+        }
         const value = defaultValueToFloat(ctl.default, ctl.min, ctl.max);
         if (value !== null) {
           dispatchControl(idx, value);
         }
       });
+      setActiveFactoryPresetForScene('default');
       return;
     }
     // No scene loaded — sweep the fixture rows. Fixture rows lack
@@ -567,6 +850,7 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         }
       }
     }
+    setActiveFactoryPresetForScene('default');
   }
 
   /**
@@ -575,6 +859,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
    * for the 1000+ namespace; swatches stay display-only (no controlId).
    */
   function resetMetaControlsToDefaults(): void {
+    if (strobeActive) {
+      releaseStrobe();
+    }
+    if (blackoutActive) {
+      blackoutActive = false;
+      dispatchControl(META_BLACKOUT_CONTROL_ID, 0);
+    }
     for (const group of META_CONTROL_GROUPS) {
       for (const ctl of group.controls) {
         if (ctl.kind === 'swatch') continue;
@@ -1026,6 +1317,28 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         <Icon name="random" size={12} /> Random
       </button>
     </header>
+    <div
+      class="preset-strip"
+      data-testid="factory-preset-strip"
+      role="group"
+      aria-label="Factory presets"
+    >
+      <span class="preset-strip__label" aria-hidden="true">Presets</span>
+      <div class="preset-strip__pills">
+        {#each FACTORY_PRESETS as preset (preset.id)}
+          <button
+            type="button"
+            class="preset-pill"
+            class:preset-pill--active={activeFactoryPresetId === preset.id}
+            aria-pressed={activeFactoryPresetId === preset.id ? 'true' : 'false'}
+            title={preset.description}
+            onclick={() => applyFactoryPreset(preset)}
+          >
+            {preset.label}
+          </button>
+        {/each}
+      </div>
+    </div>
     <div class="panel__body panel__body--row-scroll">
       {#each sceneControlGroups as group (group.name)}
         {@render controlGroupBlock(group, true)}
@@ -1045,6 +1358,37 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
   <section class="panel" aria-label="Meta Controls">
     <header class="panel__head">
       <h2 class="panel__title">Meta Controls</h2>
+      <div class="live-fx" role="group" aria-label="Live FX">
+        <span class="live-fx__label" aria-hidden="true">Live FX</span>
+        <button
+          type="button"
+          class="live-fx__pad live-fx__pad--strobe"
+          class:live-fx__pad--strobe-active={strobeActive}
+          data-testid="meta-strobe-pad"
+          aria-pressed={strobeActive ? 'true' : 'false'}
+          title="Hold to trigger momentary strobe (Space or Enter)"
+          onpointerdown={activateStrobe}
+          onpointerup={releaseStrobe}
+          onpointercancel={releaseStrobe}
+          onpointerleave={releaseStrobe}
+          onblur={releaseStrobe}
+          onkeydown={handleStrobeKeydown}
+          onkeyup={handleStrobeKeyup}
+        >
+          Strobe
+        </button>
+        <button
+          type="button"
+          class="live-fx__pad live-fx__pad--blackout"
+          class:live-fx__pad--blackout-active={blackoutActive}
+          data-testid="meta-blackout-pad"
+          aria-pressed={blackoutActive ? 'true' : 'false'}
+          title="Toggle output blackout"
+          onclick={toggleBlackout}
+        >
+          Blackout
+        </button>
+      </div>
       <span class="panel__spacer" aria-hidden="true"></span>
       <button
         type="button"
@@ -1146,8 +1490,17 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
        ADR-011 / Phase-2+). -->
   <div class="perform__preview">
     {#if testCardActive}
-      <div class="preview preview--test">
+      <div
+        class="preview preview--test"
+        class:preview--blackout={blackoutActive}
+        class:preview--strobe={strobeActive && !blackoutActive}
+        data-blackout={blackoutActive ? 'true' : 'false'}
+        data-strobe={strobeActive ? 'true' : 'false'}
+      >
         <TestCard label="Test Card" />
+        {#if blackoutActive}
+          <div class="preview__blackout-veil" aria-hidden="true"></div>
+        {/if}
         <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — LIVE indicator + OUT label -->
         <div class="preview__hud-row preview__hud-row--top">
           <div class="preview__hud-left">
@@ -1156,6 +1509,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               LIVE
             </span>
             <span class="preview__scene-label">{sceneTitleName}</span>
+            {#if blackoutActive}
+              <span class="preview__fx-tag preview__fx-tag--blackout">BLACKOUT</span>
+            {:else if strobeActive}
+              <span class="preview__fx-tag preview__fx-tag--strobe">STROBE</span>
+            {/if}
           </div>
           <div class="preview__hud-right">
             <span class="preview__out-label">OUT → DISP 2</span>
@@ -1166,7 +1524,13 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
         {/if}
       </div>
     {:else}
-      <div class="preview">
+      <div
+        class="preview"
+        class:preview--blackout={blackoutActive}
+        class:preview--strobe={strobeActive && !blackoutActive}
+        data-blackout={blackoutActive ? 'true' : 'false'}
+        data-strobe={strobeActive ? 'true' : 'false'}
+      >
         <SceneCanvas
           kind={previewKind}
           seed={previewSeed}
@@ -1175,6 +1539,9 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
           controls={controlSnapshot}
           ariaLabel={`Live scene preview · ${sceneTitleName}`}
         />
+        {#if blackoutActive}
+          <div class="preview__blackout-veil" aria-hidden="true"></div>
+        {/if}
         <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — Preview HUD chrome ported
              from the bundle's `<Preview>` primitive (`components.jsx`
              lines 202-229). Top-left: red LIVE pulse dot + "LIVE" caps
@@ -1191,6 +1558,11 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
               LIVE
             </span>
             <span class="preview__scene-label">{sceneTitleName}</span>
+            {#if blackoutActive}
+              <span class="preview__fx-tag preview__fx-tag--blackout">BLACKOUT</span>
+            {:else if strobeActive}
+              <span class="preview__fx-tag preview__fx-tag--strobe">STROBE</span>
+            {/if}
           </div>
           <div class="preview__hud-right">
             <span class="preview__out-label">OUT → DISP 2</span>
@@ -1765,12 +2137,140 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
 
   .panel__head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-xs) var(--space-sm);
     padding: var(--space-sm) var(--space-lg);
     border-bottom: 1px solid var(--color-line-2);
     background: var(--color-bg-3);
     min-height: 32px;
+  }
+
+  /* ---------------- Factory Preset Pill Strip ------------------------------ */
+  .preset-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-xs) var(--space-sm);
+    padding: 4px var(--space-lg);
+    border-bottom: 1px solid var(--color-line-2);
+    background: var(--color-bg-2);
+    min-width: 0;
+  }
+  .preset-strip__label {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-2);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .preset-strip__pills {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    min-width: 0;
+  }
+  .preset-pill {
+    padding: 2px var(--space-md);
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-full);
+    color: var(--color-text-1);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-body-sm);
+    font-weight: var(--font-weight-label);
+    line-height: 1.3;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+  .preset-pill:hover {
+    background: var(--color-bg-4);
+    border-color: var(--color-line-3);
+    color: var(--color-text-0);
+  }
+  .preset-pill:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .preset-pill--active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-on-primary);
+    box-shadow: 0 0 calc(6px * var(--glow, 1)) var(--color-primary);
+  }
+  .preset-pill--active:hover {
+    background: color-mix(in oklab, var(--color-primary) 88%, var(--color-text-0));
+    border-color: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+
+  /* ---------------- Meta Controls LIVE FX pads ----------------------------- */
+  .live-fx {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding-left: var(--space-sm);
+    border-left: 1px solid var(--color-line-2);
+    flex-shrink: 0;
+  }
+  .live-fx__label {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-caps-sm);
+    color: var(--color-text-2);
+    white-space: nowrap;
+  }
+  .live-fx__pad {
+    padding: 2px var(--space-md);
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-1);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-md);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    touch-action: none;
+    transition:
+      background-color 80ms ease,
+      border-color 80ms ease,
+      color 80ms ease;
+  }
+  .live-fx__pad:hover {
+    background: var(--color-bg-4);
+    border-color: var(--color-line-3);
+    color: var(--color-text-0);
+  }
+  .live-fx__pad:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .live-fx__pad--strobe-active,
+  .live-fx__pad--strobe-active:hover {
+    background: var(--color-warning);
+    border-color: var(--color-warning);
+    color: var(--color-on-primary);
+    box-shadow: 0 0 calc(8px * var(--glow, 1)) var(--color-warning);
+  }
+  .live-fx__pad--blackout-active,
+  .live-fx__pad--blackout-active:hover {
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+    color: var(--color-on-primary);
+    box-shadow: 0 0 calc(8px * var(--glow, 1)) var(--color-danger);
   }
 
   .panel__title {
@@ -2144,6 +2644,36 @@ SPDX-FileCopyrightText: 2026 Xavier Butler <xjbutler@gmail.com>
     font-size: var(--font-size-display-md);
     letter-spacing: var(--letter-spacing-caps-md);
     pointer-events: none;
+  }
+  .preview__blackout-veil {
+    position: absolute;
+    inset: 0;
+    background: #000000;
+    opacity: 0.96;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .preview--strobe {
+    box-shadow: inset 0 0 0 2px var(--color-warning);
+  }
+  .preview__fx-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-caps-sm, 9px);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .preview__fx-tag--strobe {
+    background: var(--color-warning);
+    color: var(--color-on-primary);
+  }
+  .preview__fx-tag--blackout {
+    background: var(--color-danger);
+    color: var(--color-on-primary);
   }
 
   /* ---------------- Scene panel (right column) ---------------------------- */

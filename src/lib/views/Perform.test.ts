@@ -718,4 +718,149 @@ describe('Perform view', () => {
     // Default cursor is 0; caption displays "Cue 1 of {SETLIST_FIXTURE.length}".
     expect(cue.textContent).toContain(`Cue 1 of ${SETLIST_FIXTURE.length}`);
   });
+
+  it('renders the Factory Preset pill strip and applies presets to active scene controls in 1 click', async () => {
+    loadedSceneStore.snapshot = {
+      id: 'demo-kaleido',
+      path: '/fake/Resources/scenes/library/demo-kaleido.chroma',
+      name: 'Demo Kaleido',
+      credit: '',
+      description: 'Six-fold radial mirror with drifting hue and a soft warp envelope.',
+      controls: [
+        {
+          name: 'rotation_speed',
+          kind: 'Slider',
+          default: 0.25,
+          min: 0,
+          max: 1,
+          ui_group: 'motion',
+          description: null,
+          label: null,
+        },
+        {
+          name: 'invert',
+          kind: 'Toggle',
+          default: false,
+          min: null,
+          max: null,
+          ui_group: 'fx',
+          description: null,
+          label: null,
+        },
+        {
+          name: 'focus',
+          kind: 'Xy',
+          default: [0, 0],
+          min: -1,
+          max: 1,
+          ui_group: 'geometry',
+          description: null,
+          label: null,
+        },
+      ],
+      schema_version: 1,
+    };
+
+    const { getByTestId } = render(Perform);
+    await flushMicrotasks();
+    invokeMock.mockClear();
+
+    const strip = getByTestId('factory-preset-strip');
+    const defaultPill = within(strip).getByRole('button', { name: 'Default' });
+    const deepClubPill = within(strip).getByRole('button', { name: 'Deep Club' });
+    const peakStrobePill = within(strip).getByRole('button', { name: 'Peak Strobe' });
+    const iridescentPill = within(strip).getByRole('button', { name: 'Iridescent Drift' });
+    const subBassPill = within(strip).getByRole('button', { name: 'Sub-Bass Minimal' });
+
+    expect(defaultPill).toHaveAttribute('aria-pressed', 'true');
+    expect(deepClubPill).toHaveAttribute('aria-pressed', 'false');
+    expect(peakStrobePill).toHaveAttribute('aria-pressed', 'false');
+    expect(iridescentPill).toHaveAttribute('aria-pressed', 'false');
+    expect(subBassPill).toHaveAttribute('aria-pressed', 'false');
+
+    // Click "Peak Strobe" — updates aria-pressed and dispatches scene controls.
+    await fireEvent.click(peakStrobePill);
+    await flushMicrotasks();
+
+    expect(peakStrobePill).toHaveAttribute('aria-pressed', 'true');
+    expect(defaultPill).toHaveAttribute('aria-pressed', 'false');
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 0, value: 0.88 });
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1, value: 1 });
+    expect(invokeMock).toHaveBeenCalledWith('set_control_2d', { id: 2, value: [0.45, 0.35] });
+
+    // Click "Default" — restores authored defaults and flips aria-pressed back.
+    invokeMock.mockClear();
+    await fireEvent.click(defaultPill);
+    await flushMicrotasks();
+
+    expect(defaultPill).toHaveAttribute('aria-pressed', 'true');
+    expect(peakStrobePill).toHaveAttribute('aria-pressed', 'false');
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 0, value: 0.25 });
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1, value: 0 });
+    expect(invokeMock).toHaveBeenCalledWith('set_control_2d', { id: 2, value: [0, 0] });
+  });
+
+  it('activates Momentary STROBE on pointerdown/keydown and releases on pointerup/keyup', async () => {
+    const { container, getByTestId } = render(Perform);
+    await flushMicrotasks();
+    invokeMock.mockClear();
+
+    const strobePad = getByTestId('meta-strobe-pad');
+    expect(strobePad).toHaveAttribute('aria-pressed', 'false');
+
+    // Pointer press activates strobe.
+    await fireEvent.pointerDown(strobePad);
+    await flushMicrotasks();
+    expect(strobePad).toHaveAttribute('aria-pressed', 'true');
+    expect(container.querySelector('.preview')).toHaveAttribute('data-strobe', 'true');
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1070, value: 1 });
+
+    // Pointer release deactivates strobe.
+    invokeMock.mockClear();
+    await fireEvent.pointerUp(strobePad);
+    await flushMicrotasks();
+    expect(strobePad).toHaveAttribute('aria-pressed', 'false');
+    expect(container.querySelector('.preview')).toHaveAttribute('data-strobe', 'false');
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1070, value: 0 });
+
+    // Keyboard Space press/release also drives momentary strobe.
+    invokeMock.mockClear();
+    await fireEvent.keyDown(strobePad, { key: ' ' });
+    await flushMicrotasks();
+    expect(strobePad).toHaveAttribute('aria-pressed', 'true');
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1070, value: 1 });
+
+    invokeMock.mockClear();
+    await fireEvent.keyUp(strobePad, { key: ' ' });
+    await flushMicrotasks();
+    expect(strobePad).toHaveAttribute('aria-pressed', 'false');
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1070, value: 0 });
+  });
+
+  it('toggles BLACKOUT pad state, dispatches meta blackout control, and dims preview output', async () => {
+    const { container, getByTestId } = render(Perform);
+    await flushMicrotasks();
+    invokeMock.mockClear();
+
+    const blackoutPad = getByTestId('meta-blackout-pad');
+    expect(blackoutPad).toHaveAttribute('aria-pressed', 'false');
+    expect(container.querySelector('.preview__blackout-veil')).toBeNull();
+
+    // First click enables blackout.
+    await fireEvent.click(blackoutPad);
+    await flushMicrotasks();
+    expect(blackoutPad).toHaveAttribute('aria-pressed', 'true');
+    expect(container.querySelector('.preview')).toHaveAttribute('data-blackout', 'true');
+    expect(container.querySelector('.preview__blackout-veil')).not.toBeNull();
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1071, value: 1 });
+
+    // Second click disables blackout and restores output.
+    invokeMock.mockClear();
+    await fireEvent.click(blackoutPad);
+    await flushMicrotasks();
+    expect(blackoutPad).toHaveAttribute('aria-pressed', 'false');
+    expect(container.querySelector('.preview')).toHaveAttribute('data-blackout', 'false');
+    expect(container.querySelector('.preview__blackout-veil')).toBeNull();
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1071, value: 0 });
+  });
 });
