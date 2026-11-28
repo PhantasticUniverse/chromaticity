@@ -100,6 +100,42 @@ shaders they are planned (marked below).
 | `chroma_HighTime` | `float` | Time accumulator that accelerates on high-band hits |
 | `chroma_CurvedTime` | `float` | Same base as `chroma_AudioTime` with exponential acceleration on volume rises |
 
+## Media uniforms
+
+The media selected in the **Perform** view's Media strip (webcam, display
+capture, a loaded media file, or the test card) is available to every scene
+as `chroma_Media`. Select **none** to turn it off. Reference any of the names
+below and the runtime adds the declarations for you; there is no uniform to
+declare by hand.
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `chroma_Media` | `sampler2D` | The selected media, sampled with `texture(chroma_Media, uv)`. Upright in the same `uv` space as your scene (`uv.y = 0` at the top). Opaque black when no media is selected. |
+| `chroma_MediaType` | `float` | `0` none, `1` image or test card, `2` video file or display capture, `3` webcam |
+| `_isMediaActive()` | `bool` | `true` while media is selected and delivering frames |
+| `_textureMedia(uv[, lod])` | `vec4` | Sample the media at `uv` |
+| `_textureMediaAsMask(uv[, lod])` | `vec4` | Greyscale luminance of the media at `uv` |
+| `_loadMedia([offset][, lod])` | `vec4` | Sample the media at the current output pixel (plus an optional UV offset) |
+| `_loadMediaAsMask([offset][, lod])` | `vec4` | Luminance version of `_loadMedia` |
+
+The bundled `examples/media-mirror.chroma` scene shows the pattern:
+
+```glsl
+vec3 col = _isMediaActive() ? _textureMedia(uv).rgb : fallback_color;
+```
+
+If your shader defines its own function with one of the helper names above,
+the runtime leaves your shader untouched and adds none of these declarations.
+
+Current limits:
+
+- Media is downscaled to fit 640×360 before it reaches the GPU and is updated
+  at up to 30 fps.
+- The media-transform Meta controls (media contrast, gamma, hue, saturation,
+  invert) are not applied yet; `chroma_Media` is the untransformed source.
+- YouTube streams play in a protected embedded player and cannot be used as
+  scene media.
+
 ## Authoring conventions
 
 When a scene needs both raw analysis (the `chroma_*` audio primitives)

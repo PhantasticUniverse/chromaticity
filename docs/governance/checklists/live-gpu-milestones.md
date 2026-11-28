@@ -12,8 +12,8 @@ pick up the next item.
 | # | Milestone | Status | Notes |
 | - | --------- | ------ | ----- |
 | 2b | Persistent multipass pipeline across live frames | Done | `CachedMultipass` in `engine/render/src/multipass/cached.rs`; shell keys up to 3 pipelines by resolution in `GpuPreviewEngine`. Byte-equivalence pins vs the one-shot scheduler in `multipass.rs` `cached_multipass_equivalence`. |
-| 2a | Live `chroma_Media` GPU texture upload | Next | Native name per ADR-024; imported shaders reach it through the import bridge in `app/shell/src/syn_compat.rs`, where `_chroma_sample_media` is still a black stub and the media-active flag is hard-wired `0.0`. Needs a media texture binding slot after pass inputs in both `CachedSinglePass` and `CachedMultipass`. Open design point: the catalog (v2.0.0) folds the reference format's raw (pre-transform) and transformed media samplers into one `chroma_Media`; decide whether mask helpers need a separate raw-media binding. |
-| 1 | Native `wgpu` stage swapchain + GPU meta post-pass | Open | Replaces readback + CPU `apply_meta_color_pass` + IPC Canvas2D blit. `MultipassRenderer::instance()` already exposed for surfaces. |
+| 2a | Live `chroma_Media` GPU texture upload | Done | Engine `MediaInput` at bind group 1 (`engine/render/src/media_input.rs`); shell ingest `push_scene_media_frame` / `clear_scene_media` (`app/shell/src/commands/media.rs`) synced on the render path; native media prelude in `app/shell/src/render.rs`; import bridge samples it (`syn_compat.rs`); webview producer `src/lib/stores/sceneMedia.svelte.ts` driven by the Perform MediaStrip; example `examples/media-mirror.chroma`. |
+| 1 | Native `wgpu` stage swapchain + GPU meta post-pass | Next | Replaces readback + CPU `apply_meta_color_pass` + IPC Canvas2D blit. `MultipassRenderer::instance()` already exposed for surfaces. |
 | 3 | Real audio in local REC/replay + 4-bus `BroadcastMixer` | Open | Replace `anullsrc` on non-macOS. Scope copied from the handoff; not re-checked. |
 | 4 | GPU crossfades, Syphon/Spout/NDI, native compositor in Mix | Open | `TransitionOrchestrator` still uses `commit_hard_cut()`. |
 | 5 | Mix production features + fixture cleanup | Open | Scene collections, per-layer capture, scene-scoped presets, >16 controls. Scope copied from the handoff; not re-checked. |
@@ -32,3 +32,20 @@ pick up the next item.
 - Feedback is verified with a synthetic trail scene; all 25 bundled scenes
   declare `"PASSES": []`. Whether `import_syn_scene` carries `PERSISTENT`
   through to the imported `scene.json` has not been checked.
+
+## Known gaps carried by 2a
+
+- One untransformed `chroma_Media` (decision 2026-11-28): the catalog's
+  media-transform Meta controls (`_Media_Contrast` etc.) are not applied, and
+  there is no separate raw-media binding.
+- Webview canvas → IPC → texture path is not exercised by any automated
+  test; only verified in-process (push → snapshot → sync → render). Needs one
+  manual run: Perform → test card with `examples/media-mirror.chroma` loaded.
+- Producer caps media at 640×360 / 30 fps; frames are raw RGBA over IPC
+  (about 0.9 MB each). Release-build cost of a fresh upload every frame:
+  +0.12 ms median at 1280×720.
+- YouTube (cross-origin iframe) cannot feed scene media.
+- The five `.local/scenes/imported-syn` packages come from an older importer
+  whose preamble predates the duplicate-helper guard and fail to compile
+  (pre-existing); re-importing them with the current importer is the fix.
+- Media selection is a single global source; per-layer capture is milestone 5.

@@ -32,6 +32,13 @@ development. Highlights since initial scaffolding:
   MkDocs Material into `resources/help/`.
 - Bundled production scenes (`resources/scenes/`), root `justfile`, and
   unified `docs/{adr,user,architecture,governance,research,archive}/` layout.
+- Live scene media (`chroma_Media`): the media selected in Perform's Media
+  strip (webcam, display, media file or test card) is uploaded to the GPU and
+  sampled by native scenes through `chroma_Media`, `_isMediaActive()`,
+  `_textureMedia()` and `_loadMedia()`; imported `.synScene` media helpers now
+  read it too. New `examples/media-mirror.chroma` scene. The media-strip
+  default changed from webcam to none so opening Perform never prompts for
+  camera access.
 
 ### Changed
 - Standardized audio-reactive uniform naming to native `chroma_*` identifiers

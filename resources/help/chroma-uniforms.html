@@ -782,6 +782,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#media-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Media uniforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#authoring-conventions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1095,6 +1106,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#media-uniforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Media uniforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#authoring-conventions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1359,6 +1381,72 @@ shaders they are planned (marked below).</p>
 </tr>
 </tbody>
 </table>
+<h2 id="media-uniforms">Media uniforms</h2>
+<p>The media selected in the <strong>Perform</strong> view's Media strip (webcam, display
+capture, a loaded media file, or the test card) is available to every scene
+as <code>chroma_Media</code>. Select <strong>none</strong> to turn it off. Reference any of the names
+below and the runtime adds the declarations for you; there is no uniform to
+declare by hand.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chroma_Media</code></td>
+<td><code>sampler2D</code></td>
+<td>The selected media, sampled with <code>texture(chroma_Media, uv)</code>. Upright in the same <code>uv</code> space as your scene (<code>uv.y = 0</code> at the top). Opaque black when no media is selected.</td>
+</tr>
+<tr>
+<td><code>chroma_MediaType</code></td>
+<td><code>float</code></td>
+<td><code>0</code> none, <code>1</code> image or test card, <code>2</code> video file or display capture, <code>3</code> webcam</td>
+</tr>
+<tr>
+<td><code>_isMediaActive()</code></td>
+<td><code>bool</code></td>
+<td><code>true</code> while media is selected and delivering frames</td>
+</tr>
+<tr>
+<td><code>_textureMedia(uv[, lod])</code></td>
+<td><code>vec4</code></td>
+<td>Sample the media at <code>uv</code></td>
+</tr>
+<tr>
+<td><code>_textureMediaAsMask(uv[, lod])</code></td>
+<td><code>vec4</code></td>
+<td>Greyscale luminance of the media at <code>uv</code></td>
+</tr>
+<tr>
+<td><code>_loadMedia([offset][, lod])</code></td>
+<td><code>vec4</code></td>
+<td>Sample the media at the current output pixel (plus an optional UV offset)</td>
+</tr>
+<tr>
+<td><code>_loadMediaAsMask([offset][, lod])</code></td>
+<td><code>vec4</code></td>
+<td>Luminance version of <code>_loadMedia</code></td>
+</tr>
+</tbody>
+</table>
+<p>The bundled <code>examples/media-mirror.chroma</code> scene shows the pattern:</p>
+<pre><code class="language-glsl">vec3 col = _isMediaActive() ? _textureMedia(uv).rgb : fallback_color;
+</code></pre>
+<p>If your shader defines its own function with one of the helper names above,
+the runtime leaves your shader untouched and adds none of these declarations.</p>
+<p>Current limits:</p>
+<ul>
+<li>Media is downscaled to fit 640×360 before it reaches the GPU and is updated
+  at up to 30 fps.</li>
+<li>The media-transform Meta controls (media contrast, gamma, hue, saturation,
+  invert) are not applied yet; <code>chroma_Media</code> is the untransformed source.</li>
+<li>YouTube streams play in a protected embedded player and cannot be used as
+  scene media.</li>
+</ul>
 <h2 id="authoring-conventions">Authoring conventions</h2>
 <p>When a scene needs both raw analysis (the <code>chroma_*</code> audio primitives)
 and the smoothed / normalized parity surface (<code>chroma_Level*</code>,
