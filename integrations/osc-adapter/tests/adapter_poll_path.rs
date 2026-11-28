@@ -316,3 +316,32 @@ fn packet_outcome_counters_start_zero_and_unbound_poll_is_noop() {
         );
     }
 }
+
+#[test]
+fn single_poll_drains_every_queued_datagram() {
+    // Audit 2026-11-28: `poll()` used to read one datagram per call, and
+    // the shell calls it once per 60 Hz tick, capping inbound OSC near
+    // 60 packets/s. A single poll must drain everything already queued.
+    let (mut adapter, bound) = bind_loopback_adapter();
+    let sender = UdpSocket::bind("127.0.0.1:0").expect("bind sender socket");
+    let valid_osc: [u8; 8] = [b'/', b't', 0, 0, b',', 0, 0, 0];
+    for _ in 0..5 {
+        sender
+            .send_to(&valid_osc, bound)
+            .expect("send well-formed osc to adapter");
+    }
+    // Wait until the kernel has queued all five, then poll exactly once.
+    let start = Instant::now();
+    while start.elapsed() < POLL_DEADLINE {
+        thread::sleep(POLL_INTERVAL);
+        if start.elapsed() >= Duration::from_millis(50) {
+            break;
+        }
+    }
+    adapter.poll().expect("poll on bound adapter succeeds");
+    assert_eq!(
+        adapter.packet_outcome_count(OscPacketOutcome::Accepted),
+        5,
+        "one poll() must drain all queued datagrams"
+    );
+}

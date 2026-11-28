@@ -728,9 +728,32 @@ impl OscAdapter for UdpOscAdapter {
         Ok(())
     }
 
+    /// Drain every datagram already queued on the socket (up to
+    /// [`MAX_DATAGRAMS_PER_POLL`]) so inbound throughput is not tied to
+    /// the caller's poll cadence. The shell polls once per 60 Hz tick;
+    /// reading a single datagram per call used to cap inbound OSC near
+    /// 60 packets/s.
     fn poll(&mut self) -> Result<(), Self::Error> {
+        for _ in 0..MAX_DATAGRAMS_PER_POLL {
+            if !self.poll_one()? {
+                break;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Upper bound on datagrams drained by one [`UdpOscAdapter::poll`] call,
+/// so a flood cannot stall the caller's tick indefinitely. Anything
+/// beyond it stays queued for the next poll.
+pub const MAX_DATAGRAMS_PER_POLL: usize = 256;
+
+impl UdpOscAdapter {
+    /// Receive and process at most one datagram. Returns `Ok(false)` when
+    /// the socket has nothing queued (or the adapter is unbound).
+    fn poll_one(&mut self) -> Result<bool, OscAdapterError> {
         let Some(socket) = self.socket.as_ref() else {
-            return Ok(());
+            return Ok(false);
         };
         let (len, _src_addr) = match socket.recv_from(&mut self.recv_buf) {
             Ok(pair) => pair,
@@ -742,7 +765,7 @@ impl OscAdapter for UdpOscAdapter {
                 if self.health_state == OscHealthState::Degraded {
                     self.health_state = OscHealthState::Healthy;
                 }
-                return Ok(());
+                return Ok(false);
             }
             Err(e) => {
                 self.consecutive_recv_failures = self.consecutive_recv_failures.saturating_add(1);
@@ -778,7 +801,7 @@ impl OscAdapter for UdpOscAdapter {
             Err(_) => OscPacketOutcome::ParseError,
         };
         self.record_outcome(outcome);
-        Ok(())
+        Ok(true)
     }
 }
 
