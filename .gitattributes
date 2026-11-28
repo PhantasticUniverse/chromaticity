@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 # SPDX-FileCopyrightText: 2026 Chromaticity
 #
-# Per docs/43-development-standards.md Sec.12.6:
+# Per docs/governance/43-development-standards.md Sec.12.6:
 #   - Normalize to LF across platforms.
 #   - Mark Chromaticity package extensions as binary (no diff/merge on packages).
 #   - Mark generated artifacts as linguist-generated so GitHub stats/PR diffs behave.

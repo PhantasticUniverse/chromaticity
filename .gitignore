@@ -23,7 +23,7 @@ Thumbs.db
 # -----------------------------------------------------------------------------
 # Archive-only planning corpus and clean-room reference material.
 # Kept on disk for AO/Deputy review; never committed to production history.
-# See docs/43-development-standards.md and docs/29-cleanroom-legal-policy-baseline.md.
+# See docs/governance/43-development-standards.md and docs/governance/29-cleanroom-legal-policy-baseline.md.
 # -----------------------------------------------------------------------------
 chromaticity-planning/
 Contents/

@@ -20,7 +20,7 @@ context:
 
 # Launch the full Tauri desktop app in dev mode
 dev:
-    npm run tauri:dev
+    npm run tauri -- dev
 
 # Launch the Svelte frontend dev server only
 dev-web:
@@ -37,7 +37,7 @@ build:
 
 # Format frontend and Rust code
 format:
-    npm run format
+    npm run format:fix
     cargo fmt --all
 
 # Run frontend formatting, lint, typecheck, and Svelte check
@@ -50,7 +50,7 @@ check-fe:
 # Run Rust formatting and Clippy lints
 check-rust:
     cargo fmt --all -- --check
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Run all static checks (frontend + Rust + policy)
 check: check-fe check-rust hygiene
@@ -61,7 +61,7 @@ test-fe:
 
 # Run full Rust workspace test suite
 test-rust:
-    cargo test --workspace --all-targets --no-fail-fast
+    cargo test --workspace --all-targets --all-features --no-fail-fast
 
 # Run all test suites (frontend + Rust)
 test: test-fe test-rust
@@ -74,9 +74,9 @@ hygiene:
     bash scripts/trailer-check.sh HEAD
     npm run commitlint:last
 
-# Regenerate TypeScript IPC bindings from app/ui-bridge
+# Regenerate TypeScript IPC bindings from app/shell export_bindings
 bindings:
-    cargo test -p chromaticity-ui-bridge
+    cargo test -p chromaticity-app --test export_bindings
 
 # Run full local CI verification suite
 ci: build-help check test

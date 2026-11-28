@@ -52,8 +52,8 @@ pre-commit:
     trailing-whitespace:
       glob: '*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json,sh}'
       # Vendored third-party source preserves upstream formatting per
-      # docs/29 Sec.Bundled GLSL Library Handling — never rewrite it.
-      # `dist/help/**` is the committed mkdocs build output (mkdocs-material
+      # docs/governance/29-cleanroom-legal-policy-baseline.md — never rewrite it.
+      # `resources/help/**` is the committed mkdocs build output (mkdocs-material
       # theme assets + lunr search worker bundle); same posture.
       exclude:
         - 'third_party/**'

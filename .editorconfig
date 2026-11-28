@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 # SPDX-FileCopyrightText: 2026 Chromaticity
 #
-# Per docs/43-development-standards.md Sec.12.6.
+# Per docs/governance/43-development-standards.md Sec.12.6.
 
 root = true
 

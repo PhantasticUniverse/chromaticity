@@ -9,7 +9,7 @@ All notable changes to Chromaticity are documented here in reverse
 chronological order. The format is based on
 [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/);
 versioning follows the compatibility-profile matrix in
-`docs/governance/22-compatibility-versioning-policy.md`, not SemVer-as-such.
+`docs/architecture/22-compatibility-versioning-policy.md`, not SemVer-as-such.
 
 Release automation (`release-please` per
 `docs/governance/43-development-standards.md` §11.1) populates per-release

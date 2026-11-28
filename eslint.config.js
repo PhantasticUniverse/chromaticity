@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 //
-// ESLint flat config per docs/43-development-standards.md §12.2 and
+// ESLint flat config per docs/governance/43-development-standards.md §12.2 and
 // docs/adr/ADR-018-non-scene-ui-toolkit.md. Rules:
 //   @typescript-eslint/recommended
 //   eslint-plugin-svelte (flat/recommended; Svelte 5 runes parser)

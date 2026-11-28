@@ -76,7 +76,7 @@ Required CI check for every Rust file under `engine/**`, `integrations/**`, or `
   - `SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary` (or `CC-BY-4.0` under `docs/`)
   - `SPDX-FileCopyrightText: 2026 Chromaticity`
 - **Generated IPC bindings:** Never hand-edit `src/lib/ipc/bindings/*.ts`; widen the Rust struct in
-  `app/ui-bridge/` and regenerate via `cargo test -p chromaticity-ui-bridge`.
+  `app/ui-bridge/` and regenerate via `cargo test -p chromaticity-app --test export_bindings`.
 - **Load-bearing sentinel:** `dist/.gitkeep` is required by `tauri::generate_context!()` on fresh
   clones (`vite.config.ts` auto-restores it after `npm run build`, and built help lives in
   `resources/help/` so `vite build` never clobbers help).
@@ -97,8 +97,8 @@ Required CI check for every Rust file under `engine/**`, `integrations/**`, or `
   - `@typescript-eslint/no-explicit-any` is an error.
   - `import/order` enforces two groups (`builtin`/`external`, blank line,
     `internal`/`parent`/`sibling`/`index`) alphabetized case-insensitively.
-  - Always invoke ESLint with `eslint.config.js` active (`npm run lint`) so `Contents/` and
-    `chromaticity-planning/` stay ignored.
+  - Always invoke ESLint with `eslint.config.js` active (`npm run lint`) so `.local/` and
+    generated resources stay ignored.
 - **WCAG AA accessibility corpus:** Exact path is
   `src/lib/__tests__/accessibility/wcag-aa-corpus.test.ts`
   (`npx vitest run src/lib/__tests__/accessibility/wcag-aa-corpus.test.ts`).

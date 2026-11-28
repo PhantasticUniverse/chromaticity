@@ -6,12 +6,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 # Contributing to Chromaticity
 
 Chromaticity is currently a closed two-human project (Accountable Owner and
-Deputy per `docs/23-decision-ownership-matrix.md`). External pull requests
+Deputy per `docs/governance/23-decision-ownership-matrix.md`). External pull requests
 are not accepted during Phase 0 and Phase 1. This document is the internal
 contribution standard and is binding on every commit that lands on `main`.
 
 This document is a **summary** of the enforceable subset of
-`docs/43-development-standards.md`. When the two conflict, the standards
+`docs/governance/43-development-standards.md`. When the two conflict, the standards
 doc wins.
 
 ## TL;DR
@@ -39,7 +39,7 @@ together produce the provenance story `EV-LEGAL-PROVENANCE` needs.
 
 ## Commit Format
 
-Normative form (§4.1 of `docs/43-development-standards.md`):
+Normative form (§4.1 of `docs/governance/43-development-standards.md`):
 
     <type>[!](<scope>): <subject>
 
@@ -71,7 +71,7 @@ Major bumps are driven exclusively by `!` or `BREAKING CHANGE:` footer.
 `runtime`, `scene`, `audio`, `integration`, `authoring`, `library`, `ui`,
 `docs`, `ux`, `entitlement`, `observability`, `release-eng`, `policy`,
 `repo`. Adding a scope is a `policy` commit that edits §4.3 of
-`docs/43-development-standards.md`.
+`docs/governance/43-development-standards.md`.
 
 ### Mandatory trailers
 
@@ -85,12 +85,12 @@ Architecture-impacting commits additionally carry:
     ADR: ADR-NNN
     Evidence: EV-<ID>[, EV-<ID>...]
 
-Commits closing a row in `docs/13-risk-register.md` SHOULD carry:
+Commits closing a row in `docs/governance/13-risk-register.md` SHOULD carry:
 
     Risk: R-NN
 
 Succession merges under T1/T2 carry `Succession-Waiver: T1` or
-`Succession-Waiver: T2` per `docs/43-development-standards.md` §7.6.
+`Succession-Waiver: T2` per `docs/governance/43-development-standards.md` §7.6.
 
 ### Subject rules
 
@@ -224,4 +224,4 @@ Do not open public issues for security matters. Follow
 
 Direct questions to the Accountable Owner (see `CODEOWNERS`). Changes to
 this document are `policy`-scoped PRs authored by the AO per
-`docs/43-development-standards.md` §22.
+`docs/governance/43-development-standards.md` §22.
