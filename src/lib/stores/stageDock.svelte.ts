@@ -11,7 +11,10 @@
 
 import { untrack } from 'svelte';
 
+import type { RouteName } from './route.svelte';
 import { registerStateMachine } from '../state/diagnostics';
+
+const STAGE_DOCK_EXCLUDED_ROUTES: ReadonlySet<RouteName> = new Set(['perform', 'welcome']);
 
 class StageDockStore {
   open = $state<boolean>(false);
@@ -22,6 +25,10 @@ class StageDockStore {
         open: this.open,
       })),
     );
+  }
+
+  isEligibleRoute(route: RouteName): boolean {
+    return !STAGE_DOCK_EXCLUDED_ROUTES.has(route);
   }
 
   toggle(): void {

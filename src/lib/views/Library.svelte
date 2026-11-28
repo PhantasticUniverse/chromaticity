@@ -181,10 +181,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         return a.id.localeCompare(b.id);
       });
     } else if (sortMode === 'favorites') {
-      // TODO(wave-2.5-lib-b): swap the no-op partition for
-      // `libraryFavoritesStore.has(card.id)` once Lane LIB.B merges.
-      // Until then `favorites` is a stub that preserves id-asc order.
-      sorted.sort((a, b) => a.id.localeCompare(b.id));
+      sorted.sort((a, b) => {
+        const aFav = libraryFavoritesStore.isFavorite(a.id) ? 0 : 1;
+        const bFav = libraryFavoritesStore.isFavorite(b.id) ? 0 : 1;
+        if (aFav !== bFav) return aFav - bFav;
+        return a.id.localeCompare(b.id);
+      });
     }
     // `id` sort is the default; the engine returns id-sorted already
     // so `sorted` is already in id order at this branch.

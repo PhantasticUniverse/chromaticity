@@ -987,7 +987,10 @@ describe('MIDI view', () => {
     expect(midiBindingsStore.bindings).toHaveLength(1);
     expect(container.querySelectorAll('.midi__active-row').length).toBe(1);
 
-    await fireEvent.click(getByRole('button', { name: 'Clear all active MIDI bindings' }));
+    const clearBtn = getByRole('button', { name: 'Clear all active MIDI bindings' });
+    await fireEvent.click(clearBtn);
+    expect(midiBindingsStore.bindings).toHaveLength(1);
+    await fireEvent.click(clearBtn);
     expect(midiBindingsStore.bindings).toHaveLength(0);
     expect(container.querySelectorAll('.midi__active-row').length).toBe(0);
   });

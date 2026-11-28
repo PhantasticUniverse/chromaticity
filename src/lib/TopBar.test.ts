@@ -322,30 +322,20 @@ describe('TopBar shell component', () => {
       expect(vu.querySelectorAll('.vu-row').length).toBe(2);
     });
 
-    it('renders the camera button with the correct tooltip', () => {
-      routeStore.set('perform');
-      const { getByTestId } = render(TopBar);
-      const cam = getByTestId('top-bar-camera');
-      expect(cam.tagName).toBe('BUTTON');
-      expect(cam.getAttribute('title')).toBe('Camera (Wave 2.2)');
-      expect(cam.getAttribute('aria-label')).toBe('Camera');
-    });
-
-    it('renders the record button with the live start recording tooltip', () => {
+    it('renders the unified record button with the live start recording tooltip', () => {
       routeStore.set('perform');
       const { getByTestId } = render(TopBar);
       const rec = getByTestId('top-bar-record');
       expect(rec.tagName).toBe('BUTTON');
-      expect(rec.getAttribute('title')).toBe('Start recording');
-      expect(rec.getAttribute('aria-label')).toBe('Record');
+      expect(rec.getAttribute('title')).toContain('Recording status');
       expect(rec.getAttribute('aria-pressed')).toBe('false');
     });
 
-    it('hides the camera and record buttons on non-Perform routes', () => {
-      routeStore.set('settings');
-      const { queryByTestId } = render(TopBar);
+    it('does not render the dead Camera stub or duplicate icon-only record button', () => {
+      routeStore.set('perform');
+      const { queryByTestId, container } = render(TopBar);
       expect(queryByTestId('top-bar-camera')).toBeNull();
-      expect(queryByTestId('top-bar-record')).toBeNull();
+      expect(container.querySelectorAll('[data-testid="top-bar-record"]').length).toBe(1);
     });
 
     it('hides the BPM and VU chips on non-Perform routes', () => {
@@ -357,10 +347,10 @@ describe('TopBar shell component', () => {
   });
 
   // Wave 2.4 Lane PERF.D — live adapter pill bindings. Each pill reads
-  // from a different store; tests exercise the three healthy / off
+  // from a different store; tests exercise the healthy / off
   // branches plus the OSC pill's recovering / degraded mappings.
   describe('Adapter pill live bindings (Lane PERF.D)', () => {
-    it('flips the OUT pill to ok when a scene is loaded', async () => {
+    it('keeps the OUT pill off when no live stage output window is open (even if a scene is loaded)', async () => {
       loadedSceneStore.snapshot = {
         id: 'scene-fixture',
         path: '/fake/scene-fixture.chroma',
@@ -373,15 +363,15 @@ describe('TopBar shell component', () => {
       const { container } = render(TopBar);
       await Promise.resolve();
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
-      expect(pills[0]?.getAttribute('data-state')).toBe('ok');
-      expect(pills[0]?.getAttribute('title')).toContain('Test Scene');
+      expect(pills[0]?.getAttribute('data-state')).toBe('off');
+      expect(pills[0]?.getAttribute('title')).toContain('Stage output offline');
     });
 
     it('keeps the OUT pill off when no scene is loaded', () => {
       const { container } = render(TopBar);
       const pills = container.querySelectorAll('.top-bar__pills .adapter-pill');
       expect(pills[0]?.getAttribute('data-state')).toBe('off');
-      expect(pills[0]?.getAttribute('title')).toContain('No scene loaded');
+      expect(pills[0]?.getAttribute('title')).toContain('Stage output offline');
     });
 
     it('flips the MIDI pill to ok when at least one device is enumerated', async () => {
@@ -690,13 +680,11 @@ describe('TopBar shell component', () => {
       });
 
       routeStore.set('perform');
-      const { container, getByTestId } = render(TopBar);
+      const { getByTestId } = render(TopBar);
       await Promise.resolve();
 
       const recBtn = getByTestId('top-bar-record');
-      const recPill = container.querySelector('.top-bar__rec');
-      expect(recPill).not.toBeNull();
-      expect(recPill?.getAttribute('data-state')).toBe('off');
+      expect(recBtn.getAttribute('data-state')).toBe('off');
       expect(recBtn.getAttribute('aria-pressed')).toBe('false');
 
       await fireEvent.click(recBtn);
@@ -704,19 +692,16 @@ describe('TopBar shell component', () => {
       await Promise.resolve();
 
       expect(invokeMock).toHaveBeenCalledWith('start_recording');
-      expect(recPill?.getAttribute('data-state')).toBe('active');
+      expect(recBtn.getAttribute('data-state')).toBe('active');
       expect(recBtn.getAttribute('aria-pressed')).toBe('true');
-      expect(recBtn).toHaveClass('top-bar__icon-btn--recording');
 
-      if (!recPill) return;
-      await fireEvent.click(recPill);
+      await fireEvent.click(recBtn);
       await Promise.resolve();
       await Promise.resolve();
 
       expect(invokeMock).toHaveBeenCalledWith('stop_recording');
-      expect(recPill.getAttribute('data-state')).toBe('off');
+      expect(recBtn.getAttribute('data-state')).toBe('off');
       expect(recBtn.getAttribute('aria-pressed')).toBe('false');
-      expect(recBtn).not.toHaveClass('top-bar__icon-btn--recording');
     });
   });
 });

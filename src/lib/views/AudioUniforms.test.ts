@@ -258,18 +258,16 @@ describe('AudioUniforms view', () => {
     }
   });
 
-  it('hit-bar marker is filled (●) when value > 0.05 and hollow (○) otherwise', () => {
-    const { container } = render(AudioUniforms);
+  it('hit-bar marker is filled (●) when value > 0.05 and hollow (○) otherwise (Test Signal)', async () => {
+    const { container, getByRole } = render(AudioUniforms);
+    await fireEvent.click(getByRole('button', { name: 'Test Signal' }));
     // Bass: hit value 0.04 → hollow. Mid-High: hit value 0.62 → filled.
-    // Scope each assertion to the band's tile so the `●` / `○` glyphs
-    // can't drift between bands.
     const bands = container.querySelectorAll('.au__band');
     expect(bands.length).toBe(5);
     const bassBars = bands[0]?.querySelectorAll('.au__bar-value');
     const midhiBars = bands[2]?.querySelectorAll('.au__bar-value');
     expect(bassBars).toBeDefined();
     expect(midhiBars).toBeDefined();
-    // Index 1 in each band's bar list is the `hit` variant.
     expect(bassBars?.[1]?.textContent?.trim()).toBe('○');
     expect(midhiBars?.[1]?.textContent?.trim()).toBe('●');
   });
@@ -450,22 +448,21 @@ describe('AudioUniforms view', () => {
     expect(valueAt(4, 2)).toBe('0.50');
   });
 
-  it('falls back to fixture band values when audioSnapshotStore.snapshot is null', () => {
+  it('renders honest zeroed band values when audioSnapshotStore.snapshot is null until Test Signal is enabled', async () => {
     audioSnapshotStore.snapshot = null;
-    const { container } = render(AudioUniforms);
+    const { container, getByRole } = render(AudioUniforms);
     const bands = container.querySelectorAll('.au__band');
     expect(bands.length).toBe(5);
 
-    // Bass fixture: level 0.54, hit 0.04 (→ ○ since ≤ 0.05), presence 0.61.
     const bassValues = bands[0]?.querySelectorAll('.au__bar-value');
-    expect(bassValues?.[0]?.textContent?.trim()).toBe('0.54');
+    expect(bassValues?.[0]?.textContent?.trim()).toBe('0.00');
     expect(bassValues?.[1]?.textContent?.trim()).toBe('○');
-    expect(bassValues?.[2]?.textContent?.trim()).toBe('0.61');
+    expect(bassValues?.[2]?.textContent?.trim()).toBe('0.00');
 
-    // Mid-High fixture: hit value 0.62 → ● (the pre-existing hit-marker
-    // test pins this; restating here against the live-fallback path).
-    const midhiValues = bands[2]?.querySelectorAll('.au__bar-value');
-    expect(midhiValues?.[1]?.textContent?.trim()).toBe('●');
+    // Enabling opt-in Test Signal reveals synthetic fixture bands.
+    await fireEvent.click(getByRole('button', { name: 'Test Signal' }));
+    expect(bassValues?.[0]?.textContent?.trim()).toBe('0.54');
+    expect(bands[2]?.querySelectorAll('.au__bar-value')?.[1]?.textContent?.trim()).toBe('●');
   });
 
   it('preserves the fixture band labels / sub-labels under the live reduction', () => {

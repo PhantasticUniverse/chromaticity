@@ -1444,7 +1444,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         title="Reset to defaults"
         onclick={resetMetaControlsToDefaults}
       >
-        <Icon name="grid" size={12} /> Default
+        <Icon name="grid" size={12} />
+        <span class="btn__label">Default</span>
       </button>
       <button
         type="button"
@@ -1452,7 +1453,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         title="Randomize"
         onclick={randomizeMetaControls}
       >
-        <Icon name="random" size={12} /> Random
+        <Icon name="random" size={12} />
+        <span class="btn__label">Random</span>
       </button>
     </header>
     <div class="panel__body panel__body--row-scroll">
@@ -1588,9 +1590,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             {/if}
           </div>
           <div class="preview__hud-right">
-            <span class="preview__out-label">
-              {loadedSceneStore.snapshot ? 'OUT → DISP 2' : 'STAGE MONITOR'}
-            </span>
+            <span class="preview__out-label">STAGE MONITOR</span>
           </div>
         </div>
         {#if unlicensed}
@@ -1639,9 +1639,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             {/if}
           </div>
           <div class="preview__hud-right">
-            <span class="preview__out-label">
-              {loadedSceneStore.snapshot ? 'OUT → DISP 2' : 'STAGE MONITOR'}
-            </span>
+            <span class="preview__out-label">STAGE MONITOR</span>
           </div>
         </div>
         {#if unlicensed}
@@ -1967,10 +1965,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               <Fader
                 value={ctl.value}
                 label={ctl.label}
+                showValue={true}
                 onchange={(next) => dispatchControl(id, next)}
               />
             {:else}
-              <Fader value={ctl.value} label={ctl.label} />
+              <Fader value={ctl.value} label={ctl.label} showValue={true} />
             {/if}
           {:else if ctl.kind === 'toggle'}
             {#if ctl.controlId !== undefined}

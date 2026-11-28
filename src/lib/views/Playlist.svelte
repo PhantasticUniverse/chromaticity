@@ -78,12 +78,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let quantizeToBeat = $state(false);
   let loop = $state(true);
   let cueDraft = $state<CueDraft | null>(null);
+  let confirmDelete = $state(false);
 
   const TRANSITION_TABS: ReadonlyArray<{ id: CueTransitionKind; label: string }> = [
     { id: 'cut', label: 'Cut' },
     { id: 'fade', label: 'Fade' },
     { id: 'snap', label: 'Snap' },
-    { id: 'beat-snap', label: 'Beat Snap' },
+    { id: 'beat-snap', label: 'Beat' },
   ];
 
   const currentCues = $derived<readonly CueFixture[]>(playlistStore.cuesFor(selectedPlaylistId));
@@ -105,6 +106,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // discards in-progress edits, matching the bundle's uncontrolled-input
   // behavior.
   $effect(() => {
+    confirmDelete = false;
     if (selectedCue) {
       cueDraft = {
         label: selectedCue.name,
@@ -207,7 +209,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     </ul>
   </aside>
 
-  <main class="playlist-view__cues">
+  <section class="playlist-view__cues" aria-label="Playlist cues">
     <header class="playlist-view__cues-header">
       <h2>{activePlaylistName}</h2>
       <div class="playlist-view__transport" role="group" aria-label="Playlist playback controls">
@@ -285,7 +287,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         </tbody>
       </table>
     {/if}
-  </main>
+  </section>
 
   <aside class="playlist-view__inspector" aria-label="Cue inspector">
     {#if selectedCue && cueDraft}
@@ -404,9 +406,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <button
             type="button"
             class="playlist-view__action playlist-view__action--delete"
-            onclick={() => deleteDraft()}
+            onclick={() => {
+              if (!confirmDelete) {
+                confirmDelete = true;
+                return;
+              }
+              confirmDelete = false;
+              deleteDraft();
+            }}
           >
-            Delete
+            {confirmDelete ? 'Confirm Delete' : 'Delete'}
           </button>
         </div>
       </form>

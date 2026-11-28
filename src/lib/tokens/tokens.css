@@ -29,16 +29,16 @@
 
   --color-text-0: #f4f6fb;
   --color-text-1: #c9cfdb;
-  --color-text-2: #838a9a;
-  --color-text-3: #575e6e;
-  --color-text-4: #3c4253;
+  --color-text-2: #8a92a3;
+  --color-text-3: #6e7688;
+  --color-text-4: #52596b;
 
   --color-primary: #c4ff3d;
   --color-on-primary: #0c0e16;
   --color-control-track: #1b2030;
   --color-control-fill: #8fa3c4;
   --color-control-fill-active: #c4ff3d;
-  --color-success: #3de5ff;
+  --color-success: #34d399;
   --color-warning: #ffb64d;
   --color-danger: #ff4d5e;
   --color-info: #3de5ff;
@@ -76,7 +76,7 @@
   --font-size-body-md: 13px;
   --font-size-body-sm: 12px;
   --font-size-label: 12px;
-  --font-size-caps-sm: 9px;
+  --font-size-caps-sm: 10px;
   --font-size-caps-md: 10px;
   --font-size-mono-sm: 11px;
   --font-size-mono-md: 12px;

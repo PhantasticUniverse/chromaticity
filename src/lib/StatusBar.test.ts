@@ -23,7 +23,7 @@ describe('StatusBar shell component', () => {
 
   it('renders the hint copy with the hotkey reference', () => {
     const { getByText } = render(StatusBar);
-    expect(getByText(/Hover any control to see what it does/)).toBeInTheDocument();
+    expect(getByText(/for hotkeys/)).toBeInTheDocument();
   });
 
   // Wave 2.3 Lane Q.2 (G.14) — the W15 PR2 em-dash placeholders are

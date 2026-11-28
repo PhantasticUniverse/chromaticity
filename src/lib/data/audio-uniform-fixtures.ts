@@ -291,7 +291,7 @@ export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
       key: 'syn_RandomOnBeat',
       label: '0..1 per beat',
       kind: 'step',
-      displayValue: '9.23',
+      displayValue: '0.73',
       sparkline: buildSparkline(STEP_RAND, FROZEN_T),
     },
     {

@@ -202,7 +202,7 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
     note: 'Each row enters a modal slider-adjust mode (arrow keys or scroll wheel). `Esc` exits.',
     rows: [
       { keys: ['M'], action: 'Master', glsl: '_Master' },
-      { keys: ['B'], action: 'Brightness', glsl: '_Brightness' },
+      { keys: ['B'], action: 'Toggle Blackout (global panic)', glsl: '_Blackout' },
       { keys: ['G'], action: 'Gamma', glsl: '_Gamma' },
       { keys: ['C'], action: 'Contrast', glsl: '_Contrast' },
       { keys: ['H'], action: 'Hue', glsl: '_Hue' },

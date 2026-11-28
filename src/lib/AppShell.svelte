@@ -113,13 +113,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // describes ("WatermarkOverlay threaded into Perform live Preview
   // via ChromaCtx.licensed").
   import ConsoleDrawer from './ConsoleDrawer.svelte';
+  import { SETLIST_FIXTURE } from './data/setlist-fixtures';
   import { setControl } from './ipc';
   import type { ControlId, CrashResumeStatusPayload } from './ipc/bindings';
   import SidebarRail from './SidebarRail.svelte';
   import { overlayStack } from './state';
   import StatusBar from './StatusBar.svelte';
+  import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { bpmControlStore } from './stores/bpmControl.svelte';
   import { capabilitiesStore } from './stores/capabilities.svelte';
+  import { djAutopilotStore } from './stores/djAutopilot.svelte';
   import { liveFxStore } from './stores/liveFx.svelte';
   import { loadedSceneStore } from './stores/loadedScene.svelte';
   import { midiBindingsStore } from './stores/midiBindings.svelte';
@@ -153,6 +156,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type CommandPaletteAction,
     WatermarkOverlay,
   } from './widgets';
+  import { sceneKindFromMetadata, sceneSeedFromMetadata } from './widgets/scene-kind-from-metadata';
 
   const META_STROBE_CONTROL_ID = 1070 as ControlId;
   const META_BLACKOUT_CONTROL_ID = 1071 as ControlId;
@@ -204,21 +208,52 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   );
 
   let mixVisited = $state(false);
-  const showStageDockToggle = $derived(
-    routeStore.current === 'library' ||
-      routeStore.current === 'midi' ||
-      routeStore.current === 'osc' ||
-      routeStore.current === 'playlist' ||
-      routeStore.current === 'sources' ||
-      routeStore.current === 'import' ||
-      routeStore.current === 'patch' ||
-      routeStore.current === 'settings',
-  );
+  const showStageDockToggle = $derived(stageDockStore.isEligibleRoute(routeStore.current));
   const stageDockVisible = $derived(showStageDockToggle && stageDockStore.open);
+  const stageDockKind = $derived(
+    sceneKindFromMetadata({
+      id: loadedSceneStore.snapshot?.id ?? 'glitch',
+      name: loadedSceneStore.snapshot?.name ?? 'Glitch',
+    }),
+  );
+  const stageDockSeed = $derived(
+    sceneSeedFromMetadata({
+      id: loadedSceneStore.snapshot?.id ?? 'glitch',
+      name: loadedSceneStore.snapshot?.name ?? 'Glitch',
+    }),
+  );
+  const stageDockBpmLabel = $derived.by(() => {
+    if (bpmControlStore.isOff) return 'BPM OFF';
+    const liveBpm =
+      audioSnapshotStore.snapshot?.bpm_availability === 'Ready'
+        ? audioSnapshotStore.snapshot.bpm
+        : null;
+    const resolved = bpmControlStore.isListening
+      ? (liveBpm ?? 120)
+      : (bpmControlStore.manualBpm ?? 120);
+    return `BPM ${resolved.toFixed(1)}`;
+  });
   $effect(() => {
     if (routeStore.current === 'mix') {
       mixVisited = true;
     }
+  });
+  // Real DJ Autopilot phrase timer — advances the playlist every N bars at the effective BPM.
+  $effect(() => {
+    if (!djAutopilotStore.isActive) return;
+    const liveBpm =
+      audioSnapshotStore.snapshot?.bpm_availability === 'Ready'
+        ? audioSnapshotStore.snapshot.bpm
+        : null;
+    const resolved = bpmControlStore.isListening
+      ? (liveBpm ?? 120)
+      : (bpmControlStore.manualBpm ?? 120);
+    const bpm = Math.max(40, resolved);
+    const intervalMs = Math.round(djAutopilotStore.phraseIntervalBars * 4 * (60_000 / bpm));
+    const id = window.setInterval(() => {
+      void playlistStore.next();
+    }, intervalMs);
+    return () => window.clearInterval(id);
   });
 
   // Wave 2.3 Lane Q.2 (G.2) — DegradedBanner default visibility flips
@@ -265,16 +300,130 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       void snapStore.save(snapStore.activeSlot ?? 1);
     },
     'osc-address': () => routeStore.set('osc'),
-    'open-hotkeys': () => routeStore.set('settings'),
+    'open-hotkeys': () => overlayStack.open('hotkeys'),
     'support-bundle': () => routeStore.set('settings'),
     'offline-docs': () => routeStore.set('help'),
   };
 
-  const commandPaletteActions: readonly CommandPaletteAction[] =
-    DEFAULT_COMMAND_PALETTE_ACTIONS.map((action) => {
+  const WORKSPACE_PALETTE_ACTIONS: readonly CommandPaletteAction[] = [
+    {
+      id: 'nav-perform',
+      label: 'Workspace: Perform',
+      meta: 'live deck',
+      onSelect: () => routeStore.set('perform'),
+    },
+    {
+      id: 'nav-mix',
+      label: 'Workspace: Mix',
+      meta: 'compositor & stream',
+      onSelect: () => routeStore.set('mix'),
+    },
+    {
+      id: 'nav-library',
+      label: 'Workspace: Library · Scenes',
+      meta: '⌘L',
+      onSelect: () => routeStore.set('library'),
+    },
+    {
+      id: 'nav-playlist',
+      label: 'Workspace: Library · Playlist',
+      meta: 'cue sheet',
+      onSelect: () => routeStore.set('playlist'),
+    },
+    {
+      id: 'nav-sources',
+      label: 'Workspace: Library · Sources',
+      meta: 'media & live inputs',
+      onSelect: () => routeStore.set('sources'),
+    },
+    {
+      id: 'nav-import',
+      label: 'Workspace: Library · Import',
+      meta: 'shadertoy / synScene',
+      onSelect: () => routeStore.set('import'),
+    },
+    {
+      id: 'nav-author',
+      label: 'Workspace: Author · Editor',
+      meta: 'GLSL IDE',
+      onSelect: () => routeStore.set('author'),
+    },
+    {
+      id: 'nav-audio',
+      label: 'Workspace: Author · Audio Uniforms',
+      meta: 'FFT & BPM',
+      onSelect: () => routeStore.set('audio-uniforms'),
+    },
+    {
+      id: 'nav-patch',
+      label: 'Workspace: Author · Patch',
+      meta: 'node routing',
+      onSelect: () => routeStore.set('patch'),
+    },
+    {
+      id: 'nav-midi',
+      label: 'Workspace: I/O · MIDI',
+      meta: 'controllers & learn',
+      onSelect: () => routeStore.set('midi'),
+    },
+    {
+      id: 'nav-osc',
+      label: 'Workspace: I/O · OSC',
+      meta: '⌘O · routes',
+      onSelect: () => routeStore.set('osc'),
+    },
+    {
+      id: 'nav-settings',
+      label: 'Workspace: Settings · Preferences',
+      meta: '⌘,',
+      onSelect: () => routeStore.set('settings'),
+    },
+    {
+      id: 'nav-license',
+      label: 'Workspace: Settings · License',
+      meta: 'entitlements',
+      onSelect: () => routeStore.set('license'),
+    },
+    {
+      id: 'nav-help',
+      label: 'Workspace: Help',
+      meta: '⌘/ · offline docs',
+      onSelect: () => routeStore.set('help'),
+    },
+    {
+      id: 'fx-blackout',
+      label: 'Live FX: Toggle Blackout',
+      meta: 'B · panic',
+      onSelect: () => {
+        const active = liveFxStore.toggleBlackout();
+        void setControl(META_BLACKOUT_CONTROL_ID, active ? 1 : 0).catch(() => {});
+      },
+    },
+    {
+      id: 'toggle-stage-dock',
+      label: 'View: Toggle Stage Monitor Dock',
+      meta: 'STAGE',
+      onSelect: () => stageDockStore.toggle(),
+    },
+  ];
+
+  const SCENE_PALETTE_ACTIONS: readonly CommandPaletteAction[] = SETLIST_FIXTURE.map((scene) => ({
+    id: `scene-${scene.idx}`,
+    label: `Scene: ${scene.name}`,
+    meta: `perform · ${scene.tag}`,
+    onSelect: () => {
+      routeStore.set('perform');
+    },
+  }));
+
+  const commandPaletteActions: readonly CommandPaletteAction[] = [
+    ...DEFAULT_COMMAND_PALETTE_ACTIONS.map((action) => {
       const onSelect = COMMAND_PALETTE_ROUTING[action.id];
       return onSelect ? { ...action, onSelect } : action;
-    });
+    }),
+    ...WORKSPACE_PALETTE_ACTIONS,
+    ...SCENE_PALETTE_ACTIONS,
+  ];
 
   function isEditableTarget(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) return false;
@@ -311,6 +460,26 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           overlayStack.toggle('command-palette');
           return;
         }
+        if (event.key === ',') {
+          event.preventDefault();
+          routeStore.set('settings');
+          return;
+        }
+        if (event.key === 'l' || event.key === 'L') {
+          event.preventDefault();
+          routeStore.set('library');
+          return;
+        }
+        if (event.key === 'o' || event.key === 'O') {
+          event.preventDefault();
+          routeStore.set('osc');
+          return;
+        }
+        if (event.key === '/') {
+          event.preventDefault();
+          routeStore.set('help');
+          return;
+        }
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isEditableTarget(event.target)) return;
@@ -338,23 +507,41 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         void snapStore.recall(Number(event.key));
         return;
       }
-      if (routeStore.current === 'playlist' && event.key === ' ') {
-        event.preventDefault();
-        playlistStore.togglePlayback();
+      if (routeStore.current === 'perform' || routeStore.current === 'playlist') {
+        if (event.key === ' ') {
+          event.preventDefault();
+          playlistStore.togglePlayback();
+          return;
+        }
+        if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          void playlistStore.next();
+          return;
+        }
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          void playlistStore.previous();
+          return;
+        }
+      }
+    };
+    const releaseStrobeSafe = () => {
+      if (liveFxStore.releaseStrobe()) {
+        void setControl(META_STROBE_CONTROL_ID, 0).catch(() => {});
       }
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key === 's' || event.key === 'S') {
-        if (liveFxStore.releaseStrobe()) {
-          void setControl(META_STROBE_CONTROL_ID, 0).catch(() => {});
-        }
+        releaseStrobeSafe();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', releaseStrobeSafe);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', releaseStrobeSafe);
       overlayStack.close('command-palette');
     };
   });
@@ -465,7 +652,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         <aside class="stage-dock" aria-label="Live stage monitor">
           <header class="stage-dock__header">
             <span class="stage-dock__title">
-              STAGE · {loadedSceneStore.snapshot?.name ?? 'Active Output'}
+              STAGE · {loadedSceneStore.snapshot?.name ?? 'Glitch'}
             </span>
             <button
               type="button"
@@ -480,20 +667,42 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             {#if liveFxStore.blackoutActive}
               <div class="stage-dock__blackout">BLACKOUT</div>
             {:else}
-              <SceneCanvas kind="rings" seed={4} />
+              <SceneCanvas kind={stageDockKind} seed={stageDockSeed} />
             {/if}
             {#if liveFxStore.strobeActive}
               <span class="stage-dock__badge stage-dock__badge--strobe">STROBE</span>
             {/if}
           </div>
           <div class="stage-dock__meta mono">
-            <span>BPM {(bpmControlStore.manualBpm ?? 120).toFixed(1)}</span>
+            <span>{stageDockBpmLabel}</span>
             <span
               class="stage-dock__state"
               class:stage-dock__state--danger={liveFxStore.blackoutActive}
             >
               {liveFxStore.blackoutActive ? 'BLACKOUT' : 'MONITOR'}
             </span>
+          </div>
+          <div class="stage-dock__fx">
+            <button
+              type="button"
+              class="stage-dock__fx-btn"
+              class:stage-dock__fx-btn--danger={liveFxStore.blackoutActive}
+              aria-pressed={liveFxStore.blackoutActive ? 'true' : 'false'}
+              onclick={() => {
+                const active = liveFxStore.toggleBlackout();
+                void setControl(META_BLACKOUT_CONTROL_ID, active ? 1 : 0).catch(() => {});
+              }}
+            >
+              {liveFxStore.blackoutActive ? 'BLACKOUT ON' : 'Blackout (B)'}
+            </button>
+            <button
+              type="button"
+              class="stage-dock__fx-btn"
+              aria-pressed={playlistStore.playback === 'playing' ? 'true' : 'false'}
+              onclick={() => playlistStore.togglePlayback()}
+            >
+              {playlistStore.playback === 'playing' ? 'Pause' : 'Play'}
+            </button>
           </div>
           <footer class="stage-dock__controls">
             <button type="button" onclick={() => void playlistStore.previous()}>Prev</button>
@@ -617,7 +826,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     overflow: hidden;
   }
   .app-shell__workspace--docked {
-    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-columns: minmax(0, 1fr) 260px;
   }
   .app-shell__view {
     overflow: auto;
@@ -725,6 +934,32 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .stage-dock__state--danger {
     color: var(--color-danger);
+  }
+  .stage-dock__fx {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 8px 10px 0;
+  }
+  .stage-dock__fx-btn {
+    padding: 5px 8px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-bg-2);
+    color: var(--color-text-1);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .stage-dock__fx-btn:hover {
+    color: var(--color-text-0);
+    border-color: var(--color-line-1);
+  }
+  .stage-dock__fx-btn--danger {
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+    color: #0b0c10;
+    font-weight: 700;
   }
   .stage-dock__controls {
     display: flex;

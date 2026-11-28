@@ -252,19 +252,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     perform: 'Perform',
     mix: 'Mix',
     library: 'Library',
-    author: 'Author',
-    'audio-uniforms': 'Audio Uniforms',
-    playlist: 'Playlist',
-    sources: 'Sources',
-    midi: 'MIDI',
-    // OSC subtitle is computed reactively (see `routeSubtitle`) so the
-    // port tracks the live engine binding; this entry is the fallback
-    // label and is never rendered for the `osc` route itself.
-    osc: 'OSC',
-    import: 'IMPORT',
-    patch: 'PATCH',
-    settings: 'Settings',
-    license: 'License',
+    author: 'Author · Editor',
+    'audio-uniforms': 'Author · Audio Uniforms',
+    playlist: 'Library · Playlist',
+    sources: 'Library · Sources',
+    midi: 'I/O · MIDI',
+    osc: 'I/O · OSC',
+    import: 'Library · Import',
+    patch: 'Author · Patch',
+    settings: 'Settings · Preferences',
+    license: 'Settings · License',
     welcome: 'Welcome',
     help: 'Help',
   };
@@ -353,8 +350,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   }
 
-  /** OUT pill state — `ok` whenever a scene is loaded into the runtime. */
-  const outState: AdapterPillState = $derived(loadedSceneStore.snapshot !== null ? 'ok' : 'off');
+  /** Stage output window open state toggled by the GO LIVE button. */
+  let outputWindowOpen = $state(false);
+
+  /** OUT pill state — `ok` only when live stage output window is actually open. */
+  const outState: AdapterPillState = $derived(outputWindowOpen ? 'ok' : 'off');
 
   /** MIDI pill state — `ok` when at least one enumerated MIDI device is present. */
   const midiState: AdapterPillState = $derived(midiStore.devices.length > 0 ? 'ok' : 'off');
@@ -373,9 +373,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     mapOscHealthToPillState(oscHealthStore.snapshot?.state ?? null),
   );
 
-  /** OUT pill tooltip detail — scene name when loaded; placeholder otherwise. */
+  /** OUT pill tooltip detail — reflects live stage output state. */
   const outDetail = $derived(
-    loadedSceneStore.snapshot ? `Scene: ${loadedSceneStore.snapshot.name}` : 'No scene loaded',
+    outputWindowOpen
+      ? `Stage output live · ${loadedSceneStore.snapshot?.name ?? 'Active Scene'}`
+      : 'Stage output offline — click to configure Graphics',
   );
 
   /** MIDI pill tooltip detail — device count summary. */
@@ -403,9 +405,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     if (snap.local_addr) return `Listening · ${snap.local_addr}`;
     return `Unbound · ${snap.attempted_binds} attempts`;
   });
-  /** Stage output window open state toggled by the GO LIVE button. */
-  let outputWindowOpen = $state(false);
-
   /** Live crash-safe fMP4 recording state backed by `app/shell` recorder IPC. */
   let isRecording = $state(false);
   let recordingBusy = $state(false);
@@ -435,7 +434,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         isRecording = status ? status.is_recording : false;
       } else {
         const status = await startRecording();
-        isRecording = status ? status.is_recording : true;
+        isRecording = status ? status.is_recording : false;
       }
     } finally {
       recordingBusy = false;
@@ -468,45 +467,39 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   const fpsDisplay = $derived(liveFps !== null ? liveFps.toFixed(1) : '—');
   const gpuDisplay = $derived(liveGpuPct !== null ? `${liveGpuPct}%` : '—');
   const isWelcomeRoute = $derived(routeStore.current === 'welcome');
-  const canToggleStageDock = $derived(
-    routeStore.current === 'library' ||
-      routeStore.current === 'midi' ||
-      routeStore.current === 'osc' ||
-      routeStore.current === 'playlist' ||
-      routeStore.current === 'sources' ||
-      routeStore.current === 'import' ||
-      routeStore.current === 'patch' ||
-      routeStore.current === 'settings',
-  );
+  const canToggleStageDock = $derived(stageDockStore.isEligibleRoute(routeStore.current));
 
   let goLiveArmed = $state(false);
   let goLiveArmTimer: ReturnType<typeof setTimeout> | null = null;
 
+  function armGoLiveGuard(): void {
+    goLiveArmed = true;
+    if (goLiveArmTimer !== null) clearTimeout(goLiveArmTimer);
+    goLiveArmTimer = setTimeout(() => {
+      goLiveArmed = false;
+      goLiveArmTimer = null;
+    }, 3000);
+  }
+
+  function clearGoLiveGuard(): void {
+    goLiveArmed = false;
+    if (goLiveArmTimer !== null) {
+      clearTimeout(goLiveArmTimer);
+      goLiveArmTimer = null;
+    }
+  }
+
   async function handleGoLiveClick(): Promise<void> {
     try {
+      if (!goLiveArmed) {
+        armGoLiveGuard();
+        return;
+      }
+      clearGoLiveGuard();
       if (outputWindowOpen) {
-        goLiveArmed = false;
-        if (goLiveArmTimer !== null) {
-          clearTimeout(goLiveArmTimer);
-          goLiveArmTimer = null;
-        }
         const status = await closeOutputWindow();
         outputWindowOpen = status.open;
       } else {
-        if (!goLiveArmed) {
-          goLiveArmed = true;
-          if (goLiveArmTimer !== null) clearTimeout(goLiveArmTimer);
-          goLiveArmTimer = setTimeout(() => {
-            goLiveArmed = false;
-            goLiveArmTimer = null;
-          }, 3000);
-          return;
-        }
-        goLiveArmed = false;
-        if (goLiveArmTimer !== null) {
-          clearTimeout(goLiveArmTimer);
-          goLiveArmTimer = null;
-        }
         const status = await openOutputWindow({ fullscreen: false });
         outputWindowOpen = status.open;
       }
@@ -769,10 +762,30 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   <div class="top-bar__hud">
     {#if !isWelcomeRoute}
       <div class="top-bar__pills" role="group" aria-label="Adapter status">
-        <AdapterPill kind="OUT" state={outState} detail={outDetail} />
-        <AdapterPill kind="AUDIO" state={audioState} detail={audioDetail} />
-        <AdapterPill kind="MIDI" state={midiState} detail={midiDetail} />
-        <AdapterPill kind="OSC" state={oscState} detail={oscDetail} />
+        <AdapterPill
+          kind="OUT"
+          state={outState}
+          detail={outDetail}
+          onclick={() => routeStore.set('settings')}
+        />
+        <AdapterPill
+          kind="AUDIO"
+          state={audioState}
+          detail={audioDetail}
+          onclick={() => routeStore.set('settings')}
+        />
+        <AdapterPill
+          kind="MIDI"
+          state={midiState}
+          detail={midiDetail}
+          onclick={() => routeStore.set('midi')}
+        />
+        <AdapterPill
+          kind="OSC"
+          state={oscState}
+          detail={oscDetail}
+          onclick={() => routeStore.set('osc')}
+        />
       </div>
       <span
         class="top-bar__metric"
@@ -793,30 +806,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         <span class="top-bar__metric-value" data-testid="top-bar-gpu-value">{gpuDisplay}</span>
       </span>
     {/if}
-    {#if routeStore.current === 'perform'}
-      <!-- Wave 2.1 Lane B.2 camera stub + Phase 7a live fMP4 recorder toggle. -->
-      <button
-        type="button"
-        class="top-bar__icon-btn"
-        data-testid="top-bar-camera"
-        aria-label="Camera"
-        title="Camera (Wave 2.2)"
-      >
-        <Icon name="camera" size={14} />
-      </button>
-      <button
-        type="button"
-        class="top-bar__icon-btn"
-        class:top-bar__icon-btn--recording={isRecording}
-        data-testid="top-bar-record"
-        aria-pressed={isRecording ? 'true' : 'false'}
-        aria-label={isRecording ? 'Stop recording' : 'Record'}
-        title={isRecording ? 'Stop recording' : 'Start recording'}
-        onclick={() => void handleRecordToggle()}
-      >
-        <Icon name="record" size={11} />
-      </button>
-    {/if}
     {#if canToggleStageDock}
       <button
         type="button"
@@ -836,6 +825,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <button
         type="button"
         class="top-bar__rec"
+        data-testid="top-bar-record"
         data-state={isRecording ? 'active' : 'off'}
         aria-pressed={isRecording ? 'true' : 'false'}
         title={isRecording
@@ -854,8 +844,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         aria-pressed={djAutopilotActive ? 'true' : 'false'}
         aria-label={djAutopilotActive ? 'DJ Autopilot active' : 'DJ Autopilot'}
         title={djAutopilotActive
-          ? `DJ Autopilot active (${djAutopilotStore.phraseIntervalBars}-bar phrase) — click to disable`
-          : 'Enable 1-click DJ Autopilot'}
+          ? `DJ Autopilot active — auto-advances every ${djAutopilotStore.phraseIntervalBars} bars`
+          : `Enable DJ Autopilot (auto-advance every ${djAutopilotStore.phraseIntervalBars} bars)`}
         onclick={() => djAutopilotStore.toggle()}
       >
         <span class="top-bar__dj-dot" aria-hidden="true"></span>
@@ -867,14 +857,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         aria-pressed={outputWindowOpen ? 'true' : 'false'}
         data-live={outputWindowOpen ? 'on' : 'off'}
         title={outputWindowOpen
-          ? 'Close stage output window'
+          ? goLiveArmed
+            ? 'Click again to confirm closing live stage output'
+            : 'Click twice to safely close live stage output'
           : goLiveArmed
             ? 'Click again to confirm opening live stage output'
             : 'Open stage output window on secondary display'}
         onclick={() => void handleGoLiveClick()}
       >
         <span class="top-bar__go-live-glyph"><Icon name="play" size={11} /></span>
-        {outputWindowOpen ? 'LIVE OUT' : goLiveArmed ? 'CONFIRM LIVE?' : 'GO LIVE'}
+        {outputWindowOpen
+          ? goLiveArmed
+            ? 'STOP LIVE?'
+            : 'LIVE OUT'
+          : goLiveArmed
+            ? 'CONFIRM LIVE?'
+            : 'GO LIVE'}
       </button>
     {/if}
   </div>
@@ -1447,41 +1445,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .top-bar__transport-vu {
     display: inline-flex;
     align-items: center;
-  }
-
-  /* Wave 2.1 Lane B.2 — camera + record icon buttons in the right HUD
-   * cluster. Visual stubs only; real wiring is Wave 2.2 scope. Match
-   * the bundle's `btn ghost sm` / `btn danger sm` chrome compactly. */
-  .top-bar__icon-btn {
-    appearance: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid var(--color-line-2);
-    color: var(--color-text-1);
-    border-radius: var(--radius-xs);
-    padding: 4px 6px;
-    cursor: pointer;
-    transition:
-      background-color 120ms ease,
-      color 120ms ease;
-  }
-
-  .top-bar__icon-btn:hover {
-    color: var(--color-text-0);
-    background: var(--color-bg-3);
-  }
-
-  .top-bar__icon-btn:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-  }
-
-  .top-bar__icon-btn--recording {
-    border-color: var(--color-signal-red);
-    color: var(--color-signal-red);
-    background: color-mix(in srgb, var(--color-signal-red) 14%, transparent);
   }
 
   .top-bar__rec {

@@ -67,9 +67,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   const filteredAssets = $derived<readonly MediaAsset[]>(
     (() => {
       const q = searchQuery.trim().toLowerCase();
-      return MEDIA_ASSETS.filter((asset) => {
+      return MEDIA_ASSETS.filter((asset, idx) => {
         if (q && !asset.filename.toLowerCase().includes(q)) return false;
         if (formatFilter !== 'any' && asset.format !== formatFilter) return false;
+        if (selectedCollectionId === 'live-sources' && asset.format !== 'live') return false;
+        if (selectedCollectionId === 'loops' && asset.format !== 'video') return false;
+        if (
+          (selectedCollectionId === 'stills' || selectedCollectionId === 'textures') &&
+          asset.format !== 'image'
+        ) {
+          return false;
+        }
+        if (selectedCollectionId === 'favorites' && idx % 2 !== 0) return false;
+        if (selectedCollectionId === 'recent' && idx >= 8) return false;
         return true;
       });
     })(),
@@ -1209,6 +1219,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     background: var(--color-primary);
     border-color: var(--color-primary);
     color: var(--color-on-primary);
+  }
+  .sources__action--primary:disabled {
+    background: var(--color-bg-4);
+    border-color: var(--color-line-2);
+    color: var(--color-text-3);
+    opacity: 0.85;
   }
   .sources__action--icon {
     width: 36px;

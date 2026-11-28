@@ -168,7 +168,10 @@ describe('Playlist view (W35 inspector edit-mode)', () => {
     const { container, getByRole } = render(Playlist);
     expect(container.querySelectorAll('.playlist-view__cue-table tbody tr').length).toBe(10);
 
-    await fireEvent.click(getByRole('button', { name: 'Delete' }));
+    const deleteBtn = getByRole('button', { name: 'Delete' });
+    await fireEvent.click(deleteBtn);
+    expect(container.querySelectorAll('.playlist-view__cue-table tbody tr').length).toBe(10);
+    await fireEvent.click(getByRole('button', { name: 'Confirm Delete' }));
     expect(container.querySelectorAll('.playlist-view__cue-table tbody tr').length).toBe(9);
   });
 });

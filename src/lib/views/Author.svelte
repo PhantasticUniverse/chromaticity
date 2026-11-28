@@ -384,9 +384,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <span class="au-author__eyebrow-glyph"><Icon name="edit" size={11} /></span>
           <span>editing</span>
         </div>
-        <h2 class="au-author__sceneinfo-title">{AUTHOR_SCENE_META.title}</h2>
+        <h2 class="au-author__sceneinfo-title">
+          {loadedSceneStore.snapshot?.name ?? AUTHOR_SCENE_META.title}
+        </h2>
         <p class="au-author__sceneinfo-credit mono">
-          by {AUTHOR_SCENE_META.credit} · {AUTHOR_SCENE_META.license}
+          by {loadedSceneStore.snapshot?.credit || AUTHOR_SCENE_META.credit} · {AUTHOR_SCENE_META.license}
         </p>
         <div class="au-author__sceneinfo-row">
           <button class="au-author__icon-btn" type="button" disabled title="Open scene folder">

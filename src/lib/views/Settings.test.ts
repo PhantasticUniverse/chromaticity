@@ -667,7 +667,7 @@ describe('Settings view', () => {
     const supportBundle = within(diag).getByRole('button', { name: /Generate Support Bundle/ });
     const viewLogs = within(diag).getByRole('button', { name: 'View Logs' });
     expect(supportBundle).toBeDisabled();
-    expect(viewLogs).toBeDisabled();
+    expect(viewLogs).not.toBeDisabled();
   });
 
   it('Hotkeys section renders accessible reference tables', () => {

@@ -164,12 +164,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .meter-bar.ref {
     box-shadow: inset 0 2px 0 var(--color-line-3, rgba(255, 255, 255, 0.35));
   }
-  /* No-signal: dim the bar and tint its frame, mirroring the reference's
-     whole-bar no-signal cue (our chain pill carries the richer state). */
+  /* No-signal: dim the bar neutrally (idle state, not an error/clip). */
   .meter.silent .meter-bar {
     background: var(--color-bg-3);
-    border-color: var(--color-danger);
-    opacity: 0.5;
+    border-color: var(--color-line-2);
+    opacity: 0.55;
   }
   .meter__no-signal {
     position: absolute;
@@ -179,14 +178,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     height: fit-content;
     padding: 1px 6px;
     border-radius: 3px;
-    background: rgba(12, 14, 22, 0.9);
+    background: rgba(12, 14, 22, 0.92);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 9px;
+    font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-danger);
+    color: var(--color-text-2);
     pointer-events: none;
   }
   .meter__readout {

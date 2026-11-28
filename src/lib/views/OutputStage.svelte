@@ -4,14 +4,29 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 <script lang="ts">
-  import { closeOutputWindow, toggleOutputFullscreen } from '../ipc/output';
+  import { toggleOutputFullscreen } from '../ipc/output';
+  import { liveFxStore } from '../stores/liveFx.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
+  import {
+    sceneKindFromMetadata,
+    sceneSeedFromMetadata,
+  } from '../widgets/scene-kind-from-metadata';
   import SceneCanvas from '../widgets/SceneCanvas.svelte';
 
-  let hudVisible = $state(false);
   let isFullscreen = $state(false);
 
-  const sceneTitle = $derived(loadedSceneStore.snapshot?.name ?? 'Chromaticity Stage Output');
+  const sceneKind = $derived(
+    sceneKindFromMetadata({
+      id: loadedSceneStore.snapshot?.id ?? 'glitch',
+      name: loadedSceneStore.snapshot?.name ?? 'Glitch',
+    }),
+  );
+  const sceneSeed = $derived(
+    sceneSeedFromMetadata({
+      id: loadedSceneStore.snapshot?.id ?? 'glitch',
+      name: loadedSceneStore.snapshot?.name ?? 'Glitch',
+    }),
+  );
 
   async function handleToggleFullscreen(): Promise<void> {
     try {
@@ -19,14 +34,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       isFullscreen = status.fullscreen;
     } catch {
       // Ignore in browser preview without Tauri window.
-    }
-  }
-
-  async function handleClose(): Promise<void> {
-    try {
-      await closeOutputWindow();
-    } catch {
-      // Ignore in browser preview.
     }
   }
 
@@ -46,25 +53,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 <main
   class="output-stage"
   data-testid="output-stage"
-  onmouseenter={() => (hudVisible = true)}
-  onmouseleave={() => (hudVisible = false)}
   ondblclick={() => void handleToggleFullscreen()}
 >
   <div class="output-stage__canvas">
-    <SceneCanvas kind="rings" seed={1} audio={true} gpuLive={true} />
+    {#if liveFxStore.blackoutActive}
+      <div class="output-stage__blackout" aria-label="Stage blackout active"></div>
+    {:else}
+      <SceneCanvas kind={sceneKind} seed={sceneSeed} audio={true} gpuLive={true} />
+    {/if}
+    {#if liveFxStore.strobeActive}
+      <div class="output-stage__strobe" aria-hidden="true"></div>
+    {/if}
   </div>
-
-  {#if hudVisible}
-    <div class="output-stage__hud" role="toolbar" aria-label="Stage output controls">
-      <span class="output-stage__label">{sceneTitle}</span>
-      <button type="button" class="output-stage__btn" onclick={() => void handleToggleFullscreen()}>
-        {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen (F)'}
-      </button>
-      <button type="button" class="output-stage__btn" onclick={() => void handleClose()}>
-        Close
-      </button>
-    </div>
-  {/if}
 </main>
 
 <style>
@@ -74,46 +74,38 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     background: #000;
     overflow: hidden;
     user-select: none;
+    cursor: none;
   }
 
   .output-stage__canvas {
+    position: relative;
     width: 100%;
     height: 100%;
   }
 
-  .output-stage__hud {
-    position: fixed;
-    top: 14px;
-    right: 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    background: rgba(12, 14, 18, 0.78);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    backdrop-filter: blur(8px);
-    color: #e8ecf4;
-    font-size: 12px;
-    z-index: 20;
+  .output-stage__blackout {
+    position: absolute;
+    inset: 0;
+    background: #000;
   }
 
-  .output-stage__label {
-    font-weight: 600;
-    margin-right: 4px;
+  .output-stage__strobe {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.85);
+    pointer-events: none;
+    animation: output-strobe 80ms steps(2, end) infinite;
   }
 
-  .output-stage__btn {
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.08);
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .output-stage__btn:hover {
-    background: rgba(255, 255, 255, 0.18);
+  @keyframes output-strobe {
+    0% {
+      opacity: 0;
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
   }
 </style>

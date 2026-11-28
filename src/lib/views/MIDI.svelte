@@ -107,6 +107,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let learnTarget = $state<string>(MIDI_LEARN_FIXTURE.target);
   let snapMode = $state<'apply' | 'save' | 'clear'>('apply');
   let routeFilter = $state<string>('');
+  let confirmClearAll = $state<boolean>(false);
 
   // Wave 2.1 Lane D.1 — Devices tab device list sources from the live
   // `midiStore` (`src/lib/stores/midiStore.svelte.ts`) which invokes the
@@ -721,8 +722,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <header class="midi__snaps-head">
             <h2 class="midi__snaps-title">Snap slots</h2>
             <span class="midi__snaps-sub">
-              16 slots per show · slot 0 is gold preset (CP-05) · wire literal:
-              <code class="midi__snaps-wire">favslot</code>
+              Quick-recall performance slots · slot 0 recalls default preset · slots 1–8 match the
+              Perform Snap bar
             </span>
             <span class="midi__toolbar-spacer" aria-hidden="true"></span>
             <div class="midi__snap-mode">
@@ -1173,11 +1174,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           aria-label="Clear all active MIDI bindings"
           disabled={midiBindingsStore.bindings.length === 0}
           onclick={() => {
+            if (!confirmClearAll) {
+              confirmClearAll = true;
+              return;
+            }
+            confirmClearAll = false;
             midiBindingsStore.reset();
             lastDispatched = null;
           }}
         >
-          Clear all
+          {confirmClearAll ? 'Confirm Clear All' : 'Clear all'}
         </button>
       </header>
       <div class="midi__panel-body">
@@ -1824,13 +1830,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     font-family: var(--font-family-mono);
     font-size: var(--font-size-caps-sm);
     color: var(--color-text-3);
-  }
-  .midi__snaps-wire {
-    background: var(--color-bg-3);
-    padding: 1px 4px;
-    border-radius: var(--radius-xs);
-    font-size: var(--font-size-mono-sm);
-    color: var(--color-text-2);
   }
 
   .midi__snap-mode {

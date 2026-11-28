@@ -91,6 +91,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   } from '../ipc/showtime';
   import { audioDevicesStore } from '../stores/audioDevices.svelte';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+  import { consoleStore } from '../stores/console.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { midiStore } from '../stores/midiStore.svelte';
   import { settingsStore } from '../stores/settings.svelte';
@@ -1762,7 +1763,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         >
           <Icon name="save" size={12} /> Generate Support Bundle
         </button>
-        <button type="button" disabled title="Open live runtime log viewer">View Logs</button>
+        <button
+          type="button"
+          onclick={() => consoleStore.toggle()}
+          title="Open live runtime diagnostics console"
+        >
+          View Logs
+        </button>
       </div>
       <p class="settings__hint">
         System telemetry and adapter health metrics for live performance troubleshooting.

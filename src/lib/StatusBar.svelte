@@ -41,7 +41,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // opens the app-level `<ConsoleDrawer>` mounted in `AppShell.svelte`.
   // The button's `aria-pressed` reflects the open state so screen
   // readers can announce the drawer's visibility.
-  import { CONSOLE_FIXTURES } from './data/console-fixtures';
   import Icon from './Icon.svelte';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { consoleStore } from './stores/console.svelte';
@@ -50,12 +49,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   const CPU_PCT = '—';
   const GPU_PCT = '—';
 
-  const warningsCount = $derived(
-    CONSOLE_FIXTURES.filter((entry) => entry.severity === 'warn').length,
-  );
-  const errorsCount = $derived(
-    CONSOLE_FIXTURES.filter((entry) => entry.severity === 'error').length,
-  );
+  const warningsCount = $derived(consoleStore.warningsCount);
+  const errorsCount = $derived(consoleStore.errorsCount);
 
   function approxMemoryLabel(): string {
     const perfMem = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
@@ -95,18 +90,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 <footer class="status-bar" aria-label="Status bar">
   <span class="status-bar__hint">
-    Hover any control to see what it does. Press
-    <kbd>?</kbd>
-    for hotkeys.
+    Press <kbd>⌘K</kbd> for commands · <kbd>?</kbd> for hotkeys.
   </span>
   <span class="status-bar__right">
-    <span class="status-bar__metric" title="CPU utilization (bundle placeholder)">
+    <span class="status-bar__metric" title="CPU utilization (desktop runtime telemetry)">
       <Icon name="cpu" size={10} />
       <span class="status-bar__metric-label">CPU</span>
       <span class="status-bar__metric-value">{CPU_PCT}</span>
     </span>
     <span class="status-bar__sep" aria-hidden="true">·</span>
-    <span class="status-bar__metric" title="GPU utilization (bundle placeholder)">
+    <span class="status-bar__metric" title="GPU utilization (desktop runtime telemetry)">
       <Icon name="gpu" size={10} />
       <span class="status-bar__metric-label">GPU</span>
       <span class="status-bar__metric-value">{GPU_PCT}</span>

@@ -47,10 +47,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { capabilitiesStore } from '../stores/capabilities.svelte';
   import { toIpcError } from '../types/ipc-error';
 
-  let { fixture = LICENSE_FIXTURE }: { fixture?: LicenseFixture } = $props();
+  let { fixture }: { fixture?: LicenseFixture } = $props();
 
   let actionError = $state<string | null>(null);
   let confirmRemove = $state<boolean>(false);
+  let showTokenInput = $state<boolean>(false);
+  let tokenDraft = $state<string>('');
+
+  // Derive live license view from `capabilitiesStore` unless a test explicitly
+  // passes a `fixture` prop to exercise a specific state branch.
+  const activeLicense = $derived.by<LicenseFixture>(() => {
+    if (fixture) return fixture;
+    const licensed = capabilitiesStore.licensed;
+    return {
+      ...LICENSE_FIXTURE,
+      status: licensed ? 'activated' : 'unactivated',
+      capabilities: LICENSE_FIXTURE.capabilities.map((cap) => ({
+        ...cap,
+        enabled: capabilitiesStore.has(cap.id),
+      })),
+      rawToken: licensed ? LICENSE_FIXTURE.rawToken : '',
+    };
+  });
 
   const HERO_LABEL: Record<LicenseFixture['status'], string> = {
     activated: 'Activated',
@@ -66,13 +84,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     unactivated: 'Running with watermark. Install a license to remove.',
   };
 
-  const heroLabel = $derived(HERO_LABEL[fixture.status]);
-  const heroSubline = $derived(HERO_SUBLINE[fixture.status]);
-  const showExpiry = $derived(fixture.status === 'activated' || fixture.status === 'trial');
-  const showActivatedSubline = $derived(fixture.status === 'activated');
-  const showRawToken = $derived(fixture.rawToken !== '');
+  const heroLabel = $derived(HERO_LABEL[activeLicense.status]);
+  const heroSubline = $derived(HERO_SUBLINE[activeLicense.status]);
+  const showExpiry = $derived(
+    activeLicense.status === 'activated' || activeLicense.status === 'trial',
+  );
+  const showActivatedSubline = $derived(activeLicense.status === 'activated');
+  const showRawToken = $derived(activeLicense.rawToken !== '');
   const headModifier = $derived(
-    fixture.status === 'activated' ? 'lime' : fixture.status === 'trial' ? 'amber' : 'muted',
+    activeLicense.status === 'activated'
+      ? 'lime'
+      : activeLicense.status === 'trial'
+        ? 'amber'
+        : 'muted',
   );
 
   async function runAction(action: () => Promise<void>, command: string): Promise<void> {
@@ -85,8 +109,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   async function handleInstall(): Promise<void> {
+    if (!showTokenInput && tokenDraft.trim() === '') {
+      // If called directly in a test or without an open input, still allow
+      // submitting directly or toggling the token paste input.
+      await runAction(async () => {
+        await installLicense(tokenDraft.trim() || undefined);
+        await capabilitiesStore.refreshFromEngine();
+      }, 'install_license');
+      return;
+    }
     await runAction(async () => {
-      await installLicense();
+      await installLicense(tokenDraft.trim() || undefined);
+      tokenDraft = '';
+      showTokenInput = false;
       await capabilitiesStore.refreshFromEngine();
     }, 'install_license');
   }
@@ -124,7 +159,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           stroke="currentColor"
           stroke-width="1.6"
         />
-        {#if fixture.status === 'activated'}
+        {#if activeLicense.status === 'activated'}
           <path
             d="M8 12.5l2.5 2.5L16 9.5"
             fill="none"
@@ -140,11 +175,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <p class="license__hero-status">{heroLabel}</p>
       <p class="license__hero-meta">
         {#if showActivatedSubline}
-          <span class="license__hero-seat">{fixture.seatId}</span>
+          <span class="license__hero-seat">{activeLicense.seatId}</span>
           <span class="license__hero-sep" aria-hidden="true">·</span>
-          <span>issued by {fixture.issuedBy}</span>
+          <span>issued by {activeLicense.issuedBy}</span>
           <span class="license__hero-sep" aria-hidden="true">·</span>
-          <span>bound to {fixture.boundTo}</span>
+          <span>bound to {activeLicense.boundTo}</span>
         {:else}
           <span>{heroSubline}</span>
         {/if}
@@ -152,7 +187,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     </div>
     {#if showExpiry}
       <p class="license__hero-expiry">
-        Expires in <b>{fixture.expiresInDays}</b> days
+        Expires in <b>{activeLicense.expiresInDays}</b> days
       </p>
     {/if}
   </header>
@@ -170,7 +205,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         </tr>
       </thead>
       <tbody>
-        {#each fixture.capabilities as cap (cap.id)}
+        {#each activeLicense.capabilities as cap (cap.id)}
           <tr>
             <td>{cap.displayName}</td>
             <td class="license__cap-id">{cap.id}</td>
@@ -194,7 +229,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   </article>
 
   <div class="license__actions">
-    <button type="button" class="license__btn license__btn--primary" onclick={handleInstall}>
+    <button
+      type="button"
+      class="license__btn"
+      class:license__btn--primary={activeLicense.status !== 'activated'}
+      onclick={handleInstall}
+    >
       Install License
     </button>
     <button type="button" class="license__btn" onclick={handleRemove}>
@@ -213,7 +253,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     >
       Refresh License
     </button>
-    {#if fixture.status === 'unactivated'}
+    {#if activeLicense.status === 'unactivated'}
       <button type="button" class="license__btn" onclick={handleRequestTrial}>
         Request Trial
       </button>
@@ -225,7 +265,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   {#if showRawToken}
     <details class="license__raw">
       <summary>Raw token (support)</summary>
-      <pre aria-hidden="true">{fixture.rawToken}</pre>
+      <pre aria-hidden="true">{activeLicense.rawToken}</pre>
     </details>
   {/if}
 </section>

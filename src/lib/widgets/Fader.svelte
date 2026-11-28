@@ -30,12 +30,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     modulated = false,
     onchange,
     disabled = false,
+    showValue = false,
   }: {
     value: number;
     label?: string;
     modulated?: boolean;
     onchange?: (next: number) => void;
     disabled?: boolean;
+    showValue?: boolean;
   } = $props();
 
   let trackEl = $state<HTMLDivElement | null>(null);
@@ -135,6 +137,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
      form tripped `a11y_no_noninteractive_tabindex`. The CSS class
      surface stays single-source per .fader-track. -->
 <div class="fader" class:mod-halo={modulated} class:fader--disabled={disabled}>
+  {#if showValue}
+    <div class="fader-val" aria-hidden="true">{pct.toFixed(2)}</div>
+  {/if}
   {#if isSlider}
     <div
       bind:this={trackEl}
@@ -177,6 +182,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .fader--disabled {
     opacity: 0.5;
     pointer-events: none;
+  }
+  .fader-val {
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-2);
+    line-height: 1;
+  }
+  .fader:hover .fader-val {
+    color: var(--color-text-0);
   }
   .fader-track {
     position: relative;

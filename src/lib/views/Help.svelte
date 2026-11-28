@@ -448,6 +448,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     background: var(--color-bg-3);
     border: 1px solid var(--color-line-1);
     color: var(--color-info);
+    white-space: nowrap;
   }
   .help__doc-link {
     background: transparent;

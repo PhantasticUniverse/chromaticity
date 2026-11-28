@@ -66,10 +66,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   );
 
   let streaming = $state<boolean>(AUDIO_UNIFORMS_FIXTURE.streamingActive);
+  let simulateSignal = $state<boolean>(false);
   let docsOpen = $state<boolean>(true);
 
   function toggleStreaming(): void {
     streaming = !streaming;
+  }
+
+  function toggleSimulateSignal(): void {
+    simulateSignal = !simulateSignal;
   }
 
   function toggleDocs(): void {
@@ -116,7 +121,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   });
 
   $effect(() => {
-    if (!streaming) return;
+    const activeSignal = audioSnapshotStore.snapshot !== null || simulateSignal;
+    if (!streaming || !activeSignal) return;
     if (audioReducedMotion) {
       liveT = 17;
       livePeaks = new Array(SPECTRUM_BAR_COUNT).fill(0);
@@ -146,7 +152,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     return () => cancelAnimationFrame(raf);
   });
 
+  const IDLE_SPECTRUM_BARS: readonly number[] = new Array(SPECTRUM_BAR_COUNT).fill(0.03);
+
   const liveSpectrumBars = $derived.by<readonly number[]>(() => {
+    const activeSignal = audioSnapshotStore.snapshot !== null || simulateSignal;
+    if (!activeSignal) return IDLE_SPECTRUM_BARS;
     if (audioReducedMotion || !streaming) return AUDIO_UNIFORMS_FIXTURE.spectrumBars;
     const out: number[] = [];
     for (let i = 0; i < SPECTRUM_BAR_COUNT; i++) {
@@ -155,10 +165,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     return out;
   });
 
-  // Sparkline samples by uniform key. Frozen-frame fallback returns the
-  // fixture's own `bpm.sparkline` array; the live tick rebuilds the 60-
-  // point window for each card from its registered generator.
+  // Sparkline samples by uniform key. Flat baseline when offline (unless Test Signal is enabled).
   const liveSparklines = $derived.by<Readonly<Record<string, readonly number[]>>>(() => {
+    const activeSignal = audioSnapshotStore.snapshot !== null || simulateSignal;
+    if (!activeSignal) {
+      const flat: Record<string, readonly number[]> = {};
+      for (const key of Object.keys(SPARKLINE_GENERATORS)) {
+        flat[key] = new Array(60).fill(0.5);
+      }
+      return flat;
+    }
     if (audioReducedMotion || !streaming) return {};
     const out: Record<string, readonly number[]> = {};
     for (const [key, gen] of Object.entries(SPARKLINE_GENERATORS)) {
@@ -321,10 +337,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     };
   });
 
+  const ZERO_BANDS: readonly FrequencyBand[] = AUDIO_UNIFORMS_FIXTURE.bands.map((band) => ({
+    ...band,
+    bars: band.bars.map((bar) => ({ ...bar, value: 0 })),
+  }));
+
   const liveBands = $derived<readonly FrequencyBand[]>(
     smoothedSnapshot?.fft_availability === 'Ready'
       ? reduceFftToBands(smoothedSnapshot)
-      : AUDIO_UNIFORMS_FIXTURE.bands,
+      : simulateSignal
+        ? AUDIO_UNIFORMS_FIXTURE.bands
+        : ZERO_BANDS,
   );
 
   // Wave 2.6 AUD.C — live peak / RMS dB readout in the hero stats strip.
@@ -449,8 +472,25 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <div class="au__header-actions">
         <span class="au__pill" class:au__pill--on={hasSnapshot && streaming}>
           <span class="au__pill-dot" aria-hidden="true"></span>
-          {!hasSnapshot ? 'offline · preview' : streaming ? 'streaming' : 'paused'}
+          {!hasSnapshot
+            ? simulateSignal
+              ? 'test signal'
+              : 'offline · preview'
+            : streaming
+              ? 'streaming'
+              : 'paused'}
         </span>
+        {#if !hasSnapshot}
+          <button
+            type="button"
+            class="au__btn"
+            onclick={toggleSimulateSignal}
+            aria-pressed={simulateSignal ? 'true' : 'false'}
+            title="Drive spectrum and band meters with a synthetic test signal while audio is offline"
+          >
+            {simulateSignal ? 'Stop Test' : 'Test Signal'}
+          </button>
+        {/if}
         <button
           type="button"
           class="au__btn"

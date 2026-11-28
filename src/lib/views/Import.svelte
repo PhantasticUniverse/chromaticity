@@ -111,7 +111,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   function clearConsole(): void {
-    consoleEntries = [...IMPORT_CONSOLE];
+    consoleEntries = [];
     hasLiveConsoleEntries = false;
   }
 

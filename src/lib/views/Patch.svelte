@@ -1155,7 +1155,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   /* ---------------- Inspector (right column) ---------------------- */
   .patch__inspector-body {
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: var(--space-lg);
     display: flex;
     flex-direction: column;

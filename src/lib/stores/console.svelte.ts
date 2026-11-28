@@ -28,6 +28,7 @@
 
 import { SvelteSet } from 'svelte/reactivity';
 
+import type { ConsoleEntry } from '../data/console-fixtures';
 import { overlayStack, registerStateMachine } from '../state';
 import type { RouteName } from './route.svelte';
 
@@ -90,6 +91,26 @@ class ConsoleStore {
   /** Free-text query — case-insensitive substring match against the
    *  message body and source label. */
   query = $state('');
+
+  /** Live runtime diagnostic log entries. Starts empty so a healthy
+   *  session reports 0 warnings and 0 errors. */
+  entries = $state<ConsoleEntry[]>([]);
+
+  get warningsCount(): number {
+    return this.entries.filter((entry) => entry.severity === 'warn').length;
+  }
+
+  get errorsCount(): number {
+    return this.entries.filter((entry) => entry.severity === 'error').length;
+  }
+
+  push(entry: ConsoleEntry): void {
+    this.entries = [...this.entries, entry];
+  }
+
+  clearEntries(): void {
+    this.entries = [];
+  }
 
   toggle(): void {
     overlayStack.toggle('console');
