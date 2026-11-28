@@ -19,6 +19,8 @@
  *                  ↘ error
  */
 
+import { untrack } from 'svelte';
+
 import { liveMediaStore } from './liveMedia.svelte';
 import {
   clearSceneMedia,
@@ -103,6 +105,22 @@ export function testCardRgba(width: number, height: number): Uint8Array {
 
 type Drawable = HTMLVideoElement | HTMLImageElement;
 
+/** The stage output window loads the same bundle; only the main window owns scene media. */
+function isOutputWindow(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mode') === 'output'
+  );
+}
+
+function releaseElement(el: Drawable | null): void {
+  if (el instanceof HTMLVideoElement) {
+    el.pause();
+    el.srcObject = null;
+    el.removeAttribute('src');
+  }
+}
+
 class SceneMediaStore {
   private _source = $state<SceneMediaSource>('none');
   private _machine = $state.raw<SceneMediaMachine>({ kind: 'off' });
@@ -114,6 +132,8 @@ class SceneMediaStore {
   private startedScreen = false;
   private pushInFlight = false;
   private framesPushed = 0;
+  /** Blob URL of the local file the producer is currently drawing. */
+  private localUrl: string | null = null;
 
   constructor() {
     registerStateMachine('sceneMedia', () => ({
@@ -121,8 +141,25 @@ class SceneMediaStore {
       state: this._machine.kind,
       framesPushed: this.framesPushed,
     }));
-    // A webview reload must not leave a stale frame marked active.
-    void clearSceneMedia();
+    // A main-window reload must not leave a stale frame marked active. The
+    // output window must not clear it: it would wipe a still frame (test
+    // card, image) that is pushed only once.
+    if (!isOutputWindow()) void clearSceneMedia();
+    // Follow the shared local-media slot: a different file loaded in Mix or
+    // Sources while `local` is selected restarts the producer; clearing the
+    // file turns scene media off.
+    $effect.root(() => {
+      $effect(() => {
+        const local = liveMediaStore.localMedia;
+        const url = local.kind === 'loaded' ? local.url : null;
+        untrack(() => this.onLocalMediaChanged(url));
+      });
+    });
+  }
+
+  private onLocalMediaChanged(url: string | null): void {
+    if (this._source !== 'local' || url === this.localUrl) return;
+    void this.select(url === null ? 'none' : 'local', true);
   }
 
   get source(): SceneMediaSource {
@@ -133,9 +170,12 @@ class SceneMediaStore {
     return this._machine;
   }
 
-  /** Select the scene media source. Re-selecting the current source is a no-op. */
-  async select(source: SceneMediaSource): Promise<void> {
-    if (source === this._source && this._machine.kind !== 'error') return;
+  /**
+   * Select the scene media source. Re-selecting the current source is a
+   * no-op unless `force` is set (used when the local file changes).
+   */
+  async select(source: SceneMediaSource, force = false): Promise<void> {
+    if (!force && source === this._source && this._machine.kind !== 'error') return;
     this.stopProducer();
     this._source = source;
     const gen = ++this.generation;
@@ -148,16 +188,32 @@ class SceneMediaStore {
     try {
       if (source === 'test') {
         const { width, height } = { width: SCENE_MEDIA_MAX_WIDTH, height: SCENE_MEDIA_MAX_HEIGHT };
-        await this.push(width, height, MEDIA_KIND_IMAGE, testCardRgba(width, height));
-        if (gen === this.generation) this._machine = { kind: 'streaming', source, width, height };
+        const accepted = await this.push(
+          width,
+          height,
+          MEDIA_KIND_IMAGE,
+          testCardRgba(width, height),
+        );
+        if (gen !== this.generation) return;
+        if (!accepted) throw new Error('scene media push rejected by the shell');
+        this._machine = { kind: 'streaming', source, width, height };
         return;
       }
       const acquired = await this.acquire(source);
-      if (gen !== this.generation) return;
+      if (gen !== this.generation) {
+        // The selection changed while the source was opening.
+        releaseElement(acquired.element);
+        this.releaseStaleCapture(source);
+        return;
+      }
       this.element = acquired.element;
       this.startLoop(gen, source, acquired.kind, acquired.still);
     } catch (err) {
-      if (gen !== this.generation) return;
+      if (gen !== this.generation) {
+        this.releaseStaleCapture(source);
+        return;
+      }
+      this.stopProducer();
       this._machine = {
         kind: 'error',
         source,
@@ -189,12 +245,18 @@ class SceneMediaStore {
       video.muted = true;
       video.playsInline = true;
       video.srcObject = stream;
-      await video.play();
+      try {
+        await video.play();
+      } catch (err) {
+        releaseElement(video);
+        throw err;
+      }
       return { element: video, kind: isCam ? MEDIA_KIND_WEBCAM : MEDIA_KIND_VIDEO, still: false };
     }
     // source === 'local'
     const local = liveMediaStore.localMedia;
     if (local.kind !== 'loaded') throw new Error('no local media loaded');
+    this.localUrl = local.url;
     if (local.mediaKind === 'image') {
       const img = new Image();
       img.src = local.url;
@@ -206,7 +268,12 @@ class SceneMediaStore {
     video.loop = true;
     video.playsInline = true;
     video.src = local.url;
-    await video.play();
+    try {
+      await video.play();
+    } catch (err) {
+      releaseElement(video);
+      throw err;
+    }
     return { element: video, kind: MEDIA_KIND_VIDEO, still: false };
   }
 
@@ -231,8 +298,17 @@ class SceneMediaStore {
       if (!ctx) return;
       ctx.drawImage(el, 0, 0, width, height);
       const rgba = ctx.getImageData(0, 0, width, height).data;
-      void this.push(width, height, kind, rgba).then(() => {
+      void this.push(width, height, kind, rgba).then((accepted) => {
         if (gen !== this.generation) return;
+        if (!accepted) {
+          this.stopProducer();
+          this._machine = {
+            kind: 'error',
+            source,
+            message: 'scene media push rejected by the shell',
+          };
+          return;
+        }
         if (this._machine.kind !== 'streaming') {
           this._machine = { kind: 'streaming', source, width, height };
         }
@@ -248,13 +324,27 @@ class SceneMediaStore {
     height: number,
     kind: SceneMediaKindCode,
     rgba: Uint8Array | Uint8ClampedArray,
-  ): Promise<void> {
+  ): Promise<boolean> {
     this.pushInFlight = true;
     try {
       const seq = await pushSceneMediaFrame(encodeSceneMediaFrame(width, height, kind, rgba));
-      if (seq !== null) this.framesPushed += 1;
+      if (seq === null) return false;
+      this.framesPushed += 1;
+      return true;
     } finally {
       this.pushInFlight = false;
+    }
+  }
+
+  /** Stop a capture a superseded selection started, unless the current selection uses it. */
+  private releaseStaleCapture(staleSource: SceneMediaSource): void {
+    if (staleSource === 'webcam' && this.startedWebcam && this._source !== 'webcam') {
+      liveMediaStore.stopWebcam();
+      this.startedWebcam = false;
+    }
+    if (staleSource === 'display' && this.startedScreen && this._source !== 'display') {
+      liveMediaStore.stopScreenCapture();
+      this.startedScreen = false;
     }
   }
 
@@ -267,12 +357,9 @@ class SceneMediaStore {
 
   private stopProducer(): void {
     this.stopTimer();
-    if (this.element instanceof HTMLVideoElement) {
-      this.element.pause();
-      this.element.srcObject = null;
-      this.element.removeAttribute('src');
-    }
+    releaseElement(this.element);
     this.element = null;
+    this.localUrl = null;
     if (this.startedWebcam) {
       liveMediaStore.stopWebcam();
       this.startedWebcam = false;

@@ -114,7 +114,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     SceneCanvas,
     SceneRow,
     Swatch,
-    TestCard,
     Toggle,
     Xy,
   } from '../widgets';
@@ -192,14 +191,20 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // loaded scene. Until a scene is loaded the active id is `null`
   // and no row carries the active treatment.
   const loadedSceneId = $derived(loadedSceneStore.snapshot?.id ?? null);
-  // Starts from the live scene-media selection so remounting Perform shows
-  // what scenes actually receive. Diverges from the bundle (webcam
-  // pre-selected): auto-selecting a capture source would prompt for camera
-  // access on mount, so the default is `none`.
-  let activeMediaId = $state<string>(
-    sceneMediaStore.source === 'none'
-      ? (PERFORM_MEDIA_CARDS[MEDIA_DEFAULT_ACTIVE_INDEX]?.id ?? 'm-none')
-      : cardForSource(sceneMediaStore.source),
+  // The highlighted card follows the live scene-media selection
+  // (`sceneMediaStore`), so it stays correct across remounts and when the
+  // local file is cleared elsewhere. The YouTube card is the one
+  // Perform-only state: it drives the hero layer but never scene media.
+  // Diverges from the bundle (webcam pre-selected): auto-selecting a
+  // capture source would prompt for camera access on mount, so the
+  // default (MEDIA_DEFAULT_ACTIVE_INDEX) is `none`.
+  let youtubeSelected = $state(false);
+  const activeMediaId = $derived(
+    youtubeSelected
+      ? YOUTUBE_MEDIA_ID
+      : sceneMediaStore.source === 'none'
+        ? (PERFORM_MEDIA_CARDS[MEDIA_DEFAULT_ACTIVE_INDEX]?.id ?? 'm-none')
+        : cardForSource(sceneMediaStore.source),
   );
   let activeTab = $state<MediaTab>('all');
   let perfMode = $state<'perform' | 'edit'>('perform');
@@ -210,9 +215,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   //   - `all`   → every real source (`none`, `webcam`, `display`, `test card`, `YouTube`)
   //   - `live`  → live-capture sources (`webcam`, `display`)
   //   - `media` → non-live-capture media (`none`, `test card`, `YouTube`)
-  // The test-card tile stays special-cased in the preview pane (Wave 2.3
-  // Lane Q.2 G.9) — that lives in `testCardActive` below and is
-  // independent of which filter tab is active.
+  // Since milestone 2a the test-card tile is a scene-media source like the
+  // others: the preview hero keeps showing the live scene, which receives
+  // the test card through `chroma_Media` (the Wave 2.3 Lane Q.2 G.9 hero
+  // swap was removed).
   const filteredMediaCards = $derived(
     [...PERFORM_MEDIA_CARDS, ...(localMediaCard ? [localMediaCard] : [])].filter((card) => {
       if (activeTab === 'all') return true;
@@ -232,13 +238,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // the Phase-4+ ChromaCtx → Svelte migration lands; the watermark overlay
   // stays out of the DOM until then.
   const unlicensed = false;
-
-  // W21 PR2: the Preview hero swaps to the static SMPTE test-card pattern
-  // when the test-card MediaStrip card is active. Since milestone 2a the
-  // selection also feeds scenes: `selectMedia` hands the source to
-  // `sceneMediaStore`, which pushes frames over `push_scene_media_frame`
-  // (the W18 PR1 "no IPC on tile switch" contract no longer holds).
-  const testCardActive = $derived(activeMediaId === 'm-test');
 
   /**
    * Wave 2.4 Lane PERF.B — resolve a `SETLIST_FIXTURE` row to a real
@@ -272,13 +271,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   function selectMedia(id: string): void {
-    activeMediaId = id;
+    youtubeSelected = false;
     void sceneMediaStore.select(CARD_SOURCE[id] ?? 'none');
   }
 
   function handleYouTubeCardClick(): void {
     if (youtubeLayerStore.isReady) {
-      activeMediaId = YOUTUBE_MEDIA_ID;
+      youtubeSelected = true;
       void sceneMediaStore.select('none');
       return;
     }
@@ -1622,99 +1621,63 @@ SPDX-FileCopyrightText: 2026 Chromaticity
        seed are derived through `sceneKindFromMetadata` /
        `sceneSeedFromMetadata` so visually-distinct demo scenes
        (kaleido, glitch, plasma, dunes, ...) render the matching
-       canvas-2d pattern. The W21 PR2 SMPTE test-card branch is
-       preserved for the calibration card. The procedural
+       canvas-2d pattern. (The W21 PR2 SMPTE test-card hero swap was
+       removed in milestone 2a: the test card now feeds scenes.) The procedural
        renderer does NOT consume the scene's GLSL or control
        schema — dragging a control still fires `set_control` IPC
        and updates engine state, but the preview pattern does
        not reflect those changes (real GPU pipeline is
        ADR-011 / Phase-2+). -->
   <div class="perform__preview">
-    {#if testCardActive}
-      <div
-        class="preview preview--test"
-        class:preview--blackout={blackoutActive}
-        class:preview--strobe={strobeActive && !blackoutActive}
-        data-blackout={blackoutActive ? 'true' : 'false'}
-        data-strobe={strobeActive ? 'true' : 'false'}
-      >
-        <TestCard label="Test Card" />
-        {#if blackoutActive}
-          <div class="preview__blackout-veil" aria-hidden="true"></div>
-        {/if}
-        <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — LIVE indicator + OUT label -->
-        <div class="preview__hud-row preview__hud-row--top">
-          <div class="preview__hud-left">
-            <span class="preview__live-tag" aria-label="Stage monitor">
-              <span class="preview__live-dot" aria-hidden="true"></span>
-              {loadedSceneStore.snapshot ? 'LIVE' : 'PREVIEW'}
-            </span>
-            <span class="preview__scene-label">{sceneTitleName}</span>
-            {#if blackoutActive}
-              <span class="preview__fx-tag preview__fx-tag--blackout">BLACKOUT</span>
-            {:else if strobeActive}
-              <span class="preview__fx-tag preview__fx-tag--strobe">STROBE</span>
-            {/if}
-          </div>
-          <div class="preview__hud-right">
-            <span class="preview__out-label">STAGE MONITOR</span>
-          </div>
+    <div
+      class="preview"
+      class:preview--blackout={blackoutActive}
+      class:preview--strobe={strobeActive && !blackoutActive}
+      data-blackout={blackoutActive ? 'true' : 'false'}
+      data-strobe={strobeActive ? 'true' : 'false'}
+    >
+      <SceneCanvas
+        kind={previewKind}
+        seed={previewSeed}
+        audio
+        gpuLive
+        controls={controlSnapshot}
+        ariaLabel={`Live scene preview · ${sceneTitleName}`}
+      />
+      {#if blackoutActive}
+        <div class="preview__blackout-veil" aria-hidden="true"></div>
+      {/if}
+      <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — Preview HUD chrome ported
+           from the bundle's `<Preview>` primitive (`components.jsx`
+           lines 202-229). Top-left: red LIVE pulse dot + "LIVE" caps
+           label + active scene name. Top-right: "OUT → DISP 2" output
+           routing label. Mirrors the bundle's `hud-row top` chrome at
+           `Chromaticity.html`-rendered scale; the bottom HUD row
+           (resolution / FPS / GPU / frame-time) is intentionally not
+           ported here — that data needs real telemetry IPC which
+           lands with the ADR-011 rendering backend (Wave 2.2+). -->
+      <div class="preview__hud-row preview__hud-row--top">
+        <div class="preview__hud-left">
+          <span class="preview__live-tag" aria-label="Stage monitor">
+            <span class="preview__live-dot" aria-hidden="true"></span>
+            {loadedSceneStore.snapshot ? 'LIVE' : 'PREVIEW'}
+          </span>
+          <span class="preview__scene-label">{sceneTitleName}</span>
+          {#if blackoutActive}
+            <span class="preview__fx-tag preview__fx-tag--blackout">BLACKOUT</span>
+          {:else if strobeActive}
+            <span class="preview__fx-tag preview__fx-tag--strobe">STROBE</span>
+          {/if}
         </div>
-        {#if unlicensed}
-          <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
-        {/if}
-      </div>
-    {:else}
-      <div
-        class="preview"
-        class:preview--blackout={blackoutActive}
-        class:preview--strobe={strobeActive && !blackoutActive}
-        data-blackout={blackoutActive ? 'true' : 'false'}
-        data-strobe={strobeActive ? 'true' : 'false'}
-      >
-        <SceneCanvas
-          kind={previewKind}
-          seed={previewSeed}
-          audio
-          gpuLive
-          controls={controlSnapshot}
-          ariaLabel={`Live scene preview · ${sceneTitleName}`}
-        />
-        {#if blackoutActive}
-          <div class="preview__blackout-veil" aria-hidden="true"></div>
-        {/if}
-        <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — Preview HUD chrome ported
-             from the bundle's `<Preview>` primitive (`components.jsx`
-             lines 202-229). Top-left: red LIVE pulse dot + "LIVE" caps
-             label + active scene name. Top-right: "OUT → DISP 2" output
-             routing label. Mirrors the bundle's `hud-row top` chrome at
-             `Chromaticity.html`-rendered scale; the bottom HUD row
-             (resolution / FPS / GPU / frame-time) is intentionally not
-             ported here — that data needs real telemetry IPC which
-             lands with the ADR-011 rendering backend (Wave 2.2+). -->
-        <div class="preview__hud-row preview__hud-row--top">
-          <div class="preview__hud-left">
-            <span class="preview__live-tag" aria-label="Stage monitor">
-              <span class="preview__live-dot" aria-hidden="true"></span>
-              {loadedSceneStore.snapshot ? 'LIVE' : 'PREVIEW'}
-            </span>
-            <span class="preview__scene-label">{sceneTitleName}</span>
-            {#if blackoutActive}
-              <span class="preview__fx-tag preview__fx-tag--blackout">BLACKOUT</span>
-            {:else if strobeActive}
-              <span class="preview__fx-tag preview__fx-tag--strobe">STROBE</span>
-            {/if}
-          </div>
-          <div class="preview__hud-right">
-            <span class="preview__out-label">STAGE MONITOR</span>
-          </div>
+        <div class="preview__hud-right">
+          <span class="preview__out-label">STAGE MONITOR</span>
         </div>
-        {#if unlicensed}
-          <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
-          <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
-        {/if}
       </div>
-    {/if}
+      {#if unlicensed}
+        <!-- Watermark overlay — Phase-4+ entitlement wiring; never renders today. -->
+        <div class="preview__watermark" aria-hidden="true">UNLICENSED</div>
+      {/if}
+    </div>
   </div>
   <SceneFeedbackBar
     sceneId={loadedSceneId ?? sceneTitleName.toLowerCase()}

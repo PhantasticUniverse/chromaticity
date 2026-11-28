@@ -26,8 +26,8 @@
 //   6. Scenes panel landmark + 14-row scene count tally
 //   7. Composed widgets (CrossFader / VuStereo / AudioReactivity)
 //   8. Media tab switching writes local state (active class + aria-selected)
-//   9. Media-card click selects + flips aria-pressed; webcam is the default
-//  10. Test-card media tile swaps the preview hero to the TestCard surface
+//   9. Media-card click selects + flips aria-pressed; none is the default
+//  10. Test-card media tile feeds scene media (push IPC) and keeps the scene preview
 //  11. Scene-row click marks aria-current and pulses the active row
 //  12. Rail mode buttons toggle aria-pressed (scenes / presets / edit / add)
 //  13. Perform / Edit mode toggle marks the primary button
@@ -67,6 +67,7 @@ import { performVariantStore } from '../stores/performVariant.svelte';
 import { playlistStore } from '../stores/playlist.svelte';
 import { presetStore } from '../stores/preset.svelte';
 import { routeStore } from '../stores/route.svelte';
+import { sceneMediaStore } from '../stores/sceneMedia.svelte';
 import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
 
 function stubMatchMedia(reduce: boolean): void {
@@ -135,6 +136,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   cleanup();
+  sceneMediaStore.reset();
   // Restore the default variant, route, and YouTube layer for the next block.
   performVariantStore.set('classic');
   routeStore.set('perform');
@@ -347,12 +349,9 @@ describe('Perform view', () => {
     expect(getByTestId('media-add-action')).toBeInTheDocument();
   });
 
-  it('clicking the test-card media tile swaps the preview to the TestCard surface', async () => {
+  it('clicking the test-card media tile feeds scene media and keeps the scene preview', async () => {
+    invokeMock.mockResolvedValue(1);
     const { container } = render(Perform);
-    // Wave 2.2 Lane R.1 — default preview is the `<SceneCanvas>`
-    // procedural surface keyed off the loaded-scene metadata
-    // (fallback "Glitch" title when no scene loaded). The widget
-    // exposes role=img + the derived aria-label.
     expect(container.querySelector('[aria-label="Live scene preview · Glitch"]')).not.toBeNull();
     const testTile = container.querySelector(
       '.media-card[data-kind="test"]',
@@ -361,10 +360,16 @@ describe('Perform view', () => {
     if (!testTile) return;
     await fireEvent.click(testTile);
     expect(testTile).toHaveAttribute('aria-pressed', 'true');
-    // Preview surface flips to the `.preview--test` variant; the
-    // SceneCanvas unmounts so its aria-label disappears.
-    expect(container.querySelector('.preview--test')).not.toBeNull();
-    expect(container.querySelector('[aria-label="Live scene preview · Glitch"]')).toBeNull();
+    // Milestone 2a: the hero keeps the live scene (no TestCard swap) and
+    // the test card is pushed to the shell as scene media.
+    expect(container.querySelector('[aria-label="Live scene preview · Glitch"]')).not.toBeNull();
+    await vi.waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('push_scene_media_frame', expect.any(Uint8Array)),
+    );
+    // Selecting `none` clears it again.
+    const noneTile = container.querySelector('.media-card[data-kind="none"]') as HTMLButtonElement;
+    await fireEvent.click(noneTile);
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('clear_scene_media'));
   });
 
   it('marks the setlist row whose resolved scene id matches the loaded snapshot', async () => {

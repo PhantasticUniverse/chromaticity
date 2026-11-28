@@ -29,7 +29,7 @@ pick up the next item.
   recently used consumer's history.
 - `CachedMultipass` allocates a readback buffer per call and exposes no
   final-texture accessor yet; milestone 1 (native swapchain) needs one.
-- Feedback is verified with a synthetic trail scene; all 25 bundled scenes
+- Feedback is verified with a synthetic trail scene; all 26 bundled scenes
   declare `"PASSES": []`. Whether `import_syn_scene` carries `PERSISTENT`
   through to the imported `scene.json` has not been checked.
 
@@ -38,9 +38,17 @@ pick up the next item.
 - One untransformed `chroma_Media` (decision 2026-11-28): the catalog's
   media-transform Meta controls (`_Media_Contrast` etc.) are not applied, and
   there is no separate raw-media binding.
-- Webview canvas → IPC → texture path is not exercised by any automated
-  test; only verified in-process (push → snapshot → sync → render). Needs one
-  manual run: Perform → test card with `examples/media-mirror.chroma` loaded.
+- Verified in layers, never end to end in the packaged app: the webview
+  producer in a real browser (vite dev, invoke stubbed: image → 1 push with
+  exact header and corner pixels; video → 30 pushes/s; file change restarts;
+  clear → `clear_scene_media`), and the shell in-process (push → snapshot →
+  sync → render). Tauri's raw-body transport for `push_scene_media_frame`,
+  real webcam / display capture, and producer throttling when the main window
+  is hidden are unverified. Manual check: load
+  `examples/media-mirror.chroma`, then pick the test card in Perform.
+- Imported `.synScene` `_uv` is top-origin (from `gl_FragCoord`), so imported
+  media is upright in-engine; the reference format's `_uv` is y-up. Not
+  changed here.
 - Producer caps media at 640×360 / 30 fps; frames are raw RGBA over IPC
   (about 0.9 MB each). Release-build cost of a fresh upload every frame:
   +0.12 ms median at 1280×720.

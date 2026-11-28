@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 
+import { liveMediaStore } from './liveMedia.svelte';
 import { fitWithin, sceneMediaStore, testCardRgba } from './sceneMedia.svelte';
 import { encodeSceneMediaFrame } from '../ipc/media';
 
@@ -46,6 +47,7 @@ describe('sceneMediaStore', () => {
   });
   afterEach(() => {
     sceneMediaStore.reset();
+    vi.restoreAllMocks();
   });
 
   it('pushes the test card once as a 640x360 image frame', async () => {
@@ -80,5 +82,37 @@ describe('sceneMediaStore', () => {
     expect(sceneMediaStore.machine.kind).toBe('error');
     expect(invokeMock).toHaveBeenCalledWith('clear_scene_media');
     expect(invokeMock).not.toHaveBeenCalledWith('push_scene_media_frame', expect.anything());
+  });
+
+  it('reports an error instead of streaming when the shell rejects the push', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'push_scene_media_frame') throw new Error('rejected');
+      return 1;
+    });
+    await sceneMediaStore.select('test');
+    expect(sceneMediaStore.machine).toEqual({
+      kind: 'error',
+      source: 'test',
+      message: 'scene media push rejected by the shell',
+    });
+  });
+
+  it('stops a webcam that a superseded selection started', async () => {
+    let resolveStart: (m: { kind: 'active'; stream: MediaStream }) => void = () => {};
+    const startSpy = vi
+      .spyOn(liveMediaStore, 'startWebcam')
+      .mockImplementation(() => new Promise((r) => (resolveStart = r)));
+    const stopSpy = vi.spyOn(liveMediaStore, 'stopWebcam').mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+
+    const pending = sceneMediaStore.select('webcam');
+    await sceneMediaStore.select('none');
+    resolveStart({ kind: 'active', stream: {} as MediaStream });
+    await pending;
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+    expect(sceneMediaStore.source).toBe('none');
+    expect(sceneMediaStore.machine).toEqual({ kind: 'off' });
   });
 });

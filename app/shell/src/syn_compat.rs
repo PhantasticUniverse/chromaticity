@@ -472,31 +472,35 @@ vec4 renderMain() {
             "no media: black, syn_MediaActive 0"
         );
 
-        // Solid colour frame: (200, 100, 50).
+        // 2x2 quadrants (TL red, TR green, BL blue, BR white): detects a
+        // vertical flip through the importer's `_uv` (gl_FragCoord-based).
         let frame = crate::render::SceneMediaFrame {
-            width: 4,
-            height: 4,
+            width: 2,
+            height: 2,
             kind: MediaKind::Image,
-            rgba: [200u8, 100, 50, 255].repeat(16),
+            rgba: vec![
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+            ],
         };
         engine.sync_media(1, Some(&frame)).expect("sync");
         let bytes = engine
             .render_frame(16, 16, 0.016, 2, &audio, [0.5; 16])
             .expect("imported media scene renders with media");
         let px = |x: usize, y: usize| bytes[(y * 16 + x) * 4..(y * 16 + x) * 4 + 4].to_vec();
-        assert_eq!(
-            px(3, 8),
-            vec![200, 100, 50, 255],
-            "_loadMedia + syn_MediaActive"
-        );
-        // Mask: lum = 0.299*200 + 0.587*100 + 0.114*50 = 124.2 (+/-1 for rounding).
-        let mask = px(12, 8);
+        // Left half: _loadMedia() upright, alpha = syn_MediaActive.
+        assert_eq!(px(3, 3), vec![255, 0, 0, 255], "top-left red");
+        assert_eq!(px(3, 12), vec![0, 0, 255, 255], "bottom-left blue");
+        // Right half: _loadMediaAsMask() luminance of green (0.587 * 255) and white.
+        let green_mask = px(12, 3);
         assert!(
-            mask[0] == mask[1] && mask[1] == mask[2],
-            "mask is grey: {mask:?}"
+            green_mask[0] == green_mask[1] && green_mask[1] == green_mask[2],
+            "mask is grey: {green_mask:?}"
         );
-        assert!((123..=125).contains(&mask[0]), "mask luminance {mask:?}");
-        assert_eq!(mask[3], 255);
+        assert!(
+            (149..=150).contains(&green_mask[0]),
+            "green luminance {green_mask:?}"
+        );
+        assert_eq!(px(12, 12), vec![255, 255, 255, 255], "white mask");
         let _ = std::fs::remove_dir_all(&base);
     }
 }
