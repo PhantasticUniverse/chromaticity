@@ -32,6 +32,8 @@ vi.mock('../ipc/mix', () => ({
 }));
 
 vi.mock('../ipc/recorder', () => ({
+  getRecorderStatus: vi.fn().mockResolvedValue(null),
+  pushRecorderJpegFrame: vi.fn().mockResolvedValue(null),
   saveReplayBuffer: vi.fn(),
 }));
 

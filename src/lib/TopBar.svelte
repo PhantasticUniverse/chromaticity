@@ -436,6 +436,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         const status = await startRecording();
         isRecording = status ? status.is_recording : false;
       }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('chromaticity:recording-change', { detail: { isRecording } }),
+        );
+      }
     } finally {
       recordingBusy = false;
     }

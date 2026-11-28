@@ -1229,11 +1229,11 @@ control-focused hotkeys take effect:</p>
 <h2 id="meta-controls">Meta Controls</h2>
 <p>The Meta Controls panel exposes the scene-agnostic colour pipeline:
 master, brightness, gamma, contrast, hue, saturation, invert, vertical
-mirror, horizontal mirror, dichrome. Each meta control binds onto a
-canonical <code>_Meta*</code> uniform that is published to every scene; authors
-do not opt in or out of the pipeline. The hotkeys <code>M</code> / <code>B</code> / <code>G</code> /
-<code>C</code> / <code>H</code> / <code>Y</code> enter modal slider-adjust mode against the matching
-meta control; <code>Esc</code> exits.</p>
+mirror, horizontal mirror, dichrome. Meta Controls are applied in the
+live frontend preview and stage compositor (dedicated GPU <code>_Meta*</code>
+shader uniforms are planned for a future render pass). The hotkeys
+<code>M</code> / <code>B</code> / <code>G</code> / <code>C</code> / <code>H</code> / <code>Y</code> enter modal slider-adjust mode against
+the matching meta control; <code>Esc</code> exits.</p>
 <h2 id="the-preview-hero">The Preview hero</h2>
 <p>The Preview hero shows the live render output. It mirrors the actual
 output surface so the operator sees exactly what the audience sees.

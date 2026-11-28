@@ -32,21 +32,33 @@ use crate::state::AppState;
 const PRESETS_FILENAME: &str = "presets.json";
 const MAX_PERSISTED_CONTROL_ID: u32 = 64;
 
-type PresetBankDisk = BTreeMap<u32, BTreeMap<u32, f32>>;
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+struct PresetSnapshotDisk {
+    #[serde(default)]
+    scalars: BTreeMap<u32, f32>,
+    #[serde(default)]
+    xy: BTreeMap<u32, [f32; 2]>,
+}
+
+type PresetBankDisk = BTreeMap<u32, PresetSnapshotDisk>;
 
 fn persist_preset_snapshot(app: &AppState, data_dir: &Path, id: u32) {
-    let snapshot: BTreeMap<u32, f32> = {
+    let snapshot: PresetSnapshotDisk = {
         let state = match app.state.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        let mut map = BTreeMap::new();
+        let mut scalars = BTreeMap::new();
+        let mut xy = BTreeMap::new();
         for cid in 0..MAX_PERSISTED_CONTROL_ID {
             if let Some(val) = state.control_value(ControlId(cid)) {
-                map.insert(cid, val.0);
+                scalars.insert(cid, val.0);
+            }
+            if let Some(pair) = state.xy_control_value(ControlId(cid)) {
+                xy.insert(cid, pair);
             }
         }
-        map
+        PresetSnapshotDisk { scalars, xy }
     };
 
     let path = data_dir.join(PRESETS_FILENAME);
@@ -67,8 +79,9 @@ fn persist_preset_snapshot(app: &AppState, data_dir: &Path, id: u32) {
     }
 }
 
-/// Hydrate previously persisted preset control snapshots from
-/// `<data_dir>/presets.json` into canonical [`AppState::state`] on startup.
+/// Hydrate previously persisted preset control snapshots (both scalar and 2D XY)
+/// from `<data_dir>/presets.json` into canonical [`AppState::state`] on startup,
+/// isolating each preset so keys never leak across preset slots.
 pub fn hydrate_presets_from_disk(app: &AppState, data_dir: &Path) {
     let path = data_dir.join(PRESETS_FILENAME);
     let Ok(raw) = std::fs::read_to_string(&path) else {
@@ -84,19 +97,53 @@ pub fn hydrate_presets_from_disk(app: &AppState, data_dir: &Path) {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    // Capture current controls so hydration doesn't overwrite live/recovered values.
-    let mut prior: Vec<(u32, f32)> = Vec::new();
+    let mut prior_scalars: Vec<(u32, f32)> = Vec::new();
+    let mut prior_xy: Vec<(u32, [f32; 2])> = Vec::new();
     for cid in 0..MAX_PERSISTED_CONTROL_ID {
         if let Some(val) = state.control_value(ControlId(cid)) {
-            prior.push((cid, val.0));
+            prior_scalars.push((cid, val.0));
+        }
+        if let Some(pair) = state.xy_control_value(ControlId(cid)) {
+            prior_xy.push((cid, pair));
         }
     }
-    for (preset_id, controls) in bank {
-        for (cid, val) in controls {
+    for (preset_id, snap) in bank {
+        // Reset controls before applying each preset snapshot so previous presets
+        // do not bleed values into subsequent slots.
+        for cid in 0..MAX_PERSISTED_CONTROL_ID {
+            if state.control_value(ControlId(cid)).is_some() && !snap.scalars.contains_key(&cid) {
+                let _ = app.bus.dispatch_and_commit_into(
+                    Command::ControlSet {
+                        id: ControlId(cid),
+                        value: ControlValue(0.0),
+                    },
+                    &mut state,
+                );
+            }
+            if state.xy_control_value(ControlId(cid)).is_some() && !snap.xy.contains_key(&cid) {
+                let _ = app.bus.dispatch_and_commit_into(
+                    Command::ControlSet2D {
+                        id: ControlId(cid),
+                        value: [0.0, 0.0],
+                    },
+                    &mut state,
+                );
+            }
+        }
+        for (cid, val) in snap.scalars {
             let _ = app.bus.dispatch_and_commit_into(
                 Command::ControlSet {
                     id: ControlId(cid),
                     value: ControlValue(val),
+                },
+                &mut state,
+            );
+        }
+        for (cid, pair) in snap.xy {
+            let _ = app.bus.dispatch_and_commit_into(
+                Command::ControlSet2D {
+                    id: ControlId(cid),
+                    value: pair,
                 },
                 &mut state,
             );
@@ -108,11 +155,20 @@ pub fn hydrate_presets_from_disk(app: &AppState, data_dir: &Path) {
             &mut state,
         );
     }
-    for (cid, val) in prior {
+    for (cid, val) in prior_scalars {
         let _ = app.bus.dispatch_and_commit_into(
             Command::ControlSet {
                 id: ControlId(cid),
                 value: ControlValue(val),
+            },
+            &mut state,
+        );
+    }
+    for (cid, pair) in prior_xy {
+        let _ = app.bus.dispatch_and_commit_into(
+            Command::ControlSet2D {
+                id: ControlId(cid),
+                value: pair,
             },
             &mut state,
         );
@@ -248,5 +304,82 @@ mod tests {
         save_preset_impl(&app, 5).unwrap();
 
         assert_eq!(active_preset_impl(&app).unwrap(), Some(5));
+    }
+
+    #[test]
+    fn persist_and_hydrate_preserves_scalars_and_xy_without_cross_preset_bleed() {
+        use super::{hydrate_presets_from_disk, persist_preset_snapshot};
+        use chromaticity_runtime::{ControlId, ControlValue};
+
+        let tmp_dir =
+            std::env::temp_dir().join(format!("chromaticity-preset-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        // Save preset 1 with scalar control 0 = 0.75 and XY control 2 = [0.25, 0.85]
+        let app1 = AppState::new();
+        {
+            let mut st = app1.state.lock().unwrap();
+            app1.bus
+                .dispatch_and_commit_into(
+                    Command::ControlSet {
+                        id: ControlId(0),
+                        value: ControlValue(0.75),
+                    },
+                    &mut st,
+                )
+                .unwrap();
+            app1.bus
+                .dispatch_and_commit_into(
+                    Command::ControlSet2D {
+                        id: ControlId(2),
+                        value: [0.25, 0.85],
+                    },
+                    &mut st,
+                )
+                .unwrap();
+        }
+        save_preset_impl(&app1, 1).unwrap();
+        persist_preset_snapshot(&app1, &tmp_dir, 1);
+
+        // Save preset 2 on a fresh state with only scalar control 1 = 0.42 (no control 0 or XY 2)
+        let app2 = AppState::new();
+        {
+            let mut st = app2.state.lock().unwrap();
+            app2.bus
+                .dispatch_and_commit_into(
+                    Command::ControlSet {
+                        id: ControlId(1),
+                        value: ControlValue(0.42),
+                    },
+                    &mut st,
+                )
+                .unwrap();
+        }
+        save_preset_impl(&app2, 2).unwrap();
+        persist_preset_snapshot(&app2, &tmp_dir, 2);
+
+        // Hydrate into a brand-new AppState and verify both presets recall cleanly
+        let hydrated = AppState::new();
+        hydrate_presets_from_disk(&hydrated, &tmp_dir);
+
+        recall_preset_impl(&hydrated, 1).unwrap();
+        {
+            let st = hydrated.state.lock().unwrap();
+            assert!((st.control_value(ControlId(0)).unwrap().0 - 0.75).abs() < 1e-5);
+            let xy = st.xy_control_value(ControlId(2)).unwrap();
+            assert!((xy[0] - 0.25).abs() < 1e-5 && (xy[1] - 0.85).abs() < 1e-5);
+        }
+
+        recall_preset_impl(&hydrated, 2).unwrap();
+        {
+            let st = hydrated.state.lock().unwrap();
+            assert!((st.control_value(ControlId(1)).unwrap().0 - 0.42).abs() < 1e-5);
+            // Control 0 and XY 2 must be reset to 0.0 rather than bleeding 0.75 / [0.25, 0.85]
+            assert!(st.control_value(ControlId(0)).unwrap().0.abs() < 1e-5);
+            let xy = st.xy_control_value(ControlId(2)).unwrap();
+            assert!(xy[0].abs() < 1e-5 && xy[1].abs() < 1e-5);
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }

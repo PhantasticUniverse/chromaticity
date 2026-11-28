@@ -78,6 +78,17 @@ export async function getRecorderStatus(): Promise<RecorderStatusDto | null> {
   }
 }
 
+/** Push a composited JPEG frame into the local `ffmpeg` H.264 fMP4 recorder. Returns `null` outside Tauri. */
+export async function pushRecorderJpegFrame(jpegBytes: Uint8Array): Promise<number | null> {
+  try {
+    return await invoke<number>('push_recorder_jpeg_frame', {
+      jpegBytes: Array.from(jpegBytes),
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Flush the rolling replay buffer to a standalone `.mp4` file. Returns `null` outside Tauri. */
 export async function saveReplayBuffer(outputPath?: string): Promise<ReplaySaveResultDto | null> {
   try {

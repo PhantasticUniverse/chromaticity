@@ -68,9 +68,9 @@ and writes:
   [Library Workflow](library-workflow.md) for how merging works.
 - **Backups path** — destination for crash-restore snapshots and
   show-bundle exports, with a configurable retention window.
-- Cache cleanup — buttons to clear the thumbnail cache and the
-  shader-compile cache. Useful when a scene authoring round-trip
-  has poisoned a cached artifact.
+- Cache cleanup *(planned)* — reserved buttons to clear the thumbnail
+  cache and the shader-compile cache once disk-backed caches ship
+  (currently displayed as disabled in Settings).
 
 Each path field has a Browse button that invokes the native
 folder-picker through the shell IPC layer.

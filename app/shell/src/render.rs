@@ -11,9 +11,10 @@
 
 use chromaticity_audio::{AudioUniformSnapshot, SynAudioEnvelopeBank, SynAudioEnvelopes};
 use chromaticity_render::{
-    CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, TargetFormat,
+    CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
     TransitionOrchestrator, UniformInput, UniformValue, resolve_includes_multi,
 };
+use chromaticity_scene::loader::parse_scene_json;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -102,7 +103,8 @@ fn inject_ssf_helpers_if_needed(source: &str) -> String {
         "_fbm(",
     ];
     let needs_prelude = MARKERS.iter().any(|m| source.contains(m))
-        && !source.contains("Chromaticity SSF GLSL Helper Prelude");
+        && !source.contains("Chromaticity SSF GLSL Helper Prelude")
+        && !source.contains("_chroma_safe_pow");
     if !needs_prelude {
         return source.to_string();
     }
@@ -119,13 +121,195 @@ fn inject_ssf_helpers_if_needed(source: &str) -> String {
     format!("{SSF_GLSL_HELPER_PRELUDE}\n{source}")
 }
 
+/// Live GPU std140 uniform block and Synesthesia builtin aliases substituted for
+/// `_ChromaSynBuiltins` when executing `.synScene`-imported shaders on `GpuPreviewEngine`.
+const SYN_LIVE_GPU_ABI_BRIDGE: &str = r#"
+layout(set = 0, binding = 0, std140) uniform ChromaUniforms {
+    vec4 chroma_Time;
+    vec4 chroma_Resolution;
+    vec4 _chroma_bpm_vec;
+    vec4 chroma_AudioRMS;
+    vec4 chroma_AudioPeak;
+    float chroma_AudioFFT[8];
+    vec4 chroma_Ctrl0;
+    vec4 chroma_Ctrl1;
+    vec4 chroma_Ctrl2;
+    vec4 chroma_Ctrl3;
+    vec4 chroma_AudioEnv0;
+    vec4 chroma_AudioEnv1;
+    vec4 chroma_AudioEnv2;
+    vec4 chroma_AudioEnv3;
+    vec4 chroma_AudioMeta;
+};
+
+#define RENDERSIZE (chroma_Resolution.xy)
+#define TIME (chroma_Time.x)
+#define PASSINDEX (0.0)
+#define FRAMECOUNT (chroma_Time.z)
+#define syn_Time (chroma_AudioEnv0.w)
+#define syn_BeatTime (_chroma_bpm_vec.y)
+#define syn_BassTime (chroma_AudioEnv1.w)
+#define syn_MidTime (chroma_AudioEnv2.w)
+#define syn_MidHighTime (0.5 * (chroma_AudioEnv2.w + chroma_AudioEnv3.w))
+#define syn_HighTime (chroma_AudioEnv3.w)
+#define syn_CurvedTime (chroma_AudioEnv0.w)
+#define syn_Level (chroma_AudioEnv0.x)
+#define syn_BassLevel (chroma_AudioEnv1.x)
+#define syn_MidLevel (chroma_AudioEnv2.x)
+#define syn_MidHighLevel (0.5 * (chroma_AudioEnv2.x + chroma_AudioEnv3.x))
+#define syn_HighLevel (chroma_AudioEnv3.x)
+#define syn_Hits (chroma_AudioEnv0.y)
+#define syn_BassHits (chroma_AudioEnv1.y)
+#define syn_MidHits (chroma_AudioEnv2.y)
+#define syn_MidHighHits (0.5 * (chroma_AudioEnv2.y + chroma_AudioEnv3.y))
+#define syn_HighHits (chroma_AudioEnv3.y)
+#define syn_Presence (chroma_AudioEnv0.z)
+#define syn_BassPresence (chroma_AudioEnv1.z)
+#define syn_MidPresence (chroma_AudioEnv2.z)
+#define syn_MidHighPresence (0.5 * (chroma_AudioEnv2.z + chroma_AudioEnv3.z))
+#define syn_HighPresence (chroma_AudioEnv3.z)
+#define syn_Intensity (chroma_AudioMeta.y)
+#define syn_OnBeat (_chroma_bpm_vec.z)
+#define syn_ToggleOnBeat (step(0.5, fract(_chroma_bpm_vec.y * 0.5)))
+#define syn_RandomOnBeat (chroma_AudioMeta.w)
+#define syn_FadeInOut (chroma_AudioMeta.x)
+#define syn_BPM (_chroma_bpm_vec.x)
+#define syn_BPMConfidence (chroma_AudioMeta.z)
+#define syn_BPMTwitcher (floor(_chroma_bpm_vec.y) + pow(fract(_chroma_bpm_vec.y), 2.0))
+#define syn_BPMSin (_chroma_bpm_vec.w)
+#define syn_BPMSin2 (0.5 + 0.5 * sin(_chroma_bpm_vec.y * 3.14159265))
+#define syn_BPMSin4 (0.5 + 0.5 * sin(_chroma_bpm_vec.y * 1.57079632))
+#define syn_BPMSin8 (0.5 + 0.5 * sin(_chroma_bpm_vec.y * 0.78539816))
+#define syn_BPMTri (abs(fract(_chroma_bpm_vec.y) * 2.0 - 1.0))
+#define syn_BPMTri2 (abs(fract(_chroma_bpm_vec.y * 0.5) * 2.0 - 1.0))
+#define syn_BPMTri4 (abs(fract(_chroma_bpm_vec.y * 0.25) * 2.0 - 1.0))
+#define syn_BPMTri8 (abs(fract(_chroma_bpm_vec.y * 0.125) * 2.0 - 1.0))
+#define syn_MediaActive (0.0)
+
+vec4 _chroma_sample_spectrum(vec2 uv) {
+    int idx = clamp(int(uv.x * 8.0), 0, 7);
+    float v = chroma_AudioFFT[idx];
+    return vec4(v, v, v, v);
+}
+"#;
+
+fn ctrl_channel_expr(slot: usize) -> Option<&'static str> {
+    const SLOTS: [&str; 16] = [
+        "chroma_Ctrl0.x",
+        "chroma_Ctrl0.y",
+        "chroma_Ctrl0.z",
+        "chroma_Ctrl0.w",
+        "chroma_Ctrl1.x",
+        "chroma_Ctrl1.y",
+        "chroma_Ctrl1.z",
+        "chroma_Ctrl1.w",
+        "chroma_Ctrl2.x",
+        "chroma_Ctrl2.y",
+        "chroma_Ctrl2.z",
+        "chroma_Ctrl2.w",
+        "chroma_Ctrl3.x",
+        "chroma_Ctrl3.y",
+        "chroma_Ctrl3.z",
+        "chroma_Ctrl3.w",
+    ];
+    SLOTS.get(slot).copied()
+}
+
+/// Adapt a `.synScene`-imported fragment shader (emitting `_ChromaSynBuiltins`
+/// and `_ChromaSynControls`) to Chromaticity's live binding-0 std140 UBO ABI
+/// so imported scenes compile and render live on `GpuPreviewEngine`.
+fn adapt_syn_imported_shader(source: &str) -> String {
+    const BUILTINS_START: &str =
+        "layout(set = 0, binding = 0, std140) uniform _ChromaSynBuiltins {";
+    const SPECTRUM_END: &str =
+        "#define syn_Spectrum sampler2D(_chroma_spectrum_tex, _chroma_spectrum_samp)";
+
+    if !source.contains(BUILTINS_START) {
+        return source.to_string();
+    }
+
+    let mut out = source.to_string();
+    if let (Some(start), Some(end_rel)) = (out.find(BUILTINS_START), out.find(SPECTRUM_END)) {
+        let end = end_rel + SPECTRUM_END.len();
+        if end >= start {
+            out.replace_range(start..end, SYN_LIVE_GPU_ABI_BRIDGE);
+        }
+    }
+
+    // Rewrite `_ChromaSynControls` UBO at binding 5 into `#define` macros backed by `chroma_Ctrl0..3`.
+    const CONTROLS_START: &str =
+        "layout(set = 0, binding = 5, std140) uniform _ChromaSynControls {";
+    if let Some(c_start) = out.find(CONTROLS_START) {
+        if let Some(c_close_rel) = out[c_start..].find("};") {
+            let c_end = c_start + c_close_rel + 2;
+            let body = &out[c_start + CONTROLS_START.len()..c_start + c_close_rel];
+            let mut macros = String::new();
+            let mut next_slot = 0usize;
+            for line in body.lines() {
+                let trimmed = line.trim().trim_end_matches(';');
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let mut parts = trimmed.split_whitespace();
+                let (Some(ty), Some(name)) = (parts.next(), parts.next()) else {
+                    continue;
+                };
+                match ty {
+                    "float" => {
+                        let expr = ctrl_channel_expr(next_slot).unwrap_or("0.5");
+                        next_slot += 1;
+                        macros.push_str(&format!("#define {name} ({expr})\n"));
+                    }
+                    "vec2" => {
+                        let x = ctrl_channel_expr(next_slot).unwrap_or("0.5");
+                        let y = ctrl_channel_expr(next_slot + 1).unwrap_or("0.5");
+                        next_slot += 2;
+                        macros.push_str(&format!("#define {name} vec2({x}, {y})\n"));
+                    }
+                    "vec3" => {
+                        let x = ctrl_channel_expr(next_slot).unwrap_or("0.5");
+                        let y = ctrl_channel_expr(next_slot + 1).unwrap_or("0.5");
+                        let z = ctrl_channel_expr(next_slot + 2).unwrap_or("0.5");
+                        next_slot += 3;
+                        macros.push_str(&format!("#define {name} vec3({x}, {y}, {z})\n"));
+                    }
+                    "vec4" => {
+                        let x = ctrl_channel_expr(next_slot).unwrap_or("0.5");
+                        let y = ctrl_channel_expr(next_slot + 1).unwrap_or("0.5");
+                        let z = ctrl_channel_expr(next_slot + 2).unwrap_or("0.5");
+                        let w = ctrl_channel_expr(next_slot + 3).unwrap_or("1.0");
+                        next_slot += 4;
+                        macros.push_str(&format!("#define {name} vec4({x}, {y}, {z}, {w})\n"));
+                    }
+                    _ => {}
+                }
+            }
+            out.replace_range(c_start..c_end, &macros);
+        }
+    }
+
+    // Replace unbound media/spectrum texture lookups with live std140 fallbacks.
+    out = out.replace(
+        "return texture(syn_UserImage, uv);",
+        "return vec4(0.0, 0.0, 0.0, 1.0);",
+    );
+    out = out.replace("texture(syn_Spectrum,", "_chroma_sample_spectrum(");
+    out = out.replace(
+        "texture(syn_UserImage,",
+        "vec4(0.0, 0.0, 0.0, 1.0) + 0.0 * vec4(",
+    );
+
+    out
+}
+
 /// Resolve `#include "lygia/..."` and `#include "hg_sdf/..."` directives
 /// and inject SSF helper functions when referenced.
 fn preprocess_shader_with_helpers(
     source: &str,
     resource_dir: Option<&Path>,
 ) -> Result<String, String> {
-    let with_helpers = inject_ssf_helpers_if_needed(source);
+    let adapted = adapt_syn_imported_shader(source);
+    let with_helpers = inject_ssf_helpers_if_needed(&adapted);
     if !with_helpers.contains("#include") {
         return Ok(with_helpers);
     }
@@ -146,10 +330,74 @@ fn preprocess_shader_with_helpers(
         namespaces.push(("hg_sdf", hg_sdf_root.as_path()));
     }
     if namespaces.is_empty() {
-        return Ok(with_helpers);
+        return Err(
+            "shader contains #include directives, but neither third_party/lygia nor third_party/hg_sdf could be located"
+                .into(),
+        );
     }
     resolve_includes_multi(&with_helpers, &namespaces)
         .map_err(|err| format!("shader #include resolution failed: {err}"))
+}
+
+/// Load optional intermediate pass fragment shaders declared in `scene.json` `PASSES`.
+///
+/// For each pass entry, resolves either an explicit `SHADER`/`FRAGMENT` filename
+/// under `scene_dir` or `<TARGET>.glsl` (ignoring `main.glsl` which is always the
+/// final pass). Passes without an on-disk `.glsl` file are skipped so single-pass
+/// scenes with metadata-only `PASSES` stay on the fast `CachedSinglePass` path.
+fn load_scene_extra_passes(scene_dir: &Path) -> Vec<ScenePassSource> {
+    let scene_json_path = scene_dir.join("scene.json");
+    let Ok(raw_json) = std::fs::read_to_string(&scene_json_path) else {
+        return Vec::new();
+    };
+    let Ok(scene) = parse_scene_json(&raw_json) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for pass in &scene.passes {
+        let target = pass.node.0.trim();
+        let rel_file = pass
+            .extensions
+            .get("SHADER")
+            .or_else(|| pass.extensions.get("FRAGMENT"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{target}.glsl"));
+        if rel_file.is_empty() || rel_file == "main.glsl" || rel_file.contains("..") {
+            continue;
+        }
+        let pass_path = scene_dir.join(&rel_file);
+        let Ok(fragment_glsl) = std::fs::read_to_string(&pass_path) else {
+            continue;
+        };
+        let is_float = pass
+            .extensions
+            .get("FLOAT")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let feedback_self = pass
+            .extensions
+            .get("PERSISTENT")
+            .or_else(|| pass.extensions.get("FEEDBACK"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let label = if target.is_empty() {
+            rel_file.trim_end_matches(".glsl").to_string()
+        } else {
+            target.to_string()
+        };
+        out.push(ScenePassSource {
+            label,
+            fragment_glsl,
+            target_format: if is_float {
+                TargetFormat::Rgba16Float
+            } else {
+                TargetFormat::Rgba8Unorm
+            },
+            feedback_self,
+        });
+    }
+    out
 }
 
 /// Minimum preview dimension (pixels) accepted by [`GpuPreviewEngine::render_frame`].
@@ -326,16 +574,26 @@ pub fn resolve_bpm_uniforms(
     }
 }
 
+/// Pre-loaded intermediate render pass declared in `scene.json` `PASSES`.
+#[derive(Debug, Clone)]
+pub struct ScenePassSource {
+    pub label: String,
+    pub fragment_glsl: String,
+    pub target_format: TargetFormat,
+    pub feedback_self: bool,
+}
+
 /// Explicit lifecycle state of the shell GPU preview engine.
 #[derive(Debug, Clone)]
 pub enum GpuRenderState {
     /// No scene loaded, or the loaded scene carries no `main.glsl` shader.
     Idle,
-    /// A `.chroma` scene's `main.glsl` is armed and ready to render on GPU.
+    /// A `.chroma` scene's `main.glsl` (plus optional `PASSES`) is armed and ready to render on GPU.
     Active {
         scene_id: String,
         shader_path: PathBuf,
         fragment_source: String,
+        extra_passes: Vec<ScenePassSource>,
         frames_rendered: u64,
         last_frame_ms: f32,
     },
@@ -444,6 +702,7 @@ impl GpuPreviewEngine {
         }
         match std::fs::read_to_string(&shader_path) {
             Ok(fragment_source) => {
+                let extra_passes = load_scene_extra_passes(scene_dir);
                 let next_spec = MultipassSpec {
                     passes: vec![PassDef {
                         label: Some(scene_id.clone()),
@@ -464,6 +723,7 @@ impl GpuPreviewEngine {
                     scene_id,
                     shader_path,
                     fragment_source,
+                    extra_passes,
                     frames_rendered: 0,
                     last_frame_ms: 0.0,
                 };
@@ -485,6 +745,7 @@ impl GpuPreviewEngine {
             scene_id,
             shader_path: PathBuf::from("<inline>"),
             fragment_source,
+            extra_passes: Vec::new(),
             frames_rendered: 0,
             last_frame_ms: 0.0,
         };
@@ -587,14 +848,19 @@ impl GpuPreviewEngine {
         controls: [f32; 16],
         bpm_override: &BpmOverrideState,
     ) -> Result<Vec<u8>, String> {
-        let (scene_id, fragment_source) = match &self.state {
+        let (scene_id, fragment_source, extra_passes) = match &self.state {
             GpuRenderState::Idle => return Err("gpu renderer is idle (no active main.glsl)".into()),
             GpuRenderState::Error { message, .. } => return Err(message.clone()),
             GpuRenderState::Active {
                 scene_id,
                 fragment_source,
+                extra_passes,
                 ..
-            } => (scene_id.clone(), fragment_source.clone()),
+            } => (
+                scene_id.clone(),
+                fragment_source.clone(),
+                extra_passes.clone(),
+            ),
         };
 
         let w = width.clamp(MIN_PREVIEW_DIM, MAX_PREVIEW_WIDTH);
@@ -614,10 +880,6 @@ impl GpuPreviewEngine {
             }
         }
 
-        let Some(renderer) = self.renderer.as_ref() else {
-            return Err("wgpu renderer unavailable".into());
-        };
-
         let dt = (elapsed_secs - self.last_elapsed_secs).clamp(1.0 / 240.0, 0.1);
         self.last_elapsed_secs = elapsed_secs;
         let resolved_bpm = resolve_bpm_uniforms(elapsed_secs, audio.bpm, bpm_override);
@@ -631,11 +893,86 @@ impl GpuPreviewEngine {
             controls,
             bpm_override,
         );
-        if fragment_source.contains("chroma_AudioEnv0") {
+        let needs_envelopes = fragment_source.contains("chroma_AudioEnv0")
+            || fragment_source.contains("uniform _ChromaSynBuiltins")
+            || extra_passes.iter().any(|p| {
+                p.fragment_glsl.contains("chroma_AudioEnv0")
+                    || p.fragment_glsl.contains("uniform _ChromaSynBuiltins")
+            });
+        if needs_envelopes {
             append_audio_envelope_uniforms(&mut uniforms, &envelopes);
         }
 
         let started = Instant::now();
+
+        // Multi-pass execution path when `scene.json` declares intermediate `PASSES` shaders.
+        if !extra_passes.is_empty() {
+            let mut passes: Vec<PassDef> = Vec::with_capacity(extra_passes.len() + 1);
+            for (idx, p) in extra_passes.iter().enumerate() {
+                let resolved_pass = self.preprocess_shader_source(&p.fragment_glsl)?;
+                let input_textures = (0..idx)
+                    .map(|prev| PassInputBinding {
+                        source_pass_index: prev,
+                        sampler_uniform_name: extra_passes[prev].label.clone(),
+                    })
+                    .collect();
+                passes.push(PassDef {
+                    label: Some(p.label.clone()),
+                    fragment_glsl: resolved_pass,
+                    uniforms: uniforms.clone(),
+                    input_textures,
+                    target_format: p.target_format,
+                    feedback_self: p.feedback_self,
+                });
+            }
+            let resolved_main = self.preprocess_shader_source(&fragment_source)?;
+            let final_inputs = (0..extra_passes.len())
+                .map(|prev| PassInputBinding {
+                    source_pass_index: prev,
+                    sampler_uniform_name: extra_passes[prev].label.clone(),
+                })
+                .collect();
+            passes.push(PassDef {
+                label: Some(scene_id.clone()),
+                fragment_glsl: resolved_main,
+                uniforms,
+                input_textures: final_inputs,
+                target_format: TargetFormat::Rgba8Unorm,
+                feedback_self: false,
+            });
+            let spec = MultipassSpec {
+                passes,
+                target_size: (w, h),
+                frame_count: 1,
+            };
+            match self.render_multipass(&spec) {
+                Ok(bytes) => {
+                    let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
+                    if let GpuRenderState::Active {
+                        frames_rendered,
+                        last_frame_ms,
+                        ..
+                    } = &mut self.state
+                    {
+                        *frames_rendered = frames_rendered.saturating_add(1);
+                        *last_frame_ms = elapsed_ms;
+                    }
+                    return Ok(bytes);
+                }
+                Err(msg) => {
+                    self.state = GpuRenderState::Error {
+                        scene_id,
+                        message: msg.clone(),
+                    };
+                    return Err(msg);
+                }
+            }
+        }
+
+        let Some(renderer) = self.renderer.as_ref() else {
+            return Err("wgpu renderer unavailable".into());
+        };
+
         if self.cached_pass.is_none() {
             let resolved_source = match self.preprocess_shader_source(&fragment_source) {
                 Ok(src) => src,
@@ -1305,7 +1642,7 @@ void main() {
     }
 
     #[test]
-    fn all_16_bundled_scenes_compile_and_render_on_gpu() {
+    fn all_20_bundled_scenes_compile_and_render_on_gpu() {
         let bundled_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes");
         let mut scene_dirs = Vec::new();
         for sub in ["library", "welcome", "examples"] {
@@ -1320,8 +1657,8 @@ void main() {
         scene_dirs.sort();
         assert_eq!(
             scene_dirs.len(),
-            16,
-            "expected all 16 bundled .chroma scenes"
+            20,
+            "expected all 20 bundled .chroma scenes"
         );
 
         let mut engine = GpuPreviewEngine::new();
@@ -1409,5 +1746,139 @@ void main() {
                 .any(|px| px[0] > 0 || px[1] > 0 || px[2] > 0),
             "SSF helper + AudioEnv shader rendered all-black"
         );
+    }
+
+    #[test]
+    fn multipass_scene_passes_compile_and_render_on_gpu() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "chromaticity-multipass-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+
+        let scene_json = r#"{
+            "TITLE": "Multipass Test",
+            "CREDIT": "Chromaticity",
+            "DESCRIPTION": "Two-pass GPU test",
+            "PASSES": [
+                { "TARGET": "pass0", "FLOAT": true }
+            ]
+        }"#;
+        let pass0_glsl = r#"#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0, std140) uniform Uniforms {
+    vec4 chroma_Time;
+    vec4 chroma_Resolution;
+    vec4 syn_BPM;
+    vec4 chroma_AudioRMS;
+    vec4 chroma_AudioPeak;
+    float chroma_AudioFFT[8];
+    vec4 chroma_Ctrl0;
+    vec4 chroma_Ctrl1;
+    vec4 chroma_Ctrl2;
+    vec4 chroma_Ctrl3;
+};
+void main() {
+    fragColor = vec4(0.2 + 0.6 * uv.x, 0.3 + 0.5 * uv.y, 0.8, 1.0);
+}
+"#;
+        let main_glsl = r#"#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0, std140) uniform Uniforms {
+    vec4 chroma_Time;
+    vec4 chroma_Resolution;
+    vec4 syn_BPM;
+    vec4 chroma_AudioRMS;
+    vec4 chroma_AudioPeak;
+    float chroma_AudioFFT[8];
+    vec4 chroma_Ctrl0;
+    vec4 chroma_Ctrl1;
+    vec4 chroma_Ctrl2;
+    vec4 chroma_Ctrl3;
+};
+layout(set = 0, binding = 1) uniform texture2D pass0_tex;
+layout(set = 0, binding = 2) uniform sampler pass0_samp;
+void main() {
+    vec4 prev = texture(sampler2D(pass0_tex, pass0_samp), uv);
+    fragColor = vec4(prev.rgb * (0.8 + 0.2 * sin(chroma_Time.x)), 1.0);
+}
+"#;
+        std::fs::write(tmp_dir.join("scene.json"), scene_json).unwrap();
+        std::fs::write(tmp_dir.join("pass0.glsl"), pass0_glsl).unwrap();
+        std::fs::write(tmp_dir.join("main.glsl"), main_glsl).unwrap();
+
+        let mut engine = GpuPreviewEngine::new();
+        engine.set_scene("multipass-test".into(), &tmp_dir);
+        let bytes = engine
+            .render_frame(160, 90, 1.0, 1, &AudioUniformSnapshot::default(), [0.5; 16])
+            .expect("multipass scene must compile and render on Metal");
+        assert_eq!(bytes.len(), 160 * 90 * 4);
+        assert!(
+            bytes
+                .chunks_exact(4)
+                .any(|px| px[0] > 20 && px[1] > 20 && px[2] > 20),
+            "multipass scene rendered all-black"
+        );
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn imported_syn_scene_renders_live_on_gpu() {
+        use chromaticity_authoring::syn_import::import_syn_scene_to_chroma;
+
+        let base =
+            std::env::temp_dir().join(format!("chromaticity-syn-gpu-test-{}", std::process::id()));
+        let src_dir = base.join("prism_pulse.synScene");
+        let out_parent = base.join("out");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&out_parent).unwrap();
+
+        let syn_json = r#"{
+            "TITLE": "Prism Pulse",
+            "CREDIT": "Test Author",
+            "DESCRIPTION": "Imported synScene live GPU ABI test",
+            "CONTROLS": [
+                { "NAME": "gain", "TYPE": "slider", "MIN": 0.0, "MAX": 2.0, "DEFAULT": 1.0 },
+                { "NAME": "offset_xy", "TYPE": "xy", "MIN": -1.0, "MAX": 1.0, "DEFAULT": [0.0, 0.0] }
+            ]
+        }"#;
+        let syn_glsl = r#"
+vec4 renderMain() {
+    vec2 p = _rotate(_uv - 0.5 + offset_xy * 0.1, syn_Time * 0.25);
+    float spec = texture(syn_Spectrum, vec2(_uv.x, 0.5)).r;
+    float glow = (0.35 + syn_BassLevel * 0.4 + spec * 0.25) * max(gain, 0.2);
+    vec3 col = vec3(glow, 0.3 + 0.5 * abs(p.x), 0.5 + 0.4 * syn_BPMSin);
+    return vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+"#;
+        std::fs::write(src_dir.join("scene.json"), syn_json).unwrap();
+        std::fs::write(src_dir.join("main.glsl"), syn_glsl).unwrap();
+
+        let report = import_syn_scene_to_chroma(&src_dir, &out_parent)
+            .expect("synScene import must succeed");
+        let mut engine = GpuPreviewEngine::new();
+        engine.set_scene(report.slug.clone(), &report.output_dir);
+        let audio = AudioUniformSnapshot {
+            bpm: 124.0,
+            rms: 0.6,
+            peak: 0.85,
+            fft_bands: [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
+            ..AudioUniformSnapshot::default()
+        };
+        let bytes = engine
+            .render_frame(160, 90, 1.5, 90, &audio, [0.9; 16])
+            .expect("imported .synScene must compile and render live on Metal");
+        assert_eq!(bytes.len(), 160 * 90 * 4);
+        assert!(
+            bytes
+                .chunks_exact(4)
+                .any(|px| px[0] > 20 && px[1] > 20 && px[2] > 20),
+            "imported .synScene rendered all-black"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -52,7 +52,7 @@ This matrix is a read-only claim-hygiene companion to `26-evidence-artifact-regi
 | Feature | Status | Reference | Notes |
 |---|---|---|---|
 | Controls (per-node control values) | 🟢 implemented | `04-runtime-architecture.md` §Core Components; `28-implementation-contract-pack.md` §CP-01 | `engine/runtime/src/state.rs::State::control_value` reads the post-commit value; `app/shell/src/commands/control.rs` exposes the `set_control` / `get_control` Tauri round-trip (PR #94). |
-| Presets (snapshot + recall) | 🟢 implemented | `03-product-requirements.md` FR-6; `07-control-state-presets.md` | `app/shell/src/commands/preset.rs` (`save_preset` / `recall_preset` / `active_preset`) + `src/lib/stores/preset.svelte.ts` (`EV-PRESET-PLAYLIST` Pass; TOML disk persistence remains a follow-up). |
+| Presets (snapshot + recall) | 🟢 implemented | `03-product-requirements.md` FR-6; `07-control-state-presets.md` | `app/shell/src/commands/preset.rs` (`save_preset` / `recall_preset` / `active_preset`) + `src/lib/stores/preset.svelte.ts` (`EV-PRESET-PLAYLIST` Pass; JSON scalar + XY snapshot persistence in `<app_data_dir>/presets.json` with startup hydration). |
 | Playlists (advance / rewind / bounds) | 🟢 implemented | `03-product-requirements.md` FR-6; `08-io-integrations.md` §OSC Conformance Test IDs | `src/lib/stores/playlist.svelte.ts` implements timed cue playback with auto-advance, loop, scene loading via `loadedSceneStore`, advance/rewind, and persistence alongside `app/shell/src/commands/playlist.rs`. |
 | Snap / favslots (16-slot surface) | 🟢 implemented | `04-runtime-architecture.md` §Core Components; `38-scene-library-and-import-spec.md` §8 Evidence | `engine/runtime/src/command_bus.rs` defines `Command::SnapRecall` / `SnapSave` / `SnapClear` and their `EventPayload` mirrors (lines 155-159, 185-193); `engine/runtime/src/state.rs::State` applies them via `apply_event` (lines 77-89) and exposes `active_snap_slot` / `snap_slot_saved` accessors (lines 114-122); `app/shell/src/commands/snap.rs` exposes the full Tauri round-trip (PR #98). The OSC discovery / announcement surface remains planned and is not part of the implemented rollup here. |
 | MIDI mappings | 🟢 implemented | `08-io-integrations.md` §MIDI Planning Contract | `app/shell/src/commands/midi.rs` (`start_midi_learn`, `start_midi_performance_listener`) + `src/lib/stores/midiBindings.svelte.ts` implement MIDI learn, persistent bindings, and live background CC/Note control dispatch. |
@@ -155,4 +155,4 @@ These counts are informational only; this matrix is not a gate.
 
 | 🟢 implemented | 🟡 planned:* | ⚪ post-MVP | ➖ intentionally-rejected | ➖ n/a |
 |---:|---:|---:|---:|---:|
-| 46 | 38 | 9 | 4 | 0 |
+| 45 | 38 | 9 | 4 | 0 |

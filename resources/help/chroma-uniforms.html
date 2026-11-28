@@ -721,6 +721,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#live-gpu-ubo-layout-std140-binding-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live GPU UBO Layout (std140, binding 0)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#audio-uniforms" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -733,10 +744,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#scalar-audio-uniforms" class="md-nav__link">
+  <a href="#scalar-audio-uniforms-runtime-planned-catalog" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Scalar audio uniforms
+        Scalar audio uniforms (runtime &amp; planned catalog)
       
     </span>
   </a>
@@ -744,21 +755,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#array-audio-uniforms" class="md-nav__link">
+  <a href="#array-sampler-audio-uniforms" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Array audio uniforms
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sampler-audio-uniforms" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Sampler audio uniforms
+        Array &amp; sampler audio uniforms
       
     </span>
   </a>
@@ -1034,6 +1034,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#live-gpu-ubo-layout-std140-binding-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live GPU UBO Layout (std140, binding 0)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#audio-uniforms" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1046,10 +1057,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#scalar-audio-uniforms" class="md-nav__link">
+  <a href="#scalar-audio-uniforms-runtime-planned-catalog" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Scalar audio uniforms
+        Scalar audio uniforms (runtime &amp; planned catalog)
       
     </span>
   </a>
@@ -1057,21 +1068,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#array-audio-uniforms" class="md-nav__link">
+  <a href="#array-sampler-audio-uniforms" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Array audio uniforms
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sampler-audio-uniforms" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Sampler audio uniforms
+        Array &amp; sampler audio uniforms
       
     </span>
   </a>
@@ -1141,118 +1141,160 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 <p>Authors may mix the two namespaces freely inside a single scene. The
 binding adapter publishes the uniforms in a stable per-pass order; GLSL
 authors declare each uniform with its canonical name and type.</p>
+<h2 id="live-gpu-ubo-layout-std140-binding-0">Live GPU UBO Layout (<code>std140</code>, binding 0)</h2>
+<p>In Chromaticity's live <code>wgpu</code>/Metal preview renderer (<code>app/shell/src/render.rs</code>),
+the runtime packs a single <code>std140</code> uniform block at <code>layout(set = 0, binding = 0)</code>.
+Native <code>.chroma</code> shaders declare the packed <code>vec4</code> block directly:</p>
+<pre><code class="language-glsl">layout(set = 0, binding = 0, std140) uniform ChromaUniforms {
+    vec4 chroma_Time;       // x = elapsed_s, y = dt, z = frame, w = aspect
+    vec4 chroma_Resolution; // x = width, y = height, z = 1/width, w = 1/height
+    vec4 syn_BPM;           // x = bpm, y = beat_time, z = on_beat, w = bpm_sin
+    vec4 chroma_AudioRMS;   // x = rms
+    vec4 chroma_AudioPeak;  // x = peak
+    float chroma_AudioFFT[8]; // 8 log-spaced FFT bands (std140-padded array)
+    vec4 chroma_Ctrl0;      // user controls 0..3
+    vec4 chroma_Ctrl1;      // user controls 4..7
+    vec4 chroma_Ctrl2;      // user controls 8..11
+    vec4 chroma_Ctrl3;      // user controls 12..15 (including XY.y &amp; script.js)
+    // Optional extended reactive envelopes (appended when shader references chroma_AudioEnv0):
+    vec4 chroma_AudioEnv0;  // x = level, y = hits, z = presence, w = time
+    vec4 chroma_AudioEnv1;  // x = bass_level, y = bass_hits, z = bass_presence, w = bass_time
+    vec4 chroma_AudioEnv2;  // x = mid_level, y = mid_hits, z = mid_presence, w = mid_time
+    vec4 chroma_AudioEnv3;  // x = high_level, y = high_hits, z = high_presence, w = high_time
+    vec4 chroma_AudioMeta;  // x = fade_in_out, y = intensity, z = bpm_confidence, w = random_on_beat
+};
+</code></pre>
+<blockquote>
+<p><strong>Note on extended envelopes:</strong> When a shader references <code>chroma_AudioEnv0</code>,
+the renderer automatically appends <code>chroma_AudioEnv0..3</code> and
+<code>chroma_AudioMeta</code> to the binding-0 std140 buffer.</p>
+</blockquote>
 <h2 id="audio-uniforms">Audio uniforms</h2>
 <p>The audio analysis pipeline produces a per-tick <code>AudioUniformSnapshot</code>
 on the audio-analysis thread, which the audio-to-render adapter
-marshals into the GPU uniform slots below. The slice-1 producer is
-pure-data; the slice-2 BPM estimator carries a history-window
-median-smoother for tempo-following. Uniforms that read zero are the
+marshals into the GPU uniform slots above. Uniforms that read zero are the
 documented all-zero baseline for "no audio observed yet"; in
 production, the BPM uniform clamps to the default tempo (120 BPM) on
 the first tick before any analysis history accumulates.</p>
-<h3 id="scalar-audio-uniforms">Scalar audio uniforms</h3>
+<h3 id="scalar-audio-uniforms-runtime-planned-catalog">Scalar audio uniforms (runtime &amp; planned catalog)</h3>
 <table>
 <thead>
 <tr>
 <th>Uniform</th>
 <th>Type</th>
 <th>Range</th>
+<th>Live GPU Status</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>syn_BPM</code></td>
-<td><code>float</code></td>
+<td><code>vec4</code> (<code>syn_BPM.x</code>)</td>
 <td><code>[50, 220]</code></td>
-<td>Estimated tempo, clamped to the musical range</td>
+<td>Live</td>
+<td>Estimated tempo (<code>x=bpm, y=beat_time, z=on_beat, w=bpm_sin</code>)</td>
 </tr>
 <tr>
 <td><code>syn_BPMConfidence</code></td>
-<td><code>float</code></td>
+<td><code>float</code> (<code>chroma_AudioMeta.z</code>)</td>
 <td><code>[0, 1]</code></td>
+<td>Live</td>
 <td>Tempo-stability confidence; near 1 when the estimator agrees across the history window</td>
 </tr>
 <tr>
 <td><code>syn_BPMTwitcher</code></td>
 <td><code>float</code></td>
 <td><code>[0, inf)</code></td>
+<td>Planned</td>
 <td>Exponential "jump" clock; <code>floor</code> is the beat count, <code>fract</code> is the per-beat twitch</td>
 </tr>
 <tr>
 <td><code>syn_BPMSin</code></td>
-<td><code>float</code></td>
+<td><code>float</code> (<code>syn_BPM.w</code>)</td>
 <td><code>[0, 1]</code></td>
+<td>Live</td>
 <td>Sine wave at BPM frequency, beat-phase-locked</td>
 </tr>
 <tr>
 <td><code>syn_BPMSin2</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
+<td>Planned</td>
 <td>Sine wave at BPM divided by 2</td>
 </tr>
 <tr>
 <td><code>syn_BPMSin4</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
+<td>Planned</td>
 <td>Sine wave at BPM divided by 4</td>
 </tr>
 <tr>
 <td><code>syn_BPMTri</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
+<td>Planned</td>
 <td>Triangle wave at BPM frequency</td>
 </tr>
 <tr>
 <td><code>syn_BPMTri2</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
+<td>Planned</td>
 <td>Triangle wave at BPM divided by 2</td>
 </tr>
 <tr>
 <td><code>syn_BPMTri4</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
+<td>Planned</td>
 <td>Triangle wave at BPM divided by 4</td>
 </tr>
 <tr>
 <td><code>syn_InputLevel</code></td>
-<td><code>float</code></td>
+<td><code>float</code> (<code>chroma_AudioRMS.x</code>)</td>
 <td><code>[0, inf)</code></td>
-<td>Pre-AGC instantaneous input level, computed as <code>clamp(RMS / AGC_target, 0, inf)</code></td>
+<td>Live</td>
+<td>Pre-AGC instantaneous input level</td>
 </tr>
 <tr>
 <td><code>syn_RawLevel</code></td>
-<td><code>float</code></td>
+<td><code>float</code> (<code>chroma_AudioRMS.x</code>)</td>
 <td><code>[0, inf)</code></td>
+<td>Live</td>
 <td>Alias of <code>syn_InputLevel</code> with identical semantics</td>
 </tr>
 <tr>
 <td><code>syn_Threshold</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
+<td>Runtime / OSC</td>
 <td>Operator-settable noise-floor gate; audio hops below this value publish zeroed <code>syn_Level*</code> and <code>syn_*Hits</code></td>
 </tr>
 <tr>
 <td><code>chroma_AudioRMS</code></td>
-<td><code>float</code></td>
+<td><code>vec4</code> (<code>chroma_AudioRMS.x</code>)</td>
 <td><code>[0, inf)</code></td>
-<td>Analysis-window root-mean-square energy of the mono-mixed audio frame (computed over the same window as <code>chroma_AudioFFT</code> so smoothing is consistent across the audio uniform family)</td>
+<td>Live</td>
+<td>Analysis-window root-mean-square energy of the mono-mixed audio frame</td>
 </tr>
 <tr>
 <td><code>chroma_AudioPeak</code></td>
-<td><code>float</code></td>
+<td><code>vec4</code> (<code>chroma_AudioPeak.x</code>)</td>
 <td><code>[0, inf)</code></td>
+<td>Live</td>
 <td>Analysis-window peak magnitude of the mono-mixed audio frame</td>
 </tr>
 </tbody>
 </table>
-<h3 id="array-audio-uniforms">Array audio uniforms</h3>
+<h3 id="array-sampler-audio-uniforms">Array &amp; sampler audio uniforms</h3>
 <table>
 <thead>
 <tr>
 <th>Uniform</th>
 <th>Type</th>
+<th>Live GPU Status</th>
 <th>Description</th>
 </tr>
 </thead>
@@ -1260,50 +1302,23 @@ the first tick before any analysis history accumulates.</p>
 <tr>
 <td><code>chroma_AudioFFT[8]</code></td>
 <td><code>float[8]</code></td>
+<td>Live (std140 binding 0)</td>
 <td>Eight log-spaced FFT band magnitudes covering 20 Hz to 20 kHz; element 0 is the lowest band, element 7 is the highest</td>
 </tr>
-</tbody>
-</table>
-<p>The <code>chroma_AudioFFT</code> array binding was consolidated from a transitional
-split-vec4 spelling (<code>chroma_AudioFFTLow</code> for bands 0..3,
-<code>chroma_AudioFFTHigh</code> for bands 4..7) once the multipass scheduler grew
-a <code>FloatArray</code> uniform variant. GLSL authors declare the array
-directly:</p>
-<pre><code class="language-glsl">uniform float chroma_AudioFFT[8];
-
-// later in main():
-float bass = chroma_AudioFFT[0] + chroma_AudioFFT[1];
-float treble = chroma_AudioFFT[6] + chroma_AudioFFT[7];
-</code></pre>
-<h3 id="sampler-audio-uniforms">Sampler audio uniforms</h3>
-<table>
-<thead>
-<tr>
-<th>Uniform</th>
-<th>Type</th>
-<th>Channels</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
 <tr>
 <td><code>syn_Spectrum</code></td>
 <td><code>sampler1D</code></td>
-<td><code>r=Raw FFT, g=Juiced, b=Smooth, a=Waveform</code></td>
-<td>Per-frame audio sampler with packed analysis variants</td>
+<td>Planned</td>
+<td>Per-frame audio sampler (<code>r=Raw FFT, g=Juiced, b=Smooth, a=Waveform</code>)</td>
 </tr>
 <tr>
 <td><code>syn_LevelTrail</code></td>
 <td><code>sampler1D</code></td>
-<td><code>r=Whole, g=Bass, b=Mid, a=High</code></td>
+<td>Planned</td>
 <td>Per-band historical levels over time, newest sample at <code>u=0</code></td>
 </tr>
 </tbody>
 </table>
-<p>The eight-band split that <code>chroma_AudioFFT[8]</code> exposes is a separate
-surface from <code>syn_Spectrum</code>; the sampler retains parity with the
-compatibility catalog while the fixed-size array gives shader authors
-ergonomic indexing without a sampler lookup.</p>
 <h2 id="time-uniforms">Time uniforms</h2>
 <table>
 <thead>

@@ -167,6 +167,8 @@ export interface MixLayer {
   readonly name: string;
   readonly kind: LayerSourceKind;
   readonly sceneId?: string;
+  readonly textContent?: string;
+  readonly textColor?: string;
   readonly visible: boolean;
   readonly locked: boolean;
   readonly solo: boolean;
@@ -633,6 +635,7 @@ class VideoMixerStore {
       name: resolvedName,
       kind,
       ...(defaultShaderScene !== undefined ? { sceneId: defaultShaderScene } : {}),
+      ...(kind === 'text' ? { textContent: 'LIVE VISUAL PERFORMANCE', textColor: '#ffffff' } : {}),
       visible: true,
       locked: false,
       solo: false,
@@ -705,6 +708,21 @@ class VideoMixerStore {
 
   toggleSolo(id: string): void {
     this.updateLayer(id, (layer) => ({ ...layer, solo: !layer.solo }));
+  }
+
+  /** Update text overlay content or color on a `'text'` layer (no-op if locked). */
+  setLayerText(
+    id: string,
+    patch: { readonly textContent?: string; readonly textColor?: string },
+  ): void {
+    this.updateLayer(id, (layer) => {
+      if (layer.locked || layer.kind !== 'text') return layer;
+      return {
+        ...layer,
+        ...(patch.textContent !== undefined ? { textContent: patch.textContent } : {}),
+        ...(patch.textColor !== undefined ? { textColor: patch.textColor } : {}),
+      };
+    });
   }
 
   /** Patch a layer's transform (no-op if the layer is locked). */

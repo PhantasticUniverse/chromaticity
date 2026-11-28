@@ -1,0 +1,211 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Hyperbolic Liquid-Opal Cathedral",
+  "CREDIT": "Chromaticity Grandmaster Showcase",
+  "DESCRIPTION": "Glides down an infinite 3D Kleinian-inspired vaulted fractal cathedral whose obsidian and burnished-gold ribs are draped in curl-rippled liquid-opal mercury, bathed in volumetric prismatic stained-glass god-rays and 4-tap ambient occlusion. Features 12 live-wired controls across 4 UI groups, 5 factory presets, and a deterministic beat-synced QuickJS script.",
+  "TAGS": ["grandmaster", "cathedral", "fractal", "opal", "liquid", "godrays", "3d"],
+  "CATEGORIES": ["MY-SCENES", "3D", "PSYCHEDELIC", "AUDIO-REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "speed",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.35,
+      "MIN": -1.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "Bipolar nave flythrough velocity; negative values glide backward down the infinite vaulted aisle."
+    },
+    {
+      "NAME": "audioDrive",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.65,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "Scales FFT coupling into stained-glass shaft pulsing, gold-vein luminescence, and obsidian canal rails."
+    },
+    {
+      "NAME": "foldMorph",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.55,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Morphs the 4-iteration Kleinian box-fold tracery ribs carved into the cathedral walls and vaults."
+    },
+    {
+      "NAME": "ribScale",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Adjusts nave column thickness and gyroid liquid-opal surface relief depth across the obsidian stone."
+    },
+    {
+      "NAME": "mirrorNave",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Mirrors the cathedral vertically into an impossible Escher-like dual-vault reflection."
+    },
+    {
+      "NAME": "opalSheen",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.72,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Thin-film liquid-opal Fresnel iridescence draped over obsidian arches and the floor canal."
+    },
+    {
+      "NAME": "godRays",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.65,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Density of diagonal volumetric stained-glass clerestory light shafts descending through the nave."
+    },
+    {
+      "NAME": "accentTint",
+      "TYPE": "color",
+      "DEFAULT": [0.95, 0.72, 0.32],
+      "DEF_COLOR": [0.95, 0.72, 0.32, 1.0],
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Palette phase and stained-glass accent tint for volumetric god-rays and gilded gothic ribs."
+    },
+    {
+      "NAME": "intensity",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.04,
+      "DEFAULT": 0.78,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Master HDR exposure into ACES filmic tone mapping."
+    },
+    {
+      "NAME": "strobeGate",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Arms beat-locked clerestory strobe pulses synchronized to syn_BPM."
+    },
+    {
+      "NAME": "vaultPulse",
+      "TYPE": "bang smooth",
+      "PARAMS": 0.08,
+      "DEFAULT": 0.0,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Momentary energy wave surging forward along the obsidian floor canal and gothic arches."
+    },
+    {
+      "NAME": "look",
+      "TYPE": "xy smooth",
+      "PARAMS": 0.08,
+      "DEFAULT": [0.5, 0.5],
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "2D camera pan (X) and clerestory pitch (Y) inside the gothic fractal nave."
+    }
+  ],
+  "PRESETS": [
+    {
+      "NAME": "Default",
+      "DESCRIPTION": "Classic obsidian-and-gold hyperbolic cathedral with balanced liquid-opal sheen and stained-glass god-rays.",
+      "VALUES": {
+        "speed": 0.35,
+        "audioDrive": 0.65,
+        "foldMorph": 0.55,
+        "ribScale": 0.5,
+        "mirrorNave": false,
+        "opalSheen": 0.72,
+        "godRays": 0.65,
+        "accentTint": [0.95, 0.72, 0.32],
+        "intensity": 0.78,
+        "strobeGate": false,
+        "vaultPulse": 0.0,
+        "look": [0.5, 0.5]
+      }
+    },
+    {
+      "NAME": "Deep Warehouse",
+      "DESCRIPTION": "Dark obsidian crypt crawl with heavy monolithic columns, dramatic shafts, and deep crimson-gold veins.",
+      "VALUES": {
+        "speed": 0.18,
+        "audioDrive": 0.92,
+        "foldMorph": 0.32,
+        "ribScale": 0.84,
+        "mirrorNave": false,
+        "opalSheen": 0.36,
+        "godRays": 0.88,
+        "accentTint": [0.98, 0.28, 0.18],
+        "intensity": 0.68,
+        "strobeGate": false,
+        "vaultPulse": 0.0,
+        "look": [0.5, 0.42]
+      }
+    },
+    {
+      "NAME": "Peak-Time Strobe",
+      "DESCRIPTION": "High-speed Escher dual-vault reflection with beat-locked clerestory strobe and hyper-folded fractal tracery.",
+      "VALUES": {
+        "speed": 0.88,
+        "audioDrive": 0.96,
+        "foldMorph": 0.94,
+        "ribScale": 0.62,
+        "mirrorNave": true,
+        "opalSheen": 0.95,
+        "godRays": 1.0,
+        "accentTint": [0.22, 0.95, 1.0],
+        "intensity": 0.92,
+        "strobeGate": true,
+        "vaultPulse": 0.0,
+        "look": [0.5, 0.56]
+      }
+    },
+    {
+      "NAME": "Iridescent Dream",
+      "DESCRIPTION": "Gentle reverse glide looking upward into pastel liquid-opal vaults drenched in soft prismatic shafts.",
+      "VALUES": {
+        "speed": -0.22,
+        "audioDrive": 0.45,
+        "foldMorph": 0.72,
+        "ribScale": 0.38,
+        "mirrorNave": false,
+        "opalSheen": 1.0,
+        "godRays": 0.76,
+        "accentTint": [0.85, 0.48, 1.0],
+        "intensity": 0.76,
+        "strobeGate": false,
+        "vaultPulse": 0.0,
+        "look": [0.52, 0.74]
+      }
+    },
+    {
+      "NAME": "Sub-Bass Minimal",
+      "DESCRIPTION": "Clean architectural ribs and subtle tracery emphasizing bass-reactive electric rails along the dark canal.",
+      "VALUES": {
+        "speed": 0.24,
+        "audioDrive": 0.88,
+        "foldMorph": 0.22,
+        "ribScale": 0.3,
+        "mirrorNave": false,
+        "opalSheen": 0.4,
+        "godRays": 0.28,
+        "accentTint": [0.32, 0.88, 1.0],
+        "intensity": 0.72,
+        "strobeGate": false,
+        "vaultPulse": 0.0,
+        "look": [0.5, 0.38]
+      }
+    }
+  ],
+  "PASSES": []
+}

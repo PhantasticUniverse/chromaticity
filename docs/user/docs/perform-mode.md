@@ -51,11 +51,11 @@ The full operator hotkey vocabulary lives at
 
 The Meta Controls panel exposes the scene-agnostic colour pipeline:
 master, brightness, gamma, contrast, hue, saturation, invert, vertical
-mirror, horizontal mirror, dichrome. Each meta control binds onto a
-canonical `_Meta*` uniform that is published to every scene; authors
-do not opt in or out of the pipeline. The hotkeys `M` / `B` / `G` /
-`C` / `H` / `Y` enter modal slider-adjust mode against the matching
-meta control; `Esc` exits.
+mirror, horizontal mirror, dichrome. Meta Controls are applied in the
+live frontend preview and stage compositor (dedicated GPU `_Meta*`
+shader uniforms are planned for a future render pass). The hotkeys
+`M` / `B` / `G` / `C` / `H` / `Y` enter modal slider-adjust mode against
+the matching meta control; `Esc` exits.
 
 ## The Preview hero
 

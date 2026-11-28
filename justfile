@@ -78,5 +78,10 @@ hygiene:
 bindings:
     cargo test -p chromaticity-app --test export_bindings
 
+# Rebuild dist/ and capture fresh 1440x900 UI preview screenshots
+capture-ui out_dir=".local/ui-captures":
+    npm run build
+    node scripts/capture-ui-preview.mjs "{{out_dir}}"
+
 # Run full local CI verification suite
 ci: build-help check test

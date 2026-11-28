@@ -10,7 +10,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     setAdaptiveScaleEnabled,
     type GpuCostTelemetryDto,
   } from '../ipc/mix';
-  import { saveReplayBuffer } from '../ipc/recorder';
+  import { getRecorderStatus, pushRecorderJpegFrame, saveReplayBuffer } from '../ipc/recorder';
   import {
     getStreamStatus,
     listStreamAudioDevices,
@@ -198,23 +198,69 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     return programMirrorChannel;
   }
 
+  let localRecordingActive = false;
+  let recorderPushInFlight = false;
+
+  $effect(() => {
+    let active = true;
+    void getRecorderStatus().then((status) => {
+      if (active && status) {
+        localRecordingActive = status.is_recording;
+      }
+    });
+    const onRecordingChange = (event: Event): void => {
+      const custom = event as CustomEvent<{ isRecording?: boolean }>;
+      localRecordingActive = Boolean(custom.detail?.isRecording);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('chromaticity:recording-change', onRecordingChange);
+    }
+    return () => {
+      active = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('chromaticity:recording-change', onRecordingChange);
+      }
+    };
+  });
+
   function postProgramMirrorFrame(canvas: HTMLCanvasElement): void {
     const ch = ensureProgramMirrorChannel();
-    if (!ch || typeof createImageBitmap !== 'function') return;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (now - lastMirrorPostAt < 33) return;
     lastMirrorPostAt = now;
-    void createImageBitmap(canvas)
-      .then((bitmap) => {
-        if (disposed || !programMirrorChannel) {
+    if (ch && typeof createImageBitmap === 'function') {
+      void createImageBitmap(canvas)
+        .then((bitmap) => {
+          if (disposed || !programMirrorChannel) {
+            bitmap.close();
+            return;
+          }
+          programMirrorChannel.postMessage({ bitmap });
           bitmap.close();
-          return;
-        }
-        programMirrorChannel.postMessage({ bitmap }, [bitmap]);
-      })
-      .catch(() => {
-        // Ignore transient bitmap capture errors on unmounted canvases.
-      });
+        })
+        .catch(() => {
+          // Ignore transient bitmap capture errors on unmounted canvases.
+        });
+    }
+    if (localRecordingActive && !recorderPushInFlight && typeof canvas.toBlob === 'function') {
+      recorderPushInFlight = true;
+      canvas.toBlob(
+        (blob) => {
+          if (!blob || disposed || !localRecordingActive) {
+            recorderPushInFlight = false;
+            return;
+          }
+          void blob
+            .arrayBuffer()
+            .then((buf) => pushRecorderJpegFrame(new Uint8Array(buf)))
+            .finally(() => {
+              recorderPushInFlight = false;
+            });
+        },
+        'image/jpeg',
+        0.82,
+      );
+    }
   }
 
   function syncAudioBusToBackend(channelId: string): void {
@@ -584,12 +630,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         try {
           if (isTextLayer) {
             const labelText =
-              layerEl?.textContent?.trim() || layer.name || 'LIVE VISUAL PERFORMANCE';
+              layer.textContent?.trim() ||
+              layerEl?.textContent?.trim() ||
+              layer.name ||
+              'LIVE VISUAL PERFORMANCE';
             const fontSize = Math.max(24, Math.round(height * 0.065));
             ctx.font = `700 ${fontSize}px system-ui, -apple-system, sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = layer.textColor || '#ffffff';
             ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
             ctx.shadowBlur = Math.round(fontSize * 0.25);
             ctx.fillText(labelText, 0, 0, width * 0.9);
@@ -1933,9 +1982,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                           </div>
                         {/if}
                       {:else if layer.kind === 'text'}
-                        <div class="mix__visual-text">
+                        <div
+                          class="mix__visual-text"
+                          style={`color: ${layer.textColor ?? '#ffffff'}`}
+                        >
                           <span class="mix__text-heading">{layer.name}</span>
-                          <span class="mix__text-sub">LIVE VISUAL PERFORMANCE</span>
+                          <span class="mix__text-sub"
+                            >{layer.textContent ?? 'LIVE VISUAL PERFORMANCE'}</span
+                          >
                         </div>
                       {:else if localMediaUrl !== null && localMediaKind === 'video'}
                         <video
@@ -2166,9 +2220,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                           <canvas class="mix__keyed-canvas" use:keyedVideoCanvas={progKeying}
                           ></canvas>
                         {:else if layer.kind === 'text'}
-                          <div class="mix__visual-text">
+                          <div
+                            class="mix__visual-text"
+                            style={`color: ${layer.textColor ?? '#ffffff'}`}
+                          >
                             <span class="mix__text-heading">{layer.name}</span>
-                            <span class="mix__text-sub">CHROMATICITY · LIVE</span>
+                            <span class="mix__text-sub"
+                              >{layer.textContent ?? 'CHROMATICITY · LIVE'}</span
+                            >
                           </div>
                         {:else if layer.kind === 'youtube' && youtubeMachine.kind === 'ready' && youtubeEmbedUrl !== null}
                           <iframe
@@ -2542,6 +2601,43 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   {/if}
                 </div>
               {/if}
+            </section>
+          {/if}
+
+          {#if selectedLayer.kind === 'text'}
+            <!-- TEXT OVERLAY INSPECTOR SECTION -->
+            <section class="mix__section" aria-label="Text Overlay">
+              <div class="mix__section-body">
+                <div class="mix__field">
+                  <label class="mix__label" for="mix-text-content">Overlay Text</label>
+                  <input
+                    id="mix-text-content"
+                    data-testid="mix-text-content-input"
+                    type="text"
+                    class="mix__input"
+                    value={selectedLayer.textContent ?? 'LIVE VISUAL PERFORMANCE'}
+                    disabled={selectedLayer.locked}
+                    oninput={(e) =>
+                      videoMixerStore.setLayerText(selectedLayer.id, {
+                        textContent: e.currentTarget.value,
+                      })}
+                  />
+                </div>
+                <div class="mix__field">
+                  <label class="mix__label" for="mix-text-color">Text Color</label>
+                  <input
+                    id="mix-text-color"
+                    data-testid="mix-text-color-input"
+                    type="color"
+                    value={selectedLayer.textColor ?? '#ffffff'}
+                    disabled={selectedLayer.locked}
+                    oninput={(e) =>
+                      videoMixerStore.setLayerText(selectedLayer.id, {
+                        textColor: e.currentTarget.value,
+                      })}
+                  />
+                </div>
+              </div>
             </section>
           {/if}
 

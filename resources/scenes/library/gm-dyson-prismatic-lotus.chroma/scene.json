@@ -1,0 +1,211 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Dyson Prismatic Lotus",
+  "CREDIT": "Chromaticity Grandmaster Showcase",
+  "DESCRIPTION": "Raymarched 3D sacred-geometry crystal lotus floating above a rippling black-mirror mercury pool with a true 1-bounce planar reflection, Snell's-law RGB dispersion, Beer-Lambert jewel absorption, and caustic shafts. Features 12 live-wired controls across 4 UI groups, 5 factory presets, and a deterministic beat-synced QuickJS script.",
+  "TAGS": ["grandmaster", "refraction", "crystal", "lotus", "caustics", "mirror", "3d"],
+  "CATEGORIES": ["MY-SCENES", "3D", "PSYCHEDELIC", "AUDIO-REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "speed",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.35,
+      "MIN": -1.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "Bipolar petal rotation and camera orbit tempo; negative values reverse the lotus counter-spin."
+    },
+    {
+      "NAME": "audioDrive",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.65,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "Scales FFT bass, mid, and high coupling into petal breathing, core heart flare, and pool caustics."
+    },
+    {
+      "NAME": "bloomFold",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.55,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Opens or closes the three concentric crystal lotus petal tiers from tight bud to full sacred bloom."
+    },
+    {
+      "NAME": "poolRipple",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Amplitude of concentric mercury-pool mirror ripples distorting the planar reflection."
+    },
+    {
+      "NAME": "kaleidoMirror",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Engages vertical-axis sacred mirror reflection across the viewport for symmetrical stage totems."
+    },
+    {
+      "NAME": "dispersion",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.68,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Snell's-law RGB refractive-index separation inside the crystal lotus petals."
+    },
+    {
+      "NAME": "causticGlow",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.62,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Intensity of volumetric core halo shafts and golden-cyan mercury pool caustics."
+    },
+    {
+      "NAME": "accentTint",
+      "TYPE": "color",
+      "DEFAULT": [0.25, 0.9, 1.0],
+      "DEF_COLOR": [0.25, 0.9, 1.0, 1.0],
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Shifts the thin-film crystal iridescence and core caustic chromatic palette."
+    },
+    {
+      "NAME": "intensity",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.04,
+      "DEFAULT": 0.78,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Master HDR exposure into ACES filmic tone mapping."
+    },
+    {
+      "NAME": "invertFlash",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Inverts crystal luminance into a high-contrast photographic negative solarized prism look."
+    },
+    {
+      "NAME": "energyFlash",
+      "TYPE": "bang smooth",
+      "PARAMS": 0.08,
+      "DEFAULT": 0.0,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Momentary Dyson-core harmonic flare sending a radial caustic ring across the mercury pool."
+    },
+    {
+      "NAME": "orbit",
+      "TYPE": "xy smooth",
+      "PARAMS": 0.08,
+      "DEFAULT": [0.5, 0.5],
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "2D camera azimuth (X) and elevation (Y) orbiting above the black-mirror mercury pool."
+    }
+  ],
+  "PRESETS": [
+    {
+      "NAME": "Default",
+      "DESCRIPTION": "Balanced crystalline lotus in sapphire-cyan light above a gently rippling mercury mirror.",
+      "VALUES": {
+        "speed": 0.35,
+        "audioDrive": 0.65,
+        "bloomFold": 0.55,
+        "poolRipple": 0.5,
+        "kaleidoMirror": false,
+        "dispersion": 0.68,
+        "causticGlow": 0.62,
+        "accentTint": [0.25, 0.9, 1.0],
+        "intensity": 0.78,
+        "invertFlash": false,
+        "energyFlash": 0.0,
+        "orbit": [0.5, 0.5]
+      }
+    },
+    {
+      "NAME": "Deep Warehouse",
+      "DESCRIPTION": "Tightly folded obsidian bud with slow reverse spin, heavy mercury waves, and sub-bass core reactivity.",
+      "VALUES": {
+        "speed": -0.24,
+        "audioDrive": 0.94,
+        "bloomFold": 0.22,
+        "poolRipple": 0.88,
+        "kaleidoMirror": false,
+        "dispersion": 0.45,
+        "causticGlow": 0.48,
+        "accentTint": [0.58, 0.18, 0.95],
+        "intensity": 0.66,
+        "invertFlash": false,
+        "energyFlash": 0.0,
+        "orbit": [0.46, 0.32]
+      }
+    },
+    {
+      "NAME": "Peak-Time Strobe",
+      "DESCRIPTION": "Wide-open sacred bloom with symmetrical kaleido mirror, maximum RGB refraction, and blazing core caustics.",
+      "VALUES": {
+        "speed": 0.86,
+        "audioDrive": 0.95,
+        "bloomFold": 0.92,
+        "poolRipple": 0.74,
+        "kaleidoMirror": true,
+        "dispersion": 1.0,
+        "causticGlow": 0.96,
+        "accentTint": [0.15, 1.0, 0.82],
+        "intensity": 0.92,
+        "invertFlash": false,
+        "energyFlash": 0.0,
+        "orbit": [0.5, 0.62]
+      }
+    },
+    {
+      "NAME": "Iridescent Dream",
+      "DESCRIPTION": "High-elevation meditative orbit over a glass-still mercury mirror with lush pastel thin-film refraction.",
+      "VALUES": {
+        "speed": 0.2,
+        "audioDrive": 0.42,
+        "bloomFold": 0.76,
+        "poolRipple": 0.14,
+        "kaleidoMirror": false,
+        "dispersion": 0.95,
+        "causticGlow": 0.82,
+        "accentTint": [0.95, 0.45, 0.88],
+        "intensity": 0.76,
+        "invertFlash": false,
+        "energyFlash": 0.0,
+        "orbit": [0.62, 0.76]
+      }
+    },
+    {
+      "NAME": "Sub-Bass Minimal",
+      "DESCRIPTION": "Architectural closed crystal totem with restrained caustics, low ripple, and warm amber-gold core highlights.",
+      "VALUES": {
+        "speed": 0.15,
+        "audioDrive": 0.82,
+        "bloomFold": 0.34,
+        "poolRipple": 0.22,
+        "kaleidoMirror": false,
+        "dispersion": 0.3,
+        "causticGlow": 0.36,
+        "accentTint": [1.0, 0.78, 0.32],
+        "intensity": 0.72,
+        "invertFlash": false,
+        "energyFlash": 0.0,
+        "orbit": [0.5, 0.44]
+      }
+    }
+  ],
+  "PASSES": []
+}

@@ -1,0 +1,219 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Quantum Ferro-Chromatic Singularity",
+  "CREDIT": "Chromaticity Grandmaster Showcase",
+  "DESCRIPTION": "Transcendent 3D psychedelic flow uniting a gyroid-sculpted liquid-chrome and black-opal ferrofluid sculpture with a volumetric 3D quantum-orbital interference cloud (|psi1 + psi2 + psi3|^2). Features 12 live-wired controls across 4 UI groups, 5 factory presets, and a deterministic beat-synced QuickJS script.",
+  "TAGS": [
+    "grandmaster",
+    "psychedelic",
+    "quantum",
+    "liquid-chrome",
+    "volumetric",
+    "milkdrop",
+    "3d"
+  ],
+  "CATEGORIES": ["MY-SCENES", "PSYCHEDELIC", "3D", "AUDIO-REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "speed",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.35,
+      "MIN": -1.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "Bipolar quantum orbital flow and ferrofluid rotation speed; negative values reverse curl spin."
+    },
+    {
+      "NAME": "audioDrive",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.68,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "Couples all 8 FFT bands into Rosensweig ferrofluid spikes, camera bass punch, and orbital cloud density."
+    },
+    {
+      "NAME": "warp",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "3D gyroid curl distortion sculpting the liquid-chrome core and swirling probability filaments."
+    },
+    {
+      "NAME": "ribbonMix",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.55,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Scales the orbiting liquid-mercury trefoil ribbons and smooth-min blend radius around the core."
+    },
+    {
+      "NAME": "mirrorAxis",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Engages quad-mirror kaleidoscopic symmetry for hypnotic Rorschach liquid-chrome visuals."
+    },
+    {
+      "NAME": "quantumGlow",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.68,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Volumetric density of the 3D quantum-orbital interference cloud surrounding the sculpture."
+    },
+    {
+      "NAME": "chromeSheen",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.78,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Studio neon softbox strip reflectivity across the liquid-chrome and black-opal surface."
+    },
+    {
+      "NAME": "accentTint",
+      "TYPE": "color",
+      "DEFAULT": [0.78, 0.32, 1.0],
+      "DEF_COLOR": [0.78, 0.32, 1.0, 1.0],
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Oil-slick thin-film phase shift and studio neon softbox chromatic hue."
+    },
+    {
+      "NAME": "intensity",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.04,
+      "DEFAULT": 0.78,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Master HDR exposure into ACES filmic tone mapping."
+    },
+    {
+      "NAME": "invertSolar",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Activates solarized liquid-mercury negative inversion for dramatic breakdown contrast."
+    },
+    {
+      "NAME": "quantumSurge",
+      "TYPE": "bang smooth",
+      "PARAMS": 0.08,
+      "DEFAULT": 0.0,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Momentary quantum-tunneling shockwave igniting the probability filaments and chrome Fresnel rim."
+    },
+    {
+      "NAME": "focus",
+      "TYPE": "xy smooth",
+      "PARAMS": 0.08,
+      "DEFAULT": [0.5, 0.5],
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "2D camera orbital yaw (X) and pitch (Y) around the liquid-chrome singularity."
+    }
+  ],
+  "PRESETS": [
+    {
+      "NAME": "Default",
+      "DESCRIPTION": "Signature liquid-chrome ferrofluid core wrapped in luminous oil-slick quantum interference filaments.",
+      "VALUES": {
+        "speed": 0.35,
+        "audioDrive": 0.68,
+        "warp": 0.6,
+        "ribbonMix": 0.55,
+        "mirrorAxis": false,
+        "quantumGlow": 0.68,
+        "chromeSheen": 0.78,
+        "accentTint": [0.78, 0.32, 1.0],
+        "intensity": 0.78,
+        "invertSolar": false,
+        "quantumSurge": 0.0,
+        "focus": [0.5, 0.5]
+      }
+    },
+    {
+      "NAME": "Deep Warehouse",
+      "DESCRIPTION": "Heavy dark mercury sculpture with slow reverse curl, moody low nebula haze, and aggressive bass spikes.",
+      "VALUES": {
+        "speed": -0.26,
+        "audioDrive": 0.96,
+        "warp": 0.85,
+        "ribbonMix": 0.35,
+        "mirrorAxis": false,
+        "quantumGlow": 0.34,
+        "chromeSheen": 0.92,
+        "accentTint": [0.95, 0.22, 0.38],
+        "intensity": 0.7,
+        "invertSolar": false,
+        "quantumSurge": 0.0,
+        "focus": [0.44, 0.38]
+      }
+    },
+    {
+      "NAME": "Peak-Time Strobe",
+      "DESCRIPTION": "Quad-mirror Rorschach chrome symmetry with hyper-warped filaments, rapid spin, and electric neon strips.",
+      "VALUES": {
+        "speed": 0.88,
+        "audioDrive": 0.95,
+        "warp": 0.95,
+        "ribbonMix": 0.86,
+        "mirrorAxis": true,
+        "quantumGlow": 0.96,
+        "chromeSheen": 1.0,
+        "accentTint": [0.18, 0.96, 1.0],
+        "intensity": 0.92,
+        "invertSolar": false,
+        "quantumSurge": 0.0,
+        "focus": [0.5, 0.54]
+      }
+    },
+    {
+      "NAME": "Iridescent Dream",
+      "DESCRIPTION": "Silky oil-slick nebula bloom with wide orbiting trefoil ribbons and calm high-elevation drift.",
+      "VALUES": {
+        "speed": 0.2,
+        "audioDrive": 0.44,
+        "warp": 0.48,
+        "ribbonMix": 0.88,
+        "mirrorAxis": false,
+        "quantumGlow": 0.94,
+        "chromeSheen": 0.64,
+        "accentTint": [0.45, 0.85, 1.0],
+        "intensity": 0.76,
+        "invertSolar": false,
+        "quantumSurge": 0.0,
+        "focus": [0.64, 0.66]
+      }
+    },
+    {
+      "NAME": "Sub-Bass Minimal",
+      "DESCRIPTION": "Pure sculptural liquid-mercury core with restrained volumetric cloud and razor-sharp studio chrome reflections.",
+      "VALUES": {
+        "speed": 0.16,
+        "audioDrive": 0.84,
+        "warp": 0.3,
+        "ribbonMix": 0.26,
+        "mirrorAxis": false,
+        "quantumGlow": 0.18,
+        "chromeSheen": 0.96,
+        "accentTint": [1.0, 0.86, 0.52],
+        "intensity": 0.74,
+        "invertSolar": false,
+        "quantumSurge": 0.0,
+        "focus": [0.5, 0.48]
+      }
+    }
+  ],
+  "PASSES": []
+}

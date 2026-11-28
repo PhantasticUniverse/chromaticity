@@ -1,0 +1,211 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Kerr Holographic Orrery",
+  "CREDIT": "Chromaticity Grandmaster Showcase",
+  "DESCRIPTION": "Physical Denisyuk/Benton beveled optical-glass hologram plate framing a recessed 3D celestial orrery orbiting a gravitationally lensing Kerr singularity. Features 12 live-wired performance controls across Geometry, Motion, Optics, and Performance, 5 factory presets, and a deterministic beat-synced QuickJS drift/shockwave script.",
+  "TAGS": ["grandmaster", "hologram", "black-hole", "orrery", "diffraction", "3d"],
+  "CATEGORIES": ["MY-SCENES", "HOLOGRAM", "3D", "AUDIO-REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "speed",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.35,
+      "MIN": -1.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "Bipolar orbital and parallax velocity; negative values reverse Kerr spin and gyroscopic precession."
+    },
+    {
+      "NAME": "audioDrive",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.65,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "Scales FFT bass, mid, and high coupling into event-horizon breathing, ring expansion, and accretion filaments."
+    },
+    {
+      "NAME": "lensing",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.6,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Gravitational spacetime curvature warping the relativistic accretion disk and deep holographic cavity."
+    },
+    {
+      "NAME": "ringScale",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.06,
+      "DEFAULT": 0.55,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Expands or tightens the three concentric gyroscopic crystal rings and orbiting octahedral moons."
+    },
+    {
+      "NAME": "mirrorFold",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "UI_GROUP": "Geometry",
+      "DESCRIPTION": "Activates dual-axis kaleidoscopic hologram symmetry across the optical glass plate."
+    },
+    {
+      "NAME": "dispersion",
+      "TYPE": "knob smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.65,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Bragg diffraction grating rainbow spread across the dichroic rings and beveled crown-glass frame."
+    },
+    {
+      "NAME": "glassGlare",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.05,
+      "DEFAULT": 0.55,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Front z=0 museum crown-glass diagonal gallery spotlight sheen, bevel highlight, and laser speckle."
+    },
+    {
+      "NAME": "accentTint",
+      "TYPE": "color",
+      "DEFAULT": [0.35, 0.85, 1.0],
+      "DEF_COLOR": [0.35, 0.85, 1.0, 1.0],
+      "UI_GROUP": "Optics",
+      "DESCRIPTION": "Chromatic accent wash shifting the Doppler accretion plasma and holographic Bragg spectrum."
+    },
+    {
+      "NAME": "intensity",
+      "TYPE": "slider smooth",
+      "PARAMS": 0.04,
+      "DEFAULT": 0.75,
+      "MIN": 0.0,
+      "MAX": 1.0,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Master HDR exposure driving ACES filmic bloom and Einstein photon-ring brilliance."
+    },
+    {
+      "NAME": "strobeGate",
+      "TYPE": "toggle",
+      "DEFAULT": false,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Arms beat-synced photon-ring strobe gating locked to syn_BPM for peak-time drops."
+    },
+    {
+      "NAME": "dropShockwave",
+      "TYPE": "bang smooth",
+      "PARAMS": 0.08,
+      "DEFAULT": 0.0,
+      "UI_GROUP": "Performance",
+      "DESCRIPTION": "Momentary gravitational-wave shock pulse expanding from the event horizon with a spectral flash."
+    },
+    {
+      "NAME": "tilt",
+      "TYPE": "xy smooth",
+      "PARAMS": 0.08,
+      "DEFAULT": [0.5, 0.5],
+      "UI_GROUP": "Motion",
+      "DESCRIPTION": "2D off-axis hologram observer parallax (X = horizontal viewing angle, Y = vertical elevation)."
+    }
+  ],
+  "PRESETS": [
+    {
+      "NAME": "Default",
+      "DESCRIPTION": "Balanced museum-grade Kerr optical hologram with warm-to-cyan Doppler accretion and crisp glass bevel.",
+      "VALUES": {
+        "speed": 0.35,
+        "audioDrive": 0.65,
+        "lensing": 0.6,
+        "ringScale": 0.55,
+        "mirrorFold": false,
+        "dispersion": 0.65,
+        "glassGlare": 0.55,
+        "accentTint": [0.35, 0.85, 1.0],
+        "intensity": 0.75,
+        "strobeGate": false,
+        "dropShockwave": 0.0,
+        "tilt": [0.5, 0.5]
+      }
+    },
+    {
+      "NAME": "Deep Warehouse",
+      "DESCRIPTION": "Slow ominous reverse Kerr spin, heavy gravitational lensing, low glass glare, and bass-heavy crimson plasma.",
+      "VALUES": {
+        "speed": -0.28,
+        "audioDrive": 0.92,
+        "lensing": 0.92,
+        "ringScale": 0.72,
+        "mirrorFold": false,
+        "dispersion": 0.32,
+        "glassGlare": 0.2,
+        "accentTint": [1.0, 0.28, 0.18],
+        "intensity": 0.68,
+        "strobeGate": false,
+        "dropShockwave": 0.0,
+        "tilt": [0.42, 0.36]
+      }
+    },
+    {
+      "NAME": "Peak-Time Strobe",
+      "DESCRIPTION": "High-velocity kaleidoscopic mirror fold with beat-synced photon strobe and hyper-dispersive electric cyan rings.",
+      "VALUES": {
+        "speed": 0.88,
+        "audioDrive": 0.95,
+        "lensing": 0.78,
+        "ringScale": 0.68,
+        "mirrorFold": true,
+        "dispersion": 0.95,
+        "glassGlare": 0.82,
+        "accentTint": [0.18, 0.96, 1.0],
+        "intensity": 0.94,
+        "strobeGate": true,
+        "dropShockwave": 0.0,
+        "tilt": [0.5, 0.5]
+      }
+    },
+    {
+      "NAME": "Iridescent Dream",
+      "DESCRIPTION": "Gentle forward drift with maximum Bragg rainbow dispersion, lush crown-glass sheen, and violet-opal glow.",
+      "VALUES": {
+        "speed": 0.22,
+        "audioDrive": 0.45,
+        "lensing": 0.48,
+        "ringScale": 0.82,
+        "mirrorFold": false,
+        "dispersion": 1.0,
+        "glassGlare": 0.9,
+        "accentTint": [0.78, 0.42, 1.0],
+        "intensity": 0.72,
+        "strobeGate": false,
+        "dropShockwave": 0.0,
+        "tilt": [0.64, 0.58]
+      }
+    },
+    {
+      "NAME": "Sub-Bass Minimal",
+      "DESCRIPTION": "Tight architectural orrery rings around a crisp black horizon with restrained glare and pure gold-white accents.",
+      "VALUES": {
+        "speed": 0.16,
+        "audioDrive": 0.85,
+        "lensing": 0.38,
+        "ringScale": 0.32,
+        "mirrorFold": false,
+        "dispersion": 0.22,
+        "glassGlare": 0.18,
+        "accentTint": [1.0, 0.84, 0.46],
+        "intensity": 0.7,
+        "strobeGate": false,
+        "dropShockwave": 0.0,
+        "tilt": [0.5, 0.48]
+      }
+    }
+  ],
+  "PASSES": []
+}
