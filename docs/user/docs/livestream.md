@@ -106,14 +106,11 @@ The recipe below describes how operators will livestream Chromaticity
 preview of the intended operator flow; the commands and UI surfaces
 named here may shift in detail.
 
-### 1. Install OBS Studio and the Syphon plugin (macOS)
+### 1. Install OBS Studio (macOS)
 
-1. Install **OBS Studio** (28.0 or later recommended). Download from
-   the OBS Studio website; the macOS build is a universal binary.
-2. Install the **obs-syphon plugin**. Plugin packages exist for both
-   Apple Silicon and Intel macOS; the plugin appears under
-   `Sources → Add → Syphon Client` once installed.
-3. Restart OBS so the plugin loads.
+1. Install **OBS Studio** (28.0 or later recommended; OBS Studio 33+ ships
+   built-in macOS Syphon support via `mac-syphon.plugin` under
+   `Sources → Add → Syphon Client` — no third-party Syphon plugin needed).
 
 On Windows the equivalent will be the Spout plugin for OBS once
 Chromaticity's Spout adapter lands; the configuration steps below

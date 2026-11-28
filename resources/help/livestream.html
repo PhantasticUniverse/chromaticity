@@ -634,10 +634,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-install-obs-studio-and-the-syphon-plugin-macos" class="md-nav__link">
+  <a href="#1-install-obs-studio-macos" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Install OBS Studio and the Syphon plugin (macOS)
+        1. Install OBS Studio (macOS)
       
     </span>
   </a>
@@ -1234,10 +1234,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-install-obs-studio-and-the-syphon-plugin-macos" class="md-nav__link">
+  <a href="#1-install-obs-studio-macos" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Install OBS Studio and the Syphon plugin (macOS)
+        1. Install OBS Studio (macOS)
       
     </span>
   </a>
@@ -1443,14 +1443,11 @@ additional wiring is required on the OBS side.</p>
 <strong>once</strong> the publish path lands. Until then, treat the workflow as a
 preview of the intended operator flow; the commands and UI surfaces
 named here may shift in detail.</p>
-<h3 id="1-install-obs-studio-and-the-syphon-plugin-macos">1. Install OBS Studio and the Syphon plugin (macOS)</h3>
+<h3 id="1-install-obs-studio-macos">1. Install OBS Studio (macOS)</h3>
 <ol>
-<li>Install <strong>OBS Studio</strong> (28.0 or later recommended). Download from
-   the OBS Studio website; the macOS build is a universal binary.</li>
-<li>Install the <strong>obs-syphon plugin</strong>. Plugin packages exist for both
-   Apple Silicon and Intel macOS; the plugin appears under
-   <code>Sources → Add → Syphon Client</code> once installed.</li>
-<li>Restart OBS so the plugin loads.</li>
+<li>Install <strong>OBS Studio</strong> (28.0 or later recommended; OBS Studio 33+ ships
+   built-in macOS Syphon support via <code>mac-syphon.plugin</code> under
+   <code>Sources → Add → Syphon Client</code> — no third-party Syphon plugin needed).</li>
 </ol>
 <p>On Windows the equivalent will be the Spout plugin for OBS once
 Chromaticity's Spout adapter lands; the configuration steps below

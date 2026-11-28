@@ -158,7 +158,34 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let framePushInFlight = false;
   let offscreenStreamCanvas: HTMLCanvasElement | null = null;
   let programMirrorChannel: BroadcastChannel | null = null;
+  let programMirrorRafId: number | null = null;
   let lastMirrorPostAt = 0;
+
+  function stopProgramMirrorLoop(): void {
+    if (programMirrorRafId !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(programMirrorRafId);
+    }
+    programMirrorRafId = null;
+  }
+
+  function startProgramMirrorLoop(): void {
+    stopProgramMirrorLoop();
+    if (typeof requestAnimationFrame !== 'function' || typeof BroadcastChannel === 'undefined') {
+      return;
+    }
+    const step = (now: number): void => {
+      if (disposed) {
+        stopProgramMirrorLoop();
+        return;
+      }
+      // When live-streaming, startStreamCaptureLoop already calls compositeStageToCanvas.
+      if (!liveBroadcastStore.isLive && now - lastMirrorPostAt >= 50) {
+        compositeStageToCanvas(DEFAULT_BROADCAST_WIDTH, DEFAULT_BROADCAST_HEIGHT);
+      }
+      programMirrorRafId = requestAnimationFrame(step);
+    };
+    programMirrorRafId = requestAnimationFrame(step);
+  }
 
   function ensureProgramMirrorChannel(): BroadcastChannel | null {
     if (programMirrorChannel !== null) return programMirrorChannel;
@@ -687,6 +714,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   onMount(() => {
     void audioSnapshotStore.subscribe();
     void liveMediaStore.refreshVideoDevices();
+    startProgramMirrorLoop();
     void (async () => {
       const snapshot = await getGpuCostTelemetry();
       if (!disposed && snapshot !== null && !adaptivePending) {
@@ -717,6 +745,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   onDestroy(() => {
     disposed = true;
     stopStreamCaptureLoop();
+    stopProgramMirrorLoop();
     if (programMirrorChannel !== null) {
       try {
         programMirrorChannel.postMessage({ clear: true });

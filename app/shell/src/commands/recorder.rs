@@ -451,6 +451,12 @@ pub fn push_recorder_packet_impl(
     if payload.is_empty() {
         return Err("recorder packet payload must not be empty".into());
     }
+    if payload.len() >= 2 && payload[0] == 0xFF && payload[1] == 0xD8 {
+        return Err(
+            "recorder requires H.264 NAL units (avc1); raw JPEG frames cannot be muxed into fMP4"
+                .into(),
+        );
+    }
     let packet = EncodedPacket {
         pts_90khz,
         dts_90khz: pts_90khz,

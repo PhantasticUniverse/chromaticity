@@ -1,31 +1,13 @@
 // SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 // SPDX-FileCopyrightText: 2026 Chromaticity
 
-//! Folder-picker IPC stub — Wave-21 PR1 Settings expansion.
-//!
-//! Defines the `pick_folder` Tauri command contract surface that the
-//! W21 PR1 Settings → Storage section's "Browse" buttons invoke. The
-//! wireframe-aligned UI surface is the deliverable here; the native
-//! folder-picker dialog wiring is deferred to the Phase-3+/4a
-//! `EV-INTEGRATION-MATRIX` slice per `docs/26` because the dialog
-//! plugin (`tauri-plugin-dialog`) is not yet on the dependency
-//! graph and the capabilities allowlist hasn't been opened to it.
+//! Native OS folder-picker IPC handler backed by `tauri-plugin-dialog`.
 //!
 //! Contract:
 //! - `pick_folder(title: String) -> Result<Option<String>, String>`
-//! - `Ok(Some(path))` — user accepted the dialog; returns the absolute
-//!   folder path.
+//! - `Ok(Some(path))` — user accepted the dialog; returns the absolute folder path.
 //! - `Ok(None)` — user dismissed / cancelled the dialog.
-//! - `Err(message)` — platform error (permission denied, plugin
-//!   unavailable, etc.).
-//!
-//! W21 PR1 stub returns a deterministic placeholder
-//! (`/Users/operator/Movies/Chromaticity/Media`) so the frontend IPC
-//! plumbing — `invoke('pick_folder', { title })` → typed
-//! `Promise<string | null>` wrapper in `src/lib/ipc/picker.ts` →
-//! Storage section button → state push — exercises the full round
-//! trip without the platform-dependent dialog. Phase-3+/4a will swap
-//! the placeholder for `tauri_plugin_dialog::DialogExt::dialog().pick_folder()`.
+//! - `Err(message)` — platform error.
 
 use tauri_plugin_dialog::DialogExt;
 

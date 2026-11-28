@@ -22,33 +22,100 @@
 //! `*_impl(&AppState, ...)` function so the round-trip glue is unit
 //! testable without a Tauri runtime.
 
-use chromaticity_runtime::{Command, CommandBus, PresetId};
+use chromaticity_runtime::{Command, CommandBus, ControlId, ControlValue, PresetId};
+use std::collections::BTreeMap;
 use std::path::Path;
 use tauri::{Manager, State};
 
 use crate::state::AppState;
 
 const PRESETS_FILENAME: &str = "presets.json";
+const MAX_PERSISTED_CONTROL_ID: u32 = 64;
 
-fn persist_preset_id(data_dir: &Path, id: u32) {
+type PresetBankDisk = BTreeMap<u32, BTreeMap<u32, f32>>;
+
+fn persist_preset_snapshot(app: &AppState, data_dir: &Path, id: u32) {
+    let snapshot: BTreeMap<u32, f32> = {
+        let state = match app.state.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let mut map = BTreeMap::new();
+        for cid in 0..MAX_PERSISTED_CONTROL_ID {
+            if let Some(val) = state.control_value(ControlId(cid)) {
+                map.insert(cid, val.0);
+            }
+        }
+        map
+    };
+
     let path = data_dir.join(PRESETS_FILENAME);
     if let Err(err) = std::fs::create_dir_all(data_dir) {
         eprintln!("[chromaticity][preset] create_dir_all failed: {err}");
         return;
     }
-    let mut saved: Vec<u32> = std::fs::read_to_string(&path)
+    let mut bank: PresetBankDisk = std::fs::read_to_string(&path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default();
-    if !saved.contains(&id) {
-        saved.push(id);
-        saved.sort_unstable();
-    }
-    if let Ok(json) = serde_json::to_string_pretty(&saved) {
+    bank.insert(id, snapshot);
+    if let Ok(json) = serde_json::to_string_pretty(&bank) {
         let tmp = data_dir.join(format!(".{PRESETS_FILENAME}.{}.tmp", std::process::id()));
         if std::fs::write(&tmp, json.as_bytes()).is_ok() {
             let _ = std::fs::rename(&tmp, &path);
         }
+    }
+}
+
+/// Hydrate previously persisted preset control snapshots from
+/// `<data_dir>/presets.json` into canonical [`AppState::state`] on startup.
+pub fn hydrate_presets_from_disk(app: &AppState, data_dir: &Path) {
+    let path = data_dir.join(PRESETS_FILENAME);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(bank) = serde_json::from_str::<PresetBankDisk>(&raw) else {
+        return;
+    };
+    if bank.is_empty() {
+        return;
+    }
+    let mut state = match app.state.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    // Capture current controls so hydration doesn't overwrite live/recovered values.
+    let mut prior: Vec<(u32, f32)> = Vec::new();
+    for cid in 0..MAX_PERSISTED_CONTROL_ID {
+        if let Some(val) = state.control_value(ControlId(cid)) {
+            prior.push((cid, val.0));
+        }
+    }
+    for (preset_id, controls) in bank {
+        for (cid, val) in controls {
+            let _ = app.bus.dispatch_and_commit_into(
+                Command::ControlSet {
+                    id: ControlId(cid),
+                    value: ControlValue(val),
+                },
+                &mut state,
+            );
+        }
+        let _ = app.bus.dispatch_and_commit_into(
+            Command::PresetSave {
+                id: PresetId(preset_id),
+            },
+            &mut state,
+        );
+    }
+    for (cid, val) in prior {
+        let _ = app.bus.dispatch_and_commit_into(
+            Command::ControlSet {
+                id: ControlId(cid),
+                value: ControlValue(val),
+            },
+            &mut state,
+        );
     }
 }
 
@@ -95,7 +162,7 @@ pub fn recall_preset(app_state: State<'_, AppState>, id: u32) -> Result<(), Stri
 }
 
 /// Save the current `ControlStore` snapshot into the preset bank keyed by `id`
-/// and persist the saved preset index atomically to `<app_data_dir>/presets.json`.
+/// and persist the full control snapshot atomically to `<app_data_dir>/presets.json`.
 #[tauri::command]
 pub fn save_preset(
     app: tauri::AppHandle,
@@ -104,7 +171,7 @@ pub fn save_preset(
 ) -> Result<(), String> {
     save_preset_impl(app_state.inner(), id)?;
     if let Ok(dir) = app.path().app_data_dir() {
-        persist_preset_id(&dir, id);
+        persist_preset_snapshot(app_state.inner(), &dir, id);
     }
     Ok(())
 }

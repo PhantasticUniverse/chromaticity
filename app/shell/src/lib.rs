@@ -176,8 +176,12 @@ pub fn run() -> Result<(), tauri::Error> {
                 bootstrap_state.install_settings(loaded);
                 bootstrap_state.install_settings_path(settings_path);
                 if let Ok(resource_dir) = app.path().resource_dir() {
+                    if let Ok(mut gpu) = bootstrap_state.gpu_renderer.lock() {
+                        gpu.set_resource_dir(resource_dir.clone());
+                    }
                     bootstrap_state.install_bundled_scene_root(resource_dir.join("scenes"));
                 }
+                commands::preset::hydrate_presets_from_disk(bootstrap_state.inner(), &data_dir);
                 if let Err(err) =
                     commands::osc::configure_live_osc_adapter(bootstrap_state.inner())
                 {

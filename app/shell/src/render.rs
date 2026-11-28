@@ -43,6 +43,9 @@ vec2 _toPolar(vec2 xy) {
 vec2 _fromPolar(vec2 rt) {
     return vec2(cos(rt.y), sin(rt.y)) * rt.x;
 }
+vec2 _toRect(vec2 rt) {
+    return _fromPolar(rt);
+}
 vec3 _rgb2hsv(vec3 c) {
     vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
     vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
@@ -92,6 +95,7 @@ fn inject_ssf_helpers_if_needed(source: &str) -> String {
         "_rotate(",
         "_toPolar(",
         "_fromPolar(",
+        "_toRect(",
         "_rgb2hsv(",
         "_hsv2rgb(",
         "_noise(",
@@ -117,14 +121,23 @@ fn inject_ssf_helpers_if_needed(source: &str) -> String {
 
 /// Resolve `#include "lygia/..."` and `#include "hg_sdf/..."` directives
 /// and inject SSF helper functions when referenced.
-fn preprocess_shader_with_helpers(source: &str) -> Result<String, String> {
+fn preprocess_shader_with_helpers(
+    source: &str,
+    resource_dir: Option<&Path>,
+) -> Result<String, String> {
     let with_helpers = inject_ssf_helpers_if_needed(source);
     if !with_helpers.contains("#include") {
         return Ok(with_helpers);
     }
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let lygia_root = repo_root.join("third_party/lygia");
-    let hg_sdf_root = repo_root.join("third_party/hg_sdf");
+    let lygia_root = resource_dir
+        .map(|d| d.join("third_party/lygia"))
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(|| repo_root.join("third_party/lygia"));
+    let hg_sdf_root = resource_dir
+        .map(|d| d.join("third_party/hg_sdf"))
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(|| repo_root.join("third_party/hg_sdf"));
     let mut namespaces: Vec<(&str, &Path)> = Vec::new();
     if lygia_root.is_dir() {
         namespaces.push(("lygia", lygia_root.as_path()));
@@ -349,6 +362,7 @@ pub struct GpuPreviewEngine {
     envelopes: SynAudioEnvelopeBank,
     last_elapsed_secs: f32,
     transition_orchestrator: TransitionOrchestrator,
+    resource_dir: Option<PathBuf>,
 }
 
 impl Default for GpuPreviewEngine {
@@ -380,7 +394,13 @@ impl GpuPreviewEngine {
             envelopes: SynAudioEnvelopeBank::new(),
             last_elapsed_secs: 0.0,
             transition_orchestrator: TransitionOrchestrator::new(idle_spec),
+            resource_dir: None,
         }
+    }
+
+    /// Install the packaged Tauri `resource_dir` for resolving bundled shader includes.
+    pub fn set_resource_dir(&mut self, dir: PathBuf) {
+        self.resource_dir = Some(dir);
     }
 
     /// Execute a multi-pass [`MultipassSpec`] on the shared wgpu device
@@ -406,8 +426,8 @@ impl GpuPreviewEngine {
 
     /// Resolve `#include "lygia/..."` and `#include "hg_sdf/..."` directives
     /// and inject SSF helper functions when referenced.
-    fn preprocess_shader_source(source: &str) -> Result<String, String> {
-        preprocess_shader_with_helpers(source)
+    fn preprocess_shader_source(&self, source: &str) -> Result<String, String> {
+        preprocess_shader_with_helpers(source, self.resource_dir.as_deref())
     }
 
     /// Arm the GPU preview engine from a loaded `.chroma` scene directory.
@@ -617,7 +637,7 @@ impl GpuPreviewEngine {
 
         let started = Instant::now();
         if self.cached_pass.is_none() {
-            let resolved_source = match Self::preprocess_shader_source(&fragment_source) {
+            let resolved_source = match self.preprocess_shader_source(&fragment_source) {
                 Ok(src) => src,
                 Err(msg) => {
                     self.state = GpuRenderState::Error {

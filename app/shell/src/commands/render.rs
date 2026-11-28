@@ -9,7 +9,7 @@ use crate::render::{
 };
 use crate::state::AppState;
 use chromaticity_audio::AudioUniformSnapshot;
-use chromaticity_runtime::ControlId;
+use chromaticity_runtime::{CommandBus, ControlId};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use tauri::State;
@@ -81,18 +81,77 @@ pub fn render_gpu_frame(
     let mut script_audio = audio;
     script_audio.bpm = resolved_bpm.bpm;
 
-    // Tick the QuickJS `script.js` host if active and fold emitted `ctrl_0..ctrl_15`
-    // reactive overrides into this frame's uniform controls.
-    {
+    // Tick the QuickJS `script.js` host if active, apply any `randomizeControl`
+    // / `defaultControl` requests back to canonical state, and fold emitted
+    // `ctrl_0..ctrl_15` reactive overrides into this frame's uniform controls.
+    let emitted = {
         let mut script_guard = match app_state.script_host.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        let emitted = script_guard.tick(elapsed_secs, 1.0 / 60.0, frame, &script_audio);
-        for (i, slot) in controls.iter_mut().enumerate() {
-            let key = format!("ctrl_{i}");
-            if let Some(&val) = emitted.get(&key) {
-                *slot = val;
+        script_guard.tick(elapsed_secs, 1.0 / 60.0, frame, &script_audio)
+    };
+    for (i, slot) in controls.iter_mut().enumerate() {
+        let key = format!("ctrl_{i}");
+        if let Some(&val) = emitted.get(&key) {
+            *slot = val;
+        }
+    }
+    if emitted
+        .keys()
+        .any(|k| k.starts_with("__ctrl_random_") || k.starts_with("__ctrl_default_"))
+    {
+        let control_map: Vec<(usize, String, f32)> = app_state
+            .loaded_scene
+            .lock()
+            .ok()
+            .and_then(|g| {
+                g.as_ref().map(|rec| {
+                    rec.scene
+                        .controls
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, c)| {
+                            let def = match &c.default {
+                                chromaticity_scene::schema::ControlValue::Float(v) => *v as f32,
+                                chromaticity_scene::schema::ControlValue::Bool(b) => {
+                                    if *b {
+                                        1.0
+                                    } else {
+                                        0.0
+                                    }
+                                }
+                                _ => 0.5,
+                            };
+                            (idx, c.name.clone(), def)
+                        })
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        if !control_map.is_empty() {
+            if let Ok(mut state_guard) = app_state.state.lock() {
+                for (idx, name, default_val) in control_map {
+                    let next = if let Some(&rnd) = emitted.get(&format!("__ctrl_random_{name}")) {
+                        Some(rnd)
+                    } else if emitted.contains_key(&format!("__ctrl_default_{name}")) {
+                        Some(default_val)
+                    } else {
+                        None
+                    };
+                    if let Some(val) = next {
+                        let _ = app_state.bus.dispatch_and_commit_into(
+                            chromaticity_runtime::Command::ControlSet {
+                                id: ControlId(idx as u32),
+                                value: chromaticity_runtime::ControlValue(val),
+                            },
+                            &mut state_guard,
+                        );
+                        if idx < controls.len() {
+                            controls[idx] = val;
+                        }
+                    }
+                }
             }
         }
     }
