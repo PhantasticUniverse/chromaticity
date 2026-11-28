@@ -298,8 +298,7 @@ mod tests {
     /// Repo-resident library fixture path (the same source-of-truth
     /// directory that `bundle.resources` maps into the AppBundle).
     fn library_fixture_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/library")
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes/library")
     }
 
     /// Allocate a fresh empty scratch directory for empty-corpus

@@ -29,7 +29,7 @@ repository is **source-visible** under `LicenseRef-Chromaticity-Proprietary`
 ```bash
 npm install
 npm run dev:doctor     # check Node, Rust, hooks, and optional CI tools
-npx lefthook install   # install pre-commit / commit-msg / pre-push hooks
+lefthook install       # install pre-commit / commit-msg / pre-push hooks (brew install lefthook)
 npm run tauri dev
 ```
 
@@ -71,6 +71,7 @@ chromaticity/
 ├── SECURITY.md                  # coordinated disclosure
 ├── CODEOWNERS                   # subtree review authority (root-pinned by policy CI)
 ├── Cargo.toml / Cargo.lock      # Rust workspace root (edition 2024, MSRV 1.85.0)
+├── justfile                     # unified task runner (Rust, Svelte, Tauri, docs, hygiene)
 ├── package.json / vite.config.ts / vitest.config.ts / eslint.config.js / lefthook.yml
 ├── app/
 │   ├── shell/                   # Tauri 2 binary (chromaticity-app crate)
@@ -79,7 +80,8 @@ chromaticity/
 ├── integrations/                # osc-adapter, midi-adapter, camera-adapter, syphon-adapter
 ├── src/                         # Svelte 5 + TypeScript frontend
 ├── resources/
-│   └── help/                    # built MkDocs help corpus bundled by Tauri (decoupled from dist/)
+│   ├── help/                    # built MkDocs help corpus bundled by Tauri (decoupled from dist/)
+│   └── scenes/                  # bundled production .chroma scenes (library, welcome, examples, shadertoy-fixtures)
 ├── dist/                        # ephemeral Vite build output (only .gitkeep tracked)
 ├── docs/                        # unified documentation root (see docs/README.md)
 │   ├── adr/                     # Architecture Decision Records (MADR 4.0.0)
@@ -98,21 +100,21 @@ chromaticity/
 
 Two partitions live on the Accountable Owner's and technical lead's
 workstations only and are excluded from version control via `.gitignore`.
-They are tracked normatively in `docs/43-development-standards.md` §18.1
-and `docs/29-cleanroom-legal-policy-baseline.md` §Corpus Partitioning,
+They are tracked normatively in `docs/governance/43-development-standards.md` §18.1
+and `docs/governance/29-cleanroom-legal-policy-baseline.md` §Corpus Partitioning,
 which together carry the access boundary, origin tagging, and clean-room
 promotion path:
 
-- `chromaticity-planning/` — Phase-0 planning corpus paper trail
+- `.local/chromaticity-planning/` — Phase-0 planning corpus paper trail
   (review rounds, intake audits, deep-dive findings, scoring matrices,
   pre-dev UX bundles, and the `ERRATA-v0.2-beta.md` record).
-- `Contents/` — reference-app materials consulted for feature-coverage
+- `.local/Contents/` — reference-app materials consulted for feature-coverage
   and quality-parity verification under the clean-room SOP.
 
 Neither partition is accessible to the dev-team clean-room working
 surface. Content promoted into the shipped corpus (`docs/`, `engine/`,
 `integrations/`, etc.) follows the clean-room reconstruction protocol in
-`docs/29-cleanroom-legal-policy-baseline.md` and is authored
+`docs/governance/29-cleanroom-legal-policy-baseline.md` and is authored
 Chromaticity-originated, never copied verbatim.
 
 ## Document Map
@@ -122,23 +124,23 @@ including Architecture Decision Records under [`docs/adr/`](docs/adr/).
 
 Key entry points for new contributors:
 
-- `docs/01-charter.md` — product mission and scope.
-- `docs/03-product-requirements.md` — FRs and NFRs.
-- `docs/11-roadmap-phases.md` — phased delivery.
-- `docs/23-decision-ownership-matrix.md` — who decides what.
-- `docs/26-evidence-artifact-registry.md` — `EV-*` evidence rows and gates.
-- `docs/29-cleanroom-legal-policy-baseline.md` — clean-room SOP and legal posture.
-- `docs/43-development-standards.md` — commit/branch/release/lint/CI standards.
+- `docs/governance/01-charter.md` — product mission and scope.
+- `docs/governance/03-product-requirements.md` — FRs and NFRs.
+- `docs/governance/11-roadmap-phases.md` — phased delivery.
+- `docs/governance/23-decision-ownership-matrix.md` — who decides what.
+- `docs/governance/26-evidence-artifact-registry.md` — `EV-*` evidence rows and gates.
+- `docs/governance/29-cleanroom-legal-policy-baseline.md` — clean-room SOP and legal posture.
+- `docs/governance/43-development-standards.md` — commit/branch/release/lint/CI standards.
 - `docs/adr/` — every architecture decision of record.
 
 ## How to Contribute
 
 Chromaticity is currently a closed two-human team (Accountable Owner + Deputy
-per `docs/23-decision-ownership-matrix.md`). External contribution is **not
+per `docs/governance/23-decision-ownership-matrix.md`). External contribution is **not
 open** at this time. Internal contributors: read `CONTRIBUTING.md` end-to-end
 before the first commit. In particular:
 
-- All commits are **Conventional Commits 1.0.0** (`docs/43-development-standards.md` §4).
+- All commits are **Conventional Commits 1.0.0** (`docs/governance/43-development-standards.md` §4).
 - All commits require `Signed-off-by` (DCO 1.1).
 - All commits on `main` are cryptographically signed (Sigstore `gitsign` preferred).
 - The `Profile-Impact:` trailer is mandatory on every merged commit.
@@ -166,11 +168,11 @@ all reflected in `REUSE.toml`. Current vendor drops:
 - `third_party/hg_sdf/` — MIT (elected over CC-BY-NC-4.0) Mercury Demogroup
   GLSL SDF library.
 - `third_party/lygia/` — Lygia v1.1.4 trial vendor (`LicenseRef-Prosperity-3.0.0`);
-  commercial license election deferred per `docs/13-risk-register.md` R-37.
+  commercial license election deferred per `docs/governance/13-risk-register.md` R-37.
 - `third_party/Syphon-Framework/` — BSD-3-Clause clean-room reference
   for the macOS Syphon producer/consumer surface (`integrations/syphon-adapter`).
 
 See [`NOTICE.md`](NOTICE.md) for full third-party attribution.
 
 REUSE 3.2 compliance is enforced in CI (`reuse lint`). See
-`docs/43-development-standards.md` §10 for the full license/SPDX/SBOM policy.
+`docs/governance/43-development-standards.md` §10 for the full license/SPDX/SBOM policy.

@@ -297,15 +297,20 @@ mod tests {
 
     #[test]
     fn render_scene_thumbnail_impl_renders_non_black_rgba_frame_from_local_scene() {
-        let scenes_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("scenes-local");
+        let scenes_root = std::env::var_os("CHROMATICITY_LOCAL_SCENES_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("..")
+                    .join(".local")
+                    .join("scenes")
+            });
         if !scenes_root.is_dir() {
             return;
         }
         let mut candidates: Vec<_> = std::fs::read_dir(&scenes_root)
-            .expect("read scenes-local")
+            .expect("read .local/scenes")
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|p| {

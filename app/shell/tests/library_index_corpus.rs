@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 /// Repo-resident library fixture path (the source-of-truth directory
 /// `bundle.resources` maps into `<AppBundle>/Resources/scenes/library/`).
 fn library_fixture_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/scene/tests/fixtures/scenes/library")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes/library")
 }
 
 #[test]

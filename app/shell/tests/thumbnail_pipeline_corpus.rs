@@ -30,7 +30,7 @@ use chromaticity_ui_bridge::{SceneCard, SceneSource};
 use std::path::{Path, PathBuf};
 
 fn library_fixture_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/scene/tests/fixtures/scenes/library")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes/library")
 }
 
 fn fresh_cache_root(tag: &str) -> PathBuf {

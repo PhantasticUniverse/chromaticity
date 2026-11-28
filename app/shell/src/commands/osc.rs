@@ -732,8 +732,7 @@ mod tests {
     const POLL_INTERVAL: Duration = Duration::from_millis(5);
 
     fn fixture_scene_root() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes")
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes")
     }
 
     fn bind_app_osc_ephemeral(app: &AppState) -> SocketAddr {

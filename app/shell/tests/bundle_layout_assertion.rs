@@ -44,7 +44,7 @@ use std::path::{Path, PathBuf};
 /// asserting taxonomy at this path also pins the post-link bundle
 /// layout.
 fn bundled_scenes_source_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/scene/tests/fixtures/scenes")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes")
 }
 
 /// Names of the canonical four subdirectories per `docs/38` §2.1.

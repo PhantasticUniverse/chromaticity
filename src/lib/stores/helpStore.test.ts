@@ -14,9 +14,9 @@ import { describe, expect, it } from 'vitest';
 import { HELP_PAGES } from './helpStore.svelte';
 
 // The expected order mirrors the `nav:` block in
-// `docs-corpus/mkdocs.yml` exactly (Welcome -> Guides -> Reference ->
-// About). When you add a page to the mkdocs nav, you must also add it
-// to `HELP_PAGES`, to `app/shell/tauri.conf.json` `bundle.resources`,
+// `docs/user/mkdocs.yml` exactly (Welcome -> Tutorials -> How-to Guides ->
+// Reference -> Explanation). When you add a page to the mkdocs nav, you must
+// also add it to `HELP_PAGES`, to `app/shell/tauri.conf.json` `bundle.resources`,
 // and to this expected list.
 const EXPECTED_SLUGS_IN_NAV_ORDER = [
   'index',
@@ -27,13 +27,13 @@ const EXPECTED_SLUGS_IN_NAV_ORDER = [
   'audio-reactivity',
   'livestream',
   'import-shadertoy',
-  'best-practices',
   'hotkeys-reference',
   'osc-routes',
   'chroma-uniforms',
   'settings-reference',
   'system-requirements',
   'supported-codecs',
+  'best-practices',
   'about',
 ] as const;
 

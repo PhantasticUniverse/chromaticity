@@ -406,8 +406,8 @@ mod tests {
         // that subdirectory directly because `list_scene_packages_impl`
         // is single-directory and the multi-subdirectory recursion is
         // the responsibility of `list_bundled_scene_packages`.
-        let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/library");
+        let fixtures =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes/library");
 
         let cards = list_scene_packages_impl(
             &fixtures.to_string_lossy(),
@@ -472,7 +472,7 @@ mod tests {
         // `SceneCard` mapping in `list_scene_packages_impl` reads from
         // `Scene::extensions`.
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/library/demo-kaleido.chroma");
+            .join("../../resources/scenes/library/demo-kaleido.chroma");
 
         let scene =
             chromaticity_scene::loader::load_chroma_dir(&fixture).expect("fixture must load");
@@ -520,8 +520,8 @@ mod tests {
         // `EnforceUserDefault` (default-root) and `AllowBundled`
         // (custom-folder / bundled-root) arms, so the corpus shape
         // exercises the metadata-extraction contract identically.
-        let custom_folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/library");
+        let custom_folder =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes/library");
 
         let cards = list_scene_packages_impl(
             &custom_folder.to_string_lossy(),

@@ -32,10 +32,12 @@ export default [
       '.svelte-kit/**',
       '.vite/**',
       '.local/**',
-      // Built MkDocs help corpus (generated HTML/JS/CSS).
+      // Built MkDocs help corpus and bundled scene assets.
       'resources/help/**',
-      // Sub-agent worktree state.
+      'resources/scenes/**',
+      // Sub-agent worktree state and untracked workstation-local scratch.
       '.claude/**',
+      '.local/**',
       // Clean-room / archive boundaries — never lint these.
       'Contents/**',
       'chromaticity-planning/**',
@@ -45,9 +47,6 @@ export default [
       'third_party/**',
       // Documentation & user help corpus markdown.
       'docs/**',
-      // Local operator-dropped scenes & media (QuickJS scene scripts use runtime globals).
-      'scenes-local/**',
-      'media-local/**',
     ],
   },
 

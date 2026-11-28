@@ -207,7 +207,7 @@ mod tests {
 
     fn demo_kaleido_path() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/library/demo-kaleido.chroma")
+            .join("../../resources/scenes/library/demo-kaleido.chroma")
     }
 
     #[test]

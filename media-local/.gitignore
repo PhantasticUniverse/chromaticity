@@ -1,8 +1,0 @@
-# Operator-local media drop zone (Wave 2.8 LIB.LOCAL).
-# Ignore everything in this directory except this sentinel and the README.
-# Drop your video / image / scene-still assets here for local-only Media
-# tab testing; the contents stay out of git so you can use materials you
-# don't own the rights to commit. See README.md for the operator workflow.
-*
-!.gitignore
-!README.md

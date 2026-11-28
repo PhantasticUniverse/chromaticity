@@ -696,15 +696,20 @@ void main() {
 
     #[test]
     fn all_scenes_local_shaders_compile_and_render_on_gpu() {
-        let scenes_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("scenes-local");
+        let scenes_root = std::env::var_os("CHROMATICITY_LOCAL_SCENES_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("..")
+                    .join(".local")
+                    .join("scenes")
+            });
         if !scenes_root.is_dir() {
             return;
         }
         let mut entries: Vec<_> = std::fs::read_dir(&scenes_root)
-            .expect("read scenes-local")
+            .expect("read .local/scenes")
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("chroma"))
@@ -889,10 +894,18 @@ void main() {
         use chromaticity_scene::validator::{ValidationMode, validate};
         use std::collections::BTreeSet;
 
-        let scenes_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("scenes-local");
+        let scenes_root = std::env::var_os("CHROMATICITY_LOCAL_SCENES_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("..")
+                    .join(".local")
+                    .join("scenes")
+            });
+        if !scenes_root.is_dir() {
+            return;
+        }
         let flagships = [
             "gm-kerr-hologram-orrery.chroma",
             "gm-dyson-prismatic-lotus.chroma",

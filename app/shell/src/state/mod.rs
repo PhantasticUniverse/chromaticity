@@ -1302,7 +1302,7 @@ mod app_state_pins {
             p50: 4,
         }));
         let scene_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../engine/scene/tests/fixtures/scenes/library/demo-kaleido.chroma");
+            .join("../../resources/scenes/library/demo-kaleido.chroma");
         let scene = load_chroma_dir(&scene_path).unwrap();
         *app_state.loaded_scene.lock().unwrap() = Some(LoadedSceneRecord {
             scene,

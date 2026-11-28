@@ -16,7 +16,7 @@ body:
 
         - Security issues MUST be reported privately per `SECURITY.md`.
           Do not file them here.
-        - Check the [evidence artifact registry](https://github.com/chromaticity-app/chromaticity/blob/main/docs/26-evidence-artifact-registry.md)
+        - Check the [evidence artifact registry](https://github.com/chromaticity-app/chromaticity/blob/main/docs/governance/26-evidence-artifact-registry.md)
           to see whether this is covered by an existing `EV-*` row.
 
   - type: input

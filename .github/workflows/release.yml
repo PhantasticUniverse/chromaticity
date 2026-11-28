@@ -16,10 +16,9 @@
 #   detect-changes - resolves the tag context for downstream jobs. No
 #                    paths-filter; release tags always proceed.
 #   build          - cross-platform matrix (ubuntu-latest + macos-latest +
-#                    windows-latest). Builds the Tauri 2 binary, restores
-#                    the dist/.gitkeep sentinel after vite build (per
-#                    `feedback_vite_build_clobbers_dist_gitkeep`), invokes
-#                    the release-eng/sign-*.sh + notarize.sh stubs from
+#                    windows-latest). Builds the Tauri 2 binary, ensures
+#                    the dist/.gitkeep sentinel exists after vite build,
+#                    invokes the release-eng/sign-*.sh + notarize.sh stubs from
 #                    Wave 1e-alpha (PR #412). When required env vars are
 #                    unset the stubs print stub-mode notices and exit 0
 #                    so the matrix exercises the scaffold without real
@@ -167,15 +166,10 @@ jobs:
             touch dist/.gitkeep
           fi
 
-      # Wave 1d-beta CI integration per docs-corpus/README.md: vite
-      # build wipes dist/ (default emptyOutDir: true) including the
-      # committed dist/help/ tree referenced by
-      # app/shell/tauri.conf.json bundle.resources. Without
-      # dist/help/*.html on disk at link time, cargo build --release
-      # -p chromaticity-app fails with `resource path
-      # '../../dist/help/<page>.html' doesn't exist`. Re-run mkdocs
-      # build so the corpus repopulates before the tauri-build
-      # resource resolver runs.
+      # Build the embedded user-help corpus from docs/user/ into
+      # resources/help/ before cargo build --release -p chromaticity-app
+      # so tauri-build's bundle.resources resolver finds every HTML/asset
+      # entry on disk at link time.
       - name: Set up Python (for mkdocs)
         uses: actions/setup-python@v5
         with:

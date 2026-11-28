@@ -62,6 +62,7 @@ Makefile     text eol=lf
 *.gz         binary
 
 # Generated artifacts — excluded from language stats and collapsed in diffs
+resources/help/**            linguist-generated=true -diff
 src/lib/ipc/bindings/*.ts    linguist-generated=true -diff
 **/CHANGELOG.md              linguist-generated=true
 *.sbom.json                  linguist-generated=true -diff

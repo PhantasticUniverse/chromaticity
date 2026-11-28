@@ -48,7 +48,6 @@ export const HELP_PAGES: readonly HelpPage[] = [
     label: 'Importing Shadertoy Scenes',
     htmlPath: 'help/import-shadertoy.html',
   },
-  { slug: 'best-practices', label: 'Best Practices', htmlPath: 'help/best-practices.html' },
   { slug: 'hotkeys-reference', label: 'Hotkeys', htmlPath: 'help/hotkeys-reference.html' },
   { slug: 'osc-routes', label: 'OSC Routes', htmlPath: 'help/osc-routes.html' },
   { slug: 'chroma-uniforms', label: 'Uniforms', htmlPath: 'help/chroma-uniforms.html' },
@@ -59,6 +58,7 @@ export const HELP_PAGES: readonly HelpPage[] = [
     htmlPath: 'help/system-requirements.html',
   },
   { slug: 'supported-codecs', label: 'Supported Codecs', htmlPath: 'help/supported-codecs.html' },
+  { slug: 'best-practices', label: 'Best Practices', htmlPath: 'help/best-practices.html' },
   { slug: 'about', label: 'About', htmlPath: 'help/about.html' },
 ] as const;
 

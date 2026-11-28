@@ -267,7 +267,7 @@ add_unique_crate() {
 if [ "$SCOPE_ALL" -eq 0 ] && [ "${#CHANGED_FILES[@]}" -gt 0 ]; then
   for f in "${CHANGED_FILES[@]}"; do
     case "$f" in
-      third_party/*|dist/help/*|LICENSES/*|Contents/*|chromaticity-planning/*)
+      third_party/*|resources/help/*|.local/*|LICENSES/*|Contents/*|chromaticity-planning/*)
         continue
         ;;
     esac

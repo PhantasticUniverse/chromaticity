@@ -77,9 +77,9 @@ Required CI check for every Rust file under `engine/**`, `integrations/**`, or `
   - `SPDX-FileCopyrightText: 2026 Chromaticity`
 - **Generated IPC bindings:** Never hand-edit `src/lib/ipc/bindings/*.ts`; widen the Rust struct in
   `app/ui-bridge/` and regenerate via `cargo test -p chromaticity-ui-bridge`.
-- **Load-bearing sentinel:** `npm run build` deletes `dist/.gitkeep`, which breaks
-  `tauri::generate_context!()` on fresh clones. Always restore with
-  `git checkout -- dist/.gitkeep` before staging.
+- **Load-bearing sentinel:** `dist/.gitkeep` is required by `tauri::generate_context!()` on fresh
+  clones (`vite.config.ts` auto-restores it after `npm run build`, and built help lives in
+  `resources/help/` so `vite build` never clobbers help).
 
 ### 5. Frontend Guardrails (Svelte 5 + TypeScript)
 

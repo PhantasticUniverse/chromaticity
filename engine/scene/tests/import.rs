@@ -60,9 +60,19 @@ use chromaticity_scene::loader::load_chroma_dir;
 use chromaticity_scene::schema::Scene;
 
 const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/scenes");
+const BUNDLED_SCENES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../resources/scenes");
 
 fn fixture_path(name: &str) -> PathBuf {
-    let mut p = PathBuf::from(FIXTURE_DIR);
+    let base = if name.starts_with("library/")
+        || name.starts_with("welcome/")
+        || name.starts_with("examples/")
+        || name.starts_with("shadertoy-fixtures/")
+    {
+        BUNDLED_SCENES_DIR
+    } else {
+        FIXTURE_DIR
+    };
+    let mut p = PathBuf::from(base);
     p.push(name);
     p
 }

@@ -43,7 +43,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const entry = Object.entries(RAW_DOCS).find(([path]) => path.endsWith(`/${slug}.md`));
     const raw = entry?.[1];
     if (!raw) return [];
-    const lines = raw.replace(/^<!--[\s\S]*?-->\s*/u, '').split(/\r?\n/u);
+    const lines = raw
+      .replace(/^---\r?\n[\s\S]*?\r?\n---\s*/u, '')
+      .replace(/^<!--[\s\S]*?-->\s*/u, '')
+      .replace(/^---\r?\n[\s\S]*?\r?\n---\s*/u, '')
+      .split(/\r?\n/u);
     const blocks: DocBlock[] = [];
     let inCode = false;
     let codeBuf: string[] = [];
