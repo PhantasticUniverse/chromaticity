@@ -675,7 +675,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 <header class="au__bpm-head">
                   <span class="au__bpm-name mono">{bpm.key}</span>
                   <span class="au__bpm-val mono">
-                    {bpm.key === 'syn_BPM' ? heroBpm.toFixed(1) : bpm.displayValue}
+                    {bpm.key === 'chroma_BPM' ? heroBpm.toFixed(1) : bpm.displayValue}
                   </span>
                 </header>
                 {#if bpm.sparkline && bpm.sparkline.length > 0}

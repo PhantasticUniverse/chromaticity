@@ -54,12 +54,12 @@ export interface FrequencyBand {
 }
 
 export type TimeUniformId =
-  | 'syn_BassTime'
-  | 'syn_MidTime'
-  | 'syn_MidHighTime'
-  | 'syn_HighTime'
-  | 'syn_Time'
-  | 'syn_CurvedTime'
+  | 'chroma_BassTime'
+  | 'chroma_MidTime'
+  | 'chroma_MidHighTime'
+  | 'chroma_HighTime'
+  | 'chroma_Time'
+  | 'chroma_CurvedTime'
   | 'TIME';
 
 export interface TimeUniform {
@@ -179,19 +179,19 @@ const STEP_RAND = (u: number): number => (Math.floor(u * 2) * 0.137) % 1;
 
 /**
  * Per-uniform signal generators for the BPM-card sparklines. Keyed by the
- * uniform identifier (`syn_BPMSin`, `syn_RandomOnBeat`, etc.); the live
+ * uniform identifier (`chroma_BPMSin`, `chroma_RandomOnBeat`, etc.); the live
  * `AudioUniforms.svelte` $effect calls `buildSparkline(SPARKLINE_GENERATORS[k], t)`
  * each tick to refresh that card's 60-point window.
  */
 export const SPARKLINE_GENERATORS: Readonly<Record<string, (u: number) => number>> = {
-  syn_RandomOnBeat: STEP_RAND,
-  syn_BPMTri: TRI,
-  syn_BPMSin: SIN_1,
-  syn_BPMTri2: TRI_2,
-  syn_BPMSin2: SIN_2,
-  syn_BPMSin4: SIN_4,
-  syn_BeatTime: SAW_BEAT,
-  syn_BPMTwitcher: TWITCH,
+  chroma_RandomOnBeat: STEP_RAND,
+  chroma_BPMTri: TRI,
+  chroma_BPMSin: SIN_1,
+  chroma_BPMTri2: TRI_2,
+  chroma_BPMSin2: SIN_2,
+  chroma_BPMSin4: SIN_4,
+  chroma_BeatTime: SAW_BEAT,
+  chroma_BPMTwitcher: TWITCH,
 };
 
 export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
@@ -207,9 +207,9 @@ export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
       subLabel: '20–120 Hz',
       tint: 'var(--color-band-bass)',
       bars: [
-        { key: 'syn_BassLevel', kind: 'level', value: 0.54 },
-        { key: 'syn_BassHits', kind: 'hit', value: 0.04 },
-        { key: 'syn_BassPresence', kind: 'presence', value: 0.61 },
+        { key: 'chroma_BassLevel', kind: 'level', value: 0.54 },
+        { key: 'chroma_BassHits', kind: 'hit', value: 0.04 },
+        { key: 'chroma_BassPresence', kind: 'presence', value: 0.61 },
       ],
     },
     {
@@ -218,9 +218,9 @@ export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
       subLabel: '250–2k Hz',
       tint: 'var(--color-band-mid)',
       bars: [
-        { key: 'syn_MidLevel', kind: 'level', value: 0.19 },
-        { key: 'syn_MidHits', kind: 'hit', value: 0 },
-        { key: 'syn_MidPresence', kind: 'presence', value: 0.34 },
+        { key: 'chroma_MidLevel', kind: 'level', value: 0.19 },
+        { key: 'chroma_MidHits', kind: 'hit', value: 0 },
+        { key: 'chroma_MidPresence', kind: 'presence', value: 0.34 },
       ],
     },
     {
@@ -229,9 +229,9 @@ export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
       subLabel: '2k–6k Hz',
       tint: 'var(--color-band-midhi)',
       bars: [
-        { key: 'syn_MidHighLevel', kind: 'level', value: 0.41 },
-        { key: 'syn_MidHighHits', kind: 'hit', value: 0.62 },
-        { key: 'syn_MidHighPresence', kind: 'presence', value: 0.45 },
+        { key: 'chroma_MidHighLevel', kind: 'level', value: 0.41 },
+        { key: 'chroma_MidHighHits', kind: 'hit', value: 0.62 },
+        { key: 'chroma_MidHighPresence', kind: 'presence', value: 0.45 },
       ],
     },
     {
@@ -240,9 +240,9 @@ export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
       subLabel: '6k–20k Hz',
       tint: 'var(--color-band-high)',
       bars: [
-        { key: 'syn_HighLevel', kind: 'level', value: 0.45 },
-        { key: 'syn_HighHits', kind: 'hit', value: 0 },
-        { key: 'syn_HighPresence', kind: 'presence', value: 0.41 },
+        { key: 'chroma_HighLevel', kind: 'level', value: 0.45 },
+        { key: 'chroma_HighHits', kind: 'hit', value: 0 },
+        { key: 'chroma_HighPresence', kind: 'presence', value: 0.41 },
       ],
     },
     {
@@ -251,93 +251,93 @@ export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
       subLabel: 'broadband',
       tint: 'var(--color-band-full)',
       bars: [
-        { key: 'syn_Level', kind: 'level', value: 0.79 },
-        { key: 'syn_Hits', kind: 'hit', value: 0 },
-        { key: 'syn_Presence', kind: 'presence', value: 0.64 },
+        { key: 'chroma_Level', kind: 'level', value: 0.79 },
+        { key: 'chroma_Hits', kind: 'hit', value: 0 },
+        { key: 'chroma_Presence', kind: 'presence', value: 0.64 },
       ],
     },
   ],
   timeUniforms: [
-    { key: 'syn_BassTime', value: 4.41, phase: 0.25, tint: 'var(--color-band-bass)' },
-    { key: 'syn_MidTime', value: 5.27, phase: 0.43, tint: 'var(--color-band-mid)' },
-    { key: 'syn_MidHighTime', value: 5.83, phase: 0.55, tint: 'var(--color-band-midhi)' },
-    { key: 'syn_HighTime', value: 7.25, phase: 0.68, tint: 'var(--color-band-high)' },
-    { key: 'syn_Time', value: 7.91, phase: 0.78, tint: 'var(--color-band-full)' },
-    { key: 'syn_CurvedTime', value: 4.94, phase: 0.62, tint: 'var(--color-signal-violet)' },
+    { key: 'chroma_BassTime', value: 4.41, phase: 0.25, tint: 'var(--color-band-bass)' },
+    { key: 'chroma_MidTime', value: 5.27, phase: 0.43, tint: 'var(--color-band-mid)' },
+    { key: 'chroma_MidHighTime', value: 5.83, phase: 0.55, tint: 'var(--color-band-midhi)' },
+    { key: 'chroma_HighTime', value: 7.25, phase: 0.68, tint: 'var(--color-band-high)' },
+    { key: 'chroma_Time', value: 7.91, phase: 0.78, tint: 'var(--color-band-full)' },
+    { key: 'chroma_CurvedTime', value: 4.94, phase: 0.62, tint: 'var(--color-signal-violet)' },
     { key: 'TIME', value: 17, phase: 0.82, tint: 'var(--color-text-2)' },
   ],
   bpmUniforms: [
     {
-      key: 'syn_BPM',
+      key: 'chroma_BPM',
       label: 'beats/min',
       kind: 'scalar',
       displayValue: '120.0',
     },
     {
-      key: 'syn_OnBeat',
+      key: 'chroma_OnBeat',
       label: '1 on downbeat',
       kind: 'bool',
       displayValue: '0',
       ledOn: false,
     },
     {
-      key: 'syn_ToggleOnBeat',
+      key: 'chroma_ToggleOnBeat',
       label: 'XOR each beat',
       kind: 'bool',
       displayValue: '0',
       ledOn: false,
     },
     {
-      key: 'syn_RandomOnBeat',
+      key: 'chroma_RandomOnBeat',
       label: '0..1 per beat',
       kind: 'step',
       displayValue: '0.73',
       sparkline: buildSparkline(STEP_RAND, FROZEN_T),
     },
     {
-      key: 'syn_BPMTri',
+      key: 'chroma_BPMTri',
       label: 'triangle · 1 beat',
       kind: 'wave',
       displayValue: '0.00',
       sparkline: buildSparkline(TRI, FROZEN_T),
     },
     {
-      key: 'syn_BPMSin',
+      key: 'chroma_BPMSin',
       label: 'sine · 1 beat',
       kind: 'wave',
       displayValue: '0.50',
       sparkline: buildSparkline(SIN_1, FROZEN_T),
     },
     {
-      key: 'syn_BPMTri2',
+      key: 'chroma_BPMTri2',
       label: 'triangle · 2 beats',
       kind: 'wave',
       displayValue: '0.00',
       sparkline: buildSparkline(TRI_2, FROZEN_T),
     },
     {
-      key: 'syn_BPMSin2',
+      key: 'chroma_BPMSin2',
       label: 'sine · 2 beats',
       kind: 'wave',
       displayValue: '0.50',
       sparkline: buildSparkline(SIN_2, FROZEN_T),
     },
     {
-      key: 'syn_BPMSin4',
+      key: 'chroma_BPMSin4',
       label: 'sine · 4 beats',
       kind: 'wave',
       displayValue: '0.50',
       sparkline: buildSparkline(SIN_4, FROZEN_T),
     },
     {
-      key: 'syn_BeatTime',
+      key: 'chroma_BeatTime',
       label: 'sec since beat',
       kind: 'saw',
       displayValue: '0.000',
       sparkline: buildSparkline(SAW_BEAT, FROZEN_T),
     },
     {
-      key: 'syn_BPMTwitcher',
+      key: 'chroma_BPMTwitcher',
       label: 'random hold',
       kind: 'wave',
       displayValue: '0.32',
@@ -347,7 +347,7 @@ export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
 };
 
 /* ----------------------------------------------------------------------------
- * "How to use" sidebar copy — verbatim from `audio.jsx`'s `.au-docs` block.
+ * "How to use" sidebar copy — native Chromaticity `chroma_*` uniform guide.
  * Markdown-style emphasis on uniform identifiers is rendered via the
  * `monoTokens` field; consumer renders each token with the mono font + its
  * paired tint class.
@@ -368,16 +368,16 @@ export interface HowToUseBlock {
 export const HOW_TO_USE_BLOCKS: readonly HowToUseBlock[] = [
   {
     intro: 'These ',
-    tokens: [{ text: 'syn_*', tint: 'var(--color-primary)' }],
+    tokens: [{ text: 'chroma_*', tint: 'var(--color-primary)' }],
     trailing:
       " uniforms are available in every scene's main.glsl. Use them to make audio-reactive visuals.",
   },
   {
     title: 'Levels',
     tokens: [
-      { text: 'syn_BassLevel', tint: 'var(--color-band-bass)' },
-      { text: 'syn_MidLevel', tint: 'var(--color-band-mid)' },
-      { text: 'syn_HighLevel', tint: 'var(--color-band-high)' },
+      { text: 'chroma_BassLevel', tint: 'var(--color-band-bass)' },
+      { text: 'chroma_MidLevel', tint: 'var(--color-band-mid)' },
+      { text: 'chroma_HighLevel', tint: 'var(--color-band-high)' },
     ],
     trailing: ' — smoothed per-band amplitude, 0–1.',
   },
@@ -392,8 +392,8 @@ export const HOW_TO_USE_BLOCKS: readonly HowToUseBlock[] = [
   {
     title: 'Time & BPM',
     tokens: [
-      { text: 'syn_BPMSin', tint: 'var(--color-text-1)' },
-      { text: 'syn_BPMTri', tint: 'var(--color-text-1)' },
+      { text: 'chroma_BPMSin', tint: 'var(--color-text-1)' },
+      { text: 'chroma_BPMTri', tint: 'var(--color-text-1)' },
     ],
     trailing:
       ', etc. give you tempo-locked oscillators — no math required. See the sparklines above for their live shape.',

@@ -281,7 +281,7 @@ describe('AudioUniforms view', () => {
       // Each row mounts the uniform key in mono.
       expect(getByText(uniform.key)).toBeInTheDocument();
     }
-    // syn_Time accumulator value 7.91 — formatted with two decimals.
+    // chroma_Time accumulator value 7.91 — formatted with two decimals.
     expect(getByText('7.91')).toBeInTheDocument();
   });
 
@@ -290,22 +290,22 @@ describe('AudioUniforms view', () => {
     const cards = container.querySelectorAll('.au__bpm-card');
     expect(cards.length).toBe(AUDIO_UNIFORMS_FIXTURE.bpmUniforms.length);
     expect(cards.length).toBe(11);
-    // Scope card-name lookups to the BPM grid — `syn_BPMSin` also appears
+    // Scope card-name lookups to the BPM grid — `chroma_BPMSin` also appears
     // as a token in the docs side panel, which would yield multiple matches.
     const grid = container.querySelector('.au__bpm-grid') as HTMLElement | null;
     expect(grid).not.toBeNull();
     if (grid === null) return;
     const inGrid = within(grid);
-    // Scalar card: syn_BPM displayValue 120.0 + label "beats/min".
-    expect(inGrid.getByText('syn_BPM')).toBeInTheDocument();
+    // Scalar card: chroma_BPM displayValue 120.0 + label "beats/min".
+    expect(inGrid.getByText('chroma_BPM')).toBeInTheDocument();
     expect(inGrid.getByText('120.0')).toBeInTheDocument();
     expect(getByText('beats/min')).toBeInTheDocument();
-    // Bool card: syn_OnBeat label "1 on downbeat" + LED element.
-    expect(inGrid.getByText('syn_OnBeat')).toBeInTheDocument();
+    // Bool card: chroma_OnBeat label "1 on downbeat" + LED element.
+    expect(inGrid.getByText('chroma_OnBeat')).toBeInTheDocument();
     expect(getByText('1 on downbeat')).toBeInTheDocument();
-    // Wave card: syn_BPMSin label + sparkline path. The sparkline path is
+    // Wave card: chroma_BPMSin label + sparkline path. The sparkline path is
     // an inline SVG `<path class="au__spark-path">`.
-    expect(inGrid.getByText('syn_BPMSin')).toBeInTheDocument();
+    expect(inGrid.getByText('chroma_BPMSin')).toBeInTheDocument();
     const sparkPaths = container.querySelectorAll('path.au__spark-path');
     // One per non-scalar / non-bool card with a sparkline (8 entries).
     expect(sparkPaths.length).toBe(8);
@@ -313,14 +313,14 @@ describe('AudioUniforms view', () => {
 
   it('bool LED reflects the `ledOn` fixture flag', () => {
     const { container, getByText } = render(AudioUniforms);
-    // syn_OnBeat fixture: ledOn = false → no `--on` modifier.
-    const onBeatCard = getByText('syn_OnBeat').closest('.au__bpm-card');
+    // chroma_OnBeat fixture: ledOn = false → no `--on` modifier.
+    const onBeatCard = getByText('chroma_OnBeat').closest('.au__bpm-card');
     expect(onBeatCard).not.toBeNull();
     if (onBeatCard === null) return;
     const led = onBeatCard.querySelector('.au__bpm-led');
     expect(led).not.toBeNull();
     expect(led).not.toHaveClass('au__bpm-led--on');
-    // Sanity: there are exactly two bool cards (syn_OnBeat, syn_ToggleOnBeat).
+    // Sanity: there are exactly two bool cards (chroma_OnBeat, chroma_ToggleOnBeat).
     expect(container.querySelectorAll('.au__bpm-card--bool').length).toBe(2);
   });
 
