@@ -135,6 +135,10 @@ pub struct AudioDeviceInfo {
     /// backend refuses to surface the name (e.g. a transient
     /// disconnection between `input_devices()` and `name()`).
     pub name: String,
+    /// Largest channel count the device advertises for this direction
+    /// (max over its supported stream configs); `0` when the backend
+    /// reports none.
+    pub max_channels: u16,
 }
 
 /// Coarse classification of a cpal audio device direction.
@@ -200,9 +204,14 @@ pub fn enumerate_input_devices() -> Result<Vec<AudioDeviceInfo>, AudioError> {
             // the id round-trips through a URL / DOM selector if the
             // operator-facing UI ever uses it as a CSS hook.
             let sanitized = sanitize_device_id_segment(&name);
+            let max_channels = device
+                .supported_input_configs()
+                .map(|configs| configs.map(|c| c.channels()).max().unwrap_or(0))
+                .unwrap_or(0);
             AudioDeviceInfo {
                 id: format!("input-{sanitized}"),
                 name,
+                max_channels,
             }
         })
         .collect();
@@ -247,9 +256,14 @@ pub fn enumerate_output_devices() -> Result<Vec<AudioDeviceInfo>, AudioError> {
         .map(|(idx, device)| {
             let name = read_device_name(&device).unwrap_or_else(|_| format!("Output {idx}"));
             let sanitized = sanitize_device_id_segment(&name);
+            let max_channels = device
+                .supported_output_configs()
+                .map(|configs| configs.map(|c| c.channels()).max().unwrap_or(0))
+                .unwrap_or(0);
             AudioDeviceInfo {
                 id: format!("output-{sanitized}"),
                 name,
+                max_channels,
             }
         })
         .collect();

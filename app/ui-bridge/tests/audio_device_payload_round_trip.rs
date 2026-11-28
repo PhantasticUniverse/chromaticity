@@ -31,6 +31,7 @@ fn sample_info() -> AudioDeviceInfo {
     AudioDeviceInfo {
         id: "input-built-in-microphone".to_string(),
         name: "Built-in Microphone".to_string(),
+        max_channels: 2,
     }
 }
 
@@ -39,6 +40,7 @@ fn sample_payload() -> AudioDevicePayload {
         id: "input-built-in-microphone".to_string(),
         name: "Built-in Microphone".to_string(),
         kind: AudioDeviceKindPayload::Input,
+        max_channels: 2,
     }
 }
 
@@ -116,10 +118,13 @@ fn output_kind_round_trips_to_engine_output() {
         id: "output-built-in-speaker".to_string(),
         name: "Built-in Speaker".to_string(),
         kind: AudioDeviceKindPayload::Output,
+        max_channels: 2,
     };
+    // The channel count survives the bridge in both directions.
     let info: AudioDeviceInfo = payload.clone().into();
     assert_eq!(info.id, payload.id);
     assert_eq!(info.name, payload.name);
+    assert_eq!(info.max_channels, payload.max_channels);
     // Kind round-trip across the discriminant enum, independent of
     // the `AudioDeviceInfo` payload (which is kind-less). Wave 2.7
     // Lane SET.C: `Output` payload kind now maps to the engine-side

@@ -174,11 +174,13 @@ describe('Settings view', () => {
         id: 'input-built-in-microphone',
         name: 'Built-in Microphone',
         kind: 'Input',
+        max_channels: 2,
       },
       {
         id: 'input-blackhole-16ch',
         name: 'BlackHole 16ch',
         kind: 'Input',
+        max_channels: 2,
       },
     ];
     audioDevicesStore.devices = live;
@@ -232,11 +234,13 @@ describe('Settings view', () => {
         id: 'output-built-in-output',
         name: 'Built-in Output',
         kind: 'Output',
+        max_channels: 2,
       },
       {
         id: 'output-external-interface',
         name: 'External Audio Interface',
         kind: 'Output',
+        max_channels: 2,
       },
     ];
     audioDevicesStore.outputDevices = live;
@@ -841,22 +845,54 @@ describe('Settings view', () => {
     }
   });
 
+  it('offers only the channel pairs the selected input has (audit 2026-11-28)', async () => {
+    const live: AudioDevicePayload[] = [
+      {
+        id: 'input-macbook-pro-microphone',
+        name: 'MacBook Pro Microphone',
+        kind: 'Input',
+        max_channels: 1,
+      },
+    ];
+    audioDevicesStore.devices = live;
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === 'list_audio_devices' ? live : undefined),
+    );
+    const { container } = render(Settings);
+    const audio = getSection(container, 'Audio Device');
+    const input = within(audio).getByLabelText('Input Device') as HTMLSelectElement;
+    await fireEvent.change(input, { target: { value: 'input-macbook-pro-microphone' } });
+    await vi.waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('get_dj_device_profile', {
+        deviceName: 'MacBook Pro Microphone',
+        channelCount: 1,
+      });
+    });
+    const pairSelect = within(audio).getByLabelText('Channel Pair') as HTMLSelectElement;
+    expect(Array.from(pairSelect.options).map((o) => o.value)).toEqual(['0-1']);
+  });
+
   it('DJ / Rekordbox routing card queries profile on device change and warns on Cue pair selection', async () => {
     const live: AudioDevicePayload[] = [
       {
         id: 'input-ddj-flx10',
         name: 'Pioneer DJ DDJ-FLX10',
         kind: 'Input',
+        max_channels: 10,
       },
       {
         id: 'input-built-in-mic',
         name: 'Built-in Microphone',
         kind: 'Input',
+        max_channels: 2,
       },
     ];
     audioDevicesStore.devices = live;
 
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      // Settings refreshes the device list on mount; answer with the same
+      // devices so the selected input keeps its real channel count.
+      if (cmd === 'list_audio_devices') return Promise.resolve(live);
       if (cmd === 'get_dj_device_profile' && args?.deviceName === 'Pioneer DJ DDJ-FLX10') {
         return Promise.resolve({
           kind: 'ddj_flx10',
@@ -890,7 +926,7 @@ describe('Settings view', () => {
     await vi.waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('get_dj_device_profile', {
         deviceName: 'Pioneer DJ DDJ-FLX10',
-        channelCount: 4,
+        channelCount: 10,
       });
     });
 

@@ -800,6 +800,8 @@ pub struct AudioDevicePayload {
     pub id: String,
     pub name: String,
     pub kind: AudioDeviceKindPayload,
+    /// Largest channel count the device advertises (`0` = unknown).
+    pub max_channels: u16,
 }
 
 impl From<chromaticity_audio::AudioDeviceInfo> for AudioDevicePayload {
@@ -814,6 +816,7 @@ impl From<chromaticity_audio::AudioDeviceInfo> for AudioDevicePayload {
             // shape stays symmetric with the planned output
             // enumeration follow-up.
             kind: AudioDeviceKindPayload::Input,
+            max_channels: info.max_channels,
         }
     }
 }
@@ -823,6 +826,7 @@ impl From<AudioDevicePayload> for chromaticity_audio::AudioDeviceInfo {
         Self {
             id: payload.id,
             name: payload.name,
+            max_channels: payload.max_channels,
         }
     }
 }

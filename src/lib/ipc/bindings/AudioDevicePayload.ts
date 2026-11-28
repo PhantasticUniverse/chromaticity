@@ -29,4 +29,8 @@ import type { AudioDeviceKindPayload } from "./AudioDeviceKindPayload";
  * reasons — callsites that need `Output` construct the payload by
  * hand.
  */
-export type AudioDevicePayload = { id: string, name: string, kind: AudioDeviceKindPayload, };
+export type AudioDevicePayload = { id: string, name: string, kind: AudioDeviceKindPayload,
+/**
+ * Largest channel count the device advertises (`0` = unknown).
+ */
+max_channels: number, };

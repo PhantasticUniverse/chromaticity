@@ -90,6 +90,7 @@ pub fn list_audio_output_devices() -> Result<Vec<AudioDevicePayload>, String> {
             id: info.id,
             name: info.name,
             kind: AudioDeviceKindPayload::Output,
+            max_channels: info.max_channels,
         })
         .collect())
 }

@@ -317,14 +317,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       audioSnapshot.input_device,
   );
 
-  let djProfile = $state<DjDeviceProfilePayload>(inferDjDeviceProfileFallback('default', 4));
+  // Real channel count of the selected input (audit 2026-11-28: this was
+  // hardcoded to 4). System audio, the default device and fixture rows
+  // report no count; treat them as stereo.
+  const inputChannelCount = $derived.by((): number => {
+    const device = audioDevicesStore.devices.find((d) => d.id === audioSnapshot.input_device);
+    return device && device.max_channels > 0 ? device.max_channels : 2;
+  });
+  /** Channel pairs the selected input actually has (Ch 1–2 is always offered:
+   * a mono input is captured as a duplicated pair). */
+  const channelPairOptions = $derived(
+    DJ_CHANNEL_PAIR_OPTIONS.filter((opt) => opt.id === '0-1' || opt.right < inputChannelCount),
+  );
+
+  let djProfile = $state<DjDeviceProfilePayload>(inferDjDeviceProfileFallback('default', 2));
   let selectedChannelPairId = $state<string>('0-1');
 
   $effect(() => {
     const deviceName = selectedInputDeviceName;
-    djProfile = inferDjDeviceProfileFallback(deviceName, 4);
+    const channels = inputChannelCount;
+    djProfile = inferDjDeviceProfileFallback(deviceName, channels);
     let cancelled = false;
-    void getDjDeviceProfile(deviceName, 4).then((resolved) => {
+    void getDjDeviceProfile(deviceName, channels).then((resolved) => {
       if (!cancelled && resolved) {
         djProfile = resolved;
       }
@@ -786,7 +800,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               value={selectedChannelPairId}
               onchange={(e) => handleChannelPairChange(e.currentTarget.value)}
             >
-              {#each DJ_CHANNEL_PAIR_OPTIONS as opt (opt.id)}
+              {#each channelPairOptions as opt (opt.id)}
                 <option value={opt.id}>{opt.label}</option>
               {/each}
             </select>

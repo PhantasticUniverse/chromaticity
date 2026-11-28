@@ -26,24 +26,28 @@ const SAMPLE_DEVICE_A: AudioDevicePayload = {
   id: 'input-built-in-microphone',
   name: 'Built-in Microphone',
   kind: 'Input',
+  max_channels: 2,
 };
 
 const SAMPLE_DEVICE_B: AudioDevicePayload = {
   id: 'input-blackhole-16ch',
   name: 'BlackHole 16ch',
   kind: 'Input',
+  max_channels: 2,
 };
 
 const SAMPLE_OUTPUT_A: AudioDevicePayload = {
   id: 'output-built-in-output',
   name: 'Built-in Output',
   kind: 'Output',
+  max_channels: 2,
 };
 
 const SAMPLE_OUTPUT_B: AudioDevicePayload = {
   id: 'output-external-interface',
   name: 'External Audio Interface',
   kind: 'Output',
+  max_channels: 2,
 };
 
 describe('audioDevicesStore', () => {
