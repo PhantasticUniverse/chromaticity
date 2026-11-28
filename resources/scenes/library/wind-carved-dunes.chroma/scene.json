@@ -1,0 +1,17 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Wind-Carved Dunes",
+  "CREDIT": "operator demo",
+  "DESCRIPTION": "Slow sand dunes shifting under desert wind",
+  "TAGS": ["dune", "sand", "wave"],
+  "CATEGORIES": ["MY-SCENES", "ORGANIC"],
+  "CONTROLS": [
+    { "NAME": "speed", "TYPE": "slider", "DEFAULT": 0.5, "MIN": 0.0, "MAX": 1.0 },
+    { "NAME": "intensity", "TYPE": "slider", "DEFAULT": 0.6, "MIN": 0.0, "MAX": 1.0 },
+    { "NAME": "warp", "TYPE": "knob", "DEFAULT": 0.3, "MIN": 0.0, "MAX": 1.0 },
+    { "NAME": "invert", "TYPE": "toggle", "DEFAULT": false },
+    { "NAME": "tint", "TYPE": "color", "DEFAULT": [0.4, 0.7, 0.95, 1.0] },
+    { "NAME": "focus", "TYPE": "xy", "DEFAULT": [0.5, 0.5] }
+  ],
+  "PASSES": []
+}

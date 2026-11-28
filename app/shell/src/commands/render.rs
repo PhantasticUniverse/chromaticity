@@ -39,6 +39,167 @@ const THUMBNAIL_FRAME_INDEX: u64 = 150;
 /// Metal/wgpu device is initialized once across thumbnail requests.
 static THUMBNAIL_ENGINE: OnceLock<Mutex<GpuPreviewEngine>> = OnceLock::new();
 
+/// Install the packaged Tauri `resource_dir` on the shared thumbnail GPU engine
+/// so bundled `#include "lygia/..."` and `#include "hg_sdf/..."` scenes render
+/// thumbnails cleanly outside a git checkout.
+pub fn set_thumbnail_resource_dir(dir: std::path::PathBuf) {
+    let mutex = THUMBNAIL_ENGINE.get_or_init(|| Mutex::new(GpuPreviewEngine::new()));
+    let mut engine = match mutex.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    engine.set_resource_dir(dir);
+}
+
+/// Live Meta Controls color & mirror pipeline state read from `ControlId(1000+)`
+/// (`META_CONTROL_ID_BASE` in `src/lib/data/perform-fixtures.ts`).
+#[derive(Debug, Clone, Copy)]
+pub struct MetaColorConfig {
+    pub invert: bool,
+    pub brightness: f32,
+    pub gamma: f32,
+    pub contrast: f32,
+    pub hue_offset: f32,
+    pub saturation: f32,
+    pub vert_mirror: bool,
+    pub hor_mirror: bool,
+    pub limit_colors: bool,
+}
+
+impl Default for MetaColorConfig {
+    fn default() -> Self {
+        Self {
+            invert: false,
+            brightness: 0.0,
+            gamma: 1.0,
+            contrast: 1.0,
+            hue_offset: 0.0,
+            saturation: 1.0,
+            vert_mirror: false,
+            hor_mirror: false,
+            limit_colors: false,
+        }
+    }
+}
+
+impl MetaColorConfig {
+    #[must_use]
+    pub fn is_identity(&self) -> bool {
+        !self.invert
+            && !self.vert_mirror
+            && !self.hor_mirror
+            && !self.limit_colors
+            && self.brightness.abs() < 1e-3
+            && (self.gamma - 1.0).abs() < 1e-3
+            && (self.contrast - 1.0).abs() < 1e-3
+            && self.hue_offset.abs() < 1e-3
+            && (self.saturation - 1.0).abs() < 1e-3
+    }
+}
+
+/// Apply the active Meta Controls (invert, brightness, gamma, contrast, hue,
+/// saturation, vertical/horizontal mirror, limit colors) in-place on an RGBA8 frame.
+pub fn apply_meta_color_pass(pixels: &mut [u8], width: u32, height: u32, meta: &MetaColorConfig) {
+    if meta.is_identity() {
+        return;
+    }
+    let w = width as usize;
+    let h = height as usize;
+    if w == 0 || h == 0 || pixels.len() < w.saturating_mul(h).saturating_mul(4) {
+        return;
+    }
+    if meta.hor_mirror {
+        let half_w = w / 2;
+        for y in 0..h {
+            let row = y * w * 4;
+            for x in 0..half_w {
+                let src = row + x * 4;
+                let dst = row + (w - 1 - x) * 4;
+                pixels[dst] = pixels[src];
+                pixels[dst + 1] = pixels[src + 1];
+                pixels[dst + 2] = pixels[src + 2];
+                pixels[dst + 3] = pixels[src + 3];
+            }
+        }
+    }
+    if meta.vert_mirror {
+        let half_h = h / 2;
+        let row_bytes = w * 4;
+        for y in 0..half_h {
+            let src_start = y * row_bytes;
+            let dst_start = (h - 1 - y) * row_bytes;
+            for i in 0..row_bytes {
+                pixels[dst_start + i] = pixels[src_start + i];
+            }
+        }
+    }
+    let inv_gamma = 1.0 / meta.gamma.clamp(0.1, 4.0);
+    let contrast = meta.contrast.clamp(0.0, 3.0);
+    let sat = meta.saturation.clamp(0.0, 2.5);
+    let hue_rad = meta.hue_offset * std::f32::consts::TAU;
+    let cos_h = hue_rad.cos();
+    let sin_h = hue_rad.sin();
+    let do_hue = meta.hue_offset.abs() >= 1e-3;
+
+    for px in pixels.chunks_exact_mut(4) {
+        let mut r = f32::from(px[0]) / 255.0;
+        let mut g = f32::from(px[1]) / 255.0;
+        let mut b = f32::from(px[2]) / 255.0;
+
+        r = ((r - 0.5) * contrast + 0.5 + meta.brightness).clamp(0.0, 1.0);
+        g = ((g - 0.5) * contrast + 0.5 + meta.brightness).clamp(0.0, 1.0);
+        b = ((b - 0.5) * contrast + 0.5 + meta.brightness).clamp(0.0, 1.0);
+
+        if (inv_gamma - 1.0).abs() >= 1e-3 {
+            r = r.powf(inv_gamma);
+            g = g.powf(inv_gamma);
+            b = b.powf(inv_gamma);
+        }
+
+        if (sat - 1.0).abs() >= 1e-3 {
+            let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            r = (luma + (r - luma) * sat).clamp(0.0, 1.0);
+            g = (luma + (g - luma) * sat).clamp(0.0, 1.0);
+            b = (luma + (b - luma) * sat).clamp(0.0, 1.0);
+        }
+
+        if do_hue {
+            let k = 1.0 / 3.0_f32;
+            let s3 = (1.0 / 3.0_f32).sqrt();
+            let nr = r * (cos_h + (1.0 - cos_h) * k)
+                + g * (k * (1.0 - cos_h) - s3 * sin_h)
+                + b * (k * (1.0 - cos_h) + s3 * sin_h);
+            let ng = r * (k * (1.0 - cos_h) + s3 * sin_h)
+                + g * (cos_h + k * (1.0 - cos_h))
+                + b * (k * (1.0 - cos_h) - s3 * sin_h);
+            let nb = r * (k * (1.0 - cos_h) - s3 * sin_h)
+                + g * (k * (1.0 - cos_h) + s3 * sin_h)
+                + b * (cos_h + k * (1.0 - cos_h));
+            r = nr.clamp(0.0, 1.0);
+            g = ng.clamp(0.0, 1.0);
+            b = nb.clamp(0.0, 1.0);
+        }
+
+        if meta.limit_colors {
+            let luma = (0.2126 * r + 0.7152 * g + 0.0722 * b).clamp(0.0, 1.0);
+            // Duotone gradient between low (#ff4d5e) and high (#ffb64d) palette anchors.
+            r = 1.0;
+            g = 0.302 + luma * (0.714 - 0.302);
+            b = 0.369 + luma * (0.302 - 0.369);
+        }
+
+        if meta.invert {
+            r = 1.0 - r;
+            g = 1.0 - g;
+            b = 1.0 - b;
+        }
+
+        px[0] = (r.clamp(0.0, 1.0) * 255.0).round() as u8;
+        px[1] = (g.clamp(0.0, 1.0) * 255.0).round() as u8;
+        px[2] = (b.clamp(0.0, 1.0) * 255.0).round() as u8;
+    }
+}
+
 /// Render the currently active `.chroma` scene's `main.glsl` on the GPU at
 /// `(width, height)` and return raw RGBA8 pixels as a binary IPC response.
 #[tauri::command]
@@ -49,7 +210,7 @@ pub fn render_gpu_frame(
 ) -> Result<tauri::ipc::Response, String> {
     let elapsed_secs = app_state.started_at.elapsed().as_secs_f32();
     let bpm_override = app_state.current_bpm_override();
-    let (frame, audio, mut controls) = {
+    let (frame, audio, mut controls, meta_cfg) = {
         let state_guard = match app_state.state.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
@@ -74,7 +235,35 @@ pub fn render_gpu_frame(
             controls[11] = x;
             controls[12] = y;
         }
-        (frame, audio, controls)
+        let mut meta_cfg = MetaColorConfig::default();
+        if let Some(v) = state_guard.control_value(ControlId(1000)) {
+            meta_cfg.invert = v.0 >= 0.5;
+        }
+        if let Some(v) = state_guard.control_value(ControlId(1001)) {
+            meta_cfg.brightness = v.0.clamp(-1.0, 1.0);
+        }
+        if let Some(v) = state_guard.control_value(ControlId(1002)) {
+            meta_cfg.gamma = if v.0 > 0.05 { v.0 } else { 1.0 };
+        }
+        if let Some(v) = state_guard.control_value(ControlId(1003)) {
+            meta_cfg.contrast = v.0.clamp(0.0, 3.0);
+        }
+        if let Some(v) = state_guard.control_value(ControlId(1004)) {
+            meta_cfg.hue_offset = v.0;
+        }
+        if let Some(v) = state_guard.control_value(ControlId(1005)) {
+            meta_cfg.saturation = v.0.clamp(0.0, 2.5);
+        }
+        if let Some(v) = state_guard.control_value(ControlId(1010)) {
+            meta_cfg.vert_mirror = v.0 >= 0.5;
+        }
+        if let Some(v) = state_guard.control_value(ControlId(1011)) {
+            meta_cfg.hor_mirror = v.0 >= 0.5;
+        }
+        if let Some(v) = state_guard.control_value(ControlId(1040)) {
+            meta_cfg.limit_colors = v.0 >= 0.5;
+        }
+        (frame, audio, controls, meta_cfg)
     };
 
     let resolved_bpm = resolve_bpm_uniforms(elapsed_secs, audio.bpm, &bpm_override);
@@ -156,7 +345,7 @@ pub fn render_gpu_frame(
         }
     }
 
-    let (bytes, last_frame_ms) = {
+    let (mut bytes, last_frame_ms) = {
         let mut gpu = match app_state.gpu_renderer.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
@@ -173,6 +362,7 @@ pub fn render_gpu_frame(
         let last_frame_ms = gpu.status().last_frame_ms;
         (bytes, last_frame_ms)
     };
+    apply_meta_color_pass(&mut bytes, width, height, &meta_cfg);
     app_state.record_gpu_frame_cost(width, height, last_frame_ms);
     Ok(tauri::ipc::Response::new(bytes))
 }
@@ -443,5 +633,22 @@ mod tests {
         let err = set_bpm_override_impl(&app, "turbo", None, None, None, None)
             .expect_err("unknown mode should fail");
         assert!(err.contains("unsupported BPM override mode"));
+    }
+
+    #[test]
+    fn meta_color_pass_transforms_invert_mirror_and_brightness() {
+        let mut pixels = vec![
+            40, 80, 120, 255, // (0, 0)
+            200, 100, 50, 255, // (1, 0)
+        ];
+        let cfg = MetaColorConfig {
+            invert: true,
+            hor_mirror: true,
+            ..Default::default()
+        };
+        apply_meta_color_pass(&mut pixels, 2, 1, &cfg);
+        // Horizontal mirror copies left pixel (40,80,120) to right, then invert maps it to (215,175,135).
+        assert_eq!(&pixels[0..4], &[215, 175, 135, 255]);
+        assert_eq!(&pixels[4..8], &[215, 175, 135, 255]);
     }
 }

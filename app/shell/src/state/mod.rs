@@ -432,6 +432,9 @@ pub struct AppState {
     pub recorder_output_file: Mutex<Option<crate::commands::recorder::ActiveRecordingFile>>,
     /// Phase 7a keyframe-aligned rolling replay buffer ("save last 15–120 s").
     pub replay_buffer: Mutex<chromaticity_runtime::recorder::ReplayBuffer>,
+    /// Rolling JPEG ring buffer (up to 15 s @ 30 fps) backing live Save Replay when
+    /// composited JPEG frames are pushed from the live stage or Mix compositor.
+    pub replay_jpeg_ring: Mutex<std::collections::VecDeque<Vec<u8>>>,
     /// Managed live Twitch RTMPS/RTMP `ffmpeg` publisher child process and state machine.
     pub twitch_stream: Mutex<crate::commands::stream::TwitchStreamProcess>,
     /// Live QuickJS `script.js` host (ADR-012 sandboxed worker).
@@ -573,6 +576,7 @@ impl AppState {
             ),
             recorder_output_file: Mutex::new(None),
             replay_buffer: Mutex::new(chromaticity_runtime::recorder::ReplayBuffer::default()),
+            replay_jpeg_ring: Mutex::new(std::collections::VecDeque::new()),
             twitch_stream: Mutex::new(crate::commands::stream::TwitchStreamProcess::new()),
             script_host: Mutex::new(crate::script_host::ScriptHost::new()),
             entitlement_token: Mutex::new(None),

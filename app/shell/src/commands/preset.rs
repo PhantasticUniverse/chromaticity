@@ -155,23 +155,48 @@ pub fn hydrate_presets_from_disk(app: &AppState, data_dir: &Path) {
             &mut state,
         );
     }
-    for (cid, val) in prior_scalars {
-        let _ = app.bus.dispatch_and_commit_into(
-            Command::ControlSet {
-                id: ControlId(cid),
-                value: ControlValue(val),
-            },
-            &mut state,
-        );
-    }
-    for (cid, pair) in prior_xy {
-        let _ = app.bus.dispatch_and_commit_into(
-            Command::ControlSet2D {
-                id: ControlId(cid),
-                value: pair,
-            },
-            &mut state,
-        );
+    // Reset live controls after hydrating presets so the last preset in
+    // `presets.json` never leaks onto fresh startup state.
+    if prior_scalars.is_empty() && prior_xy.is_empty() {
+        for cid in 0..MAX_PERSISTED_CONTROL_ID {
+            if state.control_value(ControlId(cid)).is_some() {
+                let _ = app.bus.dispatch_and_commit_into(
+                    Command::ControlSet {
+                        id: ControlId(cid),
+                        value: ControlValue(0.0),
+                    },
+                    &mut state,
+                );
+            }
+            if state.xy_control_value(ControlId(cid)).is_some() {
+                let _ = app.bus.dispatch_and_commit_into(
+                    Command::ControlSet2D {
+                        id: ControlId(cid),
+                        value: [0.0, 0.0],
+                    },
+                    &mut state,
+                );
+            }
+        }
+    } else {
+        for (cid, val) in prior_scalars {
+            let _ = app.bus.dispatch_and_commit_into(
+                Command::ControlSet {
+                    id: ControlId(cid),
+                    value: ControlValue(val),
+                },
+                &mut state,
+            );
+        }
+        for (cid, pair) in prior_xy {
+            let _ = app.bus.dispatch_and_commit_into(
+                Command::ControlSet2D {
+                    id: ControlId(cid),
+                    value: pair,
+                },
+                &mut state,
+            );
+        }
     }
 }
 

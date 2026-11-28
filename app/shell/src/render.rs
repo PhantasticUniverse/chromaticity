@@ -191,6 +191,10 @@ vec4 _chroma_sample_spectrum(vec2 uv) {
     float v = chroma_AudioFFT[idx];
     return vec4(v, v, v, v);
 }
+
+vec4 _chroma_sample_media(vec2 uv) {
+    return vec4(0.0, 0.0, 0.0, 1.0) + 0.0 * vec4(uv, 0.0, 0.0);
+}
 "#;
 
 fn ctrl_channel_expr(slot: usize) -> Option<&'static str> {
@@ -291,13 +295,10 @@ fn adapt_syn_imported_shader(source: &str) -> String {
     // Replace unbound media/spectrum texture lookups with live std140 fallbacks.
     out = out.replace(
         "return texture(syn_UserImage, uv);",
-        "return vec4(0.0, 0.0, 0.0, 1.0);",
+        "return _chroma_sample_media(uv);",
     );
     out = out.replace("texture(syn_Spectrum,", "_chroma_sample_spectrum(");
-    out = out.replace(
-        "texture(syn_UserImage,",
-        "vec4(0.0, 0.0, 0.0, 1.0) + 0.0 * vec4(",
-    );
+    out = out.replace("texture(syn_UserImage,", "_chroma_sample_media(");
 
     out
 }
@@ -1642,7 +1643,7 @@ void main() {
     }
 
     #[test]
-    fn all_20_bundled_scenes_compile_and_render_on_gpu() {
+    fn all_25_bundled_scenes_compile_and_render_on_gpu() {
         let bundled_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes");
         let mut scene_dirs = Vec::new();
         for sub in ["library", "welcome", "examples"] {
@@ -1657,8 +1658,8 @@ void main() {
         scene_dirs.sort();
         assert_eq!(
             scene_dirs.len(),
-            20,
-            "expected all 20 bundled .chroma scenes"
+            25,
+            "expected all 25 bundled .chroma scenes"
         );
 
         let mut engine = GpuPreviewEngine::new();

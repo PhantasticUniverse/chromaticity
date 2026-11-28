@@ -179,6 +179,7 @@ pub fn run() -> Result<(), tauri::Error> {
                     if let Ok(mut gpu) = bootstrap_state.gpu_renderer.lock() {
                         gpu.set_resource_dir(resource_dir.clone());
                     }
+                    commands::render::set_thumbnail_resource_dir(resource_dir.clone());
                     bootstrap_state.install_bundled_scene_root(resource_dir.join("scenes"));
                 }
                 commands::preset::hydrate_presets_from_disk(bootstrap_state.inner(), &data_dir);

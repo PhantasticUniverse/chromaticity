@@ -1173,9 +1173,12 @@ the renderer automatically appends <code>chroma_AudioEnv0..3</code> and
 <p>The audio analysis pipeline produces a per-tick <code>AudioUniformSnapshot</code>
 on the audio-analysis thread, which the audio-to-render adapter
 marshals into the GPU uniform slots above. Uniforms that read zero are the
-documented all-zero baseline for "no audio observed yet"; in
-production, the BPM uniform clamps to the default tempo (120 BPM) on
-the first tick before any analysis history accumulates.</p>
+documented all-zero baseline for "no audio observed yet"; in <code>Auto</code> BPM mode,
+<code>syn_BPM.x</code> reports <code>0.0</code> until audio tempo locks (or locks to the operator's
+manual tempo in <code>Manual</code> mode). Imported <code>.synScene</code> shaders automatically
+receive compatibility macros for <code>syn_BPMTwitcher</code>, <code>syn_BPMSin2/4/8</code>,
+<code>syn_BPMTri/2/4/8</code>, and <code>syn_Spectrum</code> backed by <code>chroma_AudioFFT[8]</code> via
+<code>SYN_LIVE_GPU_ABI_BRIDGE</code>.</p>
 <h3 id="scalar-audio-uniforms-runtime-planned-catalog">Scalar audio uniforms (runtime &amp; planned catalog)</h3>
 <table>
 <thead>

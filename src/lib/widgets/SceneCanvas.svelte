@@ -67,6 +67,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { untrack } from 'svelte';
 
   import { RENDERERS, type SceneKind, type SceneRendererControls } from './scene-renderers';
+  import { getRecorderStatus, pushRecorderJpegFrame } from '../ipc/recorder';
   import { fetchGpuFrame, fetchGpuRenderStatus } from '../ipc/render';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
@@ -104,6 +105,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
      *  the loaded `.chroma` scene ships a `main.glsl` shader, falling back
      *  seamlessly to the procedural Canvas2D renderer otherwise. */
     gpuLive?: boolean;
+    /** Optional GPU render width cap (default 480 for preview tiles; 1280+ for Stage Output). */
+    maxWidth?: number;
+    /** Optional GPU render height cap (default 270 for preview tiles; 720+ for Stage Output). */
+    maxHeight?: number;
   };
 
   let {
@@ -114,6 +119,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     ariaLabel,
     controls,
     gpuLive = false,
+    maxWidth = 480,
+    maxHeight = 270,
   }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
@@ -320,8 +327,52 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     let gpuInFlight = false;
     let lastGpuFrame: ImageData | null = null;
     let gpuOffscreen: HTMLCanvasElement | null = null;
-    const GPU_MAX_W = 480;
-    const GPU_MAX_H = 270;
+    let recordingActive = false;
+    let recPushInFlight = false;
+    let lastRecPushAt = 0;
+    const isGpuLive = untrack(() => gpuLive);
+
+    const onRecordingChange = (event: Event): void => {
+      const custom = event as CustomEvent<{ isRecording?: boolean }>;
+      recordingActive = Boolean(custom.detail?.isRecording);
+    };
+    if (isGpuLive && typeof window !== 'undefined') {
+      void getRecorderStatus().then((status) => {
+        if (status) recordingActive = status.is_recording;
+      });
+      window.addEventListener('chromaticity:recording-change', onRecordingChange);
+    }
+
+    const pushFrameIfRecording = (sourceCanvas: HTMLCanvasElement): void => {
+      if (
+        !isGpuLive ||
+        !recordingActive ||
+        recPushInFlight ||
+        typeof sourceCanvas.toBlob !== 'function'
+      ) {
+        return;
+      }
+      const now = performance.now();
+      if (now - lastRecPushAt < 33) return;
+      lastRecPushAt = now;
+      recPushInFlight = true;
+      sourceCanvas.toBlob(
+        (blob) => {
+          if (!blob || !recordingActive) {
+            recPushInFlight = false;
+            return;
+          }
+          void blob
+            .arrayBuffer()
+            .then((buf) => pushRecorderJpegFrame(new Uint8Array(buf)))
+            .finally(() => {
+              recPushInFlight = false;
+            });
+        },
+        'image/jpeg',
+        0.82,
+      );
+    };
 
     const loop = (): void => {
       const t = (performance.now() - start) / 1000;
@@ -333,12 +384,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         dpr: resolveDpr(dpr),
         snapshot: audioSnapshotStore.snapshot,
         useGpu: gpuLive && gpuActive,
+        capW: maxWidth,
+        capH: maxHeight,
       }));
       resize(frame.dpr);
 
       if (frame.useGpu && typeof ImageData !== 'undefined') {
-        const targetW = Math.max(16, Math.min(GPU_MAX_W, Math.round(c.width)));
-        const targetH = Math.max(16, Math.min(GPU_MAX_H, Math.round(c.height)));
+        const targetW = Math.max(16, Math.min(frame.capW, Math.round(c.width)));
+        const targetH = Math.max(16, Math.min(frame.capH, Math.round(c.height)));
         if (!gpuInFlight) {
           gpuInFlight = true;
           void fetchGpuFrame(targetW, targetH).then((pixels) => {
@@ -369,6 +422,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             if (offCtx) {
               offCtx.putImageData(lastGpuFrame, 0, 0);
               ctx.drawImage(gpuOffscreen, 0, 0, c.width, c.height);
+              pushFrameIfRecording(c);
               raf = requestAnimationFrame(loop);
               return;
             }
@@ -400,6 +454,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       }
       smLvl = smLvl + (rawLvl - smLvl) * LVL_EMA;
       draw(t, smLvl, frame.kind, frame.seed, frame.controls);
+      pushFrameIfRecording(c);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -407,6 +462,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     return () => {
       cancelAnimationFrame(raf);
       ro?.disconnect();
+      if (isGpuLive && typeof window !== 'undefined') {
+        window.removeEventListener('chromaticity:recording-change', onRecordingChange);
+      }
     };
   });
 </script>

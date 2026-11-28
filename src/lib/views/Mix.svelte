@@ -200,6 +200,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   let localRecordingActive = false;
   let recorderPushInFlight = false;
+  let lastReplayRingPushAt = 0;
 
   $effect(() => {
     let active = true;
@@ -242,11 +243,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           // Ignore transient bitmap capture errors on unmounted canvases.
         });
     }
-    if (localRecordingActive && !recorderPushInFlight && typeof canvas.toBlob === 'function') {
+    const shouldPushRecorder = localRecordingActive || now - lastReplayRingPushAt >= 100;
+    if (shouldPushRecorder && !recorderPushInFlight && typeof canvas.toBlob === 'function') {
+      lastReplayRingPushAt = now;
       recorderPushInFlight = true;
       canvas.toBlob(
         (blob) => {
-          if (!blob || disposed || !localRecordingActive) {
+          if (!blob || disposed) {
             recorderPushInFlight = false;
             return;
           }

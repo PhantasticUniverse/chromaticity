@@ -1,0 +1,49 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Spectral Prism Refraction",
+  "CREDIT": "Chromaticity Showdown",
+  "DESCRIPTION": "Raymarches a faceted floating crystal octahedron over a dark obsidian mirror plane, splitting a sweeping white-cyan laser beam into a 7-band volumetric RGB dispersion fan with anisotropic floor caustics and planar crystal reflections. Visually special for its per-channel RGB internal refraction sparkle and crisp Pink-Floyd-meets-optics caustic projections. Controls: speed (crystal & laser sweep speed), intensity (HDR bloom), dispersion (spectral fan spread & IOR separation), invert (negative mode), hue_shift (spectrum offset), beam_angle XY (camera orbit & elevation).",
+  "TAGS": ["3d", "raymarching", "prism", "optics", "refraction"],
+  "CATEGORIES": ["MY-SCENES", "GEOMETRIC", "AUDIO-REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "speed",
+      "TYPE": "slider",
+      "DEFAULT": 0.45,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "intensity",
+      "TYPE": "slider",
+      "DEFAULT": 0.8,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "dispersion",
+      "TYPE": "knob",
+      "DEFAULT": 0.65,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "invert",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "hue_shift",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "beam_angle",
+      "TYPE": "xy",
+      "DEFAULT": [0.5, 0.5]
+    }
+  ],
+  "PASSES": []
+}

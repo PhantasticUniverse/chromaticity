@@ -111,7 +111,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         aria-label="Composited program mirror"
       ></canvas>
       {#if !mirrorActive}
-        <SceneCanvas kind={sceneKind} seed={sceneSeed} audio={true} gpuLive={true} />
+        <SceneCanvas
+          kind={sceneKind}
+          seed={sceneSeed}
+          audio={true}
+          gpuLive={true}
+          maxWidth={1280}
+          maxHeight={720}
+        />
       {/if}
     {/if}
     {#if liveFxStore.strobeActive}

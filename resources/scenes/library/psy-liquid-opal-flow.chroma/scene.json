@@ -1,0 +1,17 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Psy Liquid Opal Flow",
+  "CREDIT": "Chromaticity Showcase",
+  "DESCRIPTION": "4-octave curl-advected 3D fluid heightfield with central-difference surface normals, thin-film spectral interference, and procedural studio-chrome reflections. Delivers hyper-glossy liquid mercury waves gleaming with deep indigo, electric cyan, molten gold, and magenta opal oil-slicks. Tweak speed (flow velocity), intensity (exposure), turbulence (curl warp relief), iridescence (thin-film phase), chrome (mirror sheen), and focus (camera drift).",
+  "TAGS": ["psychedelic", "liquid", "opal", "chrome", "iridescent", "milkdrop"],
+  "CATEGORIES": ["MY-SCENES", "PSYCHEDELIC", "AUDIO-REACTIVE"],
+  "CONTROLS": [
+    { "NAME": "speed", "TYPE": "slider", "DEFAULT": 0.5, "MIN": 0.0, "MAX": 1.0 },
+    { "NAME": "intensity", "TYPE": "slider", "DEFAULT": 0.72, "MIN": 0.0, "MAX": 1.0 },
+    { "NAME": "turbulence", "TYPE": "knob", "DEFAULT": 0.55, "MIN": 0.0, "MAX": 1.0 },
+    { "NAME": "iridescence", "TYPE": "knob", "DEFAULT": 0.65, "MIN": 0.0, "MAX": 1.0 },
+    { "NAME": "chrome", "TYPE": "slider", "DEFAULT": 0.75, "MIN": 0.0, "MAX": 1.0 },
+    { "NAME": "focus", "TYPE": "xy", "DEFAULT": [0.5, 0.5] }
+  ],
+  "PASSES": []
+}

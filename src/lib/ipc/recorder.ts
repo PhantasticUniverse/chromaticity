@@ -78,12 +78,10 @@ export async function getRecorderStatus(): Promise<RecorderStatusDto | null> {
   }
 }
 
-/** Push a composited JPEG frame into the local `ffmpeg` H.264 fMP4 recorder. Returns `null` outside Tauri. */
+/** Push a composited JPEG frame via zero-copy raw binary IPC into the live replay ring & ffmpeg recorder. */
 export async function pushRecorderJpegFrame(jpegBytes: Uint8Array): Promise<number | null> {
   try {
-    return await invoke<number>('push_recorder_jpeg_frame', {
-      jpegBytes: Array.from(jpegBytes),
-    });
+    return await invoke<number>('push_recorder_jpeg_frame', jpegBytes);
   } catch {
     return null;
   }

@@ -1,0 +1,49 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Cyber Torus Knot",
+  "CREDIT": "Chromaticity Showdown",
+  "DESCRIPTION": "Evaluates a seamless 3-branch modular (3,5) torus knot SDF with FFT-modulated helical fluted ribs, analytical tetrahedral normals, and a 1-bounce raymarched reflection on an obsidian mirror floor. Visually special for its liquid-chrome thin-film iridescent Fresnel sheen, studio softbox reflections, and subsurface neon halo. Controls: speed (knot rotation & flow), intensity (HDR exposure), rib_twist (helical rib relief depth), invert (negative mode), hue_shift (thin-film spectrum shift), orbit XY (camera azimuth & elevation).",
+  "TAGS": ["3d", "raymarching", "torus-knot", "iridescent", "chrome"],
+  "CATEGORIES": ["MY-SCENES", "GEOMETRIC", "AUDIO-REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "speed",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "intensity",
+      "TYPE": "slider",
+      "DEFAULT": 0.75,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "rib_twist",
+      "TYPE": "knob",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "invert",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "hue_shift",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "orbit",
+      "TYPE": "xy",
+      "DEFAULT": [0.5, 0.5]
+    }
+  ],
+  "PASSES": []
+}

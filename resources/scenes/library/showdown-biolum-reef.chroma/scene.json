@@ -1,0 +1,49 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Bioluminescent Alien Reef",
+  "CREDIT": "Chromaticity Showdown",
+  "DESCRIPTION": "Raymarches an underwater alien seabed with smooth-blended swaying coral spires, pulsing hollow-bell jellyfish with undulating SDF tendrils, volumetric caustic light shafts from above, and sparkling plankton. Visually special for its translucent cyan-violet-amber subsurface jellyfish glow and deep abyssal atmospheric depth. Controls: speed (swim & drift pace), intensity (bioluminescent gain), current (tentacle & coral sway strength), invert (negative mode), hue_shift (bioluminescent palette), drift XY (camera aim).",
+  "TAGS": ["3d", "raymarching", "underwater", "bioluminescent", "organic"],
+  "CATEGORIES": ["MY-SCENES", "ORGANIC", "AUDIO-REACTIVE"],
+  "CONTROLS": [
+    {
+      "NAME": "speed",
+      "TYPE": "slider",
+      "DEFAULT": 0.45,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "intensity",
+      "TYPE": "slider",
+      "DEFAULT": 0.78,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "current",
+      "TYPE": "knob",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "invert",
+      "TYPE": "toggle",
+      "DEFAULT": false
+    },
+    {
+      "NAME": "hue_shift",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "drift",
+      "TYPE": "xy",
+      "DEFAULT": [0.5, 0.5]
+    }
+  ],
+  "PASSES": []
+}

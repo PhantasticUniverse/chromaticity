@@ -42,12 +42,32 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // The button's `aria-pressed` reflects the open state so screen
   // readers can announce the drawer's visibility.
   import Icon from './Icon.svelte';
+  import { fetchGpuRenderStatus } from './ipc/render';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { consoleStore } from './stores/console.svelte';
 
   const VERSION = '0.0.0';
   const CPU_PCT = '—';
-  const GPU_PCT = '—';
+  let liveGpuPct = $state<string>('—');
+
+  $effect(() => {
+    let active = true;
+    const pollGpu = async (): Promise<void> => {
+      const status = await fetchGpuRenderStatus();
+      if (!active || !status || status.state !== 'active' || status.last_frame_ms <= 0) {
+        return;
+      }
+      const pct = Math.min(100, Math.max(1, Math.round((status.last_frame_ms / 16.6667) * 100)));
+      liveGpuPct = `${pct}%`;
+    };
+    void pollGpu();
+    const id = window.setInterval(() => void pollGpu(), 1000);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  });
+  const GPU_PCT = $derived(liveGpuPct);
 
   const warningsCount = $derived(consoleStore.warningsCount);
   const errorsCount = $derived(consoleStore.errorsCount);

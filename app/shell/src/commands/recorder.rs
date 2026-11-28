@@ -25,12 +25,15 @@ use tauri::{Manager, State};
 /// Subdirectory under `app.path().app_data_dir()` where default replay files are saved.
 const RECORDINGS_SUBDIR: &str = "recordings";
 
+/// Maximum retained JPEG frames in the live rolling replay ring buffer (15 s @ 30 fps).
+const MAX_REPLAY_JPEG_FRAMES: usize = 450;
+
 /// Open on-disk fMP4 file (and optional live `ffmpeg` H.264 encoder subprocess)
 /// backing an active recording session.
 #[derive(Debug)]
 pub struct ActiveRecordingFile {
     pub path: PathBuf,
-    pub file: std::fs::File,
+    pub file: Option<std::fs::File>,
     pub ffmpeg_child: Option<std::process::Child>,
     pub ffmpeg_stdin: Option<std::process::ChildStdin>,
     pub ffmpeg_frames: u64,
@@ -299,7 +302,7 @@ pub fn start_recording_to_dir_impl(
         };
         *file_guard = Some(ActiveRecordingFile {
             path: target_path,
-            file,
+            file: Some(file),
             ffmpeg_child: None,
             ffmpeg_stdin: None,
             ffmpeg_frames: 0,
@@ -346,10 +349,10 @@ pub fn stop_recording_impl(app: &AppState) -> Result<RecorderStatusDto, String> 
             // Drop stdin first so ffmpeg flushes its final fMP4 fragment and exits cleanly.
             drop(active_file.ffmpeg_stdin.take());
             let _ = child.wait();
-        } else {
+        } else if let Some(mut file) = active_file.file.take() {
             if let Some(fragment_bytes) = final_fragment {
                 if !fragment_bytes.is_empty() {
-                    active_file.file.write_all(&fragment_bytes).map_err(|err| {
+                    file.write_all(&fragment_bytes).map_err(|err| {
                         format!(
                             "failed to write final fMP4 fragment to {}: {err}",
                             active_file.path.display()
@@ -357,7 +360,7 @@ pub fn stop_recording_impl(app: &AppState) -> Result<RecorderStatusDto, String> 
                     })?;
                 }
             }
-            let _ = active_file.file.sync_all();
+            let _ = file.sync_all();
         }
     }
 
@@ -414,7 +417,79 @@ pub fn save_replay_buffer_impl(
     };
 
     if fmp4_bytes.is_empty() {
-        return Err("replay buffer is empty: no keyframes available to save".to_string());
+        // Fallback to the live rolling JPEG ring buffer when no raw H.264 NAL packets
+        // were pushed directly into `Fmp4Muxer`.
+        let jpeg_frames: Vec<Vec<u8>> = {
+            let ring = match app.replay_jpeg_ring.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            ring.iter().cloned().collect()
+        };
+        if jpeg_frames.is_empty() {
+            return Err("replay buffer is empty: no keyframes available to save".to_string());
+        }
+        if let Some(parent) = target_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|err| {
+                format!(
+                    "failed to create recordings directory {}: {err}",
+                    parent.display()
+                )
+            })?;
+        }
+        let encoder = if cfg!(target_os = "macos") {
+            "h264_videotoolbox"
+        } else {
+            "libx264"
+        };
+        let mut child = std::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "mjpeg",
+                "-framerate",
+                "30",
+                "-i",
+                "pipe:0",
+                "-c:v",
+                encoder,
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+frag_keyframe+empty_moov+default_base_moof",
+            ])
+            .arg(&target_path)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|err| format!("saving replay buffer requires ffmpeg on PATH: {err}"))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            for frame in &jpeg_frames {
+                let _ = stdin.write_all(frame);
+            }
+        }
+        let status = child
+            .wait()
+            .map_err(|err| format!("ffmpeg replay flush failed: {err}"))?;
+        if !status.success() {
+            return Err(format!("ffmpeg replay flush exited with {status}"));
+        }
+        let bytes_written = std::fs::metadata(&target_path)
+            .map(|m| m.len() as usize)
+            .unwrap_or(0);
+        let frame_count = jpeg_frames.len();
+        let duration_90khz =
+            (frame_count as u64).saturating_mul(u64::from(DEFAULT_SAMPLE_DURATION_90KHZ));
+        return Ok(ReplaySaveResultDto {
+            path: target_path.to_string_lossy().into_owned(),
+            bytes_written,
+            gop_count: 1,
+            packet_count: frame_count,
+            duration_90khz,
+        });
     }
 
     write_bytes_atomically(&target_path, &fmp4_bytes)?;
@@ -496,18 +571,20 @@ pub fn push_recorder_packet_impl(
                     Err(p) => p.into_inner(),
                 };
                 if let Some(active) = file_guard.as_mut() {
-                    active.file.write_all(&fragment).map_err(|err| {
-                        format!(
-                            "failed to write fMP4 fragment to {}: {err}",
-                            active.path.display()
-                        )
-                    })?;
-                    active.file.flush().map_err(|err| {
-                        format!(
-                            "failed to flush fMP4 fragment to {}: {err}",
-                            active.path.display()
-                        )
-                    })?;
+                    if let Some(file) = active.file.as_mut() {
+                        file.write_all(&fragment).map_err(|err| {
+                            format!(
+                                "failed to write fMP4 fragment to {}: {err}",
+                                active.path.display()
+                            )
+                        })?;
+                        file.flush().map_err(|err| {
+                            format!(
+                                "failed to flush fMP4 fragment to {}: {err}",
+                                active.path.display()
+                            )
+                        })?;
+                    }
                 }
             }
         }
@@ -527,21 +604,35 @@ pub fn push_recorder_frame(
     push_recorder_packet_impl(app_state.inner(), payload, is_keyframe, pts_90khz)
 }
 
-/// Push a single composited JPEG frame into the active local `ffmpeg` H.264
-/// fragmented-MP4 recording subprocess so clicking REC produces a playable `.mp4`
-/// file on disk offline.
-pub fn push_recorder_jpeg_frame_impl(app: &AppState, jpeg_bytes: Vec<u8>) -> Result<u64, String> {
+/// Push a single composited JPEG frame into the rolling replay ring buffer and,
+/// when a local disk recording session is active, into the `ffmpeg` H.264
+/// fragmented-MP4 subprocess so clicking REC produces a playable `.mp4` on disk.
+pub fn push_recorder_jpeg_frame_impl(app: &AppState, jpeg_bytes: &[u8]) -> Result<u64, String> {
     if jpeg_bytes.len() < 2 || jpeg_bytes[0] != 0xFF || jpeg_bytes[1] != 0xD8 {
         return Err("push_recorder_jpeg_frame requires a valid JPEG payload (0xFF 0xD8)".into());
     }
+    // Always retain the latest frames in the rolling replay ring buffer.
+    {
+        let mut ring = match app.replay_jpeg_ring.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        if ring.len() >= MAX_REPLAY_JPEG_FRAMES {
+            ring.pop_front();
+        }
+        ring.push_back(jpeg_bytes.to_vec());
+    }
+
     let mut file_guard = match app.recorder_output_file.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
     let Some(active) = file_guard.as_mut() else {
-        return Err("no active disk recording session".into());
+        return Ok(0);
     };
     if active.ffmpeg_stdin.is_none() {
+        // Close the raw fMP4 File handle before spawning ffmpeg -y on the same path.
+        drop(active.file.take());
         let encoder = if cfg!(target_os = "macos") {
             "h264_videotoolbox"
         } else {
@@ -580,20 +671,27 @@ pub fn push_recorder_jpeg_frame_impl(app: &AppState, jpeg_bytes: Vec<u8>) -> Res
     }
     if let Some(stdin) = active.ffmpeg_stdin.as_mut() {
         stdin
-            .write_all(&jpeg_bytes)
+            .write_all(jpeg_bytes)
             .map_err(|err| format!("failed to write JPEG frame to ffmpeg recorder: {err}"))?;
         active.ffmpeg_frames = active.ffmpeg_frames.saturating_add(1);
     }
     Ok(active.ffmpeg_frames)
 }
 
-/// Tauri IPC handler for pushing a composited JPEG frame to the local `ffmpeg` MP4 recorder.
+/// Tauri IPC handler for pushing a composited JPEG frame via raw binary IPC (`InvokeBody::Raw`).
 #[tauri::command]
 pub fn push_recorder_jpeg_frame(
     app_state: State<'_, AppState>,
-    jpeg_bytes: Vec<u8>,
+    request: tauri::ipc::Request<'_>,
 ) -> Result<u64, String> {
-    push_recorder_jpeg_frame_impl(app_state.inner(), jpeg_bytes)
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => {
+            push_recorder_jpeg_frame_impl(app_state.inner(), bytes)
+        }
+        tauri::ipc::InvokeBody::Json(_) => {
+            Err("push_recorder_jpeg_frame requires raw binary Uint8Array/ArrayBuffer body".into())
+        }
+    }
 }
 
 /// Flush the rolling replay buffer into a standalone playable Fragmented MP4 file.
