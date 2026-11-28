@@ -897,7 +897,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     font-weight: var(--font-weight-label);
   }
   .au__hero-canvas {
-    height: 140px;
+    height: 118px;
     background: var(--color-bg-0);
     border: 1px solid var(--color-line-1);
     border-radius: var(--radius-sm);

@@ -118,7 +118,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { overlayStack } from './state';
   import StatusBar from './StatusBar.svelte';
   import { capabilitiesStore } from './stores/capabilities.svelte';
+  import { liveFxStore } from './stores/liveFx.svelte';
+  import { loadedSceneStore } from './stores/loadedScene.svelte';
   import { midiBindingsStore } from './stores/midiBindings.svelte';
+  import { playlistStore } from './stores/playlist.svelte';
   import { routeStore } from './stores/route.svelte';
   import TopBar from './TopBar.svelte';
   import AudioUniforms from './views/AudioUniforms.svelte';
@@ -141,12 +144,23 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     CrashResumeBanner,
     DEFAULT_COMMAND_PALETTE_ACTIONS,
     DegradedBanner,
+    SceneCanvas,
     SnapBar,
     type CommandPaletteAction,
     WatermarkOverlay,
   } from './widgets';
 
   let mixVisited = $state(false);
+  let stageDockOpen = $state(false);
+  const showStageDockToggle = $derived(
+    routeStore.current === 'library' ||
+      routeStore.current === 'midi' ||
+      routeStore.current === 'osc' ||
+      routeStore.current === 'playlist' ||
+      routeStore.current === 'sources' ||
+      routeStore.current === 'patch' ||
+      routeStore.current === 'settings',
+  );
   $effect(() => {
     if (routeStore.current === 'mix') {
       mixVisited = true;
@@ -323,6 +337,54 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         <SnapBar />
       </div>
     {/if}
+    {#if showStageDockToggle}
+      <aside class="app-shell__stage-dock" aria-label="Live stage monitor">
+        {#if stageDockOpen}
+          <div class="stage-dock__card">
+            <header class="stage-dock__header">
+              <span class="stage-dock__title">
+                LIVE STAGE · {loadedSceneStore.snapshot?.name ?? 'Active Output'}
+              </span>
+              <button
+                type="button"
+                class="stage-dock__close"
+                onclick={() => (stageDockOpen = false)}
+                aria-label="Collapse live stage monitor"
+              >
+                ×
+              </button>
+            </header>
+            <div class="stage-dock__canvas">
+              {#if liveFxStore.blackoutActive}
+                <div class="stage-dock__blackout">BLACKOUT</div>
+              {:else}
+                <SceneCanvas kind="rings" seed={4} />
+              {/if}
+            </div>
+            <footer class="stage-dock__controls">
+              <button type="button" onclick={() => void playlistStore.previous()}>Prev</button>
+              <button type="button" onclick={() => void playlistStore.next()}>Next</button>
+              <button
+                type="button"
+                class="stage-dock__perform"
+                onclick={() => routeStore.set('perform')}
+              >
+                Perform
+              </button>
+            </footer>
+          </div>
+        {:else}
+          <button
+            type="button"
+            class="stage-dock__pill"
+            data-testid="toggle-stage-dock"
+            onclick={() => (stageDockOpen = true)}
+          >
+            Live Stage
+          </button>
+        {/if}
+      </aside>
+    {/if}
   </main>
   <footer class="app-shell__status">
     <StatusBar />
@@ -417,5 +479,96 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .app-shell__status {
     grid-area: status;
     overflow: hidden;
+  }
+  .app-shell__stage-dock {
+    position: fixed;
+    right: 16px;
+    bottom: 40px;
+    z-index: 40;
+  }
+  .stage-dock__pill {
+    padding: 5px 12px;
+    background: var(--color-bg-2);
+    color: var(--color-text-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-full);
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  }
+  .stage-dock__pill:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+  .stage-dock__card {
+    width: 264px;
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  }
+  .stage-dock__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--color-bg-2);
+    border-bottom: 1px solid var(--color-line-1);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--color-text-1);
+  }
+  .stage-dock__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stage-dock__close {
+    background: transparent;
+    border: none;
+    color: var(--color-text-2);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .stage-dock__canvas {
+    position: relative;
+    height: 148px;
+    background: #06070d;
+  }
+  .stage-dock__blackout {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--color-danger);
+  }
+  .stage-dock__controls {
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    background: var(--color-bg-2);
+    border-top: 1px solid var(--color-line-1);
+  }
+  .stage-dock__controls button {
+    flex: 1;
+    padding: 4px 6px;
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+    background: var(--color-bg-3);
+    color: var(--color-text-1);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+  }
+  .stage-dock__perform {
+    color: var(--color-primary);
+    border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-line-2));
   }
 </style>

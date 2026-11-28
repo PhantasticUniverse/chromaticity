@@ -77,11 +77,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   <div class="help__content">
     {#if resolveError}
       <div class="help__placeholder" role="status">
-        <p>The Help corpus was not found in the application bundle.</p>
-        <p class="help__placeholder-detail">
-          Run <code>mkdocs build</code> from <code>docs-corpus/</code> before
-          <code>cargo tauri build</code>; see <code>docs-corpus/README.md</code>.
-        </p>
+        <div class="help__fallback-card">
+          <h2 class="help__fallback-title">Quickstart & Essential Booth Hotkeys</h2>
+          <p class="help__fallback-lead">
+            Offline documentation HTML is bundled in desktop releases. Key shortcuts are always
+            available below:
+          </p>
+          <ul class="help__hotkey-list">
+            <li><kbd>?</kbd> Toggle full Hotkey Reference overlay</li>
+            <li><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> Open Command Palette</li>
+            <li><kbd>Space</kbd> Play / Pause active Playlist</li>
+            <li><kbd>B</kbd> Toggle Blackout · Hold <kbd>S</kbd> for momentary Strobe</li>
+            <li><kbd>1</kbd>–<kbd>8</kbd> Recall Snap slots on Perform</li>
+          </ul>
+          <details class="help__dev-note">
+            <summary>Bundle diagnostics</summary>
+            <p class="help__placeholder-detail">
+              The Help corpus was not found in the application bundle. Run
+              <code>mkdocs build</code> from <code>docs-corpus/</code> before
+              <code>cargo tauri build</code>; see <code>docs-corpus/README.md</code>.
+            </p>
+          </details>
+        </div>
       </div>
     {:else if resolvedSrc}
       <iframe
@@ -185,7 +202,64 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     color: var(--color-text-2);
     text-align: center;
   }
+  .help__fallback-card {
+    max-width: 520px;
+    width: 100%;
+    text-align: left;
+    padding: var(--space-xl);
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+  .help__fallback-title {
+    margin: 0;
+    font-size: var(--font-size-body-lg, 1rem);
+    color: var(--color-text-0);
+  }
+  .help__fallback-lead {
+    margin: 0;
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-2);
+  }
+  .help__hotkey-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    font-size: var(--font-size-body-sm);
+    color: var(--color-text-1);
+  }
+  .help__hotkey-list kbd {
+    display: inline-block;
+    min-width: 24px;
+    padding: 1px 6px;
+    margin-right: 6px;
+    text-align: center;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    color: var(--color-primary);
+  }
+  .help__dev-note {
+    margin-top: var(--space-xs);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--color-line-1);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-3);
+  }
+  .help__dev-note summary {
+    cursor: pointer;
+    font-family: var(--font-family-mono);
+  }
   .help__placeholder-detail {
+    margin: var(--space-xs) 0 0;
     font-family: var(--font-family-mono);
     font-size: var(--font-size-mono-sm);
     color: var(--color-text-3);

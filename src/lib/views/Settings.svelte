@@ -629,14 +629,21 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 <section class="settings">
   <div class="settings__main">
     <header class="settings__header">
-      <h1>settings</h1>
+      <h1>Settings</h1>
       <p class="settings__intro">
         Operator preferences, devices, output, storage, tempo sync, hotkey reference, and
         diagnostics. Changes are saved automatically.
       </p>
+      <nav class="settings__jump-nav" aria-label="Settings sections">
+        <a href="#settings-audio">Audio</a>
+        <a href="#settings-graphics">Graphics</a>
+        <a href="#settings-storage">Storage</a>
+        <a href="#settings-tempo">Tempo & Sync</a>
+        <a href="#settings-hotkeys">Hotkeys</a>
+      </nav>
     </header>
 
-    <article class="settings__section">
+    <article class="settings__section" id="settings-audio">
       <h2>Audio Device</h2>
       <div class="settings__form">
         <div class="settings__field">
@@ -791,7 +798,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       </p>
     </article>
 
-    <article class="settings__section">
+    <article class="settings__section" id="settings-graphics">
       <h2>Graphics / Output</h2>
       <div class="settings__form">
         <div class="settings__field">
@@ -1165,7 +1172,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       </p>
     </article>
 
-    <article class="settings__section">
+    <article class="settings__section" id="settings-storage">
       <h2>Storage</h2>
 
       <div class="settings__storage-group">
@@ -1318,7 +1325,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       </div>
     </article>
 
-    <article class="settings__section">
+    <article class="settings__section" id="settings-tempo">
       <h2>Tempo &amp; Sync</h2>
 
       <div class="settings__storage-group">
@@ -1620,7 +1627,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       </div>
     </article>
 
-    <article class="settings__section">
+    <article class="settings__section" id="settings-hotkeys">
       <h2>Hotkeys</h2>
       <p class="settings__hint">
         Read-only reference. Press <kbd>?</kbd> anywhere to open the quick hotkey overlay.
@@ -2022,13 +2029,44 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   .settings__dj-badge {
     font-family: var(--font-family-mono);
-    font-size: var(--font-size-body-xs);
-    padding: 2px var(--space-sm);
+    font-size: 11px;
+    line-height: 1.25;
+    padding: 3px var(--space-sm);
     border-radius: var(--radius-full);
     border: 1px solid var(--color-line-2);
     background: var(--color-bg-2);
     color: var(--color-text-1);
     white-space: nowrap;
+  }
+
+  .settings__jump-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+    padding: var(--space-xs) 0;
+    border-top: 1px solid var(--color-line-1);
+    border-bottom: 1px solid var(--color-line-1);
+  }
+
+  .settings__jump-nav a {
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-2);
+    text-decoration: none;
+    padding: 3px 8px;
+    border-radius: var(--radius-xs);
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-line-1);
+  }
+
+  .settings__jump-nav a:hover,
+  .settings__jump-nav a:focus-visible {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    outline: none;
   }
 
   .settings__dj-badge--recognized {

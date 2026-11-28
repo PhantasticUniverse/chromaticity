@@ -44,6 +44,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     cp2 = [0.58, 1.0],
     snap = '1',
     duration = '00:00.5',
+    hideModeTabs = false,
     onchange,
   }: {
     kind?: CueKind;
@@ -51,6 +52,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     cp2?: [number, number];
     snap?: CueSnap;
     duration?: string;
+    hideModeTabs?: boolean;
     onchange?: (payload: ChangePayload) => void;
   } = $props();
 
@@ -298,20 +300,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 </script>
 
 <div class="cue-curve" data-active-kind={activeKind}>
-  <div class="cue-curve__kind" role="tablist" aria-label="Transition kind">
-    {#each KIND_TABS as tab (tab.id)}
-      <button
-        type="button"
-        role="tab"
-        aria-selected={activeKind === tab.id}
-        class="cue-curve__kind-btn"
-        class:on={activeKind === tab.id}
-        onclick={() => setKind(tab.id)}
-      >
-        {tab.label}
-      </button>
-    {/each}
-  </div>
+  {#if !hideModeTabs}
+    <div class="cue-curve__kind" role="tablist" aria-label="Transition kind">
+      {#each KIND_TABS as tab (tab.id)}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeKind === tab.id}
+          class="cue-curve__kind-btn"
+          class:on={activeKind === tab.id}
+          onclick={() => setKind(tab.id)}
+        >
+          {tab.label}
+        </button>
+      {/each}
+    </div>
+  {/if}
 
   {#if activeKind === 'fade'}
     <div

@@ -725,7 +725,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         {/if}
       </div>
       <span class="top-bar__transport-vu" data-testid="top-bar-vu" aria-label="Audio meter">
-        <VuStereo width={88} />
+        <VuStereo width={60} />
       </span>
     {/if}
   </div>
@@ -970,8 +970,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .top-bar__center {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-sm);
     justify-self: start;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .top-bar__variant {
@@ -1560,9 +1562,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   .top-bar__go-live {
     padding: 4px var(--space-md);
-    background: var(--color-signal-red);
-    color: var(--color-on-primary, #fff);
-    border: none;
+    background: color-mix(in srgb, var(--color-signal-red) 14%, var(--color-bg-2));
+    color: var(--color-signal-red);
+    border: 1px solid color-mix(in srgb, var(--color-signal-red) 50%, transparent);
     border-radius: var(--radius-xs);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-body-sm);
@@ -1572,6 +1574,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     white-space: nowrap;
     flex-shrink: 0;
     cursor: pointer;
+  }
+
+  .top-bar__go-live[data-live='on'] {
+    background: var(--color-signal-red);
+    color: var(--color-on-primary, #fff);
+    border-color: var(--color-signal-red);
   }
 
   .top-bar__go-live:hover {

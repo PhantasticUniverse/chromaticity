@@ -87,7 +87,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <article class="welcome-card">
         <span class="welcome-card__icon"><Icon name="folder" size={22} /></span>
         <h2 class="welcome-card__title">Import Setlist</h2>
-        <p class="welcome-card__body">Bring an existing show in as JSON or .synx</p>
+        <p class="welcome-card__body">Bring an existing show in as JSON or .synScene</p>
         <button type="button" class="welcome-card__cta" onclick={launchImport}>Import…</button>
       </article>
 
@@ -356,10 +356,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     margin: 0;
     font-family: var(--font-family-mono);
     font-size: var(--font-size-mono-sm);
-    color: var(--color-text-3);
+    color: var(--color-text-1);
   }
 
   .welcome__hint-sep {
-    color: var(--color-text-4);
+    color: var(--color-text-3);
   }
 </style>

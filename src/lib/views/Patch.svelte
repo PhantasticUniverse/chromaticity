@@ -814,8 +814,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   /* ---------------- Palette (left column) ------------------------- */
   .patch__palette-body {
     overflow: auto;
-    padding: var(--space-md) var(--space-md) 12px;
-    padding-bottom: 12px;
+    padding: var(--space-md) var(--space-md) 28px;
     display: flex;
     flex-direction: column;
     gap: var(--space-md);

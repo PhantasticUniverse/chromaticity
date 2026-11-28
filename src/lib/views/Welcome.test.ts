@@ -41,7 +41,7 @@ describe('Welcome view', () => {
     expect(getByText('Quick Start')).toBeInTheDocument();
     expect(getByText(/Load a demo set · webcam input · first scene ready/)).toBeInTheDocument();
     expect(getByText('Import Setlist')).toBeInTheDocument();
-    expect(getByText(/Bring an existing show in as JSON or .synx/)).toBeInTheDocument();
+    expect(getByText(/Bring an existing show in as JSON or .synScene/)).toBeInTheDocument();
     expect(getByText('Empty Project')).toBeInTheDocument();
     expect(getByText(/Start from a blank canvas with default scenes/)).toBeInTheDocument();
   });

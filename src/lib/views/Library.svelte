@@ -480,7 +480,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 <div class="library-page">
   <section class="library">
     <header class="library__header">
-      <h2>library</h2>
+      <h2>Library</h2>
       {#if !loading && cards.length > 0}
         <span class="library__count">
           {filteredCards.length} of {cards.length} scene{cards.length === 1 ? '' : 's'}

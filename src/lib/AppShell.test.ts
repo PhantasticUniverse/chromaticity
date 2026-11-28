@@ -74,8 +74,8 @@ describe('AppShell orchestration', () => {
   it('routes to the Settings view when routeStore.current=settings', () => {
     routeStore.set('settings');
     const { getByRole } = render(AppShell);
-    // Settings emits an `<h1>settings</h1>` per its top-of-view header.
-    expect(getByRole('heading', { level: 1, name: 'settings' })).toBeInTheDocument();
+    // Settings emits an `<h1>Settings</h1>` per its top-of-view header.
+    expect(getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
   });
 
   it('mounts the SnapBar only on the perform route', () => {

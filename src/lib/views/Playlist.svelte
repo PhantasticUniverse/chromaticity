@@ -367,6 +367,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             cp2={[selectedCue.cp2[0], selectedCue.cp2[1]]}
             snap={selectedCue.snap}
             duration={cueDraft.crossfade}
+            hideModeTabs={true}
           />
         {/if}
 

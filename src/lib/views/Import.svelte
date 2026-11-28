@@ -684,14 +684,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     line-height: 1;
   }
   .import__btn--primary {
-    background: var(--color-primary);
-    color: var(--color-on-primary);
-    border-color: var(--color-primary);
+    background: var(--color-bg-3);
+    color: var(--color-primary);
+    border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line-2));
   }
   .import__btn--primary:hover:not(:disabled) {
-    filter: brightness(1.05);
     color: var(--color-on-primary);
     background: var(--color-primary);
+    border-color: var(--color-primary);
   }
 
   /* ---------------- Right column ----------------------------------- */

@@ -2301,17 +2301,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     white-space: nowrap;
   }
   .live-fx__pad {
-    padding: 2px var(--space-md);
+    padding: 5px var(--space-md);
+    min-height: 28px;
     background: var(--color-bg-2);
     border: 1px solid var(--color-line-2);
     border-radius: var(--radius-sm);
     color: var(--color-text-1);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-caps-md);
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    line-height: 1.4;
+    line-height: 1.3;
     white-space: nowrap;
     cursor: pointer;
     user-select: none;

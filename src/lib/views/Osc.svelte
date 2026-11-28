@@ -1031,7 +1031,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     text-align: left;
     border-bottom: 1px solid var(--color-line-1);
     vertical-align: top;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: break-word;
   }
 
   .osc-view__route-table thead th {

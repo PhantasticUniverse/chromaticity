@@ -46,30 +46,32 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     readonly route: RouteName;
     readonly label: string;
     readonly icon: IconName;
+    readonly dividerBefore?: boolean;
   }
 
   interface DisabledEntry {
     readonly label: string;
     readonly icon: IconName;
     readonly section: 'top' | 'bottom';
+    readonly dividerBefore?: boolean;
   }
 
-  // Order and icon-name choices mirror the v0.2 bundle's `VIEWS` array
-  // (Chromaticity.html lines 57-71). The bottom-section names come from
-  // the same file's RailIcon usages (lines 176-177).
+  // Grouped visually into 4 semantic clusters via subtle horizontal dividers
+  // (Live Stage | Create & Assets | Control & I/O | System) while preserving
+  // canonical route ordering and full keyboard/a11y parity.
   const NAV_TOP: readonly (NavEntry | DisabledEntry)[] = [
     { route: 'perform', label: 'Perform', icon: 'perform' },
     { route: 'mix', label: 'Mix', icon: 'layers' },
-    { route: 'library', label: 'Library', icon: 'library' },
+    { route: 'library', label: 'Library', icon: 'library', dividerBefore: true },
     { route: 'author', label: 'Author', icon: 'edit' },
     { route: 'audio-uniforms', label: 'Audio', icon: 'audio' },
     { route: 'playlist', label: 'Playlist', icon: 'list' },
     { route: 'sources', label: 'Sources', icon: 'media' },
-    { route: 'midi', label: 'MIDI', icon: 'midi' },
+    { route: 'midi', label: 'MIDI', icon: 'midi', dividerBefore: true },
     { route: 'osc', label: 'OSC', icon: 'link' },
     { route: 'import', label: 'Import', icon: 'plus' },
     { route: 'patch', label: 'Patch', icon: 'cpu' },
-    { route: 'settings', label: 'Settings', icon: 'settings' },
+    { route: 'settings', label: 'Settings', icon: 'settings', dividerBefore: true },
     { route: 'license', label: 'License', icon: 'lock' },
     { route: 'welcome', label: 'Welcome', icon: 'heart' },
   ] as const;
@@ -92,7 +94,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 <nav class="sidebar-rail" aria-label="Primary navigation">
   <ul class="sidebar-rail__section sidebar-rail__section--top">
     {#each NAV_TOP as entry (entry.label)}
-      <li>
+      <li class:sidebar-rail__item--divider={entry.dividerBefore === true}>
         {#if isWired(entry)}
           <button
             type="button"
@@ -262,5 +264,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+  .sidebar-rail__item--divider {
+    position: relative;
+    margin-top: 6px;
+    padding-top: 7px;
+  }
+  .sidebar-rail__item--divider::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 10px;
+    right: 10px;
+    height: 1px;
+    background: var(--color-line-2);
   }
 </style>
