@@ -1293,7 +1293,34 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       return { name: group.name, tint: group.tint, controls };
     });
   });
+
+  function handlePerformControlHotkeys(event: KeyboardEvent): void {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key === 'd') {
+      event.preventDefault();
+      resetSceneControlsToDefaults();
+    } else if (key === 'r') {
+      event.preventDefault();
+      randomizeSceneControls();
+    } else if (key === 'l') {
+      event.preventDefault();
+      toggleLockAllScene();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handlePerformControlHotkeys} />
 
 <!-- Wave 2.1 Lane B.1 — Each of the six panels is defined once as a
      `{#snippet}` then rendered into variant-specific layout

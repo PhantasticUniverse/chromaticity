@@ -645,10 +645,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-configure-audio-loopback" class="md-nav__link">
+  <a href="#2-configure-audio-capture" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Configure audio loopback
+        2. Configure audio capture
       
     </span>
   </a>
@@ -689,10 +689,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6-stream-key-configuration-and-bitrate-are-obs-concerns" class="md-nav__link">
+  <a href="#6-stream-key-configuration-and-bitrate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. Stream key configuration and bitrate are OBS concerns
+        6. Stream key configuration and bitrate
       
     </span>
   </a>
@@ -1245,10 +1245,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-configure-audio-loopback" class="md-nav__link">
+  <a href="#2-configure-audio-capture" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Configure audio loopback
+        2. Configure audio capture
       
     </span>
   </a>
@@ -1289,10 +1289,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6-stream-key-configuration-and-bitrate-are-obs-concerns" class="md-nav__link">
+  <a href="#6-stream-key-configuration-and-bitrate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. Stream key configuration and bitrate are OBS concerns
+        6. Stream key configuration and bitrate
       
     </span>
   </a>
@@ -1456,20 +1456,13 @@ named here may shift in detail.</p>
 Chromaticity's Spout adapter lands; the configuration steps below
 will map across with the source type renamed from "Syphon Client" to
 "Spout".</p>
-<h3 id="2-configure-audio-loopback">2. Configure audio loopback</h3>
-<p>Chromaticity's audio input adapter binds the system's <strong>default input
-device</strong> (microphone) on macOS via cpal, not the system audio output.
-Capturing system audio for livestreaming requires a virtual loopback:</p>
-<ul>
-<li><strong>BlackHole</strong> (free; Apple Silicon and Intel macOS).</li>
-<li><strong>Loopback</strong> (Rogue Amoeba; commercial).</li>
-<li><strong>VB-Cable</strong> (free; Windows and macOS).</li>
-</ul>
-<p>Configure the loopback device as the system output (or as an aggregate
-device that mirrors output to loopback and to physical speakers), and
-point both Chromaticity's audio input and OBS's audio source at the
-loopback. For first-launch verification of the audio bootstrap path,
-see the audio reactivity reference page in this corpus.</p>
+<h3 id="2-configure-audio-capture">2. Configure audio capture</h3>
+<p>On macOS, Chromaticity captures system audio (including Rekordbox 7 <code>PC MASTER OUT</code>)
+directly via zero-install <strong>Core Audio Process Tap</strong> (<code>ADR-022</code>), with no BlackHole
+or virtual loopback driver required. On Windows/Linux, or when routing into OBS
+alongside Chromaticity, you can optionally use WASAPI loopback or a virtual cable
+(BlackHole / Loopback / VB-Cable). For audio-reactivity setup details, see the
+<a href="audio-reactivity.html">Audio Reactivity</a> page.</p>
 <h3 id="3-enable-the-syphon-output-in-chromaticity">3. Enable the Syphon output in Chromaticity</h3>
 <p>Once the publish path lands, the <strong>Settings → Output</strong> tab will
 expose a Syphon Server toggle and an operator-overridable server
@@ -1513,11 +1506,12 @@ sync is the operator's responsibility:</p>
   (sub-millisecond on modern Apple Silicon); the loopback audio path
   is typically near-zero.</li>
 </ul>
-<h3 id="6-stream-key-configuration-and-bitrate-are-obs-concerns">6. Stream key configuration and bitrate are OBS concerns</h3>
-<p>Chromaticity does not configure stream keys, RTMP endpoints, or
-encoder bitrates; those live entirely in OBS's <strong>Settings → Stream</strong>
-and <strong>Settings → Output</strong> tabs. Refer to the streaming platform's
-documentation (Twitch, YouTube, Kick, etc.) for endpoint details.</p>
+<h3 id="6-stream-key-configuration-and-bitrate">6. Stream key configuration and bitrate</h3>
+<p>When broadcasting directly from Chromaticity's <strong>Mix</strong> deck, Twitch RTMPS/RTMP
+ingest URLs, redacted stream keys, resolution, FPS, and bitrate are configured
+directly in Chromaticity's Live Broadcast drawer. When using an external
+encoder such as OBS Studio, those settings remain in OBS's <strong>Settings → Stream</strong>
+and <strong>Settings → Output</strong> tabs.</p>
 <h2 id="honest-follow-ups">Honest follow-ups</h2>
 <p>The list below tracks the work needed to make this page's recipe
 operational. Each item maps to a specific gap in the current
@@ -1574,24 +1568,12 @@ integration surface.</p>
 </tbody>
 </table>
 <h2 id="audio-capture-posture">Audio capture posture</h2>
-<p>Chromaticity binds the cpal default input device on macOS at startup
-(microphone, not system audio output). The operator path for
-capturing system audio into either Chromaticity (for audio-reactive
-visuals) <strong>or</strong> OBS (for the stream) is a virtual loopback as listed
-in step 2 above. There is no in-app system-audio capture path; this
-is a platform constraint (macOS does not expose system audio to user-
-space without a kernel extension or audio HAL plugin), not a
-Chromaticity choice.</p>
-<p>The audio loopback applies to <strong>both</strong> sides of the pipeline:</p>
-<ul>
-<li>Chromaticity reads the loopback as its audio input → audio-reactive
-  visuals respond to the music being played.</li>
-<li>OBS reads the loopback as an audio source → the stream carries the
-  music.</li>
-</ul>
-<p>If the operator needs both at once, configure the loopback once at
-the system level (aggregate device or BlackHole multi-output device)
-and point both applications at it.</p>
+<p>On macOS, Chromaticity supports zero-install <strong>Core Audio Process Tap</strong> system-audio
+capture (<code>ADR-022</code>) as well as multi-channel DJ controller Master-vs-Cue stereo-pair
+isolation (<code>DDJ-FLX10</code>, <code>DJM-A9</code>), so you do not need BlackHole or a kernel audio
+driver to drive audio-reactive visuals or broadcast audio. On Windows/Linux, or when
+sharing audio with external tools like OBS Studio, you can select any host input or
+virtual loopback device in <strong>Settings → Audio</strong>.</p>
 <h2 id="cross-references">Cross-references</h2>
 <ul>
 <li><a href="audio-reactivity.html">Audio Reactivity</a> — for the audio input

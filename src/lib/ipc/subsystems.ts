@@ -80,6 +80,10 @@ export async function setDmxChannel(channel: number, value: number): Promise<Dmx
   return invoke<DmxUniverseStatusDto>('set_dmx_channel', { channel, value });
 }
 
+export async function sendDmxArtnetFrame(universe = 0, targetAddr?: string): Promise<number> {
+  return invoke<number>('send_dmx_artnet_frame', { universe, targetAddr });
+}
+
 export async function getDataIngestStatus(): Promise<DataIngestStatusDto> {
   return invoke<DataIngestStatusDto>('get_data_ingest_status');
 }

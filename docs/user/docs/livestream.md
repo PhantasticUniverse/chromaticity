@@ -120,21 +120,14 @@ Chromaticity's Spout adapter lands; the configuration steps below
 will map across with the source type renamed from "Syphon Client" to
 "Spout".
 
-### 2. Configure audio loopback
+### 2. Configure audio capture
 
-Chromaticity's audio input adapter binds the system's **default input
-device** (microphone) on macOS via cpal, not the system audio output.
-Capturing system audio for livestreaming requires a virtual loopback:
-
-- **BlackHole** (free; Apple Silicon and Intel macOS).
-- **Loopback** (Rogue Amoeba; commercial).
-- **VB-Cable** (free; Windows and macOS).
-
-Configure the loopback device as the system output (or as an aggregate
-device that mirrors output to loopback and to physical speakers), and
-point both Chromaticity's audio input and OBS's audio source at the
-loopback. For first-launch verification of the audio bootstrap path,
-see the audio reactivity reference page in this corpus.
+On macOS, Chromaticity captures system audio (including Rekordbox 7 `PC MASTER OUT`)
+directly via zero-install **Core Audio Process Tap** (`ADR-022`), with no BlackHole
+or virtual loopback driver required. On Windows/Linux, or when routing into OBS
+alongside Chromaticity, you can optionally use WASAPI loopback or a virtual cable
+(BlackHole / Loopback / VB-Cable). For audio-reactivity setup details, see the
+[Audio Reactivity](audio-reactivity.md) page.
 
 ### 3. Enable the Syphon output in Chromaticity
 
@@ -185,12 +178,13 @@ sync is the operator's responsibility:
   (sub-millisecond on modern Apple Silicon); the loopback audio path
   is typically near-zero.
 
-### 6. Stream key configuration and bitrate are OBS concerns
+### 6. Stream key configuration and bitrate
 
-Chromaticity does not configure stream keys, RTMP endpoints, or
-encoder bitrates; those live entirely in OBS's **Settings → Stream**
-and **Settings → Output** tabs. Refer to the streaming platform's
-documentation (Twitch, YouTube, Kick, etc.) for endpoint details.
+When broadcasting directly from Chromaticity's **Mix** deck, Twitch RTMPS/RTMP
+ingest URLs, redacted stream keys, resolution, FPS, and bitrate are configured
+directly in Chromaticity's Live Broadcast drawer. When using an external
+encoder such as OBS Studio, those settings remain in OBS's **Settings → Stream**
+and **Settings → Output** tabs.
 
 ## Honest follow-ups
 
@@ -211,25 +205,12 @@ integration surface.
 
 ## Audio capture posture
 
-Chromaticity binds the cpal default input device on macOS at startup
-(microphone, not system audio output). The operator path for
-capturing system audio into either Chromaticity (for audio-reactive
-visuals) **or** OBS (for the stream) is a virtual loopback as listed
-in step 2 above. There is no in-app system-audio capture path; this
-is a platform constraint (macOS does not expose system audio to user-
-space without a kernel extension or audio HAL plugin), not a
-Chromaticity choice.
-
-The audio loopback applies to **both** sides of the pipeline:
-
-- Chromaticity reads the loopback as its audio input → audio-reactive
-  visuals respond to the music being played.
-- OBS reads the loopback as an audio source → the stream carries the
-  music.
-
-If the operator needs both at once, configure the loopback once at
-the system level (aggregate device or BlackHole multi-output device)
-and point both applications at it.
+On macOS, Chromaticity supports zero-install **Core Audio Process Tap** system-audio
+capture (`ADR-022`) as well as multi-channel DJ controller Master-vs-Cue stereo-pair
+isolation (`DDJ-FLX10`, `DJM-A9`), so you do not need BlackHole or a kernel audio
+driver to drive audio-reactive visuals or broadcast audio. On Windows/Linux, or when
+sharing audio with external tools like OBS Studio, you can select any host input or
+virtual loopback device in **Settings → Audio**.
 
 ## Cross-references
 

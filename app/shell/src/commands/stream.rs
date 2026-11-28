@@ -909,14 +909,26 @@ pub fn push_stream_frame_impl(app: &AppState, frame_bytes: &[u8]) -> Result<u64,
     match send_result {
         Ok(()) => {
             proc_guard.frames_pushed = proc_guard.frames_pushed.saturating_add(1);
-            if proc_guard.frames_pushed == 1 || proc_guard.frames_pushed % 60 == 0 {
+            let count = proc_guard.frames_pushed;
+            let fps = proc_guard.fps.max(1) as u64;
+            if count == 1 || count % 60 == 0 {
                 eprintln!(
                     "[chromaticity][stream] pushed frame #{} ({} bytes)",
-                    proc_guard.frames_pushed,
+                    count,
                     frame_bytes.len()
                 );
             }
-            Ok(proc_guard.frames_pushed)
+            drop(proc_guard);
+            // Mirror live frames into the fMP4 recorder & rolling replay buffer.
+            let pts_90khz = count.saturating_mul(90_000 / fps);
+            let is_keyframe = count == 1 || count % 60 == 0;
+            let _ = crate::commands::recorder::push_recorder_packet_impl(
+                app,
+                frame_bytes.to_vec(),
+                is_keyframe,
+                pts_90khz,
+            );
+            Ok(count)
         }
         Err(TrySendError::Full(_)) => {
             // Drop frame under backpressure instead of blocking the Tauri IPC thread.

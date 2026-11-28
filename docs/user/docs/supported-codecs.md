@@ -85,15 +85,13 @@ operators on first run.
 
 | Platform | Default input device                                              |
 | -------- | ----------------------------------------------------------------- |
-| macOS    | Built-in microphone (CoreAudio default). System-audio output is **not** captured directly. |
+| macOS    | CoreAudio default input, plus zero-install **System Audio (Process Tap)** loopback (`ADR-022`) selectable in Settings → Audio without BlackHole. |
 | Windows  | OS-selected default recording device (WASAPI).                    |
 | Linux    | ALSA default; varies by host configuration.                       |
 
-To react to system audio output on macOS, install a virtual loopback
-driver such as **BlackHole** or **Loopback**, route system output
-through it, and select the loopback as the input device in
-Settings → Audio. The cpal device list will include the loopback
-once it is installed.
+On macOS, select **System Audio** in Settings → Audio to react directly to
+system output (including Rekordbox 7 `PC MASTER OUT`) with zero virtual drivers.
+Virtual loopbacks (**BlackHole**, **Loopback**, **VB-Cable**) also work if desired.
 
 ---
 
@@ -183,7 +181,7 @@ end-to-end at MVP**.
 | Syphon input (macOS)   | Synthetic    | `SyphonInputAdapter` surface ships per ADR-021. Concrete cross-process consumption is gated behind the Wave 1c-β `Send`-trait reconciliation + directory observer follow-ups. |
 | Syphon output (macOS)  | Synthetic    | `SyphonOutputAdapter` surface ships; `publish_syphon_output` real-impl is a deferred follow-up. |
 | Spout (Windows)        | Deferred     | Not yet scoped; the Syphon adapter is macOS-only by design.        |
-| Video file playback    | Deferred     | No `.mp4` / `.mov` / `.webm` decode at MVP. Operators wanting a video texture should pre-render to a sequence and load through a procedural scene. |
+| Video file playback    | Wired (Mix)  | Local `.mp4` / `.webm` / image layers and Direct YouTube URL stream-in play live inside the **Mix** deck (`liveMediaStore`); native GPU texture decode for GLSL `syn_Media` samplers remains planned. |
 
 ### Camera pixel formats (planned)
 

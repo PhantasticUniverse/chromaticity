@@ -1444,7 +1444,7 @@ operators on first run.</p>
 <tbody>
 <tr>
 <td>macOS</td>
-<td>Built-in microphone (CoreAudio default). System-audio output is <strong>not</strong> captured directly.</td>
+<td>CoreAudio default input, plus zero-install <strong>System Audio (Process Tap)</strong> loopback (<code>ADR-022</code>) selectable in Settings → Audio without BlackHole.</td>
 </tr>
 <tr>
 <td>Windows</td>
@@ -1456,11 +1456,9 @@ operators on first run.</p>
 </tr>
 </tbody>
 </table>
-<p>To react to system audio output on macOS, install a virtual loopback
-driver such as <strong>BlackHole</strong> or <strong>Loopback</strong>, route system output
-through it, and select the loopback as the input device in
-Settings → Audio. The cpal device list will include the loopback
-once it is installed.</p>
+<p>On macOS, select <strong>System Audio</strong> in Settings → Audio to react directly to
+system output (including Rekordbox 7 <code>PC MASTER OUT</code>) with zero virtual drivers.
+Virtual loopbacks (<strong>BlackHole</strong>, <strong>Loopback</strong>, <strong>VB-Cable</strong>) also work if desired.</p>
 <hr />
 <h2 id="scene-packages">Scene packages</h2>
 <p>Chromaticity has one native scene format and a one-way Shadertoy
@@ -1629,8 +1627,8 @@ end-to-end at MVP</strong>.</p>
 </tr>
 <tr>
 <td>Video file playback</td>
-<td>Deferred</td>
-<td>No <code>.mp4</code> / <code>.mov</code> / <code>.webm</code> decode at MVP. Operators wanting a video texture should pre-render to a sequence and load through a procedural scene.</td>
+<td>Wired (Mix)</td>
+<td>Local <code>.mp4</code> / <code>.webm</code> / image layers and Direct YouTube URL stream-in play live inside the <strong>Mix</strong> deck (<code>liveMediaStore</code>); native GPU texture decode for GLSL <code>syn_Media</code> samplers remains planned.</td>
 </tr>
 </tbody>
 </table>

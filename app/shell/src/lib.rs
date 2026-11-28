@@ -255,7 +255,10 @@ pub fn run() -> Result<(), tauri::Error> {
                     let mut next_crash_resume_save = Instant::now() + CRASH_RESUME_SAVE_PERIOD;
                     let mut crash_resume_adapter = crash_resume_path_for_thread
                         .map(|path| CrashResumeAdapter::new(CanonicalBinarySnapshotter, path));
+                    let mut scheduler_ticks: u64 = 0;
+                    let mut mixer_out_buf = [0.0_f32; 32];
                     while !shutdown_for_thread.load(Ordering::Acquire) {
+                        scheduler_ticks = scheduler_ticks.wrapping_add(1);
                         let tick_outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let should_capture_crash_resume = crash_resume_adapter.is_some()
                                 && Instant::now() >= next_crash_resume_save;
@@ -273,6 +276,41 @@ pub fn run() -> Result<(), tauri::Error> {
                                 None
                             };
                             drop(state_guard);
+
+                            // Feed live audio energy into BroadcastMixer and ClockSyncCoordinator.
+                            let live_audio = {
+                                let slot = match app_state.audio_snapshot_slot.lock() {
+                                    Ok(g) => Arc::clone(&g),
+                                    Err(p) => Arc::clone(&p.into_inner()),
+                                };
+                                let snap = match slot.lock() {
+                                    Ok(g) => *g,
+                                    Err(p) => *p.into_inner(),
+                                };
+                                snap
+                            };
+                            let master_block = [live_audio.rms; 32];
+                            if let Ok(mut mixer) = app_state.broadcast_mixer.lock() {
+                                mixer.mix_stereo_block(
+                                    &[(chromaticity_audio::mixer::BusId::MasterAudio, &master_block[..])],
+                                    &mut mixer_out_buf,
+                                );
+                            }
+                            if live_audio.bpm > 0.0 {
+                                if let Ok(mut clock) = app_state.clock_sync.lock() {
+                                    let now_ms = app_state.started_at.elapsed().as_millis() as u64;
+                                    let phase = ((now_ms as f32 / 1000.0) * (live_audio.bpm / 60.0)).fract();
+                                    clock.update_audio_bpm(live_audio.bpm, phase, 0.85, now_ms);
+                                }
+                            }
+                            if scheduler_ticks % 60 == 0 {
+                                use chromaticity_observability::emit::EmitMetric;
+                                app_state.observability_emitter.emit(
+                                    chromaticity_observability::catalog::MetricEvent::RuntimeUptime {
+                                        value: app_state.started_at.elapsed().as_secs(),
+                                    },
+                                );
+                            }
 
                             if let Some(blob_result) = crash_resume_blob {
                                 match blob_result {
@@ -442,6 +480,7 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::subsystems::dispatch_footswitch_action,
             commands::subsystems::get_dmx_universe_status,
             commands::subsystems::set_dmx_channel,
+            commands::subsystems::send_dmx_artnet_frame,
             commands::subsystems::get_data_ingest_status,
             commands::subsystems::get_observability_status,
         ])

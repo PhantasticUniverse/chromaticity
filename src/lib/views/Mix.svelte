@@ -17,6 +17,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     pushStreamFrame,
     type StreamAudioDeviceDto,
   } from '../ipc/stream';
+  import { setBroadcastBusConfig } from '../ipc/subsystems';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
   import {
     DEFAULT_BROADCAST_FPS,
@@ -156,6 +157,47 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let lastStreamFrameAt = 0;
   let framePushInFlight = false;
   let offscreenStreamCanvas: HTMLCanvasElement | null = null;
+  let programMirrorChannel: BroadcastChannel | null = null;
+  let lastMirrorPostAt = 0;
+
+  function ensureProgramMirrorChannel(): BroadcastChannel | null {
+    if (programMirrorChannel !== null) return programMirrorChannel;
+    if (typeof BroadcastChannel === 'undefined') return null;
+    try {
+      programMirrorChannel = new BroadcastChannel('chromaticity-stage-program');
+    } catch {
+      programMirrorChannel = null;
+    }
+    return programMirrorChannel;
+  }
+
+  function postProgramMirrorFrame(canvas: HTMLCanvasElement): void {
+    const ch = ensureProgramMirrorChannel();
+    if (!ch || typeof createImageBitmap !== 'function') return;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - lastMirrorPostAt < 33) return;
+    lastMirrorPostAt = now;
+    void createImageBitmap(canvas)
+      .then((bitmap) => {
+        if (disposed || !programMirrorChannel) {
+          bitmap.close();
+          return;
+        }
+        programMirrorChannel.postMessage({ bitmap }, [bitmap]);
+      })
+      .catch(() => {
+        // Ignore transient bitmap capture errors on unmounted canvases.
+      });
+  }
+
+  function syncAudioBusToBackend(channelId: string): void {
+    const ch = videoMixerStore.audioChannels.find((c) => c.id === channelId);
+    if (!ch) return;
+    const gainDb = ch.gain <= 0.0001 ? -60 : 20 * Math.log10(ch.gain);
+    void setBroadcastBusConfig(ch.id, gainDb, ch.muted, ch.solo).catch(() => {
+      // Browser preview without Tauri backend.
+    });
+  }
 
   function stopWebcam(): void {
     liveMediaStore.stopWebcam();
@@ -163,6 +205,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   async function startWebcam(): Promise<void> {
     await liveMediaStore.startWebcam();
+    void liveMediaStore.refreshVideoDevices();
   }
 
   function stopScreenCapture(): void {
@@ -533,6 +576,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       }
     }
 
+    postProgramMirrorFrame(offscreenStreamCanvas);
     return offscreenStreamCanvas;
   }
 
@@ -642,6 +686,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   onMount(() => {
     void audioSnapshotStore.subscribe();
+    void liveMediaStore.refreshVideoDevices();
     void (async () => {
       const snapshot = await getGpuCostTelemetry();
       if (!disposed && snapshot !== null && !adaptivePending) {
@@ -672,6 +717,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   onDestroy(() => {
     disposed = true;
     stopStreamCaptureLoop();
+    if (programMirrorChannel !== null) {
+      try {
+        programMirrorChannel.postMessage({ clear: true });
+      } catch {
+        // Ignore closed channel.
+      }
+      programMirrorChannel.close();
+      programMirrorChannel = null;
+    }
     if (meterRafId !== null && typeof cancelAnimationFrame === 'function') {
       cancelAnimationFrame(meterRafId);
       meterRafId = null;
@@ -1386,6 +1440,26 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           >
             {webcamPending ? 'Starting…' : webcamStream !== null ? 'Stop Webcam' : 'Start Webcam'}
           </button>
+          {#if liveMediaStore.videoDevices.length > 0}
+            <select
+              class="mix__select mix__select--camera"
+              aria-label="Camera device"
+              data-testid="mix-camera-select"
+              value={liveMediaStore.selectedCameraId}
+              onchange={(e) => {
+                const nextId = (e.currentTarget as HTMLSelectElement).value;
+                liveMediaStore.setSelectedCameraId(nextId);
+                if (webcamStream !== null) {
+                  void liveMediaStore.startWebcam(nextId);
+                }
+              }}
+            >
+              <option value="">Default camera</option>
+              {#each liveMediaStore.videoDevices as cam (cam.deviceId)}
+                <option value={cam.deviceId}>{cam.label}</option>
+              {/each}
+            </select>
+          {/if}
           {#if webcamError !== null}
             <span class="mix__webcam-error" role="alert" data-testid="mix-webcam-error">
               {webcamError}
@@ -3392,7 +3466,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               step="0.01"
               value={String(channel.gain)}
               aria-label="{channel.label} gain"
-              oninput={(e) => videoMixerStore.setAudioGain(channel.id, parseNumericInput(e))}
+              oninput={(e) => {
+                videoMixerStore.setAudioGain(channel.id, parseNumericInput(e));
+                syncAudioBusToBackend(channel.id);
+              }}
             />
             <button
               type="button"
@@ -3400,7 +3477,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               class:mix__icon-btn--danger-on={channel.muted}
               aria-label="Mute {channel.label}"
               aria-pressed={channel.muted}
-              onclick={() => videoMixerStore.toggleAudioMute(channel.id)}
+              onclick={() => {
+                videoMixerStore.toggleAudioMute(channel.id);
+                syncAudioBusToBackend(channel.id);
+              }}
             >
               M
             </button>
@@ -3410,7 +3490,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               class:mix__icon-btn--solo={channel.solo}
               aria-label="Solo {channel.label}"
               aria-pressed={channel.solo}
-              onclick={() => videoMixerStore.toggleAudioSolo(channel.id)}
+              onclick={() => {
+                videoMixerStore.toggleAudioSolo(channel.id);
+                syncAudioBusToBackend(channel.id);
+              }}
             >
               S
             </button>

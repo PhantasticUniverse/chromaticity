@@ -155,8 +155,8 @@ pub fn get_clock_sync_status(app_state: State<'_, AppState>) -> Result<ClockSync
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    let elapsed_us = app_state.started_at.elapsed().as_micros() as u64;
-    let resolved = coord.resolve(elapsed_us);
+    let elapsed_ms = app_state.started_at.elapsed().as_millis() as u64;
+    let resolved = coord.resolve(elapsed_ms);
     Ok(ClockSyncStatusDto {
         active_source: format!("{:?}", resolved.source),
         bpm: resolved.bpm,
@@ -235,6 +235,32 @@ pub fn set_dmx_channel(
         channel_count: channels.len(),
         non_zero_channels: non_zero,
     })
+}
+
+/// Encode and transmit the live 512-channel DMX512 universe as an Art-Net 4
+/// `OpDmx` UDP datagram (defaults to loopback `127.0.0.1:6454`).
+#[tauri::command]
+pub fn send_dmx_artnet_frame(
+    app_state: State<'_, AppState>,
+    universe: u16,
+    target_addr: Option<String>,
+) -> Result<usize, String> {
+    let packet = {
+        let dmx = match app_state.dmx_universe.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        chromaticity_runtime::dmx_artnet::encode_artnet_dmx(universe, 0, dmx.channels())
+    };
+    let dest = target_addr
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("127.0.0.1:6454");
+    let sock = std::net::UdpSocket::bind("0.0.0.0:0")
+        .map_err(|err| format!("artnet udp bind failed: {err}"))?;
+    sock.send_to(&packet, dest)
+        .map_err(|err| format!("artnet udp send to {dest} failed: {err}"))
 }
 
 /// Return the ADR-017 external data-ingest engine status.

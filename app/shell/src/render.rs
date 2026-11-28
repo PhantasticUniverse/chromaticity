@@ -9,7 +9,7 @@
 //! [`MultipassRenderer`] on first frame render so unit tests without a
 //! GPU or scenes without `main.glsl` incur zero GPU startup cost.
 
-use chromaticity_audio::{AudioUniformSnapshot, SynAudioEnvelopeBank};
+use chromaticity_audio::{AudioUniformSnapshot, SynAudioEnvelopeBank, SynAudioEnvelopes};
 use chromaticity_render::{
     CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, TargetFormat,
     TransitionOrchestrator, UniformInput, UniformValue, resolve_includes_multi,
@@ -17,6 +17,127 @@ use chromaticity_render::{
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+/// Clean-room GLSL 4.50 implementations of standard SSF helper functions
+/// injected automatically when a fragment shader references them without
+/// defining its own.
+const SSF_GLSL_HELPER_PRELUDE: &str = r#"
+// --- Chromaticity SSF GLSL Helper Prelude ---
+float _map(float v, float inMin, float inMax, float outMin, float outMax) {
+    float denom = max(abs(inMax - inMin), 1e-6);
+    float t = (v - inMin) / (inMax >= inMin ? denom : -denom);
+    return outMin + t * (outMax - outMin);
+}
+float _smin(float a, float b, float k) {
+    float h = max(k - abs(a - b), 0.0) / max(k, 1e-6);
+    return min(a, b) - h * h * k * 0.25;
+}
+vec2 _rotate(vec2 p, float a) {
+    float c = cos(a);
+    float s = sin(a);
+    return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+vec2 _toPolar(vec2 xy) {
+    return vec2(length(xy), atan(xy.y, xy.x));
+}
+vec2 _fromPolar(vec2 rt) {
+    return vec2(cos(rt.y), sin(rt.y)) * rt.x;
+}
+vec3 _rgb2hsv(vec3 c) {
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+vec3 _hsv2rgb(vec3 c) {
+    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+}
+float _hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+float _noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = _hash21(i);
+    float b = _hash21(i + vec2(1.0, 0.0));
+    float c = _hash21(i + vec2(0.0, 1.0));
+    float d = _hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float _fbm(vec2 p) {
+    float v = 0.0;
+    float amp = 0.5;
+    for (int i = 0; i < 4; i++) {
+        v += amp * _noise(p);
+        p *= 2.02;
+        amp *= 0.5;
+    }
+    return v;
+}
+// --- End SSF GLSL Helper Prelude ---
+"#;
+
+/// Inject [`SSF_GLSL_HELPER_PRELUDE`] after `#version ...` when a shader calls
+/// standard SSF helper functions without declaring them locally.
+fn inject_ssf_helpers_if_needed(source: &str) -> String {
+    const MARKERS: &[&str] = &[
+        "_map(",
+        "_smin(",
+        "_rotate(",
+        "_toPolar(",
+        "_fromPolar(",
+        "_rgb2hsv(",
+        "_hsv2rgb(",
+        "_noise(",
+        "_fbm(",
+    ];
+    let needs_prelude = MARKERS.iter().any(|m| source.contains(m))
+        && !source.contains("Chromaticity SSF GLSL Helper Prelude");
+    if !needs_prelude {
+        return source.to_string();
+    }
+    if let Some(ver_pos) = source.find("#version") {
+        if let Some(nl_rel) = source[ver_pos..].find('\n') {
+            let split = ver_pos + nl_rel + 1;
+            let mut out = String::with_capacity(source.len() + SSF_GLSL_HELPER_PRELUDE.len());
+            out.push_str(&source[..split]);
+            out.push_str(SSF_GLSL_HELPER_PRELUDE);
+            out.push_str(&source[split..]);
+            return out;
+        }
+    }
+    format!("{SSF_GLSL_HELPER_PRELUDE}\n{source}")
+}
+
+/// Resolve `#include "lygia/..."` and `#include "hg_sdf/..."` directives
+/// and inject SSF helper functions when referenced.
+fn preprocess_shader_with_helpers(source: &str) -> Result<String, String> {
+    let with_helpers = inject_ssf_helpers_if_needed(source);
+    if !with_helpers.contains("#include") {
+        return Ok(with_helpers);
+    }
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let lygia_root = repo_root.join("third_party/lygia");
+    let hg_sdf_root = repo_root.join("third_party/hg_sdf");
+    let mut namespaces: Vec<(&str, &Path)> = Vec::new();
+    if lygia_root.is_dir() {
+        namespaces.push(("lygia", lygia_root.as_path()));
+    }
+    if hg_sdf_root.is_dir() {
+        namespaces.push(("hg_sdf", hg_sdf_root.as_path()));
+    }
+    if namespaces.is_empty() {
+        return Ok(with_helpers);
+    }
+    resolve_includes_multi(&with_helpers, &namespaces)
+        .map_err(|err| format!("shader #include resolution failed: {err}"))
+}
 
 /// Minimum preview dimension (pixels) accepted by [`GpuPreviewEngine::render_frame`].
 const MIN_PREVIEW_DIM: u32 = 16;
@@ -284,34 +405,16 @@ impl GpuPreviewEngine {
     }
 
     /// Resolve `#include "lygia/..."` and `#include "hg_sdf/..."` directives
-    /// against the vendored `third_party/` shader libraries when present.
+    /// and inject SSF helper functions when referenced.
     fn preprocess_shader_source(source: &str) -> Result<String, String> {
-        if !source.contains("#include") {
-            return Ok(source.to_string());
-        }
-        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let lygia_root = repo_root.join("third_party/lygia");
-        let hg_sdf_root = repo_root.join("third_party/hg_sdf");
-        let mut namespaces: Vec<(&str, &Path)> = Vec::new();
-        if lygia_root.is_dir() {
-            namespaces.push(("lygia", lygia_root.as_path()));
-        }
-        if hg_sdf_root.is_dir() {
-            namespaces.push(("hg_sdf", hg_sdf_root.as_path()));
-        }
-        if namespaces.is_empty() {
-            return Ok(source.to_string());
-        }
-        resolve_includes_multi(source, &namespaces)
-            .map_err(|err| format!("shader #include resolution failed: {err}"))
+        preprocess_shader_with_helpers(source)
     }
 
     /// Arm the GPU preview engine from a loaded `.chroma` scene directory.
     ///
-    /// If `<scene_dir>/main.glsl` exists, reads it and transitions to
-    /// [`GpuRenderState::Active`]. If no `main.glsl` exists, transitions
-    /// cleanly to [`GpuRenderState::Idle`] so the UI falls back to the
-    /// procedural Canvas2D preview.
+    /// If `<scene_dir>/main.glsl` exists, reads it, cues the ADR-007
+    /// [`TransitionOrchestrator`], and transitions to [`GpuRenderState::Active`].
+    /// If no `main.glsl` exists, transitions cleanly to [`GpuRenderState::Idle`].
     pub fn set_scene(&mut self, scene_id: String, scene_dir: &Path) {
         self.cached_pass = None;
         let shader_path = scene_dir.join("main.glsl");
@@ -321,6 +424,22 @@ impl GpuPreviewEngine {
         }
         match std::fs::read_to_string(&shader_path) {
             Ok(fragment_source) => {
+                let next_spec = MultipassSpec {
+                    passes: vec![PassDef {
+                        label: Some(scene_id.clone()),
+                        fragment_glsl: fragment_source.clone(),
+                        uniforms: Vec::new(),
+                        input_textures: Vec::new(),
+                        target_format: TargetFormat::Rgba8Unorm,
+                        feedback_self: false,
+                    }],
+                    target_size: (640, 360),
+                    frame_count: 1,
+                };
+                if self.transition_orchestrator.cue_next(next_spec).is_ok() {
+                    let _ = self.transition_orchestrator.mark_primed();
+                    let _ = self.transition_orchestrator.commit_hard_cut();
+                }
                 self.state = GpuRenderState::Active {
                     scene_id,
                     shader_path,
@@ -482,9 +601,9 @@ impl GpuPreviewEngine {
         let dt = (elapsed_secs - self.last_elapsed_secs).clamp(1.0 / 240.0, 0.1);
         self.last_elapsed_secs = elapsed_secs;
         let resolved_bpm = resolve_bpm_uniforms(elapsed_secs, audio.bpm, bpm_override);
-        let _envelopes = self.envelopes.advance(audio, dt, resolved_bpm.beat_time);
+        let envelopes = self.envelopes.advance(audio, dt, resolved_bpm.beat_time);
 
-        let uniforms = build_standard_uniforms_with_bpm(
+        let mut uniforms = build_standard_uniforms_with_bpm(
             (w, h),
             elapsed_secs,
             frame,
@@ -492,6 +611,9 @@ impl GpuPreviewEngine {
             controls,
             bpm_override,
         );
+        if fragment_source.contains("chroma_AudioEnv0") {
+            append_audio_envelope_uniforms(&mut uniforms, &envelopes);
+        }
 
         let started = Instant::now();
         if self.cached_pass.is_none() {
@@ -638,6 +760,59 @@ pub fn build_standard_uniforms_with_bpm(
             value: UniformValue::Vec4([controls[12], controls[13], controls[14], controls[15]]),
         },
     ]
+}
+
+/// Append the full [`SynAudioEnvelopes`] std140 uniform vectors (`chroma_AudioEnv0..3`
+/// and `chroma_AudioMeta`) for shaders declaring extended reactive envelopes.
+pub fn append_audio_envelope_uniforms(
+    uniforms: &mut Vec<UniformInput>,
+    envelopes: &SynAudioEnvelopes,
+) {
+    uniforms.push(UniformInput {
+        name: "chroma_AudioEnv0".to_string(),
+        value: UniformValue::Vec4([
+            envelopes.level,
+            envelopes.hits,
+            envelopes.presence,
+            envelopes.time,
+        ]),
+    });
+    uniforms.push(UniformInput {
+        name: "chroma_AudioEnv1".to_string(),
+        value: UniformValue::Vec4([
+            envelopes.bass_level,
+            envelopes.bass_hits,
+            envelopes.bass_presence,
+            envelopes.bass_time,
+        ]),
+    });
+    uniforms.push(UniformInput {
+        name: "chroma_AudioEnv2".to_string(),
+        value: UniformValue::Vec4([
+            envelopes.mid_level,
+            envelopes.mid_hits,
+            envelopes.mid_presence,
+            envelopes.mid_time,
+        ]),
+    });
+    uniforms.push(UniformInput {
+        name: "chroma_AudioEnv3".to_string(),
+        value: UniformValue::Vec4([
+            envelopes.high_level,
+            envelopes.high_hits,
+            envelopes.high_presence,
+            envelopes.high_time,
+        ]),
+    });
+    uniforms.push(UniformInput {
+        name: "chroma_AudioMeta".to_string(),
+        value: UniformValue::Vec4([
+            envelopes.fade_in_out,
+            envelopes.intensity,
+            envelopes.bpm_confidence,
+            envelopes.random_on_beat,
+        ]),
+    });
 }
 
 /// Construct the standard single-pass [`MultipassSpec`] carrying the
@@ -1160,5 +1335,59 @@ void main() {
                 "bundled scene {id} rendered all-black frame"
             );
         }
+    }
+
+    #[test]
+    fn ssf_helper_prelude_and_audio_envelope_uniforms_render_on_gpu() {
+        let mut engine = GpuPreviewEngine::new();
+        let shader = r#"
+#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+
+layout(set = 0, binding = 0) uniform Uniforms {
+    vec4 chroma_Time;
+    vec4 chroma_Resolution;
+    vec4 syn_BPM;
+    vec4 chroma_AudioRMS;
+    vec4 chroma_AudioPeak;
+    vec4 chroma_AudioFFT[2];
+    vec4 chroma_Ctrl0;
+    vec4 chroma_Ctrl1;
+    vec4 chroma_Ctrl2;
+    vec4 chroma_Ctrl3;
+    vec4 chroma_AudioEnv0;
+    vec4 chroma_AudioEnv1;
+    vec4 chroma_AudioEnv2;
+    vec4 chroma_AudioEnv3;
+    vec4 chroma_AudioMeta;
+};
+
+void main() {
+    vec2 p = _rotate(uv - 0.5, chroma_Time.x + chroma_AudioEnv1.w);
+    float n = _fbm(p * 4.0);
+    float h = _map(n + chroma_AudioEnv0.y, 0.0, 2.0, 0.0, 1.0);
+    vec3 col = _hsv2rgb(vec3(h, 0.85, 0.6 + 0.4 * chroma_AudioMeta.y));
+    fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+"#;
+        engine.set_inline_shader("ssf-env-test".into(), shader.into());
+        let audio = AudioUniformSnapshot {
+            bpm: 128.0,
+            rms: 0.65,
+            peak: 0.9,
+            fft_bands: [0.85, 0.75, 0.55, 0.45, 0.35, 0.25, 0.2, 0.15],
+            ..AudioUniformSnapshot::default()
+        };
+        let bytes = engine
+            .render_frame(160, 90, 1.0, 60, &audio, [0.5; 16])
+            .expect("SSF helper prelude + AudioEnv shader must compile and render on Metal");
+        assert_eq!(bytes.len(), 160 * 90 * 4);
+        assert!(
+            bytes
+                .chunks_exact(4)
+                .any(|px| px[0] > 0 || px[1] > 0 || px[2] > 0),
+            "SSF helper + AudioEnv shader rendered all-black"
+        );
     }
 }

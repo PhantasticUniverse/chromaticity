@@ -23,9 +23,34 @@
 //! testable without a Tauri runtime.
 
 use chromaticity_runtime::{Command, CommandBus, PresetId};
-use tauri::State;
+use std::path::Path;
+use tauri::{Manager, State};
 
 use crate::state::AppState;
+
+const PRESETS_FILENAME: &str = "presets.json";
+
+fn persist_preset_id(data_dir: &Path, id: u32) {
+    let path = data_dir.join(PRESETS_FILENAME);
+    if let Err(err) = std::fs::create_dir_all(data_dir) {
+        eprintln!("[chromaticity][preset] create_dir_all failed: {err}");
+        return;
+    }
+    let mut saved: Vec<u32> = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+    if !saved.contains(&id) {
+        saved.push(id);
+        saved.sort_unstable();
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&saved) {
+        let tmp = data_dir.join(format!(".{PRESETS_FILENAME}.{}.tmp", std::process::id()));
+        if std::fs::write(&tmp, json.as_bytes()).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+    }
+}
 
 fn recall_preset_impl(app: &AppState, id: u32) -> Result<(), String> {
     let mut state = app
@@ -69,15 +94,19 @@ pub fn recall_preset(app_state: State<'_, AppState>, id: u32) -> Result<(), Stri
     recall_preset_impl(app_state.inner(), id)
 }
 
-/// Wave 2.4 PERF.C — save the current `ControlStore` snapshot into the
-/// preset bank keyed by `id`. The save also activates the preset
-/// (matching the `SnapSave` precedent of setting `active = Some(slot)`
-/// at apply time). In-process only; preset-bank durability + on-disk
-/// persistence remain Wave 2.5+ scope per the Phase-3
-/// `EV-PRESET-PLAYLIST` narrowing.
+/// Save the current `ControlStore` snapshot into the preset bank keyed by `id`
+/// and persist the saved preset index atomically to `<app_data_dir>/presets.json`.
 #[tauri::command]
-pub fn save_preset(app_state: State<'_, AppState>, id: u32) -> Result<(), String> {
-    save_preset_impl(app_state.inner(), id)
+pub fn save_preset(
+    app: tauri::AppHandle,
+    app_state: State<'_, AppState>,
+    id: u32,
+) -> Result<(), String> {
+    save_preset_impl(app_state.inner(), id)?;
+    if let Ok(dir) = app.path().app_data_dir() {
+        persist_preset_id(&dir, id);
+    }
+    Ok(())
 }
 
 /// Return the active preset id, or `None` when no preset has been
