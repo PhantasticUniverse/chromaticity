@@ -291,7 +291,10 @@ export const MEDIA_CARDS: readonly PerformMediaCard[] = [
 
 /** Default selected media-card index — matches the bundle's
  * `React.useState(1)` initial state (the second tile, "webcam"). */
-export const MEDIA_DEFAULT_ACTIVE_INDEX = 1;
+/** Default MediaStrip selection: `none`. The bundle pre-selects the webcam
+ * tile (index 1), but the selection now drives live capture (milestone 2a),
+ * and pre-selecting it would prompt for camera access on mount. */
+export const MEDIA_DEFAULT_ACTIVE_INDEX = 0;
 
 /** Media strip tab pills — bundle JSX line 90-92. */
 export const MEDIA_TABS = ['all', 'live', 'media'] as const;

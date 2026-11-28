@@ -322,7 +322,7 @@ describe('Perform view', () => {
     );
   });
 
-  it('default-paints the second media card (webcam) as active and omits fake demo video placeholders', () => {
+  it('default-paints the first media card (none) as active and omits fake demo video placeholders', () => {
     const { container, getByTestId } = render(Perform);
     const cards = container.querySelectorAll('.media-card');
     // 4 real live/calibration sources (`none`, `webcam`, `display`, `test card`)
@@ -331,7 +331,9 @@ describe('Perform view', () => {
     expect(container.textContent).not.toContain('jellyfish.mp4');
     expect(container.textContent).not.toContain('RoadTrip.mp4');
     expect(container.textContent).not.toContain('CloudAtlas.mp4');
-    // `MEDIA_DEFAULT_ACTIVE_INDEX === 1` — the webcam tile.
+    // `MEDIA_DEFAULT_ACTIVE_INDEX === 0` — the `none` tile (selection
+    // drives live capture, so nothing is captured on mount).
+    expect(MEDIA_DEFAULT_ACTIVE_INDEX).toBe(0);
     const activeCard = cards[MEDIA_DEFAULT_ACTIVE_INDEX];
     expect(activeCard).toBeDefined();
     expect(activeCard).toHaveAttribute('aria-pressed', 'true');
@@ -339,8 +341,8 @@ describe('Perform view', () => {
     // (the bundle's class shape) instead of the W18 PR1 inline
     // `media-card--active` BEM modifier.
     expect(activeCard).toHaveClass('active');
-    // First (none) tile is not active by default.
-    expect(cards[0]).toHaveAttribute('aria-pressed', 'false');
+    // Webcam tile is not active by default.
+    expect(cards[1]).toHaveAttribute('aria-pressed', 'false');
     // `+ Add Media` action card is present in the strip.
     expect(getByTestId('media-add-action')).toBeInTheDocument();
   });

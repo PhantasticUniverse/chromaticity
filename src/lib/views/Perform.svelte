@@ -97,11 +97,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { controlLockStore } from '../stores/controlLock.svelte';
   import { fetchBundledSceneCards } from '../stores/library';
   import { liveFxStore } from '../stores/liveFx.svelte';
+  import { liveMediaStore } from '../stores/liveMedia.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { performVariantStore } from '../stores/performVariant.svelte';
   import { playlistStore } from '../stores/playlist.svelte';
   import { presetStore } from '../stores/preset.svelte';
   import { routeStore } from '../stores/route.svelte';
+  import { sceneMediaStore, type SceneMediaSource } from '../stores/sceneMedia.svelte';
   import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
   import {
     ControlGroup,
@@ -146,6 +148,35 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   ];
 
   const YOUTUBE_MEDIA_ID = 'm-youtube';
+  const LOCAL_MEDIA_ID = 'm-local';
+
+  // Milestone 2a — the MediaStrip selection is the scene media source
+  // (`chroma_Media`), fed to the GPU by `sceneMediaStore`. The YouTube
+  // card plays in a cross-origin iframe whose pixels cannot be read, so it
+  // never feeds scenes.
+  const CARD_SOURCE: Readonly<Record<string, SceneMediaSource>> = {
+    'm-none': 'none',
+    'm-webcam': 'webcam',
+    'm-display': 'display',
+    'm-test': 'test',
+    [LOCAL_MEDIA_ID]: 'local',
+  };
+
+  function cardForSource(source: SceneMediaSource): string {
+    return Object.entries(CARD_SOURCE).find(([, s]) => s === source)?.[0] ?? 'm-none';
+  }
+
+  const localMedia = $derived(liveMediaStore.localMedia);
+  const localMediaCard = $derived<PerformMediaCard | null>(
+    localMedia.kind === 'loaded'
+      ? {
+          id: LOCAL_MEDIA_ID,
+          label: localMedia.name,
+          kind: 'video',
+          seed: 0,
+        }
+      : null,
+  );
 
   // Wave 2.1 Lane B.1 — layout variant. Lives in the module-singleton
   // `performVariantStore` so the TopBar's STANDARD / CONSOLE toggle and
@@ -161,8 +192,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // loaded scene. Until a scene is loaded the active id is `null`
   // and no row carries the active treatment.
   const loadedSceneId = $derived(loadedSceneStore.snapshot?.id ?? null);
+  // Starts from the live scene-media selection so remounting Perform shows
+  // what scenes actually receive. Diverges from the bundle (webcam
+  // pre-selected): auto-selecting a capture source would prompt for camera
+  // access on mount, so the default is `none`.
   let activeMediaId = $state<string>(
-    PERFORM_MEDIA_CARDS[MEDIA_DEFAULT_ACTIVE_INDEX]?.id ?? 'm-webcam',
+    sceneMediaStore.source === 'none'
+      ? (PERFORM_MEDIA_CARDS[MEDIA_DEFAULT_ACTIVE_INDEX]?.id ?? 'm-none')
+      : cardForSource(sceneMediaStore.source),
   );
   let activeTab = $state<MediaTab>('all');
   let perfMode = $state<'perform' | 'edit'>('perform');
@@ -177,7 +214,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // Lane Q.2 G.9) — that lives in `testCardActive` below and is
   // independent of which filter tab is active.
   const filteredMediaCards = $derived(
-    PERFORM_MEDIA_CARDS.filter((card) => {
+    [...PERFORM_MEDIA_CARDS, ...(localMediaCard ? [localMediaCard] : [])].filter((card) => {
       if (activeTab === 'all') return true;
       if (activeTab === 'live') return card.kind === 'webcam';
       // 'media' — non-live-capture cards (`none`, `test card`).
@@ -197,9 +234,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   const unlicensed = false;
 
   // W21 PR2: the Preview hero swaps to the static SMPTE test-card pattern
-  // when the test-card MediaStrip card is active. Per the W18 PR1
-  // frozen-frame contract, switching tiles dispatches no IPC; the hero
-  // simply re-renders the alternate placeholder surface.
+  // when the test-card MediaStrip card is active. Since milestone 2a the
+  // selection also feeds scenes: `selectMedia` hands the source to
+  // `sceneMediaStore`, which pushes frames over `push_scene_media_frame`
+  // (the W18 PR1 "no IPC on tile switch" contract no longer holds).
   const testCardActive = $derived(activeMediaId === 'm-test');
 
   /**
@@ -235,11 +273,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   function selectMedia(id: string): void {
     activeMediaId = id;
+    void sceneMediaStore.select(CARD_SOURCE[id] ?? 'none');
   }
 
   function handleYouTubeCardClick(): void {
     if (youtubeLayerStore.isReady) {
       activeMediaId = YOUTUBE_MEDIA_ID;
+      void sceneMediaStore.select('none');
       return;
     }
     routeStore.set('sources');
@@ -1536,7 +1576,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           data-youtube-ready={youtubeReady ? 'true' : 'false'}
           data-testid="media-card-youtube"
           title={youtubeState.kind === 'ready'
-            ? `YouTube stream ${youtubeState.videoId} (${youtubeState.blendMode}, ${Math.round(youtubeState.opacity * 100)}%)`
+            ? `YouTube stream ${youtubeState.videoId} (${youtubeState.blendMode}, ${Math.round(youtubeState.opacity * 100)}%) — preview layer only; YouTube cannot feed scene media`
             : 'Open Sources to load a YouTube visual stream'}
           aria-label={youtubeState.kind === 'ready'
             ? `YouTube · ${youtubeState.videoId}`
