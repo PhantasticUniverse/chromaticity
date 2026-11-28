@@ -44,6 +44,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { LICENSE_FIXTURE, type LicenseFixture } from '../data/license-fixtures';
   import ErrorMessage from '../ErrorMessage.svelte';
   import { installLicense, removeLicense, requestTrial } from '../ipc/license';
+  import { capabilitiesStore } from '../stores/capabilities.svelte';
   import { toIpcError } from '../types/ipc-error';
 
   let { fixture = LICENSE_FIXTURE }: { fixture?: LicenseFixture } = $props();
@@ -83,11 +84,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   async function handleInstall(): Promise<void> {
-    await runAction(installLicense, 'install_license');
+    await runAction(async () => {
+      await installLicense();
+      await capabilitiesStore.refreshFromEngine();
+    }, 'install_license');
   }
 
   async function handleRemove(): Promise<void> {
-    await runAction(removeLicense, 'remove_license');
+    await runAction(async () => {
+      await removeLicense();
+      await capabilitiesStore.refreshFromEngine();
+    }, 'remove_license');
   }
 
   async function handleRequestTrial(): Promise<void> {

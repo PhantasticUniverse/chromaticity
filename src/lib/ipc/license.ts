@@ -21,8 +21,12 @@ import { invoke } from '@tauri-apps/api/core';
 /// Install a license token. The W30 backend stub returns
 /// `Err("not implemented")`; Phase-3+/4a wires the runtime token
 /// verifier against a user-supplied or paste-buffer-supplied JWT.
-export async function installLicense(): Promise<void> {
-  await invoke<void>('install_license');
+export async function installLicense(tokenJson?: string): Promise<void> {
+  if (tokenJson !== undefined) {
+    await invoke<void>('install_license', { tokenJson });
+  } else {
+    await invoke<void>('install_license');
+  }
 }
 
 /// Remove the currently installed license token. The W30 backend

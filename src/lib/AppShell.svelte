@@ -118,6 +118,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { overlayStack } from './state';
   import StatusBar from './StatusBar.svelte';
   import { capabilitiesStore } from './stores/capabilities.svelte';
+  import { midiBindingsStore } from './stores/midiBindings.svelte';
   import { routeStore } from './stores/route.svelte';
   import TopBar from './TopBar.svelte';
   import AudioUniforms from './views/AudioUniforms.svelte';
@@ -197,6 +198,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     });
 
   $effect(() => {
+    void capabilitiesStore.refreshFromEngine();
+    if (midiBindingsStore.bindings.length > 0) {
+      void midiBindingsStore.startListening();
+    }
     void (async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');

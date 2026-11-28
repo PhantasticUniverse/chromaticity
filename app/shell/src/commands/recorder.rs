@@ -24,6 +24,13 @@ use tauri::{Manager, State};
 /// Subdirectory under `app.path().app_data_dir()` where default replay files are saved.
 const RECORDINGS_SUBDIR: &str = "recordings";
 
+/// Open on-disk fMP4 file backing an active recording session.
+#[derive(Debug)]
+pub struct ActiveRecordingFile {
+    pub path: PathBuf,
+    pub file: std::fs::File,
+}
+
 /// Monotonic counter used to disambiguate atomic temporary files within a process.
 static TMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -217,9 +224,11 @@ fn write_bytes_atomically(target_path: &Path, bytes: &[u8]) -> Result<(), String
     Ok(())
 }
 
-/// Inner implementation for [`start_recording`].
-pub fn start_recording_impl(
+/// Inner implementation for [`start_recording`], optionally backing the session
+/// with a real on-disk `.mp4` file under `data_dir/recordings/`.
+pub fn start_recording_to_dir_impl(
     app: &AppState,
+    data_dir: Option<&Path>,
     width: Option<u32>,
     height: Option<u32>,
 ) -> Result<RecorderStatusDto, String> {
@@ -247,9 +256,48 @@ pub fn start_recording_impl(
         ..default_cfg
     };
     let mut muxer = Fmp4Muxer::new(config).map_err(|err| err.to_string())?;
-    let _init_segment = muxer
+    let init_segment = muxer
         .start(current_unix_ms())
         .map_err(|err| err.to_string())?;
+
+    if let Some(base_dir) = data_dir {
+        let dir = base_dir.join(RECORDINGS_SUBDIR);
+        std::fs::create_dir_all(&dir).map_err(|err| {
+            format!(
+                "failed to create recordings directory {}: {err}",
+                dir.display()
+            )
+        })?;
+        let seq = TMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let target_path = dir.join(format!("recording-{}-{seq}.mp4", current_unix_secs()));
+        let mut file = std::fs::File::create(&target_path).map_err(|err| {
+            format!(
+                "failed to create recording file {}: {err}",
+                target_path.display()
+            )
+        })?;
+        file.write_all(&init_segment).map_err(|err| {
+            format!(
+                "failed to write fMP4 init segment to {}: {err}",
+                target_path.display()
+            )
+        })?;
+        file.flush().map_err(|err| {
+            format!(
+                "failed to flush fMP4 init segment to {}: {err}",
+                target_path.display()
+            )
+        })?;
+        let mut file_guard = match app.recorder_output_file.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        *file_guard = Some(ActiveRecordingFile {
+            path: target_path,
+            file,
+        });
+    }
+
     *muxer_guard = Some(muxer);
 
     let replay_guard = match app.replay_buffer.lock() {
@@ -257,6 +305,15 @@ pub fn start_recording_impl(
         Err(p) => p.into_inner(),
     };
     Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard))
+}
+
+/// Inner implementation for [`start_recording`] (in-memory muxer without disk path).
+pub fn start_recording_impl(
+    app: &AppState,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<RecorderStatusDto, String> {
+    start_recording_to_dir_impl(app, None, width, height)
 }
 
 /// Inner implementation for [`stop_recording`].
@@ -270,7 +327,25 @@ pub fn stop_recording_impl(app: &AppState) -> Result<RecorderStatusDto, String> 
         "invalid recorder state transition: cannot `stop` from `idle`".to_string()
     })?;
     muxer.begin_stop().map_err(|err| err.to_string())?;
-    let _final_fragment = muxer.finish_stop().map_err(|err| err.to_string())?;
+    let final_fragment = muxer.finish_stop().map_err(|err| err.to_string())?;
+
+    let mut file_guard = match app.recorder_output_file.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    if let Some(mut active_file) = file_guard.take() {
+        if let Some(fragment_bytes) = final_fragment {
+            if !fragment_bytes.is_empty() {
+                active_file.file.write_all(&fragment_bytes).map_err(|err| {
+                    format!(
+                        "failed to write final fMP4 fragment to {}: {err}",
+                        active_file.path.display()
+                    )
+                })?;
+            }
+        }
+        let _ = active_file.file.sync_all();
+    }
 
     let replay_guard = match app.replay_buffer.lock() {
         Ok(g) => g,
@@ -342,11 +417,13 @@ pub fn save_replay_buffer_impl(
 /// Start a crash-safe Fragmented MP4 recording session.
 #[tauri::command]
 pub fn start_recording(
+    app: tauri::AppHandle,
     app_state: State<'_, AppState>,
     width: Option<u32>,
     height: Option<u32>,
 ) -> Result<RecorderStatusDto, String> {
-    start_recording_impl(app_state.inner(), width, height)
+    let data_dir = app.path().app_data_dir().ok();
+    start_recording_to_dir_impl(app_state.inner(), data_dir.as_deref(), width, height)
 }
 
 /// Stop the active Fragmented MP4 recording session and flush any buffered GOP.

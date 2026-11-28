@@ -127,13 +127,12 @@ pub fn list_syphon_servers() -> Result<Vec<SyphonServerPayload>, String> {
 /// prose). Non-macOS arm: returns `Err("syphon: macOS-only feature")`.
 #[cfg(target_os = "macos")]
 #[tauri::command]
-pub fn publish_syphon_output(name: String) -> Result<SyphonOutputStatusPayload, String> {
-    // Phase 4 Lane B documented stub: synthesise the active status
-    // payload until the real SyphonOutputAdapter publish loop wires
-    // in Phase 5. The frontend trust-boundary warning fires off the
-    // returned `active: true` flag, so the operator-facing safety
-    // surface is in place independent of the underlying registration.
-    Ok(SyphonOutputStatusPayload::active(name))
+pub fn publish_syphon_output(_name: String) -> Result<SyphonOutputStatusPayload, String> {
+    // Honest posture: do not fake `active: true` when Syphon.framework is not
+    // linked and no SyphonMetalServer is actually publishing frames.
+    Err(String::from(
+        "syphon: Syphon.framework is not linked in this build — set SYPHON_FRAMEWORK_PATH and rebuild to publish Syphon output",
+    ))
 }
 
 /// Non-macOS stub: surfaces the platform-unavailability error.
@@ -208,12 +207,13 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn publish_syphon_output_returns_active_payload_with_supplied_name() {
-        let name = String::from("Chromaticity Performance");
-        let status =
-            publish_syphon_output(name.clone()).expect("publish stub must not error on macOS");
-        assert!(status.active, "publish must surface active=true");
-        assert_eq!(status.server_name.as_deref(), Some(name.as_str()));
+    fn publish_syphon_output_honestly_reports_unlinked_framework() {
+        let err = publish_syphon_output(String::from("Chromaticity Performance"))
+            .expect_err("unlinked Syphon build must not fake active=true");
+        assert!(
+            err.contains("Syphon.framework is not linked"),
+            "unexpected error: {err}",
+        );
     }
 
     #[cfg(target_os = "macos")]

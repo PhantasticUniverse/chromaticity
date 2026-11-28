@@ -381,6 +381,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::midi::list_midi_devices,
             commands::midi::start_midi_learn,
             commands::midi::stop_midi_learn,
+            commands::midi::start_midi_performance_listener,
+            commands::midi::stop_midi_performance_listener,
             commands::osc::osc_health_snapshot,
             commands::osc::osc_routes_snapshot,
             commands::osc::bind_osc_route,

@@ -25,28 +25,33 @@ GPU class selection and multi-GPU fallback is governed by `adr/ADR-011-rendering
 ### Audio Device Classes (MVP)
 | Class | Scope |
 |---|---|
-| AUD-1 | Built-in device input/output |
-| AUD-2 | USB audio interface (2+ channels) |
-| AUD-3 | Virtual/system-audio loopback path for supported platforms |
+| AUD-1 | Built-in device input/output + live `AudioInputGainHandle` |
+| AUD-2 | USB audio interface (2+ channels, incl. Pioneer/AlphaTheta DJ Master/Cue stereo-pair isolation) |
+| AUD-3 | Zero-install macOS Core Audio Process Tap system loopback (`ADR-022`) + multi-bus `BroadcastMixer` |
 
 ### Media Path Classes (MVP)
 | Class | Scope |
 |---|---|
-| MED-1 | Static image and local video ingest |
-| MED-2 | Camera capture source |
-| MED-3 | External texture feed (Syphon on macOS, Spout on Windows) |
+| MED-1 | Static image and local video ingest (`Mix.svelte` / `liveMediaStore`) |
+| MED-2 | Camera capture source (WebRTC `getUserMedia` live in `Mix`; Rust `nokhwa` scaffold pending native bindings) |
+| MED-3 | External texture feed (Syphon on macOS pending `Syphon.framework` linkage; Spout on Windows planned) |
 | MED-4 | NDI input/output (post-MVP, design-only at MVP freeze) |
+| MED-5 | Direct YouTube URL stream-in (SSRF-hardened proxy + HLS passthrough) & WebRTC screen capture (`getDisplayMedia`) |
 
 ### Controller Classes (MVP)
 | Class | Scope |
 |---|---|
-| CTRL-1 | MIDI controller with reconnect drills |
-| CTRL-2 | OSC show-control client over local network |
+| CTRL-1 | MIDI controller with learn, persistent bindings, and live background performance listener |
+| CTRL-2 | OSC show-control client over local network (loopback-default) |
+| CTRL-3 | Pro DJ Link UDP (`50001`) multi-deck Master tempo/beat sync & 2-button Footswitch cue runner |
 
 ### Output Surface Classes (MVP)
 | Class | Scope |
 |---|---|
-| OUT-1 | Fullscreen, multi-display placement, constant vs scene-resolution output |
+| OUT-1 | Fullscreen, multi-display Stage Output Window placement |
+| OUT-2 | Twitch RTMPS/RTMP live broadcast (`ffmpeg` + `avfoundation` audio muxing) |
+| OUT-3 | Crash-safe fMP4 local recording container & rolling replay buffer (HW H.264 packet feed in Phase 7a) |
+| OUT-4 | DMX512 / Art-Net 4 / sACN (E1.31) spectral lighting output (`engine/runtime/src/dmx_artnet.rs`) |
 
 ### Capability Presets ("Editions")
 

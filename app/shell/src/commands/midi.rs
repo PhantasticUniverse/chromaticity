@@ -56,6 +56,11 @@ use tauri::{AppHandle, Emitter, State};
 /// `app/shell/src/state/ipc_emit.rs`).
 pub const MIDI_LEARN_EVENT: &str = "midi_learn_event";
 
+/// Tauri event name emitted continuously by the persistent live-performance
+/// MIDI listener (`start_midi_performance_listener`) so learned MIDI CC/Note
+/// bindings drive scene/meta controls in real time during shows.
+pub const MIDI_PERFORMANCE_EVENT: &str = "midi_performance_event";
+
 /// Enumerate the MIDI input ports currently visible to the host.
 ///
 /// Returns one [`MidiDevicePayload`] per port surfaced by a fresh
@@ -169,6 +174,55 @@ pub fn stop_midi_learn(state: State<'_, AppState>) -> Result<(), String> {
         Err(p) => p.into_inner(),
     };
     *guard = None;
+    Ok(())
+}
+
+/// Open persistent background MIDI input listeners on all currently-visible
+/// host MIDI input ports, emitting [`MIDI_PERFORMANCE_EVENT`] for every
+/// incoming CC/Note message so learned bindings control live scenes.
+///
+/// Idempotent: replaces any previously opened performance listener set so
+/// hot-plugged ports can be re-attached cleanly without leaking handles.
+/// Returns the number of MIDI input ports actively attached.
+#[tauri::command]
+pub fn start_midi_performance_listener(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let descriptors = list_devices().map_err(|e| format!("midi enumeration failed: {e}"))?;
+    let mut handles = Vec::new();
+
+    for desc in descriptors {
+        let Ok(port_index) = parse_port_id(&desc.id) else {
+            continue;
+        };
+        let app_for_cb = app.clone();
+        let port_id_for_cb = desc.id.clone();
+        if let Ok(handle) = start_input_listen(port_index, move |message| {
+            let payload = MidiLearnEventPayload::from_message(port_id_for_cb.clone(), &message);
+            let _ = app_for_cb.emit(MIDI_PERFORMANCE_EVENT, &payload);
+        }) {
+            handles.push((desc.id, handle));
+        }
+    }
+
+    let count = handles.len();
+    let mut guard = match state.midi_perf_handles.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    *guard = handles;
+    Ok(count)
+}
+
+/// Close all active background MIDI performance listeners.
+#[tauri::command]
+pub fn stop_midi_performance_listener(state: State<'_, AppState>) -> Result<(), String> {
+    let mut guard = match state.midi_perf_handles.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    guard.clear();
     Ok(())
 }
 

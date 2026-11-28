@@ -307,6 +307,11 @@ pub struct AppState {
     /// close the connection when dropped", so no `MidiInputConnection`
     /// leaks on app exit.
     pub midi_learn_handle: Mutex<Option<MidiListenHandle>>,
+    /// Persistent background MIDI performance listener handles keyed by `"input-<n>"`.
+    /// Opened by `start_midi_performance_listener`, emitting `midi_performance_event`
+    /// continuously during live shows so learned MIDI bindings drive controls in real time.
+    /// Dropped deterministically on `stop_midi_performance_listener` and app shutdown.
+    pub midi_perf_handles: Mutex<Vec<(String, MidiListenHandle)>>,
     /// Most recently loaded `.chroma` scene package and its on-disk
     /// path. Wave 2.1 Lane A.1 introduces this as a shell-side
     /// concern: the Library view's double-click handler invokes
@@ -417,6 +422,8 @@ pub struct AppState {
     pub audio_input_gain_atomic: chromaticity_audio::AudioInputGainHandle,
     /// Phase 7a crash-safe fMP4 recorder muxer (`Idle` / `Recording` / `Stopping`).
     pub recorder_muxer: Mutex<Option<chromaticity_runtime::recorder::Fmp4Muxer>>,
+    /// Open on-disk fMP4 file backing the active recording session (`None` when idle).
+    pub recorder_output_file: Mutex<Option<crate::commands::recorder::ActiveRecordingFile>>,
     /// Phase 7a keyframe-aligned rolling replay buffer ("save last 15–120 s").
     pub replay_buffer: Mutex<chromaticity_runtime::recorder::ReplayBuffer>,
     /// Managed live Twitch RTMPS/RTMP `ffmpeg` publisher child process and state machine.
@@ -492,6 +499,7 @@ impl AppState {
             runtime: Mutex::new(ShellRuntime::Unbootstrapped),
             crash_resume_status: Mutex::new(None),
             midi_learn_handle: Mutex::new(None),
+            midi_perf_handles: Mutex::new(Vec::new()),
             loaded_scene: Mutex::new(None),
             osc_routes: Mutex::new(OscRouteRegistry::with_default_seed()),
             bundled_scene_root: Mutex::new(None),
@@ -518,6 +526,7 @@ impl AppState {
                 )
                 .ok(),
             ),
+            recorder_output_file: Mutex::new(None),
             replay_buffer: Mutex::new(chromaticity_runtime::recorder::ReplayBuffer::default()),
             twitch_stream: Mutex::new(crate::commands::stream::TwitchStreamProcess::new()),
             script_host: Mutex::new(crate::script_host::ScriptHost::new()),
@@ -691,6 +700,13 @@ impl AppState {
             };
             if guard.is_some() { "listening" } else { "idle" }
         };
+        let midi_perf_listeners = {
+            let guard = match self.midi_perf_handles.lock() {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+            guard.len()
+        };
         let osc_sender = {
             let guard = match self.osc_sender.lock() {
                 Ok(g) => g,
@@ -764,6 +780,7 @@ impl AppState {
             "recorder": recorder,
             "twitch_stream": twitch_stream,
             "midi_learn": midi_learn,
+            "midi_perf_listeners": midi_perf_listeners,
             "osc_sender": osc_sender,
             "crash_resume": crash_resume,
             "settings_path_installed": settings_path_installed,
