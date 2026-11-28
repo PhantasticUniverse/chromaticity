@@ -17,6 +17,8 @@ import {
   startTwitchStreamDetailed,
   stopTwitchStream,
 } from '../ipc/stream';
+import { liveBroadcastStore } from '../stores/liveBroadcast.svelte';
+import { liveMediaStore } from '../stores/liveMedia.svelte';
 import { videoMixerStore } from '../stores/videoMixer.svelte';
 import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
 import { applyPixelKeyingToImageData, parseHexRgb } from '../utils/liveVideoFx';
@@ -64,6 +66,8 @@ describe('Mix view', () => {
       removeListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }));
+    liveBroadcastStore.reset();
+    liveMediaStore.reset();
     videoMixerStore.reset();
     youtubeLayerStore.reset();
     mockGetGpuCostTelemetry.mockReset().mockResolvedValue(null);
@@ -84,6 +88,8 @@ describe('Mix view', () => {
   });
 
   afterEach(() => {
+    liveBroadcastStore.reset();
+    liveMediaStore.reset();
     videoMixerStore.reset();
     youtubeLayerStore.reset();
     cleanup();

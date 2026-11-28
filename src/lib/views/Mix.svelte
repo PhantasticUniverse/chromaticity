@@ -7,22 +7,25 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   import {
     getGpuCostTelemetry,
-    resolveYouTubeStreamDetailed,
     setAdaptiveScaleEnabled,
     type GpuCostTelemetryDto,
-    type YouTubeStreamDto,
   } from '../ipc/mix';
   import { saveReplayBuffer } from '../ipc/recorder';
   import {
     getStreamStatus,
     listStreamAudioDevices,
     pushStreamFrame,
-    startTwitchStreamDetailed,
-    stopTwitchStream,
     type StreamAudioDeviceDto,
-    type StreamStatusDto,
   } from '../ipc/stream';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+  import {
+    DEFAULT_BROADCAST_FPS,
+    DEFAULT_BROADCAST_HEIGHT,
+    DEFAULT_BROADCAST_INGEST_URL,
+    DEFAULT_BROADCAST_WIDTH,
+    liveBroadcastStore,
+  } from '../stores/liveBroadcast.svelte';
+  import { liveMediaStore } from '../stores/liveMedia.svelte';
   import {
     BLEND_MODE_OPTIONS,
     DEFAULT_SHADER_SCENE_ID,
@@ -67,7 +70,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     adaptive_enabled: true,
   };
 
-  const DEFAULT_TWITCH_INGEST_URL = 'rtmps://live.twitch.tv/app';
   const TWITCH_BITRATE_OPTIONS: ReadonlyArray<number> = [3500, 4500, 6000];
   const FALLBACK_TWITCH_AUDIO_DEVICE_OPTIONS: ReadonlyArray<StreamAudioDeviceDto> = [
     { value: '', label: 'Silent (Visuals Only)' },
@@ -77,23 +79,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let twitchAudioDeviceOptions = $state<readonly StreamAudioDeviceDto[]>(
     FALLBACK_TWITCH_AUDIO_DEVICE_OPTIONS,
   );
-  const DEFAULT_STREAM_WIDTH = 1280;
-  const DEFAULT_STREAM_HEIGHT = 720;
-  const DEFAULT_STREAM_FPS = 30;
-
-  const DEFAULT_STREAM_STATUS: StreamStatusDto = {
-    state: 'offline',
-    is_live: false,
-    protocol: 'rtmps',
-    ingest_url: DEFAULT_TWITCH_INGEST_URL,
-    bitrate_kbps: 6000,
-    width: DEFAULT_STREAM_WIDTH,
-    height: DEFAULT_STREAM_HEIGHT,
-    fps: DEFAULT_STREAM_FPS,
-    frames_pushed: 0,
-    encoder: 'h264_videotoolbox',
-    last_error: null,
-  };
 
   type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se';
   type ReplayStatus = 'idle' | 'saving' | 'saved' | 'preview';
@@ -127,21 +112,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let gpuTelemetry = $state<GpuCostTelemetryDto>(DEFAULT_GPU_TELEMETRY);
   let adaptivePending = $state(false);
   let replayStatus = $state<ReplayStatus>('idle');
-  let webcamStream = $state.raw<MediaStream | null>(null);
-  let webcamPending = $state(false);
-  let webcamError = $state<string | null>(null);
-  let screenStream = $state.raw<MediaStream | null>(null);
-  let screenPending = $state(false);
-  let screenError = $state<string | null>(null);
-  let localMediaUrl = $state<string | null>(null);
-  let localMediaKind = $state<'video' | 'image' | null>(null);
-  let localMediaName = $state<string | null>(null);
   let youtubeUrlInput = $state('');
   let youtubeInteractive = $state(false);
-  let youtubeNativeStream = $state<YouTubeStreamDto | null>(null);
-  let youtubeResolving = $state(false);
-  let youtubeResolveError = $state<string | null>(null);
-  let youtubeResolveSeq = 0;
   let youtubeVideoEl = $state<HTMLVideoElement | null>(null);
   let youtubeUserPaused = $state(false);
   let youtubeCurrentTime = $state(0);
@@ -149,13 +121,33 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let youtubePlaybackRate = $state(1);
   const YOUTUBE_SPEED_OPTIONS: ReadonlyArray<number> = [0.5, 0.75, 1, 1.25, 1.5, 2];
   let twitchDrawerOpen = $state(false);
-  let twitchIngestUrl = $state(DEFAULT_TWITCH_INGEST_URL);
+  let twitchIngestUrl = $state(DEFAULT_BROADCAST_INGEST_URL);
   let twitchStreamKey = $state('');
   let twitchBitrateKbps = $state<number>(6000);
   let twitchAudioDevice = $state<string | null>(null);
-  let streamStatus = $state<StreamStatusDto>(DEFAULT_STREAM_STATUS);
-  let streamPending = $state(false);
-  let streamError = $state<string | null>(null);
+
+  const streamStatus = $derived(liveBroadcastStore.status);
+  const streamPending = $derived(liveBroadcastStore.isPending);
+  const streamError = $derived(liveBroadcastStore.error);
+
+  const webcamStream = $derived(liveMediaStore.webcamStream);
+  const webcamPending = $derived(liveMediaStore.webcamPending);
+  const webcamError = $derived(liveMediaStore.webcamError);
+  const screenStream = $derived(liveMediaStore.screenStream);
+  const screenPending = $derived(liveMediaStore.screenPending);
+  const screenError = $derived(liveMediaStore.screenError);
+  const localMedia = $derived(liveMediaStore.localMedia);
+  const localMediaUrl = $derived(localMedia.kind === 'loaded' ? localMedia.url : null);
+  const localMediaKind = $derived(localMedia.kind === 'loaded' ? localMedia.mediaKind : null);
+  const localMediaName = $derived(localMedia.kind === 'loaded' ? localMedia.name : null);
+  const youtubeResolve = $derived(liveMediaStore.youtubeResolve);
+  const youtubeNativeStream = $derived(
+    youtubeResolve.kind === 'resolved' ? youtubeResolve.stream : null,
+  );
+  const youtubeResolving = $derived(youtubeResolve.kind === 'resolving');
+  const youtubeResolveError = $derived(
+    youtubeResolve.kind === 'fallback' ? youtubeResolve.error : null,
+  );
 
   let disposed = false;
   let replayFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -165,119 +157,30 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let offscreenStreamCanvas: HTMLCanvasElement | null = null;
 
   function stopWebcam(): void {
-    const active = webcamStream;
-    webcamStream = null;
-    webcamError = null;
-    if (active !== null) {
-      for (const track of active.getTracks()) {
-        track.stop();
-      }
-    }
+    liveMediaStore.stopWebcam();
   }
 
   async function startWebcam(): Promise<void> {
-    if (webcamPending || webcamStream !== null) return;
-    webcamError = null;
-    const mediaDevices = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
-    if (!mediaDevices || typeof mediaDevices.getUserMedia !== 'function') {
-      webcamError = 'Camera capture is unavailable in this environment.';
-      return;
-    }
-
-    webcamPending = true;
-    try {
-      const stream = await mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      if (disposed) {
-        for (const track of stream.getTracks()) {
-          track.stop();
-        }
-        return;
-      }
-      webcamStream = stream;
-    } catch (err: unknown) {
-      if (disposed) return;
-      webcamError =
-        err instanceof Error && err.message.trim().length > 0
-          ? err.message
-          : 'Camera permission denied or device unavailable.';
-    } finally {
-      webcamPending = false;
-    }
+    await liveMediaStore.startWebcam();
   }
 
   function stopScreenCapture(): void {
-    const active = screenStream;
-    screenStream = null;
-    screenError = null;
-    if (active !== null) {
-      for (const track of active.getTracks()) {
-        track.stop();
-      }
-    }
+    liveMediaStore.stopScreenCapture();
   }
 
   async function startScreenCapture(): Promise<void> {
-    if (screenPending || screenStream !== null) return;
-    screenError = null;
-    const mediaDevices = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
-    if (!mediaDevices || typeof mediaDevices.getDisplayMedia !== 'function') {
-      screenError = 'Screen capture is unavailable in this environment.';
-      return;
-    }
-
-    screenPending = true;
-    try {
-      const stream = await mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      });
-      if (disposed) {
-        for (const track of stream.getTracks()) {
-          track.stop();
-        }
-        return;
-      }
-      for (const track of stream.getTracks()) {
-        track.addEventListener?.('ended', () => {
-          if (!disposed && screenStream === stream) {
-            screenStream = null;
-          }
-        });
-      }
-      screenStream = stream;
-    } catch (err: unknown) {
-      if (disposed) return;
-      screenError =
-        err instanceof Error && err.message.trim().length > 0
-          ? err.message
-          : 'Screen capture permission denied or cancelled.';
-    } finally {
-      screenPending = false;
-    }
+    await liveMediaStore.startScreenCapture();
   }
 
   function clearLocalMedia(): void {
-    if (localMediaUrl !== null && typeof URL !== 'undefined' && URL.revokeObjectURL) {
-      URL.revokeObjectURL(localMediaUrl);
-    }
-    localMediaUrl = null;
-    localMediaKind = null;
-    localMediaName = null;
+    liveMediaStore.clearLocalMedia();
   }
 
   function handleLocalMediaFile(event: Event): void {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
-    if (localMediaUrl !== null && typeof URL !== 'undefined' && URL.revokeObjectURL) {
-      URL.revokeObjectURL(localMediaUrl);
-    }
-    localMediaUrl = URL.createObjectURL(file);
-    localMediaKind = file.type.startsWith('image/') ? 'image' : 'video';
-    localMediaName = file.name;
+    liveMediaStore.loadLocalMediaFile(file);
   }
 
   interface KeyedCanvasParams {
@@ -399,31 +302,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   function triggerYouTubeNativeResolve(videoId: string): void {
-    youtubeResolveSeq += 1;
-    const reqId = youtubeResolveSeq;
-    youtubeNativeStream = null;
-    youtubeResolveError = null;
-    youtubeResolving = true;
-    void resolveYouTubeStreamDetailed(videoId).then((result) => {
-      if (disposed || reqId !== youtubeResolveSeq) return;
-      youtubeResolving = false;
-      if (result.stream !== null) {
-        youtubeNativeStream = result.stream;
-        youtubeResolveError = null;
-      } else if (result.error !== null) {
-        youtubeResolveError = result.error;
-      }
-    });
+    void liveMediaStore.resolveYouTube(videoId);
   }
 
   function handleLoadYouTube(event: SubmitEvent): void {
     event.preventDefault();
     const next = youtubeLayerStore.load(youtubeUrlInput);
     if (next.kind !== 'ready') {
-      youtubeResolveSeq += 1;
-      youtubeNativeStream = null;
-      youtubeResolveError = null;
-      youtubeResolving = false;
+      liveMediaStore.clearYouTubeResolve();
       return;
     }
     triggerYouTubeNativeResolve(next.videoId);
@@ -482,12 +368,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   function handleClearYouTube(): void {
-    youtubeResolveSeq += 1;
     youtubeUrlInput = '';
     youtubeInteractive = false;
-    youtubeNativeStream = null;
-    youtubeResolveError = null;
-    youtubeResolving = false;
+    liveMediaStore.clearYouTubeResolve();
     youtubeUserPaused = false;
     youtubeCurrentTime = 0;
     youtubeDuration = 0;
@@ -542,10 +425,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   }
 
-  let streamSessionSeq = 0;
-
   function stopStreamCaptureLoop(): void {
-    streamSessionSeq += 1;
     if (streamRafId !== null && typeof cancelAnimationFrame === 'function') {
       cancelAnimationFrame(streamRafId);
     }
@@ -647,26 +527,27 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     lastStreamFrameAt = 0;
 
     const tick = (now: number): void => {
-      if (disposed || !streamStatus.is_live) {
+      const liveState = liveBroadcastStore.state;
+      if (disposed || liveState.kind !== 'live') {
         stopStreamCaptureLoop();
         return;
       }
-      const frameIntervalMs = 1000 / Math.max(1, streamStatus.fps || DEFAULT_STREAM_FPS);
+      const activeSession = liveState.sessionSeq;
+      const frameIntervalMs = 1000 / Math.max(1, liveState.status.fps || DEFAULT_BROADCAST_FPS);
       if (!framePushInFlight && now - lastStreamFrameAt >= frameIntervalMs) {
         lastStreamFrameAt = now;
-        const width = streamStatus.width || DEFAULT_STREAM_WIDTH;
-        const height = streamStatus.height || DEFAULT_STREAM_HEIGHT;
+        const width = liveState.status.width || DEFAULT_BROADCAST_WIDTH;
+        const height = liveState.status.height || DEFAULT_BROADCAST_HEIGHT;
         const canvas = compositeStageToCanvas(width, height);
         if (canvas !== null && typeof canvas.toBlob === 'function') {
           framePushInFlight = true;
-          const activeSession = streamSessionSeq;
           try {
             canvas.toBlob(
               (blob) => {
                 if (
                   disposed ||
-                  activeSession !== streamSessionSeq ||
-                  !streamStatus.is_live ||
+                  liveBroadcastStore.sessionSeq !== activeSession ||
+                  !liveBroadcastStore.isLive ||
                   blob === null
                 ) {
                   framePushInFlight = false;
@@ -675,33 +556,27 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 void blob
                   .arrayBuffer()
                   .then((buf) => {
-                    if (disposed || activeSession !== streamSessionSeq) return null;
+                    if (disposed || liveBroadcastStore.sessionSeq !== activeSession) return null;
                     return pushStreamFrame(new Uint8Array(buf));
                   })
                   .then((pushedCount) => {
-                    if (disposed || activeSession !== streamSessionSeq || !streamStatus.is_live) {
+                    if (
+                      disposed ||
+                      liveBroadcastStore.sessionSeq !== activeSession ||
+                      !liveBroadcastStore.isLive
+                    ) {
                       return;
                     }
                     if (pushedCount === null) {
                       return getStreamStatus().then((latest) => {
-                        if (disposed || activeSession !== streamSessionSeq) return;
-                        if (latest === null || !latest.is_live) {
+                        if (disposed) return;
+                        if (liveBroadcastStore.reportDisconnect(activeSession, latest)) {
                           stopStreamCaptureLoop();
-                          streamStatus = latest ?? {
-                            ...streamStatus,
-                            is_live: false,
-                            state: 'failed',
-                          };
-                          streamError =
-                            latest?.last_error ??
-                            'Twitch stream disconnected (encoder pipe closed).';
                           twitchDrawerOpen = true;
                         }
                       });
                     }
-                    if (pushedCount <= 2 || pushedCount % 15 === 0) {
-                      streamStatus = { ...streamStatus, frames_pushed: pushedCount };
-                    }
+                    liveBroadcastStore.recordFramePushed(activeSession, pushedCount);
                     return;
                   })
                   .finally(() => {
@@ -724,67 +599,30 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   async function handleStartTwitchStream(event?: SubmitEvent): Promise<void> {
     event?.preventDefault();
-    if (streamPending) return;
-    if (streamStatus.is_live) {
+    if (liveBroadcastStore.isPending) return;
+    if (liveBroadcastStore.isLive) {
       await handleStopTwitchStream();
       return;
     }
 
-    const ingestUrl = twitchIngestUrl.trim() || DEFAULT_TWITCH_INGEST_URL;
-    const streamKey = twitchStreamKey.trim();
-    if (streamKey.length === 0) {
-      streamError = 'Enter your Twitch stream key before going live.';
-      return;
-    }
-
-    streamError = null;
-    streamPending = true;
-    try {
-      const result = await startTwitchStreamDetailed({
-        ingestUrl,
-        streamKey,
-        bitrateKbps: twitchBitrateKbps,
-        width: DEFAULT_STREAM_WIDTH,
-        height: DEFAULT_STREAM_HEIGHT,
-        fps: DEFAULT_STREAM_FPS,
-        ...(twitchAudioDevice !== null ? { audioDevice: twitchAudioDevice } : {}),
-      });
-      if (disposed) return;
-      if (!result.ok) {
-        streamError =
-          result.error ||
-          'Unable to start Twitch stream (desktop Tauri runtime + ffmpeg required).';
-        return;
-      }
-      const next = result.data;
-      streamStatus = next;
-      if (next.last_error) {
-        streamError = next.last_error;
-      }
-      if (next.is_live) {
-        startStreamCaptureLoop();
-      }
-    } finally {
-      streamPending = false;
+    const next = await liveBroadcastStore.start({
+      ingestUrl: twitchIngestUrl.trim() || DEFAULT_BROADCAST_INGEST_URL,
+      streamKey: twitchStreamKey.trim(),
+      bitrateKbps: twitchBitrateKbps,
+      width: DEFAULT_BROADCAST_WIDTH,
+      height: DEFAULT_BROADCAST_HEIGHT,
+      fps: DEFAULT_BROADCAST_FPS,
+      ...(twitchAudioDevice !== null ? { audioDevice: twitchAudioDevice } : {}),
+    });
+    if (!disposed && next.kind === 'live') {
+      startStreamCaptureLoop();
     }
   }
 
   async function handleStopTwitchStream(): Promise<void> {
-    if (streamPending) return;
-    streamPending = true;
+    if (liveBroadcastStore.isPending) return;
     stopStreamCaptureLoop();
-    try {
-      const next = await stopTwitchStream();
-      if (disposed) return;
-      if (next !== null) {
-        streamStatus = next;
-      } else {
-        streamStatus = { ...streamStatus, state: 'offline', is_live: false };
-      }
-      streamError = null;
-    } finally {
-      streamPending = false;
-    }
+    await liveBroadcastStore.stop();
   }
 
   onMount(() => {
@@ -804,15 +642,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         }
       }
     })();
-    void (async () => {
-      const status = await getStreamStatus();
-      if (!disposed && status !== null) {
-        streamStatus = status;
-        if (status.is_live) {
-          startStreamCaptureLoop();
-        }
+    void liveBroadcastStore.syncFromBackend().then((next) => {
+      if (!disposed && next.kind === 'live') {
+        startStreamCaptureLoop();
       }
-    })();
+    });
     const existingYt = youtubeLayerStore.state;
     if (existingYt.kind === 'ready') {
       youtubeUrlInput = existingYt.sourceUrl;
@@ -833,9 +667,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       offscreenStreamCanvas = null;
     }
     twitchStreamKey = '';
-    stopWebcam();
-    stopScreenCapture();
-    clearLocalMedia();
+    liveMediaStore.disposeAll();
     if (replayFeedbackTimer !== null) {
       clearTimeout(replayFeedbackTimer);
       replayFeedbackTimer = null;
@@ -1643,7 +1475,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   type="url"
                   class="mix__text-input"
                   bind:value={twitchIngestUrl}
-                  placeholder={DEFAULT_TWITCH_INGEST_URL}
+                  placeholder={DEFAULT_BROADCAST_INGEST_URL}
                   autocomplete="off"
                   spellcheck={false}
                   disabled={streamStatus.is_live || streamPending}
@@ -1871,7 +1703,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                             onerror={(e) => {
                               const el = e.currentTarget as HTMLVideoElement;
                               const code = el.error?.code ?? 0;
-                              youtubeResolveError = `Video playback error (code ${code})`;
+                              if (youtubeMachine.kind === 'ready') {
+                                liveMediaStore.reportYouTubePlaybackError(
+                                  youtubeMachine.videoId,
+                                  code,
+                                );
+                              }
                             }}
                           ></video>
                           {#if !youtubeInteractive || keying.active}

@@ -3,10 +3,6 @@ SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
-<script module lang="ts">
-  let persistedBlackoutActive = false;
-</script>
-
 <script lang="ts">
   // Wave-18 PR1 Perform view full port — replaces the W12 PR3 single-page
   // dev surface (control 0 slider + readback, 16-slot snap grid, preset
@@ -100,6 +96,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { dispatchAndRead, dispatchXy } from '../stores/control';
   import { controlLockStore } from '../stores/controlLock.svelte';
   import { fetchBundledSceneCards } from '../stores/library';
+  import { liveFxStore } from '../stores/liveFx.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import { performVariantStore } from '../stores/performVariant.svelte';
   import { playlistStore } from '../stores/playlist.svelte';
@@ -554,8 +551,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       : 'default',
   );
 
-  let strobeActive = $state(false);
-  let blackoutActive = $state(persistedBlackoutActive);
+  const strobeActive = $derived(liveFxStore.strobeActive);
+  const blackoutActive = $derived(liveFxStore.blackoutActive);
 
   function setActiveFactoryPresetForScene(id: FactoryPresetId | null): void {
     activeFactoryPresetByScene = {
@@ -633,15 +630,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   function activateStrobe(): void {
-    if (strobeActive) return;
-    strobeActive = true;
-    dispatchControl(META_STROBE_CONTROL_ID, 1);
+    if (liveFxStore.activateStrobe()) {
+      dispatchControl(META_STROBE_CONTROL_ID, 1);
+    }
   }
 
   function releaseStrobe(): void {
-    if (!strobeActive) return;
-    strobeActive = false;
-    dispatchControl(META_STROBE_CONTROL_ID, 0);
+    if (liveFxStore.releaseStrobe()) {
+      dispatchControl(META_STROBE_CONTROL_ID, 0);
+    }
   }
 
   function handleStrobeKeydown(event: KeyboardEvent): void {
@@ -661,9 +658,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   function toggleBlackout(): void {
-    const next = !blackoutActive;
-    blackoutActive = next;
-    persistedBlackoutActive = next;
+    const next = liveFxStore.toggleBlackout();
     dispatchControl(META_BLACKOUT_CONTROL_ID, next ? 1 : 0);
   }
 
@@ -902,11 +897,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
    * for the 1000+ namespace; swatches stay display-only (no controlId).
    */
   function resetMetaControlsToDefaults(): void {
-    if (strobeActive) {
-      releaseStrobe();
+    const { releasedStrobe, clearedBlackout } = liveFxStore.reset();
+    if (releasedStrobe) {
+      dispatchControl(META_STROBE_CONTROL_ID, 0);
     }
-    if (blackoutActive) {
-      blackoutActive = false;
+    if (clearedBlackout) {
       dispatchControl(META_BLACKOUT_CONTROL_ID, 0);
     }
     for (const group of META_CONTROL_GROUPS) {
