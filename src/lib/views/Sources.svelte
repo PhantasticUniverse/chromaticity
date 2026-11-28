@@ -40,6 +40,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   //   - `Add to scene` is a visual stub at this slice (W14+ wires the
   //     real path into Library / Perform when the media adapter lands).
   //   - Heart-favourite and 3-dot (more) buttons are visual-only stubs.
+  import { untrack } from 'svelte';
+
   import YouTubeLayer from '../components/YouTubeLayer.svelte';
   import {
     DEFAULT_ASSET_ID,
@@ -53,7 +55,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type MediaAsset,
   } from '../data/sources-fixtures';
   import Icon from '../Icon.svelte';
-  import { cameraStore } from '../stores/cameraStore.svelte';
+  import { liveMediaStore } from '../stores/liveMedia.svelte';
   import { currentPlatform } from '../stores/platform';
   import { DEFAULT_OUTPUT_NAME, syphonStore } from '../stores/syphonStore.svelte';
   import { toIpcError } from '../types/ipc-error';
@@ -129,42 +131,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     connectedLiveSources[src.id] = !connectedLiveSources[src.id];
   }
 
-  // Wave 1c-β Phase 4 Lane A camera section. The store rehydrates the
-  // last-selected device from `localStorage` on mount, then dispatches
-  // the `list_camera_devices` Tauri command to populate the visible
-  // device list. The current command returns an empty vec under the
-  // documented stub posture (see `cameraStore.svelte.ts` module prose);
-  // the empty-state copy guides the operator to System Settings for
-  // permission granting until the per-platform nokhwa enumeration arms
-  // wire end-to-end.
+  // Camera section. Lists the cameras the app's live capture can open:
+  // webcam layers in Mix and scene media in Perform both capture through
+  // the webview (`liveMediaStore`), so this is the list that matters. The
+  // native adapter (`list_camera_devices`, nokhwa) is still a scaffold
+  // that enumerates nothing (audit 2026-11-28). `enumerateDevices` does
+  // not prompt; device names appear once camera access has been granted.
   $effect(() => {
-    cameraStore.loadPersistedSelection();
-    void cameraStore.refresh();
+    untrack(() => void liveMediaStore.refreshVideoDevices());
+    const mediaDevices = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
+    if (!mediaDevices || typeof mediaDevices.addEventListener !== 'function') return;
+    const onChange = (): void => {
+      void liveMediaStore.refreshVideoDevices();
+    };
+    mediaDevices.addEventListener('devicechange', onChange);
+    return () => mediaDevices.removeEventListener('devicechange', onChange);
   });
 
   function selectCamera(deviceId: string): void {
-    if (cameraStore.selected === deviceId) {
-      cameraStore.select(null);
-    } else {
-      cameraStore.select(deviceId);
-    }
-  }
-
-  /** Operator-facing label for the camera-kind discriminator. Mirrors
-   * the `chromaticity_camera_adapter::CameraDeviceKind` variants per
-   * ADR-020 §Decision §2 / `docs/54` Phase-2 lesson 9. */
-  function cameraKindLabel(kind: string): string {
-    switch (kind) {
-      case 'BuiltIn':
-        return 'Built-in';
-      case 'External':
-        return 'External';
-      case 'Virtual':
-        return 'Virtual';
-      case 'Continuity':
-        return 'Continuity';
-      default:
-        return 'Other';
+    liveMediaStore.setSelectedCameraId(deviceId);
+    // A running webcam switches to the newly chosen device.
+    if (liveMediaStore.webcam.kind === 'active') {
+      void liveMediaStore.startWebcam(deviceId);
     }
   }
 
@@ -361,45 +349,36 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <span class="sources__grid-sep" aria-hidden="true">·</span>
           Cameras
           <span class="sources__grid-sep" aria-hidden="true">·</span>
-          <span class="sources__grid-count">{cameraStore.devices.length}</span>
+          <span class="sources__grid-count">{liveMediaStore.videoDevices.length}</span>
         </h2>
         <p class="sources__live-sub">
-          Cross-platform camera input (CoreMediaIO on macOS, Media Foundation on Windows). Selection
-          persists across launches.
+          Cameras available to live capture: webcam layers in Mix and scene media in Perform use the
+          selected camera. Names appear after camera access has been granted once.
         </p>
       </header>
 
-      {#if cameraStore.isLoading}
-        <p class="sources__live-status" role="status">Searching for cameras…</p>
-      {:else if cameraStore.error && toIpcError(cameraStore.error).kind !== 'invoke_unavailable'}
-        <p class="sources__live-status sources__live-status--error" role="alert">
-          Camera enumeration failed: {cameraStore.error}
-        </p>
-      {:else if cameraStore.devices.length === 0}
+      {#if liveMediaStore.videoDevices.length === 0}
         <p class="sources__live-status">
-          No cameras found — grant camera permission via System Settings (macOS: Privacy &amp;
-          Security › Camera; Windows: Settings › Privacy &amp; security › Camera) and reopen this
-          view.
+          No cameras found. Connect a camera, or grant camera access (macOS: System Settings ›
+          Privacy &amp; Security › Camera; Windows: Settings › Privacy &amp; security › Camera).
         </p>
       {:else}
         <ul class="sources__live-list" data-testid="camera-device-list">
-          {#each cameraStore.devices as device (device.device_id)}
-            {@const isSelected = cameraStore.selected === device.device_id}
+          {#each liveMediaStore.videoDevices as device, idx (device.deviceId || idx)}
+            {@const isSelected =
+              liveMediaStore.selectedCameraId === device.deviceId ||
+              (liveMediaStore.selectedCameraId === '' && idx === 0)}
             <li
               class="sources__live-row"
               class:connected={isSelected}
-              data-device-id={device.device_id}
+              data-device-id={device.deviceId}
             >
               <span class="sources__live-glyph" aria-hidden="true">
                 <Icon name="camera" size={14} />
               </span>
               <div class="sources__live-meta">
-                <p class="sources__live-name">{device.display_name}</p>
-                <p class="sources__live-origin">{device.device_id}</p>
+                <p class="sources__live-name">{device.label}</p>
               </div>
-              <span class="sources__live-spec">
-                <span>{cameraKindLabel(device.kind)}</span>
-              </span>
               <span
                 class="sources__live-chip sources__live-chip--cross"
                 aria-label="Cross-platform"
@@ -410,13 +389,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 type="button"
                 class="sources__live-action"
                 class:sources__live-action--connected={isSelected}
-                onclick={() => selectCamera(device.device_id)}
+                onclick={() => selectCamera(device.deviceId)}
                 aria-pressed={isSelected}
               >
                 {#if isSelected}
                   Selected
                 {:else}
-                  Connect
+                  Use
                 {/if}
               </button>
             </li>

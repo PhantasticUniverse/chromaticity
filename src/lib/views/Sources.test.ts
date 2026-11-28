@@ -275,4 +275,36 @@ describe('Sources view', () => {
 
     expect(getByText('Muted (DJ Safe)')).toBeInTheDocument();
   });
+
+  it('lists the webview cameras live capture uses and selects one (audit 2026-11-28)', async () => {
+    const { vi } = await import('vitest');
+    const { liveMediaStore } = await import('../stores/liveMedia.svelte');
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: {
+        enumerateDevices: async () => [
+          { kind: 'videoinput', deviceId: 'cam-a', label: 'FaceTime HD Camera' },
+          { kind: 'audioinput', deviceId: 'mic-a', label: 'Mic' },
+          { kind: 'videoinput', deviceId: 'cam-b', label: 'USB Capture' },
+        ],
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    });
+    try {
+      const { findByTestId } = render(Sources);
+      const list = await findByTestId('camera-device-list');
+      const rows = list.querySelectorAll('.sources__live-row');
+      expect(rows.length).toBe(2);
+      expect(list).toHaveTextContent('FaceTime HD Camera');
+      expect(list).toHaveTextContent('USB Capture');
+      const use = within(rows[1] as HTMLElement).getByRole('button');
+      await fireEvent.click(use);
+      expect(liveMediaStore.selectedCameraId).toBe('cam-b');
+      expect(use).toHaveAttribute('aria-pressed', 'true');
+    } finally {
+      vi.unstubAllGlobals();
+      liveMediaStore.setSelectedCameraId('');
+    }
+  });
 });
