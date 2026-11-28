@@ -14,9 +14,9 @@ pick up the next item.
 | 2b | Persistent multipass pipeline across live frames | Done | `CachedMultipass` in `engine/render/src/multipass/cached.rs`; shell keys up to 3 pipelines by resolution in `GpuPreviewEngine`. Byte-equivalence pins vs the one-shot scheduler in `multipass.rs` `cached_multipass_equivalence`. |
 | 2a | Live `syn_UserImage` GPU texture upload | Next | `_chroma_sample_media` is still a black stub in `app/shell/src/render.rs`; `syn_MediaActive` is hard-wired `0.0`. Needs a media texture binding slot after pass inputs in both `CachedSinglePass` and `CachedMultipass`. |
 | 1 | Native `wgpu` stage swapchain + GPU meta post-pass | Open | Replaces readback + CPU `apply_meta_color_pass` + IPC Canvas2D blit. `MultipassRenderer::instance()` already exposed for surfaces. |
-| 3 | Real audio in local REC/replay + 4-bus `BroadcastMixer` | Open | Replace `anullsrc` on non-macOS. |
+| 3 | Real audio in local REC/replay + 4-bus `BroadcastMixer` | Open | Replace `anullsrc` on non-macOS. Scope copied from the handoff; not re-checked. |
 | 4 | GPU crossfades, Syphon/Spout/NDI, native compositor in Mix | Open | `TransitionOrchestrator` still uses `commit_hard_cut()`. |
-| 5 | Mix production features + fixture cleanup | Open | Scene collections, per-layer capture, scene-scoped presets, >16 controls. |
+| 5 | Mix production features + fixture cleanup | Open | Scene collections, per-layer capture, scene-scoped presets, >16 controls. Scope copied from the handoff; not re-checked. |
 
 ## Known gaps carried by 2b
 
@@ -24,5 +24,11 @@ pick up the next item.
   feedback once per request (history moves at the combined request rate).
 - `CachedSinglePass` still reallocates its target when consumers at
   different sizes alternate (stateless, so only a perf cost).
-- Feedback is verified with a synthetic trail scene; no bundled scene declares
-  `PERSISTENT` passes yet.
+- Any new resolution (window resize, DPR change) compiles a fresh pipeline
+  and cold-starts its feedback; a fourth concurrent size evicts the least
+  recently used consumer's history.
+- `CachedMultipass` allocates a readback buffer per call and exposes no
+  final-texture accessor yet; milestone 1 (native swapchain) needs one.
+- Feedback is verified with a synthetic trail scene; all 25 bundled scenes
+  declare `"PASSES": []`. Whether `import_syn_scene` carries `PERSISTENT`
+  through to the imported `scene.json` has not been checked.

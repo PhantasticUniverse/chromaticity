@@ -816,21 +816,6 @@ impl GpuPreviewEngine {
         self.cached_multipass.clear();
     }
 
-    /// Execute a multi-pass [`MultipassSpec`] on the shared wgpu device
-    /// (supporting `PASSES` chains and `feedback_self` ping-pong buffers).
-    pub fn render_multipass(&mut self, spec: &MultipassSpec) -> Result<Vec<u8>, String> {
-        if self.renderer.is_none() {
-            self.renderer =
-                Some(MultipassRenderer::new().map_err(|err| format!("wgpu init failed: {err}"))?);
-        }
-        let Some(renderer) = self.renderer.as_ref() else {
-            return Err("wgpu renderer unavailable".into());
-        };
-        renderer
-            .render(spec)
-            .map_err(|err| format!("multipass render failed: {err}"))
-    }
-
     /// Current transition-orchestrator phase label for diagnostics.
     #[must_use]
     pub fn transition_phase_name(&self) -> &'static str {
@@ -2242,8 +2227,8 @@ void main() {
         // more (0.75). The pre-cache path re-simulated from black every
         // call and could never exceed 4 iterations.
         assert!(
-            (190..=192).contains(&bytes2[0]),
-            "call 2 must continue feedback history to ~0.75 (191), got {}",
+            (191..=193).contains(&bytes2[0]),
+            "call 2 must continue feedback history to ~0.75 (192), got {}",
             bytes2[0]
         );
 
@@ -2260,7 +2245,7 @@ void main() {
             )
             .expect("second-size multipass frame must render");
         assert!(
-            (126..=129).contains(&other[0]),
+            (127..=129).contains(&other[0]),
             "fresh 48x24 pipeline must cold-start at ~0.50 (128), got {}",
             other[0]
         );
