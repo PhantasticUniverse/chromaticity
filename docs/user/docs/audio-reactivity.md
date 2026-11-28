@@ -128,8 +128,8 @@ void main() {
 ```
 
 The same scene becomes a tempo-locked breathing pulse by mixing in
-`chroma_BPMSin` against the radius (legacy `syn_*` compat aliases remain
-supported for imported scenes). Authors can compose any of the audio
+`chroma_BPMSin` against the radius (imported `.synScene` packages are
+translated to these names automatically). Authors can compose any of the audio
 uniforms; the binding adapter publishes them all in a stable per-pass
 order so per-pass uniform-buffer slot indices stay stable across reloads.
 

@@ -138,10 +138,10 @@
 ### FR-22 Extended MIDI Surface
 - System shall accept MIDI Pitch Bend messages and map to `slider` / `xy` controls with 14-bit resolution.
 - System shall accept MIDI Program Change messages and map to preset apply per operator mapping table.
-- System shall accept MIDI Clock (`0xF8`) and Song Position Pointer messages for external BPM sync; when external sync is active, `syn_BPM` follows the MIDI Clock rate per `adr/ADR-012-script-sandbox-engine.md` determinism rules and `06-audio-engine.md` Sec.7.9 fusion policy.
+- System shall accept MIDI Clock (`0xF8`) and Song Position Pointer messages for external BPM sync; when external sync is active, `chroma_BPM` follows the MIDI Clock rate per `adr/ADR-012-script-sandbox-engine.md` determinism rules and `06-audio-engine.md` Sec.7.9 fusion policy.
 - System shall accept 14-bit CC (MSB 0-31 + LSB 32-63 pair), NRPN, and RPN at 14-bit resolution per `08-io-integrations.md` Sec.Additional MIDI Surface Decisions.
 - System shall emit MPE-configuration messages as a `mpe-deferred` diagnostic; MPE is V2 scope.
-- System shall parse MIDI Time Code (MTC) quarter-frame and full-frame SysEx and publish a `syn_Timecode` uniform family for SMPTE-slaved playback. SMPTE LTC (audio-carried) is V2 scope with a `ltc-not-ingested` diagnostic at MVP.
+- System shall parse MIDI Time Code (MTC) quarter-frame and full-frame SysEx and publish a `chroma_Timecode` uniform family for SMPTE-slaved playback. SMPTE LTC (audio-carried) is V2 scope with a `ltc-not-ingested` diagnostic at MVP.
 - System shall persist MIDI-learn bindings across show save, app quit, and relaunch per MIDI-CONF-20.
 - SysEx (beyond MTC full-frame) is explicitly deferred to V2. Incoming SysEx is logged but not routed.
 

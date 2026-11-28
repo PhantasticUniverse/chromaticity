@@ -70,7 +70,7 @@ This section locks the numeric behavior of the audio pipeline. It is the single 
 - Window: Hann, applied to each block. DC-removed via per-block mean subtraction before windowing.
 - FFT size: `N_fft = 1024` (zero-padded). Frequency resolution `Deltaf = 48000 / 1024 ~= 46.875 Hz`.
 
-### 7.2 Spectrum channels (`syn_Spectrum`)
+### 7.2 Spectrum channels (`chroma_Spectrum`)
 Populated at each analysis hop; sampler is 1D with width `N_bins = 512` covering `[0, 24000) Hz`:
 - **r - Raw FFT**: `|X[k]|` with no post-processing (zero-padded with linear magnitude).
 - **g - Juiced FFT**: Raw FFT processed with, in order:
@@ -87,62 +87,62 @@ Bands are computed on the Juiced FFT using log-distributed edges:
 
 | Band | Edge lo (Hz) | Edge hi (Hz) | Notes |
 |---|---:|---:|---|
-| Whole | 20 | 20000 | `syn_Level`, `syn_Hits`, `syn_Time`, `syn_Presence`, `syn_LevelTrail.r` |
-| Bass | 20 | 250 | `syn_BassLevel`, `syn_BassHits`, `syn_BassTime`, `syn_BassPresence`, `syn_LevelTrail.g` |
-| Mid | 250 | 2000 | `syn_MidLevel`, `syn_MidHits`, `syn_MidTime`, `syn_MidPresence`, `syn_LevelTrail.b` |
-| MidHigh | 2000 | 6000 | `syn_MidHighLevel`, `syn_MidHighHits`, `syn_MidHighTime`, `syn_MidHighPresence` |
-| High | 6000 | 20000 | `syn_HighLevel`, `syn_HighHits`, `syn_HighTime`, `syn_HighPresence`, `syn_LevelTrail.a` |
+| Whole | 20 | 20000 | `chroma_Level`, `chroma_Hits`, `chroma_AudioTime`, `chroma_Presence`, `chroma_LevelTrail.r` |
+| Bass | 20 | 250 | `chroma_BassLevel`, `chroma_BassHits`, `chroma_BassTime`, `chroma_BassPresence`, `chroma_LevelTrail.g` |
+| Mid | 250 | 2000 | `chroma_MidLevel`, `chroma_MidHits`, `chroma_MidTime`, `chroma_MidPresence`, `chroma_LevelTrail.b` |
+| MidHigh | 2000 | 6000 | `chroma_MidHighLevel`, `chroma_MidHighHits`, `chroma_MidHighTime`, `chroma_MidHighPresence` |
+| High | 6000 | 20000 | `chroma_HighLevel`, `chroma_HighHits`, `chroma_HighTime`, `chroma_HighPresence`, `chroma_LevelTrail.a` |
 
 Band energy `E_b` at hop t is `sum(|X[k]|^2)` over bins in the band, divided by band bin count.
 
-### 7.4 Level family (`syn_*Level`, family tolerance `LVL`)
+### 7.4 Level family (`chroma_*Level`, family tolerance `LVL`)
 - Raw level: `L_raw = sqrt(E_b)`.
 - Rolling peak: 30 s windowed p95 of `L_raw`, refreshed each hop (`L_peak30`).
 - Normalized level: `L_norm = clamp(L_raw / max(L_peak30, epsilon), 0, 1)` with `epsilon = 1e-4`.
 - Smoothed level (asymmetric EMA): `L_smooth[t] = alpha_l * L_norm + (1 - alpha_l) * L_smooth[t-1]`, `alpha_l = 0.30` on rising, `0.08` on falling.
 - Published uniform is `L_smooth[t]`.
 
-### 7.5 Hits family (`syn_*Hits`, family tolerance `HIT`)
+### 7.5 Hits family (`chroma_*Hits`, family tolerance `HIT`)
 - Spectral flux per hop: `F_b[t] = sum(max(0, |X_b[k, t]| - |X_b[k, t-1]|))` over band bins (half-wave-rectified positive flux).
 - Adaptive threshold: `theta_b[t] = median(F_b[t - W : t]) + k * MAD(F_b[t - W : t])` with window `W = 43` hops (~115 ms), `k = 1.5`.
 - Refractory: `R_b = 19` hops (~50 ms) between hits per band.
 - On detection (`F_b[t] > theta_b[t]` and no hit in past `R_b`): emit impulse `H_b = clamp(F_b[t] / max(theta_b[t], epsilon), 0, 1) * H_gain`, `H_gain = 0.8`.
 - Published uniform decays per-frame: `hit_out[t] = max(H_b, hit_out[t-1] * exp(-dt / tau_h))`, `tau_h = 80 ms`.
 
-### 7.6 Time family (`syn_*Time`, `syn_CurvedTime`, family tolerance `TIM`)
+### 7.6 Time family (`chroma_AudioTime`, `chroma_{Bass,Mid,MidHigh,High}Time`, `chroma_CurvedTime`, family tolerance `TIM`)
 - Integration: `T_b[t] = T_b[t-1] + L_smooth[t] * dt` where `dt` is the hop period (`2.667 ms`).
-- `syn_CurvedTime` (whole band): `T_curved[t] = T_curved[t-1] + L_smooth[t]^p * dt` with `p = 2.2` (exponential response to volume rises).
+- `chroma_CurvedTime` (whole band): `T_curved[t] = T_curved[t-1] + L_smooth[t]^p * dt` with `p = 2.2` (exponential response to volume rises).
 - Time uniforms are non-normalized, unit seconds-equivalent. They reset on scene load (like `TIME`) but persist across hot-reloads per `37-authoring-environment-spec.md` Sec.5.
 
-### 7.7 Presence family (`syn_*Presence`, family tolerance `PRS`)
+### 7.7 Presence family (`chroma_*Presence`, family tolerance `PRS`)
 - Active-above-noise threshold: `L_smooth[t] > 0.08` counts the hop as "active".
 - Slow EMA of active fraction: `P_b[t] = alpha_p * A_b + (1 - alpha_p) * P_b[t-1]`, `A_b in {0, 1}`, `alpha_p = 0.008` (~= 5 s time constant).
 - Published uniform is `P_b[t]` in `[0, 1]`.
 
-### 7.8 Beat family (`syn_OnBeat`, `syn_ToggleOnBeat`, `syn_RandomOnBeat`, `syn_BeatTime`, family tolerance `BEAT`)
+### 7.8 Beat family (`chroma_OnBeat`, `chroma_ToggleOnBeat`, `chroma_RandomOnBeat`, `chroma_BeatTime`, family tolerance `BEAT`)
 - Beat detector input: whole-band spectral flux `F_w[t]` with a secondary low-frequency gate using the Bass band flux above `0.25 * theta_bass`.
 - Detection: rising zero-crossing of `F_w[t] - theta_w[t]` with refractory `R_beat = 250 ms`.
-- `syn_OnBeat`: impulse `1.0` on beat detection, decays `exp(-dt / tau_beat)`, `tau_beat = 90 ms`.
-- `syn_ToggleOnBeat`: flips target between `0.0` and `1.0` on each beat; render value logistic-smoothed between targets over `180 ms`.
-- `syn_RandomOnBeat`: on each beat, sample `rand() in [0, 1]`; logistic-smooth to new target over `180 ms`.
-- `syn_BeatTime`: integer clock incremented by `1` on each detected beat (float-valued for GLSL parity).
+- `chroma_OnBeat`: impulse `1.0` on beat detection, decays `exp(-dt / tau_beat)`, `tau_beat = 90 ms`.
+- `chroma_ToggleOnBeat`: flips target between `0.0` and `1.0` on each beat; render value logistic-smoothed between targets over `180 ms`.
+- `chroma_RandomOnBeat`: on each beat, sample `rand() in [0, 1]`; logistic-smooth to new target over `180 ms`.
+- `chroma_BeatTime`: integer clock incremented by `1` on each detected beat (float-valued for GLSL parity).
 
-### 7.9 BPM family (`syn_BPM*`, family tolerance `BPM`)
+### 7.9 BPM family (`chroma_BPM*`, family tolerance `BPM`)
 Two-stage estimator:
 1. **Inter-onset interval stage**: maintain a rolling buffer of the last 48 beat-impulse timestamps (~24 s at 120 BPM). Compute the weighted median of successive intervals (weights linear with recency). Derived BPM `B_ioi = 60 / median_interval`.
 2. **Autocorrelation refinement**: on a 4 s rolling window of `F_w[t]`, compute autocorrelation across lag range `[60/220, 60/50] s`. Peak lag `tau_ac` gives `B_ac = 60 / tau_ac`. Confidence `c_ac = r(tau_ac) / max(r)` where `r` is autocorrelation.
 3. **Fusion**: if `c_ac > 0.35` and `|B_ac - B_ioi| < 6` then `B_final = 0.5 * (B_ac + B_ioi)`; otherwise `B_final = B_ioi`. Clamp to `[50, 220]`.
-4. **Confidence**: `syn_BPMConfidence = 0.4 * c_ac + 0.6 * exp(-sigma_ioi / 8)` where `sigma_ioi` is the stddev of the weighted-interval buffer.
+4. **Confidence**: `chroma_BPMConfidence = 0.4 * c_ac + 0.6 * exp(-sigma_ioi / 8)` where `sigma_ioi` is the stddev of the weighted-interval buffer.
 
 Derived waveforms use the beat-phase-locked clock:
-- `syn_BPMTwitcher[t] = floor(beat_count) + 1 - exp(-5 * frac_in_beat)`, where `frac_in_beat in [0, 1]` is the phase since last beat normalized by beat period.
-- `syn_BPMSin[t] = 0.5 + 0.5 * sin(2pi * phase)`; `syn_BPMSin2` at half-period; `syn_BPMSin4` at quarter-period (all `[0, 1]`).
-- `syn_BPMTri[t] = 1.0 - |2 * phase - 1.0|` mapped to `[0, 1]`; `syn_BPMTri2`/`syn_BPMTri4` similarly at half/quarter.
+- `chroma_BPMTwitcher[t] = floor(beat_count) + 1 - exp(-5 * frac_in_beat)`, where `frac_in_beat in [0, 1]` is the phase since last beat normalized by beat period.
+- `chroma_BPMSin[t] = 0.5 + 0.5 * sin(2pi * phase)`; `chroma_BPMSin2` at half-period; `chroma_BPMSin4` at quarter-period (all `[0, 1]`).
+- `chroma_BPMTri[t] = 1.0 - |2 * phase - 1.0|` mapped to `[0, 1]`; `chroma_BPMTri2`/`chroma_BPMTri4` similarly at half/quarter.
 
-### 7.10 Large features (`syn_FadeInOut`, `syn_Intensity`, family tolerance `LRG`)
+### 7.10 Large features (`chroma_FadeInOut`, `chroma_Intensity`, family tolerance `LRG`)
 - Silence detector: `L_smooth_whole[t] < 0.05` for more than `0.8 s` triggers silence state.
-- `syn_FadeInOut`: asymmetric EMA of silence-inverse with `alpha_fi_rise = 0.004` (`~30 s` time constant up), `alpha_fi_fall = 0.002` (`~60 s` down). Clamped `[0, 1]`.
-- `syn_Intensity`: asymmetric accumulator of `L_smooth_whole[t]` minus a slow baseline (`10 min` EMA of `L_smooth_whole`); clamped `[0, 1]`, rises faster than falls (`alpha_int_rise = 0.006`, `alpha_int_fall = 0.0015`).
+- `chroma_FadeInOut`: asymmetric EMA of silence-inverse with `alpha_fi_rise = 0.004` (`~30 s` time constant up), `alpha_fi_fall = 0.002` (`~60 s` down). Clamped `[0, 1]`.
+- `chroma_Intensity`: asymmetric accumulator of `L_smooth_whole[t]` minus a slow baseline (`10 min` EMA of `L_smooth_whole`); clamped `[0, 1]`, rises faster than falls (`alpha_int_rise = 0.006`, `alpha_int_fall = 0.0015`).
 
 ### 7.11 Cadence, snapshot handoff, and staleness bound
 - Audio analysis thread runs continuously at the `375 Hz` hop cadence defined in Sec.7.1.
@@ -150,23 +150,23 @@ Derived waveforms use the beat-phase-locked clock:
 - The frame scheduler reads the most-recent-complete snapshot at frame start (before pass 0) and the Script Host receives the same snapshot view. All passes within a frame observe the same audio values (per-frame cadence for all symbols in `36-reactive-symbol-catalog.md` Sec.2).
 - Max staleness: `max_audio_staleness = 1 / 375 Hz + frame_period = 2.67 ms + 16.67 ms ~= 19.3 ms` at 60 FPS. `EV-AUDIO-TRACE` "timing delta <= 1 frame" in `10-performance-latency-budgets.md` resolves to this bound.
 
-### 7.12 Reference-surface supplemental uniforms (`syn_InputLevel`, `syn_RawLevel`, `syn_BassExpoCurve`, `syn_Threshold`)
+### 7.12 Reference-surface supplemental uniforms (`chroma_InputLevel`, `chroma_RawLevel`, `chroma_BassExpoCurve`, `chroma_Threshold`)
 These correspond to `36-reactive-symbol-catalog.md` Sec.2.10. Formulas:
-- `syn_InputLevel[t] = L_raw[t] / max(L_peak30[t], epsilon)` published **unclamped** (range `[0, inf)`), where `L_raw` and `L_peak30` are the hop RMS and 30 s p95 defined in Sec.7.4. This is the pre-AGC, pre-normalization level; contrast with `syn_Level`, which is the clamped/smoothed `[0,1]` form.
-- `syn_RawLevel[t] = syn_InputLevel[t]`. Two spellings for one semantic; both ship under `compat-syn-v1` and `native-chroma-v1` because the reference docs use `syn_RawLevel` while reference scenes use `syn_InputLevel`.
-- `syn_BassExpoCurve[t] = pow(syn_BassLevel[t], 3.0)`. Exponential bass reactivity curve. Family tolerance `LVL`.
-- `syn_Threshold = operatorSetting in [0,1]` (default `0.0`). When `L_raw[t] < syn_Threshold` the snapshot publishes zeroed `syn_Level*` and `syn_*Hits` families for that hop; Time/Presence/BPM families are unaffected (they already have their own gating). OSC exposure: inbound `/audio/threshold {float}` setter and outbound `/audio/threshold {float}` discovery emission, governed by `adr/ADR-013-networking-defaults-and-security.md` rate limits.
+- `chroma_InputLevel[t] = L_raw[t] / max(L_peak30[t], epsilon)` published **unclamped** (range `[0, inf)`), where `L_raw` and `L_peak30` are the hop RMS and 30 s p95 defined in Sec.7.4. This is the pre-AGC, pre-normalization level; contrast with `chroma_Level`, which is the clamped/smoothed `[0,1]` form.
+- `chroma_RawLevel[t] = chroma_InputLevel[t]`. Two spellings for one semantic, both kept natively because the reference format's docs use `syn_RawLevel` while its scenes use `syn_InputLevel` (imported as `chroma_RawLevel` and `chroma_InputLevel` respectively).
+- `chroma_BassExpoCurve[t] = pow(chroma_BassLevel[t], 3.0)`. Exponential bass reactivity curve. Family tolerance `LVL`.
+- `chroma_Threshold = operatorSetting in [0,1]` (default `0.0`). When `L_raw[t] < chroma_Threshold` the snapshot publishes zeroed `chroma_Level*` and `chroma_*Hits` families for that hop; Time/Presence/BPM families are unaffected (they already have their own gating). OSC exposure: inbound `/audio/threshold {float}` setter and outbound `/audio/threshold {float}` discovery emission, governed by `adr/ADR-013-networking-defaults-and-security.md` rate limits.
 
 These four uniforms are family `LVL` for tolerance purposes (added as family `LVL` members in `10-performance-latency-budgets.md` drift table follow-up).
 
 ### 7.13 Determinism rules
 - All smoothing constants, window lengths, buffer sizes, thresholds, and RNG seeds are pinned per compatibility profile (`compat-syn-v1`, `native-chroma-v1`) and logged into `EV-AUDIO-TRACE` run metadata.
-- Deterministic replay requires: identical input waveform fixture, identical sample rate conversion path, identical RNG seed for `syn_RandomOnBeat`, pinned profile version.
+- Deterministic replay requires: identical input waveform fixture, identical sample rate conversion path, identical RNG seed for `chroma_RandomOnBeat`, pinned profile version.
 - Any change to Sec.7.1-Sec.7.10 or Sec.7.12 constants is a profile bump per `22-compatibility-versioning-policy.md` and requires a regression diff report across the golden corpus.
 
-### 7.14 `syn_PrimeBang` (Profile D - Differentiation, heuristic)
-`syn_PrimeBang` is documented under `native-chroma-v1` and `compat-syn-v1` as a **heuristic differentiator**, not a behavior-cloned parity symbol. Formula:
-- Input gate: rising edge of `syn_FadeInOut` (delta > `0.05` within a `2 s` window) AND a BPM confidence delta of `> 0.15` within the same window.
+### 7.14 `chroma_PrimeBang` (Profile D - Differentiation, heuristic)
+`chroma_PrimeBang` is documented under `native-chroma-v1` as a **heuristic differentiator** (a reference-format `syn_PrimeBang` reference imports as `chroma_PrimeBang` under `compat-syn-v1`), not a behavior-cloned parity symbol. Formula:
+- Input gate: rising edge of `chroma_FadeInOut` (delta > `0.05` within a `2 s` window) AND a BPM confidence delta of `> 0.15` within the same window.
 - Output: impulse `1.0` on gate trigger, decays `exp(-dt / tau_prime)`, `tau_prime = 400 ms`. Refractory: `8 s`.
 - Acceptance criterion: fires on large-scale musical transitions in the test corpus as judged by the reviewer; not epsilon-matched to reference.
 

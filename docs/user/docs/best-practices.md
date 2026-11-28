@@ -15,7 +15,7 @@ A pattern catalogue for scene authors. Three top-level sections:
    author-facing knobs so Perform, Snap, presets, and playlists stay
    composable.
 2. [GLSL pitfalls](#2-glsl-pitfalls) — common foot-guns when writing
-   shaders against the `chroma_*` / `syn_*` uniform surface.
+   shaders against the `chroma_*` uniform surface.
 3. [GLSL performance](#3-glsl-performance) — cost considerations,
    when to reach for Lygia, and the honest picture of what the V1
    preview adapter does and doesn't render.
@@ -299,7 +299,7 @@ drivers return 0, some return the next memory cell, some kernel-
 panic the GPU on tiles where unused registers carry old fragment
 state. Always `clamp(idx, 0, 7)` before indexing.
 
-Sampler textures (`syn_Spectrum`, `syn_LevelTrail`) have the same
+Sampler textures (`chroma_Spectrum`, `chroma_LevelTrail`) have the same
 constraint: the sampler API clamps automatically at the GL level,
 but the `u` coordinate you feed needs to be in `[0, 1]` for
 documented behaviour. Wrapping mode is sampler-default
@@ -307,7 +307,7 @@ documented behaviour. Wrapping mode is sampler-default
 
 ### 2.5 The all-zero baseline is real
 
-Every `chroma_*` and `syn_*` audio uniform reads zero during the
+Every `chroma_*` audio uniform reads zero during the
 no-audio-yet startup window. The first audio tick arrives some tens
 of milliseconds after the scene loads. A shader that divides by
 `chroma_AudioRMS` without an epsilon guard produces inf / NaN /
@@ -322,8 +322,8 @@ float rms = max(chroma_AudioRMS, 1e-3);
 vec3 col = base / rms;
 ```
 
-The same pattern applies to `chroma_AudioPeak`, `syn_Level`,
-`syn_BPMConfidence`, and any time-accelerator (`syn_BassTime` etc.)
+The same pattern applies to `chroma_AudioPeak`, `chroma_Level`,
+`chroma_BPMConfidence`, and any time-accelerator (`chroma_BassTime` etc.)
 that decays toward zero on silence.
 
 ### 2.6 Alpha pre-multiplication caveats
@@ -380,7 +380,7 @@ post-reload first frame reads zero.
 
 **Pattern.** Don't write logic that depends on the previous frame's
 contents surviving a hot-reload. If your scene needs warm-up state,
-seed it from a stable noise function of `chroma_time` or `syn_Time`
+seed it from a stable noise function of `chroma_time` or `chroma_AudioTime`
 so the same pattern reproduces on every reload.
 
 ---
@@ -402,10 +402,10 @@ budget in the sampler. The canonical mitigations:
 - **Sample once, reuse.** If you need `chroma_AudioFFT[3]` twice in
   your shader, store the first read into a local `float` and reuse.
   The compiler may CSE for you on simple cases, but for sampler
-  reads through `syn_Spectrum` it almost certainly will not.
+  reads through `chroma_Spectrum` it almost certainly will not.
 - **Prefer the array uniform over the sampler.** Reading
   `chroma_AudioFFT[i]` is a uniform fetch, not a sampler read.
-  Reading `texture(syn_Spectrum, u).r` is a sampler read. Use the
+  Reading `texture(chroma_Spectrum, u).r` is a sampler read. Use the
   array when you only need the eight-band shape; use the sampler
   when you need the full 256-or-512-bin spectrum.
 - **Avoid texture sampling inside loops with variable bounds.**
@@ -602,7 +602,7 @@ range.
 - [Scene Workflow](scene-workflow.md) — `.chroma` package shape and
   scene-author lifecycle.
 - [Chromaticity Uniforms](chroma-uniforms.md) — the canonical
-  `chroma_*` / `syn_*` uniform vocabulary.
+  `chroma_*` uniform vocabulary.
 - [Audio Reactivity](audio-reactivity.md) — the audio path,
   snapshot fields, and the four-band reduction.
 - [Importing Shadertoy Scenes](import-shadertoy.md) — the

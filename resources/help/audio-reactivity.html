@@ -1244,8 +1244,8 @@ void main() {
 }
 </code></pre>
 <p>The same scene becomes a tempo-locked breathing pulse by mixing in
-<code>chroma_BPMSin</code> against the radius (legacy <code>syn_*</code> compat aliases remain
-supported for imported scenes). Authors can compose any of the audio
+<code>chroma_BPMSin</code> against the radius (imported <code>.synScene</code> packages are
+translated to these names automatically). Authors can compose any of the audio
 uniforms; the binding adapter publishes them all in a stable per-pass
 order so per-pass uniform-buffer slot indices stay stable across reloads.</p>
 <h2 id="setting-the-audio-threshold">Setting the audio threshold</h2>

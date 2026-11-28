@@ -23,7 +23,7 @@ Define measurable operational budgets for live-use viability and planning accept
  - scene warm-switch `PrepareNext`/`PrimeNext` phases per CP-03: run in parallel with the current scene's frame loop.
  - thumbnail regeneration, docs-index build, auto-generated previews: background priority only.
 - **Reserved post-MVP budget (activated with ADR-017 per `41-data-ingestion-differentiator.md`):**
- - external-data upload on the render thread (texture-uploading `syn_Data_Array_*` / `syn_Data_Field_*`, writing `syn_Data_Scalar_*`/`Vec_*` uniforms): <= 0.50 ms p95 per frame. Carved from the `render graph` allocation once data ingest ships; scenes must respect this budget or the frame breaks the hard limit.
+ - external-data upload on the render thread (texture-uploading `chroma_Data_Array_*` / `chroma_Data_Field_*`, writing `chroma_Data_Scalar_*`/`Vec_*` uniforms): <= 0.50 ms p95 per frame. Carved from the `render graph` allocation once data ingest ships; scenes must respect this budget or the frame breaks the hard limit.
  - external-data fetch wall-clock (off-thread, does not count against the 14.00 ms allocation): provider-specific bounds locked in ADR-017. Adapter framework is responsible for guaranteeing no fetch ever blocks the render thread.
  - cassette replay cost for golden-corpus fixtures (per `22-compatibility-versioning-policy.md` Sec.Data-pinned fixtures): same <= 0.50 ms upload budget applies; replay itself runs off-thread.
 
@@ -69,11 +69,11 @@ This table is the single source of truth for drift epsilons and ties `EV-DETERMI
 | Drift Dimension | Epsilon / Threshold | Measurement | Binding Evidence |
 |---|---|---|---|
 | Deterministic replay pass ratio | >= 99.0% per profile | golden corpus replay suite | `EV-DETERMINISM` + SLO-05 |
-| Audio level family (`syn_Level*`) | per-sample epsilon <= 1e-3 | audio fixture trace diff | `EV-AUDIO-TRACE` |
-| Audio hits family (`syn_*Hits`) | event-count delta <= 0 over window; timing delta <= 1 frame | audio fixture trace diff | `EV-AUDIO-TRACE` |
-| Audio time family (`syn_*Time`, `syn_CurvedTime`) | monotonic delta epsilon <= 1 frame period | audio fixture trace diff | `EV-AUDIO-TRACE` |
-| Audio presence family (`syn_*Presence`) | per-sample epsilon <= 5e-3 | audio fixture trace diff | `EV-AUDIO-TRACE` |
-| Audio BPM family (`syn_BPM*`, `syn_OnBeat`, `syn_ToggleOnBeat`, `syn_RandomOnBeat`) | BPM epsilon <= 0.5 bpm; beat timing delta <= 1 frame | audio fixture trace diff | `EV-AUDIO-TRACE` |
+| Audio level family (`chroma_Level*`) | per-sample epsilon <= 1e-3 | audio fixture trace diff | `EV-AUDIO-TRACE` |
+| Audio hits family (`chroma_*Hits`) | event-count delta <= 0 over window; timing delta <= 1 frame | audio fixture trace diff | `EV-AUDIO-TRACE` |
+| Audio time family (`chroma_AudioTime`, `chroma_{Bass,Mid,MidHigh,High}Time`, `chroma_CurvedTime`) | monotonic delta epsilon <= 1 frame period | audio fixture trace diff | `EV-AUDIO-TRACE` |
+| Audio presence family (`chroma_*Presence`) | per-sample epsilon <= 5e-3 | audio fixture trace diff | `EV-AUDIO-TRACE` |
+| Audio BPM family (`chroma_BPM*`, `chroma_OnBeat`, `chroma_ToggleOnBeat`, `chroma_RandomOnBeat`) | BPM epsilon <= 0.5 bpm; beat timing delta <= 1 frame | audio fixture trace diff | `EV-AUDIO-TRACE` |
 | Visual frame diff (standard scenes) | per-pixel Euclidean RGB <= 2/255; <= 0.5% pixels above per-channel 1/255 | frame snapshot diff | `EV-RENDER-CONFORMANCE` |
 | Visual frame diff (feedback/multipass) | per-pixel Euclidean RGB <= 4/255; <= 2.0% pixels above per-channel 2/255 | frame snapshot diff | `EV-RENDER-CONFORMANCE` |
 | Script state replay | bit-identical state hash across runs | state replay suite | `EV-STATE-REPLAY` |

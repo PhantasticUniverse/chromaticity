@@ -12,7 +12,7 @@ The normative spec for the feature itself is deferred to `adr/ADR-017-real-time-
 
 > **Chromaticity is the live-visuals runtime where external data streams are first-class scene inputs.**
 
-Other live-visuals tools (TouchDesigner, Notch, VDMX via OSC) can ingest external data through bespoke operator-built plumbing. Chromaticity's differentiation is that it's **scene-declarative**: the scene author writes a `DATA_SOURCES` stanza in `scene.json` and the runtime publishes `syn_Data_*` uniforms. No operator plumbing per source. No per-operator IT work. The author's scene runs the same on any operator's machine.
+Other live-visuals tools (TouchDesigner, Notch, VDMX via OSC) can ingest external data through bespoke operator-built plumbing. Chromaticity's differentiation is that it's **scene-declarative**: the scene author writes a `DATA_SOURCES` stanza in `scene.json` and the runtime publishes `chroma_Data_*` uniforms. No operator plumbing per source. No per-operator IT work. The author's scene runs the same on any operator's machine.
 
 Four supporting qualities make this viable where competitors can't (or won't):
 1. **Scene-declarative schema** - the author describes the data, not the transport.
@@ -66,7 +66,7 @@ Every item below is an MVP-scope reservation that prevents a V2/V3 breaking chan
 
 | # | Reservation | Location |
 |---|---|---|
-| 1 | `syn_Data_*` uniform namespace (shape primitives for scalar/vec/array/field/event) | `36-reactive-symbol-catalog.md` Sec.1.6 |
+| 1 | `chroma_Data_*` uniform namespace (shape primitives for scalar/vec/array/field/event) | `36-reactive-symbol-catalog.md` Sec.1.6 |
 | 2 | `DATA_SOURCES` scene.json root key (schema parsed at MVP, zero-valued publication) | `02-synesthesia-contracts.md` Sec.1 and `28-implementation-contract-pack.md` CP-12 |
 | 3 | `CR-07` coercion class for data-source-unavailable handling | `28-implementation-contract-pack.md` CP-01 |
 | 4 | Capability strings `data.ingest.network`, `data.ingest.geospatial`, `data.ingest.sdr` | `adr/ADR-009-activation-and-entitlements.md` Sec.Capability namespace |

@@ -62,6 +62,16 @@ For the `1.1.0` ratification covered by this checklist:
 
 ## Per-section sign-off
 
+> **Naming superseded (2026-11-28, ADR-024).** The sign-off entries below record the
+> catalog as adopted on 2026-04-29 and are left as written. Under
+> `docs/adr/ADR-024-native-chroma-vocabulary.md` every native symbol is `chroma_*`
+> (for example `chroma_FinalPass`, `chroma_Media`, `chroma_Spectrum`,
+> `chroma_LevelTrail`, `chroma_InputLevel`, `chroma_Threshold`). `syn_*` names are
+> accepted only at the `.synScene` import boundary, translated by `SYN_TO_NATIVE` in
+> `engine/authoring/src/syn_import.rs` (`syn_UserImage` and `syn_Media` both become
+> `chroma_Media`). The `syn_PrimeBang` compat alias is removed, and `syn_Data_*` is a
+> legacy prefix the runtime rejects, not an alias.
+
 - [x] **Sec.1 — Standard Uniforms (`docs/36` Sec.1).**
       Scope: frame/timing (`TIME`, `FRAMECOUNT`, `TIMEDELTA`, `PI`); pixel
       coordinates (`_xy`, `_uv`, `_uvc`); mouse (`_mouse`, `_click`, `_muv`,

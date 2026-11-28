@@ -19,15 +19,19 @@ Scene format tags such as `shadertoy-v1-import` and `isf-import` referenced in `
 
 ## Symbol Namespace Governance
 
-- `syn_*` is reserved for compatibility continuity with the reference scene surface under `compat-syn-v1`.
-- `native-chroma-v1` is native-first: new canonical symbols must use `chroma_*` (or existing non-prefixed legacy standards already locked by the catalog, e.g. `TIME`, `RENDERSIZE`, `_Meta` controls).
-- A `syn_*` spelling may appear under `native-chroma-v1` only as a documented alias to a `chroma_*` canonical symbol when required for import continuity.
-- New feature work must not introduce fresh `syn_*` canonical names.
+Per `adr/ADR-024-native-chroma-vocabulary.md`:
+
+- `chroma_*` is the only native reactive namespace (plus the non-prefixed standard names already locked by the catalog, e.g. `TIME`, `RENDERSIZE`, `_Meta` controls, helper functions).
+- Native parsers (`ReactiveSymbol::from_name`, the scene validator) accept `chroma_*` names only. There are no reference-format aliases in the native catalog.
+- Reference-format (`.synScene`) reactive names exist only at the import boundary. They are translated to native names by the single frozen table `SYN_TO_NATIVE` in `engine/authoring/src/syn_import.rs`, applied by the import adapters (`engine/authoring/src/syn_import.rs`, `app/shell/src/syn_compat.rs`). The table is reproduced in `36-reactive-symbol-catalog.md` Sec.9.
+- New reference-format names are forbidden outside import code (the two adapter files above and `engine/authoring/tests/**`). `scripts/syn-prefix-lint.sh` enforces this over engine, app, integrations, frontend, bundled scenes, user docs and built help.
+- The `compat-syn-v1` profile name is unchanged: it names the import compatibility profile, not a native vocabulary.
 
 ### Namespace migration rule
 
-- If a symbol exists only as `syn_*` today and is needed natively, add `chroma_*` as canonical in the symbol catalog, keep `syn_*` as compat alias, and document coercion/alias behavior in `36-reactive-symbol-catalog.md`.
-- Any proposal to introduce a new `syn_*` symbol must include an explicit compatibility justification and Accountable Owner sign-off in the ADR/policy packet.
+- Every native symbol is canonically `chroma_*`. A symbol that is needed natively is added to `36-reactive-symbol-catalog.md` under its `chroma_*` name only.
+- When the importer must support a further reference-format name, add a row to `SYN_TO_NATIVE` mapping it to a native `chroma_*` name (normally a prefix swap), mirror the row in `36-reactive-symbol-catalog.md` Sec.9, and pin it in the import tests. The reference name is never added to the native catalog.
+- Renaming or removing a native canonical name is a breaking change: it requires a major catalog version bump and `Profile-Impact: native-chroma-v1-major`.
 
 ## Version Axes
 - **Scene Schema Version**: version of `scene.json` contract.
@@ -124,3 +128,4 @@ Per `36-reactive-symbol-catalog.md` Sec.8, every catalog version bump requires a
 | `1.1.0` | 2026-04-29 | `doc-path:docs/EV-SYMBOL-CATALOG-checklist.md` (per-section + cross-workcell + overall AO sign-off) | Added Sec.2.10 reference-surface uniforms (`syn_InputLevel`, `syn_RawLevel`, `syn_BassExpoCurve`, `syn_Threshold`, `syn_PrimeAndBang`) and Sec.2.1 non-parity per-band time-series/spectrum spelling disposition. Formulas locked in `06-audio-engine.md` Sec.7.12. `EV-*` fixture coverage (per Sec.8 (b)) deferred to Phase-2 evidence-row closure under `EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`, and `EV-AUDIO-TRACE`. |
 | `1.2.0` | 2026-05-01 | `doc-path:docs/EV-SYMBOL-CATALOG-checklist.md` (Subsequent ratification log — v1.2.0 entry) | Added Sec.2.11 native audio analysis primitives (`chroma_AudioRMS`, `chroma_AudioPeak`, `chroma_AudioFFTLow`, `chroma_AudioFFTHigh`) introduced by the slice-5a `engine/render` ↔ `engine/audio` cross-crate adapter (`engine/render/src/audio_adapter.rs`). Sec.8 (b) `EV-*` fixture coverage is satisfied by slice-5a's pre-existing T1 drift pins + T2 GPU-roundtrip corpus under `EV-RENDER-CONFORMANCE` and `EV-AUDIO-TRACE` — no new fixture authoring required at ratification. The split-`vec4` FFT spelling is documented as transitional pending an array variant on `engine/render/src/multipass.rs::UniformValue`. |
 | `1.3.0` | 2026-05-01 | `doc-path:docs/EV-SYMBOL-CATALOG-checklist.md` (Subsequent ratification log — v1.3.0 entry) | Consolidated the v1.2.0 split-vec4 FFT spelling (`chroma_AudioFFTLow` + `chroma_AudioFFTHigh`) into a single `chroma_AudioFFT[8]` array binding. Foundational widening: added `UniformValue::FloatArray` to `engine/render/src/multipass.rs` with std140-friendly packing (each element vec4-aligned to 16 bytes, matching `uniform float arr[N]`), unlocking single-name array uniforms more broadly. Sec.8 (b) `EV-*` fixture coverage: slice-5a T1 drift pins updated in place to assert the new shape; new `multipass::multipass_drift_pins::uniform_marshalling_float_array_layout` pin covers std140 packing; T2 GPU-roundtrip corpus rolls the sine-tone ACCEPTED hash forward (silent-frame hash preserved verbatim because zero FFT bands sum identically under any summation order). Authoring-surface migration: no scenes shipped against the v1.2.0 split-vec4 shape, so no compat aliases are required. |
+| `2.0.0` | 2026-11-28 | `adr/ADR-024-native-chroma-vocabulary.md` | Breaking rename to the native `chroma_*` vocabulary. Every canonical reactive name formerly spelled with the reference-format prefix is renamed to its `chroma_*` name (prefix swap, except the whole-band audio clock, now `chroma_AudioTime`, and both reference media samplers, now `chroma_Media`). Native compatibility aliases are removed, including the reference-spelled `PrimeBang` alias and the `chroma_Data_*` alias spellings. Reference names survive only in the import translation table `SYN_TO_NATIVE` (`engine/authoring/src/syn_import.rs`), reproduced in `36-reactive-symbol-catalog.md` Sec.9. `EV-*` coverage: `EV-SYMBOL-CATALOG` (`engine/script/tests/reactive_symbol.rs`, `reference_format_names_are_not_native_symbols`) and `EV-SCENE-IMPORT`. `Profile-Impact: native-chroma-v1-major`. |

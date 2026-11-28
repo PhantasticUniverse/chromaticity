@@ -57,9 +57,9 @@ Define adapter boundaries and route semantics for external control and media int
  - `/render/fps {float}` (inbound): override render FPS target.
  - Runtime status publication and diagnostics.
  - **Audio routes:**
- - `/audio/threshold {float}` (inbound and outbound discovery): sets `syn_Threshold` per `36-reactive-symbol-catalog.md` Sec.2.10 and `06-audio-engine.md` Sec.7.12. Clamped to `[0, 1]`. Emitted on settings panel change.
- - `/audio/threshold/sample` (inbound, no argument): samples the current 200 ms rolling RMS of `syn_Level` and sets `syn_Threshold` to that value. Used by the `Shift+T` hotkey and by hardware-surface momentary buttons. Emits `/audio/threshold {float}` outbound on completion.
- - **Audio-variable output routes (canonical prefix: `/audio/var/*`):** reactive audio uniforms are published outbound under `/audio/var/{uniform_name_lowercase_stripped}` at the cadence configured in the OSC operator settings panel, where `uniform_name_lowercase_stripped` is the catalog symbol name with the `syn_` prefix removed, camelCase preserved (e.g. `syn_BassLevel` -> `/audio/var/bassLevel`, `syn_OnBeat` -> `/audio/var/onBeat`). The operator may filter per-uniform in the settings panel; the default set is the `LVL`, `HIT`, and `BEAT` families.
+ - `/audio/threshold {float}` (inbound and outbound discovery): sets `chroma_Threshold` per `36-reactive-symbol-catalog.md` Sec.2.10 and `06-audio-engine.md` Sec.7.12. Clamped to `[0, 1]`. Emitted on settings panel change.
+ - `/audio/threshold/sample` (inbound, no argument): samples the current 200 ms rolling RMS of `chroma_Level` and sets `chroma_Threshold` to that value. Used by the `Shift+T` hotkey and by hardware-surface momentary buttons. Emits `/audio/threshold {float}` outbound on completion.
+ - **Audio-variable output routes (canonical prefix: `/audio/var/*`):** reactive audio uniforms are published outbound under `/audio/var/{uniform_name_lowercase_stripped}` at the cadence configured in the OSC operator settings panel, where `uniform_name_lowercase_stripped` is the catalog symbol name with the `chroma_` prefix removed, camelCase preserved (e.g. `chroma_BassLevel` -> `/audio/var/bassLevel`, `chroma_OnBeat` -> `/audio/var/onBeat`). The operator may filter per-uniform in the settings panel; the default set is the `LVL`, `HIT`, and `BEAT` families.
  - **Reserved prefixes (inbound, reject-with-diagnostic at MVP, activated post-MVP):**
  - `/data/*` and `/data/subscribe/*` - reserved for the post-MVP external-data-ingestion differentiator (`41-data-ingestion-differentiator.md`, reserved ADR-017). At MVP the adapter rejects inbound messages under these prefixes with a `prefix-reserved` diagnostic and no side effects. This prevents third-party integrations from squatting on the prefix before the V2 schema is published.
 - Outbound behavior:
@@ -107,7 +107,7 @@ Aliases are removed under `osc-parity-v2` (post-MVP); removal is a profile bump 
 - `OSC-CONF-12` Malformed inbound payloads are rejected with diagnostic and no side effects.
 - `OSC-CONF-13` `/render/enabled {0|1}` halts and resumes the render loop without dropping adapter connections or outbound audio-variable publication; restoration frame is within one frame budget of the resume message.
 - `OSC-CONF-14` `/render/custom-resolution` is capability-gated: without `render.custom-resolution` entitlement, inbound messages are dropped with `entitlement-denied` diagnostic and no side effects.
-- `OSC-CONF-15` `/audio/threshold` clamps to `[0, 1]`, updates `syn_Threshold` within one audio hop, and reemits current value on any settings panel change. `/audio/threshold/sample` sets the threshold to the current 200 ms rolling RMS of `syn_Level` and emits a discovery message.
+- `OSC-CONF-15` `/audio/threshold` clamps to `[0, 1]`, updates `chroma_Threshold` within one audio hop, and reemits current value on any settings panel change. `/audio/threshold/sample` sets the threshold to the current 200 ms rolling RMS of `chroma_Level` and emits a discovery message.
 - `OSC-CONF-16` Inbound messages under reserved prefixes `/data/*` and `/data/subscribe/*` are rejected with `prefix-reserved` diagnostic and produce no side effects at MVP.
 - `OSC-CONF-17` Plurality alias conformance: every canonical plural-root route in the Alias Table accepts inbound under both the plural-root canonical form and the singular-root legacy form; differential-output assertion confirms both forms produce identical internal command-bus output.
 - `OSC-CONF-18` Alias round-trip: an outbound dual-emit pair (canonical + legacy) arriving back via a loopback subscriber produces a single internal command (no double-application).
@@ -173,16 +173,16 @@ Extensions beyond the reference-observed CC/Note surface. These are Chromaticity
  - maps to preset apply via operator mapping table `(device, channel, program) -> preset_id`.
  - rising-edge only (re-sending the same program re-applies the preset).
 - **MIDI Clock** (`0xF8`) + **Song Position Pointer** (`0xF2`) + **Start/Stop/Continue** (`0xFA`/`0xFC`/`0xFB`):
- - when "External BPM Sync" is enabled, the MIDI Clock rate drives `syn_BPM` directly; audio-engine fusion policy in `06-audio-engine.md` Sec.7.9 yields to the external clock with `syn_BPMConfidence = 1.0`.
+ - when "External BPM Sync" is enabled, the MIDI Clock rate drives `chroma_BPM` directly; audio-engine fusion policy in `06-audio-engine.md` Sec.7.9 yields to the external clock with `chroma_BPMConfidence = 1.0`.
  - Start/Stop toggles a `beat_phase_locked` flag; internal beat estimator resumes on Stop.
- - Song Position Pointer resets `syn_BeatTime` to the indicated position (1 SPP unit = 6 MIDI Clock ticks = 1/16 note).
+ - Song Position Pointer resets `chroma_BeatTime` to the indicated position (1 SPP unit = 6 MIDI Clock ticks = 1/16 note).
 - **SysEx**: logged with size + manufacturer ID only; no routing. Full SysEx support deferred to V2.
 
 ### Extended MIDI Conformance Test IDs (under `EV-MIDI-EXTENDED`)
 - `MIDI-CONF-11` Pitch Bend 14-bit accuracy across full range with center rest.
 - `MIDI-CONF-12` Program Change -> preset apply via mapping table.
-- `MIDI-CONF-13` MIDI Clock -> `syn_BPM` external-sync lock, confidence reports 1.0.
-- `MIDI-CONF-14` Song Position Pointer resets `syn_BeatTime` deterministically.
+- `MIDI-CONF-13` MIDI Clock -> `chroma_BPM` external-sync lock, confidence reports 1.0.
+- `MIDI-CONF-14` Song Position Pointer resets `chroma_BeatTime` deterministically.
 - `MIDI-CONF-15` Start/Stop/Continue toggles beat-phase-lock without glitches.
 
 ### Additional MIDI Surface Decisions (tracked under `EV-MIDI-EXTENDED`)
@@ -200,7 +200,7 @@ Extensions beyond the reference-observed CC/Note surface. These are Chromaticity
  - Deferred to V2. MVP rejects Lower Zone and Upper Zone Configuration messages with a `mpe-deferred` diagnostic and no side effects; per-note Pitch Bend, CC 74, and Channel Pressure are ignored when arriving on MPE member channels.
  - MIDI-CONF-18 validates that MPE-configuration messages do not corrupt global state and that the diagnostic fires exactly once per session.
 - **MTC / SMPTE LTC stance**:
- - **MTC** (MIDI Time Code, quarter-frame `0xF1` + full-frame SysEx): in scope for MVP as a `syn_Timecode` uniform family (hours/minutes/seconds/frames/framerate-id), consumable by scenes for SMPTE-slaved playback. MIDI-CONF-19 validates 24/25/29.97/30 fps modes and quarter-frame assembly correctness.
+ - **MTC** (MIDI Time Code, quarter-frame `0xF1` + full-frame SysEx): in scope for MVP as a `chroma_Timecode` uniform family (hours/minutes/seconds/frames/framerate-id), consumable by scenes for SMPTE-slaved playback. MIDI-CONF-19 validates 24/25/29.97/30 fps modes and quarter-frame assembly correctness.
  - **SMPTE LTC** (audio-carried timecode): deferred to V2 via a dedicated LTC decoder; MVP surfaces a `ltc-not-ingested` diagnostic if the operator selects an LTC input without the V2 decoder.
 - **MIDI learn persistence**:
  - In scope for MVP; MIDI mappings survive show-save, app quit, and relaunch at parity with MIDI-CONF-09 reconnect restoration.

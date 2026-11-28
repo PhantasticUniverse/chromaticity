@@ -38,6 +38,13 @@ development. Highlights since initial scaffolding:
   across UI, docs, and engine surfaces.
 - Decoupled bundled help and scene resources under `resources/` from Vite's
   `dist/` build output and engine unit-test fixtures.
+- **Breaking (native-chroma-v1 major):** the reactive vocabulary is now
+  `chroma_*` everywhere — shader uniform block (`chroma_BPM`), script globals,
+  symbol catalog, scene `UNIFORMS` `SYMBOL` bindings, Author autocomplete and
+  user docs (ADR-024). `syn_Time` became `chroma_AudioTime`. Imported
+  `.synScene` packages are translated automatically at the import boundary,
+  including packages imported earlier; `scripts/syn-prefix-lint.sh` keeps
+  reference-format names out of native code.
 - Live multi-pass scenes now run on a persistent GPU pipeline
   (`CachedMultipass`): passes compile once per scene and resolution, and
   `PERSISTENT`/`FEEDBACK` pass history accumulates across live frames instead

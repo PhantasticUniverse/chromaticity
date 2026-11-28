@@ -1642,7 +1642,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
    author-facing knobs so Perform, Snap, presets, and playlists stay
    composable.</li>
 <li><a href="#2-glsl-pitfalls">GLSL pitfalls</a> — common foot-guns when writing
-   shaders against the <code>chroma_*</code> / <code>syn_*</code> uniform surface.</li>
+   shaders against the <code>chroma_*</code> uniform surface.</li>
 <li><a href="#3-glsl-performance">GLSL performance</a> — cost considerations,
    when to reach for Lygia, and the honest picture of what the V1
    preview adapter does and doesn't render.</li>
@@ -1881,13 +1881,13 @@ fails on others; the <code>int</code> cast is portable.</p>
 drivers return 0, some return the next memory cell, some kernel-
 panic the GPU on tiles where unused registers carry old fragment
 state. Always <code>clamp(idx, 0, 7)</code> before indexing.</p>
-<p>Sampler textures (<code>syn_Spectrum</code>, <code>syn_LevelTrail</code>) have the same
+<p>Sampler textures (<code>chroma_Spectrum</code>, <code>chroma_LevelTrail</code>) have the same
 constraint: the sampler API clamps automatically at the GL level,
 but the <code>u</code> coordinate you feed needs to be in <code>[0, 1]</code> for
 documented behaviour. Wrapping mode is sampler-default
 <code>GL_CLAMP_TO_EDGE</code> unless you opt into something else.</p>
 <h3 id="25-the-all-zero-baseline-is-real">2.5 The all-zero baseline is real</h3>
-<p>Every <code>chroma_*</code> and <code>syn_*</code> audio uniform reads zero during the
+<p>Every <code>chroma_*</code> audio uniform reads zero during the
 no-audio-yet startup window. The first audio tick arrives some tens
 of milliseconds after the scene loads. A shader that divides by
 <code>chroma_AudioRMS</code> without an epsilon guard produces inf / NaN /
@@ -1899,8 +1899,8 @@ vec3 col = base / chroma_AudioRMS;
 float rms = max(chroma_AudioRMS, 1e-3);
 vec3 col = base / rms;
 </code></pre>
-<p>The same pattern applies to <code>chroma_AudioPeak</code>, <code>syn_Level</code>,
-<code>syn_BPMConfidence</code>, and any time-accelerator (<code>syn_BassTime</code> etc.)
+<p>The same pattern applies to <code>chroma_AudioPeak</code>, <code>chroma_Level</code>,
+<code>chroma_BPMConfidence</code>, and any time-accelerator (<code>chroma_BassTime</code> etc.)
 that decays toward zero on silence.</p>
 <h3 id="26-alpha-pre-multiplication-caveats">2.6 Alpha pre-multiplication caveats</h3>
 <p>Chromaticity scenes write to a 32-bit RGBA target. The compositor
@@ -1941,7 +1941,7 @@ in a multipass <code>FLOAT</code> target — that target gets cleared and your
 post-reload first frame reads zero.</p>
 <p><strong>Pattern.</strong> Don't write logic that depends on the previous frame's
 contents surviving a hot-reload. If your scene needs warm-up state,
-seed it from a stable noise function of <code>chroma_time</code> or <code>syn_Time</code>
+seed it from a stable noise function of <code>chroma_time</code> or <code>chroma_AudioTime</code>
 so the same pattern reproduces on every reload.</p>
 <hr />
 <h2 id="3-glsl-performance">3 — GLSL performance</h2>
@@ -1958,10 +1958,10 @@ budget in the sampler. The canonical mitigations:</p>
 <li><strong>Sample once, reuse.</strong> If you need <code>chroma_AudioFFT[3]</code> twice in
   your shader, store the first read into a local <code>float</code> and reuse.
   The compiler may CSE for you on simple cases, but for sampler
-  reads through <code>syn_Spectrum</code> it almost certainly will not.</li>
+  reads through <code>chroma_Spectrum</code> it almost certainly will not.</li>
 <li><strong>Prefer the array uniform over the sampler.</strong> Reading
   <code>chroma_AudioFFT[i]</code> is a uniform fetch, not a sampler read.
-  Reading <code>texture(syn_Spectrum, u).r</code> is a sampler read. Use the
+  Reading <code>texture(chroma_Spectrum, u).r</code> is a sampler read. Use the
   array when you only need the eight-band shape; use the sampler
   when you need the full 256-or-512-bin spectrum.</li>
 <li><strong>Avoid texture sampling inside loops with variable bounds.</strong>
@@ -2134,7 +2134,7 @@ range.</p>
 <li><a href="scene-workflow.html">Scene Workflow</a> — <code>.chroma</code> package shape and
   scene-author lifecycle.</li>
 <li><a href="chroma-uniforms.html">Chromaticity Uniforms</a> — the canonical
-  <code>chroma_*</code> / <code>syn_*</code> uniform vocabulary.</li>
+  <code>chroma_*</code> uniform vocabulary.</li>
 <li><a href="audio-reactivity.html">Audio Reactivity</a> — the audio path,
   snapshot fields, and the four-band reduction.</li>
 <li><a href="import-shadertoy.html">Importing Shadertoy Scenes</a> — the

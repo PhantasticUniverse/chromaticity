@@ -181,7 +181,7 @@ end-to-end at MVP**.
 | Syphon input (macOS)   | Synthetic    | `SyphonInputAdapter` surface ships per ADR-021. Concrete cross-process consumption is gated behind the Wave 1c-β `Send`-trait reconciliation + directory observer follow-ups. |
 | Syphon output (macOS)  | Synthetic    | `SyphonOutputAdapter` surface ships; `publish_syphon_output` real-impl is a deferred follow-up. |
 | Spout (Windows)        | Deferred     | Not yet scoped; the Syphon adapter is macOS-only by design.        |
-| Video file playback    | Wired (Mix)  | Local `.mp4` / `.webm` / image layers and Direct YouTube URL stream-in play live inside the **Mix** deck (`liveMediaStore`); native GPU texture decode for GLSL `syn_Media` samplers remains planned. |
+| Video file playback    | Wired (Mix)  | Local `.mp4` / `.webm` / image layers and Direct YouTube URL stream-in play live inside the **Mix** deck (`liveMediaStore`); native GPU texture decode for GLSL `chroma_Media` samplers remains planned. |
 
 ### Camera pixel formats (planned)
 

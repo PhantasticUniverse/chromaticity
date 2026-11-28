@@ -28,8 +28,8 @@ Provide the minimum contract baseline required to begin implementation without u
  - `CR-03` legacy key coexistence -> canonical precedence.
  - `CR-04` deprecated script globals (`inputs`/`uniforms`) -> compatibility shim.
  - `CR-05` malformed transition declaration -> skip entry and warn (see CP-09).
- - `CR-06` legacy media sampler alias -> alias map to canonical sampler (see CP-11 and `36-reactive-symbol-catalog.md` Sec.4.9). Extended per `36-reactive-symbol-catalog.md` Sec.2.1 to cover audio-sampler per-band spellings (`syn_BassTimeSeries`, `syn_MidTimeSeries`, `syn_HighTimeSeries`, `syn_TimeSeries`, `syn_SpectrumSmooth`, `syn_SpectrumJuiced`, `syn_Waveform`) -> alias to the corresponding RGBA channel of `syn_LevelTrail` or `syn_Spectrum`.
- - `CR-07` external data source unavailable -> zero-valued publish of declared `syn_Data_*` symbols with `data-ingest-deferred` (MVP) or `data-source-unavailable` (post-MVP) diagnostic (see CP-12).
+ - `CR-06` legacy media sampler alias -> alias map to canonical sampler (see CP-11 and `36-reactive-symbol-catalog.md` Sec.4.9). Extended per `36-reactive-symbol-catalog.md` Sec.2.1 to cover audio-sampler per-band spellings (`syn_BassTimeSeries`, `syn_MidTimeSeries`, `syn_HighTimeSeries`, `syn_TimeSeries`, `syn_SpectrumSmooth`, `syn_SpectrumJuiced`, `syn_Waveform`) -> alias to the corresponding RGBA channel of `chroma_LevelTrail` or `chroma_Spectrum` (these per-band spellings are reference-format names seen only in imported `.synScene` packages).
+ - `CR-07` external data source unavailable -> zero-valued publish of declared `chroma_Data_*` symbols with `data-ingest-deferred` (MVP) or `data-source-unavailable` (post-MVP) diagnostic (see CP-12).
 
 #### CR-01 fallback rule (normative)
 Observed in shipped reference corpus: 15 control objects across 8+ release scenes omit `TYPE`. The fallback decision must be deterministic per `02-synesthesia-contracts.md` Sec.11 KM-01.
@@ -64,11 +64,11 @@ Locks the audio-thread -> render-thread contract so all cadence-dependent drift 
 - **Concurrency**: lock-free triple-buffered ring. Audio thread rotates `write -> commit -> reader-owned -> reclaim`. Render thread atomically swaps the "current" snapshot pointer at frame start without blocking the audio thread.
 - **Frame-start read**: frame scheduler reads `current_snapshot` at the beginning of each frame tick before any subsystem (StateCore, Scripts, RenderGraph) observes audio. This snapshot is immutable for the duration of the frame.
 - **Single-snapshot-per-frame invariant**: every pass in a frame and the Script Host `update(dt)` invocation see the same `snapshot_seq`. This preserves the "once per frame before pass 0" contract in `36-reactive-symbol-catalog.md` Sec.2.
-- **Texture samplers** (`syn_Spectrum`, `syn_LevelTrail`, `syn_FinalPass`): backed by double-buffered GPU textures owned by the render thread; audio thread writes spectrum/level-trail into staging buffers queued for next-frame upload.
+- **Texture samplers** (`chroma_Spectrum`, `chroma_LevelTrail`, `chroma_FinalPass`): backed by double-buffered GPU textures owned by the render thread; audio thread writes spectrum/level-trail into staging buffers queued for next-frame upload.
 - **Staleness bound**: `max_audio_staleness = 1/H_snap + frame_period = 2.67 ms + 16.67 ms ~= 19.3 ms` at 60 FPS. This is the canonical "1 frame" definition used by all audio rows of the Determinism and Drift Acceptance Table in `10-performance-latency-budgets.md`.
 - **Degraded modes**:
  - audio thread fails to publish within 2 consecutive hop windows -> render loop reuses last snapshot and emits `audio-stall` diagnostic; uniforms fall back to silent/default per `06-audio-engine.md` reliability policy.
- - audio device recovery after stall -> snapshot sequence resumes; no warm-up fade is enforced (authoring scenes should rely on `syn_FadeInOut` for silence semantics).
+ - audio device recovery after stall -> snapshot sequence resumes; no warm-up fade is enforced (authoring scenes should rely on `chroma_FadeInOut` for silence semantics).
 - **Evidence binding**: `EV-AUDIO-TRACE` run metadata MUST record `snapshot_seq` per frame; drift comparisons are made at matching `snapshot_seq` values, not wall-clock timestamps, to ensure deterministic replay.
 
 ### CP-03 Warm-Switch Semantics
@@ -212,8 +212,8 @@ Source: `02-synesthesia-contracts.md` Sec.16.
 ### CP-11 Media Sampler Pair
 Source: `02-synesthesia-contracts.md` Sec.17 and `36-reactive-symbol-catalog.md` Sec.1.5, Sec.3.2.
 
-- Canonical samplers: `syn_Media` (post-meta-media) and `syn_UserImage` (pre-meta-media).
-- Mask helpers (`_loadMediaAsMask`, `_textureMediaAsMask`) MUST sample `syn_UserImage`, not `syn_Media`.
+- Reference-format samplers: `syn_Media` (post-meta-media) and `syn_UserImage` (pre-meta-media). Both import as the single native sampler `chroma_Media` (`SYN_TO_NATIVE` in `engine/authoring/src/syn_import.rs`).
+- Reference-format rule: mask helpers (`_loadMediaAsMask`, `_textureMediaAsMask`) sample `syn_UserImage`, not `syn_Media`.
 - `_Media_Scale` is applied in sample-space by media helper functions, not in the ingest pass.
 - Script Host may read media metadata (dimensions, type) via future host API (tracked in CP-07 addendum) but does not see samplers as direct values.
 - Legacy compat aliases resolved per `36-reactive-symbol-catalog.md` Sec.4.9; strict mode does not expose aliases.
@@ -223,10 +223,10 @@ Source: `02-synesthesia-contracts.md` Sec.17 and `36-reactive-symbol-catalog.md`
 Source: `36-reactive-symbol-catalog.md` Sec.1.6 and `41-data-ingestion-differentiator.md`. This contract is a forward-compatibility reservation: MVP parses the key, exposes the declared symbols as zero-valued uniforms, and logs an informational `data-ingest-deferred` diagnostic per source. No network fetches, no transformation pipeline, and no scheduler impact at MVP. Full behavior is specified in ADR-017 (reserved slot).
 
 - **Key name**: `DATA_SOURCES` (root-level in `scene.json`). Array of source objects. If absent or empty, no behavior change.
-- **Source object required fields**: `NAME` (unique within scene, matches the suffix in `syn_Data_<Shape>_<NAME>`), `TYPE` (one of `scalar`, `vec3`, `vec4`, `array`, `field-2d`, `field-3d`, `event`), `UNIFORMS` (array of declared `syn_Data_*` symbols the source produces).
+- **Source object required fields**: `NAME` (unique within scene, matches the suffix in `chroma_Data_<Shape>_<NAME>`), `TYPE` (one of `scalar`, `vec3`, `vec4`, `array`, `field-2d`, `field-3d`, `event`), `UNIFORMS` (array of declared `chroma_Data_*` symbols the source produces).
 - **Source object optional fields**: `SOURCE` (string identifier for the provider, e.g. `noaa-mrms`, `celestrak-tle`, opaque to MVP runtime), `SELECT` (object; provider-specific query), `CADENCE_HZ` (float; runtime may coalesce if exceeded), `VIEWPORT` (object for geospatial sources), `FALLBACK` (what to publish when unavailable; default zero-valued of declared shape), `CACHE_POLICY` (object; reserved).
-- **Schema validation** at MVP: required fields present; `TYPE` in the enum above; `UNIFORMS` names match `syn_Data_<Shape>_<NAME>` pattern consistent with declared `TYPE`. Violations are strict-reject with diagnostic `data-source-schema`; compat mode drops the offending source and warns.
-- **Uniform shape inference**: `TYPE` determines the GLSL type of each declared uniform per `36-reactive-symbol-catalog.md` Sec.1.6 table. Mismatched pairings (e.g. `TYPE: scalar` with `syn_Data_Vec_foo`) are strict-reject.
+- **Schema validation** at MVP: required fields present; `TYPE` in the enum above; `UNIFORMS` names match `chroma_Data_<Shape>_<NAME>` pattern consistent with declared `TYPE`. Violations are strict-reject with diagnostic `data-source-schema`; compat mode drops the offending source and warns.
+- **Uniform shape inference**: `TYPE` determines the GLSL type of each declared uniform per `36-reactive-symbol-catalog.md` Sec.1.6 table. Mismatched pairings (e.g. `TYPE: scalar` with `chroma_Data_Vec_foo`) are strict-reject.
 - **Capability gating** (post-MVP): each `SOURCE` is tagged by the provider registry with which `data.ingest.*` capability it requires (`data.ingest.network`, `data.ingest.geospatial`, `data.ingest.sdr`). Without entitlement, the source publishes its `FALLBACK` and logs `data-entitlement-denied`. At MVP every source behaves as if unentitled.
 - **Fixture determinism**: per `22-compatibility-versioning-policy.md` Sec.Data-pinned fixtures, any golden-corpus scene referencing `DATA_SOURCES` must ship with a recorded cassette or be excluded from `EV-RENDER-CONFORMANCE` until cassette support ships with ADR-017.
 - **Coercion class** `CR-07 data-source-unavailable`: at MVP universal (all sources are unavailable); at V2+ on a transient fetch failure. Strict mode: reject on schema error, succeed-with-zero on unavailable; compat mode: warn-and-zero on both. This keeps scenes renderable (black-or-configured-fallback) rather than unloaded.

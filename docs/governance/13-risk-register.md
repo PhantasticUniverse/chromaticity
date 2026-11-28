@@ -163,11 +163,11 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 | R-21 | Audio spec ambiguity | `EV-AUDIO-TRACE` fixtures fail drift tolerance on Phase 2 audio parity run |
 | R-22 | Rendering-backend capability gap | wgpu/naga unable to compile a shipped scene's GLSL subset without author-visible refactor |
 | R-23 | Reference-app behavior excavation incomplete | Field bug reports a reference-observed behavior not captured in any Chromaticity contract doc |
-| R-24 | Undocumented reference uniforms break parity | `syn_InputLevel` / `syn_RawLevel` / `syn_BassExpoCurve` formula divergence surfaces as `EV-AUDIO-TRACE` drift or broken shipped scene load |
+| R-24 | Undocumented reference uniforms break parity | `syn_InputLevel` / `syn_RawLevel` / `syn_BassExpoCurve` (imported as `chroma_InputLevel` / `chroma_RawLevel` / `chroma_BassExpoCurve`) formula divergence surfaces as `EV-AUDIO-TRACE` drift or broken shipped scene load |
 | R-25 | Default outbound traffic leak | Any release build produces network traffic to a destination not declared in `OBSERVABILITY-INVENTORY.md` with all observability toggles off |
 | R-26 | Bundle hygiene regression | Release candidate contains a disallowed artifact class from `adr/ADR-014-signing-notarization-auto-update.md` Sec.7 (C/C++ headers, legacy DSA pem, etc.) |
 | R-27 | Reference-app extension handling regression | Chromaticity accidentally registers as a handler for `.synScene` (reference-owned), or `.chroma` / `.chromaPack` / `.chromaShow` associations fail to install/uninstall cleanly |
-| R-28 | Data-ingestion architectural debt | A scene ships that depends on `syn_Data_*` / `DATA_SOURCES` without the forward-compat reservations honored, forcing a breaking change when ADR-017 lands |
+| R-28 | Data-ingestion architectural debt | A scene ships that depends on `chroma_Data_*` / `DATA_SOURCES` without the forward-compat reservations honored, forcing a breaking change when ADR-017 lands |
 | R-29 | Accessibility regression (`EV-ACCESSIBILITY-AA`) | Any new axe-core violation on non-scene UI, or WCAG 2.2 AA manual-audit failure not fixed before release candidate |
 | R-30 | Color management regression (`EV-COLOR-MANAGEMENT-SRGB`) | Any non-scene UI pixel rendered outside sRGB on a color-managed display in release candidate; ColorSync/ICC round-trip failure on documented profiles |
 | R-31 | `ts-rs` type-binding drift between Rust core and TypeScript UI | CI fails the `npm run check` step on stale bindings; any UI build against a bindings file whose hash differs from a fresh `build.rs` export |
@@ -289,7 +289,7 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 ### R-21 Audio Algorithm Spec Ambiguity
 - Probability: Low (now that `06-audio-engine.md` Sec.7 is normative), Medium-High if Sec.7 drifts out of sync with implementation.
 - Impact: High (blocks `EV-AUDIO-TRACE` parity claims)
-- Trigger: implementation deviates from Sec.7 constants; fixtures fail drift tolerance; `syn_BPMConfidence` or hit algorithm produces qualitatively different output than declared.
+- Trigger: implementation deviates from Sec.7 constants; fixtures fail drift tolerance; `chroma_BPMConfidence` or hit algorithm produces qualitatively different output than declared.
 - Mitigation:
  - Sec.7 constants pinned per compatibility profile; changes require profile bump,
  - audio fixtures include algorithm-parameter checksum in `EV-AUDIO-TRACE` run metadata,
@@ -384,11 +384,11 @@ When another document cites `R-NN`, it refers to the full entry (the `###` secti
 ### R-28 Data-Ingestion Architectural Debt
 - Probability: Medium (the differentiator is compelling; pressure will exist to ship a "quick" data-ingesting scene before ADR-017 lands).
 - Impact: High (a scene shipped against a non-reserved uniform namespace, scene-json key, or OSC prefix becomes a breaking-change debt when ADR-017 activates its intended semantics; retrofitting is invariably more expensive than reservation).
-- Trigger: any of (a) a shipped scene references a `syn_Data_*` uniform without a matching `DATA_SOURCES` stanza, (b) a shipped scene uses an undeclared scene.json root key that conflicts with the reserved `DATA_SOURCES` schema, (c) a third-party tool or integration squats on the `/data/*` OSC prefix expecting a different semantic, (d) a `data.ingest.*` capability token is issued to a client runtime that has not implemented the capability evaluator.
+- Trigger: any of (a) a shipped scene references a `chroma_Data_*` uniform without a matching `DATA_SOURCES` stanza, (b) a shipped scene uses an undeclared scene.json root key that conflicts with the reserved `DATA_SOURCES` schema, (c) a third-party tool or integration squats on the `/data/*` OSC prefix expecting a different semantic, (d) a `data.ingest.*` capability token is issued to a client runtime that has not implemented the capability evaluator.
 - Mitigation:
  - Every reservation in `41-data-ingestion-differentiator.md` Sec.Forward-compatibility reservations locked in MVP is in place and asserted by existing evidence (`EV-SYMBOL-CATALOG`, `EV-ARCH-CONTRACT-BASELINE`, `EV-ENTITLEMENT-ENFORCEMENT`, `OSC-CONF-16`).
- - MVP runtime **fails closed** on the reservations: typos in `syn_Data_*` strict-reject (see `36-reactive-symbol-catalog.md` Sec.1.6 rules), missing `DATA_SOURCES` validation drops to strict-reject or compat-drop-with-warn (see CP-12), `/data/*` OSC prefix rejects inbound at MVP with `prefix-reserved`. These behaviors mean pre-ADR-017 misuse cannot silently succeed.
- - ADR-017 must be authored before any first-party scene or provider ships that uses the `syn_Data_*` surface; `EV-ARCH-CONTRACT-BASELINE` release gate grows an `ADR-017 required` item at the point the first `DATA_SOURCES`-declaring scene is proposed for inclusion in the bundled corpus.
+ - MVP runtime **fails closed** on the reservations: typos in `chroma_Data_*` strict-reject (see `36-reactive-symbol-catalog.md` Sec.1.6 rules), missing `DATA_SOURCES` validation drops to strict-reject or compat-drop-with-warn (see CP-12), `/data/*` OSC prefix rejects inbound at MVP with `prefix-reserved`. These behaviors mean pre-ADR-017 misuse cannot silently succeed.
+ - ADR-017 must be authored before any first-party scene or provider ships that uses the `chroma_Data_*` surface; `EV-ARCH-CONTRACT-BASELINE` release gate grows an `ADR-017 required` item at the point the first `DATA_SOURCES`-declaring scene is proposed for inclusion in the bundled corpus.
 - Residual: Low. Fail-closed posture plus `prefix-reserved` diagnostic make architectural debt a visible runtime rejection rather than silent shipping; the only remaining risk is third-party scope-creep pressure, which is governance-level.
 - Owner: Accountable Owner (for scope discipline) + AI Runtime Workcell (for enforcement of the fail-closed posture).
 

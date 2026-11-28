@@ -48,7 +48,7 @@ Define the canonical **internal regression corpus** used by `EV-SCENE-IMPORT`, `
 | Shadertoy import fixtures | 3 | covers FR-14 Shadertoy path (`EV-IMPORT-SHADERTOY`) |
 | ISF reject fixtures | 2 | covers FR-14 ISF reject path (`EV-IMPORT-ISF-REJECT`) |
 
-Minimum total: >= 148 fixtures (adds one Profile-D `syn_PrimeBang` heuristic fixture). Additions are expected; the minimum only guards coverage floor.
+Minimum total: >= 148 fixtures (adds one Profile-D `chroma_PrimeBang` heuristic fixture). Additions are expected; the minimum only guards coverage floor.
 
 ### Baseline Fixture Subset (for SLO-03)
 `baseline-profile-fixture-subset` is a declared sub-corpus used by SLO-03 targets in `21-operational-slos-slis.md`. It contains:
@@ -62,7 +62,7 @@ Total: ~20 fixtures, authored to stay within `p95 frame-time <= 16.67 ms` on `ba
 ### Profile-D Heuristic Fixtures
 | Dimension | Minimum Count | Notes |
 |---|---:|---|
-| `syn_PrimeBang` trigger fixtures | 1 | Covers `06-audio-engine.md` Sec.7.14 heuristic gate. Acceptance criterion: symbol fires on the seeded large-transition input and stays silent on the seeded no-transition input. Not epsilon-matched to any reference output. |
+| `chroma_PrimeBang` trigger fixtures | 1 | Covers `06-audio-engine.md` Sec.7.14 heuristic gate. Acceptance criterion: symbol fires on the seeded large-transition input and stays silent on the seeded no-transition input. Not epsilon-matched to any reference output. |
 
 ## Provenance and Licensing Rules
 - Every fixture directory contains a `PROVENANCE.md` with origin class, author/workcell, design reference, and `release_inclusion` flag.

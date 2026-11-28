@@ -84,9 +84,9 @@ The default template delivers an audio-reactive colour-shifting gradient with on
   // Welcome to your new Chromaticity scene!
   // Docs: /reference/scene-json  /reference/standard-uniforms  /reference/audio-uniforms
   //
-  // Available audio uniforms: syn_Level, syn_BassLevel, syn_MidLevel, syn_HighLevel,
-  //                            syn_OnBeat, syn_BPMSin, syn_Time, syn_CurvedTime.
-  // Available standard uniforms: _uv, _uvc, TIME, RENDERSIZE, syn_Media.
+  // Available audio uniforms: chroma_Level, chroma_BassLevel, chroma_MidLevel, chroma_HighLevel,
+  //                            chroma_OnBeat, chroma_BPMSin, chroma_AudioTime, chroma_CurvedTime.
+  // Available standard uniforms: _uv, _uvc, TIME, RENDERSIZE, chroma_Media.
 
   vec4 renderMain() {
       vec2 uv = _uvc;
@@ -94,13 +94,13 @@ The default template delivers an audio-reactive colour-shifting gradient with on
       float a = atan(uv.y, uv.x);
 
       // audio-reactive color ramp
-      vec3 colA = _palette(r + syn_Time * 0.1,
+      vec3 colA = _palette(r + chroma_AudioTime * 0.1,
                            vec3(0.5), vec3(0.5),
                            vec3(1.0), vec3(0.00, 0.33, 0.67));
-      vec3 colB = colA * (0.8 + 0.4 * syn_BassLevel);
+      vec3 colB = colA * (0.8 + 0.4 * chroma_BassLevel);
 
       // on-beat accent ring
-      float ring = smoothstep(0.01, 0.0, abs(r - 0.5 - 0.1 * syn_OnBeat));
+      float ring = smoothstep(0.01, 0.0, abs(r - 0.5 - 0.1 * chroma_OnBeat));
       vec3 col = mix(colB, vec3(1.0), ring * intensity);
 
       // media blend (fades in if operator has media selected)
@@ -117,7 +117,7 @@ The default template delivers an audio-reactive colour-shifting gradient with on
 #### Scaffolder UX
 - Scaffolder dialog accepts a `NAME` (default `untitled-<n>`), and offers checkboxes:
  - **Include Script** - adds `script.js` with `setup()`, `update(dt)`, and `transition()` skeletons, each containing a one-line example.
- - **Multi-pass** - extends `PASSES` to two entries (`main` intermediate + `backbuff` composite) with an example feedback-read from `syn_FinalPass`.
+ - **Multi-pass** - extends `PASSES` to two entries (`main` intermediate + `backbuff` composite) with an example feedback-read from `chroma_FinalPass`.
  - **Audio-reactive template** (on by default) - produces the template above. When off, produces the minimal placeholder template retained for backward compatibility.
 - Creation places the new scene package under the active authoring folder and opens it in a new tab set.
 

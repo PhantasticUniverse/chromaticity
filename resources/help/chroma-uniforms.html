@@ -1128,19 +1128,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 <h1 id="chromaticity-uniform-reference">Chromaticity Uniform Reference</h1>
-<p>Chromaticity exposes two uniform namespaces to scene authors:</p>
-<ul>
-<li><code>syn_*</code> — the Synesthesia compatibility namespace (<code>compat-syn-v1</code>).
-  These names exist for parity with reference scenes and are the
-  primary surface authors should reach for when writing scenes that
-  need to load on both runtimes.</li>
-<li><code>chroma_*</code> — the chromaticity-native namespace (<code>native-chroma-v1</code>).
-  These names cover net-new analysis primitives and chromaticity-first
-  surfaces that have no equivalent in the compatibility catalog.</li>
-</ul>
-<p>Authors may mix the two namespaces freely inside a single scene. The
-binding adapter publishes the uniforms in a stable per-pass order; GLSL
-authors declare each uniform with its canonical name and type.</p>
+<p>Every reactive uniform, script global and symbol Chromaticity exposes to
+scene authors uses the <code>chroma_*</code> namespace. Standard non-prefixed names
+(<code>TIME</code>, <code>RENDERSIZE</code>, the <code>_Meta</code> controls and the <code>_*</code> helper functions)
+complete the authoring surface.</p>
+<p>Imported <code>.synScene</code> packages keep working: the importer and the live
+renderer translate their reference-format names onto the <code>chroma_*</code> names
+below automatically, so you never need to write them yourself.</p>
 <h2 id="live-gpu-ubo-layout-std140-binding-0">Live GPU UBO Layout (<code>std140</code>, binding 0)</h2>
 <p>In Chromaticity's live <code>wgpu</code>/Metal preview renderer (<code>app/shell/src/render.rs</code>),
 the runtime packs a single <code>std140</code> uniform block at <code>layout(set = 0, binding = 0)</code>.
@@ -1148,7 +1142,7 @@ Native <code>.chroma</code> shaders declare the packed <code>vec4</code> block d
 <pre><code class="language-glsl">layout(set = 0, binding = 0, std140) uniform ChromaUniforms {
     vec4 chroma_Time;       // x = elapsed_s, y = dt, z = frame, w = aspect
     vec4 chroma_Resolution; // x = width, y = height, z = 1/width, w = 1/height
-    vec4 syn_BPM;           // x = bpm, y = beat_time, z = on_beat, w = bpm_sin
+    vec4 chroma_BPM;           // x = bpm, y = beat_time, z = on_beat, w = bpm_sin
     vec4 chroma_AudioRMS;   // x = rms
     vec4 chroma_AudioPeak;  // x = peak
     float chroma_AudioFFT[8]; // 8 log-spaced FFT bands (std140-padded array)
@@ -1174,11 +1168,12 @@ the renderer automatically appends <code>chroma_AudioEnv0..3</code> and
 on the audio-analysis thread, which the audio-to-render adapter
 marshals into the GPU uniform slots above. Uniforms that read zero are the
 documented all-zero baseline for "no audio observed yet"; in <code>Auto</code> BPM mode,
-<code>syn_BPM.x</code> reports <code>0.0</code> until audio tempo locks (or locks to the operator's
-manual tempo in <code>Manual</code> mode). Imported <code>.synScene</code> shaders automatically
-receive compatibility macros for <code>syn_BPMTwitcher</code>, <code>syn_BPMSin2/4/8</code>,
-<code>syn_BPMTri/2/4/8</code>, and <code>syn_Spectrum</code> backed by <code>chroma_AudioFFT[8]</code> via
-<code>SYN_LIVE_GPU_ABI_BRIDGE</code>.</p>
+<code>chroma_BPM.x</code> reports <code>0.0</code> until audio tempo locks (or locks to the operator's
+manual tempo in <code>Manual</code> mode). The beat shapes
+(<code>chroma_BPMTwitcher</code>, <code>chroma_BPMSin2/4/8</code>, <code>chroma_BPMTri/2/4/8</code>) and the
+<code>chroma_Spectrum</code> sampler (backed by <code>chroma_AudioFFT[8]</code>) are currently
+computed live only for imported <code>.synScene</code> shaders; for native <code>.chroma</code>
+shaders they are planned (marked below).</p>
 <h3 id="scalar-audio-uniforms-runtime-planned-catalog">Scalar audio uniforms (runtime &amp; planned catalog)</h3>
 <table>
 <thead>
@@ -1192,88 +1187,88 @@ receive compatibility macros for <code>syn_BPMTwitcher</code>, <code>syn_BPMSin2
 </thead>
 <tbody>
 <tr>
-<td><code>syn_BPM</code></td>
-<td><code>vec4</code> (<code>syn_BPM.x</code>)</td>
+<td><code>chroma_BPM</code></td>
+<td><code>vec4</code> (<code>chroma_BPM.x</code>)</td>
 <td><code>[50, 220]</code></td>
 <td>Live</td>
 <td>Estimated tempo (<code>x=bpm, y=beat_time, z=on_beat, w=bpm_sin</code>)</td>
 </tr>
 <tr>
-<td><code>syn_BPMConfidence</code></td>
+<td><code>chroma_BPMConfidence</code></td>
 <td><code>float</code> (<code>chroma_AudioMeta.z</code>)</td>
 <td><code>[0, 1]</code></td>
 <td>Live</td>
 <td>Tempo-stability confidence; near 1 when the estimator agrees across the history window</td>
 </tr>
 <tr>
-<td><code>syn_BPMTwitcher</code></td>
+<td><code>chroma_BPMTwitcher</code></td>
 <td><code>float</code></td>
 <td><code>[0, inf)</code></td>
-<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
+<td>Live (imported <code>.synScene</code>) / Planned (native <code>.chroma</code>)</td>
 <td>Exponential "jump" clock; <code>floor</code> is the beat count, <code>fract</code> is the per-beat twitch</td>
 </tr>
 <tr>
-<td><code>syn_BPMSin</code></td>
-<td><code>float</code> (<code>syn_BPM.w</code>)</td>
+<td><code>chroma_BPMSin</code></td>
+<td><code>float</code> (<code>chroma_BPM.w</code>)</td>
 <td><code>[0, 1]</code></td>
 <td>Live</td>
 <td>Sine wave at BPM frequency, beat-phase-locked</td>
 </tr>
 <tr>
-<td><code>syn_BPMSin2</code></td>
+<td><code>chroma_BPMSin2</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
+<td>Live (imported <code>.synScene</code>) / Planned (native <code>.chroma</code>)</td>
 <td>Sine wave at BPM divided by 2</td>
 </tr>
 <tr>
-<td><code>syn_BPMSin4</code></td>
+<td><code>chroma_BPMSin4</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
+<td>Live (imported <code>.synScene</code>) / Planned (native <code>.chroma</code>)</td>
 <td>Sine wave at BPM divided by 4</td>
 </tr>
 <tr>
-<td><code>syn_BPMTri</code></td>
+<td><code>chroma_BPMTri</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
+<td>Live (imported <code>.synScene</code>) / Planned (native <code>.chroma</code>)</td>
 <td>Triangle wave at BPM frequency</td>
 </tr>
 <tr>
-<td><code>syn_BPMTri2</code></td>
+<td><code>chroma_BPMTri2</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
+<td>Live (imported <code>.synScene</code>) / Planned (native <code>.chroma</code>)</td>
 <td>Triangle wave at BPM divided by 2</td>
 </tr>
 <tr>
-<td><code>syn_BPMTri4</code></td>
+<td><code>chroma_BPMTri4</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
+<td>Live (imported <code>.synScene</code>) / Planned (native <code>.chroma</code>)</td>
 <td>Triangle wave at BPM divided by 4</td>
 </tr>
 <tr>
-<td><code>syn_InputLevel</code></td>
+<td><code>chroma_InputLevel</code></td>
 <td><code>float</code> (<code>chroma_AudioRMS.x</code>)</td>
 <td><code>[0, inf)</code></td>
 <td>Live</td>
 <td>Pre-AGC instantaneous input level</td>
 </tr>
 <tr>
-<td><code>syn_RawLevel</code></td>
+<td><code>chroma_RawLevel</code></td>
 <td><code>float</code> (<code>chroma_AudioRMS.x</code>)</td>
 <td><code>[0, inf)</code></td>
 <td>Live</td>
-<td>Alias of <code>syn_InputLevel</code> with identical semantics</td>
+<td>Alias of <code>chroma_InputLevel</code> with identical semantics</td>
 </tr>
 <tr>
-<td><code>syn_Threshold</code></td>
+<td><code>chroma_Threshold</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
 <td>Runtime / OSC</td>
-<td>Operator-settable noise-floor gate; audio hops below this value publish zeroed <code>syn_Level*</code> and <code>syn_*Hits</code></td>
+<td>Operator-settable noise-floor gate; audio hops below this value publish zeroed <code>chroma_Level*</code> and <code>chroma_*Hits</code></td>
 </tr>
 <tr>
 <td><code>chroma_AudioRMS</code></td>
@@ -1309,13 +1304,13 @@ receive compatibility macros for <code>syn_BPMTwitcher</code>, <code>syn_BPMSin2
 <td>Eight log-spaced FFT band magnitudes covering 20 Hz to 20 kHz; element 0 is the lowest band, element 7 is the highest</td>
 </tr>
 <tr>
-<td><code>syn_Spectrum</code></td>
+<td><code>chroma_Spectrum</code></td>
 <td><code>sampler1D</code></td>
-<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
+<td>Live (imported <code>.synScene</code>) / Planned (native <code>.chroma</code>)</td>
 <td>Per-frame audio sampler (<code>r=Raw FFT, g=Juiced, b=Smooth, a=Waveform</code>); bridged from <code>chroma_AudioFFT[8]</code> on imported <code>.synScene</code> shaders</td>
 </tr>
 <tr>
-<td><code>syn_LevelTrail</code></td>
+<td><code>chroma_LevelTrail</code></td>
 <td><code>sampler1D</code></td>
 <td>Planned</td>
 <td>Per-band historical levels over time, newest sample at <code>u=0</code></td>
@@ -1333,45 +1328,45 @@ receive compatibility macros for <code>syn_BPMTwitcher</code>, <code>syn_BPMSin2
 </thead>
 <tbody>
 <tr>
-<td><code>syn_Time</code></td>
+<td><code>chroma_AudioTime</code></td>
 <td><code>float</code></td>
-<td>Wallclock seconds since scene start</td>
+<td>Audio-energy-integrated clock: advances faster when the music is louder (wall-clock time is <code>chroma_Time.x</code>)</td>
 </tr>
 <tr>
-<td><code>syn_BassTime</code></td>
+<td><code>chroma_BassTime</code></td>
 <td><code>float</code></td>
 <td>Time accumulator that accelerates on bass-band hits</td>
 </tr>
 <tr>
-<td><code>syn_MidTime</code></td>
+<td><code>chroma_MidTime</code></td>
 <td><code>float</code></td>
 <td>Time accumulator that accelerates on mid-band hits</td>
 </tr>
 <tr>
-<td><code>syn_MidHighTime</code></td>
+<td><code>chroma_MidHighTime</code></td>
 <td><code>float</code></td>
 <td>Time accumulator that accelerates on mid-high-band hits</td>
 </tr>
 <tr>
-<td><code>syn_HighTime</code></td>
+<td><code>chroma_HighTime</code></td>
 <td><code>float</code></td>
 <td>Time accumulator that accelerates on high-band hits</td>
 </tr>
 <tr>
-<td><code>syn_CurvedTime</code></td>
+<td><code>chroma_CurvedTime</code></td>
 <td><code>float</code></td>
-<td>Same base as <code>syn_Time</code> with exponential acceleration on volume rises</td>
+<td>Same base as <code>chroma_AudioTime</code> with exponential acceleration on volume rises</td>
 </tr>
 </tbody>
 </table>
 <h2 id="authoring-conventions">Authoring conventions</h2>
 <p>When a scene needs both raw analysis (the <code>chroma_*</code> audio primitives)
-and the smoothed / normalized parity surface (<code>syn_Level*</code>,
-<code>syn_Spectrum</code>), declare both uniforms; the binding adapter keeps the
+and the smoothed / normalized parity surface (<code>chroma_Level*</code>,
+<code>chroma_Spectrum</code>), declare both uniforms; the binding adapter keeps the
 raw and smoothed paths independent so authors can pick the surface that
-matches each visual element. Avoid coining new <code>syn_*</code> names for
-chromaticity-native features — the Synesthesia namespace is reserved
-for compatibility coverage; net-new primitives belong under <code>chroma_*</code>.</p>
+matches each visual element. New uniforms and script outputs you
+define yourself can use any name; built-in reactive values always use
+<code>chroma_*</code>.</p>
 <p>The published GLSL spelling for every uniform on this page is exactly
 the canonical name; the runtime does not perform per-binding casing
 fixups. A typo at the GLSL declaration site silently leaves the
