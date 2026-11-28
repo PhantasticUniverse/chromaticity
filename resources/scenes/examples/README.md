@@ -33,6 +33,12 @@ empty at Wave 4b.1 closure under `EV-LIBRARY-BUNDLE-LAYOUT`
   `chroma_AudioRMS` / `chroma_AudioPeak` / `chroma_AudioFFT[8]`
   uniforms per `docs/36` §2.11 lands when the per-pass shader pipeline
   for example scenes ships in a follow-up wave.
+- `media-mirror.chroma` — scene-media example (milestone 2a, 2026-11-28).
+  Folds the media selected in the Perform MediaStrip (webcam, display,
+  media file or test card) into a rotating kaleidoscope via
+  `chroma_Media` / `_isMediaActive()` / `_textureMedia()`, with
+  beat-synced ring accents; falls back to a soft gradient when no media
+  is selected.
 - `bass-pulse.chroma` — single-band bass-driven pulse demo. A
   bass-gain slider controls inbound audio sensitivity; a pulse-curve
   knob shapes the response envelope; attack and release sliders govern

@@ -1739,7 +1739,7 @@ void main() {
     }
 
     #[test]
-    fn all_25_bundled_scenes_compile_and_render_on_gpu() {
+    fn all_26_bundled_scenes_compile_and_render_on_gpu() {
         let bundled_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes");
         let mut scene_dirs = Vec::new();
         for sub in ["library", "welcome", "examples"] {
@@ -1754,8 +1754,8 @@ void main() {
         scene_dirs.sort();
         assert_eq!(
             scene_dirs.len(),
-            25,
-            "expected all 25 bundled .chroma scenes"
+            26,
+            "expected all 26 bundled .chroma scenes"
         );
 
         let mut engine = GpuPreviewEngine::new();

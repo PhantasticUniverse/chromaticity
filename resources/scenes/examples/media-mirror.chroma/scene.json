@@ -1,0 +1,32 @@
+{
+  "SCHEMA_VERSION": 1,
+  "TITLE": "Media Mirror",
+  "CREDIT": "chromaticity",
+  "DESCRIPTION": "Minimal scene-media example: folds the selected media source (webcam, display, media file, or test card) into a rotating kaleidoscope with beat-synced ring accents. With no media selected it falls back to a soft animated gradient. Demonstrates chroma_Media, _isMediaActive and _textureMedia.",
+  "TAGS": ["media", "example", "kaleidoscope", "webcam"],
+  "CATEGORIES": ["BUILT-IN", "EXAMPLES"],
+  "CONTROLS": [
+    {
+      "NAME": "segments",
+      "TYPE": "slider",
+      "DEFAULT": 0.35,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "zoom",
+      "TYPE": "slider",
+      "DEFAULT": 0.5,
+      "MIN": 0.0,
+      "MAX": 1.0
+    },
+    {
+      "NAME": "spin",
+      "TYPE": "knob",
+      "DEFAULT": 0.3,
+      "MIN": 0.0,
+      "MAX": 1.0
+    }
+  ],
+  "PASSES": []
+}

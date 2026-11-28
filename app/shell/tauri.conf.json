@@ -96,6 +96,8 @@
       "../../resources/scenes/examples/transition-fade.chroma/main.glsl": "scenes/examples/transition-fade.chroma/main.glsl",
       "../../resources/scenes/examples/uniform-palette.chroma/scene.json": "scenes/examples/uniform-palette.chroma/scene.json",
       "../../resources/scenes/examples/uniform-palette.chroma/main.glsl": "scenes/examples/uniform-palette.chroma/main.glsl",
+      "../../resources/scenes/examples/media-mirror.chroma/scene.json": "scenes/examples/media-mirror.chroma/scene.json",
+      "../../resources/scenes/examples/media-mirror.chroma/main.glsl": "scenes/examples/media-mirror.chroma/main.glsl",
       "../../resources/scenes/shadertoy-fixtures/README.md": "scenes/shadertoy-fixtures/README.md",
       "../../resources/help/index.html": "help/index.html",
       "../../resources/help/about.html": "help/about.html",
