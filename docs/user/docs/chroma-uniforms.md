@@ -72,13 +72,13 @@ receive compatibility macros for `syn_BPMTwitcher`, `syn_BPMSin2/4/8`,
 | --- | --- | --- | --- | --- |
 | `syn_BPM` | `vec4` (`syn_BPM.x`) | `[50, 220]` | Live | Estimated tempo (`x=bpm, y=beat_time, z=on_beat, w=bpm_sin`) |
 | `syn_BPMConfidence` | `float` (`chroma_AudioMeta.z`) | `[0, 1]` | Live | Tempo-stability confidence; near 1 when the estimator agrees across the history window |
-| `syn_BPMTwitcher` | `float` | `[0, inf)` | Planned | Exponential "jump" clock; `floor` is the beat count, `fract` is the per-beat twitch |
+| `syn_BPMTwitcher` | `float` | `[0, inf)` | Live (`.synScene` ABI bridge) / Planned (native `.chroma`) | Exponential "jump" clock; `floor` is the beat count, `fract` is the per-beat twitch |
 | `syn_BPMSin` | `float` (`syn_BPM.w`) | `[0, 1]` | Live | Sine wave at BPM frequency, beat-phase-locked |
-| `syn_BPMSin2` | `float` | `[0, 1]` | Planned | Sine wave at BPM divided by 2 |
-| `syn_BPMSin4` | `float` | `[0, 1]` | Planned | Sine wave at BPM divided by 4 |
-| `syn_BPMTri` | `float` | `[0, 1]` | Planned | Triangle wave at BPM frequency |
-| `syn_BPMTri2` | `float` | `[0, 1]` | Planned | Triangle wave at BPM divided by 2 |
-| `syn_BPMTri4` | `float` | `[0, 1]` | Planned | Triangle wave at BPM divided by 4 |
+| `syn_BPMSin2` | `float` | `[0, 1]` | Live (`.synScene` ABI bridge) / Planned (native `.chroma`) | Sine wave at BPM divided by 2 |
+| `syn_BPMSin4` | `float` | `[0, 1]` | Live (`.synScene` ABI bridge) / Planned (native `.chroma`) | Sine wave at BPM divided by 4 |
+| `syn_BPMTri` | `float` | `[0, 1]` | Live (`.synScene` ABI bridge) / Planned (native `.chroma`) | Triangle wave at BPM frequency |
+| `syn_BPMTri2` | `float` | `[0, 1]` | Live (`.synScene` ABI bridge) / Planned (native `.chroma`) | Triangle wave at BPM divided by 2 |
+| `syn_BPMTri4` | `float` | `[0, 1]` | Live (`.synScene` ABI bridge) / Planned (native `.chroma`) | Triangle wave at BPM divided by 4 |
 | `syn_InputLevel` | `float` (`chroma_AudioRMS.x`) | `[0, inf)` | Live | Pre-AGC instantaneous input level |
 | `syn_RawLevel` | `float` (`chroma_AudioRMS.x`) | `[0, inf)` | Live | Alias of `syn_InputLevel` with identical semantics |
 | `syn_Threshold` | `float` | `[0, 1]` | Runtime / OSC | Operator-settable noise-floor gate; audio hops below this value publish zeroed `syn_Level*` and `syn_*Hits` |
@@ -90,7 +90,7 @@ receive compatibility macros for `syn_BPMTwitcher`, `syn_BPMSin2/4/8`,
 | Uniform | Type | Live GPU Status | Description |
 | --- | --- | --- | --- |
 | `chroma_AudioFFT[8]` | `float[8]` | Live (std140 binding 0) | Eight log-spaced FFT band magnitudes covering 20 Hz to 20 kHz; element 0 is the lowest band, element 7 is the highest |
-| `syn_Spectrum` | `sampler1D` | Planned | Per-frame audio sampler (`r=Raw FFT, g=Juiced, b=Smooth, a=Waveform`) |
+| `syn_Spectrum` | `sampler1D` | Live (`.synScene` ABI bridge) / Planned (native `.chroma`) | Per-frame audio sampler (`r=Raw FFT, g=Juiced, b=Smooth, a=Waveform`); bridged from `chroma_AudioFFT[8]` on imported `.synScene` shaders |
 | `syn_LevelTrail` | `sampler1D` | Planned | Per-band historical levels over time, newest sample at `u=0` |
 
 ## Time uniforms

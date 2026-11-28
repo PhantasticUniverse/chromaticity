@@ -132,11 +132,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       gpuActive = false;
       return;
     }
-    const sceneId = loadedSceneStore.snapshot?.id ?? null;
-    if (!sceneId) {
-      gpuActive = false;
-      return;
-    }
+    // Track loaded scene changes so switching scenes re-checks GPU status,
+    // while still activating in separate output windows even if snapshot is null.
+    void loadedSceneStore.snapshot?.id;
     let cancelled = false;
     void fetchGpuRenderStatus().then((status) => {
       if (!cancelled) {
@@ -330,7 +328,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     let recordingActive = false;
     let recPushInFlight = false;
     let lastRecPushAt = 0;
+    let effectDisposed = false;
     const isGpuLive = untrack(() => gpuLive);
+    const isMixMounted = (): boolean =>
+      Boolean((globalThis as { __chromaticityMixMounted?: boolean }).__chromaticityMixMounted);
 
     const onRecordingChange = (event: Event): void => {
       const custom = event as CustomEvent<{ isRecording?: boolean }>;
@@ -346,19 +347,20 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     const pushFrameIfRecording = (sourceCanvas: HTMLCanvasElement): void => {
       if (
         !isGpuLive ||
-        !recordingActive ||
         recPushInFlight ||
+        isMixMounted() ||
         typeof sourceCanvas.toBlob !== 'function'
       ) {
         return;
       }
       const now = performance.now();
-      if (now - lastRecPushAt < 33) return;
+      const minIntervalMs = recordingActive ? 33 : 100;
+      if (now - lastRecPushAt < minIntervalMs) return;
       lastRecPushAt = now;
       recPushInFlight = true;
       sourceCanvas.toBlob(
         (blob) => {
-          if (!blob || !recordingActive) {
+          if (!blob || effectDisposed || isMixMounted()) {
             recPushInFlight = false;
             return;
           }
@@ -460,6 +462,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     raf = requestAnimationFrame(loop);
 
     return () => {
+      effectDisposed = true;
       cancelAnimationFrame(raf);
       ro?.disconnect();
       if (isGpuLive && typeof window !== 'undefined') {

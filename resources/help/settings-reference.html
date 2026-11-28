@@ -1159,6 +1159,12 @@ display:</p>
 <li>Display assignment — selects which physical display the output
   window paints to in multi-display setups.</li>
 </ul>
+<p>!!! note "Preference persistence vs. live runtime enforcement"</p>
+<pre><code>All Graphics preferences above persist cleanly to `settings.toml`
+across restarts. Live runtime enforcement for Resolution, Render
+scale, Target FPS, V-Sync, and HDR swap-chain output remains
+planned (see `52-parity-coverage-matrix.md`).
+</code></pre>
 <h2 id="3-storage">3. Storage</h2>
 <p>The Storage section pins the filesystem locations the runtime reads
 and writes:</p>
@@ -1229,6 +1235,12 @@ destination machine.
 </code></pre>
 <p>See <a href="osc-routes.html">OSC Routes</a> for the route taxonomy and payload
 hardening defaults the OSC adapter enforces.</p>
+<p>!!! note "Live transport status"</p>
+<pre><code>Network and live-source preferences persist cleanly to
+`settings.toml`. OSC inbound/outbound transport is live; live
+runtime enforcement for NDI and Syphon/Spout texture transport
+remains planned (see `52-parity-coverage-matrix.md`).
+</code></pre>
 <h2 id="5-entitlement-and-capabilities">5. Entitlement and capabilities</h2>
 <p>Settings surfaces the active entitlement token and the resolved
 capability bitmask. Chromaticity's entitlement model is data-only —

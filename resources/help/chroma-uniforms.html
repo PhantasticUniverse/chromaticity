@@ -1209,7 +1209,7 @@ receive compatibility macros for <code>syn_BPMTwitcher</code>, <code>syn_BPMSin2
 <td><code>syn_BPMTwitcher</code></td>
 <td><code>float</code></td>
 <td><code>[0, inf)</code></td>
-<td>Planned</td>
+<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
 <td>Exponential "jump" clock; <code>floor</code> is the beat count, <code>fract</code> is the per-beat twitch</td>
 </tr>
 <tr>
@@ -1223,35 +1223,35 @@ receive compatibility macros for <code>syn_BPMTwitcher</code>, <code>syn_BPMSin2
 <td><code>syn_BPMSin2</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Planned</td>
+<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
 <td>Sine wave at BPM divided by 2</td>
 </tr>
 <tr>
 <td><code>syn_BPMSin4</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Planned</td>
+<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
 <td>Sine wave at BPM divided by 4</td>
 </tr>
 <tr>
 <td><code>syn_BPMTri</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Planned</td>
+<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
 <td>Triangle wave at BPM frequency</td>
 </tr>
 <tr>
 <td><code>syn_BPMTri2</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Planned</td>
+<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
 <td>Triangle wave at BPM divided by 2</td>
 </tr>
 <tr>
 <td><code>syn_BPMTri4</code></td>
 <td><code>float</code></td>
 <td><code>[0, 1]</code></td>
-<td>Planned</td>
+<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
 <td>Triangle wave at BPM divided by 4</td>
 </tr>
 <tr>
@@ -1311,8 +1311,8 @@ receive compatibility macros for <code>syn_BPMTwitcher</code>, <code>syn_BPMSin2
 <tr>
 <td><code>syn_Spectrum</code></td>
 <td><code>sampler1D</code></td>
-<td>Planned</td>
-<td>Per-frame audio sampler (<code>r=Raw FFT, g=Juiced, b=Smooth, a=Waveform</code>)</td>
+<td>Live (<code>.synScene</code> ABI bridge) / Planned (native <code>.chroma</code>)</td>
+<td>Per-frame audio sampler (<code>r=Raw FFT, g=Juiced, b=Smooth, a=Waveform</code>); bridged from <code>chroma_AudioFFT[8]</code> on imported <code>.synScene</code> shaders</td>
 </tr>
 <tr>
 <td><code>syn_LevelTrail</code></td>

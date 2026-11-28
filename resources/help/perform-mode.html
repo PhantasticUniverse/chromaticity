@@ -504,10 +504,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#status-bar-adapter-pills" class="md-nav__link">
+  <a href="#topbar-adapter-pills" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Status-bar adapter pills
+        TopBar adapter pills
       
     </span>
   </a>
@@ -1116,10 +1116,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#status-bar-adapter-pills" class="md-nav__link">
+  <a href="#topbar-adapter-pills" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Status-bar adapter pills
+        TopBar adapter pills
       
     </span>
   </a>
@@ -1227,13 +1227,16 @@ control-focused hotkeys take effect:</p>
 <p>The full operator hotkey vocabulary lives at
 <a href="hotkeys-reference.html">Hotkey Reference</a>.</p>
 <h2 id="meta-controls">Meta Controls</h2>
-<p>The Meta Controls panel exposes the scene-agnostic colour pipeline:
-master, brightness, gamma, contrast, hue, saturation, invert, vertical
-mirror, horizontal mirror, dichrome. Meta Controls are applied in the
-live frontend preview and stage compositor (dedicated GPU <code>_Meta*</code>
-shader uniforms are planned for a future render pass). The hotkeys
-<code>M</code> / <code>B</code> / <code>G</code> / <code>C</code> / <code>H</code> / <code>Y</code> enter modal slider-adjust mode against
-the matching meta control; <code>Esc</code> exits.</p>
+<p>The Meta Controls panel exposes the scene-agnostic colour and transform
+pipeline. A live Rust post-pass
+(<code>app/shell/src/commands/render.rs::apply_meta_color_pass</code>) applies the
+nine active controls — <code>invert</code>, <code>brightness</code>, <code>gamma</code>, <code>contrast</code>,
+<code>hue</code>, <code>saturation</code>, <code>vert mirror</code>, <code>hor mirror</code>, and <code>limit colors</code> —
+directly to <code>render_gpu_frame</code>, so the adjustments carry through to both
+the Perform preview and stage output. Dedicated GPU shader <code>_Meta*</code>
+uniforms and custom duotone swatch anchors remain planned for a future
+render pass. The hotkeys <code>M</code> / <code>B</code> / <code>G</code> / <code>C</code> / <code>H</code> / <code>Y</code> enter modal
+slider-adjust mode against the matching meta control; <code>Esc</code> exits.</p>
 <h2 id="the-preview-hero">The Preview hero</h2>
 <p>The Preview hero shows the live render output. It mirrors the actual
 output surface so the operator sees exactly what the audience sees.
@@ -1262,18 +1265,19 @@ slots, addressed by <code>1</code> through <code>0</code> in operator focus. Sav
 <p>The Snap surface is the chromaticity-native naming for what the
 <code>compat-syn-v1</code> OSC routes still call <code>favslots</code> — see
 <a href="osc-routes.html">OSC Routes</a> for the wire-level mapping.</p>
-<h2 id="status-bar-adapter-pills">Status-bar adapter pills</h2>
-<p>A status bar across the bottom of Perform mode renders one pill per
-runtime adapter — audio, OSC, MIDI, camera, Syphon (macOS only).
+<h2 id="topbar-adapter-pills">TopBar adapter pills</h2>
+<p>The persistent TopBar HUD across the top of Chromaticity renders live
+status pills for the active runtime surfaces — <code>OUT</code>, <code>AUDIO</code>, <code>MIDI</code>,
+and <code>OSC</code> (camera and Syphon pills are not surfaced in the HUD yet).
 Each pill surfaces:</p>
 <ul>
 <li>A connectivity dot (online / degraded / offline).</li>
-<li>The bound interface or device name.</li>
-<li>A click target opening the per-adapter inspector.</li>
+<li>The active target, device, or port state.</li>
+<li>A click target opening the corresponding inspector or settings view.</li>
 </ul>
 <p>When an adapter is degraded, a one-line banner appears at the top of
-the view explaining the cause and pointing at Settings → Sources for
-the recovery action.</p>
+the view explaining the cause and pointing at Settings for the recovery
+action.</p>
 <h2 id="why-perform-mode-is-the-default">Why Perform mode is the default</h2>
 <p>Perform mode is the surface every operator hits first because it
 balances density with safety: every common live action is reachable

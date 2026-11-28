@@ -192,8 +192,16 @@ vec4 _chroma_sample_spectrum(vec2 uv) {
     return vec4(v, v, v, v);
 }
 
+vec4 _chroma_sample_spectrum(vec2 uv, float lod) {
+    return _chroma_sample_spectrum(uv) + 0.0 * vec4(lod);
+}
+
 vec4 _chroma_sample_media(vec2 uv) {
     return vec4(0.0, 0.0, 0.0, 1.0) + 0.0 * vec4(uv, 0.0, 0.0);
+}
+
+vec4 _chroma_sample_media(vec2 uv, float lod) {
+    return _chroma_sample_media(uv) + 0.0 * vec4(lod);
 }
 "#;
 
@@ -219,10 +227,76 @@ fn ctrl_channel_expr(slot: usize) -> Option<&'static str> {
     SLOTS.get(slot).copied()
 }
 
+/// Rewrite `texture(`, `texture2D(`, and `textureLod(` calls targeting a
+/// Synesthesia virtual sampler (`syn_UserImage` or `syn_Spectrum`) into the
+/// live std140 helper function, tolerating arbitrary whitespace around the
+/// sampler argument.
+fn rewrite_syn_sampler_calls(source: &str, sampler_name: &str, replacement_fn: &str) -> String {
+    const CALL_NAMES: &[&str] = &["textureLod", "texture2D", "texture"];
+    let bytes = source.as_bytes();
+    let mut out = String::with_capacity(source.len());
+    let mut cursor = 0usize;
+
+    while cursor < source.len() {
+        let mut matched: Option<usize> = None;
+        for &call in CALL_NAMES {
+            if source[cursor..].starts_with(call) {
+                let prev_is_ident = cursor > 0
+                    && (bytes[cursor - 1].is_ascii_alphanumeric() || bytes[cursor - 1] == b'_');
+                if prev_is_ident {
+                    continue;
+                }
+                let after_name = cursor + call.len();
+                let ws_before_paren = source[after_name..]
+                    .bytes()
+                    .take_while(|b| b.is_ascii_whitespace())
+                    .count();
+                let paren_pos = after_name + ws_before_paren;
+                if paren_pos >= source.len() || bytes[paren_pos] != b'(' {
+                    continue;
+                }
+                let after_paren = paren_pos + 1;
+                let ws_before_arg = source[after_paren..]
+                    .bytes()
+                    .take_while(|b| b.is_ascii_whitespace())
+                    .count();
+                let arg_pos = after_paren + ws_before_arg;
+                if !source[arg_pos..].starts_with(sampler_name) {
+                    continue;
+                }
+                let after_arg = arg_pos + sampler_name.len();
+                let ws_before_comma = source[after_arg..]
+                    .bytes()
+                    .take_while(|b| b.is_ascii_whitespace())
+                    .count();
+                let comma_pos = after_arg + ws_before_comma;
+                if comma_pos < source.len() && bytes[comma_pos] == b',' {
+                    matched = Some(comma_pos + 1);
+                    break;
+                }
+            }
+        }
+        if let Some(next_pos) = matched {
+            out.push_str(replacement_fn);
+            out.push('(');
+            cursor = next_pos;
+        } else if let Some(ch) = source[cursor..].chars().next() {
+            out.push(ch);
+            cursor += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
 /// Adapt a `.synScene`-imported fragment shader (emitting `_ChromaSynBuiltins`
 /// and `_ChromaSynControls`) to Chromaticity's live binding-0 std140 UBO ABI
 /// so imported scenes compile and render live on `GpuPreviewEngine`.
-fn adapt_syn_imported_shader(source: &str) -> String {
+///
+/// `pass_index` parameterizes `#define PASSINDEX (<pass_index>.0)` for
+/// multi-pass `.synScene` packages declaring `PASSES`.
+fn adapt_syn_imported_shader(source: &str, pass_index: u32) -> String {
     const BUILTINS_START: &str =
         "layout(set = 0, binding = 0, std140) uniform _ChromaSynBuiltins {";
     const SPECTRUM_END: &str =
@@ -236,7 +310,15 @@ fn adapt_syn_imported_shader(source: &str) -> String {
     if let (Some(start), Some(end_rel)) = (out.find(BUILTINS_START), out.find(SPECTRUM_END)) {
         let end = end_rel + SPECTRUM_END.len();
         if end >= start {
-            out.replace_range(start..end, SYN_LIVE_GPU_ABI_BRIDGE);
+            let bridge = if pass_index == 0 {
+                SYN_LIVE_GPU_ABI_BRIDGE.to_string()
+            } else {
+                SYN_LIVE_GPU_ABI_BRIDGE.replace(
+                    "#define PASSINDEX (0.0)",
+                    &format!("#define PASSINDEX ({pass_index}.0)"),
+                )
+            };
+            out.replace_range(start..end, &bridge);
         }
     }
 
@@ -293,12 +375,13 @@ fn adapt_syn_imported_shader(source: &str) -> String {
     }
 
     // Replace unbound media/spectrum texture lookups with live std140 fallbacks.
+    out = rewrite_syn_sampler_calls(&out, "syn_Spectrum", "_chroma_sample_spectrum");
+    out = rewrite_syn_sampler_calls(&out, "syn_UserImage", "_chroma_sample_media");
     out = out.replace(
-        "return texture(syn_UserImage, uv);",
-        "return _chroma_sample_media(uv);",
+        "textureSize(syn_UserImage, 0)",
+        "ivec2(max(RENDERSIZE, vec2(1.0)))",
     );
-    out = out.replace("texture(syn_Spectrum,", "_chroma_sample_spectrum(");
-    out = out.replace("texture(syn_UserImage,", "_chroma_sample_media(");
+    out = out.replace("textureSize(syn_Spectrum, 0)", "ivec2(8, 1)");
 
     out
 }
@@ -308,8 +391,9 @@ fn adapt_syn_imported_shader(source: &str) -> String {
 fn preprocess_shader_with_helpers(
     source: &str,
     resource_dir: Option<&Path>,
+    pass_index: u32,
 ) -> Result<String, String> {
-    let adapted = adapt_syn_imported_shader(source);
+    let adapted = adapt_syn_imported_shader(source, pass_index);
     let with_helpers = inject_ssf_helpers_if_needed(&adapted);
     if !with_helpers.contains("#include") {
         return Ok(with_helpers);
@@ -613,11 +697,23 @@ pub struct GpuRenderStatus {
     pub error: Option<String>,
 }
 
+/// Preprocessed multi-pass shader sources cached across frames so `#include`
+/// resolution and `.synScene` ABI adaptation run once per scene load rather
+/// than re-reading disk every frame.
+#[derive(Debug, Clone)]
+struct CachedMultipassSources {
+    passes: Vec<ScenePassSource>,
+    final_fragment_glsl: String,
+    has_feedback: bool,
+}
+
 /// Long-lived GPU preview engine owned by [`crate::state::AppState`].
 pub struct GpuPreviewEngine {
     state: GpuRenderState,
     renderer: Option<MultipassRenderer>,
     cached_pass: Option<CachedSinglePass>,
+    cached_multipass_sources: Option<CachedMultipassSources>,
+    multipass_frame_index: u32,
     envelopes: SynAudioEnvelopeBank,
     last_elapsed_secs: f32,
     transition_orchestrator: TransitionOrchestrator,
@@ -650,6 +746,8 @@ impl GpuPreviewEngine {
             state: GpuRenderState::Idle,
             renderer: None,
             cached_pass: None,
+            cached_multipass_sources: None,
+            multipass_frame_index: 0,
             envelopes: SynAudioEnvelopeBank::new(),
             last_elapsed_secs: 0.0,
             transition_orchestrator: TransitionOrchestrator::new(idle_spec),
@@ -660,6 +758,7 @@ impl GpuPreviewEngine {
     /// Install the packaged Tauri `resource_dir` for resolving bundled shader includes.
     pub fn set_resource_dir(&mut self, dir: PathBuf) {
         self.resource_dir = Some(dir);
+        self.cached_multipass_sources = None;
     }
 
     /// Execute a multi-pass [`MultipassSpec`] on the shared wgpu device
@@ -686,7 +785,17 @@ impl GpuPreviewEngine {
     /// Resolve `#include "lygia/..."` and `#include "hg_sdf/..."` directives
     /// and inject SSF helper functions when referenced.
     fn preprocess_shader_source(&self, source: &str) -> Result<String, String> {
-        preprocess_shader_with_helpers(source, self.resource_dir.as_deref())
+        self.preprocess_shader_source_for_pass(source, 0)
+    }
+
+    /// Same as [`Self::preprocess_shader_source`] with an explicit `PASSINDEX`
+    /// for multi-pass `.synScene` pipelines.
+    fn preprocess_shader_source_for_pass(
+        &self,
+        source: &str,
+        pass_index: u32,
+    ) -> Result<String, String> {
+        preprocess_shader_with_helpers(source, self.resource_dir.as_deref(), pass_index)
     }
 
     /// Arm the GPU preview engine from a loaded `.chroma` scene directory.
@@ -696,6 +805,8 @@ impl GpuPreviewEngine {
     /// If no `main.glsl` exists, transitions cleanly to [`GpuRenderState::Idle`].
     pub fn set_scene(&mut self, scene_id: String, scene_dir: &Path) {
         self.cached_pass = None;
+        self.cached_multipass_sources = None;
+        self.multipass_frame_index = 0;
         let shader_path = scene_dir.join("main.glsl");
         if !shader_path.is_file() {
             self.state = GpuRenderState::Idle;
@@ -742,6 +853,8 @@ impl GpuPreviewEngine {
     /// Author preview and unit tests).
     pub fn set_inline_shader(&mut self, scene_id: String, fragment_source: String) {
         self.cached_pass = None;
+        self.cached_multipass_sources = None;
+        self.multipass_frame_index = 0;
         self.state = GpuRenderState::Active {
             scene_id,
             shader_path: PathBuf::from("<inline>"),
@@ -755,6 +868,8 @@ impl GpuPreviewEngine {
     /// Disarm the GPU preview engine back to [`GpuRenderState::Idle`].
     pub fn clear_scene(&mut self) {
         self.cached_pass = None;
+        self.cached_multipass_sources = None;
+        self.multipass_frame_index = 0;
         self.state = GpuRenderState::Idle;
     }
 
@@ -908,47 +1023,102 @@ impl GpuPreviewEngine {
 
         // Multi-pass execution path when `scene.json` declares intermediate `PASSES` shaders.
         if !extra_passes.is_empty() {
-            let mut passes: Vec<PassDef> = Vec::with_capacity(extra_passes.len() + 1);
-            for (idx, p) in extra_passes.iter().enumerate() {
-                let resolved_pass = self.preprocess_shader_source(&p.fragment_glsl)?;
+            if self.cached_multipass_sources.is_none() {
+                let mut resolved_passes: Vec<ScenePassSource> =
+                    Vec::with_capacity(extra_passes.len());
+                for (idx, p) in extra_passes.iter().enumerate() {
+                    let resolved_pass = match self
+                        .preprocess_shader_source_for_pass(&p.fragment_glsl, idx as u32)
+                    {
+                        Ok(src) => src,
+                        Err(msg) => {
+                            self.state = GpuRenderState::Error {
+                                scene_id,
+                                message: msg.clone(),
+                            };
+                            return Err(msg);
+                        }
+                    };
+                    resolved_passes.push(ScenePassSource {
+                        label: p.label.clone(),
+                        fragment_glsl: resolved_pass,
+                        target_format: p.target_format,
+                        feedback_self: p.feedback_self,
+                    });
+                }
+                let resolved_main = match self
+                    .preprocess_shader_source_for_pass(&fragment_source, extra_passes.len() as u32)
+                {
+                    Ok(src) => src,
+                    Err(msg) => {
+                        self.state = GpuRenderState::Error {
+                            scene_id,
+                            message: msg.clone(),
+                        };
+                        return Err(msg);
+                    }
+                };
+                let has_feedback = resolved_passes.iter().any(|p| p.feedback_self);
+                self.cached_multipass_sources = Some(CachedMultipassSources {
+                    passes: resolved_passes,
+                    final_fragment_glsl: resolved_main,
+                    has_feedback,
+                });
+            }
+
+            let Some(cached_sources) = self.cached_multipass_sources.as_ref() else {
+                return Err("cached multipass sources unavailable".into());
+            };
+
+            let mut passes: Vec<PassDef> = Vec::with_capacity(cached_sources.passes.len() + 1);
+            for (idx, p) in cached_sources.passes.iter().enumerate() {
                 let input_textures = (0..idx)
                     .map(|prev| PassInputBinding {
                         source_pass_index: prev,
-                        sampler_uniform_name: extra_passes[prev].label.clone(),
+                        sampler_uniform_name: cached_sources.passes[prev].label.clone(),
                     })
                     .collect();
                 passes.push(PassDef {
                     label: Some(p.label.clone()),
-                    fragment_glsl: resolved_pass,
+                    fragment_glsl: p.fragment_glsl.clone(),
                     uniforms: uniforms.clone(),
                     input_textures,
                     target_format: p.target_format,
                     feedback_self: p.feedback_self,
                 });
             }
-            let resolved_main = self.preprocess_shader_source(&fragment_source)?;
-            let final_inputs = (0..extra_passes.len())
+            let final_inputs = (0..cached_sources.passes.len())
                 .map(|prev| PassInputBinding {
                     source_pass_index: prev,
-                    sampler_uniform_name: extra_passes[prev].label.clone(),
+                    sampler_uniform_name: cached_sources.passes[prev].label.clone(),
                 })
                 .collect();
             passes.push(PassDef {
                 label: Some(scene_id.clone()),
-                fragment_glsl: resolved_main,
+                fragment_glsl: cached_sources.final_fragment_glsl.clone(),
                 uniforms,
                 input_textures: final_inputs,
                 target_format: TargetFormat::Rgba8Unorm,
                 feedback_self: false,
             });
+            // When any pass declares `feedback_self`, drive at least 2 ping-pong
+            // iterations (ramping up to 4 as frames advance) so feedback buffers
+            // receive real prior-frame output instead of sampling an all-black
+            // cold-start texture every frame.
+            let frame_count = if cached_sources.has_feedback {
+                self.multipass_frame_index.saturating_add(1).clamp(2, 4)
+            } else {
+                1
+            };
             let spec = MultipassSpec {
                 passes,
                 target_size: (w, h),
-                frame_count: 1,
+                frame_count,
             };
             match self.render_multipass(&spec) {
                 Ok(bytes) => {
                     let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
+                    self.multipass_frame_index = self.multipass_frame_index.saturating_add(1);
                     if let GpuRenderState::Active {
                         frames_rendered,
                         last_frame_ms,
@@ -961,6 +1131,7 @@ impl GpuPreviewEngine {
                     return Ok(bytes);
                 }
                 Err(msg) => {
+                    self.cached_multipass_sources = None;
                     self.state = GpuRenderState::Error {
                         scene_id,
                         message: msg.clone(),
@@ -1881,5 +2052,166 @@ vec4 renderMain() {
             "imported .synScene rendered all-black"
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn multipass_include_error_transitions_engine_to_error_state() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "chromaticity-multipass-inc-err-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+
+        let scene_json = r#"{
+            "TITLE": "Multipass Include Error",
+            "CREDIT": "Chromaticity",
+            "DESCRIPTION": "Missing include in pass0",
+            "PASSES": [
+                { "TARGET": "pass0" }
+            ]
+        }"#;
+        let pass0_glsl =
+            "#version 450\n#include \"lygia/nonexistent_file_xyz.glsl\"\nvoid main() {}\n";
+        let main_glsl = SAMPLE_SHADER;
+        std::fs::write(tmp_dir.join("scene.json"), scene_json).unwrap();
+        std::fs::write(tmp_dir.join("pass0.glsl"), pass0_glsl).unwrap();
+        std::fs::write(tmp_dir.join("main.glsl"), main_glsl).unwrap();
+
+        let mut engine = GpuPreviewEngine::new();
+        engine.set_scene("multipass-inc-err".into(), &tmp_dir);
+        let err = engine.render_frame(32, 32, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 16]);
+        assert!(err.is_err());
+        assert_eq!(engine.state_name(), "error");
+        assert!(engine.status().error.is_some());
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn multipass_feedback_self_accumulates_and_caches_preprocessed_sources() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "chromaticity-multipass-feedback-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+
+        let scene_json = r#"{
+            "TITLE": "Multipass Feedback Test",
+            "CREDIT": "Chromaticity",
+            "DESCRIPTION": "Ping-pong feedback accumulation test",
+            "PASSES": [
+                { "TARGET": "trail", "PERSISTENT": true }
+            ]
+        }"#;
+        // Pass 0 adds 0.25 to its previous-frame self-feedback texture on each iteration.
+        // With frame_count >= 2, iteration 0 writes 0.25 and iteration 1 reads 0.25 -> writes 0.50.
+        let trail_glsl = r#"#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0, std140) uniform Uniforms {
+    vec4 chroma_Time;
+    vec4 chroma_Resolution;
+    vec4 syn_BPM;
+    vec4 chroma_AudioRMS;
+    vec4 chroma_AudioPeak;
+    float chroma_AudioFFT[8];
+    vec4 chroma_Ctrl0;
+    vec4 chroma_Ctrl1;
+    vec4 chroma_Ctrl2;
+    vec4 chroma_Ctrl3;
+};
+layout(set = 0, binding = 1) uniform texture2D prev_tex;
+layout(set = 0, binding = 2) uniform sampler prev_samp;
+void main() {
+    vec4 prev = texture(sampler2D(prev_tex, prev_samp), uv);
+    fragColor = vec4(clamp(prev.rgb + vec3(0.25), 0.0, 1.0), 1.0);
+}
+"#;
+        let main_glsl = r#"#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0, std140) uniform Uniforms {
+    vec4 chroma_Time;
+    vec4 chroma_Resolution;
+    vec4 syn_BPM;
+    vec4 chroma_AudioRMS;
+    vec4 chroma_AudioPeak;
+    float chroma_AudioFFT[8];
+    vec4 chroma_Ctrl0;
+    vec4 chroma_Ctrl1;
+    vec4 chroma_Ctrl2;
+    vec4 chroma_Ctrl3;
+};
+layout(set = 0, binding = 1) uniform texture2D trail_tex;
+layout(set = 0, binding = 2) uniform sampler trail_samp;
+void main() {
+    fragColor = vec4(texture(sampler2D(trail_tex, trail_samp), uv).rgb, 1.0);
+}
+"#;
+        std::fs::write(tmp_dir.join("scene.json"), scene_json).unwrap();
+        std::fs::write(tmp_dir.join("trail.glsl"), trail_glsl).unwrap();
+        std::fs::write(tmp_dir.join("main.glsl"), main_glsl).unwrap();
+
+        let mut engine = GpuPreviewEngine::new();
+        engine.set_scene("multipass-feedback".into(), &tmp_dir);
+        let bytes1 = engine
+            .render_frame(32, 32, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 16])
+            .expect("feedback multipass frame 1 must render");
+        assert!(engine.cached_multipass_sources.is_some());
+        assert_eq!(engine.multipass_frame_index, 1);
+        // Frame 1 runs 2 ping-pong iterations => 0.50 (~128), strictly above single-pass 0.25 (~64).
+        assert!(
+            bytes1[0] >= 115,
+            "expected feedback accumulation >= 115 (2 passes), got {}",
+            bytes1[0]
+        );
+
+        let bytes2 = engine
+            .render_frame(
+                32,
+                32,
+                0.016,
+                2,
+                &AudioUniformSnapshot::default(),
+                [0.5; 16],
+            )
+            .expect("feedback multipass frame 2 must reuse cached sources");
+        assert_eq!(engine.multipass_frame_index, 2);
+        assert!(bytes2[0] >= 115);
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn adapt_syn_imported_shader_parameterizes_passindex_and_media_calls() {
+        let sample = r#"#version 450
+layout(set = 0, binding = 0, std140) uniform _ChromaSynBuiltins {
+    vec2 RENDERSIZE;
+    float PASSINDEX;
+};
+#define syn_UserImage sampler2D(_chroma_media_tex, _chroma_media_samp)
+#define syn_Spectrum sampler2D(_chroma_spectrum_tex, _chroma_spectrum_samp)
+vec4 renderMain() {
+    vec4 a = texture(syn_UserImage, uv);
+    vec4 b = texture( syn_UserImage , uv );
+    vec4 c = texture2D(syn_UserImage, uv);
+    vec4 d = textureLod(syn_UserImage, uv, 1.0);
+    vec4 e = texture(syn_Spectrum, vec2(uv.x, 0.5));
+    vec4 f = textureLod( syn_Spectrum , vec2(uv.x, 0.5), 0.0);
+    return a + b + c + d + e + f + vec4(PASSINDEX);
+}
+"#;
+        let pass0 = adapt_syn_imported_shader(sample, 0);
+        assert!(pass0.contains("#define PASSINDEX (0.0)"));
+        assert!(!pass0.contains("syn_UserImage"));
+        assert!(!pass0.contains("syn_Spectrum"));
+        let body = pass0.split("vec4 renderMain()").nth(1).unwrap();
+        assert_eq!(body.matches("_chroma_sample_media(").count(), 4);
+        assert_eq!(body.matches("_chroma_sample_spectrum(").count(), 2);
+
+        let pass2 = adapt_syn_imported_shader(sample, 2);
+        assert!(pass2.contains("#define PASSINDEX (2.0)"));
+        assert!(!pass2.contains("#define PASSINDEX (0.0)"));
     }
 }

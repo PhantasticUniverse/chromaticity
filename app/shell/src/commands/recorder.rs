@@ -113,7 +113,43 @@ fn validate_dimension(label: &str, value: Option<u32>, default_val: u16) -> Resu
     }
 }
 
-fn build_status_dto(muxer: Option<&Fmp4Muxer>, replay: &ReplayBuffer) -> RecorderStatusDto {
+struct LiveRecorderTelemetry {
+    ffmpeg_frames: u64,
+    active_file_bytes: u64,
+    jpeg_ring_frames: usize,
+    jpeg_ring_bytes: usize,
+}
+
+fn collect_live_telemetry(
+    active_file: Option<&ActiveRecordingFile>,
+    jpeg_ring: Option<&std::collections::VecDeque<Vec<u8>>>,
+) -> LiveRecorderTelemetry {
+    let (ffmpeg_frames, active_file_bytes) = match active_file {
+        Some(active) if active.ffmpeg_frames > 0 => {
+            let bytes = std::fs::metadata(&active.path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            (active.ffmpeg_frames, bytes)
+        }
+        _ => (0, 0),
+    };
+    let (jpeg_ring_frames, jpeg_ring_bytes) = match jpeg_ring {
+        Some(ring) => (ring.len(), ring.iter().map(Vec::len).sum()),
+        None => (0, 0),
+    };
+    LiveRecorderTelemetry {
+        ffmpeg_frames,
+        active_file_bytes,
+        jpeg_ring_frames,
+        jpeg_ring_bytes,
+    }
+}
+
+fn build_status_dto(
+    muxer: Option<&Fmp4Muxer>,
+    replay: &ReplayBuffer,
+    live: &LiveRecorderTelemetry,
+) -> RecorderStatusDto {
     let default_cfg = Fmp4MuxerConfig::default();
     let (state, width, height) = match muxer {
         Some(m) => (m.state(), m.config().width, m.config().height),
@@ -125,9 +161,32 @@ fn build_status_dto(muxer: Option<&Fmp4Muxer>, replay: &ReplayBuffer) -> Recorde
             started_ms,
             fragments_written,
             bytes_written,
-        } => (Some(started_ms), fragments_written, bytes_written),
+        } => (
+            Some(started_ms),
+            fragments_written.max(live.ffmpeg_frames),
+            bytes_written.max(live.active_file_bytes),
+        ),
         RecorderState::Idle | RecorderState::Stopping => (None, 0, 0),
     };
+
+    let (replay_gop_count, replay_packet_count, replay_retained_bytes, replay_retained_secs) =
+        if replay.packet_count() > 0 {
+            (
+                replay.gop_count(),
+                replay.packet_count(),
+                replay.retained_bytes(),
+                replay.retained_duration_90khz() / u64::from(TIMESCALE_90KHZ),
+            )
+        } else if live.jpeg_ring_frames > 0 {
+            (
+                1,
+                live.jpeg_ring_frames,
+                live.jpeg_ring_bytes,
+                (live.jpeg_ring_frames as u64) / 10,
+            )
+        } else {
+            (0, 0, 0, 0)
+        };
 
     RecorderStatusDto {
         state: state.label().to_string(),
@@ -137,10 +196,10 @@ fn build_status_dto(muxer: Option<&Fmp4Muxer>, replay: &ReplayBuffer) -> Recorde
         started_ms,
         fragments_written,
         bytes_written,
-        replay_gop_count: replay.gop_count(),
-        replay_packet_count: replay.packet_count(),
-        replay_retained_bytes: replay.retained_bytes(),
-        replay_retained_secs: replay.retained_duration_90khz() / u64::from(TIMESCALE_90KHZ),
+        replay_gop_count,
+        replay_packet_count,
+        replay_retained_bytes,
+        replay_retained_secs,
         replay_max_duration_secs: replay.max_duration_secs(),
     }
 }
@@ -311,11 +370,22 @@ pub fn start_recording_to_dir_impl(
 
     *muxer_guard = Some(muxer);
 
+    let live = {
+        let file_guard = match app.recorder_output_file.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let ring_guard = match app.replay_jpeg_ring.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        collect_live_telemetry(file_guard.as_ref(), Some(&ring_guard))
+    };
     let replay_guard = match app.replay_buffer.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard))
+    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard, &live))
 }
 
 /// Inner implementation for [`start_recording`] (in-memory muxer without disk path).
@@ -337,6 +407,13 @@ pub fn stop_recording_impl(app: &AppState) -> Result<RecorderStatusDto, String> 
     let muxer = muxer_guard.as_mut().ok_or_else(|| {
         "invalid recorder state transition: cannot `stop` from `idle`".to_string()
     })?;
+    let had_muxer_fragments = matches!(
+        muxer.state(),
+        RecorderState::Recording {
+            fragments_written,
+            ..
+        } if fragments_written > 0
+    );
     muxer.begin_stop().map_err(|err| err.to_string())?;
     let final_fragment = muxer.finish_stop().map_err(|err| err.to_string())?;
 
@@ -350,8 +427,11 @@ pub fn stop_recording_impl(app: &AppState) -> Result<RecorderStatusDto, String> 
             drop(active_file.ffmpeg_stdin.take());
             let _ = child.wait();
         } else if let Some(mut file) = active_file.file.take() {
-            if let Some(fragment_bytes) = final_fragment {
-                if !fragment_bytes.is_empty() {
+            let has_final = final_fragment
+                .as_ref()
+                .is_some_and(|bytes| !bytes.is_empty());
+            if has_final {
+                if let Some(fragment_bytes) = final_fragment {
                     file.write_all(&fragment_bytes).map_err(|err| {
                         format!(
                             "failed to write final fMP4 fragment to {}: {err}",
@@ -359,16 +439,32 @@ pub fn stop_recording_impl(app: &AppState) -> Result<RecorderStatusDto, String> 
                         )
                     })?;
                 }
+                let _ = file.sync_all();
+            } else if !had_muxer_fragments {
+                // Neither ffmpeg nor the raw fMP4 muxer wrote any video frames —
+                // remove the init-segment-only `.mp4` cleanly instead of leaving
+                // an unplayable 0-frame file on disk.
+                drop(file);
+                let _ = std::fs::remove_file(&active_file.path);
+            } else {
+                let _ = file.sync_all();
             }
-            let _ = file.sync_all();
         }
     }
+    drop(file_guard);
 
+    let live = {
+        let ring_guard = match app.replay_jpeg_ring.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        collect_live_telemetry(None, Some(&ring_guard))
+    };
     let replay_guard = match app.replay_buffer.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard))
+    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard, &live))
 }
 
 /// Inner implementation for [`get_recorder_status`].
@@ -377,11 +473,22 @@ pub fn get_recorder_status_impl(app: &AppState) -> Result<RecorderStatusDto, Str
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
+    let live = {
+        let file_guard = match app.recorder_output_file.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let ring_guard = match app.replay_jpeg_ring.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        collect_live_telemetry(file_guard.as_ref(), Some(&ring_guard))
+    };
     let replay_guard = match app.replay_buffer.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard))
+    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard, &live))
 }
 
 /// Inner implementation for [`save_replay_buffer`].
@@ -442,7 +549,11 @@ pub fn save_replay_buffer_impl(
         } else {
             "libx264"
         };
-        let mut child = std::process::Command::new("ffmpeg")
+        let ffmpeg_bin = crate::commands::stream::resolve_ffmpeg_binary().ok_or_else(|| {
+            "saving replay buffer requires ffmpeg (checked /opt/homebrew/bin/ffmpeg, /usr/local/bin/ffmpeg, and PATH)"
+                .to_string()
+        })?;
+        let mut child = std::process::Command::new(ffmpeg_bin)
             .args([
                 "-y",
                 "-loglevel",
@@ -450,7 +561,7 @@ pub fn save_replay_buffer_impl(
                 "-f",
                 "mjpeg",
                 "-framerate",
-                "30",
+                "10",
                 "-i",
                 "pipe:0",
                 "-c:v",
@@ -465,7 +576,7 @@ pub fn save_replay_buffer_impl(
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .map_err(|err| format!("saving replay buffer requires ffmpeg on PATH: {err}"))?;
+            .map_err(|err| format!("saving replay buffer requires ffmpeg: {err}"))?;
         if let Some(mut stdin) = child.stdin.take() {
             for frame in &jpeg_frames {
                 let _ = stdin.write_all(frame);
@@ -481,8 +592,7 @@ pub fn save_replay_buffer_impl(
             .map(|m| m.len() as usize)
             .unwrap_or(0);
         let frame_count = jpeg_frames.len();
-        let duration_90khz =
-            (frame_count as u64).saturating_mul(u64::from(DEFAULT_SAMPLE_DURATION_90KHZ));
+        let duration_90khz = (frame_count as u64).saturating_mul(u64::from(TIMESCALE_90KHZ) / 10);
         return Ok(ReplaySaveResultDto {
             path: target_path.to_string_lossy().into_owned(),
             bytes_written,
@@ -590,7 +700,18 @@ pub fn push_recorder_packet_impl(
         }
     }
 
-    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard))
+    let live = {
+        let file_guard = match app.recorder_output_file.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let ring_guard = match app.replay_jpeg_ring.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        collect_live_telemetry(file_guard.as_ref(), Some(&ring_guard))
+    };
+    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard, &live))
 }
 
 /// Push an encoded video frame into the live fMP4 recorder and rolling replay buffer.
@@ -638,17 +759,23 @@ pub fn push_recorder_jpeg_frame_impl(app: &AppState, jpeg_bytes: &[u8]) -> Resul
         } else {
             "libx264"
         };
-        let mut child = std::process::Command::new("ffmpeg")
+        let ffmpeg_bin = crate::commands::stream::resolve_ffmpeg_binary().ok_or_else(|| {
+            "local video recording requires ffmpeg (checked /opt/homebrew/bin/ffmpeg, /usr/local/bin/ffmpeg, and PATH)"
+                .to_string()
+        })?;
+        let mut child = std::process::Command::new(ffmpeg_bin)
             .args([
                 "-y",
                 "-loglevel",
                 "error",
+                "-use_wallclock_as_timestamps",
+                "1",
                 "-f",
                 "mjpeg",
-                "-framerate",
-                "30",
                 "-i",
                 "pipe:0",
+                "-fps_mode",
+                "vfr",
                 "-c:v",
                 encoder,
                 "-pix_fmt",
@@ -661,7 +788,7 @@ pub fn push_recorder_jpeg_frame_impl(app: &AppState, jpeg_bytes: &[u8]) -> Resul
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .map_err(|err| format!("local video recording requires ffmpeg on PATH: {err}"))?;
+            .map_err(|err| format!("local video recording requires ffmpeg: {err}"))?;
         let stdin = child
             .stdin
             .take()
@@ -898,6 +1025,45 @@ mod tests {
         assert_eq!(PathBuf::from(&explicit_res.path), explicit_target);
         assert!(explicit_target.is_file());
         assert_eq!(explicit_res.bytes_written, default_res.bytes_written);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stop_recording_removes_empty_init_only_file_and_status_reports_jpeg_ring() {
+        let app = AppState::new();
+        let dir = make_temp_dir("empty-stop");
+
+        let started = start_recording_to_dir_impl(&app, Some(&dir), Some(1280), Some(720))
+            .expect("start recording to dir");
+        assert!(started.is_recording);
+
+        let rec_dir = dir.join(RECORDINGS_SUBDIR);
+        let created_files: Vec<PathBuf> = std::fs::read_dir(&rec_dir)
+            .expect("read recordings dir")
+            .filter_map(|e| e.ok().map(|entry| entry.path()))
+            .collect();
+        assert_eq!(created_files.len(), 1);
+        assert!(created_files[0].is_file());
+
+        // Stopping with 0 frames and no ffmpeg child must remove the empty init-only `.mp4`.
+        let stopped = stop_recording_impl(&app).expect("stop empty recording");
+        assert!(!stopped.is_recording);
+        assert!(
+            !created_files[0].exists(),
+            "empty init-segment-only mp4 must be removed on stop"
+        );
+
+        // Pushing JPEG frames into the idle replay ring is reflected in get_recorder_status.
+        let fake_jpeg = [0xFFu8, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0xFF, 0xD9];
+        for _ in 0..20 {
+            push_recorder_jpeg_frame_impl(&app, &fake_jpeg).expect("push idle jpeg");
+        }
+        let status = get_recorder_status_impl(&app).expect("status with jpeg ring");
+        assert_eq!(status.replay_gop_count, 1);
+        assert_eq!(status.replay_packet_count, 20);
+        assert_eq!(status.replay_retained_bytes, 20 * fake_jpeg.len());
+        assert_eq!(status.replay_retained_secs, 2);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -56,6 +56,13 @@ display:
 - Display assignment — selects which physical display the output
   window paints to in multi-display setups.
 
+!!! note "Preference persistence vs. live runtime enforcement"
+
+    All Graphics preferences above persist cleanly to `settings.toml`
+    across restarts. Live runtime enforcement for Resolution, Render
+    scale, Target FPS, V-Sync, and HDR swap-chain output remains
+    planned (see `52-parity-coverage-matrix.md`).
+
 ## 3. Storage
 
 The Storage section pins the filesystem locations the runtime reads
@@ -104,6 +111,13 @@ second per `(adapter, route)` pair (operator-floor default).
 
 See [OSC Routes](osc-routes.md) for the route taxonomy and payload
 hardening defaults the OSC adapter enforces.
+
+!!! note "Live transport status"
+
+    Network and live-source preferences persist cleanly to
+    `settings.toml`. OSC inbound/outbound transport is live; live
+    runtime enforcement for NDI and Syphon/Spout texture transport
+    remains planned (see `52-parity-coverage-matrix.md`).
 
 ## 5. Entitlement and capabilities
 

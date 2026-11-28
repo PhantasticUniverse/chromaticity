@@ -54,7 +54,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     let active = true;
     const pollGpu = async (): Promise<void> => {
       const status = await fetchGpuRenderStatus();
-      if (!active || !status || status.state !== 'active' || status.last_frame_ms <= 0) {
+      if (!active) {
+        return;
+      }
+      if (!status || status.state !== 'active' || status.last_frame_ms <= 0) {
+        liveGpuPct = '—';
         return;
       }
       const pct = Math.min(100, Math.max(1, Math.round((status.last_frame_ms / 16.6667) * 100)));

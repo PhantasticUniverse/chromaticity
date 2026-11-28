@@ -31,6 +31,9 @@ use crate::state::AppState;
 
 const PRESETS_FILENAME: &str = "presets.json";
 const MAX_PERSISTED_CONTROL_ID: u32 = 64;
+/// Neutral shader default (`0.5`) matching `commands::render::render_gpu_frame`
+/// so startup preset hydration never clobbers unset controls to `0.0`.
+const NEUTRAL_STARTUP_CONTROL_DEFAULT: f32 = 0.5;
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 struct PresetSnapshotDisk {
@@ -156,14 +159,15 @@ pub fn hydrate_presets_from_disk(app: &AppState, data_dir: &Path) {
         );
     }
     // Reset live controls after hydrating presets so the last preset in
-    // `presets.json` never leaks onto fresh startup state.
+    // `presets.json` never leaks onto fresh startup state, while preserving
+    // the neutral `0.5` shader default (`[0.5, 0.5]` for XY) on fresh startup.
     if prior_scalars.is_empty() && prior_xy.is_empty() {
         for cid in 0..MAX_PERSISTED_CONTROL_ID {
             if state.control_value(ControlId(cid)).is_some() {
                 let _ = app.bus.dispatch_and_commit_into(
                     Command::ControlSet {
                         id: ControlId(cid),
-                        value: ControlValue(0.0),
+                        value: ControlValue(NEUTRAL_STARTUP_CONTROL_DEFAULT),
                     },
                     &mut state,
                 );
@@ -172,7 +176,10 @@ pub fn hydrate_presets_from_disk(app: &AppState, data_dir: &Path) {
                 let _ = app.bus.dispatch_and_commit_into(
                     Command::ControlSet2D {
                         id: ControlId(cid),
-                        value: [0.0, 0.0],
+                        value: [
+                            NEUTRAL_STARTUP_CONTROL_DEFAULT,
+                            NEUTRAL_STARTUP_CONTROL_DEFAULT,
+                        ],
                     },
                     &mut state,
                 );
@@ -383,9 +390,17 @@ mod tests {
         save_preset_impl(&app2, 2).unwrap();
         persist_preset_snapshot(&app2, &tmp_dir, 2);
 
-        // Hydrate into a brand-new AppState and verify both presets recall cleanly
+        // Hydrate into a brand-new AppState and verify neutral startup defaults
+        // before recalling any preset, then verify both presets recall cleanly.
         let hydrated = AppState::new();
         hydrate_presets_from_disk(&hydrated, &tmp_dir);
+        {
+            let st = hydrated.state.lock().unwrap();
+            assert!((st.control_value(ControlId(0)).unwrap().0 - 0.5).abs() < 1e-5);
+            assert!((st.control_value(ControlId(1)).unwrap().0 - 0.5).abs() < 1e-5);
+            let xy = st.xy_control_value(ControlId(2)).unwrap();
+            assert!((xy[0] - 0.5).abs() < 1e-5 && (xy[1] - 0.5).abs() < 1e-5);
+        }
 
         recall_preset_impl(&hydrated, 1).unwrap();
         {

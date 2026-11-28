@@ -764,6 +764,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   onMount(() => {
+    (globalThis as { __chromaticityMixMounted?: boolean }).__chromaticityMixMounted = true;
     void audioSnapshotStore.subscribe();
     void liveMediaStore.refreshVideoDevices();
     startProgramMirrorLoop();
@@ -796,6 +797,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   onDestroy(() => {
     disposed = true;
+    (globalThis as { __chromaticityMixMounted?: boolean }).__chromaticityMixMounted = false;
     stopStreamCaptureLoop();
     stopProgramMirrorLoop();
     if (programMirrorChannel !== null) {

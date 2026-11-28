@@ -49,13 +49,16 @@ The full operator hotkey vocabulary lives at
 
 ## Meta Controls
 
-The Meta Controls panel exposes the scene-agnostic colour pipeline:
-master, brightness, gamma, contrast, hue, saturation, invert, vertical
-mirror, horizontal mirror, dichrome. Meta Controls are applied in the
-live frontend preview and stage compositor (dedicated GPU `_Meta*`
-shader uniforms are planned for a future render pass). The hotkeys
-`M` / `B` / `G` / `C` / `H` / `Y` enter modal slider-adjust mode against
-the matching meta control; `Esc` exits.
+The Meta Controls panel exposes the scene-agnostic colour and transform
+pipeline. A live Rust post-pass
+(`app/shell/src/commands/render.rs::apply_meta_color_pass`) applies the
+nine active controls — `invert`, `brightness`, `gamma`, `contrast`,
+`hue`, `saturation`, `vert mirror`, `hor mirror`, and `limit colors` —
+directly to `render_gpu_frame`, so the adjustments carry through to both
+the Perform preview and stage output. Dedicated GPU shader `_Meta*`
+uniforms and custom duotone swatch anchors remain planned for a future
+render pass. The hotkeys `M` / `B` / `G` / `C` / `H` / `Y` enter modal
+slider-adjust mode against the matching meta control; `Esc` exits.
 
 ## The Preview hero
 
@@ -91,19 +94,20 @@ The Snap surface is the chromaticity-native naming for what the
 `compat-syn-v1` OSC routes still call `favslots` — see
 [OSC Routes](osc-routes.md) for the wire-level mapping.
 
-## Status-bar adapter pills
+## TopBar adapter pills
 
-A status bar across the bottom of Perform mode renders one pill per
-runtime adapter — audio, OSC, MIDI, camera, Syphon (macOS only).
+The persistent TopBar HUD across the top of Chromaticity renders live
+status pills for the active runtime surfaces — `OUT`, `AUDIO`, `MIDI`,
+and `OSC` (camera and Syphon pills are not surfaced in the HUD yet).
 Each pill surfaces:
 
 - A connectivity dot (online / degraded / offline).
-- The bound interface or device name.
-- A click target opening the per-adapter inspector.
+- The active target, device, or port state.
+- A click target opening the corresponding inspector or settings view.
 
 When an adapter is degraded, a one-line banner appears at the top of
-the view explaining the cause and pointing at Settings → Sources for
-the recovery action.
+the view explaining the cause and pointing at Settings for the recovery
+action.
 
 ## Why Perform mode is the default
 

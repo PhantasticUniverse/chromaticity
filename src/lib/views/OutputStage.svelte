@@ -20,8 +20,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let mirrorActive = $state(false);
   let programChannel: BroadcastChannel | null = null;
   let mirrorIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  let hydratePollTimer: ReturnType<typeof setInterval> | null = null;
 
   onMount(() => {
+    void loadedSceneStore.hydrate();
+    hydratePollTimer = setInterval(() => {
+      void loadedSceneStore.hydrate();
+    }, 2000);
+
     if (typeof BroadcastChannel === 'undefined') return;
     try {
       programChannel = new BroadcastChannel('chromaticity-stage-program');
@@ -55,6 +61,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   });
 
   onDestroy(() => {
+    if (hydratePollTimer !== null) {
+      clearInterval(hydratePollTimer);
+      hydratePollTimer = null;
+    }
     if (mirrorIdleTimer !== null) clearTimeout(mirrorIdleTimer);
     programChannel?.close();
     programChannel = null;
