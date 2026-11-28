@@ -163,6 +163,9 @@ impl CachedMultipass {
                 .write_buffer(buffer, 0, bytemuck::cast_slice(&slots));
         }
 
+        renderer
+            .media
+            .write_target_size(&renderer.queue, self.target_size);
         let mut last_parity = 0usize;
         for _ in 0..frames {
             let parity = (self.frame % 2) as usize;
@@ -191,6 +194,7 @@ impl CachedMultipass {
                 });
                 rpass.set_pipeline(&pass.pipeline);
                 rpass.set_bind_group(0, &pass.bind_groups[parity], &[]);
+                rpass.set_bind_group(1, renderer.media.bind_group(), &[]);
                 rpass.draw(0..3, 0..1);
             }
             renderer.queue.submit(Some(encoder.finish()));
@@ -394,7 +398,7 @@ impl MultipassRenderer {
             });
             let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("chromaticity-render cached multipass pipeline layout"),
-                bind_group_layouts: &[&bgl],
+                bind_group_layouts: &[&bgl, self.media.layout()],
                 push_constant_ranges: &[],
             });
             let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

@@ -462,6 +462,9 @@ pub struct MultipassRenderer {
     /// constant so the compiled module is always equivalent — no
     /// invalidation needed.
     vertex_shader: wgpu::ShaderModule,
+    /// Renderer-global scene media (`chroma_Media`), bound at group 1 of
+    /// every cached pipeline. Inactive (single black texel) by default.
+    media: crate::media_input::MediaInput,
 }
 
 impl MultipassRenderer {
@@ -534,13 +537,45 @@ impl MultipassRenderer {
             source: wgpu::ShaderSource::Naga(Cow::Owned(vertex_module)),
         });
 
+        let media = crate::media_input::MediaInput::new(&device, &queue);
+
         Ok(Self {
             _instance: instance,
             adapter,
             device,
             queue,
             vertex_shader,
+            media,
         })
+    }
+
+    /// Scene media binding shared by every cached pipeline.
+    #[must_use]
+    pub fn media(&self) -> &crate::media_input::MediaInput {
+        &self.media
+    }
+
+    /// Upload a tightly packed RGBA8 media frame (row 0 = top) as
+    /// `chroma_Media`. See [`crate::media_input::MediaInput::upload`].
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::TargetSizeInvalid`] for empty, oversized, or
+    /// length-mismatched frames.
+    pub fn upload_media(
+        &mut self,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+        kind: crate::media_input::MediaKind,
+    ) -> Result<(), RenderError> {
+        self.media
+            .upload(&self.device, &self.queue, width, height, rgba, kind)
+    }
+
+    /// Unbind scene media (back to the inactive black texel).
+    pub fn clear_media(&mut self) {
+        self.media.clear(&self.device, &self.queue);
     }
 
     /// Long-lived `wgpu::Instance` owned by this renderer (used to create
@@ -704,7 +739,7 @@ impl MultipassRenderer {
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("chromaticity-render cached pipeline layout"),
-                bind_group_layouts: &[&bgl],
+                bind_group_layouts: &[&bgl, self.media.layout()],
                 push_constant_ranges: &[],
             });
         let pipeline = self
@@ -842,6 +877,9 @@ impl CachedSinglePass {
         }
 
         let (width, height) = self.target_size;
+        renderer
+            .media
+            .write_target_size(&renderer.queue, self.target_size);
         let mut encoder = renderer
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -865,6 +903,7 @@ impl CachedSinglePass {
             });
             rpass.set_pipeline(&self.pipeline);
             rpass.set_bind_group(0, &self.bind_group, &[]);
+            rpass.set_bind_group(1, renderer.media.bind_group(), &[]);
             rpass.draw(0..3, 0..1);
         }
         encoder.copy_texture_to_buffer(

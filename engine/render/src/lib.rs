@@ -355,6 +355,7 @@ pub mod composition;
 pub mod compositor;
 pub mod glsl_includes;
 pub mod gpu_cost;
+pub mod media_input;
 pub mod multipass;
 pub mod multipass_pingpong;
 pub mod nv12_convert;
@@ -390,6 +391,7 @@ pub use glsl_includes::{
     IncludeError, MAX_INCLUDE_DEPTH, resolve_includes, resolve_includes_multi,
 };
 pub use gpu_cost::{AdaptiveScaleConfig, AdaptiveScaleController, GpuCostTier, ScaleDecision};
+pub use media_input::{MAX_MEDIA_DIM, MediaInput, MediaKind};
 pub use multipass::{
     CachedMultipass, CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding,
     TargetFormat, UniformInput, UniformValue, compile_and_render_multipass,
