@@ -135,14 +135,14 @@ fn js_emit_round_trips_through_buffering_sender() {
         .with_command_sender(sender.clone())
         .expect("sender installs");
     let _ = rt
-        .execute("__chromaticityEmit('syn_BPM', 120)")
+        .execute("__chromaticityEmit('chroma_BPM', 120)")
         .expect("emit must succeed");
     let drained = sender.drain();
     assert_eq!(drained.len(), 1, "exactly one emit; got {drained:?}");
     let ScriptCommand::ReactiveWrite { name, value } = &drained[0] else {
         panic!("expected ReactiveWrite; got {:?}", drained[0]);
     };
-    assert_eq!(name, "syn_BPM");
+    assert_eq!(name, "chroma_BPM");
     assert_eq!(value, &ScriptValue::Number(120.0));
 }
 

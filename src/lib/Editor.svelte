@@ -223,9 +223,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       '.cm-completionIcon-chromaNative::after': {
         content: '"chroma"',
       },
-      '.cm-completionIcon-synCompat::after': {
-        content: '"compat"',
-      },
       '.cm-completionMatchedText': {
         color: 'var(--color-primary)',
         textDecoration: 'none',

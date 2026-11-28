@@ -603,11 +603,11 @@ mod tests {
 
     #[test]
     fn coercion_class_validation_error_emits_error_severity() {
-        let err = ValidationError::UnknownSymbol("syn_NotASymbol".to_string());
+        let err = ValidationError::UnknownSymbol("chroma_NotASymbol".to_string());
         let d = diagnostic_from_validation_error(&err);
         assert_eq!(d.code, DiagnosticCode::Coercion);
         assert_eq!(d.severity, Severity::Error);
-        assert!(d.message.contains("syn_NotASymbol"));
+        assert!(d.message.contains("chroma_NotASymbol"));
     }
 
     #[test]

@@ -27,10 +27,10 @@
 //!   sub-store + commit-bus event family + canonical-binary encoder
 //!   widening), which carries broader review implications and is
 //!   sequenced behind that work.
-//! - **PR 3**: class-e (audio input device + `syn_Threshold`)
+//! - **PR 3**: class-e (audio input device + `chroma_Threshold`)
 //!   helper [`restore_class_e`] lands as a documented-deferred no-op.
 //!   The canonical [`State`] does not carry an audio-input-device
-//!   field nor a `syn_Threshold` control as first-class state — the
+//!   field nor a `chroma_Threshold` control as first-class state — the
 //!   transient
 //!   [`crate::state::State::latest_audio_snapshot`] is the only
 //!   audio-touching field today and is intentionally NOT serialized
@@ -38,14 +38,14 @@
 //!   the row-80 "audio trailing reactivity state resets on resume by
 //!   design" note). The audio-input-device selection lives at the
 //!   producer side ([`chromaticity_audio::runtime::AudioRuntime`])
-//!   rather than the canonical state core, and `syn_Threshold` is a
+//!   rather than the canonical state core, and `chroma_Threshold` is a
 //!   future audio-uniform control reserved by [`chromaticity_audio`]
 //!   per the `engine/audio/src/uniforms.rs` module-level prose. Class-
 //!   e restoration therefore ships as the partial-advance no-op
 //!   PR 1 / PR 2 deferral pattern established for class-d: the helper
 //!   is callable, [`restore_all_supported_classes`] does NOT yet
 //!   invoke it, and the widening trigger is the State-shape extension
-//!   that promotes the audio-input-device + `syn_Threshold` selections
+//!   that promotes the audio-input-device + `chroma_Threshold` selections
 //!   into canonical sub-stores.
 //! - **PR 4** (this PR): class-f (operator meta-controls) helper
 //!   [`restore_class_f`] AND class-g (render resolution + FPS target)
@@ -85,7 +85,7 @@
 //!   (re-enumerating OSC / MIDI ports against the persisted device
 //!   IDs per MIDI-CONF-09) is the responsibility of the integration
 //!   crates and runs at adapter startup-time, not this restore step.
-//! - **PR 6+**: class-e once the audio-input-device + `syn_Threshold`
+//! - **PR 6+**: class-e once the audio-input-device + `chroma_Threshold`
 //!   sub-stores land, class-f once the operator meta-controls sub-store
 //!   lands, class-g once the render-config sub-store lands (at which
 //!   point each respective helper widens from a no-op to a sub-store
@@ -526,10 +526,10 @@ pub fn restore_class_d(target: &mut State, recovered: &State) {
 
 /// Apply class-e fields from `restored` onto `target`.
 ///
-/// Class-e per `docs/26` row 80: audio input device + `syn_Threshold`.
+/// Class-e per `docs/26` row 80: audio input device + `chroma_Threshold`.
 ///
 /// **PR 3 status: documented-deferred no-op.** The canonical [`State`]
-/// does not carry an audio-input-device field nor a `syn_Threshold`
+/// does not carry an audio-input-device field nor a `chroma_Threshold`
 /// control as first-class sub-store state. The
 /// transient [`State::latest_audio_snapshot`] is the only audio-
 /// touching field today and is intentionally NOT serialized (the
@@ -537,14 +537,14 @@ pub fn restore_class_d(target: &mut State, recovered: &State) {
 /// "audio trailing reactivity state resets on resume by design" note).
 /// The audio-input-device selection lives at the producer side
 /// ([`chromaticity_audio::runtime::AudioRuntime`]) rather than the
-/// canonical state core, and `syn_Threshold` is a future audio-uniform
+/// canonical state core, and `chroma_Threshold` is a future audio-uniform
 /// control reserved by [`chromaticity_audio`] per the
 /// `engine/audio/src/uniforms.rs` module-level prose.
 ///
 /// This helper is shipped as a no-op (it accepts both arguments, reads
 /// neither, mutates nothing) so call sites can be wired ahead of the
 /// widening trigger. The widening trigger is the State-shape extension
-/// that promotes the audio-input-device + `syn_Threshold` selections
+/// that promotes the audio-input-device + `chroma_Threshold` selections
 /// into canonical sub-stores, at which point this helper gains the
 /// corresponding sub-store assignments and joins
 /// [`restore_all_supported_classes`].
@@ -1137,9 +1137,9 @@ mod tests {
     #[test]
     fn class_e_deferred_pending_state_shape_extension() {
         // Documentation pin (PR 3): class-e (audio input device +
-        // `syn_Threshold`) ships as a documented-deferred no-op
+        // `chroma_Threshold`) ships as a documented-deferred no-op
         // helper. The canonical [`State`] does not carry an audio-
-        // input-device field nor a `syn_Threshold` control as first-
+        // input-device field nor a `chroma_Threshold` control as first-
         // class sub-store state today. The transient
         // `latest_audio_snapshot` field is intentionally NOT
         // serialized (audio trailing reactivity state resets on
@@ -1148,7 +1148,7 @@ mod tests {
         // The helper is no-op-shaped: it accepts both arguments,
         // reads neither, mutates nothing. The widening trigger is
         // the State-shape extension that promotes the audio-input-
-        // device + `syn_Threshold` selections into canonical sub-
+        // device + `chroma_Threshold` selections into canonical sub-
         // stores — at which point the helper gains the corresponding
         // sub-store assignments and joins
         // `restore_all_supported_classes`.

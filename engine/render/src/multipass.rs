@@ -55,7 +55,7 @@
 //!   close the slice-5a transitional `chroma_AudioFFTLow` +
 //!   `chroma_AudioFFTHigh` split-vec4 spelling into a single
 //!   `chroma_AudioFFT[8]` array binding (`docs/36` Sec.2.11; catalog
-//!   v1.3.0); the `syn_RES`-style vec2-batched widening remains
+//!   v1.3.0); the `chroma_Resolution`-style vec2-batched widening remains
 //!   deferred until a concrete consumer surfaces it.
 //!
 //! - **Texture / sampler bind layout is naga-GLSL-compliant Vulkan
@@ -138,7 +138,7 @@
 //!
 //! - Transition orchestration (warm-switch between scene graphs) —
 //!   ADR-007 follow-up slice.
-//! - Audio uniform binding (`syn_BPM`, `syn_LEVEL`, `audio[]` 1D
+//! - Audio uniform binding (`chroma_BPM`, `chroma_Level`, `audio[]` 1D
 //!   sampler) — `engine/audio` integration slice.
 //! - DX12 backend (Tauri 2 + windows-rs version conflict; tracked in
 //!   `engine/render/Cargo.toml`).

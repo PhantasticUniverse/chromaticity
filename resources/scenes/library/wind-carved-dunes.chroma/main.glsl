@@ -7,7 +7,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 chroma_Time;        // .x = elapsed seconds, .y = dt, .z = frame, .w = aspect
     vec4 chroma_Resolution;  // .x = width, .y = height, .z = 1/w, .w = 1/h
-    vec4 syn_BPM;            // .x = BPM
+    vec4 chroma_BPM;            // .x = BPM
     vec4 chroma_AudioRMS;    // .x = RMS [0..1]
     vec4 chroma_AudioPeak;   // .x = Peak [0..1]
     float chroma_AudioFFT[8];// 8 log-spaced FFT bands [0..1]

@@ -118,7 +118,7 @@ golden hashes:
   intermediate render targets (`luma`, `blurH`, `blurV`, `backbuff`). Covers
   docs/34 multipass-chain shape.
 - `reactive-audio.chroma` — six audio-reactive controls and per-pass
-  `UNIFORMS` bindings to `syn_Spectrum`, `syn_Level`, `syn_Time`, `TIME`, and
+  `UNIFORMS` bindings to `chroma_Spectrum`, `chroma_Level`, `chroma_AudioTime`, `TIME`, and
   `RENDERSIZE`. Covers the reactive-symbol-family branch of docs/34 over the
   slice-3a representative subset in
   `engine/scene/src/validator.rs::KNOWN_SYMBOLS`.

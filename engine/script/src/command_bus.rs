@@ -509,7 +509,7 @@ mod command_bus_pins {
     fn buffering_sender_round_trips_a_command() {
         let s = BufferingSender::new();
         let cmd = ScriptCommand::ReactiveWrite {
-            name: "syn_BPM".to_string(),
+            name: "chroma_BPM".to_string(),
             value: ScriptValue::Number(120.0),
         };
         s.send(cmd.clone()).expect("buffering sender accepts");

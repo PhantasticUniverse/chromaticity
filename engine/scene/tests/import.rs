@@ -270,8 +270,8 @@ fn golden_cp01_reject() {
 // they exercise the docs/34 Coverage Dimensions the slice-3a schema parses:
 // multipass shape (2- and 4-pass chains, per-pass UNIFORMS canonical
 // bindings), the reactive-symbol family over the slice-3a representative
-// subset (`syn_Spectrum`, `syn_Level`, `syn_Time`, `TIME`, `RENDERSIZE`,
-// `syn_FinalPass`), CP-08 meta-control flagging via `IS_META`, ADR-008
+// subset (`chroma_Spectrum`, `chroma_Level`, `chroma_AudioTime`, `TIME`, `RENDERSIZE`,
+// `chroma_FinalPass`), CP-08 meta-control flagging via `IS_META`, ADR-008
 // traveler shape ingestion via compound TYPE tokens, CP-09 transition
 // declarations (parse-reserve only at slice-3a; structured execution
 // deferred), and CP-10 pass-sizing sentinels (`WIDTH`/`HEIGHT` of `0` and
@@ -283,7 +283,7 @@ fn golden_cp01_reject() {
 fn golden_t2_multipass_feedback() {
     // EV-SCENE-IMPORT (T2)
     let actual = load_and_hash("multipass-feedback.chroma");
-    const EXPECTED: u64 = 0x4E69_6B09_F0B3_FEF2;
+    const EXPECTED: u64 = 0x2B28_FFA6_AB76_AA84;
     assert_eq!(
         actual, EXPECTED,
         "multipass-feedback golden mismatch (actual: {actual:#018x})",
@@ -305,7 +305,7 @@ fn golden_t2_multipass_chain() {
 fn golden_t2_reactive_audio() {
     // EV-SCENE-IMPORT (T2)
     let actual = load_and_hash("reactive-audio.chroma");
-    const EXPECTED: u64 = 0x42F7_41DA_9256_EE7E;
+    const EXPECTED: u64 = 0xCF08_B890_5B38_E40C;
     assert_eq!(
         actual, EXPECTED,
         "reactive-audio golden mismatch (actual: {actual:#018x})",

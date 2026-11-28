@@ -1675,13 +1675,13 @@ mod execute_drift_pins {
             .with_command_sender(sender.clone())
             .expect("sender installs");
         let _ = rt
-            .execute("__chromaticityEmit('syn_BPM', 120)")
+            .execute("__chromaticityEmit('chroma_BPM', 120)")
             .expect("emit must succeed");
         let drained = sender.drain();
         assert_eq!(drained.len(), 1, "exactly one emit; got {drained:?}");
         match &drained[0] {
             ScriptCommand::ReactiveWrite { name, value } => {
-                assert_eq!(name, "syn_BPM");
+                assert_eq!(name, "chroma_BPM");
                 assert_eq!(value, &ScriptValue::Number(120.0));
             }
             // Slice 5.2 widened `ScriptCommand` with a typed

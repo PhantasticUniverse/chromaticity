@@ -15,7 +15,7 @@
 //!
 //! - `js_emit_routes_to_typed_variant_for_known_audio_uniform` —
 //!   end-to-end script-mutation: a JS call to
-//!   `__chromaticityEmit('syn_BPM', 120)` lands on the host
+//!   `__chromaticityEmit('chroma_BPM', 120)` lands on the host
 //!   sender as the slice-5.1 catch-all variant; the host's
 //!   subsequent `ScriptCommand::route()` call resolves it to
 //!   `TypedReactiveWrite { symbol: ReactiveSymbol::Bpm, value:
@@ -108,7 +108,7 @@ fn js_emit_routes_to_typed_variant_for_known_audio_uniform() {
     let rt = rt
         .with_command_sender(sender.clone())
         .expect("with_command_sender");
-    rt.execute("__chromaticityEmit('syn_BPM', 120)")
+    rt.execute("__chromaticityEmit('chroma_BPM', 120)")
         .expect("emit succeeds");
     let drained = sender.drain();
     assert_eq!(drained.len(), 1, "exactly one emit");
@@ -118,7 +118,7 @@ fn js_emit_routes_to_typed_variant_for_known_audio_uniform() {
         ScriptCommand::TypedReactiveWrite { symbol, value } => {
             assert_eq!(symbol, ReactiveSymbol::Bpm);
             assert_eq!(value, ScriptValue::Number(120.0));
-            assert_eq!(symbol.name(), "syn_BPM");
+            assert_eq!(symbol.name(), "chroma_BPM");
             assert_eq!(symbol.expected_kind(), ReactiveValueKind::Scalar);
         }
         other => panic!("expected TypedReactiveWrite, got {other:?}"),
@@ -133,20 +133,20 @@ fn route_resolves_every_documented_audio_scalar() {
     // `route()` and round-trips back to the same canonical
     // string via `ReactiveSymbol::name()`.
     let cases: &[(&str, ReactiveSymbol)] = &[
-        ("syn_Level", ReactiveSymbol::Level),
-        ("syn_BassLevel", ReactiveSymbol::BassLevel),
-        ("syn_Hits", ReactiveSymbol::Hits),
-        ("syn_BassTime", ReactiveSymbol::BassTime),
-        ("syn_Presence", ReactiveSymbol::Presence),
-        ("syn_OnBeat", ReactiveSymbol::OnBeat),
-        ("syn_BPM", ReactiveSymbol::Bpm),
-        ("syn_BPMConfidence", ReactiveSymbol::BpmConfidence),
-        ("syn_FadeInOut", ReactiveSymbol::FadeInOut),
-        ("chroma_PrimeBang", ReactiveSymbol::ChromaPrimeBang),
-        ("syn_PrimeBang", ReactiveSymbol::SynPrimeBang),
-        ("syn_InputLevel", ReactiveSymbol::InputLevel),
-        ("syn_RawLevel", ReactiveSymbol::RawLevel),
-        ("syn_Threshold", ReactiveSymbol::Threshold),
+        ("chroma_Level", ReactiveSymbol::Level),
+        ("chroma_BassLevel", ReactiveSymbol::BassLevel),
+        ("chroma_Hits", ReactiveSymbol::Hits),
+        ("chroma_BassTime", ReactiveSymbol::BassTime),
+        ("chroma_Presence", ReactiveSymbol::Presence),
+        ("chroma_OnBeat", ReactiveSymbol::OnBeat),
+        ("chroma_BPM", ReactiveSymbol::Bpm),
+        ("chroma_BPMConfidence", ReactiveSymbol::BpmConfidence),
+        ("chroma_FadeInOut", ReactiveSymbol::FadeInOut),
+        ("chroma_PrimeBang", ReactiveSymbol::PrimeBang),
+        ("chroma_AudioTime", ReactiveSymbol::AudioTime),
+        ("chroma_InputLevel", ReactiveSymbol::InputLevel),
+        ("chroma_RawLevel", ReactiveSymbol::RawLevel),
+        ("chroma_Threshold", ReactiveSymbol::Threshold),
         ("chroma_AudioRMS", ReactiveSymbol::Rms),
         ("chroma_AudioPeak", ReactiveSymbol::Peak),
     ];
@@ -255,9 +255,9 @@ fn route_rejects_unknown_name() {
 
 #[test]
 fn route_rejects_kind_mismatch_scalar_got_array() {
-    // `syn_BPM` is `Scalar`. An array carrier MUST reject.
+    // `chroma_BPM` is `Scalar`. An array carrier MUST reject.
     let cmd = ScriptCommand::ReactiveWrite {
-        name: "syn_BPM".to_string(),
+        name: "chroma_BPM".to_string(),
         value: ScriptValue::Array(vec![ScriptValue::Number(120.0)]),
     };
     let err = cmd.route().expect_err("scalar+array must fail");
@@ -267,7 +267,7 @@ fn route_rejects_kind_mismatch_scalar_got_array() {
             expected,
             ..
         } => {
-            assert_eq!(symbol_name, "syn_BPM");
+            assert_eq!(symbol_name, "chroma_BPM");
             assert_eq!(expected, ReactiveValueKind::Scalar);
         }
         other => panic!("expected ReactiveValueKindMismatch, got {other:?}"),
@@ -340,9 +340,9 @@ fn multiple_runtimes_route_independently() {
     let rt_b = ScriptRuntime::new()
         .and_then(|r| r.with_command_sender(sender_b.clone()))
         .expect("rt b");
-    rt_a.execute("__chromaticityEmit('syn_BassLevel', 0.25)")
+    rt_a.execute("__chromaticityEmit('chroma_BassLevel', 0.25)")
         .expect("a emit");
-    rt_b.execute("__chromaticityEmit('syn_HighLevel', 0.75)")
+    rt_b.execute("__chromaticityEmit('chroma_HighLevel', 0.75)")
         .expect("b emit");
     let drained_a = sender_a.drain();
     let drained_b = sender_b.drain();
@@ -364,4 +364,29 @@ fn multiple_runtimes_route_independently() {
         }
         other => panic!("b: expected TypedReactiveWrite, got {other:?}"),
     }
+}
+
+#[test]
+fn reference_format_names_are_not_native_symbols() {
+    // Native vocabulary is `chroma_*` only; `.synScene` names are
+    // translated at the import boundary (`SYN_TO_NATIVE`), never
+    // accepted by the native catalog.
+    for name in [
+        "syn_Level",     // syn-lint: allow (negative pin)
+        "syn_BPM",       // syn-lint: allow (negative pin)
+        "syn_Time",      // syn-lint: allow (negative pin)
+        "syn_PrimeBang", // syn-lint: allow (negative pin)
+        "syn_Threshold", // syn-lint: allow (negative pin)
+    ] {
+        assert!(
+            ReactiveSymbol::from_name(name).is_none(),
+            "{name} must not resolve natively"
+        );
+    }
+    // `chroma_AudioTime` (energy-integrated) is distinct from the
+    // wall-clock `TIME` symbol.
+    assert_ne!(
+        ReactiveSymbol::from_name("chroma_AudioTime"),
+        ReactiveSymbol::from_name("TIME")
+    );
 }

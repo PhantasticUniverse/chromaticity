@@ -829,6 +829,114 @@ fn contains_void_main(source: &str) -> bool {
     false
 }
 
+/// Import-compatibility translation from `.synScene` reactive names to
+/// Chromaticity's native `chroma_*` vocabulary.
+///
+/// This table is the ONLY place the reference-format names map onto the
+/// native ones; native code, bundled scenes, the scripting API and the UI
+/// use the right-hand names exclusively. Most entries swap the prefix;
+/// the exceptions are `syn_Time` (energy-integrated audio clock, which
+/// must not collide with the wall-clock `chroma_Time`) and the media
+/// samplers (`syn_UserImage` / `syn_Media` both become `chroma_Media`).
+pub const SYN_TO_NATIVE: &[(&str, &str)] = &[
+    ("syn_Level", "chroma_Level"),
+    ("syn_BassLevel", "chroma_BassLevel"),
+    ("syn_MidLevel", "chroma_MidLevel"),
+    ("syn_MidHighLevel", "chroma_MidHighLevel"),
+    ("syn_HighLevel", "chroma_HighLevel"),
+    ("syn_Hits", "chroma_Hits"),
+    ("syn_BassHits", "chroma_BassHits"),
+    ("syn_MidHits", "chroma_MidHits"),
+    ("syn_MidHighHits", "chroma_MidHighHits"),
+    ("syn_HighHits", "chroma_HighHits"),
+    ("syn_Time", "chroma_AudioTime"),
+    ("syn_BassTime", "chroma_BassTime"),
+    ("syn_MidTime", "chroma_MidTime"),
+    ("syn_MidHighTime", "chroma_MidHighTime"),
+    ("syn_HighTime", "chroma_HighTime"),
+    ("syn_CurvedTime", "chroma_CurvedTime"),
+    ("syn_Presence", "chroma_Presence"),
+    ("syn_BassPresence", "chroma_BassPresence"),
+    ("syn_MidPresence", "chroma_MidPresence"),
+    ("syn_MidHighPresence", "chroma_MidHighPresence"),
+    ("syn_HighPresence", "chroma_HighPresence"),
+    ("syn_OnBeat", "chroma_OnBeat"),
+    ("syn_ToggleOnBeat", "chroma_ToggleOnBeat"),
+    ("syn_RandomOnBeat", "chroma_RandomOnBeat"),
+    ("syn_BeatTime", "chroma_BeatTime"),
+    ("syn_BPM", "chroma_BPM"),
+    ("syn_BPMConfidence", "chroma_BPMConfidence"),
+    ("syn_BPMTwitcher", "chroma_BPMTwitcher"),
+    ("syn_BPMSin", "chroma_BPMSin"),
+    ("syn_BPMSin2", "chroma_BPMSin2"),
+    ("syn_BPMSin4", "chroma_BPMSin4"),
+    ("syn_BPMSin8", "chroma_BPMSin8"),
+    ("syn_BPMTri", "chroma_BPMTri"),
+    ("syn_BPMTri2", "chroma_BPMTri2"),
+    ("syn_BPMTri4", "chroma_BPMTri4"),
+    ("syn_BPMTri8", "chroma_BPMTri8"),
+    ("syn_FadeInOut", "chroma_FadeInOut"),
+    ("syn_Intensity", "chroma_Intensity"),
+    ("syn_PrimeBang", "chroma_PrimeBang"),
+    ("syn_InputLevel", "chroma_InputLevel"),
+    ("syn_RawLevel", "chroma_RawLevel"),
+    ("syn_BassExpoCurve", "chroma_BassExpoCurve"),
+    ("syn_Threshold", "chroma_Threshold"),
+    ("syn_FinalPass", "chroma_FinalPass"),
+    ("syn_UserImage", "chroma_Media"),
+    ("syn_Media", "chroma_Media"),
+    ("syn_MediaActive", "chroma_MediaActive"),
+    ("syn_MediaType", "chroma_MediaType"),
+    ("syn_Spectrum", "chroma_Spectrum"),
+    ("syn_LevelTrail", "chroma_LevelTrail"),
+];
+
+/// Native `chroma_*` name for an imported `.synScene` reactive name, if any.
+#[must_use]
+pub fn native_name_for_syn(name: &str) -> Option<&'static str> {
+    SYN_TO_NATIVE
+        .iter()
+        .find(|(syn, _)| *syn == name)
+        .map(|(_, native)| *native)
+}
+
+/// Rewrite every whole-identifier reference to a known `.synScene` reactive
+/// name in an imported `script.js` to its native `chroma_*` name (including
+/// occurrences inside string literals such as `inputs['syn_BPM']`).
+///
+/// Unknown `syn_*` identifiers are left untouched. Native scripts contain no
+/// such references, so this is a no-op for them; the script host applies it
+/// at load time so packages imported before the rename keep working.
+#[must_use]
+pub fn adapt_syn_script(source: &str) -> String {
+    if !source.contains("syn_") {
+        return source.to_string();
+    }
+    let bytes = source.as_bytes();
+    let mut out = String::with_capacity(source.len());
+    let mut cursor = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let at_word_start = i == 0 || !is_ident_byte(bytes[i - 1]);
+        if at_word_start && bytes[i..].starts_with(b"syn_") {
+            let mut end = i + 4;
+            while end < bytes.len() && is_ident_byte(bytes[end]) {
+                end += 1;
+            }
+            if let Some(native) = native_name_for_syn(&source[i..end]) {
+                out.push_str(&source[cursor..i]);
+                out.push_str(native);
+                cursor = end;
+            }
+            i = end;
+            continue;
+        }
+        i += 1;
+    }
+    out.push_str(&source[cursor..]);
+    out
+}
+
 fn is_ident_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
@@ -1164,5 +1272,34 @@ vec4 renderMain() {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn adapt_syn_script_maps_known_names_and_preserves_everything_else() {
+        let src = "var a = inputs.syn_BPM + syn_Time; // syn_Level\n\
+                   setUniform('x', inputs['syn_BassHits']); var syn_custom = mysyn_BPM;";
+        let out = super::adapt_syn_script(src);
+        assert_eq!(
+            out,
+            "var a = inputs.chroma_BPM + chroma_AudioTime; // chroma_Level\n\
+                   setUniform('x', inputs['chroma_BassHits']); var syn_custom = mysyn_BPM;"
+        );
+        let native = "uniforms.x = inputs.chroma_BPM;";
+        assert_eq!(super::adapt_syn_script(native), native);
+    }
+
+    #[test]
+    fn syn_to_native_table_is_unique_and_native_only() {
+        let mut seen = std::collections::HashSet::new();
+        for (syn, native) in super::SYN_TO_NATIVE {
+            assert!(syn.starts_with("syn_"), "{syn}");
+            assert!(native.starts_with("chroma_"), "{native}");
+            assert!(seen.insert(*syn), "duplicate {syn}");
+        }
+        assert_eq!(
+            super::native_name_for_syn("syn_Time"),
+            Some("chroma_AudioTime")
+        );
+        assert_eq!(super::native_name_for_syn("syn_Unknown"), None);
     }
 }

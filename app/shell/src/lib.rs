@@ -26,6 +26,7 @@ pub mod commands;
 pub mod render;
 pub mod script_host;
 pub mod state;
+pub mod syn_compat;
 
 use crate::state::AppState;
 use crate::state::ipc_emit::TauriIpcEmitter;

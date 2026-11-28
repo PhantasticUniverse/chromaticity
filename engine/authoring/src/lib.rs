@@ -91,8 +91,8 @@ pub use scaffolder::{
     ScaffolderConfig, ScaffolderError, ScaffolderReport, load_scaffolded_scene, scaffold_to_path,
 };
 pub use syn_import::{
-    SynImportError, SynImportReport, import_syn_scene_to_chroma, rewrite_pow_calls,
-    rewrite_syn_glsl,
+    SYN_TO_NATIVE, SynImportError, SynImportReport, adapt_syn_script, import_syn_scene_to_chroma,
+    native_name_for_syn, rewrite_pow_calls, rewrite_syn_glsl,
 };
 pub use ux_latency::{
     AUTHORING_BUDGETS, BudgetExceeded, DOCS_BUDGETS, LatencyBudget, LatencyMeasurement,

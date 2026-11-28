@@ -79,14 +79,14 @@ fn script_emit_lands_on_runtime_drain() {
         .with_command_sender(Arc::new(router))
         .expect("router installs as sender");
     let _ = rt
-        .execute("__chromaticityEmit('syn_BPM', 120)")
+        .execute("__chromaticityEmit('chroma_BPM', 120)")
         .expect("emit must succeed");
     let observed = drain.drain();
     assert_eq!(observed.len(), 1);
     let ScriptCommand::ReactiveWrite { name, value } = &observed[0] else {
         panic!("expected ReactiveWrite; got {:?}", observed[0]);
     };
-    assert_eq!(name, "syn_BPM");
+    assert_eq!(name, "chroma_BPM");
     assert_eq!(value, &ScriptValue::Number(120.0));
 }
 
@@ -141,13 +141,13 @@ fn typed_route_lands_on_runtime_drain() {
         .with_command_sender(Arc::new(router))
         .expect("router installs");
     let _ = rt
-        .execute("__chromaticityEmit('syn_BPM', 120)")
+        .execute("__chromaticityEmit('chroma_BPM', 120)")
         .expect("emit must succeed");
     let observed = drain.drain();
     assert_eq!(observed.len(), 1);
     // The bridge is value-transparent: it forwards the string-keyed
     // `ReactiveWrite` as-is; the consumer applies `route()`.
-    let routed = observed[0].clone().route().expect("syn_BPM resolves");
+    let routed = observed[0].clone().route().expect("chroma_BPM resolves");
     match routed {
         ScriptCommand::TypedReactiveWrite { symbol, value } => {
             assert_eq!(symbol, ReactiveSymbol::Bpm);
@@ -176,7 +176,7 @@ fn disconnected_drain_lifts_to_typed_script_error() {
         .expect("router installs");
     drop(drain);
     let err = rt
-        .execute("__chromaticityEmit('syn_BPM', 120)")
+        .execute("__chromaticityEmit('chroma_BPM', 120)")
         .expect_err("script-uncaught throw must lift to typed error");
     assert!(
         matches!(err, ScriptError::CommandBusDisconnected),

@@ -28,7 +28,7 @@
  *   midhi  → --color-band-midhi
  *   high   → --color-band-high
  *   full   → --color-band-full
- * The bundle's `--violet` accent for `syn_CurvedTime` maps to
+ * The bundle's `--violet` accent for `chroma_CurvedTime` maps to
  * `--color-signal-violet`; the muted `TIME` accumulator uses
  * `--color-text-2` since it is the catch-all wall-clock reference.
  */

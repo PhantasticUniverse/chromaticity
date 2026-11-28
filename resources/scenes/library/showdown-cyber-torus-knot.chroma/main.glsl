@@ -7,7 +7,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 chroma_Time;        // .x = elapsed seconds, .y = dt, .z = frame, .w = aspect
     vec4 chroma_Resolution;  // .x = width, .y = height, .z = 1/w, .w = 1/h
-    vec4 syn_BPM;            // .x = BPM
+    vec4 chroma_BPM;            // .x = BPM
     vec4 chroma_AudioRMS;    // .x = RMS [0..1]
     vec4 chroma_AudioPeak;   // .x = Peak [0..1]
     float chroma_AudioFFT[8];// 8 log-spaced FFT bands [0..1]
@@ -114,7 +114,7 @@ void main() {
     vec2 p = vec2((uv.x - 0.5) * aspect, 0.5 - uv.y);
 
     float t = chroma_Time.x;
-    float bpm = syn_BPM.x > 1.0 ? syn_BPM.x : 120.0;
+    float bpm = chroma_BPM.x > 1.0 ? chroma_BPM.x : 120.0;
     float beatPulse = pow(max(0.5 + 0.5 * sin(t * (bpm / 60.0) * 6.2831853), 0.0001), 4.0);
 
     float speed = 0.4 + chroma_Ctrl0.x * 1.3;

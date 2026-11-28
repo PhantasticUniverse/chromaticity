@@ -309,7 +309,7 @@ impl std::error::Error for ScriptBridgeError {}
 /// let (router, drain) = script_bridge(1024);
 /// let runtime = ScriptRuntime::new()?
 ///     .with_command_sender(Arc::new(router))?;
-/// // ... runtime.execute("__chromaticityEmit('syn_BPM', 120);") ...
+/// // ... runtime.execute("__chromaticityEmit('chroma_BPM', 120);") ...
 /// // Host-side per-frame drain:
 /// for cmd in drain.drain() {
 ///     // route the command per host policy.
@@ -360,7 +360,7 @@ mod script_bridge_pins {
     /// "some command flows through".
     fn sample_command() -> ScriptCommand {
         ScriptCommand::ReactiveWrite {
-            name: "syn_BPM".to_string(),
+            name: "chroma_BPM".to_string(),
             value: ScriptValue::Number(120.0),
         }
     }

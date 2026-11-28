@@ -63,7 +63,7 @@
 //!   gated behind the optional `audio-binding` cargo feature).
 //!   Marshals a `chromaticity_audio::AudioUniformSnapshot` (slice-1
 //!   producer-side, plain data) into a `Vec<UniformInput>` keyed by
-//!   the `syn_BPM` compat-syn-v1 retention (docs/36 line 117) plus
+//!   the native `chroma_BPM` tempo symbol (docs/36 §2.7) plus
 //!   three chromaticity-native `chroma_*` audio primitives
 //!   (`chroma_AudioRMS`, `chroma_AudioPeak`, `chroma_AudioFFT[8]`).
 //!   Slice-5a's initial release (catalog v1.2.0) used a transitional
@@ -193,7 +193,7 @@
 //!   rejection) remain.
 //! - **Slice 5b.4+ (deferred)** — DX12 backend re-enablement,
 //!   Windows Vulkan accept-set expansion, Metal backend-matrix
-//!   conformance, `syn_RES`-style vec2-batched uniform widening of
+//!   conformance, `chroma_Resolution`-style vec2-batched uniform widening of
 //!   [`multipass::UniformValue`] (the FFT array consolidation that
 //!   was previously listed here landed in the slice-5a follow-up
 //!   that opened catalog v1.3.0).

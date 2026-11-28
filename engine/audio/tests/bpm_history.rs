@@ -27,7 +27,7 @@
 //!
 //! Anchors:
 //! - `docs/26-evidence-artifact-registry.md` row 30 — `EV-AUDIO-TRACE`.
-//! - `docs/36-reactive-symbol-catalog.md` §2.7 — `syn_BPM` clamp.
+//! - `docs/36-reactive-symbol-catalog.md` §2.7 — `chroma_BPM` clamp.
 //! - `docs/43-development-standards.md` §15.5 — T-tier definitions.
 //! - `engine/audio/src/bpm.rs` — module-level history-window prose.
 

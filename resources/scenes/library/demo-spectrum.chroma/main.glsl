@@ -8,7 +8,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 chroma_Time;
     vec4 chroma_Resolution;
-    vec4 syn_BPM;
+    vec4 chroma_BPM;
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     vec4 chroma_AudioFFT[2];
@@ -33,6 +33,6 @@ void main() {
     float glow = exp(-abs(uv.y - height) * 14.0) * 0.7;
     vec3 col = palette(idx / 8.0 + t * 0.08, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.1, 0.4, 0.7));
     vec3 bg = vec3(0.04, 0.05, 0.09) + 0.05 * vec3(chroma_AudioRMS.x);
-    vec3 outCol = mix(bg, col * (0.85 + 0.35 * syn_BPM.z), barX * barY) + col * glow * barX;
+    vec3 outCol = mix(bg, col * (0.85 + 0.35 * chroma_BPM.z), barX * barY) + col * glow * barX;
     fragColor = vec4(clamp(outCol, 0.0, 1.0), 1.0);
 }

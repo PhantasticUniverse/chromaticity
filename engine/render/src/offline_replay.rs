@@ -19,7 +19,7 @@
 //!
 //! - `chroma_Time` (`vec4`: `elapsed_secs`, `1.0 / fps`, `frame`, `aspect`)
 //! - `chroma_Resolution` (`vec4`: `width`, `height`, `1.0 / width`, `1.0 / height`)
-//! - `syn_BPM` (`vec4`: `bpm`, `0`, `0`, `0`)
+//! - `chroma_BPM` (`vec4`: `bpm`, `0`, `0`, `0`)
 //! - `chroma_AudioRMS` (`vec4`: `rms`, `0`, `0`, `0`)
 //! - `chroma_AudioPeak` (`vec4`: `peak`, `0`, `0`, `0`)
 //! - `chroma_AudioFFT` (`float[8]`: 8 log-spaced FFT bands)
@@ -264,7 +264,7 @@ pub fn build_recorded_frame_uniforms(
             value: UniformValue::Vec4([w, h, 1.0 / w.max(1.0), 1.0 / h.max(1.0)]),
         },
         UniformInput {
-            name: String::from("syn_BPM"),
+            name: String::from("chroma_BPM"),
             value: UniformValue::Vec4([recorded.bpm, 0.0, 0.0, 0.0]),
         },
         UniformInput {
@@ -500,7 +500,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 chroma_Time;
     vec4 chroma_Resolution;
-    vec4 syn_BPM;
+    vec4 chroma_BPM;
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     float chroma_AudioFFT[8];

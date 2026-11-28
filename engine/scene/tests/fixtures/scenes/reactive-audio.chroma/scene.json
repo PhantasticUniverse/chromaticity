@@ -51,9 +51,9 @@
     {
       "TARGET": "backbuff",
       "UNIFORMS": [
-        { "NAME": "u_spectrum", "SYMBOL": "syn_Spectrum" },
-        { "NAME": "u_level", "SYMBOL": "syn_Level" },
-        { "NAME": "u_synTime", "SYMBOL": "syn_Time" },
+        { "NAME": "u_spectrum", "SYMBOL": "chroma_Spectrum" },
+        { "NAME": "u_level", "SYMBOL": "chroma_Level" },
+        { "NAME": "u_audioTime", "SYMBOL": "chroma_AudioTime" },
         { "NAME": "u_time", "SYMBOL": "TIME" },
         { "NAME": "u_resolution", "SYMBOL": "RENDERSIZE" }
       ]

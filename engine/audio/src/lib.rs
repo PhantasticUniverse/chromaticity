@@ -23,8 +23,8 @@
 //!   the caller-supplied [`frame::AudioFrame`]. The production
 //!   runtime supplies its rolling analysis window for these fields.
 //!   The cross-crate adapter (engine/render slice-5a) maps these
-//!   onto the `syn_BPM` compat-syn-v1 retention plus
-//!   chromaticity-native `chroma_*` audio bindings. Cross-crate
+//!   onto native `chroma_*` audio bindings (`chroma_BPM` plus the
+//!   raw analysis primitives). Cross-crate
 //!   coupling stays consumer-side: `engine/render` (or any other
 //!   consumer) lifts the snapshot into its own
 //!   [`UniformValue`-shaped] uniform-buffer marshalling, so
@@ -203,8 +203,8 @@
 //!   (degraded-mode fall-back).
 //! - `docs/28-implementation-contract-pack.md` CP-02a — audio
 //!   snapshot handoff contract.
-//! - `docs/36-reactive-symbol-catalog.md` v1.3.0 — `syn_BPM` /
-//!   `syn_InputLevel` / `syn_Spectrum` family vocabulary the
+//! - `docs/36-reactive-symbol-catalog.md` v1.3.0 — `chroma_BPM` /
+//!   `chroma_InputLevel` / `chroma_Spectrum` family vocabulary the
 //!   slice-1 uniforms map onto.
 //! - `docs/adr/ADR-011-rendering-backend.md` — audio / ingest
 //!   integration points.

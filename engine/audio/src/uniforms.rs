@@ -28,23 +28,23 @@
 //! `docs/36-reactive-symbol-catalog.md` v1.3.0 vocabulary as
 //! follows:
 //!
-//! - [`AudioUniformSnapshot::bpm`] -> `syn_BPM` (catalog §2.7,
+//! - [`AudioUniformSnapshot::bpm`] -> `chroma_BPM` (catalog §2.7,
 //!   clamped `[50, 220]`).
 //! - [`AudioUniformSnapshot::rms`] -> the root-mean-square energy
 //!   over the caller-supplied mono analysis buffer that
-//!   `syn_InputLevel` (catalog §2.10, `audio_indicators.synScene`)
+//!   `chroma_InputLevel` (catalog §2.10, `audio_indicators.synScene`)
 //!   is computed from. The production runtime supplies its rolling
 //!   analysis window here. Slice-1 exposes the raw RMS in `[0, 1]`;
 //!   the AGC + threshold gate the catalog describes lands in a later
-//!   slice once the `syn_Threshold` plumbing arrives.
+//!   slice once the `chroma_Threshold` plumbing arrives.
 //! - [`AudioUniformSnapshot::peak`] -> the peak magnitude over the
 //!   caller-supplied mono analysis buffer.
 //! - [`AudioUniformSnapshot::fft_bands`] -> 8 log-spaced FFT
 //!   magnitudes that downstream consumers can resample into the
-//!   `syn_Spectrum` (`r=Raw FFT`, catalog §2.6) sampler1D / 2D
+//!   `chroma_Spectrum` (`r=Raw FFT`, catalog §2.6) sampler1D / 2D
 //!   texture.
 //!
-//! The `syn_BPM` clamp range is asserted in the T1 drift pins so a
+//! The `chroma_BPM` clamp range is asserted in the T1 drift pins so a
 //! catalog edit that moves the bounds surfaces here at the next
 //! `cargo test`. Slice-1 covers only the four primary symbols; the
 //! full `syn_*` vocabulary is the EV-AUDIO-TRACE Phase-3 corpus
@@ -138,7 +138,7 @@ pub const FFT_BAND_COUNT: usize = 8;
 /// Lower edge of the FFT band-decomposition range, in Hz.
 ///
 /// Matches the lower bound of the musical spectrum the catalog's
-/// `syn_Spectrum` symbol covers; bins below this frequency
+/// `chroma_Spectrum` symbol covers; bins below this frequency
 /// (sub-audible rumble, DC bias) are discarded before integration.
 pub const FFT_BAND_MIN_HZ: f32 = 20.0;
 
@@ -163,17 +163,17 @@ pub const FFT_WINDOW_SIZE: usize = 1024;
 /// support autocorrelation across the `[50, 220]` BPM lag range.
 ///
 /// Pinned at 120 because that is the catalog's nominal "no
-/// information" anchor — `syn_BPM` clamps to `[50, 220]` per docs/36
+/// information" anchor — `chroma_BPM` clamps to `[50, 220]` per docs/36
 /// §2.7, and 120 sits at the geometric mid-point of the musical
 /// tempo range the catalog covers. The constant is pinned here (not
 /// inlined) so the value drift surfaces in the T1 drift pins.
 pub const BPM_DEFAULT: f32 = 120.0;
 
-/// Lower clamp of `syn_BPM` per `docs/36-reactive-symbol-catalog.md`
+/// Lower clamp of `chroma_BPM` per `docs/36-reactive-symbol-catalog.md`
 /// §2.7 ("Estimated BPM, clamped `[50, 220]`").
 pub const BPM_CLAMP_MIN: f32 = 50.0;
 
-/// Upper clamp of `syn_BPM` per `docs/36-reactive-symbol-catalog.md`
+/// Upper clamp of `chroma_BPM` per `docs/36-reactive-symbol-catalog.md`
 /// §2.7.
 pub const BPM_CLAMP_MAX: f32 = 220.0;
 
@@ -333,9 +333,9 @@ impl AudioAnalysisWindow {
 ///   path (for example a poisoned snapshot mutex).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AudioUniformSnapshot {
-    /// Estimated BPM, clamped `[50, 220]`. Maps to the
-    /// `syn_BPM` compat-syn-v1 retention via the engine/render
-    /// slice-5a adapter (docs/36 line 117).
+    /// Estimated BPM, clamped `[50, 220]`. Maps to
+    /// `chroma_BPM` via the engine/render slice-5a adapter
+    /// (docs/36 §2.7).
     pub bpm: f32,
     /// Whether `bpm` is safe for UI display as a real tempo estimate.
     pub bpm_availability: AudioAxisAvailability,
@@ -384,7 +384,7 @@ impl Default for AudioUniformSnapshot {
     }
 }
 
-/// Full Synesthesia / Chromaticity audio-reactive envelope bank derived from
+/// Full audio-reactive envelope bank derived from
 /// [`AudioUniformSnapshot`] over time (`dt`).
 ///
 /// Computes true onset transients (`*_hits`), slow-EMA sustained energy
@@ -567,7 +567,7 @@ impl SynAudioEnvelopeBank {
         };
         if beat_idx != self.prev_beat_index {
             self.prev_beat_index = beat_idx;
-            // Deterministic xorshift64* step for `syn_RandomOnBeat` in [0, 1].
+            // Deterministic xorshift64* step for `chroma_RandomOnBeat` in [0, 1].
             let mut x = self.rng_state;
             x ^= x >> 12;
             x ^= x << 25;
@@ -744,7 +744,7 @@ fn mono_mix(frame: &AudioFrame) -> Vec<f32> {
 /// Root-mean-square over a mono buffer, clamped to `[0, 1]`.
 ///
 /// Empty buffers read 0.0 (no energy). The clamp matches the
-/// `syn_Level` family bound the catalog documents (raw RMS is
+/// `chroma_Level` family bound the catalog documents (raw RMS is
 /// nominally `[0, 1]` for in-range PCM input; out-of-range samples
 /// are clamped at the published surface).
 fn compute_rms(mono: &[f32]) -> f32 {
@@ -1009,7 +1009,7 @@ mod uniforms_drift_pins {
     //! T1 per `docs/43-development-standards.md` §15.5: each test pins
     //! either a documented algorithm invariant (RMS / peak / band-edge
     //! formula) or a normative-doc constant
-    //! (`docs/36-reactive-symbol-catalog.md` §2.7 `syn_BPM` clamp
+    //! (`docs/36-reactive-symbol-catalog.md` §2.7 `chroma_BPM` clamp
     //! range). Any drift in the pinned constants or the math fires
     //! the moment `cargo test` runs, before the wider T2 corpus would
     //! catch the same regression as a noisier multi-test failure.

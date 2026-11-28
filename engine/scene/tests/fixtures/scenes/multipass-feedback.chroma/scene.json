@@ -38,7 +38,7 @@
       "TARGET": "backbuff",
       "FLOAT": false,
       "UNIFORMS": [
-        { "NAME": "u_final", "SYMBOL": "syn_FinalPass" },
+        { "NAME": "u_final", "SYMBOL": "chroma_FinalPass" },
         { "NAME": "u_time", "SYMBOL": "TIME" }
       ]
     }

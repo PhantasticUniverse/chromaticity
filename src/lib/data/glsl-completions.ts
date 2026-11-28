@@ -8,39 +8,31 @@
  *   - `docs/36-reactive-symbol-catalog.md` Sec.1 — Standard Uniforms
  *     (`TIME`, `RENDERSIZE`, `_xy`, `_uv`, `_uvc`, `_mouse`, `_click`,
  *     `_muv`, `_muvc`, `PASSINDEX`, `FRAMECOUNT`, `TIMEDELTA`, `PI`).
- *   - `docs/36` Sec.2.2-2.8, 2.10 — Audio uniforms (`syn_Level`-family,
- *     `syn_*Hits`, `syn_*Time`, `syn_*Presence`, `syn_OnBeat`,
- *     `syn_BPM*`, `syn_FadeInOut`, `syn_Intensity`, `syn_InputLevel`,
- *     `syn_RawLevel`, `syn_BassExpoCurve`, `syn_Threshold`).
- *   - `docs/36` Sec.2.9 — `chroma_PrimeBang` (native canonical) +
- *     `syn_PrimeBang` (compat alias).
+ *   - `docs/36` Sec.2.1-2.10 — Audio-reactive uniforms (`chroma_Level`,
+ *     `chroma_*Hits`, `chroma_AudioTime` / `chroma_*Time`, `chroma_*Presence`,
+ *     `chroma_OnBeat`, `chroma_BPM*`, `chroma_FadeInOut`, `chroma_Intensity`,
+ *     `chroma_PrimeBang`, `chroma_InputLevel`, `chroma_RawLevel`,
+ *     `chroma_BassExpoCurve`, `chroma_Threshold`).
  *   - `docs/36` Sec.4 — GLSL helper shim catalog (`_map`, `_smin`,
  *     `_pulse`, `_palette`, `_rgb2hsv`, `_hsv2rgb`, etc.).
  *
- * Namespace policy (verbatim from `docs/36` Sec. Namespace governance):
- *   - `chroma_*` is the native canonical namespace. New feature work
- *     authoring native scenes MUST emit `chroma_*` (or the existing
- *     `_Meta` / legacy standard names already locked in the catalog).
- *   - `syn_*` is a compatibility namespace, retained for parity
- *     continuity under `compat-syn-v1`. It is offered in autocomplete
- *     but visually marked as `compat` so authors do not reach for it
- *     when a `chroma_*` equivalent exists.
+ * Namespace policy (`docs/adr/ADR-024-native-chroma-vocabulary.md`):
+ *   - `chroma_*` is the only reactive namespace offered to authors.
+ *     Reference-format names exist solely in the `.synScene` import
+ *     adapters and are never suggested here.
  *
  * Sort priority (highest to lowest):
  *   - keyword (3)  — GLSL language keywords (`uniform`, `vec3`, ...)
  *   - native  (2)  — `chroma_*` symbols and standard uniforms
- *   - compat  (1)  — `syn_*` symbols
  *   - helper  (1)  — `_*` helper functions
  *
  * The boost values are passed verbatim to CodeMirror's
  * `Completion.boost`; higher = appears earlier in the suggestion
  * list. CodeMirror sorts by boost desc, then by label asc within the
- * same boost — so for a given alias pair (e.g. `chroma_PrimeBang` vs
- * `syn_PrimeBang`), the chroma_ entry sorts first regardless of label
- * order in this file.
+ * same boost.
  *
  * No autocomplete entries are added here that are not documented in
- * `docs/36`. This is the contract surface the W20 PR #149 syn_
+ * `docs/36`. This is the contract surface the W20 PR #149 namespace
  * cleanup intended to enforce — autocomplete vocabulary is a downstream
  * binding of the symbol catalog, not a free-form list.
  */
@@ -48,7 +40,7 @@
 /** Completion category — maps to the badge / styling shown in the
  *  CodeMirror autocomplete dropdown and the boost value used for
  *  sort-order. */
-export type CompletionCategory = 'keyword' | 'type' | 'native' | 'compat' | 'helper';
+export type CompletionCategory = 'keyword' | 'type' | 'native' | 'helper';
 
 /** A single autocomplete entry for the GLSL editor. */
 export interface GlslCompletion {
@@ -129,14 +121,17 @@ const STANDARD_UNIFORMS: readonly GlslCompletion[] = [
   { label: 'RENDERSIZE', category: 'native', detail: 'vec2 — current pass pixel size' },
   { label: 'RESOLUTION', category: 'native', detail: 'vec2 — alias of RENDERSIZE (legacy)' },
   { label: 'PASSINDEX', category: 'native', detail: 'int — current pass index' },
-  // Sec.1.4 reference-locked compat sampler
-  { label: 'syn_FinalPass', category: 'compat', detail: 'sampler2D — previous frame final output' },
-  // Sec.1.5 media
-  { label: 'syn_Media', category: 'compat', detail: 'sampler2D — meta-transformed media' },
-  { label: 'syn_UserImage', category: 'compat', detail: 'sampler2D — raw media before transforms' },
+  // Sec.1.4 multipass sampler
   {
-    label: 'syn_MediaType',
-    category: 'compat',
+    label: 'chroma_FinalPass',
+    category: 'native',
+    detail: 'sampler2D — previous frame final output',
+  },
+  // Sec.1.5 media
+  { label: 'chroma_Media', category: 'native', detail: 'sampler2D — active media input' },
+  {
+    label: 'chroma_MediaType',
+    category: 'native',
     detail: 'float — 0 none, 1 image, 2 video, 3 webcam',
   },
   // Reference legacy spellings still in scenes
@@ -154,76 +149,88 @@ const CHROMA_NATIVE: readonly GlslCompletion[] = [
   {
     label: 'chroma_PrimeBang',
     category: 'native',
-    detail: 'float — Profile-D differentiation pulse (native canonical)',
-    info: 'Native canonical name for the large-scale-transition pulse heuristic. Compat alias: syn_PrimeBang.',
+    detail: 'float — Profile-D differentiation pulse',
+    info: 'Large-scale-transition pulse heuristic.',
   },
 ];
 
-/** Compat audio uniforms from `docs/36` Sec.2.2-2.8 + 2.10. These ARE
- *  catalog-locked compat entries — they do NOT have `chroma_*`
- *  twins yet; they are the documented authoring surface for the level /
- *  hits / time / presence / beat / BPM / large-features families.
- *  Marked as `compat` in autocomplete so the dropdown styling indicates
- *  they live under `compat-syn-v1`. */
-const SYN_AUDIO: readonly GlslCompletion[] = [
+/** Audio-reactive uniforms from `docs/36` Sec.2.1-2.8 + 2.10. */
+const AUDIO_REACTIVE: readonly GlslCompletion[] = [
   // Sec.2.1 data textures
-  { label: 'syn_Spectrum', category: 'compat', detail: 'sampler1D — packed FFT (rgba channels)' },
-  { label: 'syn_LevelTrail', category: 'compat', detail: 'sampler1D — per-band level history' },
-  // Sec.2.2 level
-  { label: 'syn_Level', category: 'compat', detail: 'float — overall level [0,1]' },
-  { label: 'syn_BassLevel', category: 'compat', detail: 'float — bass-band level [0,1]' },
-  { label: 'syn_MidLevel', category: 'compat', detail: 'float — mid-band level [0,1]' },
-  { label: 'syn_MidHighLevel', category: 'compat', detail: 'float — mid-high-band level [0,1]' },
-  { label: 'syn_HighLevel', category: 'compat', detail: 'float — high-band level [0,1]' },
-  // Sec.2.3 hits
-  { label: 'syn_Hits', category: 'compat', detail: 'float — hit detection [0,1]' },
-  { label: 'syn_BassHits', category: 'compat', detail: 'float — bass hit detection [0,1]' },
-  { label: 'syn_MidHits', category: 'compat', detail: 'float — mid hit detection [0,1]' },
-  { label: 'syn_MidHighHits', category: 'compat', detail: 'float — mid-high hit detection [0,1]' },
-  { label: 'syn_HighHits', category: 'compat', detail: 'float — high hit detection [0,1]' },
-  // Sec.2.4 time clocks
-  { label: 'syn_Time', category: 'compat', detail: 'float — overall time clock' },
-  { label: 'syn_BassTime', category: 'compat', detail: 'float — bass-band time clock' },
-  { label: 'syn_MidTime', category: 'compat', detail: 'float — mid-band time clock' },
-  { label: 'syn_MidHighTime', category: 'compat', detail: 'float — mid-high-band time clock' },
-  { label: 'syn_HighTime', category: 'compat', detail: 'float — high-band time clock' },
-  { label: 'syn_CurvedTime', category: 'compat', detail: 'float — exponential-rise time clock' },
-  // Sec.2.5 presence
-  { label: 'syn_Presence', category: 'compat', detail: 'float — overall presence [0,1]' },
-  { label: 'syn_BassPresence', category: 'compat', detail: 'float — bass presence [0,1]' },
-  { label: 'syn_MidPresence', category: 'compat', detail: 'float — mid presence [0,1]' },
-  { label: 'syn_MidHighPresence', category: 'compat', detail: 'float — mid-high presence [0,1]' },
-  { label: 'syn_HighPresence', category: 'compat', detail: 'float — high presence [0,1]' },
-  // Sec.2.6 beat
-  { label: 'syn_OnBeat', category: 'compat', detail: 'float — 1.0 on beat, decays to 0' },
-  { label: 'syn_ToggleOnBeat', category: 'compat', detail: 'float — alternates 0/1 per beat' },
-  { label: 'syn_RandomOnBeat', category: 'compat', detail: 'float — new random value on beat' },
-  { label: 'syn_BeatTime', category: 'compat', detail: 'float — beat-count integer clock' },
-  // Sec.2.7 BPM
-  { label: 'syn_BPM', category: 'compat', detail: 'float — estimated BPM, clamped [50,220]' },
-  { label: 'syn_BPMConfidence', category: 'compat', detail: 'float — BPM stability [0,1]' },
-  { label: 'syn_BPMTwitcher', category: 'compat', detail: 'float — exponential beat clock' },
-  { label: 'syn_BPMSin', category: 'compat', detail: 'float — sine [0,1] at BPM frequency' },
-  { label: 'syn_BPMSin2', category: 'compat', detail: 'float — sine [0,1] at BPM/2' },
-  { label: 'syn_BPMSin4', category: 'compat', detail: 'float — sine [0,1] at BPM/4' },
-  { label: 'syn_BPMTri', category: 'compat', detail: 'float — triangle [0,1] at BPM' },
-  { label: 'syn_BPMTri2', category: 'compat', detail: 'float — triangle [0,1] at BPM/2' },
-  { label: 'syn_BPMTri4', category: 'compat', detail: 'float — triangle [0,1] at BPM/4' },
-  // Sec.2.8 large features
-  { label: 'syn_FadeInOut', category: 'compat', detail: 'float — slow rise on music start' },
-  { label: 'syn_Intensity', category: 'compat', detail: 'float — slow song-intensity accumulator' },
-  // Sec.2.9 differentiator (compat alias of chroma_PrimeBang)
   {
-    label: 'syn_PrimeBang',
-    category: 'compat',
-    detail: 'float — compat alias of chroma_PrimeBang',
-    info: 'Compat alias under compat-syn-v1. Native scenes should use chroma_PrimeBang.',
+    label: 'chroma_Spectrum',
+    category: 'native',
+    detail: 'sampler1D — packed FFT (rgba channels)',
+  },
+  { label: 'chroma_LevelTrail', category: 'native', detail: 'sampler1D — per-band level history' },
+  // Sec.2.2 level
+  { label: 'chroma_Level', category: 'native', detail: 'float — overall level [0,1]' },
+  { label: 'chroma_BassLevel', category: 'native', detail: 'float — bass-band level [0,1]' },
+  { label: 'chroma_MidLevel', category: 'native', detail: 'float — mid-band level [0,1]' },
+  { label: 'chroma_MidHighLevel', category: 'native', detail: 'float — mid-high-band level [0,1]' },
+  { label: 'chroma_HighLevel', category: 'native', detail: 'float — high-band level [0,1]' },
+  // Sec.2.3 hits
+  { label: 'chroma_Hits', category: 'native', detail: 'float — hit detection [0,1]' },
+  { label: 'chroma_BassHits', category: 'native', detail: 'float — bass hit detection [0,1]' },
+  { label: 'chroma_MidHits', category: 'native', detail: 'float — mid hit detection [0,1]' },
+  {
+    label: 'chroma_MidHighHits',
+    category: 'native',
+    detail: 'float — mid-high hit detection [0,1]',
+  },
+  { label: 'chroma_HighHits', category: 'native', detail: 'float — high hit detection [0,1]' },
+  // Sec.2.4 time clocks
+  { label: 'chroma_AudioTime', category: 'native', detail: 'float — overall time clock' },
+  { label: 'chroma_BassTime', category: 'native', detail: 'float — bass-band time clock' },
+  { label: 'chroma_MidTime', category: 'native', detail: 'float — mid-band time clock' },
+  { label: 'chroma_MidHighTime', category: 'native', detail: 'float — mid-high-band time clock' },
+  { label: 'chroma_HighTime', category: 'native', detail: 'float — high-band time clock' },
+  { label: 'chroma_CurvedTime', category: 'native', detail: 'float — exponential-rise time clock' },
+  // Sec.2.5 presence
+  { label: 'chroma_Presence', category: 'native', detail: 'float — overall presence [0,1]' },
+  { label: 'chroma_BassPresence', category: 'native', detail: 'float — bass presence [0,1]' },
+  { label: 'chroma_MidPresence', category: 'native', detail: 'float — mid presence [0,1]' },
+  {
+    label: 'chroma_MidHighPresence',
+    category: 'native',
+    detail: 'float — mid-high presence [0,1]',
+  },
+  { label: 'chroma_HighPresence', category: 'native', detail: 'float — high presence [0,1]' },
+  // Sec.2.6 beat
+  { label: 'chroma_OnBeat', category: 'native', detail: 'float — 1.0 on beat, decays to 0' },
+  { label: 'chroma_ToggleOnBeat', category: 'native', detail: 'float — alternates 0/1 per beat' },
+  { label: 'chroma_RandomOnBeat', category: 'native', detail: 'float — new random value on beat' },
+  { label: 'chroma_BeatTime', category: 'native', detail: 'float — beat-count integer clock' },
+  // Sec.2.7 BPM
+  { label: 'chroma_BPM', category: 'native', detail: 'float — estimated BPM, clamped [50,220]' },
+  { label: 'chroma_BPMConfidence', category: 'native', detail: 'float — BPM stability [0,1]' },
+  { label: 'chroma_BPMTwitcher', category: 'native', detail: 'float — exponential beat clock' },
+  { label: 'chroma_BPMSin', category: 'native', detail: 'float — sine [0,1] at BPM frequency' },
+  { label: 'chroma_BPMSin2', category: 'native', detail: 'float — sine [0,1] at BPM/2' },
+  { label: 'chroma_BPMSin4', category: 'native', detail: 'float — sine [0,1] at BPM/4' },
+  { label: 'chroma_BPMTri', category: 'native', detail: 'float — triangle [0,1] at BPM' },
+  { label: 'chroma_BPMTri2', category: 'native', detail: 'float — triangle [0,1] at BPM/2' },
+  { label: 'chroma_BPMTri4', category: 'native', detail: 'float — triangle [0,1] at BPM/4' },
+  // Sec.2.8 large features
+  { label: 'chroma_FadeInOut', category: 'native', detail: 'float — slow rise on music start' },
+  {
+    label: 'chroma_Intensity',
+    category: 'native',
+    detail: 'float — slow song-intensity accumulator',
   },
   // Sec.2.10 reference-surface uniforms
-  { label: 'syn_InputLevel', category: 'compat', detail: 'float — pre-AGC instantaneous level' },
-  { label: 'syn_RawLevel', category: 'compat', detail: 'float — alias of syn_InputLevel' },
-  { label: 'syn_BassExpoCurve', category: 'compat', detail: 'float — pow(syn_BassLevel, 3.0)' },
-  { label: 'syn_Threshold', category: 'compat', detail: 'float — operator-set noise-floor gate' },
+  { label: 'chroma_InputLevel', category: 'native', detail: 'float — pre-AGC instantaneous level' },
+  { label: 'chroma_RawLevel', category: 'native', detail: 'float — alias of chroma_InputLevel' },
+  {
+    label: 'chroma_BassExpoCurve',
+    category: 'native',
+    detail: 'float — pow(chroma_BassLevel, 3.0)',
+  },
+  {
+    label: 'chroma_Threshold',
+    category: 'native',
+    detail: 'float — operator-set noise-floor gate',
+  },
 ];
 
 /** Meta-control symbols from `docs/36` Sec.3 (`_Master`, `_Brightness`,
@@ -298,7 +305,7 @@ export const GLSL_COMPLETIONS: readonly GlslCompletion[] = [
   ...STANDARD_UNIFORMS,
   ...CHROMA_NATIVE,
   ...META_CONTROLS,
-  ...SYN_AUDIO,
+  ...AUDIO_REACTIVE,
   ...HELPER_FUNCTIONS,
 ];
 
@@ -306,9 +313,7 @@ export const GLSL_COMPLETIONS: readonly GlslCompletion[] = [
  *  CodeMirror's `Completion.boost` field accepts any number; the
  *  framework sorts by boost desc, then label asc within ties. The
  *  values here keep keywords above natives (so `vec3` beats `_uv` for
- *  a `v` prefix), natives above compat (so `chroma_PrimeBang` beats
- *  `syn_PrimeBang` for a `Prime` prefix), and helpers tied with
- *  compat (so `_palette` and `syn_BPMSin` interleave by label). */
+ *  a `v` prefix) and natives above helpers. */
 export function categoryBoost(category: CompletionCategory): number {
   switch (category) {
     case 'keyword':
@@ -319,8 +324,6 @@ export function categoryBoost(category: CompletionCategory): number {
       return 2;
     case 'helper':
       return 1;
-    case 'compat':
-      return 0;
   }
 }
 
@@ -337,7 +340,5 @@ export function categoryType(category: CompletionCategory): string {
       return 'variable';
     case 'helper':
       return 'function';
-    case 'compat':
-      return 'constant';
   }
 }

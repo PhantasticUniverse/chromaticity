@@ -7,7 +7,7 @@
 //! Advances `docs/26-evidence-artifact-registry.md` row 30
 //! (`EV-AUDIO-TRACE`) past the slice-1 producer-side T1 drift pins
 //! by exercising the four audio analysis primitives (BPM clamped
-//! `[50, 220]` mapped to `syn_BPM` compat-syn-v1 retention; raw
+//! `[50, 220]` mapped to `chroma_BPM`; raw
 //! RMS energy mapped to `chroma_AudioRMS`; peak
 //! magnitude mapped to `chroma_AudioPeak`; 8-band log-spaced FFT
 //! magnitudes mapped to `chroma_AudioFFTLow` / `chroma_AudioFFTHigh`

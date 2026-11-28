@@ -233,7 +233,7 @@ pub struct AgcOutput {
     pub raw_level: f32,
     /// Current rolling p95 peak tracker (`L_peak30`).
     pub peak_p95: f32,
-    /// Unclamped `L_raw / max(L_peak30, epsilon)` (`syn_InputLevel` per
+    /// Unclamped `L_raw / max(L_peak30, epsilon)` (`chroma_InputLevel` per
     /// `docs/06` §7.12).
     pub input_level: f32,
     /// Clamped `[0, 1]` normalised level (`L_norm`), zeroed when
@@ -242,7 +242,7 @@ pub struct AgcOutput {
     /// Asymmetric-EMA smoothed level (`L_smooth`), zeroed when `gated`
     /// is true.
     pub smoothed_level: f32,
-    /// True when `raw_level < threshold` (`syn_Threshold` gate).
+    /// True when `raw_level < threshold` (`chroma_Threshold` gate).
     pub gated: bool,
 }
 
@@ -285,7 +285,7 @@ impl AgcNormalizer {
         }
     }
 
-    /// Configure the operator noise-gate threshold (`syn_Threshold`),
+    /// Configure the operator noise-gate threshold (`chroma_Threshold`),
     /// clamped to `[0.0, 1.0]`. Non-finite inputs collapse to `0.0`.
     pub fn set_threshold(&mut self, threshold: f32) {
         self.threshold = if threshold.is_finite() {

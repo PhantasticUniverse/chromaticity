@@ -233,7 +233,7 @@ export const OSC_ROUTES: readonly OscRouteFixture[] = [
     range: 'per-uniform cadence',
     family: 'audio',
     direction: 'out',
-    note: 'syn_BassLevel → /audio/var/bassLevel',
+    note: 'chroma_BassLevel → /audio/var/bassLevel',
   },
   {
     canonical: '/audio/threshold {f}',

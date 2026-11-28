@@ -96,7 +96,7 @@
       "TYPE": "toggle",
       "DEFAULT": false,
       "UI_GROUP": "Performance",
-      "DESCRIPTION": "Arms beat-locked clerestory strobe pulses synchronized to syn_BPM."
+      "DESCRIPTION": "Arms beat-locked clerestory strobe pulses synchronized to chroma_BPM."
     },
     {
       "NAME": "vaultPulse",

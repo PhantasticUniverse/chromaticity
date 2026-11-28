@@ -54,8 +54,8 @@
 //! is producer-only on the script side post catalog v1.3.0). Pass-only
 //! and fragment-only symbols (`_uv`, `_uvc`, `_xy`, `RENDERSIZE`,
 //! `PASSINDEX`) are excluded per `docs/36` §5 (the catalog's own
-//! Script Host Mirror Rules). Sampler symbols (`syn_FinalPass`,
-//! `syn_Media`, `syn_UserImage`, `syn_Spectrum`, `syn_LevelTrail`)
+//! Script Host Mirror Rules). Sampler symbols (`chroma_FinalPass`,
+//! `chroma_Media`, `chroma_Media`, `chroma_Spectrum`, `chroma_LevelTrail`)
 //! are excluded too — `docs/36` §5 routes those through helper
 //! functions (`textureFinalPass(x,y)`), not direct value access,
 //! and the slice-5.2 catalog is value-write-shaped.
@@ -168,106 +168,104 @@ pub enum ReactiveSymbol {
     MouseUvc,
 
     // §2.2 Levels — Scalar, family tolerance `LVL`
-    /// `syn_Level`.
+    /// `chroma_Level`.
     Level,
-    /// `syn_BassLevel`.
+    /// `chroma_BassLevel`.
     BassLevel,
-    /// `syn_MidLevel`.
+    /// `chroma_MidLevel`.
     MidLevel,
-    /// `syn_MidHighLevel`.
+    /// `chroma_MidHighLevel`.
     MidHighLevel,
-    /// `syn_HighLevel`.
+    /// `chroma_HighLevel`.
     HighLevel,
 
     // §2.3 Hits — Scalar, family tolerance `HIT`
-    /// `syn_Hits`.
+    /// `chroma_Hits`.
     Hits,
-    /// `syn_BassHits`.
+    /// `chroma_BassHits`.
     BassHits,
-    /// `syn_MidHits`.
+    /// `chroma_MidHits`.
     MidHits,
-    /// `syn_MidHighHits`.
+    /// `chroma_MidHighHits`.
     MidHighHits,
-    /// `syn_HighHits`.
+    /// `chroma_HighHits`.
     HighHits,
 
     // §2.4 Time clocks — Scalar, family tolerance `TIM`
-    /// `syn_Time`.
-    SynTime,
-    /// `syn_BassTime`.
+    /// `chroma_AudioTime`.
+    AudioTime,
+    /// `chroma_BassTime`.
     BassTime,
-    /// `syn_MidTime`.
+    /// `chroma_MidTime`.
     MidTime,
-    /// `syn_MidHighTime`.
+    /// `chroma_MidHighTime`.
     MidHighTime,
-    /// `syn_HighTime`.
+    /// `chroma_HighTime`.
     HighTime,
-    /// `syn_CurvedTime`.
+    /// `chroma_CurvedTime`.
     CurvedTime,
 
     // §2.5 Presence — Scalar, family tolerance `PRS`
-    /// `syn_Presence`.
+    /// `chroma_Presence`.
     Presence,
-    /// `syn_BassPresence`.
+    /// `chroma_BassPresence`.
     BassPresence,
-    /// `syn_MidPresence`.
+    /// `chroma_MidPresence`.
     MidPresence,
-    /// `syn_MidHighPresence`.
+    /// `chroma_MidHighPresence`.
     MidHighPresence,
-    /// `syn_HighPresence`.
+    /// `chroma_HighPresence`.
     HighPresence,
 
     // §2.6 Beat — Scalar, family tolerance `BEAT`
-    /// `syn_OnBeat`.
+    /// `chroma_OnBeat`.
     OnBeat,
-    /// `syn_ToggleOnBeat`.
+    /// `chroma_ToggleOnBeat`.
     ToggleOnBeat,
-    /// `syn_RandomOnBeat`.
+    /// `chroma_RandomOnBeat`.
     RandomOnBeat,
-    /// `syn_BeatTime`.
+    /// `chroma_BeatTime`.
     BeatTime,
 
     // §2.7 BPM — Scalar, family tolerance `BPM`
-    /// `syn_BPM` — clamped `[50, 220]`. Slice-5a render-adapter
+    /// `chroma_BPM` — clamped `[50, 220]`. Slice-5a render-adapter
     /// also publishes this name.
     Bpm,
-    /// `syn_BPMConfidence`.
+    /// `chroma_BPMConfidence`.
     BpmConfidence,
-    /// `syn_BPMTwitcher`.
+    /// `chroma_BPMTwitcher`.
     BpmTwitcher,
-    /// `syn_BPMSin`.
+    /// `chroma_BPMSin`.
     BpmSin,
-    /// `syn_BPMSin2`.
+    /// `chroma_BPMSin2`.
     BpmSin2,
-    /// `syn_BPMSin4`.
+    /// `chroma_BPMSin4`.
     BpmSin4,
-    /// `syn_BPMTri`.
+    /// `chroma_BPMTri`.
     BpmTri,
-    /// `syn_BPMTri2`.
+    /// `chroma_BPMTri2`.
     BpmTri2,
-    /// `syn_BPMTri4`.
+    /// `chroma_BPMTri4`.
     BpmTri4,
 
     // §2.8 Large features — Scalar, family tolerance `LRG`
-    /// `syn_FadeInOut`.
+    /// `chroma_FadeInOut`.
     FadeInOut,
-    /// `syn_Intensity`.
+    /// `chroma_Intensity`.
     Intensity,
 
     // §2.9 PrimeBang — Scalar (Profile D)
-    /// `chroma_PrimeBang` — native canonical name.
-    ChromaPrimeBang,
-    /// `syn_PrimeBang` — compat alias for `chroma_PrimeBang`.
-    SynPrimeBang,
+    /// `chroma_PrimeBang`.
+    PrimeBang,
 
     // §2.10 Reference-surface uniforms — Scalar
-    /// `syn_InputLevel` — pre-AGC instantaneous input level.
+    /// `chroma_InputLevel` — pre-AGC instantaneous input level.
     InputLevel,
-    /// `syn_RawLevel` — alias of `syn_InputLevel`.
+    /// `chroma_RawLevel` — alias of `chroma_InputLevel`.
     RawLevel,
-    /// `syn_BassExpoCurve` — `pow(syn_BassLevel, 3.0)`.
+    /// `chroma_BassExpoCurve` — `pow(chroma_BassLevel, 3.0)`.
     BassExpoCurve,
-    /// `syn_Threshold` — operator-settable noise-floor gate.
+    /// `chroma_Threshold` — operator-settable noise-floor gate.
     Threshold,
 
     // Slice-5a render-adapter aggregates (mirrors
@@ -527,56 +525,55 @@ impl ReactiveSymbol {
             "_muv" => Self::MouseUv,
             "_muvc" => Self::MouseUvc,
             // §2.2
-            "syn_Level" => Self::Level,
-            "syn_BassLevel" => Self::BassLevel,
-            "syn_MidLevel" => Self::MidLevel,
-            "syn_MidHighLevel" => Self::MidHighLevel,
-            "syn_HighLevel" => Self::HighLevel,
+            "chroma_Level" => Self::Level,
+            "chroma_BassLevel" => Self::BassLevel,
+            "chroma_MidLevel" => Self::MidLevel,
+            "chroma_MidHighLevel" => Self::MidHighLevel,
+            "chroma_HighLevel" => Self::HighLevel,
             // §2.3
-            "syn_Hits" => Self::Hits,
-            "syn_BassHits" => Self::BassHits,
-            "syn_MidHits" => Self::MidHits,
-            "syn_MidHighHits" => Self::MidHighHits,
-            "syn_HighHits" => Self::HighHits,
+            "chroma_Hits" => Self::Hits,
+            "chroma_BassHits" => Self::BassHits,
+            "chroma_MidHits" => Self::MidHits,
+            "chroma_MidHighHits" => Self::MidHighHits,
+            "chroma_HighHits" => Self::HighHits,
             // §2.4
-            "syn_Time" => Self::SynTime,
-            "syn_BassTime" => Self::BassTime,
-            "syn_MidTime" => Self::MidTime,
-            "syn_MidHighTime" => Self::MidHighTime,
-            "syn_HighTime" => Self::HighTime,
-            "syn_CurvedTime" => Self::CurvedTime,
+            "chroma_AudioTime" => Self::AudioTime,
+            "chroma_BassTime" => Self::BassTime,
+            "chroma_MidTime" => Self::MidTime,
+            "chroma_MidHighTime" => Self::MidHighTime,
+            "chroma_HighTime" => Self::HighTime,
+            "chroma_CurvedTime" => Self::CurvedTime,
             // §2.5
-            "syn_Presence" => Self::Presence,
-            "syn_BassPresence" => Self::BassPresence,
-            "syn_MidPresence" => Self::MidPresence,
-            "syn_MidHighPresence" => Self::MidHighPresence,
-            "syn_HighPresence" => Self::HighPresence,
+            "chroma_Presence" => Self::Presence,
+            "chroma_BassPresence" => Self::BassPresence,
+            "chroma_MidPresence" => Self::MidPresence,
+            "chroma_MidHighPresence" => Self::MidHighPresence,
+            "chroma_HighPresence" => Self::HighPresence,
             // §2.6
-            "syn_OnBeat" => Self::OnBeat,
-            "syn_ToggleOnBeat" => Self::ToggleOnBeat,
-            "syn_RandomOnBeat" => Self::RandomOnBeat,
-            "syn_BeatTime" => Self::BeatTime,
+            "chroma_OnBeat" => Self::OnBeat,
+            "chroma_ToggleOnBeat" => Self::ToggleOnBeat,
+            "chroma_RandomOnBeat" => Self::RandomOnBeat,
+            "chroma_BeatTime" => Self::BeatTime,
             // §2.7
-            "syn_BPM" => Self::Bpm,
-            "syn_BPMConfidence" => Self::BpmConfidence,
-            "syn_BPMTwitcher" => Self::BpmTwitcher,
-            "syn_BPMSin" => Self::BpmSin,
-            "syn_BPMSin2" => Self::BpmSin2,
-            "syn_BPMSin4" => Self::BpmSin4,
-            "syn_BPMTri" => Self::BpmTri,
-            "syn_BPMTri2" => Self::BpmTri2,
-            "syn_BPMTri4" => Self::BpmTri4,
+            "chroma_BPM" => Self::Bpm,
+            "chroma_BPMConfidence" => Self::BpmConfidence,
+            "chroma_BPMTwitcher" => Self::BpmTwitcher,
+            "chroma_BPMSin" => Self::BpmSin,
+            "chroma_BPMSin2" => Self::BpmSin2,
+            "chroma_BPMSin4" => Self::BpmSin4,
+            "chroma_BPMTri" => Self::BpmTri,
+            "chroma_BPMTri2" => Self::BpmTri2,
+            "chroma_BPMTri4" => Self::BpmTri4,
             // §2.8
-            "syn_FadeInOut" => Self::FadeInOut,
-            "syn_Intensity" => Self::Intensity,
+            "chroma_FadeInOut" => Self::FadeInOut,
+            "chroma_Intensity" => Self::Intensity,
             // §2.9
-            "chroma_PrimeBang" => Self::ChromaPrimeBang,
-            "syn_PrimeBang" => Self::SynPrimeBang,
+            "chroma_PrimeBang" => Self::PrimeBang,
             // §2.10
-            "syn_InputLevel" => Self::InputLevel,
-            "syn_RawLevel" => Self::RawLevel,
-            "syn_BassExpoCurve" => Self::BassExpoCurve,
-            "syn_Threshold" => Self::Threshold,
+            "chroma_InputLevel" => Self::InputLevel,
+            "chroma_RawLevel" => Self::RawLevel,
+            "chroma_BassExpoCurve" => Self::BassExpoCurve,
+            "chroma_Threshold" => Self::Threshold,
             // Slice-5a render-adapter aggregates (post catalog
             // v1.3.0: only the scalar primitives remain here; the
             // FFT array surface is producer-only on the script side
@@ -608,56 +605,55 @@ impl ReactiveSymbol {
             Self::MouseUv => "_muv",
             Self::MouseUvc => "_muvc",
             // §2.2
-            Self::Level => "syn_Level",
-            Self::BassLevel => "syn_BassLevel",
-            Self::MidLevel => "syn_MidLevel",
-            Self::MidHighLevel => "syn_MidHighLevel",
-            Self::HighLevel => "syn_HighLevel",
+            Self::Level => "chroma_Level",
+            Self::BassLevel => "chroma_BassLevel",
+            Self::MidLevel => "chroma_MidLevel",
+            Self::MidHighLevel => "chroma_MidHighLevel",
+            Self::HighLevel => "chroma_HighLevel",
             // §2.3
-            Self::Hits => "syn_Hits",
-            Self::BassHits => "syn_BassHits",
-            Self::MidHits => "syn_MidHits",
-            Self::MidHighHits => "syn_MidHighHits",
-            Self::HighHits => "syn_HighHits",
+            Self::Hits => "chroma_Hits",
+            Self::BassHits => "chroma_BassHits",
+            Self::MidHits => "chroma_MidHits",
+            Self::MidHighHits => "chroma_MidHighHits",
+            Self::HighHits => "chroma_HighHits",
             // §2.4
-            Self::SynTime => "syn_Time",
-            Self::BassTime => "syn_BassTime",
-            Self::MidTime => "syn_MidTime",
-            Self::MidHighTime => "syn_MidHighTime",
-            Self::HighTime => "syn_HighTime",
-            Self::CurvedTime => "syn_CurvedTime",
+            Self::AudioTime => "chroma_AudioTime",
+            Self::BassTime => "chroma_BassTime",
+            Self::MidTime => "chroma_MidTime",
+            Self::MidHighTime => "chroma_MidHighTime",
+            Self::HighTime => "chroma_HighTime",
+            Self::CurvedTime => "chroma_CurvedTime",
             // §2.5
-            Self::Presence => "syn_Presence",
-            Self::BassPresence => "syn_BassPresence",
-            Self::MidPresence => "syn_MidPresence",
-            Self::MidHighPresence => "syn_MidHighPresence",
-            Self::HighPresence => "syn_HighPresence",
+            Self::Presence => "chroma_Presence",
+            Self::BassPresence => "chroma_BassPresence",
+            Self::MidPresence => "chroma_MidPresence",
+            Self::MidHighPresence => "chroma_MidHighPresence",
+            Self::HighPresence => "chroma_HighPresence",
             // §2.6
-            Self::OnBeat => "syn_OnBeat",
-            Self::ToggleOnBeat => "syn_ToggleOnBeat",
-            Self::RandomOnBeat => "syn_RandomOnBeat",
-            Self::BeatTime => "syn_BeatTime",
+            Self::OnBeat => "chroma_OnBeat",
+            Self::ToggleOnBeat => "chroma_ToggleOnBeat",
+            Self::RandomOnBeat => "chroma_RandomOnBeat",
+            Self::BeatTime => "chroma_BeatTime",
             // §2.7
-            Self::Bpm => "syn_BPM",
-            Self::BpmConfidence => "syn_BPMConfidence",
-            Self::BpmTwitcher => "syn_BPMTwitcher",
-            Self::BpmSin => "syn_BPMSin",
-            Self::BpmSin2 => "syn_BPMSin2",
-            Self::BpmSin4 => "syn_BPMSin4",
-            Self::BpmTri => "syn_BPMTri",
-            Self::BpmTri2 => "syn_BPMTri2",
-            Self::BpmTri4 => "syn_BPMTri4",
+            Self::Bpm => "chroma_BPM",
+            Self::BpmConfidence => "chroma_BPMConfidence",
+            Self::BpmTwitcher => "chroma_BPMTwitcher",
+            Self::BpmSin => "chroma_BPMSin",
+            Self::BpmSin2 => "chroma_BPMSin2",
+            Self::BpmSin4 => "chroma_BPMSin4",
+            Self::BpmTri => "chroma_BPMTri",
+            Self::BpmTri2 => "chroma_BPMTri2",
+            Self::BpmTri4 => "chroma_BPMTri4",
             // §2.8
-            Self::FadeInOut => "syn_FadeInOut",
-            Self::Intensity => "syn_Intensity",
+            Self::FadeInOut => "chroma_FadeInOut",
+            Self::Intensity => "chroma_Intensity",
             // §2.9
-            Self::ChromaPrimeBang => "chroma_PrimeBang",
-            Self::SynPrimeBang => "syn_PrimeBang",
+            Self::PrimeBang => "chroma_PrimeBang",
             // §2.10
-            Self::InputLevel => "syn_InputLevel",
-            Self::RawLevel => "syn_RawLevel",
-            Self::BassExpoCurve => "syn_BassExpoCurve",
-            Self::Threshold => "syn_Threshold",
+            Self::InputLevel => "chroma_InputLevel",
+            Self::RawLevel => "chroma_RawLevel",
+            Self::BassExpoCurve => "chroma_BassExpoCurve",
+            Self::Threshold => "chroma_Threshold",
             // Slice-5a render-adapter aggregates
             Self::Rms => "chroma_AudioRMS",
             Self::Peak => "chroma_AudioPeak",
@@ -702,7 +698,7 @@ impl ReactiveSymbol {
                 ReactiveValueKind::Scalar
             }
             // §2.4 — all Scalar
-            Self::SynTime
+            Self::AudioTime
             | Self::BassTime
             | Self::MidTime
             | Self::MidHighTime
@@ -731,7 +727,7 @@ impl ReactiveSymbol {
             // §2.8 — all Scalar
             Self::FadeInOut | Self::Intensity => ReactiveValueKind::Scalar,
             // §2.9 — Scalar
-            Self::ChromaPrimeBang | Self::SynPrimeBang => ReactiveValueKind::Scalar,
+            Self::PrimeBang => ReactiveValueKind::Scalar,
             // §2.10 — all Scalar
             Self::InputLevel | Self::RawLevel | Self::BassExpoCurve | Self::Threshold => {
                 ReactiveValueKind::Scalar
@@ -793,7 +789,7 @@ mod reactive_symbol_pins {
         ReactiveSymbol::MidHighHits,
         ReactiveSymbol::HighHits,
         // §2.4
-        ReactiveSymbol::SynTime,
+        ReactiveSymbol::AudioTime,
         ReactiveSymbol::BassTime,
         ReactiveSymbol::MidTime,
         ReactiveSymbol::MidHighTime,
@@ -824,8 +820,7 @@ mod reactive_symbol_pins {
         ReactiveSymbol::FadeInOut,
         ReactiveSymbol::Intensity,
         // §2.9
-        ReactiveSymbol::ChromaPrimeBang,
-        ReactiveSymbol::SynPrimeBang,
+        ReactiveSymbol::PrimeBang,
         // §2.10
         ReactiveSymbol::InputLevel,
         ReactiveSymbol::RawLevel,
@@ -860,7 +855,7 @@ mod reactive_symbol_pins {
         // not in the catalog. Common typo cases pinned: case
         // mismatch (catalog is case-sensitive per §6 CR-01),
         // missing `syn_` prefix, and entirely-foreign names.
-        assert!(ReactiveSymbol::from_name("syn_bpm").is_none());
+        assert!(ReactiveSymbol::from_name("chroma_bpm").is_none());
         assert!(ReactiveSymbol::from_name("BPM").is_none());
         assert!(ReactiveSymbol::from_name("not_a_symbol").is_none());
         assert!(ReactiveSymbol::from_name("").is_none());
@@ -869,7 +864,7 @@ mod reactive_symbol_pins {
     #[test]
     fn slice_5a_render_adapter_names_match_audio_adapter_constants() {
         // Drift pin: the slice-5a render-adapter chose the
-        // names `syn_BPM`, `chroma_AudioRMS`, `chroma_AudioPeak`
+        // names `chroma_BPM`, `chroma_AudioRMS`, `chroma_AudioPeak`
         // for cross-crate audio uniforms (see
         // `engine/render/src/audio_adapter.rs`). The slice-5.2
         // catalog MUST surface the same spellings so a script
@@ -881,7 +876,7 @@ mod reactive_symbol_pins {
         // surface is producer-only on the script side until an
         // 8-element-float-array `ReactiveValueKind` variant lands
         // in a future slice.
-        assert_eq!(ReactiveSymbol::Bpm.name(), "syn_BPM");
+        assert_eq!(ReactiveSymbol::Bpm.name(), "chroma_BPM");
         assert_eq!(ReactiveSymbol::Rms.name(), "chroma_AudioRMS");
         assert_eq!(ReactiveSymbol::Peak.name(), "chroma_AudioPeak");
         assert!(

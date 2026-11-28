@@ -1361,14 +1361,14 @@ mod tests {
     fn spec_validation_rejects_legacy_and_malformed_names() {
         let legacy = make_spec(
             "legacy",
-            "syn_Data_temperature",
+            "syn_Data_temperature", // syn-lint: allow (legacy-prefix rejection pin)
             DataTransport::Cassette,
             true,
         );
         assert_eq!(
             legacy.validate(),
             Err(DataIngestError::InvalidUniformName {
-                name: "syn_Data_temperature".to_owned(),
+                name: "syn_Data_temperature".to_owned(), // syn-lint: allow
             })
         );
 

@@ -21,13 +21,15 @@ function setup() {
 function update(dt) {
   const safeDt = dt > 0 && dt < 0.25 ? dt : 1.0 / 60.0;
   const bpm =
-    typeof globalThis.syn_BPM === 'number' && globalThis.syn_BPM > 20 ? globalThis.syn_BPM : 128.0;
+    typeof globalThis.chroma_BPM === 'number' && globalThis.chroma_BPM > 20
+      ? globalThis.chroma_BPM
+      : 128.0;
   const peak = typeof globalThis.chroma_AudioPeak === 'number' ? globalThis.chroma_AudioPeak : 0.0;
   const rms = typeof globalThis.chroma_AudioRMS === 'number' ? globalThis.chroma_AudioRMS : 0.0;
 
   beatPhase += safeDt * (bpm / 60.0);
 
-  // Harmonic dual-axis orbital drift locked to syn_BPM
+  // Harmonic dual-axis orbital drift locked to chroma_BPM
   const yawDrift = Math.sin(beatPhase * 0.261799) * 0.58 + Math.sin(beatPhase * 0.523598) * 0.16;
   const pitchDrift = Math.cos(beatPhase * 0.196349) * 0.45;
 

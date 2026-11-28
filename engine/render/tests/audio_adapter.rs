@@ -97,7 +97,7 @@ const SAMPLES_ONE_SECOND: usize = 48_000;
 ///
 /// # Output encoding
 ///
-/// - `R` = `syn_BPM.x / 220.0` (max BPM clamp value, normalised to [0, 1])
+/// - `R` = `chroma_BPM.x / 220.0` (max BPM clamp value, normalised to [0, 1])
 /// - `G` = `chroma_AudioRMS.x`
 /// - `B` = `chroma_AudioPeak.x`
 /// - `A` = `mean(chroma_AudioFFT[0..=7])`
@@ -111,14 +111,14 @@ layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 fragColor;
 
 layout(set = 0, binding = 0) uniform Uniforms {
-    vec4 syn_BPM;
+    vec4 chroma_BPM;
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     float chroma_AudioFFT[8];
 };
 
 void main() {
-    float r = syn_BPM.x / 220.0;
+    float r = chroma_BPM.x / 220.0;
     float g = chroma_AudioRMS.x;
     float b = chroma_AudioPeak.x;
     float fft_sum = chroma_AudioFFT[0] + chroma_AudioFFT[1] + chroma_AudioFFT[2] + chroma_AudioFFT[3]

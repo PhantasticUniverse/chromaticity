@@ -23,10 +23,10 @@
 //! - `TIME` (docs/36 §1.1 Frame / timing, Profile C)
 //! - `RENDERSIZE` (docs/36 §1.4 Multipass, Profile C)
 //! - `_mouse` (docs/36 §1.3 Mouse, Profile C)
-//! - `syn_FinalPass` (docs/36 §1.4 Multipass, Profile C)
-//! - `syn_Time` (docs/36 §2.4 Audio time clocks, Profile C)
-//! - `syn_Level` (docs/36 §2.2 Audio level, Profile C)
-//! - `syn_Spectrum` (docs/36 §2.1 Audio data textures, Profile C)
+//! - `chroma_FinalPass` (docs/36 §1.4 Multipass, Profile C)
+//! - `chroma_AudioTime` (docs/36 §2.4 Audio time clocks, Profile C)
+//! - `chroma_Level` (docs/36 §2.2 Audio level, Profile C)
+//! - `chroma_Spectrum` (docs/36 §2.1 Audio data textures, Profile C)
 //!
 //! The **full catalog loader lands with slice-3** alongside the
 //! `.chroma` deserializer. The slice-3 loader will read docs/36 (or a
@@ -71,13 +71,13 @@ static KNOWN_SYMBOLS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "_mouse",
         // §1.4 Multipass
         "RENDERSIZE",
-        "syn_FinalPass",
+        "chroma_FinalPass",
         // §2.1 Audio data textures
-        "syn_Spectrum",
+        "chroma_Spectrum",
         // §2.2 Audio level
-        "syn_Level",
+        "chroma_Level",
         // §2.4 Audio time clocks
-        "syn_Time",
+        "chroma_AudioTime",
     ]
     .into_iter()
     .collect()
@@ -291,10 +291,10 @@ mod ctor_placeholder {
     fn unknown_symbol_error_is_constructible() {
         // Smoke-test the error shape so later work lands against a
         // known-good variant surface.
-        let err = ValidationError::UnknownSymbol("syn_DoesNotExist".to_string());
+        let err = ValidationError::UnknownSymbol("chroma_DoesNotExist".to_string());
         match err {
             ValidationError::UnknownSymbol(name) => {
-                assert_eq!(name, "syn_DoesNotExist");
+                assert_eq!(name, "chroma_DoesNotExist");
             }
             other => panic!("unexpected variant: {other:?}"),
         }
@@ -369,18 +369,18 @@ mod drift_pins {
         let mut scene = Scene::default();
         scene
             .passes
-            .push(pass_with("n0", vec![valid_binding("syn_DoesNotExist")]));
+            .push(pass_with("n0", vec![valid_binding("chroma_DoesNotExist")]));
 
         match validate(&scene, ValidationMode::Strict) {
             Err(ValidationError::UnknownSymbol(name)) => {
-                assert_eq!(name, "syn_DoesNotExist");
+                assert_eq!(name, "chroma_DoesNotExist");
             }
             other => panic!("expected UnknownSymbol error, got {other:?}"),
         }
 
         match validate(&scene, ValidationMode::Compat) {
             Err(ValidationError::UnknownSymbol(name)) => {
-                assert_eq!(name, "syn_DoesNotExist");
+                assert_eq!(name, "chroma_DoesNotExist");
             }
             other => panic!(
                 "expected UnknownSymbol error under compat mode (slice-2 \

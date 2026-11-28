@@ -20,21 +20,18 @@
 //! # Binding namespace
 //!
 //! Slice-5a binds the four primary `AudioUniformSnapshot` fields
-//! across two namespaces per `docs/36-reactive-symbol-catalog.md`
-//! Sec.Namespace governance: `syn_BPM` is a canonical compat-syn-v1
-//! retention (docs/36 line 117) and stays under that name for
-//! reference-scene parity continuity; the raw-RMS / peak / 8-band
-//! FFT outputs are net-new chromaticity-native primitives under the
-//! `chroma_*` namespace, since docs/36 has no native equivalents at
-//! this abstraction level (docs/36's `syn_Level` is normalised +
-//! smoothed per `docs/06` §7.4; `syn_Spectrum` is a sampler1D with
+//! under the native `chroma_*` namespace (ADR-024): `chroma_BPM` is
+//! the catalog's tempo symbol (docs/36 §2.7); the raw-RMS / peak /
+//! 8-band FFT outputs are analysis primitives with no catalog
+//! equivalent at this abstraction level (docs/36's `chroma_Level` is normalised +
+//! smoothed per `docs/06` §7.4; `chroma_Spectrum` is a sampler1D with
 //! packed Raw/Juiced/Smooth/Waveform channels — slice-5a's outputs
 //! are raw scalar / array analysis primitives, a complementary
 //! surface).
 //!
 //! | snapshot field   | uniform name        | namespace                                  | `UniformValue` variant            |
 //! |------------------|---------------------|--------------------------------------------|-----------------------------------|
-//! | [`bpm`]          | `syn_BPM`           | compat-syn-v1 (docs/36 line 117 retention) | [`UniformValue::Scalar`]          |
+//! | [`bpm`]          | `chroma_BPM`           | native (docs/36 §2.7)                      | [`UniformValue::Scalar`]          |
 //! | [`rms`]          | `chroma_AudioRMS`   | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Scalar`]          |
 //! | [`peak`]         | `chroma_AudioPeak`  | chromaticity-native (slice-5a-introduced)  | [`UniformValue::Scalar`]          |
 //! | [`fft_bands`]    | `chroma_AudioFFT`   | chromaticity-native (slice-5a-introduced)  | [`UniformValue::FloatArray`] (8 elements) |
@@ -47,7 +44,7 @@
 //! The slice-5 follow-up landed [`UniformValue::FloatArray`] in
 //! `multipass.rs` and consolidated the FFT into a single
 //! `chroma_AudioFFT[8]` array binding (catalog v1.3.0). The two
-//! `syn_BPM` / `chroma_AudioRMS` / `chroma_AudioPeak` scalar names
+//! `chroma_BPM` / `chroma_AudioRMS` / `chroma_AudioPeak` scalar names
 //! are unchanged across the consolidation; only the FFT shape moved.
 //! GLSL authors index the array directly (`chroma_AudioFFT[0]` is
 //! the lowest band, `chroma_AudioFFT[7]` is the highest). The
@@ -97,7 +94,7 @@ use chromaticity_audio::AudioUniformSnapshot;
 use crate::multipass::{UniformInput, UniformValue};
 
 /// Symbol name for the BPM scalar uniform per `docs/36` §2.7.
-pub const UNIFORM_NAME_BPM: &str = "syn_BPM";
+pub const UNIFORM_NAME_BPM: &str = "chroma_BPM";
 
 /// Symbol name for the RMS window-energy scalar uniform per
 /// `docs/36` §2.11.
@@ -189,7 +186,7 @@ mod audio_adapter_drift_pins {
         // Drift pin: the four binding names match the `docs/36`
         // v1.3.0 catalog spelling verbatim. A catalog edit that
         // renames any of these surfaces here at the next test run.
-        assert_eq!(UNIFORM_NAME_BPM, "syn_BPM");
+        assert_eq!(UNIFORM_NAME_BPM, "chroma_BPM");
         assert_eq!(UNIFORM_NAME_RMS, "chroma_AudioRMS");
         assert_eq!(UNIFORM_NAME_PEAK, "chroma_AudioPeak");
         // FFT array binding (catalog v1.3.0 consolidation of the

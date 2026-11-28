@@ -8,7 +8,7 @@ layout(location = 0) out vec4 fragColor;
 layout(set = 0, binding = 0) uniform Uniforms {
     vec4 chroma_Time;
     vec4 chroma_Resolution;
-    vec4 syn_BPM;
+    vec4 chroma_BPM;
     vec4 chroma_AudioRMS;
     vec4 chroma_AudioPeak;
     vec4 chroma_AudioFFT[2];
@@ -35,6 +35,6 @@ void main() {
     float wave = sin(k.x * 12.0 + t * 1.4) * cos(k.y * 12.0 - t * 1.1) * warp;
     float ring = smoothstep(0.08, 0.0, abs(fract(r * 4.0 - t * 0.35 + wave * 0.25) - 0.5) - 0.12);
     vec3 col = palette(r * 0.8 + wave * 0.3 + t * 0.12, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67));
-    col = mix(col * 0.28, col * (1.1 + syn_BPM.z * 0.4), ring);
+    col = mix(col * 0.28, col * (1.1 + chroma_BPM.z * 0.4), ring);
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }

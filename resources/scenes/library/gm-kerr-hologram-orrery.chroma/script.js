@@ -21,11 +21,13 @@ function setup() {
 function update(dt) {
   const safeDt = dt > 0 && dt < 0.25 ? dt : 1.0 / 60.0;
   const bpm =
-    typeof globalThis.syn_BPM === 'number' && globalThis.syn_BPM > 20 ? globalThis.syn_BPM : 124.0;
+    typeof globalThis.chroma_BPM === 'number' && globalThis.chroma_BPM > 20
+      ? globalThis.chroma_BPM
+      : 124.0;
   const peak = typeof globalThis.chroma_AudioPeak === 'number' ? globalThis.chroma_AudioPeak : 0.0;
   const rms = typeof globalThis.chroma_AudioRMS === 'number' ? globalThis.chroma_AudioRMS : 0.0;
 
-  // Advance continuous beat phase locked to syn_BPM
+  // Advance continuous beat phase locked to chroma_BPM
   beatPhase += safeDt * (bpm / 60.0);
 
   // Smooth Lissajous off-axis observer parallax drift

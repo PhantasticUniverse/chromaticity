@@ -120,7 +120,7 @@ chromaticity-scene = { version = "0.0.0", path = "../scene", optional = true }
 # `AudioUniformSnapshot` (per its module-level prose) and the
 # slice-5a `audio_adapter` module on the engine/render side maps
 # that snapshot into a `Vec<UniformInput>` bound under the
-# `syn_BPM` compat-syn-v1 retention (docs/36 line 117) plus four
+# native `chroma_BPM` tempo symbol (docs/36 §2.7) plus four
 # chromaticity-native `chroma_*` audio primitives introduced by
 # slice-5a (`chroma_AudioRMS`, `chroma_AudioPeak`,
 # `chroma_AudioFFTLow`, `chroma_AudioFFTHigh`). Crate coupling

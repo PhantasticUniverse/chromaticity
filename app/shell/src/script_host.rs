@@ -84,11 +84,11 @@ fn sanitize_js_f32(value: f32) -> f32 {
     if value.is_finite() { value } else { 0.0 }
 }
 
-/// Synesthesia legacy (`inputs.*` / `uniforms.*` Proxies) and modern
-/// (`setUniform(name, val)` + `syn_*` / `TIME` globals) JavaScript
-/// compatibility shim injected before evaluating a scene's `script.js`.
-const SYNESTHESIA_COMPAT_PREAMBLE: &str = r#"
-(function __chromaticityInstallSynCompat() {
+/// Native scripting API (`inputs.*` / `uniforms.*` proxies plus
+/// `setUniform(name, val)` and `chroma_*` / `TIME` globals) injected before
+/// evaluating a scene's `script.js`.
+const SCRIPT_API_PREAMBLE: &str = r#"
+(function __chromaticityInstallScriptApi() {
   const __inputsBacking = Object.create(null);
   const __uniformsBacking = Object.create(null);
 
@@ -206,7 +206,7 @@ const SYNESTHESIA_COMPAT_PREAMBLE: &str = r#"
     midPresence,
     midHighPresence,
     highPresence,
-    synTime,
+    audioTime,
     bassTime,
     midTime,
     midHighTime,
@@ -224,33 +224,33 @@ const SYNESTHESIA_COMPAT_PREAMBLE: &str = r#"
       chroma_AudioRMS: rms,
       chroma_AudioPeak: peak,
       TIME: elapsedSecs,
-      syn_Time: synTime,
-      syn_BassTime: bassTime,
-      syn_MidTime: midTime,
-      syn_MidHighTime: midHighTime,
-      syn_HighTime: highTime,
-      syn_BPM: bpm,
-      syn_BPMConfidence: bpmConfidence,
-      syn_RandomOnBeat: randomOnBeat,
-      syn_FadeInOut: fadeInOut,
-      syn_Intensity: intensity,
-      syn_Level: level,
-      syn_Hits: hits,
-      syn_Presence: presence,
-      syn_BassLevel: bassLevel,
-      syn_BassHits: bassHits,
-      syn_BassPresence: bassPresence,
-      syn_MidLevel: midLevel,
-      syn_MidHits: midHits,
-      syn_MidPresence: midPresence,
-      syn_MidHighLevel: midHighLevel,
-      syn_MidHighHits: midHighHits,
-      syn_MidHighPresence: midHighPresence,
-      syn_HighLevel: highLevel,
-      syn_HighHits: highHits,
-      syn_HighPresence: highPresence,
-      syn_OnBeat: onBeat,
-      syn_BeatTime: beatTime,
+      chroma_AudioTime: audioTime,
+      chroma_BassTime: bassTime,
+      chroma_MidTime: midTime,
+      chroma_MidHighTime: midHighTime,
+      chroma_HighTime: highTime,
+      chroma_BPM: bpm,
+      chroma_BPMConfidence: bpmConfidence,
+      chroma_RandomOnBeat: randomOnBeat,
+      chroma_FadeInOut: fadeInOut,
+      chroma_Intensity: intensity,
+      chroma_Level: level,
+      chroma_Hits: hits,
+      chroma_Presence: presence,
+      chroma_BassLevel: bassLevel,
+      chroma_BassHits: bassHits,
+      chroma_BassPresence: bassPresence,
+      chroma_MidLevel: midLevel,
+      chroma_MidHits: midHits,
+      chroma_MidPresence: midPresence,
+      chroma_MidHighLevel: midHighLevel,
+      chroma_MidHighHits: midHighHits,
+      chroma_MidHighPresence: midHighPresence,
+      chroma_HighLevel: highLevel,
+      chroma_HighHits: highHits,
+      chroma_HighPresence: highPresence,
+      chroma_OnBeat: onBeat,
+      chroma_BeatTime: beatTime,
     };
     for (const k in map) {
       globalThis[k] = map[k];
@@ -412,6 +412,9 @@ impl ScriptHost {
     /// Arm an in-memory `script.js` source directly (used by tests and live Author).
     pub fn set_inline_script(&mut self, scene_id: String, source: String) {
         self.last_emitted.clear();
+        // Imported `.synScene` scripts reference reference-format names;
+        // translate them to the native API (no-op for native scripts).
+        let source = crate::syn_compat::adapt_syn_script(&source);
         if let Err(err) = self.ensure_worker() {
             self.state = ScriptHostState::Error {
                 scene_id,
@@ -698,7 +701,7 @@ fn run_script_worker(rx: Receiver<WorkerRequest>) {
                 };
 
                 let init_source = format!(
-                    "{SYNESTHESIA_COMPAT_PREAMBLE}\n{source}\n;if (typeof setup === 'function') {{ setup(); }}\n"
+                    "{SCRIPT_API_PREAMBLE}\n{source}\n;if (typeof setup === 'function') {{ setup(); }}\n"
                 );
                 match runtime.execute(&init_source) {
                     Ok(_) => {
@@ -857,64 +860,20 @@ mod script_host_pins {
     }
 
     #[test]
-    fn script_host_synesthesia_legacy_inputs_and_uniforms_proxy_emits_finite_values() {
-        let mut host = ScriptHost::new();
-        host.set_inline_script(
-            "syn-legacy".into(),
-            r#"
-            var accum = 0.0;
-            function update(dt) {
-                var unknownFallback = inputs.nonexistent_control_xyz;
-                accum += (inputs.syn_BassLevel * 2.0 + unknownFallback) * dt;
-                uniforms.my_pulse = inputs.syn_BassLevel + inputs.syn_Time * 0.1;
-                uniforms.accum_time = accum;
-                uniforms.bpm_echo = inputs.syn_BPM;
-            }
-            "#
-            .into(),
-        );
-        assert_eq!(host.state_name(), "active");
-
-        let audio = AudioUniformSnapshot {
-            bpm: 128.0,
-            rms: 0.4,
-            peak: 0.7,
-            fft_bands: [0.8, 0.6, 0.5, 0.3, 0.25, 0.15, 0.1, 0.05],
-            ..AudioUniformSnapshot::default()
-        };
-        let out = host.tick(2.0, 0.5, 10, &audio);
-        assert_eq!(host.state_name(), "active");
-        assert!(host.status().error.is_none());
-        assert_eq!(host.status().ticks_executed, 1);
-
-        // Bass average = (0.8 + 0.6) / 2 = 0.7; syn_Time is energy-integrated > 0
-        let pulse = out.get("my_pulse").copied().expect("my_pulse emitted");
-        assert!(pulse.is_finite());
-        assert!(pulse > 0.7 && pulse < 1.0, "pulse={pulse}");
-
-        let accum = out.get("accum_time").copied().expect("accum_time emitted");
-        assert!(accum.is_finite());
-        assert!((accum - 0.7).abs() < 1e-4, "accum={accum}");
-
-        let bpm_echo = out.get("bpm_echo").copied().expect("bpm_echo emitted");
-        assert!((bpm_echo - 128.0).abs() < 1e-4, "bpm_echo={bpm_echo}");
-    }
-
-    #[test]
-    fn script_host_synesthesia_modern_set_uniform_and_globals_update_every_tick() {
+    fn script_host_set_uniform_and_globals_update_every_tick() {
         let mut host = ScriptHost::new();
         host.set_inline_script(
             "syn-modern".into(),
             r#"
             function update(dt) {
-                setUniform('my_pulse', syn_BassLevel);
-                setUniform('bands_sum', syn_MidLevel + syn_MidHighLevel + syn_HighLevel);
-                setUniform('level_val', syn_Level);
-                setUniform('beat_val', syn_BeatTime);
-                setUniform('on_beat', syn_OnBeat);
-                setUniform('time_diff', Math.abs(syn_Time - TIME));
-                setUniform('bpm_val', syn_BPM);
-                setUniform('vec_pair', [syn_BassLevel, syn_HighLevel]);
+                setUniform('my_pulse', chroma_BassLevel);
+                setUniform('bands_sum', chroma_MidLevel + chroma_MidHighLevel + chroma_HighLevel);
+                setUniform('level_val', chroma_Level);
+                setUniform('beat_val', chroma_BeatTime);
+                setUniform('on_beat', chroma_OnBeat);
+                setUniform('time_diff', Math.abs(chroma_AudioTime - TIME));
+                setUniform('bpm_val', chroma_BPM);
+                setUniform('vec_pair', [chroma_BassLevel, chroma_HighLevel]);
             }
             "#
             .into(),
@@ -939,7 +898,7 @@ mod script_host_pins {
         // 1.0s at 120 BPM => 2.0 beats (exact integer => on_beat == 1.0)
         assert!((out.get("beat_val").copied().unwrap() - 2.0).abs() < 1e-4);
         assert!((out.get("on_beat").copied().unwrap() - 1.0).abs() < 1e-4);
-        // syn_Time is energy-integrated (distinct from wall-clock TIME)
+        // chroma_AudioTime is energy-integrated (distinct from wall-clock TIME)
         assert!(out.get("time_diff").copied().unwrap() > 0.0);
         assert!((out.get("bpm_val").copied().unwrap() - 120.0).abs() < 1e-4);
         assert!((out.get("vec_pair_x").copied().unwrap() - 0.8).abs() < 1e-4);
@@ -966,9 +925,9 @@ mod script_host_pins {
                 setUniform('rises', rises);
             });
             function update(dt) {
-                setUniform('bass_hits', syn_BassHits);
-                setUniform('bass_pres', syn_BassPresence);
-                setUniform('syn_t', syn_Time);
+                setUniform('bass_hits', chroma_BassHits);
+                setUniform('bass_pres', chroma_BassPresence);
+                setUniform('audio_t', chroma_AudioTime);
             }
             "#
             .into(),
@@ -988,6 +947,6 @@ mod script_host_pins {
         let tick = host.tick(0.5, 1.0 / 60.0, 1, &audio);
         assert!(tick.get("bass_hits").copied().unwrap_or(0.0) > 0.0);
         assert!(tick.get("bass_pres").copied().unwrap_or(0.0) > 0.0);
-        assert!(tick.get("syn_t").copied().unwrap_or(0.0) > 0.0);
+        assert!(tick.get("audio_t").copied().unwrap_or(0.0) > 0.0);
     }
 }
