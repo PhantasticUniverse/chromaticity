@@ -90,7 +90,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type PerformMediaCard,
   } from '../data/perform-fixtures';
   import { resolveSetlistRowToSceneId } from '../data/perform-setlist-resolver';
-  import { SETLIST_FIXTURE } from '../data/setlist-fixtures';
+  import { SETLIST_ACTIVE_INDEX, SETLIST_FIXTURE } from '../data/setlist-fixtures';
   import Icon from '../Icon.svelte';
   import type { ControlSchemaPayload } from '../ipc/bindings';
   import { dispatchAndRead, dispatchXy } from '../stores/control';
@@ -1796,7 +1796,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
          negative (a deliberate signal that the user advanced
          backward past the playlist start). -->
     <div class="scene-panel__cue" aria-label="Playlist cue position">
-      <span class="mono">Cue {playlistPosition + 1} of {setlistCount}</span>
+      <span class="mono">
+        Cue {playlistPosition === 0 && !loadedSceneStore.snapshot
+          ? SETLIST_ACTIVE_INDEX + 1
+          : playlistPosition + 1} of {setlistCount}
+      </span>
     </div>
 
     {#if railMode === 'presets'}

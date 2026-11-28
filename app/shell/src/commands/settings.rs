@@ -70,7 +70,7 @@ fn set_settings_impl(app: &AppState, settings: SettingsPayload) -> Result<(), St
         changed
     };
     if input_device_changed {
-        let _ = app.hot_swap_audio_input(Some(next_input_device.as_str()));
+        app.hot_swap_audio_input(Some(next_input_device.as_str()))?;
     }
     if let Err(err) = osc::configure_live_osc_adapter(app) {
         eprintln!(
@@ -110,7 +110,7 @@ fn reset_settings_impl(app: &AppState) -> Result<SettingsPayload, String> {
         changed
     };
     if input_device_changed {
-        let _ = app.hot_swap_audio_input(Some(defaults.audio.input_device.as_str()));
+        app.hot_swap_audio_input(Some(defaults.audio.input_device.as_str()))?;
     }
     if let Err(err) = osc::configure_live_osc_adapter(app) {
         eprintln!(

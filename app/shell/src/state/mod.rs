@@ -598,10 +598,10 @@ impl AppState {
     }
 
     /// Hot-swap the live audio input device without restarting the scheduler
-    /// thread or interrupting GPU stage output. Returns `true` if a running
-    /// audio runtime was replaced, or `false` when the shell runtime is not
+    /// thread or interrupting GPU stage output. Returns `Ok(true)` if a running
+    /// audio runtime was replaced, or `Ok(false)` when the shell runtime is not
     /// bootstrapped (e.g. unit tests).
-    pub fn hot_swap_audio_input(&self, preferred_input: Option<&str>) -> bool {
+    pub fn hot_swap_audio_input(&self, preferred_input: Option<&str>) -> Result<bool, String> {
         let mut guard = match self.runtime.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
@@ -622,9 +622,9 @@ impl AppState {
             let new_snapshot_handle = new_runtime.snapshot_handle();
             self.install_audio_snapshot_handle(new_snapshot_handle);
             *audio = Some(new_runtime.spawn());
-            true
+            Ok(true)
         } else {
-            false
+            Ok(false)
         }
     }
 

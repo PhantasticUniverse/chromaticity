@@ -26,6 +26,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     liveBroadcastStore,
   } from '../stores/liveBroadcast.svelte';
   import { liveMediaStore } from '../stores/liveMedia.svelte';
+  import { loadedSceneStore } from '../stores/loadedScene.svelte';
   import {
     BLEND_MODE_OPTIONS,
     DEFAULT_SHADER_SCENE_ID,
@@ -1222,7 +1223,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   <span class="mix__layer-sub">
                     {layer.blendMode} · {formatPercentDisplay(layer.opacity)}
                     {#if layer.kind === 'shader'}
-                      · {resolveShaderScene(layer).label}
+                      · {loadedSceneStore.snapshot?.name ?? 'Glitch'}
                     {/if}
                     {#if fxCount > 0}
                       · {fxCount} FX

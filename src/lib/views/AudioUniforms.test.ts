@@ -209,9 +209,8 @@ describe('AudioUniforms view', () => {
     expect(hero).not.toBeNull();
     if (hero === null) return;
     const inHero = within(hero as HTMLElement);
-    // Peak / rms come from the fixture, formatted to one decimal place.
-    expect(inHero.getByText(`${AUDIO_UNIFORMS_FIXTURE.peakDb.toFixed(1)} dB`)).toBeInTheDocument();
-    expect(inHero.getByText(`${AUDIO_UNIFORMS_FIXTURE.rmsDb.toFixed(1)} dB`)).toBeInTheDocument();
+    // Honest em-dash dB readout when no live audio snapshot is active.
+    expect(inHero.getAllByText('— dB').length).toBe(2);
     expect(getByText('System Default')).toBeInTheDocument();
     // 64 spectrum bars render as inline SVG `<rect class="au__spectrum-bar">`.
     const bars = container.querySelectorAll('rect.au__spectrum-bar');
@@ -530,14 +529,11 @@ describe('AudioUniforms view', () => {
     expect(stats?.textContent).toContain('-60.0 dB');
   });
 
-  it('peak/RMS dB readout falls back to fixture when no live snapshot is present', () => {
-    // Wave 2.6 AUD.C — startup-window / vite-dev / Vitest-jsdom branch.
-    // No subscribe() resolution → snapshot stays null → fixture values
-    // render (peakDb -1.7, rmsDb -10.5 per audio-uniform-fixtures.ts).
+  it('peak/RMS dB readout renders honest em-dash when no live snapshot is present', () => {
     const { container } = render(AudioUniforms);
     const stats = container.querySelector('.au__hero-stats');
-    expect(stats?.textContent).toContain(`${AUDIO_UNIFORMS_FIXTURE.peakDb.toFixed(1)} dB`);
-    expect(stats?.textContent).toContain(`${AUDIO_UNIFORMS_FIXTURE.rmsDb.toFixed(1)} dB`);
+    expect(stats?.textContent).toContain('— dB');
+    expect(stats?.textContent).toContain('System Default');
   });
 
   it('source label reads settingsStore.snapshot.audio.input_device when set', () => {

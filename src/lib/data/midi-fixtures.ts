@@ -443,10 +443,10 @@ export interface BpmSyncSource {
 }
 
 export const BPM_SYNC_SOURCES: readonly BpmSyncSource[] = [
-  { id: 'link', name: 'Ableton Link', detail: '4 peers · 128.00 BPM', state: 'active' },
-  { id: 'midiclock', name: 'MIDI Clock', detail: 'APC40 · idle', state: 'standby' },
-  { id: 'audio', name: 'Audio estimate', detail: '128.3 BPM · conf 0.82', state: 'standby' },
-  { id: 'tap', name: 'Tap tempo', detail: 'last: —', state: 'idle' },
+  { id: 'link', name: 'Ableton Link', detail: '0 peers · idle', state: 'standby' },
+  { id: 'midiclock', name: 'MIDI Clock', detail: 'idle', state: 'standby' },
+  { id: 'audio', name: 'Audio estimate', detail: 'idle · — BPM', state: 'standby' },
+  { id: 'tap', name: 'Tap tempo', detail: '120.0 BPM · manual', state: 'active' },
 ] as const;
 
 /* ---------- MTC readout (M-08) ---------- */

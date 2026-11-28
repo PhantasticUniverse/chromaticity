@@ -139,10 +139,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     readonly value: number;
     readonly tint: string;
   }> = [
-    { name: 'BASS', value: 0.82, tint: 'var(--color-band-bass)' },
-    { name: 'LOW MID', value: 0.64, tint: 'var(--color-band-mid)' },
-    { name: 'HIGH MID', value: 0.41, tint: 'var(--color-band-midhi)' },
-    { name: 'HIGH', value: 0.58, tint: 'var(--color-band-high)' },
+    { name: 'BASS', value: 0, tint: 'var(--color-band-bass)' },
+    { name: 'LOW MID', value: 0, tint: 'var(--color-band-mid)' },
+    { name: 'HIGH MID', value: 0, tint: 'var(--color-band-midhi)' },
+    { name: 'HIGH', value: 0, tint: 'var(--color-band-high)' },
   ];
 
   const WARMING_BANDS: ReadonlyArray<{
@@ -218,11 +218,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   function frozenBars(): readonly number[] {
-    const out: number[] = [];
-    for (let i = 0; i < FFT_BAR_COUNT; i++) {
-      out.push(fftBarValue(i / FFT_BAR_COUNT, 17));
-    }
-    return out;
+    return new Array<number>(FFT_BAR_COUNT).fill(0.06);
   }
 
   let liveBars = $state<readonly number[]>(frozenBars());
@@ -240,7 +236,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   });
 
   $effect(() => {
-    if (reducedMotion) {
+    if (reducedMotion || liveSnapshot === null) {
       liveBars = frozenBars();
       return;
     }

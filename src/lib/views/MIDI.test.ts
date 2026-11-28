@@ -270,10 +270,10 @@ describe('MIDI view', () => {
     expect(rows.length).toBe(BPM_SYNC_SOURCES.length);
     expect(rows.length).toBe(4);
     // Exactly one row carries the --active modifier (the fixture's
-    // `state: 'active'` source — Ableton Link).
+    // `state: 'active'` source — manual Tap tempo when no external sync peers exist).
     const activeRows = container.querySelectorAll('.midi__bpm-row--active');
     expect(activeRows.length).toBe(1);
-    expect(activeRows[0]?.textContent).toContain('Ableton Link');
+    expect(activeRows[0]?.textContent).toContain('Tap tempo');
     // First row's "up" button is disabled; last row's "down" button is disabled.
     const firstUp = rows[0]?.querySelector('.midi__btn--icon-up') as HTMLButtonElement | null;
     const lastDown = rows[rows.length - 1]?.querySelector(
@@ -286,7 +286,7 @@ describe('MIDI view', () => {
   it('renders the MTC readout panel with honest idle timecode when no MIDI devices are connected', () => {
     const { container, getByText } = render(MIDI);
     expect(getByText('00:00:00:00')).toBeInTheDocument();
-    expect(getByText('idle')).toBeInTheDocument();
+    expect(container.querySelector('.midi__mtc-fps')?.textContent?.trim()).toBe('idle');
     expect(container.querySelector('.midi__mtc-uniform')?.textContent).toBe(MIDI_MTC.uniformName);
   });
 

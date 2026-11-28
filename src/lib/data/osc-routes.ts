@@ -119,7 +119,7 @@ export const OSC_ROUTES: readonly OscRouteFixture[] = [
     range: 'label text',
     family: 'control',
     direction: 'out',
-    note: 'serial dual-emit under compat-syn-v1',
+    note: 'emits canonical + legacy alias when dual-emit is enabled',
   },
   {
     canonical: '/scenes',
@@ -168,7 +168,7 @@ export const OSC_ROUTES: readonly OscRouteFixture[] = [
     range: 'Snap recall (n 0–15)',
     family: 'snap',
     direction: 'in',
-    note: 'wire literal `favslot` retained only as compat alias; UI = Snap',
+    note: 'legacy /favslots alias supported',
   },
   {
     canonical: '/favslots/{n}/save',
@@ -248,19 +248,19 @@ export const OSC_ROUTES: readonly OscRouteFixture[] = [
     canonical: '/data/*',
     compatAlias: null,
     type: '—',
-    range: 'reserved post-MVP',
+    range: 'system reserved',
     family: 'reserved',
     direction: 'in',
-    note: 'rejects with prefix-reserved diagnostic',
+    note: 'reserved namespace (inbound rejected)',
   },
   {
     canonical: '/data/subscribe/*',
     compatAlias: null,
     type: '—',
-    range: 'reserved post-MVP',
+    range: 'system reserved',
     family: 'reserved',
     direction: 'in',
-    note: 'rejects with prefix-reserved diagnostic',
+    note: 'reserved namespace (inbound rejected)',
   },
 ];
 

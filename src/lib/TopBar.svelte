@@ -479,12 +479,34 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       routeStore.current === 'settings',
   );
 
+  let goLiveArmed = $state(false);
+  let goLiveArmTimer: ReturnType<typeof setTimeout> | null = null;
+
   async function handleGoLiveClick(): Promise<void> {
     try {
       if (outputWindowOpen) {
+        goLiveArmed = false;
+        if (goLiveArmTimer !== null) {
+          clearTimeout(goLiveArmTimer);
+          goLiveArmTimer = null;
+        }
         const status = await closeOutputWindow();
         outputWindowOpen = status.open;
       } else {
+        if (!goLiveArmed) {
+          goLiveArmed = true;
+          if (goLiveArmTimer !== null) clearTimeout(goLiveArmTimer);
+          goLiveArmTimer = setTimeout(() => {
+            goLiveArmed = false;
+            goLiveArmTimer = null;
+          }, 3000);
+          return;
+        }
+        goLiveArmed = false;
+        if (goLiveArmTimer !== null) {
+          clearTimeout(goLiveArmTimer);
+          goLiveArmTimer = null;
+        }
         const status = await openOutputWindow({ fullscreen: false });
         outputWindowOpen = status.open;
       }
@@ -846,11 +868,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         data-live={outputWindowOpen ? 'on' : 'off'}
         title={outputWindowOpen
           ? 'Close stage output window'
-          : 'Open stage output window on secondary display'}
+          : goLiveArmed
+            ? 'Click again to confirm opening live stage output'
+            : 'Open stage output window on secondary display'}
         onclick={() => void handleGoLiveClick()}
       >
         <span class="top-bar__go-live-glyph"><Icon name="play" size={11} /></span>
-        {outputWindowOpen ? 'LIVE OUT' : 'GO LIVE'}
+        {outputWindowOpen ? 'LIVE OUT' : goLiveArmed ? 'CONFIRM LIVE?' : 'GO LIVE'}
       </button>
     {/if}
   </div>

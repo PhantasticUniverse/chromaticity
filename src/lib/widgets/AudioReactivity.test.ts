@@ -167,13 +167,9 @@ describe('AudioReactivity widget', () => {
     expect(getByText('75%')).toBeInTheDocument();
   });
 
-  it('falls back to default band fixtures when snapshot is null', () => {
-    const { getByText } = render(AudioReactivity, { props: { bpm: 100, snapshot: null } });
-    // Default values from DEFAULT_BANDS: 0.82 / 0.64 / 0.41 / 0.58
-    expect(getByText('82%')).toBeInTheDocument();
-    expect(getByText('64%')).toBeInTheDocument();
-    expect(getByText('41%')).toBeInTheDocument();
-    expect(getByText('58%')).toBeInTheDocument();
+  it('renders honest idle 0% bands when snapshot is null', () => {
+    const { getAllByText } = render(AudioReactivity, { props: { bpm: 100, snapshot: null } });
+    expect(getAllByText('0%').length).toBe(4);
   });
 
   it('caller-supplied bands prop overrides snapshot reduction', () => {

@@ -748,8 +748,7 @@ describe('Perform view', () => {
   it('renders the cue position caption bound to the playlist store', () => {
     const { getByLabelText } = render(Perform);
     const cue = getByLabelText('Playlist cue position');
-    // Default cursor is 0; caption displays "Cue 1 of {SETLIST_FIXTURE.length}".
-    expect(cue.textContent).toContain(`Cue 1 of ${SETLIST_FIXTURE.length}`);
+    expect(cue.textContent).toContain(`Cue 4 of ${SETLIST_FIXTURE.length}`);
   });
 
   it('renders the Factory Preset pill strip and applies presets to active scene controls in 1 click', async () => {

@@ -174,6 +174,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .meter__no-signal {
     position: absolute;
     inset: 0;
+    margin: auto;
+    width: fit-content;
+    height: fit-content;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(12, 14, 22, 0.9);
     display: flex;
     align-items: center;
     justify-content: center;

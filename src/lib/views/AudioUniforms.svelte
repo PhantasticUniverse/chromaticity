@@ -481,8 +481,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         <div class="au__hero-head">
           <span class="au__section-label">waveform · spectrum</span>
           <div class="au__hero-stats">
-            <span>peak <b>{livePeakDb.toFixed(1)} dB</b></span>
-            <span>rms <b>{liveRmsDb.toFixed(1)} dB</b></span>
+            <span>peak <b>{hasSnapshot ? `${livePeakDb.toFixed(1)} dB` : '— dB'}</b></span>
+            <span>rms <b>{hasSnapshot ? `${liveRmsDb.toFixed(1)} dB` : '— dB'}</b></span>
             <span>src <b>{liveSource}</b></span>
           </div>
         </div>
@@ -900,7 +900,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     font-weight: var(--font-weight-label);
   }
   .au__hero-canvas {
-    height: 86px;
+    height: 76px;
     background: var(--color-bg-0);
     border: 1px solid var(--color-line-1);
     border-radius: var(--radius-sm);
