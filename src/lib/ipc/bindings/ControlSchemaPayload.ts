@@ -16,4 +16,13 @@ import type { ControlKindPayload } from "./ControlKindPayload";
  * every field today would widen the bridge surface ahead of any
  * frontend consumer.
  */
-export type ControlSchemaPayload = { name: string, kind: ControlKindPayload | null, default: ControlDefaultValuePayload, min: number | null, max: number | null, ui_group: string | null, description: string | null, label: string | null, };
+export type ControlSchemaPayload = { name: string, kind: ControlKindPayload | null, default: ControlDefaultValuePayload, min: number | null, max: number | null, ui_group: string | null, description: string | null, label: string | null,
+/**
+ * Dropdown option labels (`LABELS`), when declared.
+ */
+labels: Array<string> | null,
+/**
+ * Dropdown option values (`VALUES`) sent to the engine when the
+ * matching option is chosen; parallel to `labels`.
+ */
+values: Array<number> | null, };

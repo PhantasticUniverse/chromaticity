@@ -106,7 +106,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { sceneMediaStore, type SceneMediaSource } from '../stores/sceneMedia.svelte';
   import { youtubeLayerStore } from '../stores/youtubeLayer.svelte';
   import {
+    Bang,
     ControlGroup,
+    Dropdown,
     Fader,
     AudioReactivity,
     Knob,
@@ -744,6 +746,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
    * widget drag, a Default-button reset, or a Random-button sweep —
    * all three paths route through this helper.
    */
+  /** Bang pulse width: long enough for several rendered frames to see it. */
+  const BANG_PULSE_MS = 150;
+
+  function fireBang(id: number): void {
+    dispatchControl(id, 1);
+    setTimeout(() => dispatchControl(id, 0), BANG_PULSE_MS);
+  }
+
   function dispatchControl(id: number, value: number): void {
     if (controlLockStore.isLocked(id)) return;
     if (id < META_CONTROL_ID_BASE) {
@@ -1222,12 +1232,34 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           controlId: id,
         };
       }
-      case 'Slider':
       case 'Bang':
-      case 'Dropdown':
+        return { kind: 'bang', label: payload.name, controlId: id };
+      case 'Dropdown': {
+        const labels = payload.labels ?? [];
+        const values =
+          payload.values && payload.values.length > 0 ? payload.values : labels.map((_, i) => i);
+        const optionLabels = labels.length > 0 ? labels : values.map((v) => String(v));
+        const current =
+          typeof liveNumeric === 'number' ? liveNumeric : typeof def === 'number' ? def : 0;
+        // The selected option is the one whose value is nearest the
+        // current control value.
+        let index = 0;
+        values.forEach((v, i) => {
+          if (Math.abs(v - current) < Math.abs((values[index] ?? 0) - current)) index = i;
+        });
+        return {
+          kind: 'dropdown',
+          label: payload.name,
+          labels: optionLabels,
+          values,
+          index,
+          controlId: id,
+        };
+      }
+      case 'Slider':
       case null:
       case undefined: {
-        // Slider / Bang / Dropdown collapse onto a Fader.
+        // Slider (and a control CP-01 could not classify) render as a Fader.
         let value = 0;
         if (typeof def === 'number') {
           value = def;
@@ -2026,6 +2058,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             {/if}
           {:else if ctl.kind === 'swatch'}
             <Swatch color={ctl.color} label={ctl.label} />
+          {:else if ctl.kind === 'bang'}
+            {#if ctl.controlId !== undefined}
+              {@const id = ctl.controlId}
+              <Bang label={ctl.label} onpress={() => fireBang(id)} />
+            {:else}
+              <Bang label={ctl.label} />
+            {/if}
+          {:else if ctl.kind === 'dropdown'}
+            <div class="cg-dropdown">
+              <span class="cg-dropdown__label mono">{ctl.label}</span>
+              {#if ctl.controlId !== undefined}
+                {@const id = ctl.controlId}
+                {@const values = ctl.values}
+                <Dropdown
+                  value={ctl.index}
+                  labels={ctl.labels}
+                  onselect={(i) => dispatchControl(id, values[i] ?? i)}
+                />
+              {:else}
+                <Dropdown value={ctl.index} labels={ctl.labels} />
+              {/if}
+            </div>
           {:else if ctl.kind === 'xy'}
             {#if ctl.controlId !== undefined}
               {@const id = ctl.controlId}
@@ -2063,6 +2117,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 {/snippet}
 
 <style>
+  .cg-dropdown {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cg-dropdown__label {
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-2);
+  }
+
   /* ---------------- Outer grid (variant-aware) -----------------------------
    * Wave 2.1 Lane B.1 — two layout variants:
    *   - `classic` (default): 2-column wireframe layout. Left column =

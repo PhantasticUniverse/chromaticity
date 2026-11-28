@@ -425,13 +425,23 @@ pub struct ControlSchemaPayload {
     pub ui_group: Option<String>,
     pub description: Option<String>,
     pub label: Option<String>,
+    /// Dropdown option labels (`LABELS`), when declared.
+    pub labels: Option<Vec<String>>,
+    /// Dropdown option values (`VALUES`) sent to the engine when the
+    /// matching option is chosen; parallel to `labels`.
+    pub values: Option<Vec<f64>>,
 }
 
 impl From<chromaticity_scene::schema::ControlDecl> for ControlSchemaPayload {
     fn from(decl: chromaticity_scene::schema::ControlDecl) -> Self {
+        let labels = decl.option_labels();
+        let values = decl.option_values();
         Self {
+            // Declared `TYPE`, or the CP-01 coerced kind when it is absent.
+            kind: decl.effective_kind().map(Into::into),
+            labels: (!labels.is_empty()).then_some(labels),
+            values,
             name: decl.name,
-            kind: decl.kind.map(Into::into),
             default: decl.default.into(),
             min: decl
                 .min

@@ -64,6 +64,8 @@ const SAMPLE_SCENE: LoadedScenePayload = {
       ui_group: 'geometry',
       description: null,
       label: null,
+      labels: null,
+      values: null,
     },
     {
       name: 'speed',
@@ -74,6 +76,8 @@ const SAMPLE_SCENE: LoadedScenePayload = {
       ui_group: 'geometry',
       description: null,
       label: null,
+      labels: null,
+      values: null,
     },
     {
       name: 'mute',
@@ -84,6 +88,8 @@ const SAMPLE_SCENE: LoadedScenePayload = {
       ui_group: 'geometry',
       description: null,
       label: null,
+      labels: null,
+      values: null,
     },
   ],
   schema_version: 1,

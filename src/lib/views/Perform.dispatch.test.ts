@@ -61,6 +61,8 @@ const SAMPLE_SCENE: LoadedScenePayload = {
       ui_group: 'geometry',
       description: null,
       label: null,
+      labels: null,
+      values: null,
     },
     {
       name: 'mute',
@@ -71,6 +73,8 @@ const SAMPLE_SCENE: LoadedScenePayload = {
       ui_group: 'geometry',
       description: null,
       label: null,
+      labels: null,
+      values: null,
     },
   ],
   schema_version: 1,
@@ -91,6 +95,8 @@ const SAMPLE_SCENE_B: LoadedScenePayload = {
       ui_group: 'geometry',
       description: null,
       label: null,
+      labels: null,
+      values: null,
     },
     {
       name: 'mute',
@@ -101,6 +107,8 @@ const SAMPLE_SCENE_B: LoadedScenePayload = {
       ui_group: 'geometry',
       description: null,
       label: null,
+      labels: null,
+      values: null,
     },
   ],
 };
@@ -323,5 +331,58 @@ describe('Perform view — control dispatch (Wave 2.1 Lane A.2)', () => {
     // Pointerup at clientY=50 (no further onchange).
     await fireEvent.pointerUp(slider, { clientX: 5, clientY: 50, pointerId: 1 });
     expect(calls).toEqual([0.7, 0.5]);
+  });
+
+  it('renders bang and dropdown controls that dispatch (audit 2026-11-28)', async () => {
+    vi.useFakeTimers();
+    loadedSceneStore.snapshot = {
+      ...SAMPLE_SCENE,
+      id: 'bang-dropdown',
+      controls: [
+        {
+          name: 'flash',
+          kind: 'Bang',
+          default: 0,
+          min: null,
+          max: null,
+          ui_group: 'geometry',
+          description: null,
+          label: null,
+          labels: null,
+          values: null,
+        },
+        {
+          name: 'palette',
+          kind: 'Dropdown',
+          default: 0,
+          min: null,
+          max: null,
+          ui_group: 'geometry',
+          description: null,
+          label: null,
+          labels: ['sunrise', 'midnight', 'lab'],
+          values: [0, 1, 2],
+        },
+      ],
+    };
+    const { getByLabelText } = render(Perform);
+    const sceneCtrls = getByLabelText('Scene Controls');
+    // Bang: no longer collapsed onto a fader; pressing pulses 1 then 0.
+    expect(within(sceneCtrls).queryByRole('slider', { name: 'flash' })).toBeNull();
+    const bang = within(sceneCtrls).getByRole('button', { name: 'flash' });
+    expect(bang).not.toBeDisabled();
+    await fireEvent.click(bang);
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 0, value: 1 });
+    vi.advanceTimersByTime(200);
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 0, value: 0 });
+    // Dropdown: options come from LABELS; choosing one sends its VALUES entry.
+    const option = within(sceneCtrls).getByRole('radio', { name: 'lab' });
+    expect(within(sceneCtrls).getByRole('radio', { name: 'sunrise' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await fireEvent.click(option);
+    expect(invokeMock).toHaveBeenCalledWith('set_control', { id: 1, value: 2 });
+    vi.useRealTimers();
   });
 });

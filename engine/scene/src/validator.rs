@@ -246,6 +246,39 @@ fn coerce_missing_type(decl: &ControlDecl) -> Option<ControlKind> {
     None
 }
 
+impl ControlDecl {
+    /// The control's kind as the runtime should present it: the declared
+    /// `TYPE`, or — when `TYPE` is absent — the CP-01 coerced kind
+    /// (`docs/28-implementation-contract-pack.md` §CP-01). `None` only for
+    /// a control CP-01 rejects.
+    #[must_use]
+    pub fn effective_kind(&self) -> Option<ControlKind> {
+        self.kind.or_else(|| coerce_missing_type(self))
+    }
+
+    /// `LABELS` as display strings (non-string entries are stringified).
+    #[must_use]
+    pub fn option_labels(&self) -> Vec<String> {
+        self.labels
+            .iter()
+            .map(|v| match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+            .collect()
+    }
+
+    /// `VALUES` as numbers, or `None` when absent or any entry is not
+    /// numeric.
+    #[must_use]
+    pub fn option_values(&self) -> Option<Vec<f64>> {
+        if self.values.is_empty() {
+            return None;
+        }
+        self.values.iter().map(serde_json::Value::as_f64).collect()
+    }
+}
+
 /// Map [`ControlKind`] to its canonical lowercase spelling as named
 /// in `docs/28-implementation-contract-pack.md` §CP-01.
 fn kind_tag(kind: ControlKind) -> &'static str {
@@ -510,6 +543,69 @@ mod drift_pins {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod effective_kind_pins {
+    //! Evidence: EV-COMPAT-FIXTURE-COVERAGE (T1) — CP-01 coercion applied to the runtime-facing control kind and dropdown option extraction (audit 2026-11-28).
+
+    use crate::schema::{ControlDecl, ControlKind, ControlValue};
+
+    #[test]
+    fn missing_type_controls_get_their_cp01_kind() {
+        let xy = ControlDecl {
+            name: "anchor".into(),
+            kind: None,
+            default: ControlValue::Vec2([0.5, 0.5]),
+            ..ControlDecl::default()
+        };
+        assert_eq!(xy.effective_kind(), Some(ControlKind::Xy));
+        let toggle = ControlDecl {
+            name: "on".into(),
+            kind: None,
+            default: ControlValue::Float(1.0),
+            ..ControlDecl::default()
+        };
+        assert_eq!(toggle.effective_kind(), Some(ControlKind::Toggle));
+        let declared = ControlDecl {
+            name: "k".into(),
+            kind: Some(ControlKind::Knob),
+            default: ControlValue::Vec2([0.5, 0.5]),
+            ..ControlDecl::default()
+        };
+        assert_eq!(
+            declared.effective_kind(),
+            Some(ControlKind::Knob),
+            "declared TYPE wins"
+        );
+    }
+
+    #[test]
+    fn dropdown_options_are_extracted_from_labels_and_values() {
+        let dd = ControlDecl {
+            name: "palette".into(),
+            kind: Some(ControlKind::Dropdown),
+            labels: vec!["sunrise".into(), serde_json::json!(2)],
+            values: vec![serde_json::json!(0), serde_json::json!(1.5)],
+            ..ControlDecl::default()
+        };
+        assert_eq!(
+            dd.option_labels(),
+            vec!["sunrise".to_string(), "2".to_string()]
+        );
+        assert_eq!(dd.option_values(), Some(vec![0.0, 1.5]));
+        let bad = ControlDecl {
+            values: vec![serde_json::json!("x")],
+            ..dd.clone()
+        };
+        assert_eq!(
+            bad.option_values(),
+            None,
+            "non-numeric VALUES are not forwarded"
+        );
+        assert_eq!(ControlDecl::default().option_values(), None);
     }
 }
 

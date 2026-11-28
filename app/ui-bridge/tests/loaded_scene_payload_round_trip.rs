@@ -159,7 +159,12 @@ fn control_schema_payload_handles_optional_metadata_absence() {
     };
     let payload: ControlSchemaPayload = decl.into();
     assert_eq!(payload.name, "x");
-    assert_eq!(payload.kind, None);
+    // No TYPE: the payload carries the CP-01 coerced kind (DEFAULT 0.0,
+    // no MIN/MAX -> toggle, docs/28 §CP-01 step 2) so the UI renders the
+    // declared shape instead of a fallback fader (audit 2026-11-28).
+    assert_eq!(payload.kind, Some(ControlKindPayload::Toggle));
+    assert!(payload.labels.is_none());
+    assert!(payload.values.is_none());
     assert_eq!(payload.default, ControlDefaultValuePayload::Float(0.0));
     assert!(payload.min.is_none());
     assert!(payload.max.is_none());
@@ -190,6 +195,8 @@ fn loaded_scene_payload_json_round_trip_field_by_field_equality() {
             ui_group: None,
             description: None,
             label: None,
+            labels: None,
+            values: None,
         }],
         schema_version: 1,
     };

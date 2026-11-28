@@ -198,6 +198,8 @@ describe('Perform view', () => {
           ui_group: 'motion',
           description: null,
           label: null,
+          labels: null,
+          values: null,
         },
         {
           name: 'invert',
@@ -208,6 +210,8 @@ describe('Perform view', () => {
           ui_group: 'fx',
           description: null,
           label: null,
+          labels: null,
+          values: null,
         },
         {
           name: 'focus',
@@ -218,6 +222,8 @@ describe('Perform view', () => {
           ui_group: 'geometry',
           description: null,
           label: null,
+          labels: null,
+          values: null,
         },
       ],
       schema_version: 1,
@@ -350,7 +356,9 @@ describe('Perform view', () => {
   });
 
   it('clicking the test-card media tile feeds scene media and keeps the scene preview', async () => {
-    invokeMock.mockResolvedValue(1);
+    invokeMock.mockImplementation(async (cmd: string) =>
+      cmd === 'push_scene_media_frame' || cmd === 'clear_scene_media' ? 1 : null,
+    );
     const { container } = render(Perform);
     expect(container.querySelector('[aria-label="Live scene preview · Glitch"]')).not.toBeNull();
     const testTile = container.querySelector(
@@ -775,6 +783,8 @@ describe('Perform view', () => {
           ui_group: 'motion',
           description: null,
           label: null,
+          labels: null,
+          values: null,
         },
         {
           name: 'invert',
@@ -785,6 +795,8 @@ describe('Perform view', () => {
           ui_group: 'fx',
           description: null,
           label: null,
+          labels: null,
+          values: null,
         },
         {
           name: 'focus',
@@ -795,6 +807,8 @@ describe('Perform view', () => {
           ui_group: 'geometry',
           description: null,
           label: null,
+          labels: null,
+          values: null,
         },
       ],
       schema_version: 1,

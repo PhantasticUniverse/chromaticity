@@ -38,6 +38,8 @@ const SAMPLE_PAYLOAD: LoadedScenePayload = {
       ui_group: null,
       description: null,
       label: null,
+      labels: null,
+      values: null,
     },
   ],
   schema_version: 1,

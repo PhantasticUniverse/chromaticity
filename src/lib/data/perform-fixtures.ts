@@ -78,6 +78,21 @@ export type PerformControlSpec =
       readonly min?: readonly [number, number];
       readonly max?: readonly [number, number];
       readonly controlId?: number;
+    }
+  | {
+      /** Momentary trigger: pressing sends 1 then 0 (`BANG_PULSE_MS`). */
+      readonly kind: 'bang';
+      readonly label: string;
+      readonly controlId?: number;
+    }
+  | {
+      /** Discrete options; choosing one sends `values[index]`. */
+      readonly kind: 'dropdown';
+      readonly label: string;
+      readonly labels: readonly string[];
+      readonly values: readonly number[];
+      readonly index: number;
+      readonly controlId?: number;
     };
 
 /** A control-group column inside a panel body row-scroll layout. */
