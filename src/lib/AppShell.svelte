@@ -115,6 +115,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import ConsoleDrawer from './ConsoleDrawer.svelte';
   import { SETLIST_FIXTURE } from './data/setlist-fixtures';
   import { setControl } from './ipc';
+  import { setAudioThreshold } from './ipc/audio';
   import type { ControlId, CrashResumeStatusPayload } from './ipc/bindings';
   import SidebarRail from './SidebarRail.svelte';
   import { overlayStack } from './state';
@@ -490,6 +491,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           event.preventDefault();
           const active = liveFxStore.toggleBlackout();
           void setControl(META_BLACKOUT_CONTROL_ID, active ? 1 : 0).catch(() => {});
+        }
+        return;
+      }
+      if (event.key === 'T' && event.shiftKey) {
+        // Shift+T: set the audio noise gate to the current input level.
+        if (!event.repeat) {
+          event.preventDefault();
+          void setAudioThreshold(audioSnapshotStore.snapshot?.rms ?? 0);
         }
         return;
       }

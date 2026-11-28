@@ -1150,6 +1150,10 @@ mod tests {
 
         // Value in range — stored as-is.
         let returned = set_audio_threshold_impl(&app, 0.42);
+        assert!(
+            (app.audio_threshold_handle.get() - 0.42).abs() < 1e-6,
+            "the live audio producer's gate handle follows the stored threshold"
+        );
         assert_eq!(
             returned.to_bits(),
             0.42_f32.to_bits(),

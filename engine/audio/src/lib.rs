@@ -242,7 +242,7 @@ pub use mixer::{
     DynamicsConfig, MAX_BUS_GAIN_DB, MAX_SYNC_OFFSET_MS, MIN_BUS_GAIN_DB, constant_power_pan_gains,
     stereo_balance_gains,
 };
-pub use runtime::AudioInputGainHandle;
+pub use runtime::{AudioInputGainHandle, AudioThresholdHandle, apply_noise_gate};
 pub use spectrum::{
     BpmEstimate, FusedBpmEstimator, SPECTRUM_BANDS_48, SPECTRUM_BANDS_64, compute_log_spectrum_64,
     downsample_64_to_48,

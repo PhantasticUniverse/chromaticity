@@ -402,6 +402,9 @@ pub struct AppState {
     ///    provided here for when the hotkey handler is wired to a backend
     ///    command).
     pub audio_threshold: Mutex<f32>,
+    /// Lock-free copy of the threshold read by the live audio producer,
+    /// which applies the noise gate on every hop.
+    pub audio_threshold_handle: chromaticity_audio::AudioThresholdHandle,
     /// Live GPU preview renderer (`wgpu` + `naga` GLSL 4.50).
     pub gpu_renderer: Mutex<crate::render::GpuPreviewEngine>,
     /// Hysteresis-guarded adaptive resolution scale controller driven by live
@@ -559,6 +562,7 @@ impl AppState {
             osc_sender: Mutex::new(osc_sender),
             osc_dispatch_queue,
             audio_threshold: Mutex::new(0.0_f32),
+            audio_threshold_handle: chromaticity_audio::AudioThresholdHandle::default(),
             gpu_renderer: Mutex::new(crate::render::GpuPreviewEngine::new()),
             adaptive_scale: Mutex::new(
                 chromaticity_render::gpu_cost::AdaptiveScaleController::default(),
@@ -660,6 +664,7 @@ impl AppState {
                 input_gain_linear: input_gain_handle.get_linear(),
                 input_gain_handle: Some(input_gain_handle),
                 channel_pair: self.live_audio_channel_pair_handle(),
+                threshold: self.audio_threshold_handle.clone(),
                 ..AudioRuntimeConfig::default()
             };
             let new_runtime = AudioRuntime::with_preferred_device(preferred_input, audio_config);
@@ -931,6 +936,7 @@ impl AppState {
                 *guard = clamped;
             }
         }
+        self.audio_threshold_handle.set(clamped);
         clamped
     }
 

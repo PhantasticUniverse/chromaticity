@@ -227,6 +227,7 @@ pub fn run() -> Result<(), tauri::Error> {
                 input_gain_linear: input_gain_handle.get_linear(),
                 input_gain_handle: Some(input_gain_handle),
                 channel_pair: channel_pair_handle,
+                threshold: app_state_bootstrap.audio_threshold_handle.clone(),
                 ..AudioRuntimeConfig::default()
             };
             let runtime = AudioRuntime::with_preferred_device(

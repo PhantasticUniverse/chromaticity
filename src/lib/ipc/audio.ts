@@ -31,3 +31,16 @@ export async function listAudioDevices(): Promise<AudioDevicePayload[]> {
 export async function listAudioOutputDevices(): Promise<AudioDevicePayload[]> {
   return invoke<AudioDevicePayload[]>(LIST_AUDIO_OUTPUT_DEVICES_COMMAND);
 }
+
+/**
+ * Set the audio noise-gate threshold (`chroma_Threshold`, `[0, 1]` on the
+ * RMS scale). Hops quieter than this publish zeroed levels and hits.
+ * Returns the stored (clamped) value, or `null` outside Tauri.
+ */
+export async function setAudioThreshold(value: number): Promise<number | null> {
+  try {
+    return await invoke<number>('set_audio_threshold', { value });
+  } catch {
+    return null;
+  }
+}

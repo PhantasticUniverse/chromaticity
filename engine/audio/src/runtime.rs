@@ -178,6 +178,51 @@ impl Default for AudioInputGainHandle {
     }
 }
 
+/// Lock-free noise-gate threshold (`chroma_Threshold`, `[0, 1]` on the RMS
+/// scale) shared between the shell (`set_audio_threshold`, OSC
+/// `/audio/threshold`, the Shift+T hotkey) and the live producer thread.
+/// `0.0` (the default) disables the gate.
+#[derive(Debug, Clone, Default)]
+pub struct AudioThresholdHandle {
+    bits: Arc<AtomicU32>,
+}
+
+impl AudioThresholdHandle {
+    /// Atomically set the threshold, clamped to `[0, 1]` (non-finite -> 0).
+    pub fn set(&self, threshold: f32) {
+        let sanitized = if threshold.is_finite() {
+            threshold.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        self.bits.store(sanitized.to_bits(), Ordering::Release);
+    }
+
+    /// Atomically read the threshold.
+    #[must_use]
+    pub fn get(&self) -> f32 {
+        f32::from_bits(self.bits.load(Ordering::Acquire))
+    }
+}
+
+/// Apply the noise gate (`docs/architecture/36-reactive-symbol-catalog.md`
+/// §2.10): when the hop's RMS is below `threshold`, publish zeroed level,
+/// peak and spectrum so every level / hit uniform derived from them reads
+/// silent. Tempo and availability fields are kept. `threshold <= 0`
+/// disables the gate.
+#[must_use]
+pub fn apply_noise_gate(
+    mut snapshot: AudioUniformSnapshot,
+    threshold: f32,
+) -> AudioUniformSnapshot {
+    if threshold > 0.0 && snapshot.rms < threshold {
+        snapshot.rms = 0.0;
+        snapshot.peak = 0.0;
+        snapshot.fft_bands = [0.0; crate::uniforms::FFT_BAND_COUNT];
+    }
+    snapshot
+}
+
 /// Back-off when [`IngestStatus::Pending`] or
 /// [`IngestStatus::WouldBlock`] is observed.
 ///
@@ -229,6 +274,8 @@ pub struct AudioRuntimeConfig {
     /// capture streams to isolate a single stereo pair without restarting
     /// the stream.
     pub channel_pair: AudioChannelPairHandle,
+    /// Lock-free noise-gate threshold read on every hop (default 0 = off).
+    pub threshold: AudioThresholdHandle,
 }
 
 impl Default for AudioRuntimeConfig {
@@ -239,6 +286,7 @@ impl Default for AudioRuntimeConfig {
             input_gain_linear: 1.0,
             input_gain_handle: None,
             channel_pair: AudioChannelPairHandle::default(),
+            threshold: AudioThresholdHandle::default(),
         }
     }
 }
@@ -268,6 +316,7 @@ pub struct AudioRuntime {
     input_gain: AudioInputGainHandle,
     is_silent_primary: bool,
     channel_pair: AudioChannelPairHandle,
+    threshold: AudioThresholdHandle,
     shared: Arc<Mutex<AudioUniformSnapshot>>,
 }
 
@@ -385,6 +434,7 @@ impl AudioRuntime {
             input_gain,
             is_silent_primary,
             channel_pair: config.channel_pair,
+            threshold: config.threshold,
             shared: Arc::new(Mutex::new(AudioUniformSnapshot::default())),
         }
     }
@@ -418,6 +468,7 @@ impl AudioRuntime {
             input_gain,
             is_silent_primary,
             channel_pair,
+            threshold,
             shared,
         } = self;
         let shared_for_thread = Arc::clone(&shared);
@@ -490,10 +541,13 @@ impl AudioRuntime {
                                 prev_bpm_ready = bpm_ready;
 
                                 let recent_frame = analysis_window.recent_frame(FFT_WINDOW_SIZE);
-                                let merged = extract_live_metering_snapshot(
-                                    &recent_frame,
-                                    cached_bpm,
-                                    bpm_availability,
+                                let merged = apply_noise_gate(
+                                    extract_live_metering_snapshot(
+                                        &recent_frame,
+                                        cached_bpm,
+                                        bpm_availability,
+                                    ),
+                                    threshold.get(),
                                 );
                                 match shared_for_thread.lock() {
                                     Ok(mut guard) => {
@@ -1024,6 +1078,40 @@ mod runtime_pins {
         );
 
         handle.shutdown();
+    }
+
+    #[test]
+    fn noise_gate_zeroes_levels_below_threshold_and_keeps_tempo() {
+        // Audit 2026-11-28: the stored threshold gated nothing.
+        let loud = AudioUniformSnapshot {
+            bpm: 128.0,
+            rms: 0.30,
+            peak: 0.60,
+            fft_bands: [0.5; crate::uniforms::FFT_BAND_COUNT],
+            ..AudioUniformSnapshot::default()
+        };
+        let quiet = AudioUniformSnapshot { rms: 0.05, ..loud };
+        let gated = super::apply_noise_gate(quiet, 0.10);
+        assert_eq!((gated.rms, gated.peak), (0.0, 0.0));
+        assert!(gated.fft_bands.iter().all(|v| *v == 0.0));
+        assert_eq!(gated.bpm, 128.0, "tempo survives the gate");
+        assert_eq!(
+            super::apply_noise_gate(loud, 0.10),
+            loud,
+            "above threshold: unchanged"
+        );
+        assert_eq!(
+            super::apply_noise_gate(quiet, 0.0),
+            quiet,
+            "threshold 0 disables the gate"
+        );
+
+        let handle = super::AudioThresholdHandle::default();
+        assert_eq!(handle.get(), 0.0);
+        handle.set(1.7);
+        assert_eq!(handle.get(), 1.0);
+        handle.set(f32::NAN);
+        assert_eq!(handle.get(), 0.0);
     }
 
     #[test]
