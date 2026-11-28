@@ -187,6 +187,117 @@ pub fn resolve_includes(source: &str, vendor_root: &Path) -> Result<String, Incl
     Ok(output)
 }
 
+/// Resolve `#include "<ns>/<path>"` directives across multiple vendored GLSL
+/// namespaces (e.g. `("lygia", third_party/lygia)` and
+/// `("hg_sdf", third_party/hg_sdf)`), falling back to relative resolution
+/// inside whichever namespace owns the including file.
+pub fn resolve_includes_multi(
+    source: &str,
+    namespaces: &[(&str, &Path)],
+) -> Result<String, IncludeError> {
+    let mut output = String::with_capacity(source.len());
+    resolve_into_multi(source, namespaces, None, 0, &mut output)?;
+    Ok(output)
+}
+
+fn resolve_into_multi(
+    source: &str,
+    namespaces: &[(&str, &Path)],
+    active_root: Option<(&Path, &Path)>,
+    depth: usize,
+    output: &mut String,
+) -> Result<(), IncludeError> {
+    if depth >= MAX_INCLUDE_DEPTH {
+        return Err(IncludeError::DepthExceeded {
+            max_depth: MAX_INCLUDE_DEPTH,
+        });
+    }
+
+    for (line_idx, line) in source.lines().enumerate() {
+        let line_no = line_idx + 1;
+        match parse_include_directive(line, line_no)? {
+            Some(include_path) => {
+                if Path::new(&include_path).is_absolute() {
+                    return Err(IncludeError::Missing {
+                        path: include_path,
+                        line: line_no,
+                    });
+                }
+                let matched_ns = namespaces.iter().find_map(|(prefix, root)| {
+                    let ns_prefix = format!("{prefix}/");
+                    include_path
+                        .strip_prefix(&ns_prefix)
+                        .map(|rest| (*root, rest))
+                });
+                let (sandbox_root, candidate) = if let Some((root, rest)) = matched_ns {
+                    let mut p = root.to_path_buf();
+                    for seg in rest.split('/') {
+                        p.push(seg);
+                    }
+                    (root, p)
+                } else if let Some((root, current_dir)) = active_root {
+                    let mut p = current_dir.to_path_buf();
+                    for seg in include_path.split('/') {
+                        p.push(seg);
+                    }
+                    (root, p)
+                } else if let Some((_, first_root)) = namespaces.first() {
+                    let mut p = first_root.to_path_buf();
+                    for seg in include_path.split('/') {
+                        p.push(seg);
+                    }
+                    (*first_root, p)
+                } else {
+                    return Err(IncludeError::Missing {
+                        path: include_path,
+                        line: line_no,
+                    });
+                };
+
+                let canonical = candidate
+                    .canonicalize()
+                    .map_err(|_| IncludeError::Missing {
+                        path: include_path.clone(),
+                        line: line_no,
+                    })?;
+                let canonical_root =
+                    sandbox_root
+                        .canonicalize()
+                        .map_err(|_| IncludeError::Missing {
+                            path: include_path.clone(),
+                            line: line_no,
+                        })?;
+                if !canonical.starts_with(&canonical_root) {
+                    return Err(IncludeError::Missing {
+                        path: include_path,
+                        line: line_no,
+                    });
+                }
+                let included = read_to_string(&canonical, &include_path)?;
+                let next_dir = canonical
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| sandbox_root.to_path_buf());
+                resolve_into_multi(
+                    &included,
+                    namespaces,
+                    Some((sandbox_root, &next_dir)),
+                    depth + 1,
+                    output,
+                )?;
+                if !output.ends_with('\n') {
+                    output.push('\n');
+                }
+            }
+            None => {
+                output.push_str(line);
+                output.push('\n');
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Recursive worker. `depth` is the current include nesting; the
 /// caller starts at 0 and each recursion adds 1. `current_dir` is the
 /// directory of the source whose lines are being scanned (used for

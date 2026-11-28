@@ -17,9 +17,13 @@ back end (Syphon on macOS, Spout on Windows, NDI cross-platform);
 several of those back ends are partial or future-wave work at the time
 of writing.
 
-## Honest preamble — read this first
+## Direct Twitch RTMPS Broadcasting (Wired Today)
 
-**The publish path is not operational yet.** Chromaticity ships the
+Chromaticity ships built-in **Twitch RTMPS/RTMP** live broadcasting directly from the **Mix** deck (`LiveBroadcast` controls) using hardware-accelerated `h264_videotoolbox` (macOS) or `libx264` via host `ffmpeg`, with automatic stream-key redaction and live audio capture on macOS. You can broadcast your multi-layer Mix composite (GPU shaders, webcam, local video/images, YouTube stream-in, and text overlays) straight to Twitch without needing OBS in between.
+
+## External Frame-Sharing Bridges (Syphon / Spout / NDI)
+
+**External GPU frame-sharing publish is not operational yet.** Chromaticity ships the
 Syphon adapter scaffold and the engine-side bridge, but the
 `publish_syphon_output` real implementation is a Wave 1c-β follow-up
 that has not landed. Operators who attempt to add a Syphon Client

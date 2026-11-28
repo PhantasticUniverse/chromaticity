@@ -4,6 +4,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
 <script lang="ts">
+  import { onDestroy, onMount } from 'svelte';
+
   import { toggleOutputFullscreen } from '../ipc/output';
   import { liveFxStore } from '../stores/liveFx.svelte';
   import { loadedSceneStore } from '../stores/loadedScene.svelte';
@@ -14,6 +16,49 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import SceneCanvas from '../widgets/SceneCanvas.svelte';
 
   let isFullscreen = $state(false);
+  let mirrorCanvasEl = $state<HTMLCanvasElement | null>(null);
+  let mirrorActive = $state(false);
+  let programChannel: BroadcastChannel | null = null;
+  let mirrorIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  onMount(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    try {
+      programChannel = new BroadcastChannel('chromaticity-stage-program');
+      programChannel.onmessage = (ev: MessageEvent) => {
+        const data = ev.data as { readonly bitmap?: ImageBitmap; readonly clear?: boolean } | null;
+        if (!data) return;
+        if (data.clear) {
+          mirrorActive = false;
+          return;
+        }
+        if (data.bitmap && mirrorCanvasEl) {
+          if (mirrorCanvasEl.width !== data.bitmap.width) {
+            mirrorCanvasEl.width = data.bitmap.width;
+          }
+          if (mirrorCanvasEl.height !== data.bitmap.height) {
+            mirrorCanvasEl.height = data.bitmap.height;
+          }
+          const ctx = mirrorCanvasEl.getContext('2d');
+          ctx?.drawImage(data.bitmap, 0, 0);
+          data.bitmap.close();
+          mirrorActive = true;
+          if (mirrorIdleTimer !== null) clearTimeout(mirrorIdleTimer);
+          mirrorIdleTimer = setTimeout(() => {
+            mirrorActive = false;
+          }, 1500);
+        }
+      };
+    } catch {
+      // BroadcastChannel unavailable in restricted contexts.
+    }
+  });
+
+  onDestroy(() => {
+    if (mirrorIdleTimer !== null) clearTimeout(mirrorIdleTimer);
+    programChannel?.close();
+    programChannel = null;
+  });
 
   const sceneKind = $derived(
     sceneKindFromMetadata({
@@ -59,7 +104,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     {#if liveFxStore.blackoutActive}
       <div class="output-stage__blackout" aria-label="Stage blackout active"></div>
     {:else}
-      <SceneCanvas kind={sceneKind} seed={sceneSeed} audio={true} gpuLive={true} />
+      <canvas
+        bind:this={mirrorCanvasEl}
+        class="output-stage__mirror"
+        class:output-stage__mirror--visible={mirrorActive}
+        aria-label="Composited program mirror"
+      ></canvas>
+      {#if !mirrorActive}
+        <SceneCanvas kind={sceneKind} seed={sceneSeed} audio={true} gpuLive={true} />
+      {/if}
     {/if}
     {#if liveFxStore.strobeActive}
       <div class="output-stage__strobe" aria-hidden="true"></div>
@@ -81,6 +134,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     position: relative;
     width: 100%;
     height: 100%;
+  }
+
+  .output-stage__mirror {
+    display: none;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+  }
+
+  .output-stage__mirror--visible {
+    display: block;
   }
 
   .output-stage__blackout {

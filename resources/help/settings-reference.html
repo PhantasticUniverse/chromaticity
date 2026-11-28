@@ -1138,9 +1138,9 @@ audio adapter's input and output pickers. The fields surfaced are:</p>
 <li>Live level / peak meter — confirms the chosen device is producing
   signal before scene launch.</li>
 </ul>
-<p>Changes apply at the next analysis-thread restart (typically the next
-scene load); the analysis thread does not hot-swap audio devices
-mid-show to keep the snapshot pipeline deterministic.</p>
+<p>Input device selection, DJ stereo-pair routing, and pre-AGC input gain
+<strong>hot-swap live without restarting Chromaticity or interrupting stage output</strong>
+(backed by <code>AppState::hot_swap_audio_input</code> and lock-free atomic gain/pair handles).</p>
 <h2 id="2-graphics-and-output">2. Graphics and Output</h2>
 <p>The Graphics section covers everything between the renderer and the
 display:</p>

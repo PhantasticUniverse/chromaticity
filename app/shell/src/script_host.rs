@@ -9,7 +9,7 @@
 //! communicates via bounded synchronous request/reply channels. [`AppState`]
 //! remains `Send + Sync` with zero `unsafe` code.
 
-use chromaticity_audio::AudioUniformSnapshot;
+use chromaticity_audio::{AudioUniformSnapshot, SynAudioEnvelopeBank, SynAudioEnvelopes};
 use chromaticity_script::{
     ScriptCommand, ScriptCommandError, ScriptCommandSender, ScriptRuntime, ScriptValue,
 };
@@ -63,12 +63,15 @@ enum WorkerRequest {
         rms: f32,
         peak: f32,
         bpm: f32,
-        bass_level: f32,
-        mid_level: f32,
-        mid_high_level: f32,
-        high_level: f32,
+        envelopes: SynAudioEnvelopes,
         on_beat: f32,
         beat_time: f32,
+        reply: Sender<Result<ScriptTickOutput, String>>,
+    },
+    ControlChange {
+        name: String,
+        prev: f32,
+        next: f32,
         reply: Sender<Result<ScriptTickOutput, String>>,
     },
     Clear,
@@ -125,60 +128,144 @@ const SYNESTHESIA_COMPAT_PREAMBLE: &str = r#"
     }
   }
 
+  const __handlers = {
+    onChange: Object.create(null),
+    onOffToOn: Object.create(null),
+    onOnToOff: Object.create(null),
+    whileOn: Object.create(null),
+    whileOff: Object.create(null),
+  };
+  function __pushHandler(bucket, name, fn) {
+    if (typeof name !== 'string' || typeof fn !== 'function') return;
+    if (!bucket[name]) bucket[name] = [];
+    bucket[name].push(fn);
+  }
+  globalThis.onChange = function onChange(name, fn) { __pushHandler(__handlers.onChange, name, fn); };
+  globalThis.onOffToOn = function onOffToOn(name, fn) { __pushHandler(__handlers.onOffToOn, name, fn); };
+  globalThis.onOnToOff = function onOnToOff(name, fn) { __pushHandler(__handlers.onOnToOff, name, fn); };
+  globalThis.whileOn = function whileOn(name, fn) { __pushHandler(__handlers.whileOn, name, fn); };
+  globalThis.whileOff = function whileOff(name, fn) { __pushHandler(__handlers.whileOff, name, fn); };
+  globalThis.randomizeControl = function randomizeControl(name) {
+    if (typeof name === 'string' && name.length > 0) {
+      const val = Math.random();
+      __inputsBacking[name] = val;
+      __safeEmit('__ctrl_random_' + name, val);
+    }
+  };
+  globalThis.defaultControl = function defaultControl(name) {
+    if (typeof name === 'string' && name.length > 0) {
+      __safeEmit('__ctrl_default_' + name, 1.0);
+    }
+  };
+  globalThis.__chromaticityNotifyControl = function __chromaticityNotifyControl(name, prev, next) {
+    __inputsBacking[name] = next;
+    const list = __handlers.onChange[name];
+    if (list) { for (let i = 0; i < list.length; i++) list[i](next, prev); }
+    if (prev <= 0.5 && next > 0.5 && __handlers.onOffToOn[name]) {
+      const a = __handlers.onOffToOn[name];
+      for (let i = 0; i < a.length; i++) a[i](next);
+    }
+    if (prev > 0.5 && next <= 0.5 && __handlers.onOnToOff[name]) {
+      const a = __handlers.onOnToOff[name];
+      for (let i = 0; i < a.length; i++) a[i](next);
+    }
+  };
+  globalThis.__chromaticityTickControlHandlers = function __chromaticityTickControlHandlers(dt) {
+    for (const name in __handlers.whileOn) {
+      if ((__inputsBacking[name] || 0) > 0.5) {
+        const a = __handlers.whileOn[name];
+        for (let i = 0; i < a.length; i++) a[i](dt);
+      }
+    }
+    for (const name in __handlers.whileOff) {
+      if ((__inputsBacking[name] || 0) <= 0.5) {
+        const a = __handlers.whileOff[name];
+        for (let i = 0; i < a.length; i++) a[i](dt);
+      }
+    }
+  };
+
   globalThis.__chromaticitySyncGlobals = function __chromaticitySyncGlobals(
     elapsedSecs,
     frame,
     rms,
     peak,
     bpm,
+    level,
     bassLevel,
     midLevel,
     midHighLevel,
     highLevel,
+    hits,
+    bassHits,
+    midHits,
+    midHighHits,
+    highHits,
+    presence,
+    bassPresence,
+    midPresence,
+    midHighPresence,
+    highPresence,
+    synTime,
+    bassTime,
+    midTime,
+    midHighTime,
+    highTime,
+    fadeInOut,
+    intensity,
+    bpmConfidence,
+    randomOnBeat,
     onBeat,
     beatTime
   ) {
-    const level = rms;
-    globalThis.chroma_Time = elapsedSecs;
-    globalThis.chroma_Frame = frame;
-    globalThis.chroma_AudioRMS = rms;
-    globalThis.chroma_AudioPeak = peak;
-    globalThis.TIME = elapsedSecs;
-    globalThis.syn_Time = elapsedSecs;
-    globalThis.syn_BPM = bpm;
-    globalThis.syn_Level = level;
-    globalThis.syn_Presence = level;
-    globalThis.syn_BassLevel = bassLevel;
-    globalThis.syn_BassPresence = bassLevel;
-    globalThis.syn_MidLevel = midLevel;
-    globalThis.syn_MidPresence = midLevel;
-    globalThis.syn_MidHighLevel = midHighLevel;
-    globalThis.syn_HighLevel = highLevel;
-    globalThis.syn_HighPresence = highLevel;
-    globalThis.syn_OnBeat = onBeat;
-    globalThis.syn_BeatTime = beatTime;
-
-    __inputsBacking.chroma_Time = elapsedSecs;
-    __inputsBacking.chroma_Frame = frame;
-    __inputsBacking.chroma_AudioRMS = rms;
-    __inputsBacking.chroma_AudioPeak = peak;
-    __inputsBacking.TIME = elapsedSecs;
-    __inputsBacking.syn_Time = elapsedSecs;
-    __inputsBacking.syn_BPM = bpm;
-    __inputsBacking.syn_Level = level;
-    __inputsBacking.syn_Presence = level;
-    __inputsBacking.syn_BassLevel = bassLevel;
-    __inputsBacking.syn_BassPresence = bassLevel;
-    __inputsBacking.syn_MidLevel = midLevel;
-    __inputsBacking.syn_MidPresence = midLevel;
-    __inputsBacking.syn_MidHighLevel = midHighLevel;
-    __inputsBacking.syn_HighLevel = highLevel;
-    __inputsBacking.syn_HighPresence = highLevel;
-    __inputsBacking.syn_OnBeat = onBeat;
-    __inputsBacking.syn_BeatTime = beatTime;
+    const map = {
+      chroma_Time: elapsedSecs,
+      chroma_Frame: frame,
+      chroma_AudioRMS: rms,
+      chroma_AudioPeak: peak,
+      TIME: elapsedSecs,
+      syn_Time: synTime,
+      syn_BassTime: bassTime,
+      syn_MidTime: midTime,
+      syn_MidHighTime: midHighTime,
+      syn_HighTime: highTime,
+      syn_BPM: bpm,
+      syn_BPMConfidence: bpmConfidence,
+      syn_RandomOnBeat: randomOnBeat,
+      syn_FadeInOut: fadeInOut,
+      syn_Intensity: intensity,
+      syn_Level: level,
+      syn_Hits: hits,
+      syn_Presence: presence,
+      syn_BassLevel: bassLevel,
+      syn_BassHits: bassHits,
+      syn_BassPresence: bassPresence,
+      syn_MidLevel: midLevel,
+      syn_MidHits: midHits,
+      syn_MidPresence: midPresence,
+      syn_MidHighLevel: midHighLevel,
+      syn_MidHighHits: midHighHits,
+      syn_MidHighPresence: midHighPresence,
+      syn_HighLevel: highLevel,
+      syn_HighHits: highHits,
+      syn_HighPresence: highPresence,
+      syn_OnBeat: onBeat,
+      syn_BeatTime: beatTime,
+    };
+    for (const k in map) {
+      globalThis[k] = map[k];
+      __inputsBacking[k] = map[k];
+    }
   };
 
-  globalThis.__chromaticitySyncGlobals(0.0, 0, 0.0, 0.0, 120.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  globalThis.__chromaticitySyncGlobals(
+    0, 0, 0, 0, 120,
+    0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0,
+    1, 0.5, 0, 0.5, 0, 0
+  );
 
   globalThis.setUniform = function setUniform(name, val) {
     __safeEmit(name, val);
@@ -277,6 +364,7 @@ pub struct ScriptHost {
     worker_tx: Option<Sender<WorkerRequest>>,
     worker_join: Option<JoinHandle<()>>,
     last_emitted: HashMap<String, f32>,
+    envelopes: SynAudioEnvelopeBank,
 }
 
 impl Default for ScriptHost {
@@ -295,6 +383,7 @@ impl ScriptHost {
             worker_tx: None,
             worker_join: None,
             last_emitted: HashMap::new(),
+            envelopes: SynAudioEnvelopeBank::new(),
         }
     }
 
@@ -409,14 +498,6 @@ impl ScriptHost {
         let rms = sanitize_js_f32(audio.rms).clamp(0.0, 1.0);
         let peak = sanitize_js_f32(audio.peak).clamp(0.0, 1.0);
         let bpm = sanitize_js_f32(audio.bpm).max(0.0);
-        let bass_level =
-            sanitize_js_f32((audio.fft_bands[0] + audio.fft_bands[1]) * 0.5).clamp(0.0, 1.0);
-        let mid_level =
-            sanitize_js_f32((audio.fft_bands[2] + audio.fft_bands[3]) * 0.5).clamp(0.0, 1.0);
-        let mid_high_level =
-            sanitize_js_f32((audio.fft_bands[4] + audio.fft_bands[5]) * 0.5).clamp(0.0, 1.0);
-        let high_level =
-            sanitize_js_f32((audio.fft_bands[6] + audio.fft_bands[7]) * 0.5).clamp(0.0, 1.0);
         let beat_time = if bpm > 0.0 {
             sanitize_js_f32(elapsed_secs * (bpm / 60.0))
         } else {
@@ -427,6 +508,7 @@ impl ScriptHost {
         } else {
             0.0
         };
+        let envelopes = self.envelopes.advance(audio, dt, beat_time);
 
         if tx
             .send(WorkerRequest::Tick {
@@ -436,10 +518,7 @@ impl ScriptHost {
                 rms,
                 peak,
                 bpm,
-                bass_level,
-                mid_level,
-                mid_high_level,
-                high_level,
+                envelopes,
                 on_beat,
                 beat_time,
                 reply: reply_tx,
@@ -481,6 +560,41 @@ impl ScriptHost {
                 };
                 HashMap::new()
             }
+        }
+    }
+
+    /// Notify the active `script.js` of a control value transition so
+    /// `onChange`, `onOffToOn`, and `onOnToOff` handlers execute.
+    pub fn notify_control_change(
+        &mut self,
+        name: &str,
+        prev: f32,
+        next: f32,
+    ) -> HashMap<String, f32> {
+        if !matches!(self.state, ScriptHostState::Active { .. }) {
+            return HashMap::new();
+        }
+        let Some(tx) = self.worker_tx.as_ref() else {
+            return HashMap::new();
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        if tx
+            .send(WorkerRequest::ControlChange {
+                name: name.to_string(),
+                prev: sanitize_js_f32(prev),
+                next: sanitize_js_f32(next),
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            return HashMap::new();
+        }
+        match reply_rx.recv() {
+            Ok(Ok(out)) => {
+                self.last_emitted.extend(out.emitted.clone());
+                out.emitted
+            }
+            _ => HashMap::new(),
         }
     }
 
@@ -605,10 +719,7 @@ fn run_script_worker(rx: Receiver<WorkerRequest>) {
                 rms,
                 peak,
                 bpm,
-                bass_level,
-                mid_level,
-                mid_high_level,
-                high_level,
+                envelopes,
                 on_beat,
                 beat_time,
                 reply,
@@ -620,10 +731,39 @@ fn run_script_worker(rx: Receiver<WorkerRequest>) {
                 let tick_script = format!(
                     "globalThis.__chromaticitySyncGlobals(\
                         {elapsed_secs}, {frame}, {rms}, {peak}, {bpm}, \
-                        {bass_level}, {mid_level}, {mid_high_level}, {high_level}, \
+                        {}, {}, {}, {}, {}, \
+                        {}, {}, {}, {}, {}, \
+                        {}, {}, {}, {}, {}, \
+                        {}, {}, {}, {}, {}, \
+                        {}, {}, {}, {}, \
                         {on_beat}, {beat_time}\
                      );\
-                     if (typeof update === 'function') {{ update({dt}); }}"
+                     globalThis.__chromaticityTickControlHandlers({dt});\
+                     if (typeof update === 'function') {{ update({dt}); }}",
+                    envelopes.level,
+                    envelopes.bass_level,
+                    envelopes.mid_level,
+                    envelopes.mid_high_level,
+                    envelopes.high_level,
+                    envelopes.hits,
+                    envelopes.bass_hits,
+                    envelopes.mid_hits,
+                    envelopes.mid_high_hits,
+                    envelopes.high_hits,
+                    envelopes.presence,
+                    envelopes.bass_presence,
+                    envelopes.mid_presence,
+                    envelopes.mid_high_presence,
+                    envelopes.high_presence,
+                    envelopes.time,
+                    envelopes.bass_time,
+                    envelopes.mid_time,
+                    envelopes.mid_high_time,
+                    envelopes.high_time,
+                    envelopes.fade_in_out,
+                    envelopes.intensity,
+                    envelopes.bpm_confidence,
+                    envelopes.random_on_beat,
                 );
                 match runtime.execute(&tick_script) {
                     Ok(_) => {
@@ -633,6 +773,29 @@ fn run_script_worker(rx: Receiver<WorkerRequest>) {
                     Err(err) => {
                         active_runtime = None;
                         let _ = reply.send(Err(format!("script update failed: {err}")));
+                    }
+                }
+            }
+            WorkerRequest::ControlChange {
+                name,
+                prev,
+                next,
+                reply,
+            } => {
+                let Some((runtime, writes)) = active_runtime.as_ref() else {
+                    let _ = reply.send(Ok(ScriptTickOutput::default()));
+                    continue;
+                };
+                let escaped = serde_json::to_string(&name).unwrap_or_else(|_| "\"\"".into());
+                let script =
+                    format!("globalThis.__chromaticityNotifyControl({escaped}, {prev}, {next});");
+                match runtime.execute(&script) {
+                    Ok(_) => {
+                        let emitted = drain_writes(writes);
+                        let _ = reply.send(Ok(ScriptTickOutput { emitted }));
+                    }
+                    Err(err) => {
+                        let _ = reply.send(Err(format!("script control handler failed: {err}")));
                     }
                 }
             }
@@ -724,10 +887,10 @@ mod script_host_pins {
         assert!(host.status().error.is_none());
         assert_eq!(host.status().ticks_executed, 1);
 
-        // Bass average = (0.8 + 0.6) / 2 = 0.7; my_pulse = 0.7 + 2.0 * 0.1 = 0.9
+        // Bass average = (0.8 + 0.6) / 2 = 0.7; syn_Time is energy-integrated > 0
         let pulse = out.get("my_pulse").copied().expect("my_pulse emitted");
         assert!(pulse.is_finite());
-        assert!((pulse - 0.9).abs() < 1e-4, "pulse={pulse}");
+        assert!(pulse > 0.7 && pulse < 1.0, "pulse={pulse}");
 
         let accum = out.get("accum_time").copied().expect("accum_time emitted");
         assert!(accum.is_finite());
@@ -776,12 +939,55 @@ mod script_host_pins {
         // 1.0s at 120 BPM => 2.0 beats (exact integer => on_beat == 1.0)
         assert!((out.get("beat_val").copied().unwrap() - 2.0).abs() < 1e-4);
         assert!((out.get("on_beat").copied().unwrap() - 1.0).abs() < 1e-4);
-        assert!(out.get("time_diff").copied().unwrap().abs() < 1e-5);
+        // syn_Time is energy-integrated (distinct from wall-clock TIME)
+        assert!(out.get("time_diff").copied().unwrap() > 0.0);
         assert!((out.get("bpm_val").copied().unwrap() - 120.0).abs() < 1e-4);
         assert!((out.get("vec_pair_x").copied().unwrap() - 0.8).abs() < 1e-4);
         assert!((out.get("vec_pair_y").copied().unwrap() - 0.15).abs() < 1e-4);
 
         // Every emitted value must be finite.
         assert!(out.values().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn script_host_fires_control_event_handlers_and_real_envelopes() {
+        let mut host = ScriptHost::new();
+        host.set_inline_script(
+            "syn-events".into(),
+            r#"
+            let changes = 0;
+            let rises = 0;
+            onChange('intensity', (next, prev) => {
+                changes += 1;
+                setUniform('delta', next - prev);
+            });
+            onOffToOn('flash', () => {
+                rises += 1;
+                setUniform('rises', rises);
+            });
+            function update(dt) {
+                setUniform('bass_hits', syn_BassHits);
+                setUniform('bass_pres', syn_BassPresence);
+                setUniform('syn_t', syn_Time);
+            }
+            "#
+            .into(),
+        );
+        let out = host.notify_control_change("intensity", 0.2, 0.75);
+        assert!((out.get("delta").copied().unwrap_or(0.0) - 0.55).abs() < 1e-4);
+        let out2 = host.notify_control_change("flash", 0.0, 1.0);
+        assert!((out2.get("rises").copied().unwrap_or(0.0) - 1.0).abs() < 1e-4);
+
+        let audio = AudioUniformSnapshot {
+            bpm: 128.0,
+            rms: 0.6,
+            peak: 0.9,
+            fft_bands: [0.9, 0.8, 0.5, 0.4, 0.3, 0.2, 0.1, 0.1],
+            ..AudioUniformSnapshot::default()
+        };
+        let tick = host.tick(0.5, 1.0 / 60.0, 1, &audio);
+        assert!(tick.get("bass_hits").copied().unwrap_or(0.0) > 0.0);
+        assert!(tick.get("bass_pres").copied().unwrap_or(0.0) > 0.0);
+        assert!(tick.get("syn_t").copied().unwrap_or(0.0) > 0.0);
     }
 }

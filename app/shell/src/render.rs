@@ -9,10 +9,10 @@
 //! [`MultipassRenderer`] on first frame render so unit tests without a
 //! GPU or scenes without `main.glsl` incur zero GPU startup cost.
 
-use chromaticity_audio::AudioUniformSnapshot;
+use chromaticity_audio::{AudioUniformSnapshot, SynAudioEnvelopeBank};
 use chromaticity_render::{
-    CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, TargetFormat, UniformInput,
-    UniformValue,
+    CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, TargetFormat,
+    TransitionOrchestrator, UniformInput, UniformValue, resolve_includes_multi,
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -225,6 +225,9 @@ pub struct GpuPreviewEngine {
     state: GpuRenderState,
     renderer: Option<MultipassRenderer>,
     cached_pass: Option<CachedSinglePass>,
+    envelopes: SynAudioEnvelopeBank,
+    last_elapsed_secs: f32,
+    transition_orchestrator: TransitionOrchestrator,
 }
 
 impl Default for GpuPreviewEngine {
@@ -237,11 +240,70 @@ impl GpuPreviewEngine {
     /// Construct an idle GPU preview engine (zero GPU allocation until first render).
     #[must_use]
     pub fn new() -> Self {
+        let idle_spec = MultipassSpec {
+            passes: vec![PassDef {
+                label: Some("idle".into()),
+                fragment_glsl: String::new(),
+                uniforms: Vec::new(),
+                input_textures: Vec::new(),
+                target_format: TargetFormat::Rgba8Unorm,
+                feedback_self: false,
+            }],
+            target_size: (640, 360),
+            frame_count: 1,
+        };
         Self {
             state: GpuRenderState::Idle,
             renderer: None,
             cached_pass: None,
+            envelopes: SynAudioEnvelopeBank::new(),
+            last_elapsed_secs: 0.0,
+            transition_orchestrator: TransitionOrchestrator::new(idle_spec),
         }
+    }
+
+    /// Execute a multi-pass [`MultipassSpec`] on the shared wgpu device
+    /// (supporting `PASSES` chains and `feedback_self` ping-pong buffers).
+    pub fn render_multipass(&mut self, spec: &MultipassSpec) -> Result<Vec<u8>, String> {
+        if self.renderer.is_none() {
+            self.renderer =
+                Some(MultipassRenderer::new().map_err(|err| format!("wgpu init failed: {err}"))?);
+        }
+        let Some(renderer) = self.renderer.as_ref() else {
+            return Err("wgpu renderer unavailable".into());
+        };
+        renderer
+            .render(spec)
+            .map_err(|err| format!("multipass render failed: {err}"))
+    }
+
+    /// Current transition-orchestrator phase label for diagnostics.
+    #[must_use]
+    pub fn transition_phase_name(&self) -> &'static str {
+        self.transition_orchestrator.current_state().label()
+    }
+
+    /// Resolve `#include "lygia/..."` and `#include "hg_sdf/..."` directives
+    /// against the vendored `third_party/` shader libraries when present.
+    fn preprocess_shader_source(source: &str) -> Result<String, String> {
+        if !source.contains("#include") {
+            return Ok(source.to_string());
+        }
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let lygia_root = repo_root.join("third_party/lygia");
+        let hg_sdf_root = repo_root.join("third_party/hg_sdf");
+        let mut namespaces: Vec<(&str, &Path)> = Vec::new();
+        if lygia_root.is_dir() {
+            namespaces.push(("lygia", lygia_root.as_path()));
+        }
+        if hg_sdf_root.is_dir() {
+            namespaces.push(("hg_sdf", hg_sdf_root.as_path()));
+        }
+        if namespaces.is_empty() {
+            return Ok(source.to_string());
+        }
+        resolve_includes_multi(source, &namespaces)
+            .map_err(|err| format!("shader #include resolution failed: {err}"))
     }
 
     /// Arm the GPU preview engine from a loaded `.chroma` scene directory.
@@ -417,6 +479,11 @@ impl GpuPreviewEngine {
             return Err("wgpu renderer unavailable".into());
         };
 
+        let dt = (elapsed_secs - self.last_elapsed_secs).clamp(1.0 / 240.0, 0.1);
+        self.last_elapsed_secs = elapsed_secs;
+        let resolved_bpm = resolve_bpm_uniforms(elapsed_secs, audio.bpm, bpm_override);
+        let _envelopes = self.envelopes.advance(audio, dt, resolved_bpm.beat_time);
+
         let uniforms = build_standard_uniforms_with_bpm(
             (w, h),
             elapsed_secs,
@@ -428,9 +495,19 @@ impl GpuPreviewEngine {
 
         let started = Instant::now();
         if self.cached_pass.is_none() {
+            let resolved_source = match Self::preprocess_shader_source(&fragment_source) {
+                Ok(src) => src,
+                Err(msg) => {
+                    self.state = GpuRenderState::Error {
+                        scene_id,
+                        message: msg.clone(),
+                    };
+                    return Err(msg);
+                }
+            };
             match renderer.compile_cached_single_pass(
                 &scene_id,
-                &fragment_source,
+                &resolved_source,
                 &uniforms,
                 (w, h),
             ) {
@@ -1028,6 +1105,59 @@ void main() {
                     .chunks_exact(4)
                     .any(|px| px[0] > 0 || px[1] > 0 || px[2] > 0),
                 "{folder} rendered all-black frame"
+            );
+        }
+    }
+
+    #[test]
+    fn all_16_bundled_scenes_compile_and_render_on_gpu() {
+        let bundled_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/scenes");
+        let mut scene_dirs = Vec::new();
+        for sub in ["library", "welcome", "examples"] {
+            let dir = bundled_root.join(sub);
+            for entry in std::fs::read_dir(&dir).expect("read bundled subdir") {
+                let p = entry.expect("dir entry").path();
+                if p.extension().and_then(|s| s.to_str()) == Some("chroma") {
+                    scene_dirs.push(p);
+                }
+            }
+        }
+        scene_dirs.sort();
+        assert_eq!(
+            scene_dirs.len(),
+            16,
+            "expected all 16 bundled .chroma scenes"
+        );
+
+        let mut engine = GpuPreviewEngine::new();
+        let audio = AudioUniformSnapshot {
+            bpm: 124.0,
+            rms: 0.45,
+            peak: 0.72,
+            fft_bands: [0.6, 0.5, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15],
+            ..AudioUniformSnapshot::default()
+        };
+        for scene_dir in &scene_dirs {
+            let id = scene_dir
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("scene")
+                .to_string();
+            assert!(
+                scene_dir.join("main.glsl").is_file(),
+                "bundled scene missing main.glsl: {}",
+                scene_dir.display()
+            );
+            engine.set_scene(id.clone(), scene_dir);
+            let bytes = engine
+                .render_frame(160, 90, 1.5, 90, &audio, [0.5; 16])
+                .unwrap_or_else(|e| panic!("bundled scene {id} failed Metal compile/render: {e}"));
+            assert_eq!(bytes.len(), 160 * 90 * 4);
+            assert!(
+                bytes
+                    .chunks_exact(4)
+                    .any(|px| px[0] > 0 || px[1] > 0 || px[2] > 0),
+                "bundled scene {id} rendered all-black frame"
             );
         }
     }

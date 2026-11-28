@@ -12,7 +12,8 @@
 
 use crate::state::AppState;
 use chromaticity_runtime::recorder::{
-    Fmp4Muxer, Fmp4MuxerConfig, RecorderState, ReplayBuffer, TIMESCALE_90KHZ,
+    DEFAULT_SAMPLE_DURATION_90KHZ, EncodedPacket, Fmp4Muxer, Fmp4MuxerConfig, RecorderState,
+    ReplayBuffer, TIMESCALE_90KHZ,
 };
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -436,6 +437,75 @@ pub fn stop_recording(app_state: State<'_, AppState>) -> Result<RecorderStatusDt
 #[tauri::command]
 pub fn get_recorder_status(app_state: State<'_, AppState>) -> Result<RecorderStatusDto, String> {
     get_recorder_status_impl(app_state.inner())
+}
+
+/// Push one encoded frame payload into the rolling replay buffer and, when
+/// actively recording, into the fMP4 muxer (flushing completed `moof` + `mdat`
+/// fragments straight to the active on-disk `.mp4` file).
+pub fn push_recorder_packet_impl(
+    app: &AppState,
+    payload: Vec<u8>,
+    is_keyframe: bool,
+    pts_90khz: u64,
+) -> Result<RecorderStatusDto, String> {
+    if payload.is_empty() {
+        return Err("recorder packet payload must not be empty".into());
+    }
+    let packet = EncodedPacket {
+        pts_90khz,
+        dts_90khz: pts_90khz,
+        duration_90khz: DEFAULT_SAMPLE_DURATION_90KHZ,
+        is_keyframe,
+        data: payload,
+    };
+
+    let mut replay_guard = match app.replay_buffer.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    replay_guard.push_packet(packet.clone());
+
+    let mut muxer_guard = match app.recorder_muxer.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    if let Some(muxer) = muxer_guard.as_mut() {
+        if matches!(muxer.state(), RecorderState::Recording { .. }) {
+            if let Some(fragment) = muxer.push_packet(packet).map_err(|err| err.to_string())? {
+                let mut file_guard = match app.recorder_output_file.lock() {
+                    Ok(g) => g,
+                    Err(p) => p.into_inner(),
+                };
+                if let Some(active) = file_guard.as_mut() {
+                    active.file.write_all(&fragment).map_err(|err| {
+                        format!(
+                            "failed to write fMP4 fragment to {}: {err}",
+                            active.path.display()
+                        )
+                    })?;
+                    active.file.flush().map_err(|err| {
+                        format!(
+                            "failed to flush fMP4 fragment to {}: {err}",
+                            active.path.display()
+                        )
+                    })?;
+                }
+            }
+        }
+    }
+
+    Ok(build_status_dto(muxer_guard.as_ref(), &replay_guard))
+}
+
+/// Push an encoded video frame into the live fMP4 recorder and rolling replay buffer.
+#[tauri::command]
+pub fn push_recorder_frame(
+    app_state: State<'_, AppState>,
+    payload: Vec<u8>,
+    is_keyframe: bool,
+    pts_90khz: u64,
+) -> Result<RecorderStatusDto, String> {
+    push_recorder_packet_impl(app_state.inner(), payload, is_keyframe, pts_90khz)
 }
 
 /// Flush the rolling replay buffer into a standalone playable Fragmented MP4 file.

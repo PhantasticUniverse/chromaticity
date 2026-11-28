@@ -429,12 +429,21 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::recorder::start_recording,
             commands::recorder::stop_recording,
             commands::recorder::get_recorder_status,
+            commands::recorder::push_recorder_frame,
             commands::recorder::save_replay_buffer,
             commands::stream::start_twitch_stream,
             commands::stream::stop_twitch_stream,
             commands::stream::get_stream_status,
             commands::stream::push_stream_frame,
             commands::stream::list_stream_audio_devices,
+            commands::subsystems::get_broadcast_mixer_status,
+            commands::subsystems::set_broadcast_bus_config,
+            commands::subsystems::get_clock_sync_status,
+            commands::subsystems::dispatch_footswitch_action,
+            commands::subsystems::get_dmx_universe_status,
+            commands::subsystems::set_dmx_channel,
+            commands::subsystems::get_data_ingest_status,
+            commands::subsystems::get_observability_status,
         ])
         .build(tauri::generate_context!())?
         .run(|app_handle, event| {

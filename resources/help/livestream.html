@@ -550,10 +550,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#honest-preamble-read-this-first" class="md-nav__link">
+  <a href="#direct-twitch-rtmps-broadcasting-wired-today" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Honest preamble — read this first
+        Direct Twitch RTMPS Broadcasting (Wired Today)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-frame-sharing-bridges-syphon-spout-ndi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Frame-Sharing Bridges (Syphon / Spout / NDI)
       
     </span>
   </a>
@@ -1139,10 +1150,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#honest-preamble-read-this-first" class="md-nav__link">
+  <a href="#direct-twitch-rtmps-broadcasting-wired-today" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Honest preamble — read this first
+        Direct Twitch RTMPS Broadcasting (Wired Today)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-frame-sharing-bridges-syphon-spout-ndi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Frame-Sharing Bridges (Syphon / Spout / NDI)
       
     </span>
   </a>
@@ -1345,8 +1367,10 @@ and what is planned. Livestream pathing depends on a frame-publishing
 back end (Syphon on macOS, Spout on Windows, NDI cross-platform);
 several of those back ends are partial or future-wave work at the time
 of writing.</p>
-<h2 id="honest-preamble-read-this-first">Honest preamble — read this first</h2>
-<p><strong>The publish path is not operational yet.</strong> Chromaticity ships the
+<h2 id="direct-twitch-rtmps-broadcasting-wired-today">Direct Twitch RTMPS Broadcasting (Wired Today)</h2>
+<p>Chromaticity ships built-in <strong>Twitch RTMPS/RTMP</strong> live broadcasting directly from the <strong>Mix</strong> deck (<code>LiveBroadcast</code> controls) using hardware-accelerated <code>h264_videotoolbox</code> (macOS) or <code>libx264</code> via host <code>ffmpeg</code>, with automatic stream-key redaction and live audio capture on macOS. You can broadcast your multi-layer Mix composite (GPU shaders, webcam, local video/images, YouTube stream-in, and text overlays) straight to Twitch without needing OBS in between.</p>
+<h2 id="external-frame-sharing-bridges-syphon-spout-ndi">External Frame-Sharing Bridges (Syphon / Spout / NDI)</h2>
+<p><strong>External GPU frame-sharing publish is not operational yet.</strong> Chromaticity ships the
 Syphon adapter scaffold and the engine-side bridge, but the
 <code>publish_syphon_output</code> real implementation is a Wave 1c-β follow-up
 that has not landed. Operators who attempt to add a Syphon Client

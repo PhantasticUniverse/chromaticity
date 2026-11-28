@@ -247,7 +247,10 @@ pub use spectrum::{
     BpmEstimate, FusedBpmEstimator, SPECTRUM_BANDS_48, SPECTRUM_BANDS_64, compute_log_spectrum_64,
     downsample_64_to_48,
 };
-pub use uniforms::{AudioAxisAvailability, AudioUniformSnapshot, extract_uniform_snapshot};
+pub use uniforms::{
+    AudioAxisAvailability, AudioUniformSnapshot, SynAudioEnvelopeBank, SynAudioEnvelopes,
+    extract_uniform_snapshot,
+};
 
 /// Unified single-pass audio analysis snapshot combining legacy 4-band /
 /// 8-band uniform meters, stereo true-peak / AGC metering, the 64-band

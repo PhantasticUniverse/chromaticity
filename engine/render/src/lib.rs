@@ -386,7 +386,9 @@ pub use camera_adapter::{
 };
 pub use composition::{PreparedScene, compose_transition_frame, compose_transition_frame_gpu};
 pub use compositor::{BlendMode, CompositeLayer, LayerStack, LayerTransform, render_layer_stack};
-pub use glsl_includes::{IncludeError, MAX_INCLUDE_DEPTH, resolve_includes};
+pub use glsl_includes::{
+    IncludeError, MAX_INCLUDE_DEPTH, resolve_includes, resolve_includes_multi,
+};
 pub use gpu_cost::{AdaptiveScaleConfig, AdaptiveScaleController, GpuCostTier, ScaleDecision};
 pub use multipass::{
     CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,

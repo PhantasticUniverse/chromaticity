@@ -30,11 +30,14 @@ The wiring status column uses three states:
 
 ## Audio input
 
-Audio capture goes through the cpal crate (`cpal = "0.15"`). cpal opens
-the **host default input device** at startup by default, with an
-operator-configurable preference in Settings (see
+Audio capture goes through our patched `cpal` crate (`third_party/cpal-0.17.1-patched`),
+including zero-install **macOS Core Audio Process Tap** system-audio loopback
+(capturing Rekordbox 7 `PC MASTER OUT` without BlackHole) and multi-channel DJ
+Master-vs-Cue stereo-pair extraction (`DDJ-FLX10`, `DJM-A9`). cpal opens the
+**host default input device** (or configured System Audio / DJ interface) at startup
+and supports **zero-restart live device and gain hot-swap** from Settings (see
 [Settings Reference](settings-reference.md)). The audio analysis thread
-mixes multi-channel input down to mono, runs RMS / peak / 8-band FFT /
+mixes the selected stereo pair down to mono, runs RMS / peak / 8-band FFT /
 BPM, and publishes one `AudioUniformSnapshot` per analysis hop; see
 [Audio Reactivity](audio-reactivity.md) for the analysis pipeline.
 

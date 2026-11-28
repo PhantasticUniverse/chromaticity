@@ -105,6 +105,15 @@ Major parity closures and Synesthesia/OBS leapfrogs shipped since Wave 2:
 - **Phase 7 OBS-killer engine primitives** — native `wgpu` multi-layer compositor (`engine/render/src/compositor.rs`), GPU BGRA→NV12 compute conversion pass (`engine/render/src/nv12_convert.rs`, `ca0df53`), and Twitch EventSub/Chat/Channel Points bridge (`engine/runtime/src/twitch_bridge.rs`).
 - **Phase 8 Rekordbox 7 / `DDJ-FLX10` & Beatmatch sync** — multi-channel Master vs. Cue stereo pair extractor with Pioneer/AlphaTheta profiles (`engine/runtime/src/rekordbox_bridge.rs`, `10769c0`), zero-install Rekordbox 7 `PC MASTER OUT` capture (`f2187da`), and live DJ BPM `AUTO / LOCK / OFF` + `-0.5..+0.5` beatmatch phase scrub wired to Metal GPU uniforms (`ad343cb`, `257ab95`, `10769c0`).
 
+### Parity-closure wave 4 (2026-11-28)
+
+Closed the deep-audit shell-wiring and parity gaps across Synesthesia, OBS, and end-to-end truthfulness:
+
+- **All 16 bundled `.chroma` scenes ship real Metal-verified `main.glsl` shaders** in `resources/scenes/{library,welcome,examples}/`, registered in `tauri.conf.json` and verified by `all_16_bundled_scenes_compile_and_render_on_gpu`.
+- **Full `SynAudioEnvelopeBank` + JS event handlers + GLSL `#include` preprocessing** — real onset transients (`*_hits`), slow-EMA `*_presence`, energy-integrated `*_time`, `syn_RandomOnBeat`, `onChange`/`onOffToOn`/`onOnToOff`/`whileOn`/`whileOff`/`randomizeControl`/`defaultControl` in `script_host.rs`, and `resolve_includes_multi` (`lygia/` + `hg_sdf/`) wired into `app/shell/src/render.rs`.
+- **Mix & Stage Output closures** — `Mix.svelte` renders `'text'` overlays into `compositeStageToCanvas`, `liveMediaStore` supports multi-camera `enumerateDevices()` + `deviceId` selection, `OutputStage.svelte` mirrors Mix Program via `BroadcastChannel`, and `push_recorder_frame` feeds live packets into both `Fmp4Muxer` and `ReplayBuffer`.
+- **Full engine-to-shell IPC wiring (`commands/subsystems.rs` + `src/lib/ipc/subsystems.ts`)** — wired `BroadcastMixer`, `ClockSyncCoordinator`, `AutoTransitionPlanner`, `DmxUniverse`, `SetlistCueRunner`, `DataIngestEngine`, `TransitionOrchestrator`/`render_multipass`, and `engine/observability` into `AppState` and `generate_handler![]`, plus real `tauri-plugin-dialog` folder picking in `commands/picker.rs`.
+
 ## Revisiting cadence
 
 The sweep is intended to be re-run when:

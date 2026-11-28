@@ -15,7 +15,7 @@ Chromaticity is a cross-platform GPU shader performance instrument and visual mi
 
 - **Real-time Audio Analysis:** Low-latency FFT band extraction, RMS/peak metering, onset detection, and live zero-restart input hot-swap.
 - **Native `.chroma` Scenes:** Multi-pass GLSL shaders with JSON control schemas, sandboxed scripting, and live hot-reload.
-- **Performance & I/O:** Dedicated **Perform** and **Mix** decks, MIDI learn and performance bindings, bidirectional OSC routing, Syphon/NDI live textures, and crash-safe fMP4 recording.
+- **Performance & I/O:** Dedicated **Perform** and **Mix** decks, multi-monitor Stage Output, live Twitch RTMPS streaming, MIDI learn and performance bindings, bidirectional UDP OSC routing, and fMP4 recording/replay infrastructure.
 
 ## Offline Documentation
 

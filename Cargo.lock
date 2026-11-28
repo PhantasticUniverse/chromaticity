@@ -470,6 +470,7 @@ dependencies = [
  "chromaticity-camera-adapter",
  "chromaticity-entitlement",
  "chromaticity-midi-adapter",
+ "chromaticity-observability",
  "chromaticity-osc-adapter",
  "chromaticity-render",
  "chromaticity-runtime",

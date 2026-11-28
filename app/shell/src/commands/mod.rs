@@ -32,6 +32,7 @@ pub mod scene;
 pub mod settings;
 pub mod snap;
 pub mod stream;
+pub mod subsystems;
 pub mod syphon;
 pub mod thumbnail;
 

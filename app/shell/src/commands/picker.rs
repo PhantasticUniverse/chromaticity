@@ -27,31 +27,32 @@
 //! trip without the platform-dependent dialog. Phase-3+/4a will swap
 //! the placeholder for `tauri_plugin_dialog::DialogExt::dialog().pick_folder()`.
 
-/// Phase-3+/4a `EV-INTEGRATION-MATRIX` swap-in target: replace this
-/// placeholder with `tauri_plugin_dialog::DialogExt::dialog().pick_folder()`
-/// once the dialog plugin lands on the dependency graph and the
-/// capabilities allowlist opens to it.
-const PLACEHOLDER_PICKED_PATH: &str = "/Users/operator/Movies/Chromaticity/Media";
+use tauri_plugin_dialog::DialogExt;
 
-fn pick_folder_impl(_title: &str) -> Result<Option<String>, String> {
-    // TODO(Phase-3+/4a `EV-INTEGRATION-MATRIX`): replace this stub with
-    // a `tauri_plugin_dialog`-backed native folder picker. The contract
-    // shape (`Result<Option<String>, String>`, `Ok(None)` for cancel)
-    // is intentionally final so the swap is a pure backend change with
-    // no frontend ripple.
-    Ok(Some(PLACEHOLDER_PICKED_PATH.to_string()))
+#[cfg(test)]
+fn fallback_media_dir() -> String {
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("Movies")
+        .join("Chromaticity")
+        .to_string_lossy()
+        .into_owned()
 }
 
-/// Open a native folder picker titled `title` and return the chosen
-/// path, or `None` if the user cancelled.
-///
-/// W21 PR1 stub: returns a deterministic placeholder path so the
-/// Settings → Storage section's "Browse" buttons exercise the full
-/// IPC round-trip. Native-dialog hookup arrives in Phase-3+/4a per
-/// the module-level prose.
+#[cfg(test)]
+fn pick_folder_impl(_title: &str) -> Result<Option<String>, String> {
+    Ok(Some(fallback_media_dir()))
+}
+
+/// Open a native OS folder picker titled `title` via `tauri-plugin-dialog` and
+/// return the chosen directory path, or `None` if the user cancelled.
 #[tauri::command]
-pub fn pick_folder(title: String) -> Result<Option<String>, String> {
-    pick_folder_impl(&title)
+pub fn pick_folder(app: tauri::AppHandle, title: String) -> Result<Option<String>, String> {
+    let picked = app.dialog().file().set_title(&title).blocking_pick_folder();
+    Ok(picked
+        .and_then(|fp| fp.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[cfg(test)]

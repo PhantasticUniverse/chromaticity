@@ -1336,11 +1336,14 @@ post-MVP follow-ups, and a few are reject-with-diagnostic by design.</p>
 </ul>
 <hr />
 <h2 id="audio-input">Audio input</h2>
-<p>Audio capture goes through the cpal crate (<code>cpal = "0.15"</code>). cpal opens
-the <strong>host default input device</strong> at startup by default, with an
-operator-configurable preference in Settings (see
+<p>Audio capture goes through our patched <code>cpal</code> crate (<code>third_party/cpal-0.17.1-patched</code>),
+including zero-install <strong>macOS Core Audio Process Tap</strong> system-audio loopback
+(capturing Rekordbox 7 <code>PC MASTER OUT</code> without BlackHole) and multi-channel DJ
+Master-vs-Cue stereo-pair extraction (<code>DDJ-FLX10</code>, <code>DJM-A9</code>). cpal opens the
+<strong>host default input device</strong> (or configured System Audio / DJ interface) at startup
+and supports <strong>zero-restart live device and gain hot-swap</strong> from Settings (see
 <a href="settings-reference.html">Settings Reference</a>). The audio analysis thread
-mixes multi-channel input down to mono, runs RMS / peak / 8-band FFT /
+mixes the selected stereo pair down to mono, runs RMS / peak / 8-band FFT /
 BPM, and publishes one <code>AudioUniformSnapshot</code> per analysis hop; see
 <a href="audio-reactivity.html">Audio Reactivity</a> for the analysis pipeline.</p>
 <h3 id="sample-formats">Sample formats</h3>

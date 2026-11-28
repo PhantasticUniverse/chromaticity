@@ -43,6 +43,7 @@ chromaticity-authoring = { version = "0.0.0", path = "../../engine/authoring" }
 chromaticity-camera-adapter = { version = "0.0.0", path = "../../integrations/camera-adapter" }
 chromaticity-entitlement = { version = "0.0.0", path = "../../engine/entitlement" }
 chromaticity-midi-adapter = { version = "0.0.0", path = "../../integrations/midi-adapter" }
+chromaticity-observability = { version = "0.0.0", path = "../../engine/observability" }
 chromaticity-osc-adapter = { version = "0.0.0", path = "../../integrations/osc-adapter" }
 chromaticity-render = { version = "0.0.0", path = "../../engine/render", features = ["scene-adapter", "audio-binding"] }
 chromaticity-runtime = { version = "0.0.0", path = "../../engine/runtime" }

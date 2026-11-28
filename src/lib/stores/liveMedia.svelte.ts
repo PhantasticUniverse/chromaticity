@@ -67,6 +67,10 @@ class LiveMediaStore {
   private _screen = $state.raw<CaptureSourceMachine>({ kind: 'idle' });
   private _localMedia = $state<LocalMediaMachine>({ kind: 'empty' });
   private _youtubeResolve = $state<YouTubeNativeResolveMachine>({ kind: 'idle' });
+  private _videoDevices = $state<readonly { readonly deviceId: string; readonly label: string }[]>(
+    [],
+  );
+  private _selectedCameraId = $state<string>('');
 
   private _webcamSeq = 0;
   private _screenSeq = 0;
@@ -129,7 +133,50 @@ class LiveMediaStore {
     return this._youtubeResolve;
   }
 
-  async startWebcam(): Promise<CaptureSourceMachine> {
+  get videoDevices(): readonly { readonly deviceId: string; readonly label: string }[] {
+    return this._videoDevices;
+  }
+
+  get selectedCameraId(): string {
+    return this._selectedCameraId;
+  }
+
+  setSelectedCameraId(deviceId: string): void {
+    this._selectedCameraId = deviceId;
+  }
+
+  async refreshVideoDevices(): Promise<
+    readonly { readonly deviceId: string; readonly label: string }[]
+  > {
+    const mediaDevices = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
+    if (!mediaDevices || typeof mediaDevices.enumerateDevices !== 'function') {
+      this._videoDevices = [];
+      return this._videoDevices;
+    }
+    try {
+      const devices = await mediaDevices.enumerateDevices();
+      const cams = devices
+        .filter((d) => d.kind === 'videoinput')
+        .map((d, idx) => ({
+          deviceId: d.deviceId,
+          label: d.label || `Camera ${idx + 1}`,
+        }));
+      this._videoDevices = cams;
+      return cams;
+    } catch {
+      this._videoDevices = [];
+      return this._videoDevices;
+    }
+  }
+
+  async startWebcam(deviceId?: string): Promise<CaptureSourceMachine> {
+    if (deviceId !== undefined && deviceId !== this._selectedCameraId) {
+      this._selectedCameraId = deviceId;
+      if (this._webcam.kind === 'active') {
+        stopMediaStreamTracks(this._webcam.stream);
+        this._webcam = { kind: 'idle' };
+      }
+    }
     if (this._webcam.kind === 'requesting' || this._webcam.kind === 'active') {
       return this._webcam;
     }
@@ -148,8 +195,12 @@ class LiveMediaStore {
     this._webcam = { kind: 'requesting' };
 
     try {
+      const targetId = deviceId ?? this._selectedCameraId;
+      const videoConstraints: MediaTrackConstraints = targetId
+        ? { deviceId: { exact: targetId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        : { width: { ideal: 1280 }, height: { ideal: 720 } };
       const stream = await mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: videoConstraints,
         audio: false,
       });
       if (reqSeq !== this._webcamSeq) {

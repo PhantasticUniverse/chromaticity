@@ -32,19 +32,39 @@ use crate::state::AppState;
 /// Inner implementation invoked by both the Tauri wrapper and unit
 /// tests; takes a borrowed [`AppState`] directly.
 fn set_control_impl(app: &AppState, id: ControlId, value: ControlValue) -> Result<(), String> {
-    let mut state = app
-        .state
+    let runtime_id: chromaticity_runtime::ControlId = id.into();
+    let runtime_val: chromaticity_runtime::ControlValue = value.into();
+    let prev_val = {
+        let mut state = app
+            .state
+            .lock()
+            .map_err(|err| format!("state mutex poisoned: {err}"))?;
+        let prev = state.control_value(runtime_id).map_or(0.0, |v| v.0);
+        app.bus
+            .dispatch_and_commit_into(
+                Command::ControlSet {
+                    id: runtime_id,
+                    value: runtime_val,
+                },
+                &mut state,
+            )
+            .map_err(|err| err.to_string())?;
+        prev
+    };
+    let control_name = app
+        .loaded_scene
         .lock()
-        .map_err(|err| format!("state mutex poisoned: {err}"))?;
-    app.bus
-        .dispatch_and_commit_into(
-            Command::ControlSet {
-                id: id.into(),
-                value: value.into(),
-            },
-            &mut state,
-        )
-        .map_err(|err| err.to_string())?;
+        .ok()
+        .and_then(|guard| {
+            guard
+                .as_ref()
+                .and_then(|rec| rec.scene.controls.get(runtime_id.0 as usize))
+                .map(|c| c.name.clone())
+        })
+        .unwrap_or_else(|| format!("ctrl_{}", runtime_id.0));
+    if let Ok(mut host) = app.script_host.lock() {
+        let _ = host.notify_control_change(&control_name, prev_val, runtime_val.0);
+    }
     Ok(())
 }
 

@@ -384,6 +384,209 @@ impl Default for AudioUniformSnapshot {
     }
 }
 
+/// Full Synesthesia / Chromaticity audio-reactive envelope bank derived from
+/// [`AudioUniformSnapshot`] over time (`dt`).
+///
+/// Computes true onset transients (`*_hits`), slow-EMA sustained energy
+/// (`*_presence`), energy-integrated monotonic phase clocks (`*_time`),
+/// beat-locked random-on-beat, fade envelope, and intensity scalar so both
+/// GLSL shaders and QuickJS `script.js` receive genuine audio-reactive
+/// envelopes rather than raw RMS aliases.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SynAudioEnvelopes {
+    pub level: f32,
+    pub bass_level: f32,
+    pub mid_level: f32,
+    pub mid_high_level: f32,
+    pub high_level: f32,
+    pub hits: f32,
+    pub bass_hits: f32,
+    pub mid_hits: f32,
+    pub mid_high_hits: f32,
+    pub high_hits: f32,
+    pub presence: f32,
+    pub bass_presence: f32,
+    pub mid_presence: f32,
+    pub mid_high_presence: f32,
+    pub high_presence: f32,
+    pub time: f32,
+    pub bass_time: f32,
+    pub mid_time: f32,
+    pub mid_high_time: f32,
+    pub high_time: f32,
+    pub fade_in_out: f32,
+    pub intensity: f32,
+    pub bpm_confidence: f32,
+    pub random_on_beat: f32,
+}
+
+impl Default for SynAudioEnvelopes {
+    fn default() -> Self {
+        Self {
+            level: 0.0,
+            bass_level: 0.0,
+            mid_level: 0.0,
+            mid_high_level: 0.0,
+            high_level: 0.0,
+            hits: 0.0,
+            bass_hits: 0.0,
+            mid_hits: 0.0,
+            mid_high_hits: 0.0,
+            high_hits: 0.0,
+            presence: 0.0,
+            bass_presence: 0.0,
+            mid_presence: 0.0,
+            mid_high_presence: 0.0,
+            high_presence: 0.0,
+            time: 0.0,
+            bass_time: 0.0,
+            mid_time: 0.0,
+            mid_high_time: 0.0,
+            high_time: 0.0,
+            fade_in_out: 1.0,
+            intensity: 0.5,
+            bpm_confidence: 0.0,
+            random_on_beat: 0.5,
+        }
+    }
+}
+
+/// Stateful per-frame integrator producing [`SynAudioEnvelopes`] from
+/// [`AudioUniformSnapshot`].
+#[derive(Debug, Clone)]
+pub struct SynAudioEnvelopeBank {
+    state: SynAudioEnvelopes,
+    prev_levels: [f32; 5],
+    prev_beat_index: i64,
+    rng_state: u64,
+}
+
+impl Default for SynAudioEnvelopeBank {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SynAudioEnvelopeBank {
+    /// Construct a fresh envelope integrator with deterministic seed.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            state: SynAudioEnvelopes::default(),
+            prev_levels: [0.0; 5],
+            prev_beat_index: -1,
+            rng_state: 0x5EED_C0DE_CAFE_BABE,
+        }
+    }
+
+    /// Advance all envelopes by `dt_secs` using the latest `snapshot` and
+    /// current continuous `beat_time`.
+    pub fn advance(
+        &mut self,
+        snapshot: &AudioUniformSnapshot,
+        dt_secs: f32,
+        beat_time: f32,
+    ) -> SynAudioEnvelopes {
+        let dt = if dt_secs.is_finite() {
+            dt_secs.clamp(0.0, 0.25)
+        } else {
+            1.0 / 60.0
+        };
+
+        let level = sanitize_finite(snapshot.rms).clamp(0.0, 1.0);
+        let bass = ((sanitize_finite(snapshot.fft_bands[0])
+            + sanitize_finite(snapshot.fft_bands[1]))
+            * 0.5)
+            .clamp(0.0, 1.0);
+        let mid = ((sanitize_finite(snapshot.fft_bands[2])
+            + sanitize_finite(snapshot.fft_bands[3]))
+            * 0.5)
+            .clamp(0.0, 1.0);
+        let mid_high = ((sanitize_finite(snapshot.fft_bands[4])
+            + sanitize_finite(snapshot.fft_bands[5]))
+            * 0.5)
+            .clamp(0.0, 1.0);
+        let high = ((sanitize_finite(snapshot.fft_bands[6])
+            + sanitize_finite(snapshot.fft_bands[7]))
+            * 0.5)
+            .clamp(0.0, 1.0);
+
+        let cur = [level, bass, mid, mid_high, high];
+
+        // Fast-attack, exponential-decay onset hits (~180 ms half-life).
+        let hit_decay = (-dt * 5.5).exp();
+        let mut hits = [
+            self.state.hits,
+            self.state.bass_hits,
+            self.state.mid_hits,
+            self.state.mid_high_hits,
+            self.state.high_hits,
+        ];
+        for i in 0..5 {
+            let delta = (cur[i] - self.prev_levels[i]).max(0.0) * 3.0;
+            hits[i] = (hits[i] * hit_decay + delta).clamp(0.0, 1.0);
+            self.prev_levels[i] = cur[i];
+        }
+
+        // Slow-EMA sustained presence (~1.2 s time constant).
+        let pres_alpha = 1.0 - (-dt * 0.85).exp();
+        self.state.presence += (level - self.state.presence) * pres_alpha;
+        self.state.bass_presence += (bass - self.state.bass_presence) * pres_alpha;
+        self.state.mid_presence += (mid - self.state.mid_presence) * pres_alpha;
+        self.state.mid_high_presence += (mid_high - self.state.mid_high_presence) * pres_alpha;
+        self.state.high_presence += (high - self.state.high_presence) * pres_alpha;
+
+        // Energy-integrated monotonic clocks (advance faster on loud passages).
+        self.state.time += dt * (0.25 + 1.75 * level);
+        self.state.bass_time += dt * (0.2 + 2.0 * bass);
+        self.state.mid_time += dt * (0.2 + 2.0 * mid);
+        self.state.mid_high_time += dt * (0.2 + 2.0 * mid_high);
+        self.state.high_time += dt * (0.2 + 2.0 * high);
+
+        self.state.level = level;
+        self.state.bass_level = bass;
+        self.state.mid_level = mid;
+        self.state.mid_high_level = mid_high;
+        self.state.high_level = high;
+        self.state.hits = hits[0];
+        self.state.bass_hits = hits[1];
+        self.state.mid_hits = hits[2];
+        self.state.mid_high_hits = hits[3];
+        self.state.high_hits = hits[4];
+
+        self.state.bpm_confidence = match snapshot.bpm_availability {
+            AudioAxisAvailability::Ready if snapshot.bpm > 0.0 => 0.85,
+            _ => 0.0,
+        };
+        self.state.intensity = (0.35 + 0.65 * self.state.presence).clamp(0.0, 1.0);
+
+        let beat_idx = if beat_time.is_finite() {
+            beat_time.floor() as i64
+        } else {
+            self.prev_beat_index
+        };
+        if beat_idx != self.prev_beat_index {
+            self.prev_beat_index = beat_idx;
+            // Deterministic xorshift64* step for `syn_RandomOnBeat` in [0, 1].
+            let mut x = self.rng_state;
+            x ^= x >> 12;
+            x ^= x << 25;
+            x ^= x >> 27;
+            self.rng_state = x;
+            let sample = x.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 40;
+            self.state.random_on_beat = (sample as f32) / ((1_u32 << 24) as f32);
+        }
+
+        self.state
+    }
+
+    /// Latest computed envelope snapshot.
+    #[must_use]
+    pub const fn latest(&self) -> SynAudioEnvelopes {
+        self.state
+    }
+}
+
 /// Extract one [`AudioUniformSnapshot`] from `frame`.
 ///
 /// Pure function: same input frame -> same output snapshot. No

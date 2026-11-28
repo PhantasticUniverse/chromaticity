@@ -469,7 +469,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           layerEl?.querySelector<HTMLVideoElement>('video') ??
           layerEl?.querySelector<HTMLImageElement>('img') ??
           null;
-        if (!mediaEl) continue;
+        const isTextLayer = layer.kind === 'text';
+        if (!mediaEl && !isTextLayer) continue;
         if (mediaEl instanceof HTMLVideoElement && mediaEl.readyState < 2) continue;
 
         const audio = findFilter<AudioLinkFilter>(layer, 'audioLink');
@@ -511,7 +512,20 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         );
         ctx.rotate((layer.transform.rotationDeg * Math.PI) / 180);
         try {
-          ctx.drawImage(mediaEl, -width / 2, -height / 2, width, height);
+          if (isTextLayer) {
+            const labelText =
+              layerEl?.textContent?.trim() || layer.name || 'LIVE VISUAL PERFORMANCE';
+            const fontSize = Math.max(24, Math.round(height * 0.065));
+            ctx.font = `700 ${fontSize}px system-ui, -apple-system, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+            ctx.shadowBlur = Math.round(fontSize * 0.25);
+            ctx.fillText(labelText, 0, 0, width * 0.9);
+          } else if (mediaEl) {
+            ctx.drawImage(mediaEl, -width / 2, -height / 2, width, height);
+          }
         } catch {
           // Skip tainted or not-yet-ready media sources cleanly.
         }

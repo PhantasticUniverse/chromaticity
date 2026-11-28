@@ -438,6 +438,21 @@ pub struct AppState {
     pub script_host: Mutex<crate::script_host::ScriptHost>,
     /// Active entitlement token installed via `install_license` (ADR-009).
     pub entitlement_token: Mutex<Option<chromaticity_entitlement::Token>>,
+    /// 4-bus broadcast audio mixer (Master, Mic, Media, Alerts) with per-bus gain/mute/solo/meters.
+    pub broadcast_mixer: Mutex<chromaticity_audio::mixer::BroadcastMixer>,
+    /// Multi-source tempo clock coordinator (Pro DJ Link > Ableton Link > MIDI Clock > Audio).
+    pub clock_sync: Mutex<chromaticity_runtime::clock_sync::ClockSyncCoordinator>,
+    /// Phrase-aligned DJ auto-transition planner backed by Pro DJ Link / beat grid.
+    pub auto_transition_planner:
+        Mutex<chromaticity_runtime::pro_dj_link_listener::AutoTransitionPlanner>,
+    /// 512-channel DMX512-A / Art-Net 4 lighting universe.
+    pub dmx_universe: Mutex<chromaticity_runtime::dmx_artnet::DmxUniverse>,
+    /// 2-button footswitch live setlist cue runner.
+    pub cue_runner: Mutex<chromaticity_runtime::cue_runner::SetlistCueRunner>,
+    /// ADR-017 external data ingestion engine (`chroma_Data_*` uniforms).
+    pub data_ingest: Mutex<chromaticity_runtime::data_ingest::DataIngestEngine>,
+    /// ADR-016 zero-default in-process observability metric emitter.
+    pub observability_emitter: Arc<chromaticity_observability::emit::InMemoryEmitter>,
     /// Monotonic process-start timestamp for shader `chroma_Time.x`.
     pub started_at: Instant,
 }
@@ -561,6 +576,21 @@ impl AppState {
             twitch_stream: Mutex::new(crate::commands::stream::TwitchStreamProcess::new()),
             script_host: Mutex::new(crate::script_host::ScriptHost::new()),
             entitlement_token: Mutex::new(None),
+            broadcast_mixer: Mutex::new(chromaticity_audio::mixer::BroadcastMixer::new(48_000)),
+            clock_sync: Mutex::new(chromaticity_runtime::clock_sync::ClockSyncCoordinator::new()),
+            auto_transition_planner: Mutex::new(
+                chromaticity_runtime::pro_dj_link_listener::AutoTransitionPlanner::new(
+                    chromaticity_runtime::pro_dj_link_listener::AutoTransitionConfig::default(),
+                ),
+            ),
+            dmx_universe: Mutex::new(chromaticity_runtime::dmx_artnet::DmxUniverse::new()),
+            cue_runner: Mutex::new(chromaticity_runtime::cue_runner::SetlistCueRunner::new(
+                Vec::new(),
+            )),
+            data_ingest: Mutex::new(chromaticity_runtime::data_ingest::DataIngestEngine::new()),
+            observability_emitter: Arc::new(
+                chromaticity_observability::emit::InMemoryEmitter::new(),
+            ),
             started_at: Instant::now(),
         }
     }
