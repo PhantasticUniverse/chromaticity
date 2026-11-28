@@ -1250,13 +1250,12 @@ uniforms; the binding adapter publishes them all in a stable per-pass
 order so per-pass uniform-buffer slot indices stay stable across reloads.</p>
 <h2 id="setting-the-audio-threshold">Setting the audio threshold</h2>
 <p>The audio noise-floor gate is exposed as the <code>chroma_Threshold</code> uniform
-and is operator-controllable through the audio settings panel and the
-OSC routes:</p>
+and is operator-controllable from the keyboard and over OSC:</p>
 <ul>
-<li><code>Shift+T</code> samples the current 200 ms rolling RMS of <code>chroma_Level</code> and
-  sets the threshold to that value (also reachable as
-  <code>/audio/threshold/sample</code>).</li>
-<li><code>/audio/threshold {float}</code> accepts an absolute threshold in <code>[0, 1]</code>.</li>
+<li><code>Shift+T</code> sets the threshold to the current input RMS level.</li>
+<li>An OSC route bound to <code>audio:threshold</code> (for example
+  <code>/audio/threshold {float}</code>) sets an absolute threshold in <code>[0, 1]</code>.
+  A <code>/audio/threshold/sample</code> route is planned.</li>
 </ul>
 <p>Audio hops with RMS below the threshold publish zeroed <code>chroma_*Level</code>
 and <code>chroma_*Hits</code> family uniforms. The threshold is the operator's

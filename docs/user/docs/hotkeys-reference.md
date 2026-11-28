@@ -16,6 +16,10 @@ diagnostics, and show-state actions. Press `?` at any time to toggle the
 in-app overlay that lists the same vocabulary against the active focus
 context.
 
+Shortcuts marked *(planned)* are part of the documented vocabulary but
+are not wired yet; pressing them does nothing. The in-app overlay shows the
+same rows dimmed.
+
 The V1 hotkey map is read-only. Rebinding ships in V2 per the operator
 hotkey-map spec. The `cap` column on each row indicates whether the
 action is a free MVP capability or whether it requires an entitlement to
@@ -31,7 +35,7 @@ control-focused mode.
 | --- | --- |
 | `D` | Set control to its default value |
 | `R` | Set control to a random value in its range |
-| `P` | Set control to its value in the current preset |
+| `P` | Set control to its value in the current preset *(planned)* |
 | `L` | Toggle the control's lock state (ignore randomization) |
 
 ## Scene and playlist transport
@@ -41,11 +45,11 @@ control-focused mode.
 | `Space` | Toggle playlist play/pause | `/playlist/toggleplay` | free |
 | `->`, `K` | Next scene in playlist | `/playlist/next` | free |
 | `<-`, `J` | Previous scene in playlist | `/playlist/previous` | free |
-| `Alt+Cmd+->`, `Ctrl+Alt+->` | Jump to last in playlist | `/playlists/position -1` | free |
-| `Alt+Cmd+<-`, `Ctrl+Alt+<-` | Jump to first in playlist | `/playlists/position 0` | free |
+| `Alt+Cmd+->`, `Ctrl+Alt+->` | Jump to last in playlist *(planned)* | `/playlists/position -1` | free |
+| `Alt+Cmd+<-`, `Ctrl+Alt+<-` | Jump to first in playlist *(planned)* | `/playlists/position 0` | free |
 | `Enter` | Launch selected scene from the library | `/scenes/{name}` | free |
-| `Shift+Enter` | Launch selected scene with preset prompt | `/scenes/{name} {preset}` | free |
-| `Cmd+Enter`, `Ctrl+Enter` | Launch selected scene into a playlist slot | (internal) | free |
+| `Shift+Enter` | Launch selected scene with preset prompt *(planned)* | `/scenes/{name} {preset}` | free |
+| `Cmd+Enter`, `Ctrl+Enter` | Launch selected scene into a playlist slot *(planned)* | (internal) | free |
 
 ## Snap slots
 
@@ -55,21 +59,21 @@ surface uses the name "Snap".
 
 | Key | Action | OSC | cap |
 | --- | --- | --- | --- |
-| `1` to `9`, `0` | Recall Snap slot 1 to 10 for the current scene | `/favslots/{n}` (apply) | free |
-| `Shift+1` to `Shift+0` | Save current state to Snap slot 1 to 10 (overwrite without prompt) | `/favslots/{n}/save` | free |
-| `Alt+Shift+1` to `Alt+Shift+0` | Clear Snap slot 1 to 10 (confirmation prompt) | `/favslots/{n}/clear` | free |
-| `Cmd+S`, `Ctrl+S` | Save current state to the next empty Snap slot | `/favslots/{auto}/save` | free |
-| `Cmd+Opt+S`, `Ctrl+Alt+S` | Save as a new named preset (prompts for name) | `/presets/new {name}` | free |
-| `Cmd+0`, `Ctrl+0` | Recall the scene's "gold" preset (Snap 0) | `/favslots/0` (apply) | free |
+| `1` to `9`, `0` | Recall Snap slot 1 to 10 for the current scene (`1`–`8` wired in Perform; `9`, `0` planned) | `/favslots/{n}` (apply) | free |
+| `Shift+1` to `Shift+0` | Save current state to Snap slot 1 to 10 (overwrite without prompt) *(planned)* | `/favslots/{n}/save` | free |
+| `Alt+Shift+1` to `Alt+Shift+0` | Clear Snap slot 1 to 10 (confirmation prompt) *(planned)* | `/favslots/{n}/clear` | free |
+| `Cmd+S`, `Ctrl+S` | Save current state to the next empty Snap slot *(planned)* | `/favslots/{auto}/save` | free |
+| `Cmd+Opt+S`, `Ctrl+Alt+S` | Save as a new named preset (prompts for name) *(planned)* | `/presets/new {name}` | free |
+| `Cmd+0`, `Ctrl+0` | Recall the scene's "gold" preset (Snap 0) *(planned)* | `/favslots/0` (apply) | free |
 
 ## Display and output
 
 | Key | Action | cap |
 | --- | --- | --- |
 | `F` | Toggle fullscreen on the primary output | free |
-| `Shift+F` | Toggle fullscreen on the secondary output (multi-display) | free |
-| `Cmd+Shift+F`, `Ctrl+Shift+F` | Cycle output window placement across displays | free |
-| `Cmd+\`, `Ctrl+\` | Swap primary and secondary output | free |
+| `Shift+F` | Toggle fullscreen on the secondary output (multi-display) *(planned)* | free |
+| `Cmd+Shift+F`, `Ctrl+Shift+F` | Cycle output window placement across displays *(planned)* | free |
+| `Cmd+\`, `Ctrl+\` | Swap primary and secondary output *(planned)* | free |
 
 ## Rendering
 
@@ -78,12 +82,12 @@ binding has moved to `Cmd+9`.
 
 | Key | Action | OSC | cap |
 | --- | --- | --- | --- |
-| `.` | Toggle render loop on/off | `/render/enabled {0|1}` | free |
-| `,` | Toggle render-preview window | (internal) | free |
-| `Cmd+=`, `Ctrl+=` | Step render resolution up | `/render/resolution {w} {h}` | `render.custom-resolution` |
-| `Cmd+-`, `Ctrl+-` | Step render resolution down | `/render/resolution {w} {h}` | `render.custom-resolution` |
-| `Cmd+9`, `Ctrl+9` | Reset render resolution to scene default | `/render/resolution {sceneW} {sceneH}` | `render.custom-resolution` |
-| `Cmd+Shift+=`, `Ctrl+Shift+=` | Open FPS target dialog | `/render/fps {float}` | free |
+| `.` | Toggle render loop on/off *(planned)* | `/render/enabled {0|1}` | free |
+| `,` | Toggle render-preview window *(planned)* | (internal) | free |
+| `Cmd+=`, `Ctrl+=` | Step render resolution up *(planned)* | `/render/resolution {w} {h}` | `render.custom-resolution` |
+| `Cmd+-`, `Ctrl+-` | Step render resolution down *(planned)* | `/render/resolution {w} {h}` | `render.custom-resolution` |
+| `Cmd+9`, `Ctrl+9` | Reset render resolution to scene default *(planned)* | `/render/resolution {sceneW} {sceneH}` | `render.custom-resolution` |
+| `Cmd+Shift+=`, `Ctrl+Shift+=` | Open FPS target dialog *(planned)* | `/render/fps {float}` | free |
 
 ## Meta controls
 
@@ -93,25 +97,25 @@ the binding maps onto.
 
 | Key | Action | glsl |
 | --- | --- | --- |
-| `M` | Master | `_Master` |
+| `M` | Master *(planned)* | `_Master` |
 | `B` | Brightness | `_Brightness` |
-| `G` | Gamma | `_Gamma` |
-| `C` | Contrast | `_Contrast` |
-| `H` | Hue | `_Hue` |
-| `Y` | Saturation | `_Saturation` |
-| `I` | Invert toggle (no modal; binary flip) | `_Invert` |
-| `V` | Vertical mirror toggle | `_Vert_Mirror` |
-| `Shift+V` | Horizontal mirror toggle | `_Hor_Mirror` |
-| `E` | Dichrome toggle (from "Edition") | `_Limit_Colors` |
+| `G` | Gamma *(planned)* | `_Gamma` |
+| `C` | Contrast *(planned)* | `_Contrast` |
+| `H` | Hue *(planned)* | `_Hue` |
+| `Y` | Saturation *(planned)* | `_Saturation` |
+| `I` | Invert toggle (no modal; binary flip) *(planned)* | `_Invert` |
+| `V` | Vertical mirror toggle *(planned)* | `_Vert_Mirror` |
+| `Shift+V` | Horizontal mirror toggle *(planned)* | `_Hor_Mirror` |
+| `E` | Dichrome toggle (from "Edition") *(planned)* | `_Limit_Colors` |
 
 ## Audio
 
 | Key | Action | OSC | cap |
 | --- | --- | --- | --- |
-| `A` | Toggle audio-input mute | (internal) | free |
-| `Cmd+A`, `Ctrl+A` | Open audio settings panel | (internal) | free |
-| `T` | Toggle audio-threshold visualizer overlay | (internal) | free |
-| `Shift+T` | Set audio threshold to current RMS level | `/audio/threshold/sample` | free |
+| `A` | Toggle audio-input mute *(planned)* | (internal) | free |
+| `Cmd+A`, `Ctrl+A` | Open audio settings panel *(planned)* | (internal) | free |
+| `T` | Toggle audio-threshold visualizer overlay *(planned)* | (internal) | free |
+| `Shift+T` | Set audio threshold to current RMS level | `/audio/threshold {f}` (absolute) | free |
 
 ## Navigation panels
 
@@ -127,21 +131,21 @@ the binding maps onto.
 
 | Key | Action |
 | --- | --- |
-| `Alt+Cmd+D`, `Ctrl+Alt+D` | Toggle diagnostics console |
-| `Alt+Cmd+P`, `Ctrl+Alt+P` | Toggle performance HUD |
-| `Alt+Cmd+L`, `Ctrl+Alt+L` | Toggle OSC and MIDI learn indicator |
-| `Cmd+R`, `Ctrl+R` | Reload current scene |
-| `Alt+Cmd+R`, `Ctrl+Alt+R` | Reset meta controls to defaults |
+| `Alt+Cmd+D`, `Ctrl+Alt+D` | Toggle diagnostics console *(planned)* |
+| `Alt+Cmd+P`, `Ctrl+Alt+P` | Toggle performance HUD *(planned)* |
+| `Alt+Cmd+L`, `Ctrl+Alt+L` | Toggle OSC and MIDI learn indicator *(planned)* |
+| `Cmd+R`, `Ctrl+R` | Reload current scene *(planned)* |
+| `Alt+Cmd+R`, `Ctrl+Alt+R` | Reset meta controls to defaults *(planned)* |
 
 ## Show state
 
 | Key | Action |
 | --- | --- |
-| `Cmd+Shift+N`, `Ctrl+Shift+N` | New show (confirmation if unsaved changes) |
-| `Cmd+Shift+O`, `Ctrl+Shift+O` | Open `.chromaShow` bundle |
-| `Cmd+Shift+S`, `Ctrl+Shift+S` | Save show as `.chromaShow` bundle |
-| `Cmd+Z`, `Ctrl+Z` | Undo (operator-level; one level for preset recall, meta tweak, scene switch) |
-| `Cmd+Shift+Z`, `Ctrl+Shift+Z` | Redo |
+| `Cmd+Shift+N`, `Ctrl+Shift+N` | New show (confirmation if unsaved changes) *(planned)* |
+| `Cmd+Shift+O`, `Ctrl+Shift+O` | Open `.chromaShow` bundle *(planned)* |
+| `Cmd+Shift+S`, `Ctrl+Shift+S` | Save show as `.chromaShow` bundle *(planned)* |
+| `Cmd+Z`, `Ctrl+Z` | Undo (operator-level; one level for preset recall, meta tweak, scene switch) *(planned)* |
+| `Cmd+Shift+Z`, `Ctrl+Shift+Z` | Redo *(planned)* |
 
 ---
 

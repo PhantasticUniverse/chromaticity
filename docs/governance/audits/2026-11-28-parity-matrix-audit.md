@@ -150,3 +150,39 @@ snaps, Studio Mode, Multiview, text overlays and the BPM AUTO/LOCK/OFF row.
 1. Apply the status corrections and reference fixes to the matrix and
    recompute the summary tally (documentation only).
 2. Triage the code defects; items 1, 2 and 3 are small, contained fixes.
+
+## Resolution (2026-11-28)
+
+Code defects fixed on `feat/phase0-phase1-state-machines`, each with a
+regression test written to fail on the old behaviour:
+
+| # | Defect | Fix | Commit |
+| --- | --- | --- | --- |
+| 1 | OSC inbound cap | `poll()` drains every queued datagram (bounded at 256 per call) | `4e82a52` |
+| 2 | Replay timing | Ring trimmed to a true 15 s window; saves resampled to 30 fps from push timestamps (ffprobe: 3 s capture → 3.03 s file) | `b8f4e75` |
+| 3 | Unbounded metrics buffer | `InMemoryEmitter::with_capacity_limit`; shell keeps 4096 events | `2b8011b` |
+| 4 | Controls rendered as faders | CP-01 `effective_kind` and `LABELS`/`VALUES` reach the UI; Perform renders bang triggers and dropdown option rows | `83240ad` |
+| 5 | Empty camera list | Sources lists the webview cameras live capture uses and selects one (native adapter still a scaffold) | `be0a70b` |
+| 6 | Inert controls | Noise-gate threshold now gates live audio and Shift+T sets it (`7ea6b71`); 41 of 57 hotkey rows marked planned in the overlay and user reference, YouTube route-audio chip disabled, Settings lists real monitors and Go Live opens the output window on the chosen one (`556790b`) | `7ea6b71`, `556790b` |
+| 7 | 4-channel assumption | Device enumeration reports each device's channel count; Settings offers only the pairs it has | `ed77c60` |
+
+Also corrected: the Rekordbox profile note no longer claims the tap targets
+Rekordbox (`bdeed72`).
+
+Not fixed (feature work, now tracked as planned rows): live scene
+crossfades, GPU compositor in the live Mix path, broadcast-mixer PCM wiring,
+OSC allowlist and rate limiting, state rollback, Rekordbox-scoped capture,
+native camera capture, Syphon publish, show-bundle and reference-import app
+wiring, the 41 unwired hotkeys.
+
+Matrix updated in the same change: every correction above applied, four rows
+split (OSC, scene media vs native camera, Mix compositor, DJ tap), new tally
+45 implemented / 42 planned / 9 post-MVP / 4 rejected over 100 rows. Every
+planned row whose evidence entry was already Pass now points at an open gap.
+Verified by script: status vocabulary, badge/status agreement, `planned:<EV-ID>`
+existence, tally.
+
+Still unverified: output-window placement on a real second monitor (single
+display test host); real webcam capture through the Sources selection;
+`EV-NET-HARDENING`'s registry text, which still claims allowlist and rate-limit
+enforcement.

@@ -319,8 +319,8 @@ and the full uniform catalog.
 
 If you're in a noisy room and the band tiles are jittering on HVAC
 or crowd murmur, set the noise-floor gate. With audio playing,
-press **`Shift+T`** to sample the current rolling RMS and pin it as
-the threshold. Audio hops below the threshold publish zeroed level
+press **`Shift+T`** to set the threshold to the current input
+level. Audio hops below the threshold publish zeroed level
 and hit uniforms — the band tiles go silent under the floor.
 
 The threshold also exposes through OSC at `/audio/threshold` (see

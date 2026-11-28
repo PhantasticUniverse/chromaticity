@@ -1210,6 +1210,9 @@ control, the meta colour pipeline, audio threshold management,
 diagnostics, and show-state actions. Press <code>?</code> at any time to toggle the
 in-app overlay that lists the same vocabulary against the active focus
 context.</p>
+<p>Shortcuts marked <em>(planned)</em> are part of the documented vocabulary but
+are not wired yet; pressing them does nothing. The in-app overlay shows the
+same rows dimmed.</p>
 <p>The V1 hotkey map is read-only. Rebinding ships in V2 per the operator
 hotkey-map spec. The <code>cap</code> column on each row indicates whether the
 action is a free MVP capability or whether it requires an entitlement to
@@ -1236,7 +1239,7 @@ control-focused mode.</p>
 </tr>
 <tr>
 <td><code>P</code></td>
-<td>Set control to its value in the current preset</td>
+<td>Set control to its value in the current preset <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>L</code></td>
@@ -1275,13 +1278,13 @@ control-focused mode.</p>
 </tr>
 <tr>
 <td><code>Alt+Cmd+-&gt;</code>, <code>Ctrl+Alt+-&gt;</code></td>
-<td>Jump to last in playlist</td>
+<td>Jump to last in playlist <em>(planned)</em></td>
 <td><code>/playlists/position -1</code></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Alt+Cmd+&lt;-</code>, <code>Ctrl+Alt+&lt;-</code></td>
-<td>Jump to first in playlist</td>
+<td>Jump to first in playlist <em>(planned)</em></td>
 <td><code>/playlists/position 0</code></td>
 <td>free</td>
 </tr>
@@ -1293,13 +1296,13 @@ control-focused mode.</p>
 </tr>
 <tr>
 <td><code>Shift+Enter</code></td>
-<td>Launch selected scene with preset prompt</td>
+<td>Launch selected scene with preset prompt <em>(planned)</em></td>
 <td><code>/scenes/{name} {preset}</code></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Cmd+Enter</code>, <code>Ctrl+Enter</code></td>
-<td>Launch selected scene into a playlist slot</td>
+<td>Launch selected scene into a playlist slot <em>(planned)</em></td>
 <td>(internal)</td>
 <td>free</td>
 </tr>
@@ -1321,37 +1324,37 @@ surface uses the name "Snap".</p>
 <tbody>
 <tr>
 <td><code>1</code> to <code>9</code>, <code>0</code></td>
-<td>Recall Snap slot 1 to 10 for the current scene</td>
+<td>Recall Snap slot 1 to 10 for the current scene (<code>1</code>–<code>8</code> wired in Perform; <code>9</code>, <code>0</code> planned)</td>
 <td><code>/favslots/{n}</code> (apply)</td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Shift+1</code> to <code>Shift+0</code></td>
-<td>Save current state to Snap slot 1 to 10 (overwrite without prompt)</td>
+<td>Save current state to Snap slot 1 to 10 (overwrite without prompt) <em>(planned)</em></td>
 <td><code>/favslots/{n}/save</code></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Alt+Shift+1</code> to <code>Alt+Shift+0</code></td>
-<td>Clear Snap slot 1 to 10 (confirmation prompt)</td>
+<td>Clear Snap slot 1 to 10 (confirmation prompt) <em>(planned)</em></td>
 <td><code>/favslots/{n}/clear</code></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Cmd+S</code>, <code>Ctrl+S</code></td>
-<td>Save current state to the next empty Snap slot</td>
+<td>Save current state to the next empty Snap slot <em>(planned)</em></td>
 <td><code>/favslots/{auto}/save</code></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Cmd+Opt+S</code>, <code>Ctrl+Alt+S</code></td>
-<td>Save as a new named preset (prompts for name)</td>
+<td>Save as a new named preset (prompts for name) <em>(planned)</em></td>
 <td><code>/presets/new {name}</code></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Cmd+0</code>, <code>Ctrl+0</code></td>
-<td>Recall the scene's "gold" preset (Snap 0)</td>
+<td>Recall the scene's "gold" preset (Snap 0) <em>(planned)</em></td>
 <td><code>/favslots/0</code> (apply)</td>
 <td>free</td>
 </tr>
@@ -1374,17 +1377,17 @@ surface uses the name "Snap".</p>
 </tr>
 <tr>
 <td><code>Shift+F</code></td>
-<td>Toggle fullscreen on the secondary output (multi-display)</td>
+<td>Toggle fullscreen on the secondary output (multi-display) <em>(planned)</em></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Cmd+Shift+F</code>, <code>Ctrl+Shift+F</code></td>
-<td>Cycle output window placement across displays</td>
+<td>Cycle output window placement across displays <em>(planned)</em></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Cmd+\</code>, <code>Ctrl+\</code></td>
-<td>Swap primary and secondary output</td>
+<td>Swap primary and secondary output <em>(planned)</em></td>
 <td>free</td>
 </tr>
 </tbody>
@@ -1404,37 +1407,37 @@ binding has moved to <code>Cmd+9</code>.</p>
 <tbody>
 <tr>
 <td><code>.</code></td>
-<td>Toggle render loop on/off</td>
+<td>Toggle render loop on/off <em>(planned)</em></td>
 <td><code>/render/enabled {0|1}</code></td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>,</code></td>
-<td>Toggle render-preview window</td>
+<td>Toggle render-preview window <em>(planned)</em></td>
 <td>(internal)</td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Cmd+=</code>, <code>Ctrl+=</code></td>
-<td>Step render resolution up</td>
+<td>Step render resolution up <em>(planned)</em></td>
 <td><code>/render/resolution {w} {h}</code></td>
 <td><code>render.custom-resolution</code></td>
 </tr>
 <tr>
 <td><code>Cmd+-</code>, <code>Ctrl+-</code></td>
-<td>Step render resolution down</td>
+<td>Step render resolution down <em>(planned)</em></td>
 <td><code>/render/resolution {w} {h}</code></td>
 <td><code>render.custom-resolution</code></td>
 </tr>
 <tr>
 <td><code>Cmd+9</code>, <code>Ctrl+9</code></td>
-<td>Reset render resolution to scene default</td>
+<td>Reset render resolution to scene default <em>(planned)</em></td>
 <td><code>/render/resolution {sceneW} {sceneH}</code></td>
 <td><code>render.custom-resolution</code></td>
 </tr>
 <tr>
 <td><code>Cmd+Shift+=</code>, <code>Ctrl+Shift+=</code></td>
-<td>Open FPS target dialog</td>
+<td>Open FPS target dialog <em>(planned)</em></td>
 <td><code>/render/fps {float}</code></td>
 <td>free</td>
 </tr>
@@ -1455,7 +1458,7 @@ the binding maps onto.</p>
 <tbody>
 <tr>
 <td><code>M</code></td>
-<td>Master</td>
+<td>Master <em>(planned)</em></td>
 <td><code>_Master</code></td>
 </tr>
 <tr>
@@ -1465,42 +1468,42 @@ the binding maps onto.</p>
 </tr>
 <tr>
 <td><code>G</code></td>
-<td>Gamma</td>
+<td>Gamma <em>(planned)</em></td>
 <td><code>_Gamma</code></td>
 </tr>
 <tr>
 <td><code>C</code></td>
-<td>Contrast</td>
+<td>Contrast <em>(planned)</em></td>
 <td><code>_Contrast</code></td>
 </tr>
 <tr>
 <td><code>H</code></td>
-<td>Hue</td>
+<td>Hue <em>(planned)</em></td>
 <td><code>_Hue</code></td>
 </tr>
 <tr>
 <td><code>Y</code></td>
-<td>Saturation</td>
+<td>Saturation <em>(planned)</em></td>
 <td><code>_Saturation</code></td>
 </tr>
 <tr>
 <td><code>I</code></td>
-<td>Invert toggle (no modal; binary flip)</td>
+<td>Invert toggle (no modal; binary flip) <em>(planned)</em></td>
 <td><code>_Invert</code></td>
 </tr>
 <tr>
 <td><code>V</code></td>
-<td>Vertical mirror toggle</td>
+<td>Vertical mirror toggle <em>(planned)</em></td>
 <td><code>_Vert_Mirror</code></td>
 </tr>
 <tr>
 <td><code>Shift+V</code></td>
-<td>Horizontal mirror toggle</td>
+<td>Horizontal mirror toggle <em>(planned)</em></td>
 <td><code>_Hor_Mirror</code></td>
 </tr>
 <tr>
 <td><code>E</code></td>
-<td>Dichrome toggle (from "Edition")</td>
+<td>Dichrome toggle (from "Edition") <em>(planned)</em></td>
 <td><code>_Limit_Colors</code></td>
 </tr>
 </tbody>
@@ -1518,26 +1521,26 @@ the binding maps onto.</p>
 <tbody>
 <tr>
 <td><code>A</code></td>
-<td>Toggle audio-input mute</td>
+<td>Toggle audio-input mute <em>(planned)</em></td>
 <td>(internal)</td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Cmd+A</code>, <code>Ctrl+A</code></td>
-<td>Open audio settings panel</td>
+<td>Open audio settings panel <em>(planned)</em></td>
 <td>(internal)</td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>T</code></td>
-<td>Toggle audio-threshold visualizer overlay</td>
+<td>Toggle audio-threshold visualizer overlay <em>(planned)</em></td>
 <td>(internal)</td>
 <td>free</td>
 </tr>
 <tr>
 <td><code>Shift+T</code></td>
 <td>Set audio threshold to current RMS level</td>
-<td><code>/audio/threshold/sample</code></td>
+<td><code>/audio/threshold {f}</code> (absolute)</td>
 <td>free</td>
 </tr>
 </tbody>
@@ -1584,23 +1587,23 @@ the binding maps onto.</p>
 <tbody>
 <tr>
 <td><code>Alt+Cmd+D</code>, <code>Ctrl+Alt+D</code></td>
-<td>Toggle diagnostics console</td>
+<td>Toggle diagnostics console <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>Alt+Cmd+P</code>, <code>Ctrl+Alt+P</code></td>
-<td>Toggle performance HUD</td>
+<td>Toggle performance HUD <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>Alt+Cmd+L</code>, <code>Ctrl+Alt+L</code></td>
-<td>Toggle OSC and MIDI learn indicator</td>
+<td>Toggle OSC and MIDI learn indicator <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>Cmd+R</code>, <code>Ctrl+R</code></td>
-<td>Reload current scene</td>
+<td>Reload current scene <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>Alt+Cmd+R</code>, <code>Ctrl+Alt+R</code></td>
-<td>Reset meta controls to defaults</td>
+<td>Reset meta controls to defaults <em>(planned)</em></td>
 </tr>
 </tbody>
 </table>
@@ -1615,23 +1618,23 @@ the binding maps onto.</p>
 <tbody>
 <tr>
 <td><code>Cmd+Shift+N</code>, <code>Ctrl+Shift+N</code></td>
-<td>New show (confirmation if unsaved changes)</td>
+<td>New show (confirmation if unsaved changes) <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>Cmd+Shift+O</code>, <code>Ctrl+Shift+O</code></td>
-<td>Open <code>.chromaShow</code> bundle</td>
+<td>Open <code>.chromaShow</code> bundle <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>Cmd+Shift+S</code>, <code>Ctrl+Shift+S</code></td>
-<td>Save show as <code>.chromaShow</code> bundle</td>
+<td>Save show as <code>.chromaShow</code> bundle <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>Cmd+Z</code>, <code>Ctrl+Z</code></td>
-<td>Undo (operator-level; one level for preset recall, meta tweak, scene switch)</td>
+<td>Undo (operator-level; one level for preset recall, meta tweak, scene switch) <em>(planned)</em></td>
 </tr>
 <tr>
 <td><code>Cmd+Shift+Z</code>, <code>Ctrl+Shift+Z</code></td>
-<td>Redo</td>
+<td>Redo <em>(planned)</em></td>
 </tr>
 </tbody>
 </table>

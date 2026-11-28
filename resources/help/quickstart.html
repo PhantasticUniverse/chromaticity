@@ -1645,8 +1645,8 @@ BPM strip are the live-driven surfaces today.
 <h3 id="set-the-noise-floor-threshold">Set the noise-floor threshold</h3>
 <p>If you're in a noisy room and the band tiles are jittering on HVAC
 or crowd murmur, set the noise-floor gate. With audio playing,
-press <strong><code>Shift+T</code></strong> to sample the current rolling RMS and pin it as
-the threshold. Audio hops below the threshold publish zeroed level
+press <strong><code>Shift+T</code></strong> to set the threshold to the current input
+level. Audio hops below the threshold publish zeroed level
 and hit uniforms — the band tiles go silent under the floor.</p>
 <p>The threshold also exposes through OSC at <code>/audio/threshold</code> (see
 <a href="osc-routes.html">OSC Routes</a>) for show-control automation.</p>

@@ -39,8 +39,18 @@ development. Highlights since initial scaffolding:
   read it too. New `examples/media-mirror.chroma` scene. The media-strip
   default changed from webcam to none so opening Perform never prompts for
   camera access.
+- Bang and dropdown scene controls work in Perform (trigger button; option
+  row sending the declared `VALUES`), untyped controls get their CP-01 kind,
+  the audio noise-gate threshold actually gates live audio (Shift+T sets it to
+  the current level), Settings lists real output monitors and each input's real
+  channel pairs, and the Sources camera list shows the cameras live capture uses.
 
 ### Changed
+- Fixed after the 2026-11-28 parity-matrix audit: inbound OSC drains every
+  queued packet per tick (no ~60 packets/s cap); Save Replay keeps a true 15 s
+  window and plays back in real time; the shell metrics buffer is bounded; the
+  hotkey overlay and reference mark the 41 shortcuts that are not wired yet as
+  planned; the YouTube "route audio" chip is disabled until an audio path exists.
 - Standardized audio-reactive uniform naming to native `chroma_*` identifiers
   across UI, docs, and engine surfaces.
 - Decoupled bundled help and scene resources under `resources/` from Vite's

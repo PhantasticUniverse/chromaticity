@@ -276,7 +276,7 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
       {
         keys: ['Shift+T'],
         action: 'Set audio threshold to current RMS level',
-        osc: '/audio/threshold/sample',
+        osc: '/audio/threshold {f} (absolute)',
         cap: 'free',
       },
     ],

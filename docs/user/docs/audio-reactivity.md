@@ -136,13 +136,12 @@ order so per-pass uniform-buffer slot indices stay stable across reloads.
 ## Setting the audio threshold
 
 The audio noise-floor gate is exposed as the `chroma_Threshold` uniform
-and is operator-controllable through the audio settings panel and the
-OSC routes:
+and is operator-controllable from the keyboard and over OSC:
 
-- `Shift+T` samples the current 200 ms rolling RMS of `chroma_Level` and
-  sets the threshold to that value (also reachable as
-  `/audio/threshold/sample`).
-- `/audio/threshold {float}` accepts an absolute threshold in `[0, 1]`.
+- `Shift+T` sets the threshold to the current input RMS level.
+- An OSC route bound to `audio:threshold` (for example
+  `/audio/threshold {float}`) sets an absolute threshold in `[0, 1]`.
+  A `/audio/threshold/sample` route is planned.
 
 Audio hops with RMS below the threshold publish zeroed `chroma_*Level`
 and `chroma_*Hits` family uniforms. The threshold is the operator's
