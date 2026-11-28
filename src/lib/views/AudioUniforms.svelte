@@ -743,7 +743,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   {#each block.tokens as token, ti (ti)}
                     <span class="au__docs-token mono" style="color: {token.tint};"
                       >{token.text}</span
-                    >{#if block.tokens && ti < block.tokens.length - 1}<span>,&nbsp;</span>{/if}
+                    >{#if block.tokens && ti < block.tokens.length - 1}<span>, </span>{/if}
                   {/each}
                 {/if}
                 {#if block.trailing}{block.trailing}{/if}
