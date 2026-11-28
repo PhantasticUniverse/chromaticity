@@ -391,8 +391,8 @@ pub use glsl_includes::{
 };
 pub use gpu_cost::{AdaptiveScaleConfig, AdaptiveScaleController, GpuCostTier, ScaleDecision};
 pub use multipass::{
-    CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
-    UniformInput, UniformValue, compile_and_render_multipass,
+    CachedMultipass, CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding,
+    TargetFormat, UniformInput, UniformValue, compile_and_render_multipass,
 };
 pub use multipass_pingpong::{DEFAULT_FEEDBACK_WGSL, FeedbackUniforms, PingPongFeedbackPipeline};
 pub use nv12_convert::{ColorRange, Nv12Converter, Nv12Frame};

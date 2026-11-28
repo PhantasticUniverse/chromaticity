@@ -158,6 +158,9 @@ use wgpu::util::DeviceExt;
 
 use crate::single_pass::{FULLSCREEN_TRIANGLE_GLSL, RenderError, compile_glsl_module};
 
+mod cached;
+pub use cached::CachedMultipass;
+
 /// Plain-data scheduler input.
 ///
 /// Constructed by callers (or, with the `scene-adapter` feature
@@ -431,9 +434,14 @@ struct UniformSlot {
 ///   targets, samplers, bind group layouts, fragment shaders, pipeline
 ///   layouts, render pipelines, uniform buffers, bind groups,
 ///   readback buffer. This keeps the slice-2 byte-identity invariant
-///   (the pipeline order is unchanged) and avoids carrying a per-spec
-///   cache that would need invalidation logic; pipeline-cache
-///   amortization is its own future slice.
+///   (the pipeline order is unchanged) for the one-shot corpora.
+/// - **Persistent alternatives**: live callers that render one frame
+///   per call use [`MultipassRenderer::compile_cached_single_pass`]
+///   ([`CachedSinglePass`]) or
+///   [`MultipassRenderer::compile_cached_multipass`]
+///   ([`CachedMultipass`]), which compile once and keep targets —
+///   including `feedback_self` ping-pong history — alive across
+///   frames.
 pub struct MultipassRenderer {
     /// wgpu Instance owning the backend dispatch table. Held for the
     /// renderer's lifetime so the Adapter remains valid.
@@ -2178,6 +2186,229 @@ void main() { fragColor = vec4(uv, 0.0, 1.0); }
         assert!(
             Arc::ptr_eq(&device_before, &device_after),
             "renderer.device() must return the same Arc<Device> allocation across render calls",
+        );
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+mod cached_multipass_equivalence {
+    //! Evidence: EV-RENDER-CONFORMANCE (T1) — persistent multipass cache equivalence pins.
+    //!
+    //! [`CachedMultipass`] must be byte-identical to the one-shot
+    //! scheduler: `k` sequential one-frame calls (and one `k`-frame
+    //! call) equal [`MultipassRenderer::render`] with
+    //! `frame_count = k`, for feedback chains, plain prior-pass
+    //! chains, and float targets. Feedback history persists across
+    //! calls (strict accumulation) and [`CachedMultipass::reset`]
+    //! restores the cold start.
+
+    use super::{
+        CachedMultipass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
+        UniformInput, UniformValue,
+    };
+
+    /// Feedback pass: previous frame + `step` (uniform), clamped.
+    const ACCUM_GLSL: &str = r"#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0, std140) uniform U { vec4 step; };
+layout(set = 0, binding = 1) uniform texture2D prev_tex;
+layout(set = 0, binding = 2) uniform sampler prev_samp;
+void main() {
+    vec4 prev = texture(sampler2D(prev_tex, prev_samp), uv);
+    fragColor = vec4(clamp(prev.rgb + step.xyz * vec3(uv.x + 0.1, 1.0, uv.y + 0.1), 0.0, 1.0), 1.0);
+}
+";
+
+    /// Final pass: samples pass 0 and tints it.
+    const FINAL_GLSL: &str = r"#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0, std140) uniform U { vec4 step; };
+layout(set = 0, binding = 1) uniform texture2D src_tex;
+layout(set = 0, binding = 2) uniform sampler src_samp;
+void main() {
+    vec4 c = texture(sampler2D(src_tex, src_samp), uv);
+    fragColor = vec4(c.r, c.g * 0.5 + step.w, c.b, 1.0);
+}
+";
+
+    /// Non-feedback first pass for the plain-chain case.
+    const GRADIENT_GLSL: &str = r"#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0, std140) uniform U { vec4 step; };
+void main() {
+    fragColor = vec4(uv, step.x, 1.0);
+}
+";
+
+    fn uniforms(step: f32) -> Vec<UniformInput> {
+        vec![UniformInput {
+            name: "step".into(),
+            value: UniformValue::Vec4([step, step * 0.5, step * 0.25, 0.1]),
+        }]
+    }
+
+    fn spec(
+        first_glsl: &str,
+        feedback: bool,
+        first_format: TargetFormat,
+        frames: u32,
+    ) -> MultipassSpec {
+        MultipassSpec {
+            passes: vec![
+                PassDef {
+                    label: Some("p0".into()),
+                    fragment_glsl: first_glsl.into(),
+                    uniforms: uniforms(0.125),
+                    input_textures: Vec::new(),
+                    target_format: first_format,
+                    feedback_self: feedback,
+                },
+                PassDef {
+                    label: Some("final".into()),
+                    fragment_glsl: FINAL_GLSL.into(),
+                    uniforms: uniforms(0.125),
+                    input_textures: vec![PassInputBinding {
+                        source_pass_index: 0,
+                        sampler_uniform_name: "p0".into(),
+                    }],
+                    target_format: TargetFormat::Rgba8Unorm,
+                    feedback_self: false,
+                },
+            ],
+            target_size: (24, 16),
+            frame_count: frames,
+        }
+    }
+
+    fn assert_sequential_matches_one_shot(base: &MultipassSpec, max_frames: u32) {
+        let renderer = MultipassRenderer::new().expect("wgpu renderer");
+        let mut cached: CachedMultipass = renderer
+            .compile_cached_multipass(base)
+            .expect("cached multipass compiles");
+        for k in 1..=max_frames {
+            let got = cached
+                .render_frames(&renderer, &uniforms(0.125), 1)
+                .expect("cached frame renders");
+            let mut one_shot = base.clone();
+            one_shot.frame_count = k;
+            let want = renderer.render(&one_shot).expect("one-shot renders");
+            assert_eq!(
+                got, want,
+                "cached call {k} must equal one-shot frame_count={k}"
+            );
+        }
+        assert_eq!(cached.frames_recorded(), u64::from(max_frames));
+    }
+
+    #[test]
+    fn feedback_chain_sequential_calls_equal_one_shot() {
+        assert_sequential_matches_one_shot(&spec(ACCUM_GLSL, true, TargetFormat::Rgba8Unorm, 1), 7);
+    }
+
+    #[test]
+    fn plain_chain_sequential_calls_equal_one_shot() {
+        assert_sequential_matches_one_shot(
+            &spec(GRADIENT_GLSL, false, TargetFormat::Rgba8Unorm, 1),
+            3,
+        );
+    }
+
+    #[test]
+    fn float_feedback_target_sequential_calls_equal_one_shot() {
+        assert_sequential_matches_one_shot(
+            &spec(ACCUM_GLSL, true, TargetFormat::Rgba16Float, 1),
+            5,
+        );
+    }
+
+    #[test]
+    fn multi_frame_call_equals_one_shot() {
+        let renderer = MultipassRenderer::new().expect("wgpu renderer");
+        let base = spec(ACCUM_GLSL, true, TargetFormat::Rgba8Unorm, 1);
+        let mut cached = renderer.compile_cached_multipass(&base).expect("compiles");
+        let got = cached
+            .render_frames(&renderer, &uniforms(0.125), 4)
+            .expect("renders");
+        let mut one_shot = base.clone();
+        one_shot.frame_count = 4;
+        assert_eq!(got, renderer.render(&one_shot).expect("one-shot"));
+    }
+
+    #[test]
+    fn feedback_accumulates_strictly_beyond_four_frames() {
+        // The pre-cache shell path capped feedback at 4 ping-pong
+        // iterations per call; persistent history must keep growing.
+        let renderer = MultipassRenderer::new().expect("wgpu renderer");
+        let base = spec(ACCUM_GLSL, true, TargetFormat::Rgba8Unorm, 1);
+        let mut cached = renderer.compile_cached_multipass(&base).expect("compiles");
+        // Green channel of the final pass = 0.5 * accumulated green + 0.1,
+        // where accumulated green grows by 0.0625 per frame.
+        let mut prev_green = 0u8;
+        for k in 1..=6 {
+            let bytes = cached
+                .render_frames(&renderer, &uniforms(0.125), 1)
+                .expect("renders");
+            let green = bytes[1];
+            assert!(
+                green > prev_green,
+                "frame {k}: green {green} must exceed {prev_green}"
+            );
+            prev_green = green;
+        }
+        let expected = ((0.5 * (6.0 * 0.0625) + 0.1) * 255.0_f32).round();
+        assert!(
+            (f32::from(prev_green) - expected).abs() <= 2.0,
+            "frame 6 green {prev_green} vs expected ~{expected}"
+        );
+    }
+
+    #[test]
+    fn reset_restores_cold_start() {
+        let renderer = MultipassRenderer::new().expect("wgpu renderer");
+        let base = spec(ACCUM_GLSL, true, TargetFormat::Rgba8Unorm, 1);
+        let mut cached = renderer.compile_cached_multipass(&base).expect("compiles");
+        let first = cached
+            .render_frames(&renderer, &uniforms(0.125), 1)
+            .expect("renders");
+        let _ = cached
+            .render_frames(&renderer, &uniforms(0.125), 5)
+            .expect("renders");
+        cached.reset(&renderer);
+        assert_eq!(cached.frames_recorded(), 0);
+        let after_reset = cached
+            .render_frames(&renderer, &uniforms(0.125), 1)
+            .expect("renders");
+        assert_eq!(
+            first, after_reset,
+            "reset must restore the frame-1 cold-start output"
+        );
+    }
+
+    #[test]
+    fn uniform_slot_count_change_rejects() {
+        let renderer = MultipassRenderer::new().expect("wgpu renderer");
+        let base = spec(ACCUM_GLSL, true, TargetFormat::Rgba8Unorm, 1);
+        let mut cached = renderer.compile_cached_multipass(&base).expect("compiles");
+        let mut wider = uniforms(0.125);
+        wider.push(UniformInput {
+            name: "extra".into(),
+            value: UniformValue::Scalar(1.0),
+        });
+        let err = cached
+            .render_frames(&renderer, &wider, 1)
+            .expect_err("slot count change must reject");
+        assert!(matches!(
+            err,
+            super::RenderError::UniformBindingFailed { .. }
+        ));
+        assert!(
+            cached
+                .render_frames(&renderer, &uniforms(0.125), 0)
+                .is_err()
         );
     }
 }

@@ -11,8 +11,8 @@
 
 use chromaticity_audio::{AudioUniformSnapshot, SynAudioEnvelopeBank, SynAudioEnvelopes};
 use chromaticity_render::{
-    CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding, TargetFormat,
-    TransitionOrchestrator, UniformInput, UniformValue, resolve_includes_multi,
+    CachedMultipass, CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding,
+    TargetFormat, TransitionOrchestrator, UniformInput, UniformValue, resolve_includes_multi,
 };
 use chromaticity_scene::loader::parse_scene_json;
 use serde::{Deserialize, Serialize};
@@ -704,8 +704,58 @@ pub struct GpuRenderStatus {
 struct CachedMultipassSources {
     passes: Vec<ScenePassSource>,
     final_fragment_glsl: String,
-    has_feedback: bool,
 }
+
+/// Build the [`MultipassSpec`] for a scene's cached `PASSES` chain: every
+/// intermediate pass may sample all earlier passes, and the scene's
+/// `main.glsl` runs last sampling all of them. `uniforms` fixes each
+/// pass's uniform-block layout for [`MultipassRenderer::compile_cached_multipass`].
+fn build_multipass_spec(
+    sources: &CachedMultipassSources,
+    scene_id: &str,
+    uniforms: &[UniformInput],
+    target_size: (u32, u32),
+) -> MultipassSpec {
+    let bindings_before = |count: usize| -> Vec<PassInputBinding> {
+        (0..count)
+            .map(|prev| PassInputBinding {
+                source_pass_index: prev,
+                sampler_uniform_name: sources.passes[prev].label.clone(),
+            })
+            .collect()
+    };
+    let mut passes: Vec<PassDef> = Vec::with_capacity(sources.passes.len() + 1);
+    for (idx, p) in sources.passes.iter().enumerate() {
+        passes.push(PassDef {
+            label: Some(p.label.clone()),
+            fragment_glsl: p.fragment_glsl.clone(),
+            uniforms: uniforms.to_vec(),
+            input_textures: bindings_before(idx),
+            target_format: p.target_format,
+            feedback_self: p.feedback_self,
+        });
+    }
+    passes.push(PassDef {
+        label: Some(scene_id.to_string()),
+        fragment_glsl: sources.final_fragment_glsl.clone(),
+        uniforms: uniforms.to_vec(),
+        input_textures: bindings_before(sources.passes.len()),
+        target_format: TargetFormat::Rgba8Unorm,
+        feedback_self: false,
+    });
+    MultipassSpec {
+        passes,
+        target_size,
+        frame_count: 1,
+    }
+}
+
+/// Maximum number of per-resolution persistent multipass pipelines kept
+/// alive at once. Several consumers (Perform hero, stage dock, separate
+/// output window) can request frames at different sizes from the same
+/// engine; keying the persistent pipeline by size keeps each consumer's
+/// feedback history intact instead of resetting it on every alternation.
+const MAX_CACHED_MULTIPASS_SIZES: usize = 3;
 
 /// Long-lived GPU preview engine owned by [`crate::state::AppState`].
 pub struct GpuPreviewEngine {
@@ -713,6 +763,9 @@ pub struct GpuPreviewEngine {
     renderer: Option<MultipassRenderer>,
     cached_pass: Option<CachedSinglePass>,
     cached_multipass_sources: Option<CachedMultipassSources>,
+    /// Compiled multipass pipelines with persistent feedback history,
+    /// most-recently-used last, at most [`MAX_CACHED_MULTIPASS_SIZES`].
+    cached_multipass: Vec<CachedMultipass>,
     multipass_frame_index: u32,
     envelopes: SynAudioEnvelopeBank,
     last_elapsed_secs: f32,
@@ -747,6 +800,7 @@ impl GpuPreviewEngine {
             renderer: None,
             cached_pass: None,
             cached_multipass_sources: None,
+            cached_multipass: Vec::new(),
             multipass_frame_index: 0,
             envelopes: SynAudioEnvelopeBank::new(),
             last_elapsed_secs: 0.0,
@@ -759,6 +813,7 @@ impl GpuPreviewEngine {
     pub fn set_resource_dir(&mut self, dir: PathBuf) {
         self.resource_dir = Some(dir);
         self.cached_multipass_sources = None;
+        self.cached_multipass.clear();
     }
 
     /// Execute a multi-pass [`MultipassSpec`] on the shared wgpu device
@@ -806,6 +861,7 @@ impl GpuPreviewEngine {
     pub fn set_scene(&mut self, scene_id: String, scene_dir: &Path) {
         self.cached_pass = None;
         self.cached_multipass_sources = None;
+        self.cached_multipass.clear();
         self.multipass_frame_index = 0;
         let shader_path = scene_dir.join("main.glsl");
         if !shader_path.is_file() {
@@ -854,6 +910,7 @@ impl GpuPreviewEngine {
     pub fn set_inline_shader(&mut self, scene_id: String, fragment_source: String) {
         self.cached_pass = None;
         self.cached_multipass_sources = None;
+        self.cached_multipass.clear();
         self.multipass_frame_index = 0;
         self.state = GpuRenderState::Active {
             scene_id,
@@ -869,6 +926,7 @@ impl GpuPreviewEngine {
     pub fn clear_scene(&mut self) {
         self.cached_pass = None;
         self.cached_multipass_sources = None;
+        self.cached_multipass.clear();
         self.multipass_frame_index = 0;
         self.state = GpuRenderState::Idle;
     }
@@ -1058,64 +1116,64 @@ impl GpuPreviewEngine {
                         return Err(msg);
                     }
                 };
-                let has_feedback = resolved_passes.iter().any(|p| p.feedback_self);
                 self.cached_multipass_sources = Some(CachedMultipassSources {
                     passes: resolved_passes,
                     final_fragment_glsl: resolved_main,
-                    has_feedback,
                 });
             }
 
             let Some(cached_sources) = self.cached_multipass_sources.as_ref() else {
                 return Err("cached multipass sources unavailable".into());
             };
+            let Some(renderer) = self.renderer.as_ref() else {
+                return Err("wgpu renderer unavailable".into());
+            };
 
-            let mut passes: Vec<PassDef> = Vec::with_capacity(cached_sources.passes.len() + 1);
-            for (idx, p) in cached_sources.passes.iter().enumerate() {
-                let input_textures = (0..idx)
-                    .map(|prev| PassInputBinding {
-                        source_pass_index: prev,
-                        sampler_uniform_name: cached_sources.passes[prev].label.clone(),
-                    })
-                    .collect();
-                passes.push(PassDef {
-                    label: Some(p.label.clone()),
-                    fragment_glsl: p.fragment_glsl.clone(),
-                    uniforms: uniforms.clone(),
-                    input_textures,
-                    target_format: p.target_format,
-                    feedback_self: p.feedback_self,
-                });
-            }
-            let final_inputs = (0..cached_sources.passes.len())
-                .map(|prev| PassInputBinding {
-                    source_pass_index: prev,
-                    sampler_uniform_name: cached_sources.passes[prev].label.clone(),
-                })
-                .collect();
-            passes.push(PassDef {
-                label: Some(scene_id.clone()),
-                fragment_glsl: cached_sources.final_fragment_glsl.clone(),
-                uniforms,
-                input_textures: final_inputs,
-                target_format: TargetFormat::Rgba8Unorm,
-                feedback_self: false,
-            });
-            // When any pass declares `feedback_self`, drive at least 2 ping-pong
-            // iterations (ramping up to 4 as frames advance) so feedback buffers
-            // receive real prior-frame output instead of sampling an all-black
-            // cold-start texture every frame.
-            let frame_count = if cached_sources.has_feedback {
-                self.multipass_frame_index.saturating_add(1).clamp(2, 4)
+            let cache_pos = self
+                .cached_multipass
+                .iter()
+                .position(|c| c.target_size() == (w, h));
+            let freshly_compiled = cache_pos.is_none();
+            let mut cache = match cache_pos {
+                Some(pos) => self.cached_multipass.remove(pos),
+                None => {
+                    let spec = build_multipass_spec(cached_sources, &scene_id, &uniforms, (w, h));
+                    match renderer.compile_cached_multipass(&spec) {
+                        Ok(cache) => cache,
+                        Err(err) => {
+                            let msg = format!("multipass compile failed: {err}");
+                            self.cached_multipass_sources = None;
+                            self.cached_multipass.clear();
+                            self.state = GpuRenderState::Error {
+                                scene_id,
+                                message: msg.clone(),
+                            };
+                            return Err(msg);
+                        }
+                    }
+                }
+            };
+            // A freshly compiled feedback pipeline records two frames on
+            // its first call so the first visible frame already samples
+            // real prior-frame output rather than the black cold-start
+            // buffer (single-call consumers such as thumbnails rely on
+            // this). Every later call advances exactly one frame, so
+            // feedback history accumulates across calls without a cap.
+            let frames = if freshly_compiled && cache.has_feedback() {
+                2
             } else {
                 1
             };
-            let spec = MultipassSpec {
-                passes,
-                target_size: (w, h),
-                frame_count,
-            };
-            match self.render_multipass(&spec) {
+            let result = cache
+                .render_frames(renderer, &uniforms, frames)
+                .map_err(|err| format!("multipass render failed: {err}"));
+            if result.is_ok() {
+                if self.cached_multipass.len() >= MAX_CACHED_MULTIPASS_SIZES {
+                    self.cached_multipass.remove(0);
+                }
+                self.cached_multipass.push(cache);
+            }
+            match result {
                 Ok(bytes) => {
                     let elapsed_ms = started.elapsed().as_secs_f32() * 1000.0;
                     self.multipass_frame_index = self.multipass_frame_index.saturating_add(1);
@@ -1132,6 +1190,7 @@ impl GpuPreviewEngine {
                 }
                 Err(msg) => {
                     self.cached_multipass_sources = None;
+                    self.cached_multipass.clear();
                     self.state = GpuRenderState::Error {
                         scene_id,
                         message: msg.clone(),
@@ -2179,6 +2238,65 @@ void main() {
             .expect("feedback multipass frame 2 must reuse cached sources");
         assert_eq!(engine.multipass_frame_index, 2);
         assert!(bytes2[0] >= 115);
+        // Persistent history: call 1 recorded 2 frames (0.50), call 2 one
+        // more (0.75). The pre-cache path re-simulated from black every
+        // call and could never exceed 4 iterations.
+        assert!(
+            (190..=192).contains(&bytes2[0]),
+            "call 2 must continue feedback history to ~0.75 (191), got {}",
+            bytes2[0]
+        );
+
+        // A consumer at another size gets its own pipeline (cold start,
+        // 2 warm frames => 0.50) without disturbing the 32x32 history.
+        let other = engine
+            .render_frame(
+                48,
+                24,
+                0.032,
+                3,
+                &AudioUniformSnapshot::default(),
+                [0.5; 16],
+            )
+            .expect("second-size multipass frame must render");
+        assert!(
+            (126..=129).contains(&other[0]),
+            "fresh 48x24 pipeline must cold-start at ~0.50 (128), got {}",
+            other[0]
+        );
+        assert_eq!(engine.cached_multipass.len(), 2);
+        let bytes3 = engine
+            .render_frame(
+                32,
+                32,
+                0.048,
+                4,
+                &AudioUniformSnapshot::default(),
+                [0.5; 16],
+            )
+            .expect("feedback multipass frame 3 must render");
+        assert_eq!(
+            bytes3[0], 255,
+            "32x32 history must survive the interleaved size and reach 1.0"
+        );
+
+        // Re-arming the scene drops every persistent pipeline (cold start).
+        engine.set_scene("multipass-feedback".into(), &tmp_dir);
+        assert!(engine.cached_multipass.is_empty());
+        let restarted = engine
+            .render_frame(
+                32,
+                32,
+                0.064,
+                5,
+                &AudioUniformSnapshot::default(),
+                [0.5; 16],
+            )
+            .expect("re-armed scene must render");
+        assert_eq!(
+            restarted[0], bytes1[0],
+            "set_scene must restore the cold start"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }

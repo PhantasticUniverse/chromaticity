@@ -38,3 +38,7 @@ development. Highlights since initial scaffolding:
   across UI, docs, and engine surfaces.
 - Decoupled bundled help and scene resources under `resources/` from Vite's
   `dist/` build output and engine unit-test fixtures.
+- Live multi-pass scenes now run on a persistent GPU pipeline
+  (`CachedMultipass`): passes compile once per scene and resolution, and
+  `PERSISTENT`/`FEEDBACK` pass history accumulates across live frames instead
+  of being re-simulated from black (capped at 4 iterations) on every frame.
