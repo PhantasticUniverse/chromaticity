@@ -96,14 +96,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         {machine.muted ? 'Muted (DJ Safe)' : 'Audio On'}
       </button>
 
+      <!-- Audit 2026-11-28: no audio path from the YouTube player into the
+           visuals exists (the embedded player is cross-origin), so this
+           stays disabled rather than looking like it works. -->
       <button
         type="button"
         class="yt-chip"
-        class:yt-chip-active={machine.routeAudio}
-        aria-pressed={machine.routeAudio}
-        onclick={() => youtubeLayerStore.toggleRouteAudio()}
+        disabled
+        aria-disabled="true"
+        aria-pressed="false"
+        title="Not available yet: YouTube plays in a protected embedded player whose audio cannot reach the visuals"
       >
-        Route Audio to Visuals
+        Route Audio to Visuals · planned
       </button>
 
       <div class="yt-field">
@@ -310,10 +314,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     color: var(--color-on-primary);
   }
 
-  .yt-chip-active {
-    background: var(--color-info);
-    border-color: var(--color-info);
-    color: var(--color-on-primary);
+  .yt-chip:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   .yt-field {

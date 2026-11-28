@@ -105,13 +105,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             <table>
               <!--
                 TODO(scale): adopt @tanstack/svelte-virtual (or equivalent) when hotkey
-                vocabulary exceeds ~200 rows per group. Currently 57 total rows
+                vocabulary exceeds ~200 rows per group. Currently 56 total rows
                 across all groups; full DOM render is fine. Pre-flag for future
                 hotkey-vocabulary expansion (e.g., per-cohort macro packs).
               -->
               <tbody>
                 {#each group.rows as row, i (i)}
-                  <tr>
+                  <tr
+                    class:planned={row.planned === true}
+                    title={row.planned ? 'Planned — not available yet' : undefined}
+                  >
                     <td class="keys">
                       {#each row.keys as combo, ki (ki)}
                         {#if ki > 0}<span class="sep" aria-hidden="true">/</span>{/if}
@@ -121,7 +124,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                         {/each}
                       {/each}
                     </td>
-                    <td class="action">{row.action}</td>
+                    <td class="action">
+                      {row.action}
+                      {#if row.planned}<span class="planned-tag mono">planned</span>{/if}
+                    </td>
                     <td class="osc">{row.osc ?? ''}</td>
                     <td class="glsl">{row.glsl ?? ''}</td>
                   </tr>
@@ -246,5 +252,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .hotkey-overlay__groups .empty {
     color: var(--color-text-2);
     font-family: var(--font-family-mono);
+  }
+  tr.planned {
+    opacity: 0.5;
+  }
+  .planned-tag {
+    margin-left: 6px;
+    padding: 0 4px;
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-3, var(--color-text-2));
   }
 </style>

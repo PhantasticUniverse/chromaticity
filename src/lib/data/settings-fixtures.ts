@@ -204,15 +204,8 @@ export const HDR_TARGETS: readonly HdrTargetOption[] = [
   { id: 'p3', label: 'Display P3' },
 ];
 
-export interface DisplayOption {
-  readonly id: string;
-  readonly label: string;
-}
-
-export const DISPLAYS: readonly DisplayOption[] = [
-  { id: 'display-1', label: 'Display 1 · Built-in Retina (3024 × 1964)' },
-  { id: 'display-2', label: 'Display 2 · External 4K (3840 × 2160)' },
-];
+/* Display options are built from the real monitor list in Settings
+ * (`listOutputMonitors`), not from a fixture. */
 
 /* ---------- Graphics extensions (W41) ----------
  * Bundle source: views/settings.jsx lines 78-114. The W21 PR1 port

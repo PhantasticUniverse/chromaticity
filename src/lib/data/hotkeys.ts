@@ -22,6 +22,9 @@ export interface HotkeyRow {
   readonly osc?: string;
   readonly glsl?: string;
   readonly cap?: string;
+  /** `true` when the shortcut is documented vocabulary but has no handler
+   * yet; the overlay shows it dimmed with a "planned" tag (audit 2026-11-28). */
+  readonly planned?: boolean;
 }
 
 export interface HotkeyGroup {
@@ -37,7 +40,7 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
     rows: [
       { keys: ['D'], action: 'Set control to its default value' },
       { keys: ['R'], action: 'Set control to a random value in its range' },
-      { keys: ['P'], action: 'Set control to its value in the current preset' },
+      { keys: ['P'], action: 'Set control to its value in the current preset', planned: true },
       { keys: ['L'], action: "Toggle the control's lock state (ignore randomization)" },
     ],
   },
@@ -60,12 +63,14 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
       {
         keys: ['Alt+Cmd+→', 'Ctrl+Alt+→'],
         action: 'Jump to last in playlist',
+        planned: true,
         osc: '/playlists/position -1',
         cap: 'free',
       },
       {
         keys: ['Alt+Cmd+←', 'Ctrl+Alt+←'],
         action: 'Jump to first in playlist',
+        planned: true,
         osc: '/playlists/position 0',
         cap: 'free',
       },
@@ -78,12 +83,14 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
       {
         keys: ['Shift+Enter'],
         action: 'Launch selected scene with preset prompt',
+        planned: true,
         osc: '/scenes/{name} {preset}',
         cap: 'free',
       },
       {
         keys: ['Cmd+Enter', 'Ctrl+Enter'],
         action: 'Launch selected scene into a playlist slot',
+        planned: true,
         osc: '(internal)',
         cap: 'free',
       },
@@ -102,30 +109,35 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
       {
         keys: ['Shift+1 – Shift+0'],
         action: 'Save current state to Snap slot 1–10 (overwrite without prompt)',
+        planned: true,
         osc: '/favslots/{n}/save',
         cap: 'free',
       },
       {
         keys: ['Alt+Shift+1 – 0', 'Ctrl+Alt+Shift+1 – 0'],
         action: 'Clear Snap slot 1–10 (confirmation prompt)',
+        planned: true,
         osc: '/favslots/{n}/clear',
         cap: 'free',
       },
       {
         keys: ['Cmd+S', 'Ctrl+S'],
         action: 'Save current state to the next empty Snap slot',
+        planned: true,
         osc: '/favslots/{auto}/save',
         cap: 'free',
       },
       {
         keys: ['Cmd+Opt+S', 'Ctrl+Alt+S'],
         action: 'Save as a new named preset (prompts)',
+        planned: true,
         osc: '/presets/new {name}',
         cap: 'free',
       },
       {
         keys: ['Cmd+0', 'Ctrl+0'],
         action: 'Recall the scene’s “gold” preset (Snap 0)',
+        planned: true,
         osc: '/favslots/0 (apply)',
         cap: 'free',
       },
@@ -143,18 +155,21 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
       {
         keys: ['Shift+F'],
         action: 'Toggle fullscreen on the secondary output (multi-display)',
+        planned: true,
         osc: '(internal)',
         cap: 'free',
       },
       {
         keys: ['Cmd+Shift+F', 'Ctrl+Shift+F'],
         action: 'Cycle output window placement across displays',
+        planned: true,
         osc: '(internal)',
         cap: 'free',
       },
       {
         keys: ['Cmd+\\', 'Ctrl+\\'],
         action: 'Swap primary and secondary output',
+        planned: true,
         osc: '(internal)',
         cap: 'free',
       },
@@ -167,31 +182,42 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
       {
         keys: ['.'],
         action: 'Toggle render loop on/off',
+        planned: true,
         osc: '/render/enabled {0|1}',
         cap: 'free',
       },
-      { keys: [','], action: 'Toggle render-preview window', osc: '(internal)', cap: 'free' },
+      {
+        keys: [','],
+        action: 'Toggle render-preview window',
+        osc: '(internal)',
+        cap: 'free',
+        planned: true,
+      },
       {
         keys: ['Cmd+=', 'Ctrl+='],
         action: 'Step render resolution up',
+        planned: true,
         osc: '/render/resolution {w} {h}',
         cap: 'render.custom-resolution',
       },
       {
         keys: ['Cmd+-', 'Ctrl+-'],
         action: 'Step render resolution down',
+        planned: true,
         osc: '/render/resolution {w} {h}',
         cap: 'render.custom-resolution',
       },
       {
         keys: ['Cmd+9', 'Ctrl+9'],
         action: 'Reset render resolution to scene default',
+        planned: true,
         osc: '/render/resolution {sceneW} {sceneH}',
         cap: 'render.custom-resolution',
       },
       {
         keys: ['Cmd+Shift+=', 'Ctrl+Shift+='],
         action: 'Open FPS target dialog',
+        planned: true,
         osc: '/render/fps {float}',
         cap: 'free',
       },
@@ -201,31 +227,49 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
     title: 'Meta controls',
     note: 'Each row enters a modal slider-adjust mode (arrow keys or scroll wheel). `Esc` exits.',
     rows: [
-      { keys: ['M'], action: 'Master', glsl: '_Master' },
+      { keys: ['M'], action: 'Master', glsl: '_Master', planned: true },
       { keys: ['B'], action: 'Toggle Blackout (global panic)', glsl: '_Blackout' },
-      { keys: ['G'], action: 'Gamma', glsl: '_Gamma' },
-      { keys: ['C'], action: 'Contrast', glsl: '_Contrast' },
-      { keys: ['H'], action: 'Hue', glsl: '_Hue' },
-      { keys: ['Y'], action: 'Saturation', glsl: '_Saturation' },
-      { keys: ['I'], action: 'Invert toggle (no modal; binary flip)', glsl: '_Invert' },
-      { keys: ['V'], action: 'Vertical mirror toggle', glsl: '_Vert_Mirror' },
-      { keys: ['Shift+V'], action: 'Horizontal mirror toggle', glsl: '_Hor_Mirror' },
-      { keys: ['E'], action: 'Dichrome toggle (from “Edition”)', glsl: '_Limit_Colors' },
+      { keys: ['G'], action: 'Gamma', glsl: '_Gamma', planned: true },
+      { keys: ['C'], action: 'Contrast', glsl: '_Contrast', planned: true },
+      { keys: ['H'], action: 'Hue', glsl: '_Hue', planned: true },
+      { keys: ['Y'], action: 'Saturation', glsl: '_Saturation', planned: true },
+      {
+        keys: ['I'],
+        action: 'Invert toggle (no modal; binary flip)',
+        glsl: '_Invert',
+        planned: true,
+      },
+      { keys: ['V'], action: 'Vertical mirror toggle', glsl: '_Vert_Mirror', planned: true },
+      { keys: ['Shift+V'], action: 'Horizontal mirror toggle', glsl: '_Hor_Mirror', planned: true },
+      {
+        keys: ['E'],
+        action: 'Dichrome toggle (from “Edition”)',
+        glsl: '_Limit_Colors',
+        planned: true,
+      },
     ],
   },
   {
     title: 'Audio',
     rows: [
-      { keys: ['A'], action: 'Toggle audio-input mute', osc: '(internal)', cap: 'free' },
+      {
+        keys: ['A'],
+        action: 'Toggle audio-input mute',
+        osc: '(internal)',
+        cap: 'free',
+        planned: true,
+      },
       {
         keys: ['Cmd+A', 'Ctrl+A'],
         action: 'Open audio settings panel',
+        planned: true,
         osc: '(internal)',
         cap: 'free',
       },
       {
         keys: ['T'],
         action: 'Toggle audio-threshold visualizer overlay',
+        planned: true,
         osc: '(internal)',
         cap: 'free',
       },
@@ -253,11 +297,19 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
   {
     title: 'Diagnostics & debug',
     rows: [
-      { keys: ['Alt+Cmd+D', 'Ctrl+Alt+D'], action: 'Toggle diagnostics console' },
-      { keys: ['Alt+Cmd+P', 'Ctrl+Alt+P'], action: 'Toggle performance HUD' },
-      { keys: ['Alt+Cmd+L', 'Ctrl+Alt+L'], action: 'Toggle OSC/MIDI learn indicator' },
-      { keys: ['Cmd+R', 'Ctrl+R'], action: 'Reload current scene' },
-      { keys: ['Alt+Cmd+R', 'Ctrl+Alt+R'], action: 'Reset meta controls to defaults' },
+      { keys: ['Alt+Cmd+D', 'Ctrl+Alt+D'], action: 'Toggle diagnostics console', planned: true },
+      { keys: ['Alt+Cmd+P', 'Ctrl+Alt+P'], action: 'Toggle performance HUD', planned: true },
+      {
+        keys: ['Alt+Cmd+L', 'Ctrl+Alt+L'],
+        action: 'Toggle OSC/MIDI learn indicator',
+        planned: true,
+      },
+      { keys: ['Cmd+R', 'Ctrl+R'], action: 'Reload current scene', planned: true },
+      {
+        keys: ['Alt+Cmd+R', 'Ctrl+Alt+R'],
+        action: 'Reset meta controls to defaults',
+        planned: true,
+      },
     ],
   },
   {
@@ -266,14 +318,20 @@ export const HOTKEYS: readonly HotkeyGroup[] = [
       {
         keys: ['Cmd+Shift+N', 'Ctrl+Shift+N'],
         action: 'New show (confirmation if unsaved changes)',
+        planned: true,
       },
-      { keys: ['Cmd+Shift+O', 'Ctrl+Shift+O'], action: 'Open .chromaShow bundle' },
-      { keys: ['Cmd+Shift+S', 'Ctrl+Shift+S'], action: 'Save show as .chromaShow bundle' },
+      { keys: ['Cmd+Shift+O', 'Ctrl+Shift+O'], action: 'Open .chromaShow bundle', planned: true },
+      {
+        keys: ['Cmd+Shift+S', 'Ctrl+Shift+S'],
+        action: 'Save show as .chromaShow bundle',
+        planned: true,
+      },
       {
         keys: ['Cmd+Z', 'Ctrl+Z'],
         action: 'Undo (operator-level; one level for preset recall, meta tweak, scene switch)',
+        planned: true,
       },
-      { keys: ['Cmd+Shift+Z', 'Ctrl+Shift+Z'], action: 'Redo' },
+      { keys: ['Cmd+Shift+Z', 'Ctrl+Shift+Z'], action: 'Redo', planned: true },
     ],
   },
 ];

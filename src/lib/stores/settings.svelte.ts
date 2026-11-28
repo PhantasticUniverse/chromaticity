@@ -62,7 +62,7 @@ export const DEFAULT_SETTINGS: SettingsPayload = {
     fps_target: '60',
     vsync: true,
     hdr_target: 'sdr',
-    display: 'display-1',
+    display: 'auto',
     color_space: 'srgb',
     multi_display_mode: 'single',
     render_scale: 1.0,

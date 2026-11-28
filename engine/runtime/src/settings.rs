@@ -201,7 +201,8 @@ impl GraphicsSettings {
         "sdr".to_string()
     }
     fn default_display() -> String {
-        "display-1".to_string()
+        // Automatic placement: secondary display when connected, else primary.
+        "auto".to_string()
     }
     fn default_color_space() -> String {
         "srgb".to_string()

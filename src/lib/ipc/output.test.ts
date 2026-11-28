@@ -31,3 +31,16 @@ describe('output IPC browser fallbacks', () => {
     expect(status.open).toBe(false);
   });
 });
+
+describe('output display setting (audit 2026-11-28)', () => {
+  it('maps the persisted display setting to a monitor index for Go Live', async () => {
+    const { monitorIndexForDisplaySetting, displaySettingForMonitor, DISPLAY_AUTO } =
+      await import('./output');
+    expect(monitorIndexForDisplaySetting(DISPLAY_AUTO)).toBeUndefined();
+    expect(monitorIndexForDisplaySetting('display-1')).toBe(0);
+    expect(monitorIndexForDisplaySetting('display-3')).toBe(2);
+    expect(monitorIndexForDisplaySetting('display-0')).toBeUndefined();
+    expect(monitorIndexForDisplaySetting('garbage')).toBeUndefined();
+    expect(displaySettingForMonitor(1)).toBe('display-2');
+  });
+});

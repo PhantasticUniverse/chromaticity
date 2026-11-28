@@ -120,3 +120,19 @@ describe('EV-HOTKEY-COMPLETENESS — canonical vocabulary structure', () => {
     expect(duplicates).toEqual([]);
   });
 });
+
+describe('hotkey availability flags (audit 2026-11-28)', () => {
+  it('marks shortcuts without a handler as planned and leaves wired ones unmarked', () => {
+    const byAction = new Map(
+      HOTKEYS.flatMap((g) => g.rows).map((r) => [r.action, r.planned === true]),
+    );
+    expect(byAction.get('Open .chromaShow bundle')).toBe(true);
+    expect(byAction.get('Save show as .chromaShow bundle')).toBe(true);
+    expect(byAction.get('Toggle audio-threshold visualizer overlay')).toBe(true);
+    expect(byAction.get('Set audio threshold to current RMS level')).toBe(false);
+    expect(byAction.get('Toggle Blackout (global panic)')).toBe(false);
+    expect(byAction.get('Open command palette (searches scenes, presets, settings, help)')).toBe(
+      false,
+    );
+  });
+});

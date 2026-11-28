@@ -63,7 +63,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     DEFAULT_BACKUP_PATH,
     DEFAULT_MEDIA_FOLDERS,
     DEFAULT_SCENE_FOLDERS,
-    DISPLAYS,
     FPS_TARGETS,
     HDR_TARGETS,
     MIDI_CLOCK_INPUT_DEVICES,
@@ -81,6 +80,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type QuantizeTransitionOption,
   } from '../data/settings-fixtures';
   import Icon from '../Icon.svelte';
+  import {
+    DISPLAY_AUTO,
+    displaySettingForMonitor,
+    listOutputMonitors,
+    type MonitorSummary,
+  } from '../ipc/output';
   import { pickFolder } from '../ipc/picker';
   import {
     getAudioChannelPair,
@@ -373,6 +378,37 @@ SPDX-FileCopyrightText: 2026 Chromaticity
    * $derived above); write through `settingsStore.update({ graphics })`.
    * W21 PR1 + W41 cohort fields all flow through the same seam. */
   const renderScaleLabel = $derived(`${graphicsSnapshot.render_scale.toFixed(2)}×`);
+
+  /* Output display picker: the real monitors (audit 2026-11-28 — the row
+   * used to list fixture displays and nothing read it). The Go Live
+   * button opens the output window on the chosen display; `auto` keeps
+   * the default placement (secondary display when one is connected). */
+  let outputMonitors = $state<readonly MonitorSummary[]>([]);
+  $effect(() => {
+    let cancelled = false;
+    void listOutputMonitors()
+      .then((monitors) => {
+        if (!cancelled) outputMonitors = monitors;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  });
+  const displayOptions = $derived.by((): readonly { id: string; label: string }[] => {
+    const options = [
+      { id: DISPLAY_AUTO, label: 'Automatic — secondary display when connected' },
+      ...outputMonitors.map((m) => ({
+        id: displaySettingForMonitor(m.index),
+        label: `Display ${m.index + 1} · ${m.name} (${m.width} × ${m.height})${m.is_primary ? ' · primary' : ''}`,
+      })),
+    ];
+    const current = graphicsSnapshot.display;
+    if (!options.some((o) => o.id === current)) {
+      options.push({ id: current, label: `${current} (not connected)` });
+    }
+    return options;
+  });
 
   /* ----- Live Sources (Wave 2.7 SET.B) -----
    * Bundle source: views/settings.jsx lines 115-124. Six bundle-
@@ -955,7 +991,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             value={graphicsSnapshot.display}
             onchange={(e) => settingsStore.update({ graphics: { display: e.currentTarget.value } })}
           >
-            {#each DISPLAYS as opt (opt.id)}
+            {#each displayOptions as opt (opt.id)}
               <option value={opt.id}>{opt.label}</option>
             {/each}
           </select>

@@ -67,7 +67,10 @@ describe('YouTubeLayer component', () => {
     const muteBtn = getByRole('button', { name: 'Muted (DJ Safe)' });
     expect(muteBtn).toHaveAttribute('aria-pressed', 'false');
 
-    const routeBtn = getByRole('button', { name: 'Route Audio to Visuals' });
+    // Audit 2026-11-28: no YouTube audio path exists, so the chip is a
+    // disabled "planned" affordance rather than a toggle.
+    const routeBtn = getByRole('button', { name: /Route Audio to Visuals/ });
+    expect(routeBtn).toBeDisabled();
     expect(routeBtn).toHaveAttribute('aria-pressed', 'false');
   });
 
@@ -86,10 +89,10 @@ describe('YouTubeLayer component', () => {
     const iframe = getByTitle(`YouTube visual layer (${SAMPLE_ID})`) as HTMLIFrameElement;
     expect(iframe.src).toContain('mute=0');
 
-    // Opt-in Route Audio to Visuals
-    const routeBtn = getByRole('button', { name: 'Route Audio to Visuals' });
+    // Route Audio to Visuals is planned: clicking the disabled chip does nothing.
+    const routeBtn = getByRole('button', { name: /Route Audio to Visuals/ });
     await fireEvent.click(routeBtn);
-    expect(routeBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(routeBtn).toHaveAttribute('aria-pressed', 'false');
 
     // Change Blend Mode
     const blendSelect = getByLabelText('Blend Mode') as HTMLSelectElement;

@@ -63,7 +63,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   //     the `osc_health_snapshot` Tauri command every 5 s (Wave 2.1
   //     D.3 shipped the command + bridge type).
   import Icon from './Icon.svelte';
-  import { closeOutputWindow, openOutputWindow } from './ipc/output';
+  import { closeOutputWindow, monitorIndexForDisplaySetting, openOutputWindow } from './ipc/output';
   import { getRecorderStatus, startRecording, stopRecording } from './ipc/recorder';
   import { fetchGpuRenderStatus } from './ipc/render';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
@@ -505,7 +505,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         const status = await closeOutputWindow();
         outputWindowOpen = status.open;
       } else {
-        const status = await openOutputWindow({ fullscreen: false });
+        const status = await openOutputWindow({
+          fullscreen: false,
+          monitorIndex: monitorIndexForDisplaySetting(settingsStore.snapshot.graphics.display),
+        });
         outputWindowOpen = status.open;
       }
     } catch {

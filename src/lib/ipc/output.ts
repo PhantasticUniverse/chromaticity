@@ -24,6 +24,25 @@ export interface MonitorSummary {
   is_primary: boolean;
 }
 
+/** Graphics `display` setting value meaning "secondary display when one is
+ * connected, otherwise the primary" (the shell's default placement). */
+export const DISPLAY_AUTO = 'auto';
+
+/** Map the persisted Graphics `display` setting (`auto` or `display-N`,
+ * 1-based) to the `open_output_window` monitor index (0-based), or
+ * `undefined` for automatic placement. */
+export function monitorIndexForDisplaySetting(value: string): number | undefined {
+  const match = /^display-(\d+)$/.exec(value);
+  if (!match) return undefined;
+  const n = Number(match[1]);
+  return Number.isInteger(n) && n >= 1 ? n - 1 : undefined;
+}
+
+/** Settings `display` value for a monitor index (0-based). */
+export function displaySettingForMonitor(index: number): string {
+  return `display-${index + 1}`;
+}
+
 async function invokeOutput<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<T>(cmd, args);
@@ -47,7 +66,7 @@ export async function listOutputMonitors(): Promise<MonitorSummary[]> {
 
 export async function openOutputWindow(options?: {
   fullscreen?: boolean;
-  monitorIndex?: number;
+  monitorIndex?: number | undefined;
 }): Promise<OutputWindowStatus> {
   if (!isTauri()) {
     return {
