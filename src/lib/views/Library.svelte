@@ -19,8 +19,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
+  import { BUNDLED_LIBRARY_CATALOG } from '../data/bundled-library-catalog';
   import { EMPTY_LIBRARY, EMPTY_LIBRARY_FILTERED } from '../data/empty-states';
-  import { SETLIST_SCENES } from '../data/setlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import ErrorMessage from '../ErrorMessage.svelte';
   import Icon from '../Icon.svelte';
@@ -286,20 +286,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       }
 
       if (merged.length === 0 && errors.length === 0 && unavailableCount === settled.length) {
-        for (const demo of SETLIST_SCENES) {
-          const id = demo.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-          merged.push({
-            id,
-            title: demo.name,
-            credit: 'Chromaticity',
-            description: `Built-in ${demo.kind} demo scene`,
-            categories: ['BUILT-IN', 'AUDIO REACTIVE'],
-            tags: [demo.kind, demo.tag],
-            path: `bundled://${id}.chroma`,
-            source: 'Bundled',
-            format_tag: 'chroma',
-          });
-        }
+        merged.push(...BUNDLED_LIBRARY_CATALOG);
       }
 
       cards = merged;

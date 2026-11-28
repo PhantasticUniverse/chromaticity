@@ -81,8 +81,26 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     if (!path || typeof ImageData === 'undefined') return;
 
     let cancelled = false;
+    const drawFallbackBundledThumb = (): void => {
+      if (!path.startsWith('bundled://') || typeof Image === 'undefined') return;
+      const slug = path.replace(/^bundled:\/\//, '').replace(/\.chroma$/, '');
+      if (!slug) return;
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled) return;
+        const ctx = c.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, w, h);
+      };
+      img.src = `/scene-thumbs/${slug}.jpg`;
+    };
+
     void fetchSceneThumbnail(path, w, h).then((pixels) => {
-      if (cancelled || !pixels) return;
+      if (cancelled) return;
+      if (!pixels) {
+        drawFallbackBundledThumb();
+        return;
+      }
       const ctx = c.getContext('2d');
       if (!ctx || pixels.byteLength !== w * h * 4) return;
       const clamped = new Uint8ClampedArray(pixels.byteLength);
