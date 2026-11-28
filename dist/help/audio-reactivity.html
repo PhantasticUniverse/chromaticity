@@ -1125,22 +1125,22 @@ void main() {
 }
 </code></pre>
 <p>The same scene becomes a tempo-locked breathing pulse by mixing in
-<code>syn_BPMSin</code> against the radius. Authors can compose any of the
-audio uniforms; the binding adapter publishes them all in a stable
-per-pass order so per-pass uniform-buffer slot indices stay stable
-across reloads.</p>
+<code>chroma_BPMSin</code> against the radius (legacy <code>syn_*</code> compat aliases remain
+supported for imported scenes). Authors can compose any of the audio
+uniforms; the binding adapter publishes them all in a stable per-pass
+order so per-pass uniform-buffer slot indices stay stable across reloads.</p>
 <h2 id="setting-the-audio-threshold">Setting the audio threshold</h2>
-<p>The audio noise-floor gate is exposed as the <code>syn_Threshold</code> uniform
+<p>The audio noise-floor gate is exposed as the <code>chroma_Threshold</code> uniform
 and is operator-controllable through the audio settings panel and the
 OSC routes:</p>
 <ul>
-<li><code>Shift+T</code> samples the current 200 ms rolling RMS of <code>syn_Level</code> and
+<li><code>Shift+T</code> samples the current 200 ms rolling RMS of <code>chroma_Level</code> and
   sets the threshold to that value (also reachable as
   <code>/audio/threshold/sample</code>).</li>
 <li><code>/audio/threshold {float}</code> accepts an absolute threshold in <code>[0, 1]</code>.</li>
 </ul>
-<p>Audio hops with RMS below the threshold publish zeroed <code>syn_Level*</code>
-and <code>syn_*Hits</code> family uniforms. The threshold is the operator's
+<p>Audio hops with RMS below the threshold publish zeroed <code>chroma_*Level</code>
+and <code>chroma_*Hits</code> family uniforms. The threshold is the operator's
 primary tool for rejecting room noise, HVAC bleed, and crowd murmur in
 quiet sections of a show.</p>
 <hr />

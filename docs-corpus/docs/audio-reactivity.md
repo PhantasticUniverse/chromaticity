@@ -124,24 +124,24 @@ void main() {
 ```
 
 The same scene becomes a tempo-locked breathing pulse by mixing in
-`syn_BPMSin` against the radius. Authors can compose any of the
-audio uniforms; the binding adapter publishes them all in a stable
-per-pass order so per-pass uniform-buffer slot indices stay stable
-across reloads.
+`chroma_BPMSin` against the radius (legacy `syn_*` compat aliases remain
+supported for imported scenes). Authors can compose any of the audio
+uniforms; the binding adapter publishes them all in a stable per-pass
+order so per-pass uniform-buffer slot indices stay stable across reloads.
 
 ## Setting the audio threshold
 
-The audio noise-floor gate is exposed as the `syn_Threshold` uniform
+The audio noise-floor gate is exposed as the `chroma_Threshold` uniform
 and is operator-controllable through the audio settings panel and the
 OSC routes:
 
-- `Shift+T` samples the current 200 ms rolling RMS of `syn_Level` and
+- `Shift+T` samples the current 200 ms rolling RMS of `chroma_Level` and
   sets the threshold to that value (also reachable as
   `/audio/threshold/sample`).
 - `/audio/threshold {float}` accepts an absolute threshold in `[0, 1]`.
 
-Audio hops with RMS below the threshold publish zeroed `syn_Level*`
-and `syn_*Hits` family uniforms. The threshold is the operator's
+Audio hops with RMS below the threshold publish zeroed `chroma_*Level`
+and `chroma_*Hits` family uniforms. The threshold is the operator's
 primary tool for rejecting room noise, HVAC bleed, and crowd murmur in
 quiet sections of a show.
 

@@ -72,8 +72,9 @@ printf '\n'
 sm_lines="$(
   grep -rnE "registerStateMachine\('[^']+'" src/ \
     | grep -v '\.test\.ts:' \
+    | grep -vE ':[0-9]+:[[:space:]]*(\*|//)' \
     | sed -nE "s#^([^:]+):[0-9]+:.*registerStateMachine\('([^']+)'.*#\2|\1#p" \
-    | LC_ALL=C sort
+    | LC_ALL=C sort -u
 )"
 sm_count="$(printf '%s\n' "$sm_lines" | grep -c . || true)"
 

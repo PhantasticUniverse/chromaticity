@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#about-this-help-corpus" class="md-skip">
+        <a href="#about-chromaticity" class="md-skip">
           Skip to content
         </a>
       
@@ -805,10 +805,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#authoring-posture" class="md-nav__link">
+  <a href="#core-architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Authoring posture
+        Core Architecture
       
     </span>
   </a>
@@ -816,10 +816,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#build-chain" class="md-nav__link">
+  <a href="#offline-documentation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Build chain
+        Offline Documentation
       
     </span>
   </a>
@@ -861,10 +861,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#authoring-posture" class="md-nav__link">
+  <a href="#core-architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Authoring posture
+        Core Architecture
       
     </span>
   </a>
@@ -872,10 +872,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#build-chain" class="md-nav__link">
+  <a href="#offline-documentation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Build chain
+        Offline Documentation
       
     </span>
   </a>
@@ -904,26 +904,16 @@ SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
-<h1 id="about-this-help-corpus">About this Help corpus</h1>
-<p>The Chromaticity Help corpus is a static documentation site built with
-<a href="https://www.mkdocs.org/">MkDocs</a> using the Material theme. The corpus
-is authored under <code>docs-corpus/docs/</code> in the chromaticity source tree,
-built locally with <code>mkdocs build</code>, and emitted to <code>dist/help/</code> for
-inclusion in the desktop application bundle.</p>
-<h2 id="authoring-posture">Authoring posture</h2>
-<p>All Help corpus content is original chromaticity prose. Per the
-clean-room policy (<code>docs/29-cleanroom-legal-policy-baseline.md</code>), no
-text, structure, or per-page taxonomy is derived from any reference
-application's embedded documentation. Authors who land corpus content
-attest to clean-room provenance in the PR body.</p>
-<h2 id="build-chain">Build chain</h2>
-<p>The <code>mkdocs build</code> step runs locally before <code>cargo tauri build</code> so that
-the static HTML output exists at link time and is bundled into the
-desktop binary. CI does not currently run <code>mkdocs build</code>; that
-integration is Wave 1d-β release-eng scope.</p>
-<p>This is the second placeholder page that exists to validate routing
-between corpus pages. Future waves replace this content with a real
-About / Version / Changelog page.</p>
+<h1 id="about-chromaticity">About Chromaticity</h1>
+<p>Chromaticity is a cross-platform GPU shader performance instrument and visual mixer built in Rust, <code>wgpu</code>, Tauri, and Svelte 5.</p>
+<h2 id="core-architecture">Core Architecture</h2>
+<ul>
+<li><strong>Real-time Audio Analysis:</strong> Low-latency FFT band extraction, RMS/peak metering, onset detection, and live zero-restart input hot-swap.</li>
+<li><strong>Native <code>.chroma</code> Scenes:</strong> Multi-pass GLSL shaders with JSON control schemas, sandboxed scripting, and live hot-reload.</li>
+<li><strong>Performance &amp; I/O:</strong> Dedicated <strong>Perform</strong> and <strong>Mix</strong> decks, MIDI learn and performance bindings, bidirectional OSC routing, Syphon/NDI live textures, and crash-safe fMP4 recording.</li>
+</ul>
+<h2 id="offline-documentation">Offline Documentation</h2>
+<p>All guides in this Help viewer are bundled directly inside Chromaticity so every reference page — from <a href="hotkeys-reference.html">Hotkeys</a> to <a href="chroma-uniforms.html">Uniforms</a> and <a href="supported-codecs.html">Supported Codecs</a> — remains available in offline venue booths.</p>
 
 
 

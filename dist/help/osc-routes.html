@@ -739,6 +739,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#compat-dual-emit-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compat dual-emit window
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#controls-routes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1019,6 +1030,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#compat-dual-emit-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compat dual-emit window
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#controls-routes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1231,9 +1253,9 @@ alias.</p>
 </tr>
 <tr>
 <td><code>/playlists/position {i}</code></td>
-<td>inbound</td>
+<td>inbound and outbound</td>
 <td>integer index; negative counts from end</td>
-<td>Jump to absolute playlist position</td>
+<td>Jump to absolute playlist position (inbound); emitted on every position change (outbound)</td>
 </tr>
 <tr>
 <td><code>/playlists/play</code></td>
@@ -1259,14 +1281,14 @@ alias.</p>
 <td>active playlist name</td>
 <td>Emitted on playlist change</td>
 </tr>
-<tr>
-<td><code>/playlists/position {i}</code></td>
-<td>outbound</td>
-<td>current position</td>
-<td>Emitted on every position change</td>
-</tr>
 </tbody>
 </table>
+<p>The <code>/playlists/position {i}</code> route is bidirectional: sending an integer
+index jumps the playlist to that position, where negative values count from
+the end (<code>-1</code> is the last scene, <code>-2</code> the second-to-last, etc.); outbound
+emission follows every position change so show-control surfaces and external
+recorders receive a running position stream without needing to track
+<code>/playlists/next</code> transitions manually.</p>
 <p>The singular-root action forms <code>/playlist/next</code>, <code>/playlist/previous</code>,
 <code>/playlist/toggleplay</code> are accepted as <code>compat-syn-v1</code> aliases for the
 plural-root canonical forms. The hotkey overlay surfaces these singular
@@ -1322,19 +1344,48 @@ Useful for SMPTE-slaved setups, A/V calibration, and operator-triggered
 <td><code>/audio/threshold {float}</code></td>
 <td>inbound and outbound</td>
 <td>clamped to <code>[0, 1]</code></td>
-<td>Set or announce the audio noise-floor gate; updates <code>syn_Threshold</code> within one audio hop</td>
+<td>Set or announce the audio noise-floor gate; updates <code>chroma_AudioRMS</code>-based gate within one audio hop</td>
 </tr>
 <tr>
 <td><code>/audio/threshold/sample</code></td>
 <td>inbound</td>
 <td>(none)</td>
-<td>Sample the current 200 ms rolling RMS of <code>syn_Level</code> and set the threshold to that value; emits <code>/audio/threshold {float}</code> outbound on completion</td>
+<td>Sample the current 200 ms rolling RMS of the audio level and set the threshold to that value; emits <code>/audio/threshold {float}</code> outbound on completion</td>
 </tr>
 </tbody>
 </table>
-<p>Audio hops with RMS below the threshold publish zeroed <code>syn_Level*</code> and
-<code>syn_*Hits</code> family uniforms; the threshold is the operator's primary
-tool for rejecting room noise and HVAC bleed.</p>
+<p>The <code>/audio/threshold</code> route is bidirectional: inbound messages set the
+noise-floor gate level and the engine emits the current threshold value
+outbound after each change so external controllers stay in sync. An
+outbound emission is also sent on adapter bind so listeners initialise
+their display to the current threshold without needing an explicit poll.</p>
+<p>Audio hops with RMS below the threshold publish zeroed level and hit
+family uniforms; the threshold is the operator's primary tool for
+rejecting room noise and HVAC bleed.</p>
+<h2 id="compat-dual-emit-window">Compat dual-emit window</h2>
+<p>Chromaticity's outbound sender supports a <strong>dual-emit migration window</strong>
+for operators who need to run legacy show controllers subscribed to the
+Synesthesia-compat singular-root address forms (<code>/scene/{name}</code>,
+<code>/preset/{name}</code>, <code>/playlist/next</code>, etc.) alongside new controllers
+subscribed to the canonical plural-root forms.</p>
+<p>When <code>dual_emit_enabled = true</code> (operator opt-in; off by default) the
+sender emits each outbound message twice: once on the canonical address
+and once on the compat-syn-v1 alias address. The canonical emission has
+priority — if the outbound socket is momentarily congested the alias
+datagram is skipped rather than delaying the canonical one.</p>
+<p>An optional RFC 3339 deadline (<code>dual_emit_until</code>) can be configured so
+the migration window closes automatically on a specific date without
+needing a manual operator toggle. When <code>dual_emit_until</code> is set and the
+deadline has passed, dual-emit is inactive regardless of the
+<code>dual_emit_enabled</code> flag.</p>
+<p>The <strong>compat alias emits</strong> counter in the OSC view's Adapter section
+shows how many alias datagrams have been sent since the adapter was
+started. A zero counter with dual-emit enabled means no outbound
+messages have been sent yet; a rising counter confirms legacy controllers
+are receiving the compat-form addresses.</p>
+<p>To enable the dual-emit window from the OSC view, toggle the
+<strong>dual-emit</strong> switch in the Operator settings panel and confirm the
+counter begins rising when a scene loads or a control changes.</p>
 <h2 id="controls-routes">Controls routes</h2>
 <p>The <code>/controls</code> namespace is the runtime parameter-write surface used
 by external surfaces (TouchOSC, MIDI-to-OSC bridges, custom show

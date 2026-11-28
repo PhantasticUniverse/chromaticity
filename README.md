@@ -182,7 +182,7 @@ chromaticity/
 ├── release-eng/                 # signing/notarization/staging-appcast scripts (stubbed pre-cert)
 ├── docs-corpus/                 # in-app help system mkdocs source tree
 ├── dist/                        # Vite build output + bundled mkdocs help pages (dist/help/)
-├── third_party/                 # vendored snapshots (lygia trial vendor + Syphon-Framework)
+├── third_party/                 # vendored snapshots (cpal-0.17.1-patched, hg_sdf, lygia, Syphon-Framework)
 ├── scripts/                     # policy/evidence automation helpers
 ├── evidence-runs/               # evidence-run capture artifacts (per-row anchor bundles)
 ├── docs/                        # normative planning corpus (promoted)
