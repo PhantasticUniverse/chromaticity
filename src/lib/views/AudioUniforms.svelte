@@ -634,7 +634,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               <article class="au__bpm-card">
                 <header class="au__bpm-head">
                   <span class="au__bpm-name mono">{bpm.key}</span>
-                  <span class="au__bpm-val mono">{bpm.displayValue}</span>
+                  <span class="au__bpm-val mono">
+                    {bpm.key === 'syn_BPM' ? heroBpm.toFixed(1) : bpm.displayValue}
+                  </span>
                 </header>
                 {#if bpm.sparkline && bpm.sparkline.length > 0}
                   {@const samples = liveSparklines[bpm.key] ?? bpm.sparkline}
@@ -701,7 +703,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   {#each block.tokens as token, ti (ti)}
                     <span class="au__docs-token mono" style="color: {token.tint};"
                       >{token.text}</span
-                    >{#if block.tokens && ti < block.tokens.length - 1}<span>, </span>{/if}
+                    >{#if block.tokens && ti < block.tokens.length - 1}<span>,&nbsp;</span>{/if}
                   {/each}
                 {/if}
                 {#if block.trailing}{block.trailing}{/if}

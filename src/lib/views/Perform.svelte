@@ -1576,9 +1576,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         <!-- Wave 2.3 Lane Q.2 (G.9 + G.10) — LIVE indicator + OUT label -->
         <div class="preview__hud-row preview__hud-row--top">
           <div class="preview__hud-left">
-            <span class="preview__live-tag" aria-label="Live output">
+            <span class="preview__live-tag" aria-label="Stage monitor">
               <span class="preview__live-dot" aria-hidden="true"></span>
-              LIVE
+              {loadedSceneStore.snapshot ? 'LIVE' : 'PREVIEW'}
             </span>
             <span class="preview__scene-label">{sceneTitleName}</span>
             {#if blackoutActive}
@@ -1588,7 +1588,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             {/if}
           </div>
           <div class="preview__hud-right">
-            <span class="preview__out-label">OUT → DISP 2</span>
+            <span class="preview__out-label">
+              {loadedSceneStore.snapshot ? 'OUT → DISP 2' : 'STAGE MONITOR'}
+            </span>
           </div>
         </div>
         {#if unlicensed}
@@ -1625,9 +1627,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
              lands with the ADR-011 rendering backend (Wave 2.2+). -->
         <div class="preview__hud-row preview__hud-row--top">
           <div class="preview__hud-left">
-            <span class="preview__live-tag" aria-label="Live output">
+            <span class="preview__live-tag" aria-label="Stage monitor">
               <span class="preview__live-dot" aria-hidden="true"></span>
-              LIVE
+              {loadedSceneStore.snapshot ? 'LIVE' : 'PREVIEW'}
             </span>
             <span class="preview__scene-label">{sceneTitleName}</span>
             {#if blackoutActive}
@@ -1637,7 +1639,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             {/if}
           </div>
           <div class="preview__hud-right">
-            <span class="preview__out-label">OUT → DISP 2</span>
+            <span class="preview__out-label">
+              {loadedSceneStore.snapshot ? 'OUT → DISP 2' : 'STAGE MONITOR'}
+            </span>
           </div>
         </div>
         {#if unlicensed}
@@ -1760,7 +1764,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
          "FIXTURE" inventory in the Wave 2.4 plan. -->
     <div class="scene-panel__setlist">
       <span class="scene-panel__label">Demo Scenes</span>
-      <span class="mono scene-panel__timecode">00h 00m 00s</span>
+      <span class="mono scene-panel__timecode">00h 24m 00s</span>
     </div>
 
     <!-- Wave 2.1 Lane A.4 — Previous / Next / Shuffle buttons
@@ -2076,13 +2080,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   /* Console — 3-column (controls / preview+audio / scenes). */
   .perform--console {
-    grid-template-columns: minmax(420px, 1.18fr) minmax(0, 1.38fr) minmax(260px, 0.92fr);
+    grid-template-columns: minmax(456px, 1.24fr) minmax(0, 1.32fr) minmax(260px, 0.9fr);
     grid-template-areas: 'left middle right';
   }
   .perform--console .panel__head {
     flex-wrap: nowrap;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-md);
+    gap: 4px;
+    padding: var(--space-xs) var(--space-sm);
+  }
+  .perform--console .live-fx {
+    padding-left: 6px;
+    gap: 4px;
+  }
+  .perform--console .live-fx__pad {
+    padding: 3px 6px;
+    min-height: 24px;
+    font-size: 10px;
   }
 
   @media (max-width: 1399px) {

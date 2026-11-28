@@ -271,7 +271,7 @@ export const AUDIO_UNIFORMS_FIXTURE: AudioUniformsFixture = {
       key: 'syn_BPM',
       label: 'beats/min',
       kind: 'scalar',
-      displayValue: '128.0',
+      displayValue: '120.0',
     },
     {
       key: 'syn_OnBeat',

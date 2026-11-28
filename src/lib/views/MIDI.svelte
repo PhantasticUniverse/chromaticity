@@ -1288,11 +1288,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       </header>
       <div class="midi__panel-body">
         <div class="midi__mtc">
-          <span class="midi__mtc-tc mono">{MIDI_MTC.timecode}</span>
-          <span class="midi__mtc-fps mono">{MIDI_MTC.framerate}</span>
+          <span class="midi__mtc-tc mono">
+            {midiStore.devices.length > 0 ? MIDI_MTC.timecode : '00:00:00:00'}
+          </span>
+          <span class="midi__mtc-fps mono">
+            {midiStore.devices.length > 0 ? MIDI_MTC.framerate : 'idle'}
+          </span>
         </div>
         <p class="midi__mtc-prose mono">
-          quarter-frame assembly: {MIDI_MTC.assemblyState} · exposed to scenes as
+          quarter-frame assembly: {midiStore.devices.length > 0 ? MIDI_MTC.assemblyState : 'idle'} · exposed
+          to scenes as
           <span class="midi__mtc-uniform">{MIDI_MTC.uniformName}</span>
         </p>
       </div>
@@ -1317,8 +1322,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <span class="midi__pad-controller-mode">· mirror</span>
         </label>
       </header>
-      <div class="midi__panel-body" data-cap={MIDI_CAPABILITY.output}>
-        <CuePad rows={padRows} cols={padCols} cells={padState} onPadClick={cyclePad} />
+      <div class="midi__panel-body midi__panel-body--pad" data-cap={MIDI_CAPABILITY.output}>
+        <div class="midi__pad-fit">
+          <CuePad rows={padRows} cols={padCols} cells={padState} onPadClick={cyclePad} />
+        </div>
       </div>
     </article>
   </aside>
@@ -1615,6 +1622,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .midi__pad-controller-mode {
     color: var(--color-text-3);
+  }
+  .midi__panel-body--pad {
+    display: flex;
+    justify-content: center;
+  }
+  .midi__pad-fit {
+    width: 100%;
+    max-width: 240px;
   }
   .visually-hidden {
     position: absolute;

@@ -83,13 +83,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     MEDIA_ASSETS.find((a) => a.id === selectedAssetId),
   );
 
-  /** Deterministic placeholder hue from the asset seed.
-   * Mirrors the per-tile variation the bundle gets from `<SceneStill seed>`
-   * without depending on the unported renderer. */
-  function tintAngle(seed: number): number {
-    return (seed * 37) % 360;
-  }
-
   function selectCollection(id: string): void {
     selectedCollectionId = id;
   }
@@ -297,11 +290,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             onclick={() => selectAsset(asset.id)}
             aria-pressed={asset.id === selectedAssetId}
           >
-            <div
-              class="sources__asset-thumb"
-              style:--asset-hue="{tintAngle(asset.seed)}deg"
-              aria-hidden="true"
-            >
+            <div class="sources__asset-thumb" aria-hidden="true">
+              <SceneStill
+                kind={asset.format === 'video'
+                  ? 'fluid'
+                  : asset.format === 'loop'
+                    ? 'kaleido'
+                    : asset.format === 'image'
+                      ? 'dunes'
+                      : 'rings'}
+                seed={asset.seed}
+              />
               <span class="sources__asset-res">{asset.resolution}</span>
               {#if asset.duration}
                 <span class="sources__asset-dur">{asset.duration}</span>

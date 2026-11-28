@@ -456,8 +456,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     color: var(--color-bg-0);
     border-color: var(--color-primary);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
 
   .license__btn--primary:hover:not(:disabled) {

@@ -113,7 +113,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // describes ("WatermarkOverlay threaded into Perform live Preview
   // via ChromaCtx.licensed").
   import ConsoleDrawer from './ConsoleDrawer.svelte';
-  import type { CrashResumeStatusPayload } from './ipc/bindings';
+  import { setControl } from './ipc';
+  import type { ControlId, CrashResumeStatusPayload } from './ipc/bindings';
   import SidebarRail from './SidebarRail.svelte';
   import { overlayStack } from './state';
   import StatusBar from './StatusBar.svelte';
@@ -123,7 +124,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { loadedSceneStore } from './stores/loadedScene.svelte';
   import { midiBindingsStore } from './stores/midiBindings.svelte';
   import { playlistStore } from './stores/playlist.svelte';
-  import { routeStore } from './stores/route.svelte';
+  import { routeStore, type RouteName } from './stores/route.svelte';
   import { snapStore } from './stores/snap.svelte';
   import { stageDockStore } from './stores/stageDock.svelte';
   import TopBar from './TopBar.svelte';
@@ -152,6 +153,55 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     type CommandPaletteAction,
     WatermarkOverlay,
   } from './widgets';
+
+  const META_STROBE_CONTROL_ID = 1070 as ControlId;
+  const META_BLACKOUT_CONTROL_ID = 1071 as ControlId;
+
+  interface WorkspaceSubTab {
+    readonly route: RouteName;
+    readonly label: string;
+  }
+
+  const WORKSPACE_SUBTABS: readonly {
+    readonly routes: readonly RouteName[];
+    readonly tabs: readonly WorkspaceSubTab[];
+  }[] = [
+    {
+      routes: ['library', 'playlist', 'sources', 'import'],
+      tabs: [
+        { route: 'library', label: 'Scenes' },
+        { route: 'playlist', label: 'Playlist' },
+        { route: 'sources', label: 'Sources' },
+        { route: 'import', label: 'Import' },
+      ],
+    },
+    {
+      routes: ['author', 'audio-uniforms', 'patch'],
+      tabs: [
+        { route: 'author', label: 'Editor' },
+        { route: 'audio-uniforms', label: 'Audio Uniforms' },
+        { route: 'patch', label: 'Patch' },
+      ],
+    },
+    {
+      routes: ['midi', 'osc'],
+      tabs: [
+        { route: 'midi', label: 'MIDI' },
+        { route: 'osc', label: 'OSC' },
+      ],
+    },
+    {
+      routes: ['settings', 'license'],
+      tabs: [
+        { route: 'settings', label: 'Preferences' },
+        { route: 'license', label: 'License' },
+      ],
+    },
+  ];
+
+  const activeSubTabs = $derived(
+    WORKSPACE_SUBTABS.find((group) => group.routes.includes(routeStore.current))?.tabs ?? null,
+  );
 
   let mixVisited = $state(false);
   const showStageDockToggle = $derived(
@@ -269,14 +319,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       if (event.key === 'b' || event.key === 'B') {
         if (!event.repeat) {
           event.preventDefault();
-          liveFxStore.toggleBlackout();
+          const active = liveFxStore.toggleBlackout();
+          void setControl(META_BLACKOUT_CONTROL_ID, active ? 1 : 0).catch(() => {});
         }
         return;
       }
       if (event.key === 's' || event.key === 'S') {
         if (!event.repeat) {
           event.preventDefault();
-          liveFxStore.activateStrobe();
+          if (liveFxStore.activateStrobe()) {
+            void setControl(META_STROBE_CONTROL_ID, 1).catch(() => {});
+          }
         }
         return;
       }
@@ -292,8 +345,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key === 's' || event.key === 'S') {
-        if (liveFxStore.strobeActive) {
-          liveFxStore.releaseStrobe();
+        if (liveFxStore.releaseStrobe()) {
+          void setControl(META_STROBE_CONTROL_ID, 0).catch(() => {});
         }
       }
     };
@@ -343,6 +396,21 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           onDismiss={() => (crashResume = { kind: 'hidden' })}
         />
       </div>
+    {/if}
+    {#if activeSubTabs}
+      <nav class="app-shell__subtabs" aria-label="Workspace sections">
+        {#each activeSubTabs as tab (tab.route)}
+          <button
+            type="button"
+            class="app-shell__subtab"
+            class:active={routeStore.current === tab.route}
+            aria-current={routeStore.current === tab.route ? 'page' : undefined}
+            onclick={() => routeStore.set(tab.route)}
+          >
+            {tab.label}
+          </button>
+        {/each}
+      </nav>
     {/if}
     <div class="app-shell__workspace" class:app-shell__workspace--docked={stageDockVisible}>
       <div
@@ -472,7 +540,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
    * focus-ring outline against the right border. */
   .app-shell {
     display: grid;
-    grid-template-columns: 52px 1fr;
+    grid-template-columns: 64px 1fr;
     grid-template-rows: 52px 1fr 28px;
     grid-template-areas:
       'topbar topbar'
@@ -507,6 +575,39 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
+  }
+  .app-shell__subtabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 var(--space-lg);
+    height: 32px;
+    flex-shrink: 0;
+    background: var(--color-bg-1);
+    border-bottom: 1px solid var(--color-line-1);
+  }
+  .app-shell__subtab {
+    height: 100%;
+    padding: 0 var(--space-md);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--color-text-2);
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition:
+      color 0.12s ease,
+      border-color 0.12s ease;
+  }
+  .app-shell__subtab:hover {
+    color: var(--color-text-0);
+  }
+  .app-shell__subtab.active {
+    color: var(--color-text-0);
+    border-bottom-color: var(--color-primary);
   }
   .app-shell__workspace {
     flex: 1;

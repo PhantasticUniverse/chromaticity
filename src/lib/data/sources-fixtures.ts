@@ -139,7 +139,8 @@ function buildAssets(): readonly MediaAsset[] {
     // `jellyfish_loop` root and the inspector falls through to its
     // empty state on first paint).
     const padded = i === 0 ? '04' : String(i).padStart(2, '0');
-    const filename = `${root}_${padded}.mp4`;
+    const ext = format === 'image' ? 'png' : format === 'live' ? 'ndi' : 'mp4';
+    const filename = `${root}_${padded}.${ext}`;
     const asset: MediaAsset = {
       id: filename,
       filename,

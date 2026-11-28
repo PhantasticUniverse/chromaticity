@@ -3,29 +3,16 @@ SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 SPDX-FileCopyrightText: 2026 Chromaticity
 -->
 
-# About this Help corpus
+# About Chromaticity
 
-The Chromaticity Help corpus is a static documentation site built with
-[MkDocs](https://www.mkdocs.org/) using the Material theme. The corpus
-is authored under `docs-corpus/docs/` in the chromaticity source tree,
-built locally with `mkdocs build`, and emitted to `dist/help/` for
-inclusion in the desktop application bundle.
+Chromaticity is a cross-platform GPU shader performance instrument and visual mixer built in Rust, `wgpu`, Tauri, and Svelte 5.
 
-## Authoring posture
+## Core Architecture
 
-All Help corpus content is original chromaticity prose. Per the
-clean-room policy (`docs/29-cleanroom-legal-policy-baseline.md`), no
-text, structure, or per-page taxonomy is derived from any reference
-application's embedded documentation. Authors who land corpus content
-attest to clean-room provenance in the PR body.
+- **Real-time Audio Analysis:** Low-latency FFT band extraction, RMS/peak metering, onset detection, and live zero-restart input hot-swap.
+- **Native `.chroma` Scenes:** Multi-pass GLSL shaders with JSON control schemas, sandboxed scripting, and live hot-reload.
+- **Performance & I/O:** Dedicated **Perform** and **Mix** decks, MIDI learn and performance bindings, bidirectional OSC routing, Syphon/NDI live textures, and crash-safe fMP4 recording.
 
-## Build chain
+## Offline Documentation
 
-The `mkdocs build` step runs locally before `cargo tauri build` so that
-the static HTML output exists at link time and is bundled into the
-desktop binary. CI does not currently run `mkdocs build`; that
-integration is Wave 1d-β release-eng scope.
-
-This is the second placeholder page that exists to validate routing
-between corpus pages. Future waves replace this content with a real
-About / Version / Changelog page.
+All guides in this Help viewer are bundled directly inside Chromaticity so every reference page — from [Hotkeys](hotkeys-reference.md) to [Uniforms](chroma-uniforms.md) and [Supported Codecs](supported-codecs.md) — remains available in offline venue booths.

@@ -125,11 +125,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 <style>
   .welcome {
     position: relative;
-    min-height: 100%;
+    height: 100%;
     display: grid;
     place-items: center;
     overflow: hidden;
-    padding: var(--space-3xl) var(--space-2xl);
+    padding: var(--space-xl) var(--space-2xl);
+    box-sizing: border-box;
   }
 
   /* ---------------- Background gradient blob field ----------------------- */

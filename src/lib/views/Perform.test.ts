@@ -600,7 +600,7 @@ describe('Perform view', () => {
     expect(sceneLabel?.textContent?.trim()).toBe('Glitch');
     expect(container.querySelector('.preview__live-tag')).not.toBeNull();
     expect(container.querySelector('.preview__out-label')?.textContent?.trim()).toBe(
-      'OUT → DISP 2',
+      'STAGE MONITOR',
     );
     // Nav row inside the Scenes panel exposes Previous / Next.
     const scenesPanel = getByLabelText('Scenes');

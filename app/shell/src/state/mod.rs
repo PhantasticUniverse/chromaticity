@@ -176,7 +176,7 @@ pub enum ShellRuntime {
     /// Active production runtime owning both background thread handles.
     Running {
         scheduler_thread: SchedulerThreadHandle,
-        audio: AudioRuntimeHandle,
+        audio: Option<AudioRuntimeHandle>,
     },
     /// Explicitly shut down or dropped.
     Stopped,
@@ -607,6 +607,10 @@ impl AppState {
             Err(p) => p.into_inner(),
         };
         if let ShellRuntime::Running { audio, .. } = &mut *guard {
+            // Explicitly drop the previous audio runtime handle first so
+            // exclusive-mode audio devices (CoreAudio/WASAPI) are released
+            // cleanly before opening the replacement input device.
+            let _ = audio.take();
             let input_gain_handle = self.live_audio_input_gain_handle();
             let audio_config = AudioRuntimeConfig {
                 input_gain_linear: input_gain_handle.get_linear(),
@@ -617,7 +621,7 @@ impl AppState {
             let new_runtime = AudioRuntime::with_preferred_device(preferred_input, audio_config);
             let new_snapshot_handle = new_runtime.snapshot_handle();
             self.install_audio_snapshot_handle(new_snapshot_handle);
-            *audio = new_runtime.spawn();
+            *audio = Some(new_runtime.spawn());
             true
         } else {
             false
@@ -691,7 +695,7 @@ impl AppState {
         }
         *guard = ShellRuntime::Running {
             scheduler_thread,
-            audio,
+            audio: Some(audio),
         };
     }
 
@@ -1204,7 +1208,7 @@ mod app_state_pins {
         let audio = AudioRuntime::new(AudioRuntimeConfig::default()).spawn();
         rt = ShellRuntime::Running {
             scheduler_thread: sched,
-            audio,
+            audio: Some(audio),
         };
         assert_eq!(rt.state_name(), "running");
         assert!(rt.is_running());

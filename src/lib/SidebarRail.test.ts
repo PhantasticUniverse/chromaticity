@@ -30,11 +30,11 @@ describe('SidebarRail shell component', () => {
     expect(nav?.getAttribute('aria-label')).toBe('Primary navigation');
   });
 
-  it('renders 14 top-section entries plus 1 bottom-section entry', () => {
+  it('renders 6 top-section workspace entries plus 1 bottom-section entry', () => {
     const { container } = render(SidebarRail);
     const top = container.querySelectorAll('.sidebar-rail__section--top > li');
     const bottom = container.querySelectorAll('.sidebar-rail__section--bottom > li');
-    expect(top.length).toBe(14);
+    expect(top.length).toBe(6);
     expect(bottom.length).toBe(1);
   });
 
@@ -62,16 +62,8 @@ describe('SidebarRail shell component', () => {
       { label: 'Mix', route: 'mix' },
       { label: 'Library', route: 'library' },
       { label: 'Author', route: 'author' },
-      { label: 'Audio', route: 'audio-uniforms' },
-      { label: 'Playlist', route: 'playlist' },
-      { label: 'Sources', route: 'sources' },
-      { label: 'MIDI', route: 'midi' },
-      { label: 'OSC', route: 'osc' },
-      { label: 'Import', route: 'import' },
-      { label: 'Patch', route: 'patch' },
+      { label: 'I/O', route: 'midi' },
       { label: 'Settings', route: 'settings' },
-      { label: 'License', route: 'license' },
-      { label: 'Welcome', route: 'welcome' },
     ];
     for (const { label, route } of cases) {
       await fireEvent.click(getByTitle(label));
@@ -91,35 +83,20 @@ describe('SidebarRail shell component', () => {
   it('renders an Icon SVG inside every nav button glyph wrapper', () => {
     const { container } = render(SidebarRail);
     const glyphs = container.querySelectorAll('.sidebar-rail__glyph');
-    expect(glyphs.length).toBe(15); // 14 top + 1 bottom
+    expect(glyphs.length).toBe(7); // 6 top + 1 bottom
     for (const glyph of glyphs) {
       const svg = glyph.querySelector('svg');
       expect(svg).not.toBeNull();
-      expect(svg?.getAttribute('width')).toBe('20');
-      expect(svg?.getAttribute('height')).toBe('20');
+      expect(svg?.getAttribute('width')).toBe('18');
+      expect(svg?.getAttribute('height')).toBe('18');
     }
   });
 
-  it('renders the bundle-canonical labels in the bundle order', () => {
+  it('renders the consolidated workspace labels in order', () => {
     const { container } = render(SidebarRail);
     const labels = Array.from(
       container.querySelectorAll('.sidebar-rail__section--top .sidebar-rail__label'),
     ).map((n) => n.textContent);
-    expect(labels).toEqual([
-      'Perform',
-      'Mix',
-      'Library',
-      'Author',
-      'Audio',
-      'Playlist',
-      'Sources',
-      'MIDI',
-      'OSC',
-      'Import',
-      'Patch',
-      'Settings',
-      'License',
-      'Welcome',
-    ]);
+    expect(labels).toEqual(['Perform', 'Mix', 'Library', 'Author', 'I/O', 'Settings']);
   });
 });

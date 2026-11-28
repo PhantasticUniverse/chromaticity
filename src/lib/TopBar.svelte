@@ -277,7 +277,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   const oscListenPort = $derived(settingsStore.snapshot.osc.port);
   const routeSubtitle = $derived(
     routeStore.current === 'osc'
-      ? `OSC · LISTENING — Port ${oscListenPort}`
+      ? oscHealthStore.snapshot?.state === 'Healthy'
+        ? `OSC · LISTENING — Port ${oscListenPort}`
+        : `OSC · PREVIEW — Port ${oscListenPort}`
       : ROUTE_TITLES[routeStore.current],
   );
 
@@ -743,30 +745,32 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   </div>
 
   <div class="top-bar__hud">
-    <div class="top-bar__pills" role="group" aria-label="Adapter status">
-      <AdapterPill kind="OUT" state={outState} detail={outDetail} />
-      <AdapterPill kind="AUDIO" state={audioState} detail={audioDetail} />
-      <AdapterPill kind="MIDI" state={midiState} detail={midiDetail} />
-      <AdapterPill kind="OSC" state={oscState} detail={oscDetail} />
-    </div>
-    <span
-      class="top-bar__metric"
-      title={liveFps !== null
-        ? 'Live GPU frames per second (from cached wgpu pipeline)'
-        : 'Frames per second (bundle placeholder)'}
-    >
-      <span class="top-bar__metric-unit">fps</span>
-      <span class="top-bar__metric-value">{fpsDisplay}</span>
-    </span>
-    <span
-      class="top-bar__metric"
-      title={liveGpuPct !== null
-        ? 'Live GPU 60 Hz frame-time budget utilization'
-        : 'GPU utilization (Wave 2.2+: real telemetry via ADR-011)'}
-    >
-      <span class="top-bar__metric-unit">gpu</span>
-      <span class="top-bar__metric-value" data-testid="top-bar-gpu-value">{gpuDisplay}</span>
-    </span>
+    {#if !isWelcomeRoute}
+      <div class="top-bar__pills" role="group" aria-label="Adapter status">
+        <AdapterPill kind="OUT" state={outState} detail={outDetail} />
+        <AdapterPill kind="AUDIO" state={audioState} detail={audioDetail} />
+        <AdapterPill kind="MIDI" state={midiState} detail={midiDetail} />
+        <AdapterPill kind="OSC" state={oscState} detail={oscDetail} />
+      </div>
+      <span
+        class="top-bar__metric"
+        title={liveFps !== null
+          ? 'Live GPU frames per second (from cached wgpu pipeline)'
+          : 'Frames per second (no live render loop)'}
+      >
+        <span class="top-bar__metric-unit">fps</span>
+        <span class="top-bar__metric-value">{fpsDisplay}</span>
+      </span>
+      <span
+        class="top-bar__metric"
+        title={liveGpuPct !== null
+          ? 'Live GPU 60 Hz frame-time budget utilization'
+          : 'GPU utilization (no live telemetry)'}
+      >
+        <span class="top-bar__metric-unit">gpu</span>
+        <span class="top-bar__metric-value" data-testid="top-bar-gpu-value">{gpuDisplay}</span>
+      </span>
+    {/if}
     {#if routeStore.current === 'perform'}
       <!-- Wave 2.1 Lane B.2 camera stub + Phase 7a live fMP4 recorder toggle. -->
       <button

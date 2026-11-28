@@ -56,8 +56,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     AUDIO_INPUT_GAIN_DB_RANGE_DB,
     AUDIO_LATENCY_HINTS,
     AUDIO_METER_BARS,
-    AUDIO_METER_LEVEL,
-    AUDIO_METER_PEAK,
     AUDIO_OUTPUT_DEVICES,
     AUDIO_SAMPLE_RATES,
     BACKUP_RETENTION_OPTIONS,
@@ -180,21 +178,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   const peakHold = new PeakHold();
   const silenceGate = new SilenceGate();
 
-  const FIXTURE_LEVEL_DB = ampToDb(AUDIO_METER_LEVEL);
-  const FIXTURE_PEAK_DB = ampToDb(AUDIO_METER_PEAK);
-
-  let meterLevelDb = $state<number>(FIXTURE_LEVEL_DB);
-  let meterPeakDb = $state<number>(FIXTURE_PEAK_DB);
-  let meterSilent = $state<boolean>(false);
+  let meterLevelDb = $state<number>(-60);
+  let meterPeakDb = $state<number>(-60);
+  let meterSilent = $state<boolean>(true);
   let _lastSnapMs = 0;
   let _meterSeeded = false;
 
   $effect(() => {
     const snap = audioSnapshotStore.snapshot;
     if (!snap) {
-      meterLevelDb = FIXTURE_LEVEL_DB;
-      meterPeakDb = FIXTURE_PEAK_DB;
-      meterSilent = false;
+      meterLevelDb = -60;
+      meterPeakDb = -60;
+      meterSilent = true;
       _meterSeeded = false;
       levelEnv.reset();
       peakBallistics.reset();
@@ -697,7 +692,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             <a href="https://rogueamoeba.com/loopback/" target="_blank" rel="noopener noreferrer"
               >Loopback</a
             >
-            and select it here. Restart to apply device changes.
+            and select it here.
           </p>
         </div>
         <div class="settings__field">

@@ -283,10 +283,10 @@ describe('MIDI view', () => {
     expect(lastDown?.disabled).toBe(true);
   });
 
-  it('renders the MTC readout panel with the canonical fixture timecode and uniform name', () => {
+  it('renders the MTC readout panel with honest idle timecode when no MIDI devices are connected', () => {
     const { container, getByText } = render(MIDI);
-    expect(getByText(MIDI_MTC.timecode)).toBeInTheDocument();
-    expect(getByText(MIDI_MTC.framerate)).toBeInTheDocument();
+    expect(getByText('00:00:00:00')).toBeInTheDocument();
+    expect(getByText('idle')).toBeInTheDocument();
     expect(container.querySelector('.midi__mtc-uniform')?.textContent).toBe(MIDI_MTC.uniformName);
   });
 
@@ -615,7 +615,7 @@ describe('MIDI view', () => {
   it('MTC panel exposes the canonical assembly-state prose alongside the uniform name', () => {
     const { container } = render(MIDI);
     const prose = container.querySelector('.midi__mtc-prose');
-    expect(prose?.textContent).toContain('locked');
+    expect(prose?.textContent).toContain('idle');
     expect(prose?.textContent).toContain(MIDI_MTC.uniformName);
   });
 

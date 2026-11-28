@@ -59,7 +59,6 @@ import { ampToDb, dbToFraction } from '../audio/metering';
 import {
   AUDIO_INPUT_DEVICES,
   AUDIO_METER_BARS,
-  AUDIO_METER_LEVEL,
   AUDIO_OUTPUT_DEVICES,
   AUDIO_SAMPLE_RATES,
   COLOR_SPACE_OPTIONS,
@@ -294,27 +293,19 @@ describe('Settings view', () => {
   it('Audio Device renders the Monitoring meter widget with its aria label', () => {
     const { container } = render(Settings);
     const audio = getSection(container, 'Audio Device');
-    expect(within(audio).getByLabelText('Audio input monitor')).toBeInTheDocument();
+    expect(within(audio).getByLabelText(/Audio input monitor/)).toBeInTheDocument();
   });
 
   it('Audio Device monitoring meter reflects audioSnapshotStore.snapshot.rms', async () => {
-    // Dual-mode posture: with no live snapshot the Meter shows the
-    // bundle-faithful fixture (`rms = 0.68`). Injecting a snapshot drives
-    // the shared dt-aware ballistics (which seed instantly on the first
-    // live sample), and the Meter's on-segment density reflects the new
-    // level — now on the LOGARITHMIC dBFS scale, so the lit count is
-    // `round(dbToFraction(ampToDb(rms)) * bars)`, not `floor(rms*bars)`.
-    // Expectations are derived from the metering helpers so they track
-    // any scale retune.
     const onCountFor = (amp: number): number =>
       Math.round(dbToFraction(ampToDb(amp)) * AUDIO_METER_BARS);
 
     const { container } = render(Settings);
     const audio = getSection(container, 'Audio Device');
-    const meter = within(audio).getByLabelText('Audio input monitor');
-    // Baseline: fixture-driven (AUDIO_METER_LEVEL), dB-scaled.
+    const meter = within(audio).getByLabelText(/Audio input monitor/);
+    // Baseline: honestly silent (0 lit bars) when no live audio snapshot is active.
     const baselineOn = meter.querySelectorAll('.meter-bar.on').length;
-    expect(baselineOn).toBe(onCountFor(AUDIO_METER_LEVEL));
+    expect(baselineOn).toBe(0);
     // Inject a live snapshot with a distinct (quieter) rms and re-assert.
     audioSnapshotStore.snapshot = {
       bpm: 120,

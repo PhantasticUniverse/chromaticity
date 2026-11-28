@@ -639,7 +639,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     border-color: var(--color-primary);
   }
   .import__input:disabled {
-    opacity: 0.5;
+    opacity: 0.75;
     cursor: not-allowed;
   }
 

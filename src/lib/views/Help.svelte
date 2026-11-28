@@ -97,6 +97,45 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     return blocks;
   }
 
+  interface InlineSegment {
+    readonly kind: 'text' | 'code' | 'bold' | 'link';
+    readonly text: string;
+    readonly slug?: string;
+  }
+
+  function parseInline(input: string): readonly InlineSegment[] {
+    const out: InlineSegment[] = [];
+    const tokenRe = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/gu;
+    let last = 0;
+    for (const match of input.matchAll(tokenRe)) {
+      const idx = match.index ?? 0;
+      if (idx > last) {
+        out.push({ kind: 'text', text: input.slice(last, idx) });
+      }
+      const raw = match[0];
+      if (raw.startsWith('`') && raw.endsWith('`')) {
+        out.push({ kind: 'code', text: raw.slice(1, -1) });
+      } else if (raw.startsWith('**') && raw.endsWith('**')) {
+        out.push({ kind: 'bold', text: raw.slice(2, -2) });
+      } else {
+        const m = /^\[([^\]]+)\]\(([^)]+)\)$/u.exec(raw);
+        if (m) {
+          const label = m[1] ?? raw;
+          const href = m[2] ?? '';
+          const slug = href.endsWith('.md') ? href.replace(/\.md$/u, '') : undefined;
+          out.push(slug ? { kind: 'link', text: label, slug } : { kind: 'text', text: label });
+        } else {
+          out.push({ kind: 'text', text: raw });
+        }
+      }
+      last = idx + raw.length;
+    }
+    if (last < input.length) {
+      out.push({ kind: 'text', text: input.slice(last) });
+    }
+    return out;
+  }
+
   const fallbackBlocks = $derived(loadBundledMarkdown(helpStore.selectedSlug));
 
   let resolvedSrc = $state<string | null>(null);
@@ -157,11 +196,50 @@ SPDX-FileCopyrightText: 2026 Chromaticity
             {:else if block.kind === 'h3'}
               <h4 class="help__doc-h3">{block.text}</h4>
             {:else if block.kind === 'li'}
-              <p class="help__doc-li">• {block.text}</p>
+              <p class="help__doc-li">
+                <span class="help__doc-bullet" aria-hidden="true">•</span>
+                <span>
+                  {#each parseInline(block.text) as seg, j (j)}
+                    {#if seg.kind === 'code'}
+                      <code class="help__doc-inline-code">{seg.text}</code>
+                    {:else if seg.kind === 'bold'}
+                      <strong>{seg.text}</strong>
+                    {:else if seg.kind === 'link' && seg.slug}
+                      <button
+                        type="button"
+                        class="help__doc-link"
+                        onclick={() => helpStore.set(seg.slug!)}
+                      >
+                        {seg.text}
+                      </button>
+                    {:else}
+                      {seg.text}
+                    {/if}
+                  {/each}
+                </span>
+              </p>
             {:else if block.kind === 'code'}
               <pre class="help__doc-code"><code>{block.text}</code></pre>
             {:else}
-              <p class="help__doc-p">{block.text}</p>
+              <p class="help__doc-p">
+                {#each parseInline(block.text) as seg, j (j)}
+                  {#if seg.kind === 'code'}
+                    <code class="help__doc-inline-code">{seg.text}</code>
+                  {:else if seg.kind === 'bold'}
+                    <strong>{seg.text}</strong>
+                  {:else if seg.kind === 'link' && seg.slug}
+                    <button
+                      type="button"
+                      class="help__doc-link"
+                      onclick={() => helpStore.set(seg.slug!)}
+                    >
+                      {seg.text}
+                    </button>
+                  {:else}
+                    {seg.text}
+                  {/if}
+                {/each}
+              </p>
             {/if}
           {/each}
         </article>
@@ -352,8 +430,36 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     margin: 0 0 var(--space-sm);
   }
   .help__doc-li {
-    margin: 0 0 4px;
-    padding-left: var(--space-md);
+    margin: 0 0 6px;
+    padding-left: var(--space-sm);
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .help__doc-bullet {
+    color: var(--color-info);
+    flex-shrink: 0;
+  }
+  .help__doc-inline-code {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    padding: 1px 5px;
+    border-radius: var(--radius-xs);
+    background: var(--color-bg-3);
+    border: 1px solid var(--color-line-1);
+    color: var(--color-info);
+  }
+  .help__doc-link {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--color-info);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .help__doc-link:hover {
+    color: var(--color-primary);
   }
   .help__doc-code {
     margin: var(--space-sm) 0 var(--space-md);

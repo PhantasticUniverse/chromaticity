@@ -46,47 +46,56 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     readonly route: RouteName;
     readonly label: string;
     readonly icon: IconName;
+    readonly groupRoutes?: readonly RouteName[];
     readonly dividerBefore?: boolean;
   }
 
-  interface DisabledEntry {
-    readonly label: string;
-    readonly icon: IconName;
-    readonly section: 'top' | 'bottom';
-    readonly dividerBefore?: boolean;
-  }
-
-  // Grouped visually into 4 semantic clusters via subtle horizontal dividers
-  // (Live Stage | Create & Assets | Control & I/O | System) while preserving
-  // canonical route ordering and full keyboard/a11y parity.
-  const NAV_TOP: readonly (NavEntry | DisabledEntry)[] = [
+  // Consolidated 6-workspace + 1-utility labeled rail:
+  //   Live Stage: Perform, Mix
+  //   Content & Create: Library (Scenes/Playlist/Sources/Import), Author (Editor/Audio/Patch)
+  //   Control: I/O (MIDI/OSC)
+  //   System: Settings (Preferences/License), Help
+  const NAV_TOP: readonly NavEntry[] = [
     { route: 'perform', label: 'Perform', icon: 'perform' },
     { route: 'mix', label: 'Mix', icon: 'layers' },
-    { route: 'library', label: 'Library', icon: 'library', dividerBefore: true },
-    { route: 'author', label: 'Author', icon: 'edit' },
-    { route: 'audio-uniforms', label: 'Audio', icon: 'audio' },
-    { route: 'playlist', label: 'Playlist', icon: 'list' },
-    { route: 'sources', label: 'Sources', icon: 'media' },
-    { route: 'midi', label: 'MIDI', icon: 'midi', dividerBefore: true },
-    { route: 'osc', label: 'OSC', icon: 'link' },
-    { route: 'import', label: 'Import', icon: 'plus' },
-    { route: 'patch', label: 'Patch', icon: 'cpu' },
-    { route: 'settings', label: 'Settings', icon: 'settings', dividerBefore: true },
-    { route: 'license', label: 'License', icon: 'lock' },
-    { route: 'welcome', label: 'Welcome', icon: 'heart' },
+    {
+      route: 'library',
+      label: 'Library',
+      icon: 'library',
+      groupRoutes: ['library', 'playlist', 'sources', 'import'],
+      dividerBefore: true,
+    },
+    {
+      route: 'author',
+      label: 'Author',
+      icon: 'edit',
+      groupRoutes: ['author', 'audio-uniforms', 'patch'],
+    },
+    {
+      route: 'midi',
+      label: 'I/O',
+      icon: 'midi',
+      groupRoutes: ['midi', 'osc'],
+      dividerBefore: true,
+    },
+    {
+      route: 'settings',
+      label: 'Settings',
+      icon: 'settings',
+      groupRoutes: ['settings', 'license'],
+      dividerBefore: true,
+    },
   ] as const;
 
-  // Wave 1d-α PR 1 promotes the Help bottom-section entry from a
-  // disabled stub to a routed view (`views/Help.svelte`). The Account
-  // entry remains disabled pending entitlement-tier UI work. The
-  // bottom-section list now mixes wired + disabled entries; the
-  // `isWired` discriminator below already covers both shapes.
-  const NAV_BOTTOM: readonly (NavEntry | DisabledEntry)[] = [
-    { route: 'help', label: 'Help', icon: 'help' },
+  const NAV_BOTTOM: readonly NavEntry[] = [
+    { route: 'help', label: 'Help', icon: 'help', groupRoutes: ['help', 'welcome'] },
   ] as const;
 
-  function isWired(entry: NavEntry | DisabledEntry): entry is NavEntry {
-    return 'route' in entry;
+  function isEntryActive(entry: NavEntry): boolean {
+    if (entry.groupRoutes) {
+      return entry.groupRoutes.includes(routeStore.current);
+    }
+    return routeStore.current === entry.route;
   }
 </script>
 
@@ -94,68 +103,38 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   <ul class="sidebar-rail__section sidebar-rail__section--top">
     {#each NAV_TOP as entry (entry.label)}
       <li class:sidebar-rail__item--divider={entry.dividerBefore === true}>
-        {#if isWired(entry)}
-          <button
-            type="button"
-            class="sidebar-rail__btn"
-            class:active={routeStore.current === entry.route}
-            aria-current={routeStore.current === entry.route ? 'page' : undefined}
-            title={entry.label}
-            onclick={() => routeStore.set(entry.route)}
-          >
-            <span class="sidebar-rail__glyph">
-              <Icon name={entry.icon} size={20} />
-            </span>
-            <span class="sidebar-rail__label">{entry.label}</span>
-          </button>
-        {:else}
-          <button
-            type="button"
-            class="sidebar-rail__btn"
-            aria-disabled="true"
-            disabled
-            title="{entry.label} — coming in W17+"
-          >
-            <span class="sidebar-rail__glyph">
-              <Icon name={entry.icon} size={20} />
-            </span>
-            <span class="sidebar-rail__label">{entry.label}</span>
-          </button>
-        {/if}
+        <button
+          type="button"
+          class="sidebar-rail__btn"
+          class:active={isEntryActive(entry)}
+          aria-current={isEntryActive(entry) ? 'page' : undefined}
+          title={entry.label}
+          onclick={() => routeStore.set(entry.route)}
+        >
+          <span class="sidebar-rail__glyph">
+            <Icon name={entry.icon} size={18} />
+          </span>
+          <span class="sidebar-rail__label">{entry.label}</span>
+        </button>
       </li>
     {/each}
   </ul>
   <ul class="sidebar-rail__section sidebar-rail__section--bottom">
     {#each NAV_BOTTOM as entry (entry.label)}
       <li>
-        {#if isWired(entry)}
-          <button
-            type="button"
-            class="sidebar-rail__btn"
-            class:active={routeStore.current === entry.route}
-            aria-current={routeStore.current === entry.route ? 'page' : undefined}
-            title={entry.label}
-            onclick={() => routeStore.set(entry.route)}
-          >
-            <span class="sidebar-rail__glyph">
-              <Icon name={entry.icon} size={20} />
-            </span>
-            <span class="sidebar-rail__label">{entry.label}</span>
-          </button>
-        {:else}
-          <button
-            type="button"
-            class="sidebar-rail__btn"
-            aria-disabled="true"
-            disabled
-            title="{entry.label} — coming in W17+"
-          >
-            <span class="sidebar-rail__glyph">
-              <Icon name={entry.icon} size={20} />
-            </span>
-            <span class="sidebar-rail__label">{entry.label}</span>
-          </button>
-        {/if}
+        <button
+          type="button"
+          class="sidebar-rail__btn"
+          class:active={isEntryActive(entry)}
+          aria-current={isEntryActive(entry) ? 'page' : undefined}
+          title={entry.label}
+          onclick={() => routeStore.set(entry.route)}
+        >
+          <span class="sidebar-rail__glyph">
+            <Icon name={entry.icon} size={18} />
+          </span>
+          <span class="sidebar-rail__label">{entry.label}</span>
+        </button>
       </li>
     {/each}
   </ul>
@@ -195,15 +174,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     width: 100%;
   }
   .sidebar-rail__btn {
-    width: 36px;
-    height: 36px;
-    display: grid;
-    place-items: center;
+    width: 54px;
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
     background: transparent;
     color: var(--color-text-2);
     border: none;
     border-radius: var(--radius-sm);
-    padding: 0;
+    padding: 5px 2px;
     position: relative;
     cursor: pointer;
     transition:
@@ -222,13 +204,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     background: var(--color-bg-3);
     color: var(--color-primary);
   }
-  /* Bundle-faithful accent strip on the active icon — `styles.css`
-   * lines 213 `.rail-btn.active::before`. Carves a 2 px primary tick
-   * down the left edge of the active button. */
   .sidebar-rail__btn.active::before {
     content: '';
     position: absolute;
-    left: -6px;
+    left: -5px;
     top: 6px;
     bottom: 6px;
     width: 2px;
@@ -241,28 +220,20 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     cursor: not-allowed;
   }
   .sidebar-rail__glyph {
-    /* Icon inherits `currentColor` from the surrounding button text
-     * color cascade. */
     display: inline-flex;
     align-items: center;
     justify-content: center;
     line-height: 0;
     color: inherit;
   }
-  /* G.1 — labels stay in the DOM (screen readers + Vitest suites
-   * that query `.sidebar-rail__label` text) but are visually hidden
-   * to match the bundle's icon-only rail. The button's native
-   * `title` attribute provides the hover tooltip. */
   .sidebar-rail__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
+    font-family: var(--font-family-sans);
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    color: inherit;
     white-space: nowrap;
-    border: 0;
   }
   .sidebar-rail__item--divider {
     position: relative;

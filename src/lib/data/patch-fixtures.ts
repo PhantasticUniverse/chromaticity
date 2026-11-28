@@ -83,7 +83,7 @@ export const PATCH_NODES: readonly PatchNode[] = [
   {
     id: 'audio',
     x: 40,
-    y: 80,
+    y: 175,
     w: 200,
     title: 'Audio Input',
     kind: 'source',
@@ -92,7 +92,7 @@ export const PATCH_NODES: readonly PatchNode[] = [
   {
     id: 'scene',
     x: 290,
-    y: 40,
+    y: 24,
     w: 220,
     title: 'Scene: Glitch',
     kind: 'scene',
@@ -101,7 +101,7 @@ export const PATCH_NODES: readonly PatchNode[] = [
   {
     id: 'color',
     x: 560,
-    y: 200,
+    y: 220,
     w: 220,
     title: 'Color Processor',
     kind: 'fx',
@@ -110,7 +110,7 @@ export const PATCH_NODES: readonly PatchNode[] = [
   {
     id: 'lfo',
     x: 40,
-    y: 300,
+    y: 350,
     w: 200,
     title: 'LFO · 1/4',
     kind: 'mod',
@@ -119,7 +119,7 @@ export const PATCH_NODES: readonly PatchNode[] = [
   {
     id: 'midi',
     x: 40,
-    y: 420,
+    y: 440,
     w: 200,
     title: 'MIDI · Launchpad X',
     kind: 'source',

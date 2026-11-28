@@ -125,7 +125,7 @@ describe('TopBar shell component', () => {
     // the next microtask to give the effect graph one tick to flush.
     await Promise.resolve();
     expect(container.querySelector('.top-bar__title')?.textContent).toBe(
-      'OSC · LISTENING — Port 9000',
+      'OSC · PREVIEW — Port 9000',
     );
   });
 

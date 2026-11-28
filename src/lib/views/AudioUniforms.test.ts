@@ -299,9 +299,9 @@ describe('AudioUniforms view', () => {
     expect(grid).not.toBeNull();
     if (grid === null) return;
     const inGrid = within(grid);
-    // Scalar card: syn_BPM displayValue 128.0 + label "beats/min".
+    // Scalar card: syn_BPM displayValue 120.0 + label "beats/min".
     expect(inGrid.getByText('syn_BPM')).toBeInTheDocument();
-    expect(inGrid.getByText('128.0')).toBeInTheDocument();
+    expect(inGrid.getByText('120.0')).toBeInTheDocument();
     expect(getByText('beats/min')).toBeInTheDocument();
     // Bool card: syn_OnBeat label "1 on downbeat" + LED element.
     expect(inGrid.getByText('syn_OnBeat')).toBeInTheDocument();
