@@ -285,7 +285,8 @@ pub enum DjDeviceKind {
     DjmA9,
     /// Pioneer DJ DJM-900NXS2 4-channel club mixer (10ch/12ch USB interface).
     Djm900Nxs2,
-    /// Rekordbox PC Master Out / Core Audio Process Tap (`com.pioneerdj.rekordboxdj`).
+    /// Rekordbox PC Master Out captured through the system-wide Core Audio
+    /// tap (the tap is not scoped to `com.pioneerdj.rekordboxdj`).
     RekordboxPcMasterOut,
     /// Unrecognized multi-channel or stereo audio device.
     GenericMultiChannel,
@@ -553,7 +554,7 @@ impl DjDeviceProfile {
             cue_pair: None,
             cue_label: None,
             supports_pc_master_out: true,
-            notes: "Rekordbox PC MASTER OUT mirrors Master-only audio to macOS output and already strips Headphone Cue; tap via ADR-022 Core Audio Process Tap targeting com.pioneerdj.rekordboxdj."
+            notes: "Rekordbox PC MASTER OUT mirrors Master-only audio to macOS output and already strips Headphone Cue. Select System Audio: the ADR-022 Core Audio tap captures all system output (not Rekordbox alone), so route PC MASTER OUT to the system output and keep other apps quiet."
                 .to_owned(),
         }
     }
