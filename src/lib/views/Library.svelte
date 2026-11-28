@@ -741,6 +741,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           seed={sceneSeedFromMetadata(selectedCard)}
           audio
           gpuLive={loadedSceneStore.snapshot?.id === selectedCard.id}
+          scenePath={selectedCard.path}
           ariaLabel={`Preview of ${selectedCard.title || selectedCard.id}`}
         />
       </div>

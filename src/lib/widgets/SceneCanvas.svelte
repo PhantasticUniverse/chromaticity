@@ -109,6 +109,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     maxWidth?: number;
     /** Optional GPU render height cap (default 270 for preview tiles; 720+ for Stage Output). */
     maxHeight?: number;
+    /** Optional `.chroma` scene path (e.g. `bundled://gm-kerr-hologram-orrery.chroma`) used
+     *  to display the scene's Metal thumbnail when live GPU streaming is unavailable. */
+    scenePath?: string | undefined;
   };
 
   let {
@@ -121,11 +124,34 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     gpuLive = false,
     maxWidth = 480,
     maxHeight = 270,
+    scenePath,
   }: Props = $props();
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let reduceMotion = $state(false);
   let gpuActive = $state(false);
+  let fallbackThumbImg: HTMLImageElement | null = null;
+
+  $effect(() => {
+    const path = scenePath?.trim();
+    fallbackThumbImg = null;
+    if (!path || !path.startsWith('bundled://') || typeof Image === 'undefined') {
+      return;
+    }
+    const slug = path.replace(/^bundled:\/\//, '').replace(/\.chroma$/, '');
+    if (!slug) return;
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (!cancelled) {
+        fallbackThumbImg = img;
+      }
+    };
+    img.src = `/scene-thumbs/${slug}.jpg`;
+    return () => {
+      cancelled = true;
+    };
+  });
 
   $effect(() => {
     if (!gpuLive) {
@@ -455,7 +481,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         rawLvl = 0.3;
       }
       smLvl = smLvl + (rawLvl - smLvl) * LVL_EMA;
-      draw(t, smLvl, frame.kind, frame.seed, frame.controls);
+      if (fallbackThumbImg && fallbackThumbImg.naturalWidth > 0) {
+        const scale = 1 + smLvl * 0.025;
+        const dw = c.width * scale;
+        const dh = c.height * scale;
+        ctx.drawImage(fallbackThumbImg, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
+      } else {
+        draw(t, smLvl, frame.kind, frame.seed, frame.controls);
+      }
       pushFrameIfRecording(c);
       raf = requestAnimationFrame(loop);
     };
