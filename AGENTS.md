@@ -7,9 +7,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
 Fast-start operating guide for AI coding agents working in Chromaticity.
 
-> **Deep project memory:** Read [CLAUDE.md](CLAUDE.md) for phase progression, evidence narrowings,
-> GitHub PR/rebase gotchas, parallelism rules, and UI wireframe references. Nothing in `CLAUDE.md`
-> is superseded by this file; when in doubt, the source tree wins.
+> **Deep project memory:** Historical phase/wave notes are archived in
+> [docs/archive/claude-legacy-notes.md](docs/archive/claude-legacy-notes.md). `CLAUDE.md` is a
+> symlink to this file so agent instructions stay single-source. When in doubt, the source tree wins.
 
 ## Agent Fast-Start & Zero-Friction Guardrails
 
@@ -62,7 +62,7 @@ Required CI check for every Rust file under `engine/**`, `integrations/**`, or `
   ```
 - The tier token `(T0)`, `(T1)`, or `(T2)` must sit **immediately** after the `EV-<ID>`.
 - Every cited `EV-<ID>` **MUST** exist as a table row key (`| \`EV-...\` |`) in
-`docs/26-evidence-artifact-registry.md`.
+`docs/governance/26-evidence-artifact-registry.md`.
 - Verify locally with `bash scripts/evidence-tag-lint.sh`.
 
 ### 4. Rust Guardrails (`Cargo.toml` workspace lints)
@@ -115,7 +115,7 @@ Required CI check for every Rust file under `engine/**`, `integrations/**`, or `
 | Agent Feedback Digest      | `src/lib/stores/sceneFeedback.svelte.ts`                 | `exportAgentDigest()` + `localStorage` mirror                                                                                                                                            |
 | Feedback disk persistence  | `app/shell/src/commands/feedback.rs`                     | `<app_data_dir>/scene-feedback.json` (`app.chromaticity.desktop`)                                                                                                                        |
 | WCAG AA test corpus        | `src/lib/__tests__/accessibility/wcag-aa-corpus.test.ts` | Automated `axe-core` audit across routed views                                                                                                                                           |
-| Evidence registry          | `docs/26-evidence-artifact-registry.md`                  | Authoritative `EV-*` ID table for `evidence-tag-lint.sh`                                                                                                                                 |
+| Evidence registry          | `docs/governance/26-evidence-artifact-registry.md`       | Authoritative `EV-*` ID table for `evidence-tag-lint.sh`                                                                                                                                 |
 | Engine crate wiring        | `app/shell/Cargo.toml`                                   | `engine/observability` is library-only (not wired into shell); `integrations/syphon-adapter` is macOS-gated; all other `engine/*` and `integrations/*` crates are wired into `app/shell` |
 
 ### 7. Fast Verification Checklist

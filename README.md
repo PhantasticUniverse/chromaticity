@@ -28,168 +28,70 @@ repository is **source-visible** under `LicenseRef-Chromaticity-Proprietary`
 
 ```bash
 npm install
+npm run dev:doctor     # check Node, Rust, hooks, and optional CI tools
+npx lefthook install   # install pre-commit / commit-msg / pre-push hooks
 npm run tauri dev
+```
+
+Run fast verification gates before pushing:
+
+```bash
+npm run verify:fast
 ```
 
 ### Build Standalone Desktop Bundle
 
-Requires `mkdocs` (`pip install mkdocs-material`) for the in-app help corpus
-(`beforeBuildCommand` runs `npm run build:bundle` automatically):
+Requires `mkdocs` (`pip install mkdocs-material`) if rebuilding the in-app help corpus
+(`resources/help/` is decoupled from Vite's `dist/` so `npm run build` never clobbers help):
 
 ```bash
+npm run build:help
 npx tauri build --bundles app
 ```
 
 ## Status
 
-**Phases 1 through 4a EXIT achieved; Phase 4b passable at AO discretion;
-Phase 4d at 5 of 6.** The repository carries active application and
-engine code (Tauri 2 + Svelte 5 + TypeScript + Rust 2024) with policy,
-evidence, and CI gates running continuously on `main`. Phased rollup per
-`docs/26-evidence-artifact-registry.md`:
-
-- **Phase 1 EXIT** — closed at commit `e818752` (W12, April 2026) with
-  all six gate evidence rows `Pass`.
-- **Phase 2 EXIT** — closed 2026-05-01 at commit `d8e92db` with the four
-  foundational rows (`EV-RENDER-CONFORMANCE`, `EV-SCRIPT-CONTRACT`,
-  `EV-AUDIO-TRACE`, `EV-SANDBOX-SAFETY`) `Pass` against a green
-  workspace nextest run.
-- **Phase 3 EXIT** — closed 2026-05-01 at commit `953fd74` with seven of
-  the eight Phase-3 gate rows `Pass`; the eighth
-  (`EV-COLOR-MANAGEMENT-SRGB`) is explicitly deferred per AO direction
-  sequenced behind a future render-HUD-diagnostics PR.
-- **Phase 4a EXIT** — achieved 2026-05-03. Wave 1c-α-2 production audio
-  bootstrap closure landed 2026-05-06; Wave 1c-β camera + Syphon
-  adapter cluster closure landed 2026-05-07 under synthetic-narrowing
-  (per-platform concrete bindings + hardware validation deferred as
-  known follow-ups).
-- **Phase 4b EXIT** — passable at AO discretion as of 2026-05-07; all
-  eleven Phase-4b rows at `Pass` under collective narrowings (Wave 4b.1
-  through 4b.8 inclusive).
-- **Phase 4c EXIT** — remains AO-held.
-- **Phase 4d** — five of six rows at `Pass`; `EV-ANALYTICS-ZERO-DEFAULT`
-  calendar-gated to ~2026-05-20 closes the sixth.
-
-V1-RC content closure (Wave 1d: in-app help corpus + bundled scene
-starter library) and Phase-5 release pipeline scaffold (Wave 1e: signing
-script stubs + `tauri-plugin-updater` + `release.yml` workflow) both
-landed on `main` 2026-05-10 (PRs `#425`-`#430`). `EV-DOCS-CORPUS` and
-`EV-LIBRARY-CORPUS-MIN` reached `Pass` (11 corpus pages bundled via
-`docs-corpus/` mkdocs source tree; 12 `.chroma` scenes spanning five
-feature surfaces under `engine/scene/tests/fixtures/scenes/`); since
-this morning's fanout `EV-PERF-BUDGETS` also carries forward at `Pass`
-under the per-bench 2x loose-floor + composite-sum 1.25 ms hard-budget
-posture. The `release.yml` workflow validated end-to-end via a
-synthetic-signing smoke test (run `25628685936`); production cert
-procurement remains AO-gated and `EV-RELEASE-PIPELINE` stays at
-`Planned` until then. Phase 0 governance and clean-room baseline ADRs
-remain authoritative throughout.
-
-Pre-alpha smoke testing on 2026-05-11 surfaced that ~60% of cross-seam
-IPC was gapped despite the v0.2-beta UI port being wireframe-faithful
-complete. Wave 2.1 (2026-05-11) closed the gap in a single day across
-11 PRs (`#435`-`#445`) covering scene load + control dispatch + snap +
-preset / playlist + Perform STANDARD/CONSOLE variant + top bar HUD +
-Settings TOML persistence + MIDI device list + learn-mode capture +
-OSC route inspection. Wave 2.2 R.1 (`#448`) then wired the v0.2-beta
-bundle's 16 procedural Canvas2D scene renderers into the Perform /
-Library / Playlist / Author preview panes; Wave 2.3 Q.1 + Q.2
-(`#449` / `#450`) fixed ResizeObserver flicker + DPR-on-retina +
-audio-gate widening and brought Perform's STANDARD layout to
-wireframe fidelity. Wave 2.4 (2026-05-13) shipped page-by-page
-wiring solidification on the Perform page across 6 PRs (`#451`-`#456`)
-adding action buttons (Default / Random / Lock-all) + scene-list
-click-to-load + `Command::PresetSave` engine surface + adapter-pill
-liveness + media-tab filter + SnapBar slot labels with right-click
-rename. Wave 2.5 (2026-05-13) followed on the Library page across 5
-PRs (`#457`-`#461`) adding card SceneStill thumbnails + favorites + a
-source / sort / recent filter axis + the canonical bundle sidebar
-preview pane with Open-in-Author handoff + empty-state polish + a
-double-click → Perform handoff. The `DESIGN.md` token contract was
-reconciled against the rendered shell post-Wave-2.4 (`#462`). Wave 2.6
-(Audio page, 2026-05-13) shipped 5 PRs (`#463`-`#469`) closing live
-audio-snapshot consumption through the Audio view widgets. Wave 2.7
-(Settings page, 2026-05-13) shipped 4 PRs (`#471`-`#474`) closing
-tempo / theme TOML persistence, storage + live-sources pickers, output
-device enumeration, and reset / about. Wave 2.8 (cross-cutting fixes,
-2026-05-15 through 2026-05-16) shipped 6 PRs (`#476`-`#481`) covering
-local scenes / media folders, meter EMA smoothing, operator
-audio-input-device honoured at startup, renderer default-state speed
-bump, SceneCanvas control pre-multiplier, and AudioReactivity band
-label hysteresis.
-
-The pre-alpha fix-pass sequence (2026-05-17 through 2026-05-18) then
-ran three parallel rounds against a mega-review and a clean-room
-reference comparison sweep. **Round 1** (6 PRs, `#482`-`#487`) closed
-the mega-review's BLOCKER / HIGH / MEDIUM cohort: IPC wrappers for
-audio + syphon (`#482`); command bus ordered commit so dispatched
-commands drain through their own commit (`#483`); cpal `Pending`
-polling + FFT / BPM accumulator (`#484`); Perform scene-scoped
-`controlValues` + welcome bundle mapped + editor reconciled
-mount (`#485`); atomic settings write + crash-resume save / recover
-wired into Tauri launch + ADR-013 OSC loopback alignment (`#486`);
-SceneCanvas rAF reactivity untracked + renderer control coverage
-widening (`#487`). **Round 2** amended #484 / #486 / #487 to close
-partial-closures called out by the round-1 reviewer fan-out:
-`AudioAxisAvailability::{Warming, Ready}` discriminator + `degraded`
-flag wired cross-seam + AUDIO adapter pill in TopBar; atomic write
-quarantine + hydration gate + crash-resume class-a-through-d restore
-wired end-to-end; SceneCanvas reactivity untracked across `kind` /
-`seed` / `controls` / `dpr` + renderer control coverage widened to
-rings / orbit / tunnel / fluid / plasma + universal `invert` /
-`mirror` post-pass + `data-preview-wired` affordance for unmapped
-controls. **Round 3** (2 PRs, `#488`-`#489`) closed the clean-room
-comparison sweep's pre-alpha-blocking findings: audio `syn_*` →
-`chroma_*` rename for the four invented symbols + RMS / peak unified
-with the FFT / BPM analysis window (`#488`); OSC bind-to-action
-dispatch + prefix-parser taxonomy widened to all seven registry
-families + default OSC ports IN=9000 / OUT=9001 pinned in
-`defaults.rs` (`#489`). Subsequent pages (MIDI, OSC, Sources, Playlist,
-Author, Patch, Import, License, Help, Welcome) follow the same
-playbook.
+Chromaticity is in **active pre-alpha** (Tauri 2 + Svelte 5 + TypeScript + Rust 2024) with
+continuous CI policy, evidence, and accessibility gates. Authoritative gate status lives in
+[`docs/governance/26-evidence-artifact-registry.md`](docs/governance/26-evidence-artifact-registry.md);
+historical Phase 1–4 / Wave 1–2.8 notes are archived under [`docs/archive/`](docs/archive/).
 
 ## Repository Layout
 
 ```
 chromaticity/
 ├── README.md
-├── CHANGELOG.md                 # release-please-managed release history
-├── LICENSE                      # see §License below
+├── AGENTS.md                    # canonical AI agent operating guide (CLAUDE.md -> AGENTS.md)
+├── CHANGELOG.md                 # release history
+├── LICENSE                      # LicenseRef-Chromaticity-Proprietary
 ├── LICENSES/                    # REUSE 3.2 canonical license texts
 ├── REUSE.toml                   # per-glob license + copyright defaults
 ├── CONTRIBUTING.md              # commit/branch/review conventions
 ├── CODE_OF_CONDUCT.md
 ├── SECURITY.md                  # coordinated disclosure
-├── CODEOWNERS                   # subtree review authority
-├── Cargo.toml                   # Rust workspace root
-├── Cargo.lock                   # locked Rust dependency graph
-├── rust-toolchain.toml          # MSRV pin (1.85.0)
-├── deny.toml                    # cargo-deny advisories / licenses / bans / sources
-├── package.json                 # frontend workspace scripts and tooling
-├── lefthook.yml                 # pre-commit / pre-push hooks
-├── commitlint.config.cjs        # Conventional Commits enforcement
-├── vitest.config.ts             # Vitest runner (jsdom + Svelte plugin)
-├── .editorconfig
-├── .gitattributes
-├── .gitignore
-├── .github/                     # PR/issue templates, labels, workflows
+├── CODEOWNERS                   # subtree review authority (root-pinned by policy CI)
+├── Cargo.toml / Cargo.lock      # Rust workspace root (edition 2024, MSRV 1.85.0)
+├── package.json / vite.config.ts / vitest.config.ts / eslint.config.js / lefthook.yml
 ├── app/
 │   ├── shell/                   # Tauri 2 binary (chromaticity-app crate)
-│   └── ui-bridge/               # ts-rs IPC type generator (Rust → TypeScript bindings)
+│   └── ui-bridge/               # ts-rs IPC type generator (Rust -> TypeScript bindings)
 ├── engine/                      # runtime, scene, audio, authoring, observability, render, script, entitlement
 ├── integrations/                # osc-adapter, midi-adapter, camera-adapter, syphon-adapter
-├── workspace-hack/              # cargo-hakari managed workspace dep unifier
-├── release-eng/                 # signing/notarization/staging-appcast scripts (stubbed pre-cert)
-├── docs-corpus/                 # in-app help system mkdocs source tree
-├── dist/                        # Vite build output + bundled mkdocs help pages (dist/help/)
+├── src/                         # Svelte 5 + TypeScript frontend
+├── resources/
+│   └── help/                    # built MkDocs help corpus bundled by Tauri (decoupled from dist/)
+├── dist/                        # ephemeral Vite build output (only .gitkeep tracked)
+├── docs/                        # unified documentation root (see docs/README.md)
+│   ├── adr/                     # Architecture Decision Records (MADR 4.0.0)
+│   ├── user/                    # Diátaxis in-app help corpus MkDocs source
+│   ├── architecture/            # active engine, runtime, symbol, and design-system specs
+│   ├── governance/              # policies, standards, evidence registry, checklists, evidence-runs
+│   ├── research/                # non-normative comparison and sourcing memos
+│   └── archive/                 # completed phase/wave snapshots
+├── release-eng/                 # signing, notarization, and appcast staging scripts
+├── scripts/                     # policy/evidence linters, dev-doctor, verify-fast, trailer fixtures
 ├── third_party/                 # vendored snapshots (cpal-0.17.1-patched, hg_sdf, lygia, Syphon-Framework)
-├── scripts/                     # policy/evidence automation helpers
-├── evidence-runs/               # evidence-run capture artifacts (per-row anchor bundles)
-├── docs/                        # normative planning corpus (promoted)
-│   ├── README.md                # document map
-│   └── adr/                     # Architecture Decision Records (MADR 4.0.0)
-├── src/                         # Svelte UI source
-└── tests/                       # workspace-level policy fixtures (e.g. trailer-check inputs)
+└── workspace-hack/              # cargo-hakari managed workspace dep unifier
 ```
 
 ### AO-local partitions (not in version control)

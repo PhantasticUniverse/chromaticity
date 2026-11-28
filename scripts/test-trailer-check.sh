@@ -33,7 +33,7 @@
 
 set -uo pipefail
 
-fixtures_dir="tests/fixtures/trailer-check"
+fixtures_dir="scripts/fixtures/trailer-check"
 script="scripts/trailer-check.sh"
 
 if [ ! -d "$fixtures_dir" ]; then

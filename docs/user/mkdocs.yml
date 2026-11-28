@@ -19,7 +19,7 @@ site_name: Chromaticity Help
 site_description: In-app help and reference for the Chromaticity desktop runtime.
 site_author: Chromaticity
 docs_dir: docs
-site_dir: ../dist/help
+site_dir: ../../resources/help
 use_directory_urls: false
 
 theme:
@@ -34,15 +34,15 @@ theme:
 
 nav:
   - Welcome: index.md
-  - Guides:
+  - Tutorials:
       - Quickstart: quickstart.md
+  - How-To Guides:
       - Perform Mode: perform-mode.md
       - Scene Workflow: scene-workflow.md
       - Library Workflow: library-workflow.md
       - Audio Reactivity: audio-reactivity.md
       - Livestreaming: livestream.md
       - Importing Shadertoy Scenes: import-shadertoy.md
-      - Best Practices: best-practices.md
   - Reference:
       - Hotkeys: hotkeys-reference.md
       - OSC Routes: osc-routes.md
@@ -50,7 +50,9 @@ nav:
       - Settings: settings-reference.md
       - System Requirements: system-requirements.md
       - Supported Codecs: supported-codecs.md
-  - About: about.md
+  - Explanation:
+      - Best Practices: best-practices.md
+      - About: about.md
 
 # Strict-build flag: surface broken links / orphan pages at corpus-build
 # time. Authors land doc updates with `mkdocs build --strict` clean.

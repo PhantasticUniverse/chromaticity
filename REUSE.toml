@@ -39,27 +39,21 @@ SPDX-FileCopyrightText = "2026 Chromaticity"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 # -----------------------------------------------------------------------------
-# Built mkdocs corpus (Wave 1d-α): the rendered HTML lands at dist/help/ and
-# is committed for tauri-build's generate_context!() resource resolver.
-# Source pages under docs-corpus/docs/ already carry inline SPDX headers; the
-# rendered output is a derivative work and should carry the same CC-BY-4.0
-# license as the docs/ corpus. Without this block, dist/help/** would fall
-# through to the proprietary safety-net annotation, miscategorising the
-# rendered docs.
-# -----------------------------------------------------------------------------
+# Built mkdocs corpus: rendered HTML lands at resources/help/ (decoupled from
+# Vite's wiped dist/ directory) for tauri-build's generate_context!() resolver.
 [[annotations]]
-path = "dist/help/**"
+path = "resources/help/**"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Chromaticity"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 # Third-party Material for MkDocs and Lunr.js static assets emitted into
-# dist/help/assets/ by `mkdocs build`.
+# resources/help/assets/ by `mkdocs build`.
 [[annotations]]
 path = [
-  "dist/help/assets/javascripts/**",
-  "dist/help/assets/stylesheets/**",
-  "dist/help/assets/images/favicon.png",
+  "resources/help/assets/javascripts/**",
+  "resources/help/assets/stylesheets/**",
+  "resources/help/assets/images/favicon.png",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = [

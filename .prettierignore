@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: LicenseRef-Chromaticity-Proprietary
 # SPDX-FileCopyrightText: 2026 Chromaticity
 
-# Archive-only planning corpus (also .gitignored) — hands-off.
+# Local / archive dropboxes (also .gitignored) — hands-off.
+.local/
 chromaticity-planning/
 Contents/
 
@@ -9,21 +10,16 @@ Contents/
 LICENSES/
 
 # Vendored third-party source — preserve upstream formatting (hands-off
-# per docs/29 Sec.Bundled GLSL Library Handling).
+# per docs/governance/29-cleanroom-legal-policy-baseline.md).
 third_party/
 
-# Normative planning docs promoted from the archive are grandfathered:
-# do not rewrap existing prose. Future docs are expected to be
-# Prettier-clean.
+# Normative docs & user corpus: preserve hand-authored prose rhythm.
 docs/
 
-# Wave 1d-α docs corpus — markdown source for the mkdocs-built in-app
-# help. Authored by hand without prettier rewrap so each page's prose
-# wraps to the author's chosen rhythm.
-docs-corpus/
+# Built MkDocs help corpus (generated HTML/JS/CSS).
+resources/help/
 
 # Generated artifacts.
-generated/
 # ts-rs writes the per-type IPC bindings here from
 # app/shell/tests/export_bindings.rs; the shape is whatever ts-rs emits.
 # The hand-authored barrel `src/lib/ipc/bindings/index.ts` stays under

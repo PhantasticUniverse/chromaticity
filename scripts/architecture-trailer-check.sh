@@ -99,7 +99,7 @@ esac
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 adr_dir="$repo/docs/adr"
-registry="$repo/docs/26-evidence-artifact-registry.md"
+registry="$repo/docs/governance/26-evidence-artifact-registry.md"
 
 # --- Label gate (CI mode only) ---
 if [ "$mode_stdin" -eq 1 ]; then

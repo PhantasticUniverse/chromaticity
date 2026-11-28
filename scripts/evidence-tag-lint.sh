@@ -80,7 +80,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 
 fail=0
-registry="$repo/docs/26-evidence-artifact-registry.md"
+registry="$repo/docs/governance/26-evidence-artifact-registry.md"
 
 # --- Valid-EV-ID set (built from docs/26) ---
 

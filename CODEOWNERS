@@ -41,31 +41,28 @@
 *                                @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
-# Engine subtrees (reserved; populated by Phase 1 scaffold)
+# Engine & integration subtrees
 # -----------------------------------------------------------------------------
+/engine/audio/                   @PhantasticUniverse
+/engine/authoring/               @PhantasticUniverse
+/engine/entitlement/             @PhantasticUniverse
+/engine/observability/           @PhantasticUniverse
+/engine/render/                  @PhantasticUniverse
 /engine/runtime/                 @PhantasticUniverse
 /engine/scene/                   @PhantasticUniverse
-/engine/audio/                   @PhantasticUniverse
+/engine/script/                  @PhantasticUniverse
 /integrations/                   @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
-# App subtrees (Phase 1 has populated `shell` and `ui-bridge`; future
-# subtrees re-enter via a `policy`-scoped PR adding both the rule and the
-# matching docs/43 §8.1 row).
+# App subtrees
 # -----------------------------------------------------------------------------
 /app/shell/                      @PhantasticUniverse
 /app/ui-bridge/                  @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
-# Release engineering, CI, release automation.
-#
-# `/release-eng/` is reserved per docs/47-ui-port-plan.md §2 but does not
-# yet exist as a tracked subtree. A CODEOWNERS rule matching a path with
-# no tracked files silently disables itself, so the rule is held until
-# the directory lands; re-entry follows the same `policy`-scoped pattern
-# as the `/app/*` block above (rule and matching docs/43 §8.1 row added
-# in the same PR that creates the subtree).
+# Release engineering, CI, release automation
 # -----------------------------------------------------------------------------
+/release-eng/                    @PhantasticUniverse
 /.github/workflows/              @PhantasticUniverse
 
 # -----------------------------------------------------------------------------
@@ -92,10 +89,10 @@
 # The legal-baseline carve-out (Sec.8.1) remains AO-only through T2 and
 # transitions only at T3.
 # -----------------------------------------------------------------------------
-/docs/adr/                       @PhantasticUniverse
-/docs/29-cleanroom-legal-policy-baseline.md     @PhantasticUniverse
-/docs/31-supportability-privacy-ops-policy.md   @PhantasticUniverse
-/docs/43-development-standards.md               @PhantasticUniverse
+/docs/adr/                                           @PhantasticUniverse
+/docs/governance/29-cleanroom-legal-policy-baseline.md     @PhantasticUniverse
+/docs/governance/31-supportability-privacy-ops-policy.md   @PhantasticUniverse
+/docs/governance/43-development-standards.md               @PhantasticUniverse
 
 /LICENSE                         @PhantasticUniverse
 /LICENSES/                       @PhantasticUniverse
@@ -104,4 +101,4 @@
 /CODEOWNERS                      @PhantasticUniverse
 
 # Brand/trademark surface
-/docs/51-ux-bundle-legal-check.md     @PhantasticUniverse
+/docs/governance/51-ux-bundle-legal-check.md         @PhantasticUniverse

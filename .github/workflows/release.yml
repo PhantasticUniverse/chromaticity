@@ -158,8 +158,7 @@ jobs:
       # `npm run build` (vite build) clobbers dist/.gitkeep when emitting
       # fresh artifacts; the sentinel is load-bearing for
       # generate_context!() in cargo check / cargo build. Restore it
-      # before the rust build so the macro expansion succeeds. See
-      # `feedback_vite_build_clobbers_dist_gitkeep` in CLAUDE.md.
+      # before the rust build so the macro expansion succeeds.
       - name: Restore dist sentinel
         shell: bash
         run: |
@@ -188,7 +187,7 @@ jobs:
 
       - name: Build docs corpus (mkdocs)
         shell: bash
-        working-directory: docs-corpus
+        working-directory: docs/user
         run: mkdocs build
 
       - name: Build chromaticity-app (release)

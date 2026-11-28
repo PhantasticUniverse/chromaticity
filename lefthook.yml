@@ -57,7 +57,7 @@ pre-commit:
       # theme assets + lunr search worker bundle); same posture.
       exclude:
         - 'third_party/**'
-        - 'dist/help/**'
+        - 'resources/help/**'
       run: |
         bad=$(grep -nE " +$" {staged_files} 2>/dev/null || true)
         if [ -n "$bad" ]; then
@@ -70,7 +70,7 @@ pre-commit:
       glob: '*.{md,rs,ts,tsx,js,jsx,mjs,cjs,svelte,css,yml,yaml,toml,json,sh}'
       exclude:
         - 'third_party/**'
-        - 'dist/help/**'
+        - 'resources/help/**'
       run: |
         for f in {staged_files}; do
           [ -s "$f" ] || continue

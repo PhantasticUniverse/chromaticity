@@ -46,20 +46,7 @@ target/
 # sentinel and ignore every generated artifact inside.
 dist/*
 !dist/.gitkeep
-# `dist/help/` is the mkdocs static-HTML output for the Wave 1d-α docs
-# corpus (`docs-corpus/mkdocs.yml` `site_dir: ../dist/help`). Wave 1d-α
-# PR 2 (2026-05-09) flipped the policy: the built tree is now COMMITTED
-# verbatim because Tauri's `generate_context!()` macro expands at
-# `cargo check` time and requires every `bundle.resources` entry to
-# exist on disk. The PR 1 `PLACEHOLDER.txt` single-file pivot has been
-# replaced with the real per-page bundle entries and a directory-walk
-# ingest in `app/shell/tauri.conf.json`. Authors who edit
-# `docs-corpus/docs/*.md` re-run `mkdocs build` from `docs-corpus/` and
-# commit the regenerated `dist/help/` tree alongside the markdown
-# changes; CI integration of `mkdocs build` is Wave 1d-β release-eng
-# scope. Negate the parent and the entire built tree.
-!dist/help/
-!dist/help/**
+.local/
 build/
 out/
 node_modules/

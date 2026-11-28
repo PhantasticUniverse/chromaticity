@@ -28,7 +28,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   import { helpStore, HELP_PAGES } from '../stores/helpStore.svelte';
 
-  const RAW_DOCS = import.meta.glob<string>('../../../docs-corpus/docs/*.md', {
+  const RAW_DOCS = import.meta.glob<string>('../../../docs/user/docs/*.md', {
     query: '?raw',
     import: 'default',
     eager: true,

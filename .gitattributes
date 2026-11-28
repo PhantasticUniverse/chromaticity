@@ -33,10 +33,7 @@
 *.sh         text eol=lf
 Makefile     text eol=lf
 
-# Shell scripts executable on unix-like hosts
-*.sh         text eol=lf
-
-# Chromaticity package formats (docs/22-compatibility-versioning-policy.md)
+# Chromaticity package formats (docs/architecture/22-compatibility-versioning-policy.md)
 *.chroma       binary
 *.chromaPack   binary
 *.chromaShow   binary
@@ -65,8 +62,7 @@ Makefile     text eol=lf
 *.gz         binary
 
 # Generated artifacts — excluded from language stats and collapsed in diffs
-generated/**                 linguist-generated=true
+src/lib/ipc/bindings/*.ts    linguist-generated=true -diff
 **/CHANGELOG.md              linguist-generated=true
-docs/reference/generated/**  linguist-generated=true -diff
 *.sbom.json                  linguist-generated=true -diff
 *.sbom.xml                   linguist-generated=true -diff

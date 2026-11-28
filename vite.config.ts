@@ -22,12 +22,6 @@ function preserveDistGitkeep(): Plugin {
       if (!fs.existsSync(sentinel)) {
         fs.writeFileSync(sentinel, '');
       }
-      const helpDir = path.join(distDir, 'help');
-      fs.mkdirSync(helpDir, { recursive: true });
-      const helpSentinel = path.join(helpDir, '.gitkeep');
-      if (!fs.existsSync(helpSentinel)) {
-        fs.writeFileSync(helpSentinel, '');
-      }
     },
   };
 }

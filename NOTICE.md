@@ -15,7 +15,7 @@ each governed by its respective license text under `LICENSES/`:
 | `lygia` (v1.1.4)                  | `third_party/lygia/`               | `LicenseRef-Prosperity-3.0.0` (`LICENSES/LicenseRef-Prosperity-3.0.0.txt`) | Patricio Gonzalez Vivo and Lygia contributors                                                                         |
 | `Mixbox` (inside Lygia snapshot)  | `third_party/lygia/color/mixBox.*` | `LicenseRef-Mixbox-NonCommercial` (non-commercial use only)                | 2022 Secret Weapons                                                                                                   |
 | `Syphon-Framework`                | `third_party/Syphon-Framework/`    | `BSD-3-Clause` (`LICENSES/BSD-3-Clause.txt`)                               | 2010-2023 bangnoise (Tom Butterworth) & vade (Anton Marini); 2020-2023 Maxime Touroute & Philippe Chaurand (Millumin) |
-| `Material for MkDocs` & `Lunr.js` | `dist/help/assets/`                | `MIT` (`LICENSES/MIT.txt`)                                                 | Martin Donath (Material for MkDocs), 2020 Oliver Nightingale (Lunr.js 2.3.9), 2008 Taku Kudo (TinySegmenter)          |
+| `Material for MkDocs` & `Lunr.js` | `resources/help/assets/`           | `MIT` (`LICENSES/MIT.txt`)                                                 | Martin Donath (Material for MkDocs), 2020 Oliver Nightingale (Lunr.js 2.3.9), 2008 Taku Kudo (TinySegmenter)          |
 
 First-party Chromaticity source code is Copyright 2026 Chromaticity
 (`LicenseRef-Chromaticity-Proprietary`, All Rights Reserved). Documentation

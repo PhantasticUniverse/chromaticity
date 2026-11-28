@@ -29,29 +29,22 @@ export default [
       'app/shell/gen/**',
       'build/**',
       'out/**',
-      'generated/**',
       '.svelte-kit/**',
       '.vite/**',
-      // Sub-agent worktree state (`.claude/worktrees/agent-*` checkouts
-      // each carry their own `target/` and `node_modules/` while in
-      // flight; the parent CWD must not lint these).
+      '.local/**',
+      // Built MkDocs help corpus (generated HTML/JS/CSS).
+      'resources/help/**',
+      // Sub-agent worktree state.
       '.claude/**',
       // Clean-room / archive boundaries — never lint these.
-      // See docs/29-cleanroom-legal-policy-baseline.md §Clean-room SOP.
       'Contents/**',
       'chromaticity-planning/**',
       // Canonical third-party license texts; preserve upstream.
       'LICENSES/**',
-      // Vendored third-party source — preserve upstream formatting per
-      // docs/29-cleanroom-legal-policy-baseline.md Sec.Bundled GLSL Library Handling.
+      // Vendored third-party source — preserve upstream formatting.
       'third_party/**',
-      // Grandfathered planning prose (promoted normative docs).
+      // Documentation & user help corpus markdown.
       'docs/**',
-      // Wave 1d-α docs corpus — markdown source tree for the
-      // mkdocs-built in-app help; not JS / TS so ESLint has nothing
-      // to do here, but the explicit ignore keeps any future
-      // tooling sweep from accidentally claiming it.
-      'docs-corpus/**',
       // Local operator-dropped scenes & media (QuickJS scene scripts use runtime globals).
       'scenes-local/**',
       'media-local/**',

@@ -179,39 +179,41 @@ CSS use `//` or `/* */`, Markdown/HTML uses `<!-- -->`.
 
 ### Allowed license IDs
 
-See `docs/29-cleanroom-legal-policy-baseline.md` "Allowed-License Policy
+See `docs/governance/29-cleanroom-legal-policy-baseline.md` "Allowed-License Policy
 Baseline". Unknown IDs are blocked pending legal review. Adding an ID
-requires a `policy` commit editing both `deny.toml` (when added) and the
-clean-room policy.
+requires a `policy` commit editing both `deny.toml` and the clean-room policy.
 
 ## Tooling
 
-Full detail: `docs/43-development-standards.md` §12.
+Full detail: `docs/governance/43-development-standards.md` §12.
 
 - **Rust**: Rust 2024, `rustfmt`, `cargo clippy -D warnings`,
   workspace-wide `unsafe_code = "forbid"`,
   no `HashMap` default hasher in `EV-DETERMINISM` paths.
 - **TypeScript**: `strict: true`, `noUncheckedIndexedAccess: true`,
   `exactOptionalPropertyTypes: true`, `prettier` default config,
-  `eslint` with `@typescript-eslint/recommended`.
+  `eslint` with `@typescript-eslint/recommended` (`--max-warnings 0`).
 - **Svelte**: `svelte-check` required; `eslint-plugin-svelte`.
 - **GLSL**: `glslangValidator`; reactive uniform names validated against
-  `docs/36-reactive-symbol-catalog.md`.
-- **Scene JS (QuickJS)**: ES2020 subset only, no build step,
-  `eslint-plugin-chromaticity-sandbox` enforces host-API whitelist.
+  `docs/architecture/36-reactive-symbol-catalog.md`.
+- **Scene JS (QuickJS)**: ES2020 subset only, no build step, sandboxed host API.
 
-Pre-commit hooks (lefthook) run the fast subset locally. See
-`lefthook.yml` for the current hook graph and command set.
+Pre-commit hooks (lefthook) run the fast subset locally. Run `npm run dev:doctor`
+and `npm run verify:fast` to verify your local environment. See `lefthook.yml`
+for the current hook graph and command set.
 
 ## Evidence Tags
 
-Tests that contribute to an evidence row carry a language-native tag:
+Every Rust file declaring `#[test]` or `#[tokio::test]` under `engine/**`,
+`integrations/**`, or `app/shell/tests/**` (except `export_bindings.rs`) MUST
+carry at least one `//! Evidence:` tag whose `EV-<ID>` exists in
+`docs/governance/26-evidence-artifact-registry.md`:
 
-- Rust: `#[evidence("EV-DETERMINISM", "EV-RENDER-CONFORMANCE")]`
-- TS/JS: `test("...", { evidence: ["EV-SCRIPT-CONTRACT"] }, ...)`
-- GLSL: fixture sidecar `evidence:` list.
+```rust
+//! Evidence: EV-<ID> (T1) — <one-line rationale>
+```
 
-`evidence-tag-lint` is required from Phase 1 onward.
+Verify locally with `bash scripts/evidence-tag-lint.sh`.
 
 ## Security
 
