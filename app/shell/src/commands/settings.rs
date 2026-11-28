@@ -52,19 +52,25 @@ fn set_settings_impl(app: &AppState, settings: SettingsPayload) -> Result<(), St
     let path = path_guard.clone();
     drop(path_guard);
     let live_gain_norm = engine.audio.input_gain;
+    let next_input_device = engine.audio.input_device.clone();
     // Hold `app.settings` across disk persistence + in-memory swap + live gain
     // update so overlapping `set_settings` / `reset_settings` calls cannot
     // diverge disk vs memory.
-    {
+    let input_device_changed = {
         let mut guard = match app.settings.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
+        let changed = guard.audio.input_device != next_input_device;
         if let Some(path) = path.as_ref() {
             engine.save_to_path(path).map_err(|err| err.to_string())?;
         }
         *guard = engine;
         app.set_live_input_gain_norm(live_gain_norm);
+        changed
+    };
+    if input_device_changed {
+        let _ = app.hot_swap_audio_input(Some(next_input_device.as_str()));
     }
     if let Err(err) = osc::configure_live_osc_adapter(app) {
         eprintln!(
@@ -90,16 +96,21 @@ fn reset_settings_impl(app: &AppState) -> Result<SettingsPayload, String> {
     };
     let path = path_guard.clone();
     drop(path_guard);
-    {
+    let input_device_changed = {
         let mut guard = match app.settings.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
+        let changed = guard.audio.input_device != defaults.audio.input_device;
         if let Some(path) = path.as_ref() {
             defaults.save_to_path(path).map_err(|err| err.to_string())?;
         }
         *guard = defaults.clone();
         app.set_live_input_gain_norm(defaults.audio.input_gain);
+        changed
+    };
+    if input_device_changed {
+        let _ = app.hot_swap_audio_input(Some(defaults.audio.input_device.as_str()));
     }
     if let Err(err) = osc::configure_live_osc_adapter(app) {
         eprintln!(

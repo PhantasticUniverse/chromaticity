@@ -41,57 +41,35 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // opens the app-level `<ConsoleDrawer>` mounted in `AppShell.svelte`.
   // The button's `aria-pressed` reflects the open state so screen
   // readers can announce the drawer's visibility.
+  import { CONSOLE_FIXTURES } from './data/console-fixtures';
   import Icon from './Icon.svelte';
   import { audioSnapshotStore } from './stores/audioSnapshot.svelte';
   import { consoleStore } from './stores/console.svelte';
 
-  // Wave 2.3 Lane Q.2 (G.14) — bundle-faithful placeholder values.
-  // The bundle renders fixed numbers (`v0.2-ui-wireframe-screenshots`
-  // shows CPU 12% / GPU 42% / 2.1 GB) until real telemetry IPC lands.
-  // The W15 PR2 `—` placeholders made the chrome read as broken;
-  // matching the bundle's static-numeric posture keeps the structure
-  // legible without claiming live wiring. CPU + GPU mirror the
-  // bundle; MEM reads `performance.memory.usedJSHeapSize` when the
-  // browser exposes it (Chromium / WebView2 → Tauri) so the value is
-  // plausibly live; falls back to a bundle-faithful placeholder
-  // otherwise.
   const VERSION = '0.0.0';
-  const CPU_PCT = '12%';
-  const GPU_PCT = '42%';
-  const WARNINGS_COUNT = 0;
-  const ERRORS_COUNT = 0;
+  const CPU_PCT = '—';
+  const GPU_PCT = '—';
 
-  /**
-   * Read used JS heap as a GB string. Chromium (and therefore the
-   * Tauri WebView2 / WKWebView path in production) exposes the
-   * non-standard `performance.memory` interface; jsdom + Firefox
-   * don't, in which case the readout falls back to the bundle's
-   * `2.1 GB` fixture string. JS heaps in a Tauri WebView are
-   * typically tens-of-MB to a few hundred-MB, so a literal GB
-   * formatting collapses to 0.0; we round up the displayed value
-   * to reflect the wider process working set the bundle's "2.1
-   * GB" placeholder implies (engine + WebView + media buffers).
-   */
-  function approxMemoryGB(): string {
+  const warningsCount = $derived(
+    CONSOLE_FIXTURES.filter((entry) => entry.severity === 'warn').length,
+  );
+  const errorsCount = $derived(
+    CONSOLE_FIXTURES.filter((entry) => entry.severity === 'error').length,
+  );
+
+  function approxMemoryLabel(): string {
     const perfMem = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
     const used = perfMem?.usedJSHeapSize;
     if (typeof used === 'number' && used > 0) {
-      // Bias the displayed value by 2.0 GB to approximate the
-      // engine-side working-set the bundle's placeholder implies;
-      // the heap delta surfaces growth without showing a sub-GB
-      // floor that misreads as "underutilised".
-      const gb = used / (1024 * 1024 * 1024);
-      return (gb + 2.0).toFixed(1);
+      const mb = used / (1024 * 1024);
+      return `${Math.round(mb)} MB`;
     }
-    return '2.1';
+    return '—';
   }
-  // Re-read every 5s so the GB chip refreshes without a window-level
-  // requestAnimationFrame storm. `$state` + `setInterval` keeps the
-  // value reactive without polluting Vitest's effect scheduling.
-  let memoryGB = $state(approxMemoryGB());
+  let memoryLabel = $state(approxMemoryLabel());
   $effect(() => {
     const id = window.setInterval(() => {
-      memoryGB = approxMemoryGB();
+      memoryLabel = approxMemoryLabel();
     }, 5000);
     return () => window.clearInterval(id);
   });
@@ -134,12 +112,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <span class="status-bar__metric-value">{GPU_PCT}</span>
     </span>
     <span class="status-bar__sep" aria-hidden="true">·</span>
-    <span class="status-bar__metric" title="JS heap usage (approx, performance.memory)">
-      <span class="status-bar__metric-value">{memoryGB}</span>
-      <span class="status-bar__metric-label">GB</span>
+    <span class="status-bar__metric" title="JS heap usage (performance.memory)">
+      <span class="status-bar__metric-label">MEM</span>
+      <span class="status-bar__metric-value">{memoryLabel}</span>
     </span>
     <span class="status-bar__sep" aria-hidden="true">·</span>
-    <span class="status-bar__metric" title="Live audio peak in dBFS (DESIGN.md bundle alignment)">
+    <span class="status-bar__metric" title="Live audio peak in dBFS">
       <Icon name="audio" size={10} />
       <span class="status-bar__metric-label">PEAK</span>
       <span class="status-bar__metric-value" data-testid="status-bar-peak-dbfs"
@@ -149,18 +127,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <span class="status-bar__sep" aria-hidden="true">·</span>
     <span
       class="status-bar__counter"
-      data-state={WARNINGS_COUNT > 0 ? 'active' : 'idle'}
-      title="Active warnings (W15+: log subscription)"
+      data-state={warningsCount > 0 ? 'active' : 'idle'}
+      title="Console warnings"
     >
-      {WARNINGS_COUNT} warnings
+      {warningsCount} warnings
     </span>
     <span class="status-bar__sep" aria-hidden="true">·</span>
     <span
       class="status-bar__counter"
-      data-state={ERRORS_COUNT > 0 ? 'error' : 'idle'}
-      title="Active errors (W15+: log subscription)"
+      data-state={errorsCount > 0 ? 'error' : 'idle'}
+      title="Console errors"
     >
-      {ERRORS_COUNT} errors
+      {errorsCount} errors
     </span>
     <span class="status-bar__sep" aria-hidden="true">·</span>
     <button

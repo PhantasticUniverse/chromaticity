@@ -63,10 +63,8 @@ export const SETLIST_SCENES: readonly SetlistSceneFixture[] = [
  * 14-row setlist matching the bundle's `SCENES.concat(SCENES).slice(0, 14)`
  * pattern. Indexed (0-based) for stable row identity in the sidebar.
  */
-export const SETLIST_FIXTURE: ReadonlyArray<SetlistSceneFixture & { idx: number }> = [
-  ...SETLIST_SCENES,
-  ...SETLIST_SCENES.slice(0, 2),
-].map((scene, idx) => ({ ...scene, idx }));
+export const SETLIST_FIXTURE: ReadonlyArray<SetlistSceneFixture & { idx: number }> =
+  SETLIST_SCENES.map((scene, idx) => ({ ...scene, idx }));
 
 /**
  * Index of the row rendered as "active" (currently-loaded) in W15 PR3.

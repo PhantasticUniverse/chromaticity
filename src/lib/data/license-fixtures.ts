@@ -61,7 +61,6 @@ const CAPABILITIES_ALL_ENABLED: readonly LicenseCapability[] = [
   { id: 'io.ndi.output', displayName: 'NDI output', enabled: false },
   { id: 'io.camera', displayName: 'Camera sources', enabled: true },
   { id: 'render.custom-resolution', displayName: 'Custom render resolution', enabled: true },
-  { id: 'render.pause', displayName: 'Pause (Blackout)', enabled: true },
   { id: 'scene.import', displayName: 'Scene import', enabled: true },
   { id: 'scene.edit', displayName: 'Scene editor', enabled: true },
   { id: 'transitions.off', displayName: 'No-transition cue', enabled: true },

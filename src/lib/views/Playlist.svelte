@@ -439,6 +439,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     grid-template-columns: 200px minmax(0, 1fr) 320px;
     gap: var(--space-md);
     align-items: stretch;
+    height: 100%;
     min-height: 0;
   }
 
@@ -452,6 +453,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     flex-direction: column;
     gap: var(--space-sm);
     min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: auto;
   }
   .playlist-view__sidebar-header {
     display: flex;
@@ -513,7 +517,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .playlist-view__list-btn.active {
     background: var(--color-bg-3);
-    color: var(--color-primary);
+    color: var(--color-text-0);
+    font-weight: var(--font-weight-label);
     border-left-color: var(--color-primary);
   }
   .playlist-view__list-glyph {
@@ -541,6 +546,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     flex-direction: column;
     gap: var(--space-sm);
     min-width: 0;
+    min-height: 0;
+    height: 100%;
     overflow: auto;
   }
   .playlist-view__cues-header {

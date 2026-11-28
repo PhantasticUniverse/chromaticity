@@ -75,6 +75,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { performVariantStore, type PerformVariant } from './stores/performVariant.svelte';
   import { routeStore, type RouteName } from './stores/route.svelte';
   import { settingsStore } from './stores/settings.svelte';
+  import { stageDockStore } from './stores/stageDock.svelte';
   import { transportStore } from './stores/transport.svelte';
   import { AdapterPill, BeatDots, VuStereo, type AdapterPillState } from './widgets';
 
@@ -462,8 +463,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     };
   });
 
-  const fpsDisplay = $derived(liveFps !== null ? liveFps.toFixed(1) : '61.0');
-  const gpuDisplay = $derived(liveGpuPct !== null ? `${liveGpuPct}%` : '42%');
+  const fpsDisplay = $derived(liveFps !== null ? liveFps.toFixed(1) : '—');
+  const gpuDisplay = $derived(liveGpuPct !== null ? `${liveGpuPct}%` : '—');
+  const isWelcomeRoute = $derived(routeStore.current === 'welcome');
+  const canToggleStageDock = $derived(
+    routeStore.current === 'library' ||
+      routeStore.current === 'midi' ||
+      routeStore.current === 'osc' ||
+      routeStore.current === 'playlist' ||
+      routeStore.current === 'sources' ||
+      routeStore.current === 'import' ||
+      routeStore.current === 'patch' ||
+      routeStore.current === 'settings',
+  );
 
   async function handleGoLiveClick(): Promise<void> {
     try {
@@ -779,45 +791,64 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         <Icon name="record" size={11} />
       </button>
     {/if}
-    <button
-      type="button"
-      class="top-bar__rec"
-      data-state={isRecording ? 'active' : 'off'}
-      aria-pressed={isRecording ? 'true' : 'false'}
-      title={isRecording ? 'Recording active — click to stop' : 'Recording status — click to start'}
-      onclick={() => void handleRecordToggle()}
-    >
-      <span class="top-bar__rec-dot" aria-hidden="true"></span>
-      <span>REC</span>
-    </button>
-    <button
-      type="button"
-      class="top-bar__dj"
-      class:top-bar__dj--active={djAutopilotActive}
-      data-testid="top-bar-dj-autopilot"
-      aria-pressed={djAutopilotActive ? 'true' : 'false'}
-      aria-label={djAutopilotActive ? 'DJ Autopilot active' : 'DJ Autopilot'}
-      title={djAutopilotActive
-        ? `DJ Autopilot active (${djAutopilotStore.phraseIntervalBars}-bar phrase) — click to disable`
-        : 'Enable 1-click DJ Autopilot'}
-      onclick={() => djAutopilotStore.toggle()}
-    >
-      <span class="top-bar__dj-dot" aria-hidden="true"></span>
-      <span>DJ</span>
-    </button>
-    <button
-      type="button"
-      class="top-bar__go-live"
-      aria-pressed={outputWindowOpen ? 'true' : 'false'}
-      data-live={outputWindowOpen ? 'on' : 'off'}
-      title={outputWindowOpen
-        ? 'Close stage output window'
-        : 'Open stage output window on secondary display'}
-      onclick={() => void handleGoLiveClick()}
-    >
-      <span class="top-bar__go-live-glyph"><Icon name="play" size={11} /></span>
-      {outputWindowOpen ? 'LIVE OUT' : 'GO LIVE'}
-    </button>
+    {#if canToggleStageDock}
+      <button
+        type="button"
+        class="top-bar__stage-btn"
+        class:top-bar__stage-btn--active={stageDockStore.open}
+        data-testid="toggle-stage-dock"
+        aria-pressed={stageDockStore.open ? 'true' : 'false'}
+        title={stageDockStore.open
+          ? 'Hide docked Live Stage monitor'
+          : 'Show docked Live Stage monitor'}
+        onclick={() => stageDockStore.toggle()}
+      >
+        STAGE
+      </button>
+    {/if}
+    {#if !isWelcomeRoute}
+      <button
+        type="button"
+        class="top-bar__rec"
+        data-state={isRecording ? 'active' : 'off'}
+        aria-pressed={isRecording ? 'true' : 'false'}
+        title={isRecording
+          ? 'Recording active — click to stop'
+          : 'Recording status — click to start'}
+        onclick={() => void handleRecordToggle()}
+      >
+        <span class="top-bar__rec-dot" aria-hidden="true"></span>
+        <span>REC</span>
+      </button>
+      <button
+        type="button"
+        class="top-bar__dj"
+        class:top-bar__dj--active={djAutopilotActive}
+        data-testid="top-bar-dj-autopilot"
+        aria-pressed={djAutopilotActive ? 'true' : 'false'}
+        aria-label={djAutopilotActive ? 'DJ Autopilot active' : 'DJ Autopilot'}
+        title={djAutopilotActive
+          ? `DJ Autopilot active (${djAutopilotStore.phraseIntervalBars}-bar phrase) — click to disable`
+          : 'Enable 1-click DJ Autopilot'}
+        onclick={() => djAutopilotStore.toggle()}
+      >
+        <span class="top-bar__dj-dot" aria-hidden="true"></span>
+        <span>DJ</span>
+      </button>
+      <button
+        type="button"
+        class="top-bar__go-live"
+        aria-pressed={outputWindowOpen ? 'true' : 'false'}
+        data-live={outputWindowOpen ? 'on' : 'off'}
+        title={outputWindowOpen
+          ? 'Close stage output window'
+          : 'Open stage output window on secondary display'}
+        onclick={() => void handleGoLiveClick()}
+      >
+        <span class="top-bar__go-live-glyph"><Icon name="play" size={11} /></span>
+        {outputWindowOpen ? 'LIVE OUT' : 'GO LIVE'}
+      </button>
+    {/if}
   </div>
 </header>
 
@@ -1552,6 +1583,26 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-3);
+  }
+
+  .top-bar__stage-btn {
+    padding: 3px 8px;
+    background: var(--color-bg-2);
+    color: var(--color-text-2);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-xs);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-body-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .top-bar__stage-btn:hover,
+  .top-bar__stage-btn--active {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
 
   .top-bar__go-live-glyph {

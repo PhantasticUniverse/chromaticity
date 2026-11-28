@@ -47,7 +47,7 @@ export const IMPORT_CONVERTERS: readonly ImportConverter[] = [
     description:
       'Paste a Shadertoy URL — Chromaticity converts common uniforms and iChannel slots into a native .chroma package with diagnostics for manual follow-up.',
     placeholder: 'https://www.shadertoy.com/view/…',
-    status: 'V1 converter',
+    status: 'Built-in',
   },
   {
     id: 'chroma-scene',
@@ -68,17 +68,16 @@ export const IMPORT_CONVERTERS: readonly ImportConverter[] = [
     id: 'syn-scene',
     title: 'Synesthesia Scene (.synScene)',
     description:
-      'One-way clean-room compatibility conversion into .chroma. The source package is never modified.',
+      'One-way compatibility conversion into .chroma. The source package is never modified.',
     placeholder: 'path/to/scene.synScene',
-    status: 'V1 converter',
+    status: 'Built-in',
   },
   {
     id: 'isf',
     title: 'Interactive Shader Format (ISF)',
-    description:
-      'V1 rejects ISF with a clear V2 deferral diagnostic plus an import-as-blank escape hatch.',
-    placeholder: 'Drop a .fs file to preview the rejection',
-    status: 'V2 deferred',
+    description: 'ISF (.fs) shader import is planned for a future release.',
+    placeholder: 'ISF (.fs) support coming soon',
+    status: 'Coming soon',
     disabled: true,
   },
 ];
@@ -112,9 +111,9 @@ export const RECENT_IMPORTS: readonly RecentImport[] = [
     seed: 5,
   },
   {
-    id: 'isf-bipolar-feedback',
+    id: 'syn-bipolar-feedback',
     title: 'Bipolar Feedback',
-    activity: 'ISF rejected · blank escape hatch',
+    activity: '.synScene → .chroma',
     kind: 'kaleido',
     seed: 11,
   },
@@ -126,9 +125,9 @@ export const RECENT_IMPORTS: readonly RecentImport[] = [
     seed: 18,
   },
   {
-    id: 'isf-outline-2020-freestyle',
+    id: 'syn-outline-2020-freestyle',
     title: 'Outline 2020 Freestyle',
-    activity: 'ISF rejected · V2 queued',
+    activity: '.synScene → .chroma',
     kind: 'filaments',
     seed: 22,
   },
@@ -140,9 +139,9 @@ export const RECENT_IMPORTS: readonly RecentImport[] = [
     seed: 2,
   },
   {
-    id: 'isf-dvd-bounce',
+    id: 'chroma-dvd-bounce',
     title: 'DVD Bounce',
-    activity: 'ISF rejected · raw body preserved',
+    activity: '.chroma package imported',
     kind: 'grid',
     seed: 3,
   },

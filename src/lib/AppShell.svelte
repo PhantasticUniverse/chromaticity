@@ -117,12 +117,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import SidebarRail from './SidebarRail.svelte';
   import { overlayStack } from './state';
   import StatusBar from './StatusBar.svelte';
+  import { bpmControlStore } from './stores/bpmControl.svelte';
   import { capabilitiesStore } from './stores/capabilities.svelte';
   import { liveFxStore } from './stores/liveFx.svelte';
   import { loadedSceneStore } from './stores/loadedScene.svelte';
   import { midiBindingsStore } from './stores/midiBindings.svelte';
   import { playlistStore } from './stores/playlist.svelte';
   import { routeStore } from './stores/route.svelte';
+  import { snapStore } from './stores/snap.svelte';
+  import { stageDockStore } from './stores/stageDock.svelte';
   import TopBar from './TopBar.svelte';
   import AudioUniforms from './views/AudioUniforms.svelte';
   import Author from './views/Author.svelte';
@@ -151,16 +154,17 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   } from './widgets';
 
   let mixVisited = $state(false);
-  let stageDockOpen = $state(false);
   const showStageDockToggle = $derived(
     routeStore.current === 'library' ||
       routeStore.current === 'midi' ||
       routeStore.current === 'osc' ||
       routeStore.current === 'playlist' ||
       routeStore.current === 'sources' ||
+      routeStore.current === 'import' ||
       routeStore.current === 'patch' ||
       routeStore.current === 'settings',
   );
+  const stageDockVisible = $derived(showStageDockToggle && stageDockStore.open);
   $effect(() => {
     if (routeStore.current === 'mix') {
       mixVisited = true;
@@ -202,7 +206,18 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   const COMMAND_PALETTE_ROUTING: Record<string, () => void> = {
     'launch-scene': () => routeStore.set('library'),
+    'snap-recall': () => {
+      routeStore.set('perform');
+      void snapStore.recall(snapStore.activeSlot ?? 1);
+    },
+    'snap-save': () => {
+      routeStore.set('perform');
+      void snapStore.save(snapStore.activeSlot ?? 1);
+    },
+    'osc-address': () => routeStore.set('osc'),
     'open-hotkeys': () => routeStore.set('settings'),
+    'support-bundle': () => routeStore.set('settings'),
+    'offline-docs': () => routeStore.set('help'),
   };
 
   const commandPaletteActions: readonly CommandPaletteAction[] =
@@ -210,6 +225,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       const onSelect = COMMAND_PALETTE_ROUTING[action.id];
       return onSelect ? { ...action, onSelect } : action;
     });
+
+  function isEditableTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (target.isContentEditable) return true;
+    return target.closest('.cm-editor') !== null;
+  }
 
   $effect(() => {
     void capabilitiesStore.refreshFromEngine();
@@ -231,17 +254,54 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   });
 
   $effect(() => {
-    const handler = (event: KeyboardEvent) => {
+    const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
         if (event.key === 'k' || event.key === 'K') {
           event.preventDefault();
           overlayStack.toggle('command-palette');
+          return;
+        }
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (overlayStack.isOpen('command-palette') || overlayStack.isOpen('hotkeys')) return;
+
+      if (event.key === 'b' || event.key === 'B') {
+        if (!event.repeat) {
+          event.preventDefault();
+          liveFxStore.toggleBlackout();
+        }
+        return;
+      }
+      if (event.key === 's' || event.key === 'S') {
+        if (!event.repeat) {
+          event.preventDefault();
+          liveFxStore.activateStrobe();
+        }
+        return;
+      }
+      if (routeStore.current === 'perform' && /^[1-8]$/.test(event.key)) {
+        event.preventDefault();
+        void snapStore.recall(Number(event.key));
+        return;
+      }
+      if (routeStore.current === 'playlist' && event.key === ' ') {
+        event.preventDefault();
+        playlistStore.togglePlayback();
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 's' || event.key === 'S') {
+        if (liveFxStore.strobeActive) {
+          liveFxStore.releaseStrobe();
         }
       }
     };
-    window.addEventListener('keydown', handler);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
     return () => {
-      window.removeEventListener('keydown', handler);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       overlayStack.close('command-palette');
     };
   });
@@ -284,106 +344,107 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         />
       </div>
     {/if}
-    <div
-      class="app-shell__view"
-      class:app-shell__view--perform={routeStore.current === 'perform' ||
-        routeStore.current === 'mix' ||
-        routeStore.current === 'author' ||
-        routeStore.current === 'patch'}
-    >
-      {#if mixVisited}
-        <div
-          class="app-shell__mix-keepalive"
-          hidden={routeStore.current !== 'mix'}
-          aria-hidden={routeStore.current !== 'mix' ? 'true' : undefined}
-        >
-          <Mix />
-        </div>
-      {/if}
-      {#if routeStore.current === 'perform'}
-        <Perform />
-      {:else if routeStore.current === 'mix'}
-        <!-- Rendered inside keepalive wrapper above so live Twitch/Webcam/Media never drop on route switch -->
-      {:else if routeStore.current === 'library'}
-        <Library />
-      {:else if routeStore.current === 'author'}
-        <Author />
-      {:else if routeStore.current === 'audio-uniforms'}
-        <AudioUniforms />
-      {:else if routeStore.current === 'playlist'}
-        <Playlist />
-      {:else if routeStore.current === 'sources'}
-        <Sources />
-      {:else if routeStore.current === 'midi'}
-        <MIDI />
-      {:else if routeStore.current === 'osc'}
-        <Osc />
-      {:else if routeStore.current === 'import'}
-        <Import />
-      {:else if routeStore.current === 'patch'}
-        <Patch />
-      {:else if routeStore.current === 'settings'}
-        <Settings />
-      {:else if routeStore.current === 'license'}
-        <License />
-      {:else if routeStore.current === 'welcome'}
-        <Welcome />
-      {:else if routeStore.current === 'help'}
-        <Help />
+    <div class="app-shell__workspace" class:app-shell__workspace--docked={stageDockVisible}>
+      <div
+        class="app-shell__view"
+        class:app-shell__view--perform={routeStore.current === 'perform' ||
+          routeStore.current === 'mix' ||
+          routeStore.current === 'author' ||
+          routeStore.current === 'patch'}
+      >
+        {#if mixVisited}
+          <div
+            class="app-shell__mix-keepalive"
+            hidden={routeStore.current !== 'mix'}
+            aria-hidden={routeStore.current !== 'mix' ? 'true' : undefined}
+          >
+            <Mix />
+          </div>
+        {/if}
+        {#if routeStore.current === 'perform'}
+          <Perform />
+        {:else if routeStore.current === 'mix'}
+          <!-- Rendered inside keepalive wrapper above so live Twitch/Webcam/Media never drop on route switch -->
+        {:else if routeStore.current === 'library'}
+          <Library />
+        {:else if routeStore.current === 'author'}
+          <Author />
+        {:else if routeStore.current === 'audio-uniforms'}
+          <AudioUniforms />
+        {:else if routeStore.current === 'playlist'}
+          <Playlist />
+        {:else if routeStore.current === 'sources'}
+          <Sources />
+        {:else if routeStore.current === 'midi'}
+          <MIDI />
+        {:else if routeStore.current === 'osc'}
+          <Osc />
+        {:else if routeStore.current === 'import'}
+          <Import />
+        {:else if routeStore.current === 'patch'}
+          <Patch />
+        {:else if routeStore.current === 'settings'}
+          <Settings />
+        {:else if routeStore.current === 'license'}
+          <License />
+        {:else if routeStore.current === 'welcome'}
+          <Welcome />
+        {:else if routeStore.current === 'help'}
+          <Help />
+        {/if}
+      </div>
+      {#if stageDockVisible}
+        <aside class="stage-dock" aria-label="Live stage monitor">
+          <header class="stage-dock__header">
+            <span class="stage-dock__title">
+              STAGE · {loadedSceneStore.snapshot?.name ?? 'Active Output'}
+            </span>
+            <button
+              type="button"
+              class="stage-dock__close"
+              onclick={() => stageDockStore.setOpen(false)}
+              aria-label="Collapse live stage monitor"
+            >
+              ×
+            </button>
+          </header>
+          <div class="stage-dock__canvas">
+            {#if liveFxStore.blackoutActive}
+              <div class="stage-dock__blackout">BLACKOUT</div>
+            {:else}
+              <SceneCanvas kind="rings" seed={4} />
+            {/if}
+            {#if liveFxStore.strobeActive}
+              <span class="stage-dock__badge stage-dock__badge--strobe">STROBE</span>
+            {/if}
+          </div>
+          <div class="stage-dock__meta mono">
+            <span>BPM {(bpmControlStore.manualBpm ?? 120).toFixed(1)}</span>
+            <span
+              class="stage-dock__state"
+              class:stage-dock__state--danger={liveFxStore.blackoutActive}
+            >
+              {liveFxStore.blackoutActive ? 'BLACKOUT' : 'MONITOR'}
+            </span>
+          </div>
+          <footer class="stage-dock__controls">
+            <button type="button" onclick={() => void playlistStore.previous()}>Prev</button>
+            <button type="button" onclick={() => void playlistStore.next()}>Next</button>
+            <button
+              type="button"
+              class="stage-dock__perform"
+              onclick={() => routeStore.set('perform')}
+            >
+              Perform
+            </button>
+          </footer>
+        </aside>
       {/if}
     </div>
     {#if routeStore.current === 'perform'}
       <div class="app-shell__snapbar">
         <SnapBar />
       </div>
-    {/if}
-    {#if showStageDockToggle}
-      <aside class="app-shell__stage-dock" aria-label="Live stage monitor">
-        {#if stageDockOpen}
-          <div class="stage-dock__card">
-            <header class="stage-dock__header">
-              <span class="stage-dock__title">
-                LIVE STAGE · {loadedSceneStore.snapshot?.name ?? 'Active Output'}
-              </span>
-              <button
-                type="button"
-                class="stage-dock__close"
-                onclick={() => (stageDockOpen = false)}
-                aria-label="Collapse live stage monitor"
-              >
-                ×
-              </button>
-            </header>
-            <div class="stage-dock__canvas">
-              {#if liveFxStore.blackoutActive}
-                <div class="stage-dock__blackout">BLACKOUT</div>
-              {:else}
-                <SceneCanvas kind="rings" seed={4} />
-              {/if}
-            </div>
-            <footer class="stage-dock__controls">
-              <button type="button" onclick={() => void playlistStore.previous()}>Prev</button>
-              <button type="button" onclick={() => void playlistStore.next()}>Next</button>
-              <button
-                type="button"
-                class="stage-dock__perform"
-                onclick={() => routeStore.set('perform')}
-              >
-                Perform
-              </button>
-            </footer>
-          </div>
-        {:else}
-          <button
-            type="button"
-            class="stage-dock__pill"
-            data-testid="toggle-stage-dock"
-            onclick={() => (stageDockOpen = true)}
-          >
-            Live Stage
-          </button>
-        {/if}
-      </aside>
     {/if}
   </main>
   <footer class="app-shell__status">
@@ -447,11 +508,21 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     overflow: hidden;
     min-height: 0;
   }
-  .app-shell__view {
+  .app-shell__workspace {
     flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+  }
+  .app-shell__workspace--docked {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+  .app-shell__view {
     overflow: auto;
     padding: var(--space-lg) var(--space-xl);
     min-height: 0;
+    min-width: 0;
   }
   .app-shell__view--perform {
     padding: var(--space-md);
@@ -480,42 +551,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     grid-area: status;
     overflow: hidden;
   }
-  .app-shell__stage-dock {
-    position: fixed;
-    right: 16px;
-    bottom: 40px;
-    z-index: 40;
-  }
-  .stage-dock__pill {
-    padding: 5px 12px;
-    background: var(--color-bg-2);
-    color: var(--color-text-1);
-    border: 1px solid var(--color-line-2);
-    border-radius: var(--radius-full);
-    font-family: var(--font-family-mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-  }
-  .stage-dock__pill:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-  }
-  .stage-dock__card {
-    width: 264px;
+  .stage-dock {
+    display: flex;
+    flex-direction: column;
     background: var(--color-bg-1);
-    border: 1px solid var(--color-line-2);
-    border-radius: var(--radius-md);
+    border-left: 1px solid var(--color-line-2);
+    min-height: 0;
     overflow: hidden;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   }
   .stage-dock__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 10px;
+    padding: 8px 10px;
     background: var(--color-bg-2);
     border-bottom: 1px solid var(--color-line-1);
     font-family: var(--font-family-mono);
@@ -537,8 +585,21 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
   .stage-dock__canvas {
     position: relative;
-    height: 148px;
+    height: 164px;
     background: #06070d;
+    border-bottom: 1px solid var(--color-line-1);
+  }
+  .stage-dock__badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    background: var(--color-danger);
+    color: #0b0c10;
   }
   .stage-dock__blackout {
     height: 100%;
@@ -549,12 +610,27 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     letter-spacing: 0.12em;
     color: var(--color-danger);
   }
+  .stage-dock__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--color-text-2);
+    border-bottom: 1px solid var(--color-line-1);
+  }
+  .stage-dock__state {
+    color: var(--color-text-1);
+  }
+  .stage-dock__state--danger {
+    color: var(--color-danger);
+  }
   .stage-dock__controls {
     display: flex;
     gap: 6px;
-    padding: 6px 8px;
+    padding: 8px 10px;
     background: var(--color-bg-2);
-    border-top: 1px solid var(--color-line-1);
+    border-bottom: 1px solid var(--color-line-1);
   }
   .stage-dock__controls button {
     flex: 1;

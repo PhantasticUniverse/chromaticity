@@ -227,14 +227,14 @@ describe('Patch view', () => {
 
   it('inspector unroute clears the source and shows "no source"', async () => {
     const { getByRole, getAllByText, queryByText } = render(Patch);
-    // Default frame is Color Processor; "hue" row has a MIDI source.
-    // brightness + contrast already render "no source" → count starts at 2.
+    // Default frame is Color Processor; brightness has MIDI · CC 14, hue has Audio · mid,
+    // saturation has Scene · speed h; only contrast starts as "no source" → count starts at 1.
     expect(queryByText('MIDI · CC 14')).toBeInTheDocument();
-    expect(getAllByText('no source').length).toBe(2);
-    const unrouteBtn = getByRole('button', { name: /Unroute hue/ });
+    expect(getAllByText('no source').length).toBe(1);
+    const unrouteBtn = getByRole('button', { name: /Unroute brightness/ });
     await fireEvent.click(unrouteBtn);
     expect(queryByText('MIDI · CC 14')).toBeNull();
-    expect(getAllByText('no source').length).toBe(3);
+    expect(getAllByText('no source').length).toBe(2);
   });
 
   it('live modulation bar toggles running state and route enable flags', async () => {

@@ -34,7 +34,6 @@ use chromaticity_runtime::crash_resume::{
     CanonicalBinarySnapshotter, CrashResumeAdapter, restore_all_supported_classes,
 };
 use chromaticity_runtime::scheduler::Scheduler;
-use chromaticity_runtime::scheduler::audio::MutexAudioPull;
 use chromaticity_ui_bridge::{CrashResumeStatusPayload, ResumeStatusPayload};
 use std::path::Path;
 use std::sync::Arc;
@@ -229,16 +228,16 @@ pub fn run() -> Result<(), tauri::Error> {
                 audio_config,
             );
             let snapshot_handle = runtime.snapshot_handle();
+            app_state_bootstrap.install_audio_snapshot_handle(snapshot_handle);
             let audio_handle = runtime.spawn();
 
-            // (b) Scheduler-tick consumer. `MutexAudioPull` reads the
-            // producer's shared snapshot once per tick BEFORE state
-            // mutation; `TauriIpcEmitter` emits the resulting payload
-            // AFTER state mutation, AFTER render dispatch, AFTER
-            // observability emit per the
-            // `engine/runtime/src/scheduler/ipc.rs` ordering contract.
+            // (b) Scheduler-tick consumer. `SwappableAudioPull` reads the
+            // active producer's shared snapshot once per tick BEFORE state
+            // mutation (supporting zero-restart audio input hot-swap);
+            // `TauriIpcEmitter` emits the resulting payload AFTER state
+            // mutation, AFTER render dispatch, AFTER observability emit.
             let scheduler = Scheduler::new()
-                .with_audio_pull(Box::new(MutexAudioPull::new(snapshot_handle)))
+                .with_audio_pull(Box::new(app_state_bootstrap.swappable_audio_pull()))
                 .with_ipc_emit(Box::new(TauriIpcEmitter::new(app.handle().clone())));
 
             // (c) State-commit thread. Coalescing 60 Hz loop; see

@@ -1288,6 +1288,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                 <button
                   type="button"
                   class="mix__icon-btn mix__icon-btn--danger"
+                  style="margin-left: 6px;"
                   aria-label="Remove {layer.name}"
                   disabled={layer.locked}
                   title={layer.locked ? 'Unlock layer to delete' : 'Remove layer'}
@@ -1576,10 +1577,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <div class="mix__monitor-bar">
             <span
               class="mix__tally"
-              class:mix__tally--preview={isStudioMode}
-              class:mix__tally--program={!isStudioMode}
+              class:mix__tally--preview={isStudioMode || !streamStatus.is_live}
+              class:mix__tally--program={!isStudioMode && streamStatus.is_live}
             >
-              {isStudioMode ? 'PREVIEW' : 'PROGRAM · LIVE'}
+              {isStudioMode
+                ? 'PREVIEW'
+                : streamStatus.is_live
+                  ? 'PROGRAM · LIVE'
+                  : 'PROGRAM · STANDBY'}
             </span>
             {#if selectedLayer}
               <span class="mix__monitor-readout">

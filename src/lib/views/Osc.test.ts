@@ -69,9 +69,7 @@ describe('Osc view', () => {
     const { getByRole, getByText } = render(Osc);
     const heading = getByRole('heading', { level: 1 });
     expect(heading).toHaveTextContent(/OSC/);
-    expect(heading).toHaveTextContent(/LISTENING/);
-    // The port readout binds to settingsStore.osc.port; the
-    // fresh-install default is the adapter-owned OSC in port.
+    expect(heading).toHaveTextContent(/OFFLINE|PREVIEW|LISTENING/);
     expect(heading).toHaveTextContent(/Port 9000/);
     expect(getByText(/Monitor OSC adapter health, configure ports/)).toBeInTheDocument();
   });
@@ -159,12 +157,12 @@ describe('Osc view', () => {
     expect(tim?.querySelector('.osc-view__family-state')?.textContent?.trim()).toBe('off');
   });
 
-  it('reserved-prefixes hint enumerates the OSC-CONF-16 prefixes', () => {
+  it('reserved-prefixes hint enumerates the reserved system prefixes', () => {
     const { container } = render(Osc);
     const reserved = container.querySelector('.osc-view__hint--reserved');
     expect(reserved?.textContent).toContain('/data/*');
     expect(reserved?.textContent).toContain('/data/subscribe/*');
-    expect(reserved?.textContent).toContain('OSC-CONF-16');
+    expect(reserved?.textContent).toContain('prefix-reserved');
   });
 
   it('renders the Adapter pill with state="Healthy" once the IPC resolves', async () => {
@@ -208,16 +206,9 @@ describe('Osc view', () => {
     expect(container.textContent ?? '').toMatch(/Tauri internals unset/);
   });
 
-  it('renders the Ableton Link stub panel with em-dash placeholders', () => {
+  it('does not render an empty Ableton Link placeholder panel', () => {
     const { container } = render(Osc);
-    const linkPanel = container.querySelector('.osc-view__link-panel');
-    expect(linkPanel).not.toBeNull();
-    expect(linkPanel?.textContent).toContain('Ableton Link');
-    // Status / peers / tempo / quantum each render `—` (or `— BPM`/`— beats`).
-    const dts = Array.from(linkPanel?.querySelectorAll('dt') ?? []).map((dt) =>
-      dt.textContent?.trim(),
-    );
-    expect(dts).toEqual(['status', 'peers', 'tempo', 'quantum']);
+    expect(container.querySelector('.osc-view__link-panel')).toBeNull();
   });
 
   it('hints panel includes the canonical hotkey rows with kbd glyphs', () => {

@@ -82,7 +82,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   // bottom-section list now mixes wired + disabled entries; the
   // `isWired` discriminator below already covers both shapes.
   const NAV_BOTTOM: readonly (NavEntry | DisabledEntry)[] = [
-    { label: 'Account', icon: 'user', section: 'bottom' },
     { route: 'help', label: 'Help', icon: 'help' },
   ] as const;
 

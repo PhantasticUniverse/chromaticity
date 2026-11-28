@@ -2076,8 +2076,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   /* Console — 3-column (controls / preview+audio / scenes). */
   .perform--console {
-    grid-template-columns: 1.05fr 1.55fr 1fr;
+    grid-template-columns: minmax(420px, 1.18fr) minmax(0, 1.38fr) minmax(260px, 0.92fr);
     grid-template-areas: 'left middle right';
+  }
+  .perform--console .panel__head {
+    flex-wrap: nowrap;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-md);
   }
 
   @media (max-width: 1399px) {

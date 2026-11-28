@@ -55,14 +55,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import Icon from '../Icon.svelte';
   import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+  import { bpmControlStore } from '../stores/bpmControl.svelte';
   import { settingsStore } from '../stores/settings.svelte';
   import { BpmRing, BeatDots } from '../widgets';
 
-  // Wave-23 PR1: synthetic BPM for the hero-block tempo visualizers.
-  // Matches the `bpmUniforms[0].displayValue = '128.0'` entry in the
-  // audio-uniforms fixture so the hero ring/dots and the BPM uniform
-  // card below tell the same story.
-  const HERO_BPM = 128;
+  const heroBpm = $derived(
+    audioSnapshotStore.snapshot?.bpm_availability === 'Ready'
+      ? audioSnapshotStore.snapshot.bpm
+      : (bpmControlStore.manualBpm ?? 120),
+  );
 
   let streaming = $state<boolean>(AUDIO_UNIFORMS_FIXTURE.streamingActive);
   let docsOpen = $state<boolean>(true);
@@ -359,7 +360,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     settingsStore.snapshot.audio.input_device &&
       settingsStore.snapshot.audio.input_device !== 'default'
       ? settingsStore.snapshot.audio.input_device
-      : AUDIO_UNIFORMS_FIXTURE.source,
+      : 'System Default',
   );
 
   // Sparkline SVG geometry — matches the bundle's 100×32 viewBox / 60-point
@@ -443,12 +444,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <header class="au__header">
       <h2 class="au__title">
         Audio Uniforms <span class="au__title-sep" aria-hidden="true">·</span>
-        <span class="au__title-mode">Live</span>
+        <span class="au__title-mode">{hasSnapshot ? 'Live' : 'Preview'}</span>
       </h2>
       <div class="au__header-actions">
-        <span class="au__pill" class:au__pill--on={streaming}>
+        <span class="au__pill" class:au__pill--on={hasSnapshot && streaming}>
           <span class="au__pill-dot" aria-hidden="true"></span>
-          {streaming ? 'streaming' : 'paused'}
+          {!hasSnapshot ? 'offline · preview' : streaming ? 'streaming' : 'paused'}
         </span>
         <button
           type="button"
@@ -522,10 +523,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           </svg>
         </div>
         <div class="au__hero-tempo">
-          <BpmRing bpm={HERO_BPM} size={72} />
+          <BpmRing bpm={heroBpm} size={72} />
           <div class="au__hero-tempo-meta">
             <span class="au__section-label">tempo · 4-count</span>
-            <BeatDots bpm={HERO_BPM} />
+            <BeatDots bpm={heroBpm} />
           </div>
         </div>
       </section>
@@ -897,7 +898,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     font-weight: var(--font-weight-label);
   }
   .au__hero-canvas {
-    height: 118px;
+    height: 86px;
     background: var(--color-bg-0);
     border: 1px solid var(--color-line-1);
     border-radius: var(--radius-sm);
@@ -945,13 +946,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   .au__band {
     background: var(--color-bg-1);
-    border: 1px solid var(--color-line-1);
-    border-top: 2px solid var(--band-tint);
+    border: 1px solid var(--color-line-2);
     border-radius: var(--radius-sm);
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-xs) var(--space-sm);
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
     min-width: 0;
   }
   .au__band-head {
@@ -987,7 +987,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .au__bar-track {
     position: relative;
     width: 100%;
-    height: 56px;
+    height: 44px;
     background: var(--color-bg-3);
     border: 1px solid var(--color-line-1);
     border-radius: var(--radius-xs);

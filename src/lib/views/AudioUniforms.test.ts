@@ -72,21 +72,15 @@ describe('AudioUniforms view', () => {
     cleanup();
   });
 
-  it('renders the header title with the live mode chip and streaming pill', () => {
+  it('renders the header title with the honest preview mode chip when offline', () => {
     const { container, getByText } = render(AudioUniforms);
-    // Title splits into "Audio Uniforms" + a separator + the mode word.
-    // The aside also exposes the phrase via an `aria-label` ("Audio uniforms
-    // reference"), so match against the explicit `<h2>` element instead.
     const title = container.querySelector('.au__title');
     expect(title).not.toBeNull();
     expect(title?.textContent).toContain('Audio Uniforms');
-    expect(getByText('Live')).toBeInTheDocument();
-    // Default fixture has `streamingActive: true` → pill shows "streaming"
-    // and the toggle button reads "Freeze".
+    expect(getByText('Preview')).toBeInTheDocument();
     const pill = container.querySelector('.au__pill');
     expect(pill).not.toBeNull();
-    expect(pill?.textContent).toContain('streaming');
-    expect(pill).toHaveClass('au__pill--on');
+    expect(pill?.textContent).toContain('offline · preview');
     expect(getByText('Freeze')).toBeInTheDocument();
   });
 
@@ -218,7 +212,7 @@ describe('AudioUniforms view', () => {
     // Peak / rms come from the fixture, formatted to one decimal place.
     expect(inHero.getByText(`${AUDIO_UNIFORMS_FIXTURE.peakDb.toFixed(1)} dB`)).toBeInTheDocument();
     expect(inHero.getByText(`${AUDIO_UNIFORMS_FIXTURE.rmsDb.toFixed(1)} dB`)).toBeInTheDocument();
-    expect(getByText(AUDIO_UNIFORMS_FIXTURE.source)).toBeInTheDocument();
+    expect(getByText('System Default')).toBeInTheDocument();
     // 64 spectrum bars render as inline SVG `<rect class="au__spectrum-bar">`.
     const bars = container.querySelectorAll('rect.au__spectrum-bar');
     expect(bars.length).toBe(SPECTRUM_BAR_COUNT);
@@ -234,9 +228,7 @@ describe('AudioUniforms view', () => {
     // After freeze, the canvas label flips and the button now reads "Resume".
     expect(heroCanvas?.getAttribute('aria-label')).toMatch(/paused/);
     expect(getByRole('button', { name: 'Resume' })).toBeInTheDocument();
-    // Pill updates too.
     const pill = container.querySelector('.au__pill');
-    expect(pill?.textContent).toContain('paused');
     expect(pill).not.toHaveClass('au__pill--on');
   });
 

@@ -30,12 +30,12 @@ describe('SidebarRail shell component', () => {
     expect(nav?.getAttribute('aria-label')).toBe('Primary navigation');
   });
 
-  it('renders 14 top-section entries plus 2 bottom-section entries', () => {
+  it('renders 14 top-section entries plus 1 bottom-section entry', () => {
     const { container } = render(SidebarRail);
     const top = container.querySelectorAll('.sidebar-rail__section--top > li');
     const bottom = container.querySelectorAll('.sidebar-rail__section--bottom > li');
     expect(top.length).toBe(14);
-    expect(bottom.length).toBe(2);
+    expect(bottom.length).toBe(1);
   });
 
   it('marks the active route button with aria-current="page" and the active class', () => {
@@ -79,13 +79,6 @@ describe('SidebarRail shell component', () => {
     }
   });
 
-  it('renders Account in the bottom section as a disabled button (Help routed in Wave 1d-α)', () => {
-    const { getByTitle } = render(SidebarRail);
-    const account = getByTitle('Account — coming in W17+');
-    expect(account).toBeDisabled();
-    expect(account).toHaveAttribute('aria-disabled', 'true');
-  });
-
   it('Help bottom-section entry is wired and routes to the help view (Wave 1d-α PR 1)', async () => {
     routeStore.set('perform');
     const { getByTitle } = render(SidebarRail);
@@ -95,18 +88,10 @@ describe('SidebarRail shell component', () => {
     expect(routeStore.current).toBe('help');
   });
 
-  it('does not change the active route when a disabled bottom-section button is clicked', async () => {
-    routeStore.set('perform');
-    const { getByTitle } = render(SidebarRail);
-    const account = getByTitle('Account — coming in W17+');
-    await fireEvent.click(account);
-    expect(routeStore.current).toBe('perform');
-  });
-
   it('renders an Icon SVG inside every nav button glyph wrapper', () => {
     const { container } = render(SidebarRail);
     const glyphs = container.querySelectorAll('.sidebar-rail__glyph');
-    expect(glyphs.length).toBe(16); // 14 top + 2 bottom
+    expect(glyphs.length).toBe(15); // 14 top + 1 bottom
     for (const glyph of glyphs) {
       const svg = glyph.querySelector('svg');
       expect(svg).not.toBeNull();

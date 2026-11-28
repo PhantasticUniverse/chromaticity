@@ -560,7 +560,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                   }
                 }}
               >
-                <div class="patch__node-head">
+                <div
+                  class="patch__node-head"
+                  style="height: {PATCH_HEADER_H}px; box-sizing: border-box;"
+                >
                   <span class="patch__node-dot" aria-hidden="true"></span>
                   <span class="patch__node-title">{node.title}</span>
                 </div>
@@ -577,37 +580,43 @@ SPDX-FileCopyrightText: 2026 Chromaticity
                     outPort.wireIndices.includes(hoveredWireIdx)}
                   <div
                     class="patch__pin"
-                    style="height: {PATCH_ROW_H}px;"
+                    style="height: {PATCH_ROW_H}px; box-sizing: border-box;"
                     data-row-idx={idx}
                     data-header-h={PATCH_HEADER_H}
                   >
                     <span class="patch__pin-name mono">{pin}</span>
-                    <span
-                      class="patch__pin-port patch__pin-port--in"
-                      class:patch__pin-port--connected={inPort !== undefined}
-                      class:patch__pin-port--active={inActive}
-                      class:patch__pin-port--dimmed={inPort !== undefined &&
-                        hoveredWireIdx !== null &&
-                        !inActive}
-                      data-port-key="{node.id}:{pin}:in"
-                      data-connected={inPort !== undefined ? 'true' : 'false'}
-                      data-signal={inPort?.signalKind}
-                      style={inPort !== undefined ? `--port-color: ${inPort.color};` : undefined}
-                      aria-hidden="true"
-                    ></span>
-                    <span
-                      class="patch__pin-port patch__pin-port--out"
-                      class:patch__pin-port--connected={outPort !== undefined}
-                      class:patch__pin-port--active={outActive}
-                      class:patch__pin-port--dimmed={outPort !== undefined &&
-                        hoveredWireIdx !== null &&
-                        !outActive}
-                      data-port-key="{node.id}:{pin}:out"
-                      data-connected={outPort !== undefined ? 'true' : 'false'}
-                      data-signal={outPort?.signalKind}
-                      style={outPort !== undefined ? `--port-color: ${outPort.color};` : undefined}
-                      aria-hidden="true"
-                    ></span>
+                    {#if node.kind !== 'source' && node.kind !== 'mod'}
+                      <span
+                        class="patch__pin-port patch__pin-port--in"
+                        class:patch__pin-port--connected={inPort !== undefined}
+                        class:patch__pin-port--active={inActive}
+                        class:patch__pin-port--dimmed={inPort !== undefined &&
+                          hoveredWireIdx !== null &&
+                          !inActive}
+                        data-port-key="{node.id}:{pin}:in"
+                        data-connected={inPort !== undefined ? 'true' : 'false'}
+                        data-signal={inPort?.signalKind}
+                        style={inPort !== undefined ? `--port-color: ${inPort.color};` : undefined}
+                        aria-hidden="true"
+                      ></span>
+                    {/if}
+                    {#if node.kind !== 'output'}
+                      <span
+                        class="patch__pin-port patch__pin-port--out"
+                        class:patch__pin-port--connected={outPort !== undefined}
+                        class:patch__pin-port--active={outActive}
+                        class:patch__pin-port--dimmed={outPort !== undefined &&
+                          hoveredWireIdx !== null &&
+                          !outActive}
+                        data-port-key="{node.id}:{pin}:out"
+                        data-connected={outPort !== undefined ? 'true' : 'false'}
+                        data-signal={outPort?.signalKind}
+                        style={outPort !== undefined
+                          ? `--port-color: ${outPort.color};`
+                          : undefined}
+                        aria-hidden="true"
+                      ></span>
+                    {/if}
                   </div>
                 {/each}
               </div>

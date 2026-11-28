@@ -107,11 +107,11 @@ describe('Import view', () => {
   });
 
   it('renders the Recent Imports panel with all six fixture rows', () => {
-    const { getByText, getByRole } = render(Import);
+    const { getAllByText, getByText, getByRole } = render(Import);
     expect(getByRole('heading', { name: 'Recent Imports' })).toBeInTheDocument();
     for (const row of RECENT_IMPORTS) {
       expect(getByText(row.title)).toBeInTheDocument();
-      expect(getByText(row.activity)).toBeInTheDocument();
+      expect(getAllByText(row.activity).length).toBeGreaterThanOrEqual(1);
     }
   });
 

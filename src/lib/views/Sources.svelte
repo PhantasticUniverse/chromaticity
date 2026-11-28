@@ -57,6 +57,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { currentPlatform } from '../stores/platform';
   import { DEFAULT_OUTPUT_NAME, syphonStore } from '../stores/syphonStore.svelte';
   import { toIpcError } from '../types/ipc-error';
+  import SceneStill from '../widgets/SceneStill.svelte';
 
   let selectedCollectionId = $state<string>(DEFAULT_COLLECTION_ID);
   let selectedAssetId = $state<string>(DEFAULT_ASSET_ID);
@@ -635,28 +636,33 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         </h2>
       </header>
 
-      <div
-        class="sources__inspector-preview"
-        style:--asset-hue="{tintAngle(selectedAsset.seed)}deg"
-        aria-hidden="true"
-      ></div>
+      <div class="sources__inspector-preview" aria-hidden="true">
+        <SceneStill
+          kind={selectedAsset.format === 'video'
+            ? 'fluid'
+            : selectedAsset.format === 'loop'
+              ? 'kaleido'
+              : 'rings'}
+          seed={selectedAsset.seed}
+        />
+      </div>
 
       <dl class="sources__inspector-meta">
         <div class="sources__inspector-row">
           <dt>Dimensions</dt>
-          <dd>{INSPECTOR_META.dimensions}</dd>
+          <dd>{selectedAsset.resolution}</dd>
         </div>
         <div class="sources__inspector-row">
           <dt>Duration</dt>
-          <dd>{INSPECTOR_META.duration}</dd>
+          <dd>{selectedAsset.duration ?? '—'}</dd>
         </div>
         <div class="sources__inspector-row">
-          <dt>Codec</dt>
-          <dd>{INSPECTOR_META.codec}</dd>
+          <dt>Format</dt>
+          <dd>{selectedAsset.format.toUpperCase()}</dd>
         </div>
         <div class="sources__inspector-row">
           <dt>Size</dt>
-          <dd>{INSPECTOR_META.size}</dd>
+          <dd>{selectedAsset.fileSize}</dd>
         </div>
         <div class="sources__inspector-row">
           <dt>Loop</dt>

@@ -60,10 +60,10 @@ describe('License view', () => {
     expect(getByRole('button', { name: /request trial/i })).toBeInTheDocument();
   });
 
-  it('capabilities table renders all 15 rows', () => {
+  it('capabilities table renders all 14 licensed capability rows', () => {
     const { container } = render(License, { props: { fixture: LICENSE_FIXTURE } });
     const rows = container.querySelectorAll('.license__cap-table tbody tr');
-    expect(rows.length).toBe(15);
+    expect(rows.length).toBe(14);
   });
 
   it('Install button is enabled, Refresh button is disabled in activated branch', () => {

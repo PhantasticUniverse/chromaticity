@@ -35,10 +35,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   //     equivalent today). IMPORT remains disabled until the W17+
   //     Import view ports `views/import.jsx`.
   import Icon from '../Icon.svelte';
+  import { playlistStore } from '../stores/playlist.svelte';
   import { routeStore } from '../stores/route.svelte';
 
   function launchQuickStart(): void {
-    routeStore.set('library');
+    const firstCue = playlistStore.cuesFor(playlistStore.activePlaylistId)[0];
+    if (firstCue) {
+      void playlistStore.loadCueScene(firstCue);
+    }
+    routeStore.set('perform');
   }
 
   function launchImport(): void {

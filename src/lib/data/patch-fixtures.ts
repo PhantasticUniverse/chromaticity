@@ -197,9 +197,9 @@ export const PATCH_INSPECTOR_TITLE = 'Inspector · Color Processor';
 export const PATCH_INSPECTOR_ROWS: readonly PatchInspectorRow[] = [
   {
     key: 'hue',
-    value: 0.38,
+    value: 137,
     unit: '°',
-    source: { name: 'MIDI · CC 14', icon: 'midi', tint: 'var(--color-info)' },
+    source: { name: 'Audio · mid', icon: 'link', tint: 'var(--color-cat-color)' },
   },
   {
     key: 'saturation',
@@ -207,7 +207,12 @@ export const PATCH_INSPECTOR_ROWS: readonly PatchInspectorRow[] = [
     unit: '',
     source: { name: 'Scene · speed h', icon: 'link', tint: 'var(--color-cat-limit)' },
   },
-  { key: 'brightness', value: 0.5, unit: '', source: null },
+  {
+    key: 'brightness',
+    value: 0.5,
+    unit: '',
+    source: { name: 'MIDI · CC 14', icon: 'midi', tint: 'var(--color-primary)' },
+  },
   { key: 'contrast', value: 0.55, unit: '', source: null },
 ];
 

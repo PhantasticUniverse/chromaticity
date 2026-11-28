@@ -285,7 +285,7 @@ describe('Perform view', () => {
     // Header echoes "{N} scenes" — the tally must match the 14-row
     // SETLIST_FIXTURE length so future fixture changes surface here.
     expect(within(panel).getByText(`${SETLIST_FIXTURE.length} scenes`)).toBeInTheDocument();
-    expect(SETLIST_FIXTURE.length).toBe(14);
+    expect(SETLIST_FIXTURE.length).toBe(12);
   });
 
   it('composes the expected widget primitives (CrossFader · VuStereo · AudioReactivity)', () => {

@@ -43,10 +43,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   import type { AudioUniformSnapshotPayload } from '../ipc/bindings/AudioUniformSnapshotPayload';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+  import { bpmControlStore } from '../stores/bpmControl.svelte';
 
   let {
-    bpm = 128,
-    linkPeerCount = 4,
+    bpm = undefined,
+    linkPeerCount = 0,
     bands,
     snapshot = undefined,
   }: {
@@ -62,7 +63,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   const liveSnapshot = $derived(snapshot ?? audioSnapshotStore.snapshot);
   const bpmReady = $derived(liveSnapshot === null || liveSnapshot.bpm_availability === 'Ready');
-  const liveBpm = $derived(liveSnapshot && bpmReady ? liveSnapshot.bpm : bpm);
+  const liveBpm = $derived(
+    liveSnapshot && bpmReady ? liveSnapshot.bpm : (bpm ?? bpmControlStore.manualBpm ?? 120),
+  );
   const bpmDisplay = $derived(liveSnapshot && !bpmReady ? '-- BPM' : `${liveBpm.toFixed(2)} BPM`);
   const fftWarming = $derived(
     !bands && liveSnapshot !== null && liveSnapshot.fft_availability !== 'Ready',

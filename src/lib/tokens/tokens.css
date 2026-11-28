@@ -35,6 +35,9 @@
 
   --color-primary: #c4ff3d;
   --color-on-primary: #0c0e16;
+  --color-control-track: #1b2030;
+  --color-control-fill: #8fa3c4;
+  --color-control-fill-active: #c4ff3d;
   --color-success: #3de5ff;
   --color-warning: #ffb64d;
   --color-danger: #ff4d5e;

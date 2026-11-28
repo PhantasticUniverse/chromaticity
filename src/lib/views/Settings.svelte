@@ -93,6 +93,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   } from '../ipc/showtime';
   import { audioDevicesStore } from '../stores/audioDevices.svelte';
   import { audioSnapshotStore } from '../stores/audioSnapshot.svelte';
+  import { loadedSceneStore } from '../stores/loadedScene.svelte';
+  import { midiStore } from '../stores/midiStore.svelte';
   import { settingsStore } from '../stores/settings.svelte';
   import ThemeSwitcher from '../ThemeSwitcher.svelte';
   import { ControlGroup, Fader, Meter, OutputRoutingTile, TabSegment } from '../widgets';
@@ -257,18 +259,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     readonly value: string;
   }
   const diagnosticsRows = $derived<readonly DiagnosticsRow[]>([
-    { key: 'GPU', value: 'Idle' },
-    { key: 'FPS / Frame', value: 'Idle' },
+    { key: 'GPU', value: loadedSceneStore.snapshot ? 'Active' : '—' },
+    { key: 'FPS / Frame', value: '—' },
     {
-      key: 'Audio Latency',
-      value: audioSnapshotStore.snapshot ? 'Live' : 'Idle',
+      key: 'Audio Engine',
+      value: audioSnapshotStore.snapshot
+        ? audioSnapshotStore.snapshot.degraded
+          ? 'Degraded'
+          : 'Live'
+        : 'Offline',
     },
-    { key: 'MIDI Devices', value: '0 connected' },
+    { key: 'MIDI Devices', value: `${midiStore.devices.length} connected` },
     {
       key: 'Syphon / Spout',
       value:
         liveSourcesSnapshot.syphon_output_enabled || liveSourcesSnapshot.syphon_input_enabled
-          ? 'Idle'
+          ? 'Configured'
           : 'Off',
     },
     {
@@ -585,6 +591,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
    * `@tauri-apps/api/app` import fails (Vitest jsdom; vite-only dev
    * server). */
   let resetConfirmOpen = $state(false);
+  let activeJumpSection = $state('settings-audio');
   let resetInFlight = $state(false);
   let appVersion = $state<string>('n/a');
   let tauriVersion = $state<string>('n/a');
@@ -635,11 +642,31 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         diagnostics. Changes are saved automatically.
       </p>
       <nav class="settings__jump-nav" aria-label="Settings sections">
-        <a href="#settings-audio">Audio</a>
-        <a href="#settings-graphics">Graphics</a>
-        <a href="#settings-storage">Storage</a>
-        <a href="#settings-tempo">Tempo & Sync</a>
-        <a href="#settings-hotkeys">Hotkeys</a>
+        <a
+          href="#settings-audio"
+          class:active={activeJumpSection === 'settings-audio'}
+          onclick={() => (activeJumpSection = 'settings-audio')}>Audio</a
+        >
+        <a
+          href="#settings-graphics"
+          class:active={activeJumpSection === 'settings-graphics'}
+          onclick={() => (activeJumpSection = 'settings-graphics')}>Graphics</a
+        >
+        <a
+          href="#settings-storage"
+          class:active={activeJumpSection === 'settings-storage'}
+          onclick={() => (activeJumpSection = 'settings-storage')}>Storage</a
+        >
+        <a
+          href="#settings-tempo"
+          class:active={activeJumpSection === 'settings-tempo'}
+          onclick={() => (activeJumpSection = 'settings-tempo')}>Tempo &amp; Sync</a
+        >
+        <a
+          href="#settings-hotkeys"
+          class:active={activeJumpSection === 'settings-hotkeys'}
+          onclick={() => (activeJumpSection = 'settings-hotkeys')}>Hotkeys</a
+        >
       </nav>
     </header>
 
@@ -793,8 +820,8 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         </div>
       </div>
       <p class="settings__hint">
-        Device choices are saved and applied on restart. The monitoring meter displays live input
-        levels when an audio device is active.
+        Applied live — audio input hot-swaps without interrupting stage output. The monitoring meter
+        displays live input levels when an audio device is active.
       </p>
     </article>
 
@@ -2063,9 +2090,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   .settings__jump-nav a:hover,
-  .settings__jump-nav a:focus-visible {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
+  .settings__jump-nav a:focus-visible,
+  .settings__jump-nav a.active {
+    color: var(--color-info);
+    border-color: var(--color-info);
+    background: color-mix(in srgb, var(--color-info) 10%, var(--color-bg-2));
     outline: none;
   }
 

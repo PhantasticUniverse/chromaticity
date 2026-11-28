@@ -1040,12 +1040,22 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           </div>
         {:else if activeTab === 'ssf'}
           <div class="au-author__ssf">
-            <h3 class="au-author__subhead">Inputs Inspector</h3>
-            <p class="au-author__ssf-prose">
-              The Inputs Inspector lives at its own route in this build. The full
-              <code class="mono">scene.json</code>-derived control surface is available there;
-              future iterations will mount it inline at this tab.
-            </p>
+            <h3 class="au-author__subhead">Scene Controls & Inputs</h3>
+            {#if loadedSceneStore.snapshot && loadedSceneStore.snapshot.controls.length > 0}
+              <ul class="au-author__inputs-list">
+                {#each loadedSceneStore.snapshot.controls as ctl, idx (ctl.name + idx)}
+                  <li class="au-author__inputs-row mono">
+                    <span>{ctl.label ?? ctl.name}</span>
+                    <span class="au-author__inputs-kind">{ctl.kind}</span>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="au-author__ssf-prose">
+                Load a <code class="mono">.chroma</code> scene to inspect its declared
+                <code class="mono">scene.json</code> inputs and control schema here.
+              </p>
+            {/if}
           </div>
         {:else if activeTab === 'plus'}
           <div class="au-author__import">
@@ -2139,5 +2149,30 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .au-author__compare-name {
     font-size: var(--font-size-mono-sm);
     color: var(--color-text-1);
+  }
+  .au-author__inputs-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .au-author__inputs-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: 6px 8px;
+    border: 1px solid var(--color-line-1);
+    border-radius: var(--radius-xs);
+    background: var(--color-bg-2);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-1);
+  }
+  .au-author__inputs-kind {
+    color: var(--color-text-3);
+    text-transform: uppercase;
+    font-size: var(--font-size-caps-sm);
   }
 </style>

@@ -662,14 +662,15 @@ describe('Settings view', () => {
     // Spout / Ableton Link). Iterate landmark text to confirm coverage.
     expect(within(diag).getByText('GPU')).toBeInTheDocument();
     expect(within(diag).getByText('FPS / Frame')).toBeInTheDocument();
-    expect(within(diag).getByText('Audio Latency')).toBeInTheDocument();
+    expect(within(diag).getByText('Audio Engine')).toBeInTheDocument();
     expect(within(diag).getByText('MIDI Devices')).toBeInTheDocument();
     expect(within(diag).getByText('Syphon / Spout')).toBeInTheDocument();
     expect(within(diag).getByText('Ableton Link')).toBeInTheDocument();
     // Avoid misleading hardcoded live telemetry strings when idle.
     expect(within(diag).queryByText(/Streaming → OBS/)).toBeNull();
     expect(within(diag).queryByText(/4 peers · 128\.00 BPM/)).toBeNull();
-    expect(within(diag).getAllByText('Idle').length).toBeGreaterThanOrEqual(3);
+    expect(within(diag).getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    expect(within(diag).getByText('Offline')).toBeInTheDocument();
     expect(within(diag).getByText('Idle · 0 peers')).toBeInTheDocument();
     // The two action buttons are stub-disabled pending W15+ work.
     const supportBundle = within(diag).getByRole('button', { name: /Generate Support Bundle/ });

@@ -145,7 +145,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     >
       <div class="knob-arc"></div>
       <div class="knob-ind"></div>
-      {#if showValue}<div class="knob-val">{value.toFixed(2)}</div>{/if}
     </div>
   {:else}
     <div
@@ -156,9 +155,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     >
       <div class="knob-arc"></div>
       <div class="knob-ind"></div>
-      {#if showValue}<div class="knob-val">{value.toFixed(2)}</div>{/if}
     </div>
   {/if}
+  {#if showValue}<div class="knob-val">{value.toFixed(2)}</div>{/if}
   {#if label}<div class="knob-label">{label}</div>{/if}
 </div>
 
@@ -227,15 +226,12 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     pointer-events: none;
   }
   .knob-val {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-mono-sm);
-    color: var(--color-text-1);
+    color: var(--color-text-2);
+    line-height: 1;
     white-space: nowrap;
-    pointer-events: none;
+    font-variant-numeric: tabular-nums;
   }
   .knob-label {
     font-family: var(--font-family-sans);

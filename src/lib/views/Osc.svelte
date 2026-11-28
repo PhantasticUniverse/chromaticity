@@ -249,7 +249,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <h1>
         <span>OSC</span>
         <span class="osc-view__title-sep" aria-hidden="true">·</span>
-        <span class="osc-view__title-mode">LISTENING</span>
+        <span class="osc-view__title-mode">
+          {browserPreviewMode
+            ? 'PREVIEW'
+            : healthSnapshot?.state === 'Healthy'
+              ? 'LISTENING'
+              : (healthSnapshot?.state?.toUpperCase() ?? 'OFFLINE')}
+        </span>
         {#if healthSnapshot}
           <span
             class="osc-view__title-dot"
@@ -458,10 +464,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <tbody>
         {#each filteredRoutes as route (route.canonical)}
           <tr data-family={route.family} data-direction={route.direction}>
-            <td><code class="osc-view__addr-canonical">{route.canonical}</code></td>
+            <td>
+              <code class="osc-view__addr-canonical" title={route.canonical}>{route.canonical}</code
+              >
+            </td>
             <td>
               {#if route.compatAlias}
-                <code class="osc-view__addr-alias">{route.compatAlias}</code>
+                <code class="osc-view__addr-alias" title={route.compatAlias}>
+                  {route.compatAlias}
+                </code>
               {:else}
                 <span class="osc-view__muted">—</span>
               {/if}
@@ -551,34 +562,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       {/if}
     {/if}
     <p class="osc-view__hint osc-view__hint--reserved">
-      Reserved prefixes per OSC-CONF-16 — inbound rejected with
-      <code>prefix-reserved</code>: {OSC_RESERVED_PREFIXES.join(', ')}.
+      Reserved system prefixes (inbound rejected with <code>prefix-reserved</code>):
+      {OSC_RESERVED_PREFIXES.join(', ')}.
     </p>
   </main>
 
   <aside class="osc-view__link">
-    <article class="osc-view__link-panel">
-      <h2>Ableton Link</h2>
-      <p class="osc-view__hint">
-        Network tempo and beat-phase sync with Link-enabled applications on your local network.
-      </p>
-      <dl class="osc-view__link-dl">
-        <dt>status</dt>
-        <dd><span class="osc-view__muted">—</span></dd>
-        <dt>peers</dt>
-        <dd><span class="osc-view__muted">—</span></dd>
-        <dt>tempo</dt>
-        <dd><span class="osc-view__muted">— BPM</span></dd>
-        <dt>quantum</dt>
-        <dd><span class="osc-view__muted">— beats</span></dd>
-      </dl>
-    </article>
-
     <article class="osc-view__hints">
-      <h2>Hints</h2>
+      <h2>Shortcuts &amp; Mapping</h2>
       <ul>
-        <li>Start MIDI-map mode</li>
-        <li>Start OSC-map mode</li>
+        <li>Click <strong>Details</strong> on any route to bind a target</li>
         <li>
           Show control hotkeys
           <kbd>?</kbd>
@@ -588,11 +581,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
           <kbd>Space</kbd>
         </li>
         <li>
-          Next scene
-          <kbd>→</kbd>
+          Hold Strobe
+          <kbd>S</kbd>
         </li>
         <li>
-          Blackout
+          Toggle Blackout
           <kbd>B</kbd>
         </li>
       </ul>
@@ -706,7 +699,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   .osc-view__health,
   .osc-view__settings-form,
   .osc-view__log,
-  .osc-view__link-panel,
   .osc-view__hints {
     background: var(--color-bg-1);
     border: 1px solid var(--color-line-1);
@@ -750,8 +742,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     background: currentColor;
   }
 
-  .osc-view__health-dl,
-  .osc-view__link-dl {
+  .osc-view__health-dl {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: var(--space-xs) var(--space-sm);
@@ -760,15 +751,13 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     font-size: var(--font-size-body-xs);
   }
 
-  .osc-view__health-dl dt,
-  .osc-view__link-dl dt {
+  .osc-view__health-dl dt {
     color: var(--color-text-2);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
 
-  .osc-view__health-dl dd,
-  .osc-view__link-dl dd {
+  .osc-view__health-dl dd {
     margin: 0;
   }
 
@@ -967,6 +956,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     color: var(--color-text-1);
     font-size: var(--font-size-body-xs);
   }
+  .osc-view__toggle input[type='checkbox'] {
+    accent-color: var(--color-primary);
+    color-scheme: dark;
+  }
 
   .osc-view__bind-cell {
     display: flex;
@@ -1071,11 +1064,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   .osc-view__addr-canonical {
+    display: block;
     color: var(--color-text-0);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .osc-view__addr-alias {
+    display: block;
     color: var(--color-text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .osc-view__dir {

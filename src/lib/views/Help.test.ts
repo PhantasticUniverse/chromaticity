@@ -84,16 +84,14 @@ describe('Help view', () => {
     });
   });
 
-  it('renders the missing-corpus placeholder when resolveResource rejects', async () => {
+  it('renders bundled markdown documentation when resolveResource rejects', async () => {
     resolveResourceMock.mockRejectedValueOnce(new Error('resource not found'));
-    const { getByRole } = render(Help);
-    // Initial render shows the "Loading Help…" status; once the
-    // rejected promise settles, the same role region transitions to
-    // the missing-corpus placeholder copy.
+    const { container } = render(Help);
     await waitFor(() => {
-      expect(getByRole('status')).toHaveTextContent(/Help corpus was not found/);
+      const article = container.querySelector('article.help__doc');
+      expect(article).not.toBeNull();
+      expect(article?.textContent?.length).toBeGreaterThan(20);
     });
-    expect(getByRole('status')).toHaveTextContent(/mkdocs build/);
   });
 
   it('exports a HELP_PAGES catalog whose htmlPaths point under the `help/` bundle prefix', () => {

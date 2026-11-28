@@ -62,7 +62,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     IMPORT_CONSOLE,
     IMPORT_CONVERTERS,
     PREVIEW_LABEL,
-    PREVIEW_SEED,
     RECENT_IMPORTS,
     type ImportConsoleEntry,
     type ImportConsoleLevel,
@@ -77,6 +76,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     inspectShadertoyLicense,
     type ShadertoyLicenseReport,
   } from '../ipc/import';
+  import { pickFolder } from '../ipc/picker';
+  import type { SceneKind } from '../widgets/scene-renderers';
+  import SceneStill from '../widgets/SceneStill.svelte';
 
   // Per-card input state. Map keyed on converter id so the state
   // persists when the operator switches cards. Defaults are empty
@@ -243,13 +245,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     }
   }
 
-  // Token-driven hue from a deterministic seed — mirrors the W17 PR1
-  // Sources thumbnail trick (`tintAngle`) so the visual variation
-  // doesn't depend on the unported runtime renderer.
-  function tintAngle(seed: number): number {
-    return (seed * 37) % 360;
-  }
-
   function isDisabled(converter: ImportConverter): boolean {
     return converter.disabled === true;
   }
@@ -298,8 +293,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               type="button"
               class="import__btn import__btn--ghost"
               aria-label="Browse for {converter.title} source"
-              title="Browse — wired post-Phase-1 when the file picker lands"
-              disabled
+              title="Browse for {converter.title} folder"
+              disabled={isDisabled(converter) || converter.id === 'shadertoy'}
+              onclick={async () => {
+                const picked = await pickFolder(`Select ${converter.title}`);
+                if (picked) {
+                  updateCardInput(converter.id, picked);
+                }
+              }}
             >
               <Icon name="folder" size={11} />
             </button>
@@ -309,7 +310,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               disabled={isDisabled(converter) || busyConverterId === converter.id}
               onclick={() => void handleConverterAction(converter, 'preview')}
               title={isDisabled(converter)
-                ? 'V2 deferred — preview unavailable'
+                ? 'ISF native import is not yet supported'
                 : `Preview ${converter.title} conversion`}
             >
               Preview
@@ -320,7 +321,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               disabled={isDisabled(converter) || busyConverterId === converter.id}
               onclick={() => void handleConverterAction(converter, 'import')}
               title={isDisabled(converter)
-                ? 'V2 deferred — import unavailable'
+                ? 'ISF native import is not yet supported'
                 : `Import ${converter.title} source`}
             >
               Import
@@ -353,19 +354,19 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   </article>
 
   <aside class="import__side" aria-label="Conversion preview, recent imports, and console">
-    <!-- Conversion preview tile — bundle line 49, `<Preview>` swap. -->
+    <!-- Conversion preview tile -->
     <article class="import__preview" aria-label={PREVIEW_LABEL}>
-      <div
-        class="import__preview-tile"
-        style:--preview-hue="{tintAngle(PREVIEW_SEED)}deg"
-        aria-hidden="true"
-      ></div>
+      <div class="import__preview-tile">
+        <span class="import__preview-empty">
+          Paste a Shadertoy URL or choose a .chroma / .synScene package to preview
+        </span>
+      </div>
       <header class="import__preview-head">
         <span class="import__preview-eyebrow caps">{PREVIEW_LABEL}</span>
       </header>
     </article>
 
-    <!-- Recent imports list — bundle lines 50-65. -->
+    <!-- Recent imports list -->
     <article class="import__panel">
       <header class="import__panel-head">
         <h3 class="import__panel-title">Recent Imports</h3>
@@ -373,11 +374,9 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       <ul class="import__recent">
         {#each recentImports as row (row.id)}
           <li class="import__recent-row">
-            <span
-              class="import__recent-thumb"
-              style:--recent-hue="{tintAngle(row.seed)}deg"
-              aria-hidden="true"
-            ></span>
+            <span class="import__recent-thumb" aria-hidden="true">
+              <SceneStill kind={row.kind as SceneKind} seed={row.seed} />
+            </span>
             <span class="import__recent-text">
               <span class="import__recent-title" title={row.title}>{row.title}</span>
               <span class="import__recent-activity mono">{row.activity}</span>
@@ -386,7 +385,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
               type="button"
               class="import__btn import__btn--ghost import__btn--icon"
               aria-label="Edit {row.title}"
-              title="Edit — wired post-Phase-1"
+              title="Open in Author"
               disabled
             >
               <Icon name="edit" size={11} />
@@ -682,6 +681,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     padding: 2px var(--space-xs);
     min-width: 24px;
     line-height: 1;
+  }
+  .import__preview-empty {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    padding: var(--space-lg);
+    text-align: center;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-mono-sm);
+    color: var(--color-text-3);
   }
   .import__btn--primary {
     background: var(--color-bg-3);

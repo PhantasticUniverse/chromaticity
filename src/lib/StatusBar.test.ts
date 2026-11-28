@@ -31,27 +31,22 @@ describe('StatusBar shell component', () => {
   // plus a `performance.memory`-derived approximation for MEM
   // (jsdom omits `performance.memory`, so the readout falls back to
   // the bundle's `2.1 GB` fixture string in this test environment).
-  it('renders bundle-faithful CPU / GPU / MEM placeholders plus the PEAK dBFS chip', () => {
+  it('renders honest em-dash CPU / GPU / MEM placeholders plus the PEAK dBFS chip', () => {
     const { container } = render(StatusBar);
     const values = container.querySelectorAll('.status-bar__metric-value');
-    expect(values.length).toBe(4); // CPU, GPU, MEM, PEAK (DESIGN.md bundle alignment 2026-05-18)
-    expect(values[0]?.textContent?.trim()).toBe('12%');
-    expect(values[1]?.textContent?.trim()).toBe('42%');
-    // jsdom does not expose performance.memory → MEM falls back to
-    // the bundle's `2.1` fixture string.
-    expect(values[2]?.textContent?.trim()).toBe('2.1');
-    // PEAK shows the em-dash placeholder under no live audio snapshot.
+    expect(values.length).toBe(4);
+    expect(values[0]?.textContent?.trim()).toBe('—');
+    expect(values[1]?.textContent?.trim()).toBe('—');
+    expect(values[2]?.textContent?.trim()).toBe('—');
     expect(values[3]?.textContent?.trim()).toBe('—');
   });
 
-  it('renders zero counters for warnings and errors', () => {
+  it('renders live console counters for warnings and errors', () => {
     const { container } = render(StatusBar);
     const counters = container.querySelectorAll('.status-bar__counter');
     expect(counters.length).toBe(2);
-    expect(counters[0]?.textContent).toContain('0 warnings');
-    expect(counters[1]?.textContent).toContain('0 errors');
-    expect(counters[0]?.getAttribute('data-state')).toBe('idle');
-    expect(counters[1]?.getAttribute('data-state')).toBe('idle');
+    expect(counters[0]?.textContent).toMatch(/\d+ warnings/);
+    expect(counters[1]?.textContent).toMatch(/\d+ errors/);
   });
 
   it('renders the Console toggle with aria-pressed=false by default', () => {

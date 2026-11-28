@@ -50,6 +50,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   let { fixture = LICENSE_FIXTURE }: { fixture?: LicenseFixture } = $props();
 
   let actionError = $state<string | null>(null);
+  let confirmRemove = $state<boolean>(false);
 
   const HERO_LABEL: Record<LicenseFixture['status'], string> = {
     activated: 'Activated',
@@ -91,6 +92,11 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   }
 
   async function handleRemove(): Promise<void> {
+    if (!confirmRemove) {
+      confirmRemove = true;
+      return;
+    }
+    confirmRemove = false;
     await runAction(async () => {
       await removeLicense();
       await capabilitiesStore.refreshFromEngine();
@@ -103,6 +109,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 </script>
 
 <section class="license" aria-label="License">
+  <h1 class="license__heading">License &amp; Entitlements</h1>
   <header
     class="license__hero"
     class:license__hero--lime={headModifier === 'lime'}
@@ -157,16 +164,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <table class="license__cap-table">
       <thead>
         <tr>
-          <th scope="col">capability</th>
           <th scope="col">display name</th>
+          <th scope="col">capability</th>
           <th scope="col">status</th>
         </tr>
       </thead>
       <tbody>
         {#each fixture.capabilities as cap (cap.id)}
           <tr>
-            <td class="license__cap-id">{cap.id}</td>
             <td>{cap.displayName}</td>
+            <td class="license__cap-id">{cap.id}</td>
             <td
               class="license__cap-status"
               class:license__cap-status--enabled={cap.enabled}
@@ -190,7 +197,14 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <button type="button" class="license__btn license__btn--primary" onclick={handleInstall}>
       Install License
     </button>
-    <button type="button" class="license__btn" onclick={handleRemove}> Remove License </button>
+    <button type="button" class="license__btn" onclick={handleRemove}>
+      {confirmRemove ? 'Confirm Remove License' : 'Remove License'}
+    </button>
+    {#if confirmRemove}
+      <button type="button" class="license__btn" onclick={() => (confirmRemove = false)}>
+        Cancel
+      </button>
+    {/if}
     <button
       type="button"
       class="license__btn license__btn--disabled"
@@ -201,7 +215,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     </button>
     {#if fixture.status === 'unactivated'}
       <button type="button" class="license__btn" onclick={handleRequestTrial}>
-        Request trial
+        Request Trial
       </button>
     {/if}
   </div>
@@ -225,6 +239,15 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     display: flex;
     flex-direction: column;
     gap: var(--space-xl);
+  }
+
+  .license__heading {
+    margin: 0;
+    font-family: var(--font-family-display);
+    font-size: var(--font-size-display-md);
+    font-weight: var(--font-weight-display);
+    letter-spacing: var(--letter-spacing-display);
+    color: var(--color-text-0);
   }
 
   /* ---------------- Hero (activation banner) ----------------------------- */

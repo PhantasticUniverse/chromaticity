@@ -402,12 +402,13 @@ describe('Author view', () => {
     expect(getAllByText('load scene').length).toBe(4);
   });
 
-  it('ssf tab nudges users toward the dedicated Inputs route', async () => {
-    const { container, getByText, getByRole } = render(Author);
+  it('ssf tab renders inline Scene Controls & Inputs inspector', async () => {
+    const { container, getByRole } = render(Author);
     const tabs = container.querySelector('.au-author__tabs') as HTMLElement;
     await fireEvent.click(within(tabs).getByRole('tab', { name: /Inputs/ }));
-    expect(getByRole('heading', { name: 'Inputs Inspector' })).toBeInTheDocument();
-    expect(getByText(/lives at its own route/)).toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Scene Controls & Inputs' })).toBeInTheDocument();
+    const ssf = container.querySelector('.au-author__ssf') as HTMLElement;
+    expect(within(ssf).getByText(/scene\.json/)).toBeInTheDocument();
   });
 
   it('Auto-Repair GLSL upgrades the active shader, logs fixes + Naga-26 warnings, and triggers live compile', async () => {

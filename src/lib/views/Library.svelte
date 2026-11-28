@@ -20,6 +20,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   import { SvelteSet } from 'svelte/reactivity';
 
   import { EMPTY_LIBRARY, EMPTY_LIBRARY_FILTERED } from '../data/empty-states';
+  import { SETLIST_SCENES } from '../data/setlist-fixtures';
   import EmptyState from '../EmptyState.svelte';
   import ErrorMessage from '../ErrorMessage.svelte';
   import Icon from '../Icon.svelte';
@@ -263,6 +264,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
       // `recencyIndex` already pinned in this file).
       const seenIds: Record<string, true> = {};
 
+      let unavailableCount = 0;
       for (const result of settled) {
         if (result.status === 'fulfilled') {
           for (const card of result.value) {
@@ -273,9 +275,28 @@ SPDX-FileCopyrightText: 2026 Chromaticity
         } else {
           const reason = result.reason;
           const parsed = toIpcError(reason);
-          if (parsed.kind !== 'invoke_unavailable') {
+          if (parsed.kind === 'invoke_unavailable') {
+            unavailableCount += 1;
+          } else {
             errors.push(reason instanceof Error ? reason.message : String(reason));
           }
+        }
+      }
+
+      if (merged.length === 0 && errors.length === 0 && unavailableCount === settled.length) {
+        for (const demo of SETLIST_SCENES) {
+          const id = demo.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          merged.push({
+            id,
+            title: demo.name,
+            credit: 'Chromaticity',
+            description: `Built-in ${demo.kind} demo scene`,
+            categories: ['BUILT-IN', 'AUDIO REACTIVE'],
+            tags: [demo.kind, demo.tag],
+            path: `bundled://${id}.chroma`,
+            source: 'Bundled',
+            format_tag: 'chroma',
+          });
         }
       }
 

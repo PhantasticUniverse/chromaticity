@@ -148,11 +148,11 @@ describe('Sources view', () => {
     expect(inspector).not.toBeNull();
     const header = inspector.querySelector('.sources__inspector-title');
     expect(header?.textContent).toBe('jellyfish_loop_04.mp4');
-    // Static body table is mounted.
+    // Inspector derives dimensions, duration, format, and size directly from selectedAsset.
     const inInspector = within(inspector);
-    expect(inInspector.getByText('1920 × 1080')).toBeInTheDocument();
-    expect(inInspector.getByText('00:00:14')).toBeInTheDocument();
-    expect(inInspector.getByText('H.264 · 30 fps')).toBeInTheDocument();
+    expect(inInspector.getByText('4K')).toBeInTheDocument();
+    expect(inInspector.getByText('0:12')).toBeInTheDocument();
+    expect(inInspector.getByText('35 MB')).toBeInTheDocument();
     expect(inInspector.getByText('seamless')).toBeInTheDocument();
     // Empty-state copy is not present.
     expect(queryByText('Select an asset to inspect')).toBeNull();

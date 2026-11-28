@@ -28,6 +28,77 @@ SPDX-FileCopyrightText: 2026 Chromaticity
 
   import { helpStore, HELP_PAGES } from '../stores/helpStore.svelte';
 
+  const RAW_DOCS = import.meta.glob<string>('../../../docs-corpus/docs/*.md', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  });
+
+  interface DocBlock {
+    readonly kind: 'h1' | 'h2' | 'h3' | 'p' | 'li' | 'code';
+    readonly text: string;
+  }
+
+  function loadBundledMarkdown(slug: string): readonly DocBlock[] {
+    const entry = Object.entries(RAW_DOCS).find(([path]) => path.endsWith(`/${slug}.md`));
+    const raw = entry?.[1];
+    if (!raw) return [];
+    const lines = raw.replace(/^<!--[\s\S]*?-->\s*/u, '').split(/\r?\n/u);
+    const blocks: DocBlock[] = [];
+    let inCode = false;
+    let codeBuf: string[] = [];
+    let paraBuf: string[] = [];
+
+    const flushPara = () => {
+      if (paraBuf.length > 0) {
+        blocks.push({ kind: 'p', text: paraBuf.join(' ').trim() });
+        paraBuf = [];
+      }
+    };
+
+    for (const line of lines) {
+      if (line.trimStart().startsWith('```')) {
+        flushPara();
+        if (inCode) {
+          blocks.push({ kind: 'code', text: codeBuf.join('\n') });
+          codeBuf = [];
+          inCode = false;
+        } else {
+          inCode = true;
+        }
+        continue;
+      }
+      if (inCode) {
+        codeBuf.push(line);
+        continue;
+      }
+      const trimmed = line.trim();
+      if (!trimmed) {
+        flushPara();
+        continue;
+      }
+      if (trimmed.startsWith('### ')) {
+        flushPara();
+        blocks.push({ kind: 'h3', text: trimmed.slice(4) });
+      } else if (trimmed.startsWith('## ')) {
+        flushPara();
+        blocks.push({ kind: 'h2', text: trimmed.slice(3) });
+      } else if (trimmed.startsWith('# ')) {
+        flushPara();
+        blocks.push({ kind: 'h1', text: trimmed.slice(2) });
+      } else if (/^[-*]\s+/u.test(trimmed)) {
+        flushPara();
+        blocks.push({ kind: 'li', text: trimmed.replace(/^[-*]\s+/u, '') });
+      } else {
+        paraBuf.push(trimmed);
+      }
+    }
+    flushPara();
+    return blocks;
+  }
+
+  const fallbackBlocks = $derived(loadBundledMarkdown(helpStore.selectedSlug));
+
   let resolvedSrc = $state<string | null>(null);
   let resolveError = $state<string | null>(null);
 
@@ -76,30 +147,38 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   </aside>
   <div class="help__content">
     {#if resolveError}
-      <div class="help__placeholder" role="status">
-        <div class="help__fallback-card">
-          <h2 class="help__fallback-title">Quickstart & Essential Booth Hotkeys</h2>
-          <p class="help__fallback-lead">
-            Offline documentation HTML is bundled in desktop releases. Key shortcuts are always
-            available below:
-          </p>
-          <ul class="help__hotkey-list">
-            <li><kbd>?</kbd> Toggle full Hotkey Reference overlay</li>
-            <li><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> Open Command Palette</li>
-            <li><kbd>Space</kbd> Play / Pause active Playlist</li>
-            <li><kbd>B</kbd> Toggle Blackout · Hold <kbd>S</kbd> for momentary Strobe</li>
-            <li><kbd>1</kbd>–<kbd>8</kbd> Recall Snap slots on Perform</li>
-          </ul>
-          <details class="help__dev-note">
-            <summary>Bundle diagnostics</summary>
-            <p class="help__placeholder-detail">
-              The Help corpus was not found in the application bundle. Run
-              <code>mkdocs build</code> from <code>docs-corpus/</code> before
-              <code>cargo tauri build</code>; see <code>docs-corpus/README.md</code>.
-            </p>
-          </details>
+      {#if fallbackBlocks.length > 0}
+        <article class="help__doc" aria-label={helpStore.page().label}>
+          {#each fallbackBlocks as block, i (i)}
+            {#if block.kind === 'h1'}
+              <h2 class="help__doc-h1">{block.text}</h2>
+            {:else if block.kind === 'h2'}
+              <h3 class="help__doc-h2">{block.text}</h3>
+            {:else if block.kind === 'h3'}
+              <h4 class="help__doc-h3">{block.text}</h4>
+            {:else if block.kind === 'li'}
+              <p class="help__doc-li">• {block.text}</p>
+            {:else if block.kind === 'code'}
+              <pre class="help__doc-code"><code>{block.text}</code></pre>
+            {:else}
+              <p class="help__doc-p">{block.text}</p>
+            {/if}
+          {/each}
+        </article>
+      {:else}
+        <div class="help__placeholder" role="status">
+          <div class="help__fallback-card">
+            <h2 class="help__fallback-title">Quickstart &amp; Essential Booth Hotkeys</h2>
+            <ul class="help__hotkey-list">
+              <li><kbd>?</kbd> Toggle full Hotkey Reference overlay</li>
+              <li><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> Open Command Palette</li>
+              <li><kbd>Space</kbd> Play / Pause active Playlist</li>
+              <li><kbd>B</kbd> Toggle Blackout · Hold <kbd>S</kbd> for momentary Strobe</li>
+              <li><kbd>1</kbd>–<kbd>8</kbd> Recall Snap slots on Perform</li>
+            </ul>
+          </div>
         </div>
-      </div>
+      {/if}
     {:else if resolvedSrc}
       <iframe
         class="help__iframe"
@@ -219,11 +298,6 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     font-size: var(--font-size-body-lg, 1rem);
     color: var(--color-text-0);
   }
-  .help__fallback-lead {
-    margin: 0;
-    font-size: var(--font-size-body-sm);
-    color: var(--color-text-2);
-  }
   .help__hotkey-list {
     margin: 0;
     padding: 0;
@@ -247,21 +321,49 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     border-radius: var(--radius-xs);
     color: var(--color-primary);
   }
-  .help__dev-note {
-    margin-top: var(--space-xs);
-    padding-top: var(--space-sm);
-    border-top: 1px solid var(--color-line-1);
-    font-size: var(--font-size-mono-sm);
-    color: var(--color-text-3);
+  .help__doc {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-2xl) var(--space-3xl);
+    max-width: 72ch;
+    color: var(--color-text-1);
+    line-height: 1.6;
+    font-size: var(--font-size-body-sm);
   }
-  .help__dev-note summary {
-    cursor: pointer;
-    font-family: var(--font-family-mono);
+  .help__doc-h1 {
+    margin: 0 0 var(--space-md);
+    font-family: var(--font-family-display);
+    font-size: var(--font-size-display-md);
+    color: var(--color-text-0);
   }
-  .help__placeholder-detail {
-    margin: var(--space-xs) 0 0;
+  .help__doc-h2 {
+    margin: var(--space-xl) 0 var(--space-sm);
+    font-size: var(--font-size-display-sm);
+    color: var(--color-text-0);
+    border-bottom: 1px solid var(--color-line-1);
+    padding-bottom: 4px;
+  }
+  .help__doc-h3 {
+    margin: var(--space-md) 0 var(--space-xs);
+    font-size: var(--font-size-body-md);
+    color: var(--color-text-0);
+  }
+  .help__doc-p {
+    margin: 0 0 var(--space-sm);
+  }
+  .help__doc-li {
+    margin: 0 0 4px;
+    padding-left: var(--space-md);
+  }
+  .help__doc-code {
+    margin: var(--space-sm) 0 var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-bg-0);
+    border: 1px solid var(--color-line-2);
+    border-radius: var(--radius-sm);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-mono-sm);
-    color: var(--color-text-3);
+    overflow-x: auto;
+    color: var(--color-info);
   }
 </style>

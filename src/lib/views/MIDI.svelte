@@ -1162,8 +1162,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <!-- Active learned MIDI bindings (G6.2) -->
     <article class="midi__panel midi__panel--bindings" aria-label="Active MIDI bindings">
       <header class="midi__panel-head">
-        <h2 class="midi__panel-title">Active Bindings</h2>
-        <span class="midi__panel-sub mono">{midiBindingsStore.bindings.length} bound</span>
+        <h2 class="midi__panel-title">Learned Bindings</h2>
+        <span class="midi__panel-sub mono">
+          {midiBindingsStore.bindings.length} learned · {filteredRows.length} preset
+        </span>
         <span class="midi__toolbar-spacer" aria-hidden="true"></span>
         <button
           type="button"
@@ -1282,7 +1284,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     <article class="midi__panel">
       <header class="midi__panel-head">
         <h2 class="midi__panel-title">MIDI Time Code</h2>
-        <span class="midi__panel-sub">MIDI-CONF-19</span>
+        <span class="midi__panel-sub">Quarter-frame MTC</span>
       </header>
       <div class="midi__panel-body">
         <div class="midi__mtc">
@@ -1494,6 +1496,16 @@ SPDX-FileCopyrightText: 2026 Chromaticity
     background: var(--color-danger);
     color: var(--color-on-primary);
     border-color: var(--color-danger);
+  }
+  .midi__btn--icon.midi__btn--danger {
+    background: transparent;
+    color: var(--color-text-3);
+    border-color: transparent;
+  }
+  .midi__btn--icon.midi__btn--danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-danger) 18%, var(--color-bg-3));
+    color: var(--color-danger);
+    border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-line-2));
   }
   .midi__btn--danger:hover:not(:disabled) {
     filter: brightness(1.05);

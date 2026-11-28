@@ -46,13 +46,13 @@ describe('Welcome view', () => {
     expect(getByText(/Start from a blank canvas with default scenes/)).toBeInTheDocument();
   });
 
-  it('Quick Start card Launch button is enabled and routes to Library', async () => {
+  it('Quick Start card Launch button is enabled and routes to Perform', async () => {
+    routeStore.set('welcome');
     const { getByRole } = render(Welcome);
     const launch = getByRole('button', { name: /^Launch$/ });
     expect(launch).not.toBeDisabled();
-    expect(routeStore.current).toBe('perform');
     await fireEvent.click(launch);
-    expect(routeStore.current).toBe('library');
+    expect(routeStore.current).toBe('perform');
   });
 
   it('Empty Project card Create button is enabled and routes to Perform', async () => {
@@ -95,9 +95,9 @@ describe('Welcome view', () => {
     const { getByRole } = render(Welcome);
     const launch = getByRole('button', { name: /^Launch$/ });
     await fireEvent.click(launch);
-    expect(routeStore.current).toBe('library');
+    expect(routeStore.current).toBe('perform');
     routeStore.set('settings');
     await fireEvent.click(launch);
-    expect(routeStore.current).toBe('library');
+    expect(routeStore.current).toBe('perform');
   });
 });

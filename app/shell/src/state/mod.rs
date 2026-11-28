@@ -56,13 +56,15 @@
 //!    the scheduler; [`AudioRuntimeHandle::drop`] performs its own
 //!    best-effort shutdown + 2-second join.
 
-use chromaticity_audio::runtime::AudioRuntimeHandle;
+use chromaticity_audio::AudioUniformSnapshot;
+use chromaticity_audio::runtime::{AudioRuntime, AudioRuntimeConfig, AudioRuntimeHandle};
 use chromaticity_midi_adapter::MidiListenHandle;
 use chromaticity_osc_adapter::adapter::UdpOscAdapter;
 use chromaticity_osc_adapter::bindings::{OscDispatchAction, OscDispatchSink};
 use chromaticity_osc_adapter::route_registry::OscRouteRegistry;
 use chromaticity_osc_adapter::sender::OscSender;
 use chromaticity_runtime::InMemoryBus;
+use chromaticity_runtime::scheduler::audio::AudioPull;
 use chromaticity_runtime::settings::Settings;
 use chromaticity_runtime::state::State;
 use chromaticity_scene::schema::Scene;
@@ -420,6 +422,10 @@ pub struct AppState {
     /// Lock-free atomic linear input-gain handle shared with the live
     /// [`chromaticity_audio::runtime::AudioRuntime`] producer thread.
     pub audio_input_gain_atomic: chromaticity_audio::AudioInputGainHandle,
+    /// Indirect slot holding the active audio producer's shared snapshot handle.
+    /// Swapped atomically during zero-restart audio input hot-swap so the
+    /// scheduler thread reads from the newly spawned producer on the next tick.
+    pub audio_snapshot_slot: Arc<Mutex<Arc<Mutex<AudioUniformSnapshot>>>>,
     /// Phase 7a crash-safe fMP4 recorder muxer (`Idle` / `Recording` / `Stopping`).
     pub recorder_muxer: Mutex<Option<chromaticity_runtime::recorder::Fmp4Muxer>>,
     /// Open on-disk fMP4 file backing the active recording session (`None` when idle).
@@ -434,6 +440,27 @@ pub struct AppState {
     pub entitlement_token: Mutex<Option<chromaticity_entitlement::Token>>,
     /// Monotonic process-start timestamp for shader `chroma_Time.x`.
     pub started_at: Instant,
+}
+
+/// Scheduler-side [`AudioPull`] adapter backed by a swappable snapshot slot so
+/// [`AppState::hot_swap_audio_input`] can replace the live audio producer thread
+/// without restarting the scheduler thread or interrupting stage output.
+pub struct SwappableAudioPull {
+    slot: Arc<Mutex<Arc<Mutex<AudioUniformSnapshot>>>>,
+}
+
+impl AudioPull for SwappableAudioPull {
+    fn pull_snapshot(&self) -> AudioUniformSnapshot {
+        let handle = match self.slot.lock() {
+            Ok(g) => Arc::clone(&g),
+            Err(p) => Arc::clone(&p.into_inner()),
+        };
+        let guard = match handle.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        *guard
+    }
 }
 
 struct QueuedOscDispatchSink {
@@ -520,6 +547,9 @@ impl AppState {
             )),
             audio_channel_pair_atomic: chromaticity_audio::AudioChannelPairHandle::default(),
             audio_input_gain_atomic: chromaticity_audio::AudioInputGainHandle::default(),
+            audio_snapshot_slot: Arc::new(Mutex::new(Arc::new(Mutex::new(
+                AudioUniformSnapshot::default(),
+            )))),
             recorder_muxer: Mutex::new(
                 chromaticity_runtime::recorder::Fmp4Muxer::new(
                     chromaticity_runtime::recorder::Fmp4MuxerConfig::default(),
@@ -546,6 +576,51 @@ impl AppState {
                 let mut guard = poisoned.into_inner();
                 *guard = Some(root);
             }
+        }
+    }
+
+    /// Return a scheduler-ready [`SwappableAudioPull`] wired to this state's
+    /// active audio snapshot slot.
+    #[must_use]
+    pub fn swappable_audio_pull(&self) -> SwappableAudioPull {
+        SwappableAudioPull {
+            slot: Arc::clone(&self.audio_snapshot_slot),
+        }
+    }
+
+    /// Point the swappable audio pull slot at `handle` so the next scheduler
+    /// tick reads from the new producer.
+    pub fn install_audio_snapshot_handle(&self, handle: Arc<Mutex<AudioUniformSnapshot>>) {
+        match self.audio_snapshot_slot.lock() {
+            Ok(mut guard) => *guard = handle,
+            Err(poisoned) => *poisoned.into_inner() = handle,
+        }
+    }
+
+    /// Hot-swap the live audio input device without restarting the scheduler
+    /// thread or interrupting GPU stage output. Returns `true` if a running
+    /// audio runtime was replaced, or `false` when the shell runtime is not
+    /// bootstrapped (e.g. unit tests).
+    pub fn hot_swap_audio_input(&self, preferred_input: Option<&str>) -> bool {
+        let mut guard = match self.runtime.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        if let ShellRuntime::Running { audio, .. } = &mut *guard {
+            let input_gain_handle = self.live_audio_input_gain_handle();
+            let audio_config = AudioRuntimeConfig {
+                input_gain_linear: input_gain_handle.get_linear(),
+                input_gain_handle: Some(input_gain_handle),
+                channel_pair: self.live_audio_channel_pair_handle(),
+                ..AudioRuntimeConfig::default()
+            };
+            let new_runtime = AudioRuntime::with_preferred_device(preferred_input, audio_config);
+            let new_snapshot_handle = new_runtime.snapshot_handle();
+            self.install_audio_snapshot_handle(new_snapshot_handle);
+            *audio = new_runtime.spawn();
+            true
+        } else {
+            false
         }
     }
 
