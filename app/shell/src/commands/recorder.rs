@@ -19,14 +19,75 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Manager, State};
 
 /// Subdirectory under `app.path().app_data_dir()` where default replay files are saved.
 const RECORDINGS_SUBDIR: &str = "recordings";
 
-/// Maximum retained JPEG frames in the live rolling replay ring buffer (15 s @ 30 fps).
+/// Wall-clock span the live rolling replay ring retains.
+pub const REPLAY_WINDOW: Duration = Duration::from_secs(15);
+
+/// Hard cap on retained replay frames (15 s at 30 fps), bounding memory
+/// regardless of push cadence.
 const MAX_REPLAY_JPEG_FRAMES: usize = 450;
+
+/// Constant frame rate replays are written at; frames are resampled to it
+/// from their push timestamps so playback runs in real time whatever the
+/// push cadence was (100 ms idle, ~33 ms while recording).
+pub const REPLAY_OUTPUT_FPS: u32 = 30;
+
+/// One JPEG frame in the rolling replay ring, stamped when it was pushed.
+#[derive(Debug, Clone)]
+pub struct ReplayFrame {
+    /// Push time.
+    pub at: Instant,
+    /// Encoded JPEG bytes.
+    pub jpeg: Vec<u8>,
+}
+
+/// Append a frame and drop everything older than [`REPLAY_WINDOW`] before it
+/// (and anything beyond [`MAX_REPLAY_JPEG_FRAMES`]).
+pub fn push_replay_frame(
+    ring: &mut std::collections::VecDeque<ReplayFrame>,
+    at: Instant,
+    jpeg: Vec<u8>,
+) {
+    ring.push_back(ReplayFrame { at, jpeg });
+    while ring.len() > MAX_REPLAY_JPEG_FRAMES {
+        ring.pop_front();
+    }
+    while let Some(front) = ring.front() {
+        if at.saturating_duration_since(front.at) > REPLAY_WINDOW {
+            ring.pop_front();
+        } else {
+            break;
+        }
+    }
+}
+
+/// Resample frames pushed at `offsets` (time since the first frame,
+/// ascending) onto a constant `fps` grid. Returns, for each output tick
+/// from the first frame to the last, the index of the newest frame pushed
+/// at or before that tick, so the written video plays back in real time.
+#[must_use]
+pub fn replay_schedule(offsets: &[Duration], fps: u32) -> Vec<usize> {
+    let Some(last) = offsets.last() else {
+        return Vec::new();
+    };
+    let fps = fps.max(1);
+    let ticks = (last.as_secs_f64() * f64::from(fps)).floor() as usize + 1;
+    let mut out = Vec::with_capacity(ticks);
+    let mut current = 0usize;
+    for k in 0..ticks {
+        let t = k as f64 / f64::from(fps);
+        while current + 1 < offsets.len() && offsets[current + 1].as_secs_f64() <= t + 1e-9 {
+            current += 1;
+        }
+        out.push(current);
+    }
+    out
+}
 
 /// Open on-disk fMP4 file (and optional live `ffmpeg` H.264 encoder subprocess)
 /// backing an active recording session.
@@ -122,7 +183,7 @@ struct LiveRecorderTelemetry {
 
 fn collect_live_telemetry(
     active_file: Option<&ActiveRecordingFile>,
-    jpeg_ring: Option<&std::collections::VecDeque<Vec<u8>>>,
+    jpeg_ring: Option<&std::collections::VecDeque<ReplayFrame>>,
 ) -> LiveRecorderTelemetry {
     let (ffmpeg_frames, active_file_bytes) = match active_file {
         Some(active) if active.ffmpeg_frames > 0 => {
@@ -134,7 +195,7 @@ fn collect_live_telemetry(
         _ => (0, 0),
     };
     let (jpeg_ring_frames, jpeg_ring_bytes) = match jpeg_ring {
-        Some(ring) => (ring.len(), ring.iter().map(Vec::len).sum()),
+        Some(ring) => (ring.len(), ring.iter().map(|f| f.jpeg.len()).sum()),
         None => (0, 0),
     };
     LiveRecorderTelemetry {
@@ -526,7 +587,7 @@ pub fn save_replay_buffer_impl(
     if fmp4_bytes.is_empty() {
         // Fallback to the live rolling JPEG ring buffer when no raw H.264 NAL packets
         // were pushed directly into `Fmp4Muxer`.
-        let jpeg_frames: Vec<Vec<u8>> = {
+        let jpeg_frames: Vec<ReplayFrame> = {
             let ring = match app.replay_jpeg_ring.lock() {
                 Ok(g) => g,
                 Err(p) => p.into_inner(),
@@ -561,7 +622,7 @@ pub fn save_replay_buffer_impl(
                 "-f",
                 "mjpeg",
                 "-framerate",
-                "10",
+                &REPLAY_OUTPUT_FPS.to_string(),
                 "-i",
                 "pipe:0",
                 "-c:v",
@@ -577,9 +638,15 @@ pub fn save_replay_buffer_impl(
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|err| format!("saving replay buffer requires ffmpeg: {err}"))?;
+        let first_at = jpeg_frames.first().map(|f| f.at);
+        let offsets: Vec<Duration> = jpeg_frames
+            .iter()
+            .map(|f| first_at.map_or(Duration::ZERO, |t0| f.at.saturating_duration_since(t0)))
+            .collect();
+        let schedule = replay_schedule(&offsets, REPLAY_OUTPUT_FPS);
         if let Some(mut stdin) = child.stdin.take() {
-            for frame in &jpeg_frames {
-                let _ = stdin.write_all(frame);
+            for &idx in &schedule {
+                let _ = stdin.write_all(&jpeg_frames[idx].jpeg);
             }
         }
         let status = child
@@ -591,8 +658,9 @@ pub fn save_replay_buffer_impl(
         let bytes_written = std::fs::metadata(&target_path)
             .map(|m| m.len() as usize)
             .unwrap_or(0);
-        let frame_count = jpeg_frames.len();
-        let duration_90khz = (frame_count as u64).saturating_mul(u64::from(TIMESCALE_90KHZ) / 10);
+        let frame_count = schedule.len();
+        let duration_90khz = (frame_count as u64)
+            .saturating_mul(u64::from(TIMESCALE_90KHZ) / u64::from(REPLAY_OUTPUT_FPS));
         return Ok(ReplaySaveResultDto {
             path: target_path.to_string_lossy().into_owned(),
             bytes_written,
@@ -738,10 +806,7 @@ pub fn push_recorder_jpeg_frame_impl(app: &AppState, jpeg_bytes: &[u8]) -> Resul
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        if ring.len() >= MAX_REPLAY_JPEG_FRAMES {
-            ring.pop_front();
-        }
-        ring.push_back(jpeg_bytes.to_vec());
+        push_replay_frame(&mut ring, Instant::now(), jpeg_bytes.to_vec());
     }
 
     let mut file_guard = match app.recorder_output_file.lock() {
@@ -1066,5 +1131,47 @@ mod tests {
         assert_eq!(status.replay_retained_secs, 2);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replay_schedule_resamples_mixed_cadence_to_real_time() {
+        let ms = |v: u64| std::time::Duration::from_millis(v);
+        // 100 ms idle pushes, then ~33 ms pushes once recording starts.
+        let offsets = [ms(0), ms(100), ms(200), ms(233), ms(266), ms(300)];
+        let schedule = replay_schedule(&offsets, 30);
+        // 0.3 s at 30 fps = ticks 0..=9; each tick shows the newest frame
+        // pushed at or before it, so playback lasts as long as capture.
+        assert_eq!(schedule, vec![0, 0, 0, 1, 1, 1, 2, 3, 4, 5]);
+        assert!(replay_schedule(&[], 30).is_empty());
+        assert_eq!(replay_schedule(&[ms(0)], 30), vec![0]);
+    }
+
+    #[test]
+    fn replay_ring_keeps_fifteen_seconds_whatever_the_push_cadence() {
+        use std::collections::VecDeque;
+        let t0 = std::time::Instant::now();
+        // Idle cadence (100 ms) for 20 s: only the last 15 s survive
+        // (the old frame-count cap kept 45 s at this cadence).
+        let mut ring = VecDeque::new();
+        for i in 0..=200u64 {
+            push_replay_frame(
+                &mut ring,
+                t0 + std::time::Duration::from_millis(i * 100),
+                vec![0xFF],
+            );
+        }
+        let span = ring.back().unwrap().at - ring.front().unwrap().at;
+        assert_eq!(span, REPLAY_WINDOW);
+        assert_eq!(ring.len(), 151);
+        // A burst faster than 30 fps is bounded by the frame cap.
+        let mut burst = VecDeque::new();
+        for i in 0..1_000u64 {
+            push_replay_frame(
+                &mut burst,
+                t0 + std::time::Duration::from_millis(i * 5),
+                vec![0xFF],
+            );
+        }
+        assert_eq!(burst.len(), MAX_REPLAY_JPEG_FRAMES);
     }
 }

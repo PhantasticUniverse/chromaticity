@@ -434,7 +434,7 @@ pub struct AppState {
     pub replay_buffer: Mutex<chromaticity_runtime::recorder::ReplayBuffer>,
     /// Rolling JPEG ring buffer (up to 15 s @ 30 fps) backing live Save Replay when
     /// composited JPEG frames are pushed from the live stage or Mix compositor.
-    pub replay_jpeg_ring: Mutex<std::collections::VecDeque<Vec<u8>>>,
+    pub replay_jpeg_ring: Mutex<std::collections::VecDeque<crate::commands::recorder::ReplayFrame>>,
     /// Latest scene-media frame (`chroma_Media`) pushed from the webview.
     pub scene_media: Mutex<crate::commands::media::SceneMediaSlot>,
     /// Managed live Twitch RTMPS/RTMP `ffmpeg` publisher child process and state machine.
