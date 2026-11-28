@@ -12,7 +12,7 @@
 //! [`chromaticity_render::uniform_input_from_audio_snapshot`], and
 //! GPU-roundtripping via
 //! [`chromaticity_render::compile_and_render_multipass`] with a
-//! shader that consumes all five `syn_*` uniforms. Dual-tagged
+//! shader that consumes all five audio uniforms. Dual-tagged
 //! because slice-5a is the cross-crate widening that closes both
 //! rows simultaneously; the same dual-tag pattern is established
 //! by `engine/script/tests/sandbox.rs` (`EV-SANDBOX-SAFETY (T2) +

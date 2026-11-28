@@ -65,6 +65,15 @@ Required CI check for every Rust file under `engine/**`, `integrations/**`, or `
 `docs/governance/26-evidence-artifact-registry.md`.
 - Verify locally with `bash scripts/evidence-tag-lint.sh`.
 
+### 3a. Native Vocabulary Lint (`scripts/syn-prefix-lint.sh`, ADR-024)
+
+- Chromaticity's reactive vocabulary is `chroma_*` everywhere (shaders, scripts, catalog, UI, user
+  docs). Reference-format `syn_*` names may appear **only** at the `.synScene` import boundary:
+  `engine/authoring/src/syn_import.rs` (holds the `SYN_TO_NATIVE` table),
+  `app/shell/src/syn_compat.rs`, and `engine/authoring/tests/**`.
+- A negative test that must name one carries `syn-lint: allow` on the same line.
+- Runs in lefthook pre-commit and the `policy` workflow.
+
 ### 4. Rust Guardrails (`Cargo.toml` workspace lints)
 
 - **`unsafe_code = "forbid"`** workspace-wide (MSRV `1.85.0`, edition `2024`).
@@ -131,5 +140,5 @@ npm run format:check && npm run lint && npm run tsc && npm run check && npm test
 cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --all-targets --no-fail-fast
 
 # Policy / evidence / commit
-bash scripts/evidence-tag-lint.sh && bash scripts/trailer-check.sh HEAD && npm run commitlint:last
+bash scripts/evidence-tag-lint.sh && bash scripts/syn-prefix-lint.sh && bash scripts/trailer-check.sh HEAD && npm run commitlint:last
 ```

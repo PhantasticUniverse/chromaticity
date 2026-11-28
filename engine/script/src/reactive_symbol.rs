@@ -9,7 +9,7 @@
 //! string-keyed plain-data shape. Slice 5.2 closes the
 //! `docs/36-reactive-symbol-catalog.md` v1.3.0 binding gap by
 //! attaching a typed catalog: a [`ReactiveSymbol`] enum with one
-//! variant per documented `syn_*` / `chroma_*` name in the
+//! variant per documented `chroma_*` (or standard) name in the
 //! script-host-visible subset, a [`ReactiveValueKind`] dimensionality
 //! descriptor, and the [`ReactiveSymbol::route`] /
 //! [`ScriptCommand::route`] (in [`crate::command_bus`]) routing path

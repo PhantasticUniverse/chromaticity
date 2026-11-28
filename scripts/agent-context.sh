@@ -152,4 +152,4 @@ printf '  Rust       : unsafe_code=forbid, unwrap_used=deny, expect_used=deny, e
 printf '  Frontend   : Svelte 5 runes (untrack() in $effect), eslint --max-warnings 0 (import/order, no-explicit-any), ASCII "-" in numeric DOM .value\n'
 printf '  Verify     : npm run lint && npm run tsc && npm run check && npm test\n'
 printf '               cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --all-targets\n'
-printf '               bash scripts/evidence-tag-lint.sh && bash scripts/trailer-check.sh HEAD\n'
+printf '               bash scripts/evidence-tag-lint.sh && bash scripts/syn-prefix-lint.sh && bash scripts/trailer-check.sh HEAD\n'

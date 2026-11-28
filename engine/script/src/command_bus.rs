@@ -11,7 +11,7 @@
 //! transport can be plugged in without engine/script taking a
 //! direct dep on `chromaticity-runtime` — the trait is the seam.
 //! Slice 5.2 will land the typed reactive-symbol-catalog binding
-//! (`docs/36` v1.3.0 `syn_*` names → typed runtime command
+//! (`docs/36` catalog `chroma_*` names → typed runtime command
 //! variants); slice 5.1 keeps the JS-visible surface deliberately
 //! narrow so the cross-crate plumbing can settle first.
 //!
@@ -38,7 +38,7 @@
 //! - JS-side global `__chromaticityEmit(name, value)` installed via
 //!   [`install_command_emit_shim`] once at builder time. The
 //!   underscore prefix marks it as a host-private bridge — slice
-//!   5.2 will install the script-author-facing `syn_*` Proxy /
+//!   5.2 will install the script-author-facing `chroma_*` Proxy /
 //!   accessor surface that calls into this private bridge under
 //!   the hood. Naming the bridge `__chromaticityEmit` (not e.g.
 //!   `chromaticity.emit`) keeps it out of the most likely

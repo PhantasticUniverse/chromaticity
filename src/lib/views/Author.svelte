@@ -13,7 +13,7 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   //
   // W21 PR3 evolution — replaces the W18 PR2 read-only `<pre><code>`
   // editor body with a CodeMirror 6 EditorView per file tab, adds
-  // chroma_* native + syn_* compat autocomplete on the GLSL tab, and
+  // chroma_* autocomplete on the GLSL tab, and
   // wires unsaved-changes / save / revert / load-backup / compare-a-
   // scene workflows. CodeMirror is a CONTROLLED divergence from the
   // bundle: the bundle's editor is itself a read-only DOM rendering of
@@ -39,13 +39,10 @@ SPDX-FileCopyrightText: 2026 Chromaticity
   //   - The bundle's `localStorage`-backed tab persistence is dropped;
   //     session-local `$state` is sufficient.
   //
-  // Namespace policy (`docs/36-reactive-symbol-catalog.md` §Namespace
-  // governance): the GLSL autocomplete vocabulary lives in
-  // `src/lib/data/glsl-completions.ts` and exposes BOTH `chroma_*`
-  // native symbols (primary, higher boost) AND `syn_*` compat symbols
-  // (secondary, lower boost). New feature work must NOT add fresh
-  // `syn_*` symbols beyond what the catalog documents. This view
-  // consumes the vocabulary; it does not extend it.
+  // Namespace policy (ADR-024): the GLSL autocomplete vocabulary lives in
+  // `src/lib/data/glsl-completions.ts` and exposes only native `chroma_*`
+  // symbols plus the catalog's standard names. This view consumes the
+  // vocabulary; it does not extend it.
   import { autoRepairGlsl, buildAgentRepairPrompt } from '../authoring/glslRepair';
   import {
     AUTHOR_BACKUPS,

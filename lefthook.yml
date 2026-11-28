@@ -113,6 +113,10 @@ pre-commit:
       glob: 'docs/adr/**/*.md'
       run: scripts/adr-lint.sh {staged_files}
 
+    syn-prefix-lint:
+      # ADR-024: reference-format syn_ names only at the import boundary.
+      run: bash scripts/syn-prefix-lint.sh
+
 # ---------------------------------------------------------------------------
 # pre-push: run the slower checks before the PR is pushed so CI failures
 # are caught one step earlier. Still not a substitute for CI.

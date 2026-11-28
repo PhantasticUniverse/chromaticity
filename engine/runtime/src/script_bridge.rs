@@ -50,7 +50,7 @@
 //!
 //! - The Phase-1 [`crate::Command`] vocabulary covers control writes,
 //!   preset recall, playlist advance, Snap slot operations, and
-//!   mapping bind. Reactive symbol writes (script-emitted `syn_*` or
+//!   mapping bind. Reactive symbol writes (script-emitted `chroma_*` or
 //!   `chroma_*` value updates per `docs/36` v1.3.0) are a different
 //!   semantic axis: they're per-frame data updates, not user-action
 //!   commands. Folding them into [`crate::Command`] would conflate

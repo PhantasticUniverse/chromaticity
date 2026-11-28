@@ -52,12 +52,12 @@
 //!   slice-1 unsupported set the same way `execute` itself does.
 //!
 //! The slice-5.2 typed reactive-symbol-catalog binding (`docs/36`
-//! v1.3.0 `syn_*` names → typed [`ScriptCommand`] variants) is
+//! `chroma_*` names → typed [`ScriptCommand`] variants) is
 //! deferred. The slice-5.1 surface intentionally accepts every
 //! `name` string verbatim; slice-5.2 will widen
 //! [`ScriptCommand`] with typed variants alongside the catch-all
 //! [`ScriptCommand::ReactiveWrite`] and tighten the JS-side
-//! surface (likely a Proxy or property-getter / setter for `syn_*`
+//! surface (likely a Proxy or property-getter / setter for `chroma_*`
 //! that calls the slice-5.1 `__chromaticityEmit` bridge under the
 //! hood).
 //!

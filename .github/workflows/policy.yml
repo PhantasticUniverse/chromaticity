@@ -17,6 +17,7 @@
 #   - signed-commits         : Sec.9.1 cryptographic commit signatures
 #   - reuse-lint             : EV-LICENSE-HEADERS
 #   - adr-lint               : EV-ADR-LINT (only when docs/adr/ changed)
+#   - syn-prefix-lint        : ADR-024 native chroma_* vocabulary boundary
 #   - secret-scan            : Sec.18.3 belt-and-suspenders
 #
 # Heavier checks (rust clippy, tsc, cargo-deny, SBOM) are added by the
@@ -408,6 +409,16 @@ jobs:
 
       - name: Run reuse lint
         uses: fsfe/reuse-action@v5
+
+  syn-prefix-lint:
+    name: syn-prefix-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run syn-prefix lint (ADR-024)
+        run: bash scripts/syn-prefix-lint.sh
 
   adr-lint:
     name: adr-lint

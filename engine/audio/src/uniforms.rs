@@ -47,7 +47,7 @@
 //! The `chroma_BPM` clamp range is asserted in the T1 drift pins so a
 //! catalog edit that moves the bounds surfaces here at the next
 //! `cargo test`. Slice-1 covers only the four primary symbols; the
-//! full `syn_*` vocabulary is the EV-AUDIO-TRACE Phase-3 corpus
+//! full `chroma_*` reactive vocabulary is the EV-AUDIO-TRACE Phase-3 corpus
 //! target (see `docs/26` row 30 "Phase 2-3 + release cumulative
 //! gate").
 //!

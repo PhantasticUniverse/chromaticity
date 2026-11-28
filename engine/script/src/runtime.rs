@@ -392,7 +392,7 @@ impl ScriptRuntime {
     /// JS-side surface installed: `__chromaticityEmit(name: string,
     /// value: any) -> undefined`. The underscore prefix marks it as
     /// a host-private bridge — slice-5.2 will install the
-    /// script-author-facing `syn_*` Proxy / accessor surface that
+    /// script-author-facing `chroma_*` Proxy / accessor surface that
     /// calls into this private bridge under the hood. See
     /// [`crate::command_bus`] module docs for the JS-side argument
     /// shape, the value-vocabulary lowering through
