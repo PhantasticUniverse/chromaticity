@@ -62,8 +62,12 @@ pub trait EmitMetric: Send + Sync {
 /// sink.
 #[derive(Debug)]
 pub struct InMemoryEmitter {
-    events: Mutex<Vec<MetricEvent>>,
+    events: Mutex<std::collections::VecDeque<MetricEvent>>,
     subsystem_event_counts: [AtomicU64; OBSERVABILITY_SUBSYSTEM_COUNT],
+    /// Maximum buffered events; `None` = unbounded (test sinks).
+    capacity: Option<usize>,
+    /// Events evicted because the bounded buffer was full.
+    dropped: AtomicU64,
 }
 
 impl InMemoryEmitter {
@@ -71,9 +75,29 @@ impl InMemoryEmitter {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            events: Mutex::new(Vec::new()),
+            events: Mutex::new(std::collections::VecDeque::new()),
             subsystem_event_counts: std::array::from_fn(|_| AtomicU64::new(0)),
+            capacity: None,
+            dropped: AtomicU64::new(0),
         }
+    }
+
+    /// Construct an emitter that keeps at most `capacity` buffered events,
+    /// evicting the oldest when full. Long-lived hosts whose buffer is not
+    /// drained on a schedule (the desktop shell) must use this: the
+    /// scheduler emits one `RuntimeUptime` event per second forever.
+    #[must_use]
+    pub fn with_capacity_limit(capacity: usize) -> Self {
+        Self {
+            capacity: Some(capacity.max(1)),
+            ..Self::new()
+        }
+    }
+
+    /// Events evicted by the capacity limit since construction.
+    #[must_use]
+    pub fn dropped_count(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
     }
 
     /// Drain every buffered event in emission order.
@@ -83,7 +107,7 @@ impl InMemoryEmitter {
     /// the trait-level "no panic on emit" contract.
     pub fn drain(&self) -> Vec<MetricEvent> {
         let mut guard = self.events.lock().unwrap_or_else(PoisonError::into_inner);
-        std::mem::take(&mut *guard)
+        std::mem::take(&mut *guard).into()
     }
 
     /// Number of events currently buffered. Useful for readiness
@@ -144,9 +168,13 @@ impl EmitMetric for InMemoryEmitter {
     fn emit(&self, event: MetricEvent) {
         self.subsystem_event_counts[subsystem_index(event.subsystem())]
             .fetch_add(1, Ordering::Relaxed);
-        match self.events.lock() {
-            Ok(mut guard) => guard.push(event),
-            Err(poison) => poison.into_inner().push(event),
+        let mut guard = self.events.lock().unwrap_or_else(PoisonError::into_inner);
+        guard.push_back(event);
+        if let Some(cap) = self.capacity {
+            while guard.len() > cap {
+                guard.pop_front();
+                self.dropped.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -180,7 +208,7 @@ mod observability_emission {
             1
         );
         assert_eq!(
-            emitter.events_emitted_count(ObservabilitySubsystem::Runtime),
+            emitter.events_emitted_count(crate::catalog::ObservabilitySubsystem::Runtime),
             0
         );
     }
@@ -211,7 +239,7 @@ mod observability_emission {
         });
 
         assert_eq!(
-            emitter.events_emitted_count(ObservabilitySubsystem::Runtime),
+            emitter.events_emitted_count(crate::catalog::ObservabilitySubsystem::Runtime),
             2
         );
         assert_eq!(
@@ -311,5 +339,28 @@ mod ctor_placeholder {
 
         // Drain clears the buffer.
         assert!(emitter.is_empty());
+    }
+
+    #[test]
+    fn bounded_emitter_keeps_newest_events_and_counts_evictions() {
+        // Audit 2026-11-28: the shell emitter was never drained and grew by
+        // one event per second forever.
+        let emitter = InMemoryEmitter::with_capacity_limit(3);
+        for secs in 0..10u64 {
+            emitter.emit(MetricEvent::RuntimeUptime { value: secs });
+        }
+        assert_eq!(emitter.len(), 3);
+        assert_eq!(emitter.dropped_count(), 7);
+        let kept: Vec<_> = emitter.drain();
+        assert!(matches!(
+            kept.first(),
+            Some(MetricEvent::RuntimeUptime { value: 7 })
+        ));
+        assert_eq!(
+            emitter.events_emitted_count(crate::catalog::ObservabilitySubsystem::Runtime),
+            10,
+            "the per-subsystem counter still counts every emission"
+        );
+        assert_eq!(InMemoryEmitter::new().dropped_count(), 0);
     }
 }

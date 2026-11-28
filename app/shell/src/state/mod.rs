@@ -260,6 +260,11 @@ impl Drop for ShellRuntime {
 /// [`AppState::drop`] and [`ShellRuntime::shutdown`] (scheduler thread
 /// first, audio runtime second) rather than relying on struct field
 /// declaration order.
+/// Buffered observability events kept by the shell emitter (newest win).
+/// Nothing drains it yet; at one `RuntimeUptime` per second this is
+/// about an hour of history.
+const OBSERVABILITY_BUFFER_CAPACITY: usize = 4096;
+
 pub struct AppState {
     /// Canonical runtime state guarded behind a mutex so command
     /// handlers can apply committed events serially.
@@ -596,7 +601,9 @@ impl AppState {
             )),
             data_ingest: Mutex::new(chromaticity_runtime::data_ingest::DataIngestEngine::new()),
             observability_emitter: Arc::new(
-                chromaticity_observability::emit::InMemoryEmitter::new(),
+                chromaticity_observability::emit::InMemoryEmitter::with_capacity_limit(
+                    OBSERVABILITY_BUFFER_CAPACITY,
+                ),
             ),
             started_at: Instant::now(),
         }
