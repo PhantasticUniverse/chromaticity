@@ -475,6 +475,8 @@ pub fn run() -> Result<(), tauri::Error> {
             commands::recorder::get_recorder_status,
             commands::recorder::push_recorder_frame,
             commands::recorder::push_recorder_jpeg_frame,
+            commands::media::push_scene_media_frame,
+            commands::media::clear_scene_media,
             commands::recorder::save_replay_buffer,
             commands::stream::start_twitch_stream,
             commands::stream::stop_twitch_stream,

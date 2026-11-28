@@ -11,8 +11,9 @@
 
 use chromaticity_audio::{AudioUniformSnapshot, SynAudioEnvelopeBank, SynAudioEnvelopes};
 use chromaticity_render::{
-    CachedMultipass, CachedSinglePass, MultipassRenderer, MultipassSpec, PassDef, PassInputBinding,
-    TargetFormat, TransitionOrchestrator, UniformInput, UniformValue, resolve_includes_multi,
+    CachedMultipass, CachedSinglePass, MediaKind, MultipassRenderer, MultipassSpec, PassDef,
+    PassInputBinding, TargetFormat, TransitionOrchestrator, UniformInput, UniformValue,
+    resolve_includes_multi,
 };
 use chromaticity_scene::loader::parse_scene_json;
 use serde::{Deserialize, Serialize};
@@ -87,6 +88,117 @@ float _fbm(vec2 p) {
 // --- End SSF GLSL Helper Prelude ---
 "#;
 
+/// One scene media frame pushed from the webview (`push_scene_media_frame`):
+/// tightly packed RGBA8, row 0 = top.
+#[derive(Debug)]
+pub struct SceneMediaFrame {
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+    /// Source category (`chroma_MediaType`).
+    pub kind: MediaKind,
+    /// `width * height * 4` RGBA8 bytes.
+    pub rgba: Vec<u8>,
+}
+
+/// Native `chroma_Media` declarations and catalog media helpers
+/// (`docs/architecture/36-reactive-symbol-catalog.md` §1.5 and §4.5),
+/// injected when a native shader references them. Binds the renderer's
+/// group-1 media input (`chromaticity_render::MediaInput`).
+const MEDIA_GLSL_PRELUDE: &str = r#"
+// --- Chromaticity media prelude (chroma_Media, bind group 1) ---
+layout(set = 1, binding = 0) uniform texture2D _chroma_media_tex;
+layout(set = 1, binding = 1) uniform sampler _chroma_media_samp;
+layout(set = 1, binding = 2, std140) uniform _ChromaMediaInfo {
+    vec4 _chroma_media_info;
+    vec4 _chroma_media_target;
+};
+#define chroma_Media sampler2D(_chroma_media_tex, _chroma_media_samp)
+#define chroma_MediaType (_chroma_media_info.y)
+bool _isMediaActive() { return _chroma_media_info.x > 0.5; }
+vec4 _textureMedia(vec2 uv) { return texture(chroma_Media, uv); }
+vec4 _textureMedia(vec2 uv, float lod) { return textureLod(chroma_Media, uv, lod); }
+vec4 _chroma_media_mask(vec4 c) {
+    float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+    return vec4(vec3(lum), c.a);
+}
+vec4 _textureMediaAsMask(vec2 uv) { return _chroma_media_mask(_textureMedia(uv)); }
+vec4 _textureMediaAsMask(vec2 uv, float lod) { return _chroma_media_mask(_textureMedia(uv, lod)); }
+vec2 _chroma_media_frag_uv() { return gl_FragCoord.xy / max(_chroma_media_target.xy, vec2(1.0)); }
+vec4 _loadMedia() { return _textureMedia(_chroma_media_frag_uv()); }
+vec4 _loadMedia(vec2 offset) { return _textureMedia(_chroma_media_frag_uv() + offset); }
+vec4 _loadMedia(float lod) { return _textureMedia(_chroma_media_frag_uv(), lod); }
+vec4 _loadMedia(vec2 offset, float lod) { return _textureMedia(_chroma_media_frag_uv() + offset, lod); }
+vec4 _loadMediaAsMask() { return _chroma_media_mask(_loadMedia()); }
+vec4 _loadMediaAsMask(vec2 offset) { return _chroma_media_mask(_loadMedia(offset)); }
+vec4 _loadMediaAsMask(float lod) { return _chroma_media_mask(_loadMedia(lod)); }
+vec4 _loadMediaAsMask(vec2 offset, float lod) { return _chroma_media_mask(_loadMedia(offset, lod)); }
+"#;
+
+/// `true` when `source` declares or defines a function called `name`
+/// (the identifier is preceded by a GLSL return type such as `vec4`), as
+/// opposed to merely calling it.
+fn defines_glsl_function(source: &str, name: &str) -> bool {
+    const RETURN_TYPES: &[&str] = &["void", "bool", "float", "int", "vec2", "vec3", "vec4"];
+    let pattern = format!("{name}(");
+    let bytes = source.as_bytes();
+    let mut from = 0usize;
+    while let Some(rel) = source[from..].find(&pattern) {
+        let at = from + rel;
+        from = at + pattern.len();
+        if at > 0 && (bytes[at - 1].is_ascii_alphanumeric() || bytes[at - 1] == b'_') {
+            continue;
+        }
+        let before = source[..at].trim_end();
+        if RETURN_TYPES.iter().any(|t| {
+            before.ends_with(t) && {
+                let cut = before.len() - t.len();
+                cut == 0 || !before.as_bytes()[cut - 1].is_ascii_alphanumeric()
+            }
+        }) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Inject [`MEDIA_GLSL_PRELUDE`] after `#version ...` when a native shader
+/// references `chroma_Media` or a media helper and does not already bind
+/// the media input itself (imported shaders get it from the import bridge).
+fn inject_media_prelude_if_needed(source: &str) -> String {
+    const MARKERS: &[&str] = &[
+        "chroma_Media",
+        "_textureMedia",
+        "_loadMedia",
+        "_isMediaActive",
+    ];
+    const HELPERS: &[&str] = &[
+        "_isMediaActive",
+        "_textureMedia",
+        "_textureMediaAsMask",
+        "_loadMedia",
+        "_loadMediaAsMask",
+    ];
+    if source.contains("_chroma_media_tex")
+        || !MARKERS.iter().any(|m| source.contains(m))
+        || HELPERS.iter().any(|h| defines_glsl_function(source, h))
+    {
+        return source.to_string();
+    }
+    if let Some(ver_pos) = source.find("#version") {
+        if let Some(nl_rel) = source[ver_pos..].find('\n') {
+            let split = ver_pos + nl_rel + 1;
+            let mut out = String::with_capacity(source.len() + MEDIA_GLSL_PRELUDE.len());
+            out.push_str(&source[..split]);
+            out.push_str(MEDIA_GLSL_PRELUDE);
+            out.push_str(&source[split..]);
+            return out;
+        }
+    }
+    format!("{MEDIA_GLSL_PRELUDE}\n{source}")
+}
+
 /// Inject [`SSF_GLSL_HELPER_PRELUDE`] after `#version ...` when a shader calls
 /// standard SSF helper functions without declaring them locally.
 fn inject_ssf_helpers_if_needed(source: &str) -> String {
@@ -129,7 +241,8 @@ fn preprocess_shader_with_helpers(
     pass_index: u32,
 ) -> Result<String, String> {
     let adapted = crate::syn_compat::adapt_syn_imported_shader(source, pass_index);
-    let with_helpers = inject_ssf_helpers_if_needed(&adapted);
+    let with_media = inject_media_prelude_if_needed(&adapted);
+    let with_helpers = inject_ssf_helpers_if_needed(&with_media);
     if !with_helpers.contains("#include") {
         return Ok(with_helpers);
     }
@@ -501,6 +614,8 @@ pub struct GpuPreviewEngine {
     /// Compiled multipass pipelines with persistent feedback history,
     /// most-recently-used last, at most [`MAX_CACHED_MULTIPASS_SIZES`].
     cached_multipass: Vec<CachedMultipass>,
+    /// Scene-media slot sequence last applied to the renderer's media input.
+    media_seq_applied: u64,
     multipass_frame_index: u32,
     envelopes: SynAudioEnvelopeBank,
     last_elapsed_secs: f32,
@@ -536,6 +651,7 @@ impl GpuPreviewEngine {
             cached_pass: None,
             cached_multipass_sources: None,
             cached_multipass: Vec::new(),
+            media_seq_applied: 0,
             multipass_frame_index: 0,
             envelopes: SynAudioEnvelopeBank::new(),
             last_elapsed_secs: 0.0,
@@ -549,6 +665,36 @@ impl GpuPreviewEngine {
         self.resource_dir = Some(dir);
         self.cached_multipass_sources = None;
         self.cached_multipass.clear();
+    }
+
+    /// Apply the scene-media slot to the renderer's `chroma_Media` input.
+    ///
+    /// `seq` is the slot's monotonically increasing version; the upload (or
+    /// clear when `frame` is `None`) runs only when it differs from the last
+    /// applied version, so repeated renders of one frame cost nothing.
+    ///
+    /// # Errors
+    ///
+    /// Renderer creation failure or a rejected frame (bad dimensions).
+    pub fn sync_media(&mut self, seq: u64, frame: Option<&SceneMediaFrame>) -> Result<(), String> {
+        if seq == self.media_seq_applied {
+            return Ok(());
+        }
+        if self.renderer.is_none() {
+            self.renderer =
+                Some(MultipassRenderer::new().map_err(|err| format!("wgpu init failed: {err}"))?);
+        }
+        let Some(renderer) = self.renderer.as_mut() else {
+            return Err("wgpu renderer unavailable".into());
+        };
+        match frame {
+            Some(f) => renderer
+                .upload_media(f.width, f.height, &f.rgba, f.kind)
+                .map_err(|err| format!("media upload rejected: {err}"))?,
+            None => renderer.clear_media(),
+        }
+        self.media_seq_applied = seq;
+        Ok(())
     }
 
     /// Current transition-orchestrator phase label for diagnostics.
@@ -1962,5 +2108,123 @@ void main() {
         );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    /// 2x2 quadrants: TL red, TR green, BL blue, BR white.
+    const MEDIA_QUAD: [u8; 16] = [
+        255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+    ];
+
+    fn media_frame() -> SceneMediaFrame {
+        SceneMediaFrame {
+            width: 2,
+            height: 2,
+            kind: MediaKind::Webcam,
+            rgba: MEDIA_QUAD.to_vec(),
+        }
+    }
+
+    fn native_media_shader(body: &str) -> String {
+        format!(
+            "#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 fragColor;
+layout(set = 0, binding = 0, std140) uniform ChromaUniforms {{
+    vec4 chroma_Time; vec4 chroma_Resolution; vec4 chroma_BPM; vec4 chroma_AudioRMS;
+    vec4 chroma_AudioPeak; float chroma_AudioFFT[8];
+    vec4 chroma_Ctrl0; vec4 chroma_Ctrl1; vec4 chroma_Ctrl2; vec4 chroma_Ctrl3;
+}};
+void main() {{ {body} }}
+"
+        )
+    }
+
+    #[test]
+    fn native_chroma_media_helpers_sample_the_synced_frame() {
+        for body in [
+            "fragColor = _textureMedia(uv);",
+            "fragColor = texture(chroma_Media, uv);",
+            "fragColor = _loadMedia();",
+        ] {
+            let mut engine = GpuPreviewEngine::new();
+            engine.set_inline_shader("media".into(), native_media_shader(body));
+            engine.sync_media(1, Some(&media_frame())).expect("sync");
+            let bytes = engine
+                .render_frame(2, 2, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 16])
+                .expect("native media shader renders");
+            // MIN_PREVIEW_DIM clamps 2x2 up to 16x16: sample the quadrant
+            // centres instead of exact texels.
+            let px = |x: usize, y: usize| &bytes[(y * 16 + x) * 4..(y * 16 + x) * 4 + 4];
+            assert_eq!(px(2, 2), &[255, 0, 0, 255], "{body}: top-left red");
+            assert_eq!(px(13, 2), &[0, 255, 0, 255], "{body}: top-right green");
+            assert_eq!(px(2, 13), &[0, 0, 255, 255], "{body}: bottom-left blue");
+            assert_eq!(
+                px(13, 13),
+                &[255, 255, 255, 255],
+                "{body}: bottom-right white"
+            );
+        }
+    }
+
+    #[test]
+    fn native_media_activity_and_type_follow_sync_and_clear() {
+        let mut engine = GpuPreviewEngine::new();
+        engine.set_inline_shader(
+            "media-info".into(),
+            native_media_shader(
+                "fragColor = vec4(_isMediaActive() ? 1.0 : 0.0, chroma_MediaType / 4.0, 0.0, 1.0);",
+            ),
+        );
+        let render = |engine: &mut GpuPreviewEngine| {
+            engine
+                .render_frame(16, 16, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 16])
+                .expect("renders")
+        };
+        assert_eq!(
+            &render(&mut engine)[0..2],
+            &[0, 0],
+            "no media before any sync"
+        );
+        engine.sync_media(1, Some(&media_frame())).expect("sync");
+        assert_eq!(
+            &render(&mut engine)[0..2],
+            &[255, 191],
+            "active webcam (type 3)"
+        );
+        engine.sync_media(2, None).expect("clear");
+        assert_eq!(&render(&mut engine)[0..2], &[0, 0], "cleared");
+        // Same seq again is a no-op (no re-upload, no error).
+        engine.sync_media(2, None).expect("idempotent");
+    }
+
+    #[test]
+    fn shader_defining_its_own_media_helpers_gets_no_media_prelude() {
+        let own = native_media_shader("fragColor = _loadMedia() + vec4(0.0, 0.0, 0.0, 1.0);")
+            .replace(
+                "void main()",
+                "vec4 _loadMedia() { return vec4(0.25, 0.5, 0.75, 0.0); }\nvoid main()",
+            );
+        assert_eq!(
+            inject_media_prelude_if_needed(&own),
+            own,
+            "no prelude injected"
+        );
+        let mut engine = GpuPreviewEngine::new();
+        engine.set_inline_shader("own-helper".into(), own);
+        engine.sync_media(1, Some(&media_frame())).expect("sync");
+        let bytes = engine
+            .render_frame(16, 16, 0.0, 1, &AudioUniformSnapshot::default(), [0.5; 16])
+            .expect("shader with its own _loadMedia still compiles");
+        assert_eq!(&bytes[0..4], &[64, 128, 191, 255]);
+        // Calls alone are not definitions.
+        assert!(!defines_glsl_function("x = _loadMedia();", "_loadMedia"));
+        assert!(defines_glsl_function(
+            "bool  _isMediaActive() {}",
+            "_isMediaActive"
+        ));
+        assert!(!defines_glsl_function(
+            "vec4 my_loadMedia() {}",
+            "_loadMedia"
+        ));
     }
 }

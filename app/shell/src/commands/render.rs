@@ -346,10 +346,12 @@ pub fn render_gpu_frame(
     }
 
     let (mut bytes, last_frame_ms) = {
+        let (media_seq, media_frame) = crate::commands::media::scene_media_snapshot(&app_state);
         let mut gpu = match app_state.gpu_renderer.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
+        gpu.sync_media(media_seq, media_frame.as_deref())?;
         let bytes = gpu.render_frame_with_bpm(
             width,
             height,

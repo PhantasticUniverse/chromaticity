@@ -81,7 +81,13 @@ layout(set = 0, binding = 0, std140) uniform ChromaUniforms {
 #define syn_BPMTri2 (abs(fract(_chroma_bpm_vec.y * 0.5) * 2.0 - 1.0))
 #define syn_BPMTri4 (abs(fract(_chroma_bpm_vec.y * 0.25) * 2.0 - 1.0))
 #define syn_BPMTri8 (abs(fract(_chroma_bpm_vec.y * 0.125) * 2.0 - 1.0))
-#define syn_MediaActive (0.0)
+layout(set = 1, binding = 0) uniform texture2D _chroma_media_tex;
+layout(set = 1, binding = 1) uniform sampler _chroma_media_samp;
+layout(set = 1, binding = 2, std140) uniform _ChromaMediaInfo {
+    vec4 _chroma_media_info;
+    vec4 _chroma_media_target;
+};
+#define syn_MediaActive (_chroma_media_info.x)
 
 vec4 _chroma_sample_spectrum(vec2 uv) {
     int idx = clamp(int(uv.x * 8.0), 0, 7);
@@ -94,11 +100,11 @@ vec4 _chroma_sample_spectrum(vec2 uv, float lod) {
 }
 
 vec4 _chroma_sample_media(vec2 uv) {
-    return vec4(0.0, 0.0, 0.0, 1.0) + 0.0 * vec4(uv, 0.0, 0.0);
+    return texture(sampler2D(_chroma_media_tex, _chroma_media_samp), uv);
 }
 
 vec4 _chroma_sample_media(vec2 uv, float lod) {
-    return _chroma_sample_media(uv) + 0.0 * vec4(lod);
+    return textureLod(sampler2D(_chroma_media_tex, _chroma_media_samp), uv, lod);
 }
 "#;
 
@@ -271,12 +277,13 @@ pub(crate) fn adapt_syn_imported_shader(source: &str, pass_index: u32) -> String
         }
     }
 
-    // Replace unbound media/spectrum texture lookups with live std140 fallbacks.
+    // Route media lookups to the live group-1 media input and spectrum
+    // lookups to the std140 FFT fallback.
     out = rewrite_syn_sampler_calls(&out, "syn_Spectrum", "_chroma_sample_spectrum");
     out = rewrite_syn_sampler_calls(&out, "syn_UserImage", "_chroma_sample_media");
     out = out.replace(
         "textureSize(syn_UserImage, 0)",
-        "ivec2(max(RENDERSIZE, vec2(1.0)))",
+        "ivec2(max(_chroma_media_info.zw, vec2(1.0)))",
     );
     out = out.replace("textureSize(syn_Spectrum, 0)", "ivec2(8, 1)");
 
@@ -418,5 +425,78 @@ vec4 renderMain() {
             let v = out.get(key).copied().expect("bpm emitted");
             assert!((v - 128.0).abs() < 1e-4, "{key}={v}");
         }
+    }
+
+    #[test]
+    fn imported_scene_media_helpers_read_the_live_media_input() {
+        use chromaticity_authoring::syn_import::import_syn_scene_to_chroma;
+        use chromaticity_render::MediaKind;
+
+        let base = std::env::temp_dir().join(format!(
+            "chromaticity-syn-media-test-{}",
+            std::process::id()
+        ));
+        let src_dir = base.join("media_probe.synScene");
+        let out_parent = base.join("out");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&out_parent).unwrap();
+        std::fs::write(
+            src_dir.join("scene.json"),
+            r#"{ "TITLE": "Media Probe", "CREDIT": "Test", "CONTROLS": [] }"#,
+        )
+        .unwrap();
+        // Left half: _loadMedia(); right half: _loadMediaAsMask();
+        // alpha carries syn_MediaActive.
+        std::fs::write(
+            src_dir.join("main.glsl"),
+            r#"
+vec4 renderMain() {
+    vec4 c = _uv.x < 0.5 ? _loadMedia() : _loadMediaAsMask();
+    return vec4(c.rgb, syn_MediaActive);
+}
+"#,
+        )
+        .unwrap();
+        let report = import_syn_scene_to_chroma(&src_dir, &out_parent).expect("import");
+
+        let mut engine = GpuPreviewEngine::new();
+        engine.set_scene(report.slug.clone(), &report.output_dir);
+        let audio = AudioUniformSnapshot::default();
+        let inactive = engine
+            .render_frame(16, 16, 0.0, 1, &audio, [0.5; 16])
+            .expect("imported media scene renders without media");
+        assert_eq!(
+            &inactive[0..4],
+            &[0, 0, 0, 0],
+            "no media: black, syn_MediaActive 0"
+        );
+
+        // Solid colour frame: (200, 100, 50).
+        let frame = crate::render::SceneMediaFrame {
+            width: 4,
+            height: 4,
+            kind: MediaKind::Image,
+            rgba: [200u8, 100, 50, 255].repeat(16),
+        };
+        engine.sync_media(1, Some(&frame)).expect("sync");
+        let bytes = engine
+            .render_frame(16, 16, 0.016, 2, &audio, [0.5; 16])
+            .expect("imported media scene renders with media");
+        let px = |x: usize, y: usize| bytes[(y * 16 + x) * 4..(y * 16 + x) * 4 + 4].to_vec();
+        assert_eq!(
+            px(3, 8),
+            vec![200, 100, 50, 255],
+            "_loadMedia + syn_MediaActive"
+        );
+        // Mask: lum = 0.299*200 + 0.587*100 + 0.114*50 = 124.2 (+/-1 for rounding).
+        let mask = px(12, 8);
+        assert!(
+            mask[0] == mask[1] && mask[1] == mask[2],
+            "mask is grey: {mask:?}"
+        );
+        assert!((123..=125).contains(&mask[0]), "mask luminance {mask:?}");
+        assert_eq!(mask[3], 255);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
